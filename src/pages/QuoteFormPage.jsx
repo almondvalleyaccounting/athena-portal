@@ -34,6 +34,141 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
     }
   }, [entityId]);
 
+  const [formLoading, setFormLoading] = useState(mode === 'edit' || !!fromId);
+
+  // Load existing quote for edit or re-quote
+  useEffect(() => {
+    const loadId = mode === 'edit' ? quoteId : fromId;
+    if (!loadId) return;
+
+    (async () => {
+      const { data: q } = await supabase.from('quotes').select('*').eq('id', loadId).single();
+      if (!q) { navigate('/manage/quotes'); return; }
+      if (mode === 'edit' && q.status !== 'draft') { navigate(`/manage/quotes/${loadId}`); return; }
+
+      // Populate form state from saved quote
+      setClient({
+        name: q.relationship_group || '',
+        companyNumber: '',
+        entityType: q.accounts_detail?.type || 'limited_company',
+        turnover: q.estimated_turnover ? String(q.estimated_turnover) : '',
+      });
+      if (mode === 'edit') {
+        setExistingQuoteRef(q.quote_ref);
+        if (q.entity_id) setEntity({ id: q.entity_id });
+      }
+
+      // Setup fees
+      const sf = q.setup_fees || [];
+      const formation = sf.find(s => s.type === 'formation');
+      const hmrc = sf.find(s => s.type === 'hmrc');
+      const regFee = sf.find(s => s.type === 'reg_fee');
+      const others = sf.filter(s => s.type === 'other');
+      if (formation) { setSuFormation(true); setSuFormationQty(formation.qty || 1); setSuFormationRate(formation.rate || D.setup.formation_rate); }
+      if (hmrc) { setSuHmrc(true); setSuHmrcQty(hmrc.qty || 1); setSuHmrcRate(hmrc.rate || D.setup.hmrc_reg_rate); }
+      if (regFee) setSuRegFee(regFee.amount || 0);
+      if (others.length) setSuOthers(others.map(o => ({ description: o.description || '', amount: o.amount || 0 })));
+
+      // Accounts
+      if (q.accounts_detail) {
+        setAccEnabled(true);
+        setAccType(q.accounts_detail.type || 'trading');
+        setAccRate(q.accounts_detail.rate || 900);
+        if (q.accounts_detail.properties) setAccProperties(q.accounts_detail.properties);
+      }
+
+      // Confirmation statement
+      if (q.annual_services > 0) setCsEnabled(true);
+
+      // Directors
+      if (q.directors?.length > 0) {
+        setDtrEnabled(true);
+        setDirectors(q.directors.map(d => ({
+          name: d.name || '', base: d.base || D.director_base,
+          otherDividends: d.other_dividends || false,
+          hasRentals: d.has_rentals || false,
+          rentalProperties: d.rental_properties || 1,
+          capitalGains: d.capital_gains || false,
+          savingsIncome: d.savings_income || false,
+          otherSources: d.other_sources || [],
+        })));
+        if (q.directors[0]?.addon_rates_used) setAddonRates(q.directors[0].addon_rates_used);
+      }
+
+      // Bookkeeping
+      if (q.bookkeeping_detail) {
+        setBkEnabled(true);
+        setBkHours(q.bookkeeping_detail.hours_per_month || 8);
+        setBkRate(q.bookkeeping_detail.rate || D.bookkeeping_rate);
+        setBkIncVat(q.bookkeeping_detail.includes_vat ?? true);
+        setBkVatAdj(q.bookkeeping_detail.vat_adj || 0);
+      }
+
+      // Payroll
+      if (q.payroll_detail) {
+        setPrEnabled(true);
+        setPrFlat(q.payroll_detail.flat_monthly || 0);
+        setPrMonthlyEe(q.payroll_detail.monthly_ee || 0);
+        setPrMonthlyEeRate(q.payroll_detail.monthly_ee_rate || D.payroll.monthly_ee_rate);
+        setPrWeeklyEe(q.payroll_detail.weekly_ee || 0);
+        setPrWeeklyEeRate(q.payroll_detail.weekly_ee_rate || D.payroll.weekly_ee_rate);
+        setPrCis(q.payroll_detail.cis || 0);
+        setPrCisRate(q.payroll_detail.cis_rate || D.payroll.cis_rate);
+        setPrP11d(q.payroll_detail.p11d || 0);
+        setPrP11dRate(q.payroll_detail.p11d_rate || D.payroll.p11d_rate);
+      }
+
+      // Auto-enrolment — check line items
+      // We'll infer from the saved totals
+      // Modulr
+      if (q.modulr_detail) {
+        setModEnabled(true);
+        setModSwPrice(q.modulr_detail.software_monthly || D.modulr?.software_monthly_price || 20);
+        setModPayments(q.modulr_detail.payments_per_month || 0);
+        setModPaymentRate(q.modulr_detail.payment_rate || D.modulr?.per_payment || 0.25);
+        setModRuns(q.modulr_detail.runs_per_month || 0);
+        setModRunRate(q.modulr_detail.run_rate || D.modulr?.per_run || 5);
+      }
+      // Management Accounts
+      if (q.management_accounts_detail) {
+        setMaEnabled(true);
+        setMaSets(q.management_accounts_detail.sets || 4);
+        setMaRate(q.management_accounts_detail.rate_per_set || D.management_accounts_per_set);
+      }
+      // Review Meetings
+      if (q.review_meetings_detail) {
+        setRmEnabled(true);
+        setRmCount(q.review_meetings_detail.count || 4);
+        setRmRate(q.review_meetings_detail.rate || D.review_meeting_rate);
+      }
+      // Budgeting
+      if (q.budgeting_detail) {
+        setBudEnabled(true);
+        if (q.budgeting_detail.basic) { setBudBasic(true); setBudBasicRate(q.budgeting_detail.basic); }
+        if (q.budgeting_detail.advanced) { setBudAdvanced(true); setBudAdvancedRate(q.budgeting_detail.advanced); }
+        setBudReforecastQty(q.budgeting_detail.reforecast_qty || 0);
+        setBudReforecastRate(q.budgeting_detail.reforecast_rate || D.reforecast);
+      }
+      // CFO
+      if (q.cfo_detail) {
+        setCfoEnabled(true);
+        setCfoDays(q.cfo_detail.days || 1);
+        setCfoDayRate(q.cfo_detail.day_rate || D.cfo_day_rate);
+      }
+
+      // Software
+      if (q.software_detail?.accounting) {
+        setSwId(q.software_detail.accounting.id || 'none');
+      }
+      if (q.software_detail?.dext) {
+        setDextEnabled(true);
+        setDextPrice(q.software_detail.dext.monthly || D.dext.monthly_price);
+      }
+
+      setFormLoading(false);
+    })();
+  }, [mode, quoteId, fromId]);
+
   // ── Client ──
   const [client, setClient] = useState({
     name: '',
@@ -214,111 +349,143 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
   const monthlyVat = Math.round(monthlyNet * 0.2 * 100) / 100;
   const monthlyGross = Math.round((monthlyNet + monthlyVat) * 100) / 100;
 
+  // ── Build quote data object (shared between insert and update) ──
+  const buildQuoteData = () => {
+    const setupLines = [];
+    if (suFormation) setupLines.push({ type: 'formation', description: 'Company formation', qty: suFormationQty, rate: suFormationRate, amount: suFormationQty * suFormationRate });
+    if (suHmrc) setupLines.push({ type: 'hmrc', description: 'HMRC registrations', qty: suHmrcQty, rate: suHmrcRate, amount: suHmrcQty * suHmrcRate });
+    if (suRegFee > 0) setupLines.push({ type: 'reg_fee', description: 'Registration fee', amount: suRegFee });
+    suOthers.forEach((o) => { if (o.amount > 0) setupLines.push({ type: 'other', description: o.description || 'Other', amount: o.amount }); });
+
+    return {
+      data: {
+        estimated_turnover: turnoverNum || null,
+        annual_services: Math.round(annualServices * 100) / 100,
+        annual_software: swAnnual,
+        annual_total: Math.round(annualTotal * 100) / 100,
+        monthly_net: monthlyNet,
+        monthly_vat: monthlyVat,
+        monthly_gross: monthlyGross,
+        one_off_total: setupTotal,
+        defaults_version: D.version,
+        directors: dtrEnabled ? directors.map((d) => ({
+          name: d.name, base: d.base, other_dividends: d.otherDividends,
+          has_rentals: d.hasRentals, rental_properties: d.hasRentals ? d.rentalProperties : 0,
+          capital_gains: d.capitalGains, savings_income: d.savingsIncome,
+          other_sources: d.otherSources || [], addon_rates_used: addonRates, total: dirTotal(d),
+        })) : [],
+        setup_fees: setupLines,
+        payroll_detail: prEnabled ? { flat_monthly: prFlat, monthly_ee: prMonthlyEe, monthly_ee_rate: prMonthlyEeRate, weekly_ee: prWeeklyEe, weekly_ee_rate: prWeeklyEeRate, cis: prCis, cis_rate: prCisRate, p11d: prP11d, p11d_rate: prP11dRate } : null,
+        bookkeeping_detail: bkEnabled ? { hours_per_month: bkHours, rate: bkRate, includes_vat: bkIncVat, vat_adj: bkVatAdj } : null,
+        software_detail: swMonthly > 0 ? { accounting: sw?.id !== 'none' ? { id: sw.id, name: sw.name, monthly: sw.monthly, cost: sw.cost } : null, dext: dextEnabled ? { monthly: dextPrice, cost: D.dext.cost } : null } : null,
+        accounts_detail: accEnabled ? { type: accType, band: detectedBand?.label, rate: accAnnual, properties: accType === 'property' ? accProperties : undefined } : null,
+        modulr_detail: modEnabled ? { software_monthly: modSwPrice, payments_per_month: modPayments, payment_rate: modPaymentRate, runs_per_month: modRuns, run_rate: modRunRate } : null,
+        management_accounts_detail: maEnabled ? { sets: maSets, rate_per_set: maRate } : null,
+        review_meetings_detail: rmEnabled ? { count: rmCount, rate: rmRate } : null,
+        budgeting_detail: budEnabled ? { basic: budBasic ? budBasicRate : null, advanced: budAdvanced ? budAdvancedRate : null, reforecast_qty: budReforecastQty, reforecast_rate: budReforecastRate } : null,
+        cfo_detail: cfoEnabled ? { days: cfoDays, day_rate: cfoDayRate } : null,
+        relationship_group: client.name || null,
+      },
+      setupLines,
+    };
+  };
+
+  const buildLineItems = (qid, setupLines) => {
+    const items = lines.map((l, i) => ({
+      quote_id: qid, service_id: l.id, description: l.name,
+      annual_amount: Math.round(l.annual * 100) / 100,
+      monthly_amount: Math.round((l.annual / 12) * 100) / 100,
+      detail: l.detail || '', is_recurring: true, sort_order: i,
+    }));
+    if (sw?.id !== 'none' && sw?.monthly > 0) {
+      items.push({ quote_id: qid, service_id: 'software_accounting', description: sw.name, annual_amount: sw.monthly * 12, monthly_amount: sw.monthly, detail: '', is_recurring: true, sort_order: items.length });
+    }
+    if (dextEnabled) {
+      items.push({ quote_id: qid, service_id: 'software_dext', description: 'Dext', annual_amount: dextPrice * 12, monthly_amount: dextPrice, detail: '', is_recurring: true, sort_order: items.length });
+    }
+    setupLines.forEach((sl, i) => {
+      items.push({ quote_id: qid, service_id: `setup_${sl.type}`, description: sl.description, annual_amount: sl.amount, monthly_amount: 0, detail: '', is_recurring: false, sort_order: 100 + i });
+    });
+    return items;
+  };
+
   // ── Save to Supabase ──
   const handleSave = async () => {
     setSaving(true);
     setError('');
     try {
-      // Generate quote ref with collision avoidance
-      const nameSlug = (client.name || 'Quote').replace(/[^a-zA-Z0-9]/g, '');
-      const dateSlug = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const prefix = `${nameSlug}_${dateSlug}`;
+      const { data: quoteData, setupLines } = buildQuoteData();
 
-      const { data: existing } = await supabase
-        .from('quotes')
-        .select('quote_ref')
-        .like('quote_ref', `${prefix}%`);
+      if (mode === 'edit') {
+        // UPDATE existing quote
+        const { error: updateErr } = await supabase
+          .from('quotes')
+          .update(quoteData)
+          .eq('id', quoteId);
+        if (updateErr) throw updateErr;
 
-      const nums = (existing || [])
-        .map((q) => parseInt(q.quote_ref.split('_').pop()) || 0);
-      const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
-      const quoteRef = `${prefix}_${String(next).padStart(3, '0')}`;
-
-      // Build setup fee lines
-      const setupLines = [];
-      if (suFormation) setupLines.push({ type: 'formation', description: 'Company formation', qty: suFormationQty, rate: suFormationRate, amount: suFormationQty * suFormationRate });
-      if (suHmrc) setupLines.push({ type: 'hmrc', description: 'HMRC registrations', qty: suHmrcQty, rate: suHmrcRate, amount: suHmrcQty * suHmrcRate });
-      if (suRegFee > 0) setupLines.push({ type: 'reg_fee', description: 'Registration fee', amount: suRegFee });
-      suOthers.forEach((o) => { if (o.amount > 0) setupLines.push({ type: 'other', description: o.description || 'Other', amount: o.amount }); });
-
-      // Insert quote
-      const { data: savedQuotes, error: quoteErr } = await supabase
-        .from('quotes')
-        .insert({
-          quote_ref: quoteRef,
-          entity_id: entity?.id || null,
-          group_id: null,
-          status: 'draft',
-          estimated_turnover: turnoverNum || null,
-          annual_services: Math.round(annualServices * 100) / 100,
-          annual_software: swAnnual,
-          annual_total: Math.round(annualTotal * 100) / 100,
-          monthly_net: monthlyNet,
-          monthly_vat: monthlyVat,
-          monthly_gross: monthlyGross,
-          one_off_total: setupTotal,
-          defaults_version: D.version,
-          directors: dtrEnabled ? directors.map((d) => ({
-            name: d.name, base: d.base, other_dividends: d.otherDividends,
-            has_rentals: d.hasRentals, rental_properties: d.hasRentals ? d.rentalProperties : 0,
-            capital_gains: d.capitalGains, savings_income: d.savingsIncome,
-            other_sources: d.otherSources || [], addon_rates_used: addonRates, total: dirTotal(d),
-          })) : [],
-          setup_fees: setupLines,
-          payroll_detail: prEnabled ? { flat_monthly: prFlat, monthly_ee: prMonthlyEe, monthly_ee_rate: prMonthlyEeRate, weekly_ee: prWeeklyEe, weekly_ee_rate: prWeeklyEeRate, cis: prCis, cis_rate: prCisRate, p11d: prP11d, p11d_rate: prP11dRate } : null,
-          bookkeeping_detail: bkEnabled ? { hours_per_month: bkHours, rate: bkRate, includes_vat: bkIncVat, vat_adj: bkVatAdj } : null,
-          software_detail: swMonthly > 0 ? { accounting: sw?.id !== 'none' ? { id: sw.id, name: sw.name, monthly: sw.monthly, cost: sw.cost } : null, dext: dextEnabled ? { monthly: dextPrice, cost: D.dext.cost } : null } : null,
-          accounts_detail: accEnabled ? { type: accType, band: detectedBand?.label, rate: accAnnual, properties: accType === 'property' ? accProperties : undefined } : null,
-          modulr_detail: modEnabled ? { software_monthly: modSwPrice, payments_per_month: modPayments, payment_rate: modPaymentRate, runs_per_month: modRuns, run_rate: modRunRate } : null,
-          management_accounts_detail: maEnabled ? { sets: maSets, rate_per_set: maRate } : null,
-          review_meetings_detail: rmEnabled ? { count: rmCount, rate: rmRate } : null,
-          budgeting_detail: budEnabled ? { basic: budBasic ? budBasicRate : null, advanced: budAdvanced ? budAdvancedRate : null, reforecast_qty: budReforecastQty, reforecast_rate: budReforecastRate } : null,
-          cfo_detail: cfoEnabled ? { days: cfoDays, day_rate: cfoDayRate } : null,
-          relationship_group: client.name || null,
-          created_by: profile.id,
-        })
-        .select();
-
-      if (quoteErr) {
-        // Retry on quote_ref collision
-        if (quoteErr.message?.includes('duplicate') || quoteErr.code === '23505') {
-          setError('Quote ref collision — please try saving again.');
-          setSaving(false);
-          return;
+        // Delete and re-insert line items
+        await supabase.from('quote_line_items').delete().eq('quote_id', quoteId);
+        const items = buildLineItems(quoteId, setupLines);
+        if (items.length > 0) {
+          const { error: liErr } = await supabase.from('quote_line_items').insert(items);
+          if (liErr) throw liErr;
         }
-        throw quoteErr;
+
+        // Audit log
+        await supabase.from('audit_log').insert({
+          user_id: profile.id, action: 'updated', entity_type: 'quote', entity_id: quoteId,
+          detail: { monthly_gross: monthlyGross },
+        });
+
+        navigate('/manage/quotes/' + quoteId);
+      } else {
+        // Generate quote ref with collision avoidance
+        const nameSlug = (client.name || 'Quote').replace(/[^a-zA-Z0-9]/g, '');
+        const dateSlug = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const prefix = `${nameSlug}_${dateSlug}`;
+
+        const { data: existing } = await supabase
+          .from('quotes')
+          .select('quote_ref')
+          .like('quote_ref', `${prefix}%`);
+
+        const nums = (existing || [])
+          .map((q) => parseInt(q.quote_ref.split('_').pop()) || 0);
+        const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+        const quoteRef = `${prefix}_${String(next).padStart(3, '0')}`;
+
+        // INSERT new quote
+        const { data: savedQuotes, error: quoteErr } = await supabase
+          .from('quotes')
+          .insert({
+            ...quoteData,
+            quote_ref: quoteRef,
+            entity_id: entity?.id || null,
+            group_id: null,
+            status: 'draft',
+            created_by: profile.id,
+          })
+          .select();
+
+        if (quoteErr) {
+          if (quoteErr.message?.includes('duplicate') || quoteErr.code === '23505') {
+            setError('Quote ref collision \u2014 please try saving again.');
+            setSaving(false);
+            return;
+          }
+          throw quoteErr;
+        }
+
+        const savedQuote = savedQuotes[0];
+        const items = buildLineItems(savedQuote.id, setupLines);
+        if (items.length > 0) {
+          const { error: liErr } = await supabase.from('quote_line_items').insert(items);
+          if (liErr) throw liErr;
+        }
+
+        navigate('/manage/quotes/' + savedQuote.id);
       }
-
-      const savedQuote = savedQuotes[0];
-
-      // Build and insert line items
-      const lineItems = lines.map((l, i) => ({
-        quote_id: savedQuote.id,
-        service_id: l.id,
-        description: l.name,
-        annual_amount: Math.round(l.annual * 100) / 100,
-        monthly_amount: Math.round((l.annual / 12) * 100) / 100,
-        detail: l.detail || '',
-        is_recurring: true,
-        sort_order: i,
-      }));
-
-      if (sw?.id !== 'none' && sw?.monthly > 0) {
-        lineItems.push({ quote_id: savedQuote.id, service_id: 'software_accounting', description: sw.name, annual_amount: sw.monthly * 12, monthly_amount: sw.monthly, detail: '', is_recurring: true, sort_order: lineItems.length });
-      }
-      if (dextEnabled) {
-        lineItems.push({ quote_id: savedQuote.id, service_id: 'software_dext', description: 'Dext', annual_amount: dextPrice * 12, monthly_amount: dextPrice, detail: '', is_recurring: true, sort_order: lineItems.length });
-      }
-      setupLines.forEach((sl, i) => {
-        lineItems.push({ quote_id: savedQuote.id, service_id: `setup_${sl.type}`, description: sl.description, annual_amount: sl.amount, monthly_amount: 0, detail: '', is_recurring: false, sort_order: 100 + i });
-      });
-
-      if (lineItems.length > 0) {
-        const { error: liErr } = await supabase.from('quote_line_items').insert(lineItems);
-        if (liErr) throw liErr;
-      }
-
-      navigate('/manage/quotes/' + savedQuote.id);
     } catch (e) {
       setError(e.message || 'Save failed');
     }
@@ -326,12 +493,19 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
   };
 
   // ── RENDER ──
+  if (formLoading) {
+    return <div className="p-6"><p className="text-sm text-gray-400">Loading quote...</p></div>;
+  }
+
   return (
     <div className="p-6 max-w-2xl">
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h2 className="text-lg font-bold text-ocean-700">New Quote</h2>
-          {entity && <p className="text-xs text-gray-400">{entity.name} {entity.company_number ? `(${entity.company_number})` : ''}</p>}
+          <h2 className="text-lg font-bold text-ocean-700">
+            {mode === 'edit' ? 'Edit Quote' : fromId ? 'Re-quote' : 'New Quote'}
+          </h2>
+          {existingQuoteRef && <p className="text-xs text-gray-400">{existingQuoteRef}</p>}
+          {entity?.name && <p className="text-xs text-gray-400">{entity.name} {entity.company_number ? `(${entity.company_number})` : ''}</p>}
         </div>
         <Btn onClick={() => navigate(-1)} variant="ghost">Cancel</Btn>
       </div>
@@ -537,7 +711,7 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
       {/* Save */}
       <div className="flex gap-2">
         <Btn onClick={handleSave} disabled={saving || !client.name} className="flex-1">
-          {saving ? 'Saving...' : 'Save Quote to Athena'}
+          {saving ? 'Saving...' : mode === 'edit' ? 'Update Quote' : 'Save Quote to Athena'}
         </Btn>
         <Btn onClick={() => navigate(-1)} variant="secondary">Cancel</Btn>
       </div>
