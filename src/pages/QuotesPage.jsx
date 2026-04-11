@@ -59,7 +59,7 @@ export default function QuotesPage() {
       try {
         const { data } = await supabase
           .from('quotes')
-          .select('*, created_by_profile:staff_profiles!created_by(name)')
+          .select('*')
           .order('created_at', { ascending: false });
         setQuotes(data || []);
       } catch {}
@@ -194,9 +194,6 @@ export default function QuotesPage() {
               <span className="text-right font-mono text-gray-500">{fmt(q.annual_total)}</span>
               <div className="text-right">
                 <span className="text-gray-500">{new Date(q.created_at).toLocaleDateString('en-GB')}</span>
-                {q.created_by_profile?.name && (
-                  <p className="text-gray-400 text-[10px]">{q.created_by_profile.name}</p>
-                )}
               </div>
             </div>
           ))}
