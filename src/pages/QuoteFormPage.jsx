@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Inp, TabRow, Section, Btn, fmt, G4, C4 } from '../components/ui';
 import DirectorCard from '../components/DirectorCard';
+import useQuoteForm from '../hooks/useQuoteForm';
 
 export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
   const navigate = useNavigate();
@@ -15,6 +16,10 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
   const [error, setError] = useState('');
   const [entity, setEntity] = useState(null);
   const [existingQuoteRef, setExistingQuoteRef] = useState(null);
+  const [formLoading, setFormLoading] = useState(mode === 'edit' || !!fromId);
+
+  // The hook holds all form state, computed values, and builders
+  const f = useQuoteForm(D);
 
   // Load entity from URL param
   useEffect(() => {
@@ -23,7 +28,7 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
         .then(({ data }) => {
           if (data) {
             setEntity(data);
-            setClient(c => ({
+            f.setClient(c => ({
               ...c,
               name: data.name || c.name,
               companyNumber: data.company_number || c.companyNumber,
@@ -33,8 +38,6 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
         });
     }
   }, [entityId]);
-
-  const [formLoading, setFormLoading] = useState(mode === 'edit' || !!fromId);
 
   // Load existing quote for edit or re-quote
   useEffect(() => {
@@ -46,416 +49,54 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
       if (!q) { navigate('/manage/quotes'); return; }
       if (mode === 'edit' && q.status !== 'draft') { navigate(`/manage/quotes/${loadId}`); return; }
 
-      // Populate form state from saved quote
-      setClient({
-        name: q.relationship_group || '',
-        companyNumber: '',
-        entityType: q.accounts_detail?.type || 'limited_company',
-        turnover: q.estimated_turnover ? String(q.estimated_turnover) : '',
-      });
+      f.loadFromQuote(q);
+
       if (mode === 'edit') {
         setExistingQuoteRef(q.quote_ref);
         if (q.entity_id) setEntity({ id: q.entity_id });
-      }
-
-      // Setup fees
-      const sf = q.setup_fees || [];
-      const formation = sf.find(s => s.type === 'formation');
-      const hmrc = sf.find(s => s.type === 'hmrc');
-      const regFee = sf.find(s => s.type === 'reg_fee');
-      const others = sf.filter(s => s.type === 'other');
-      if (formation) { setSuFormation(true); setSuFormationQty(formation.qty || 1); setSuFormationRate(formation.rate || D.setup.formation_rate); }
-      if (hmrc) { setSuHmrc(true); setSuHmrcQty(hmrc.qty || 1); setSuHmrcRate(hmrc.rate || D.setup.hmrc_reg_rate); }
-      if (regFee) setSuRegFee(regFee.amount || 0);
-      if (others.length) setSuOthers(others.map(o => ({ description: o.description || '', amount: o.amount || 0 })));
-
-      // Accounts
-      if (q.accounts_detail) {
-        setAccEnabled(true);
-        setAccType(q.accounts_detail.type || 'trading');
-        setAccRate(q.accounts_detail.rate || 900);
-        if (q.accounts_detail.properties) setAccProperties(q.accounts_detail.properties);
-      }
-
-      // Confirmation statement
-      if (q.annual_services > 0) setCsEnabled(true);
-
-      // Directors
-      if (q.directors?.length > 0) {
-        setDtrEnabled(true);
-        setDirectors(q.directors.map(d => ({
-          name: d.name || '', base: d.base || D.director_base,
-          otherDividends: d.other_dividends || false,
-          hasRentals: d.has_rentals || false,
-          rentalProperties: d.rental_properties || 1,
-          capitalGains: d.capital_gains || false,
-          savingsIncome: d.savings_income || false,
-          otherSources: d.other_sources || [],
-        })));
-        if (q.directors[0]?.addon_rates_used) setAddonRates(q.directors[0].addon_rates_used);
-      }
-
-      // Bookkeeping
-      if (q.bookkeeping_detail) {
-        setBkEnabled(true);
-        setBkHours(q.bookkeeping_detail.hours_per_month || 8);
-        setBkRate(q.bookkeeping_detail.rate || D.bookkeeping_rate);
-        setBkIncVat(q.bookkeeping_detail.includes_vat ?? true);
-        setBkVatAdj(q.bookkeeping_detail.vat_adj || 0);
-      }
-
-      // Payroll
-      if (q.payroll_detail) {
-        setPrEnabled(true);
-        setPrFlat(q.payroll_detail.flat_monthly || 0);
-        setPrMonthlyEe(q.payroll_detail.monthly_ee || 0);
-        setPrMonthlyEeRate(q.payroll_detail.monthly_ee_rate || D.payroll.monthly_ee_rate);
-        setPrWeeklyEe(q.payroll_detail.weekly_ee || 0);
-        setPrWeeklyEeRate(q.payroll_detail.weekly_ee_rate || D.payroll.weekly_ee_rate);
-        setPrCis(q.payroll_detail.cis || 0);
-        setPrCisRate(q.payroll_detail.cis_rate || D.payroll.cis_rate);
-        setPrP11d(q.payroll_detail.p11d || 0);
-        setPrP11dRate(q.payroll_detail.p11d_rate || D.payroll.p11d_rate);
-      }
-
-      // Auto-enrolment — check line items
-      // We'll infer from the saved totals
-      // Modulr
-      if (q.modulr_detail) {
-        setModEnabled(true);
-        setModSwPrice(q.modulr_detail.software_monthly || D.modulr?.software_monthly_price || 20);
-        setModPayments(q.modulr_detail.payments_per_month || 0);
-        setModPaymentRate(q.modulr_detail.payment_rate || D.modulr?.per_payment || 0.25);
-        setModRuns(q.modulr_detail.runs_per_month || 0);
-        setModRunRate(q.modulr_detail.run_rate || D.modulr?.per_run || 5);
-      }
-      // Management Accounts
-      if (q.management_accounts_detail) {
-        setMaEnabled(true);
-        setMaSets(q.management_accounts_detail.sets || 4);
-        setMaRate(q.management_accounts_detail.rate_per_set || D.management_accounts_per_set);
-      }
-      // Review Meetings
-      if (q.review_meetings_detail) {
-        setRmEnabled(true);
-        setRmCount(q.review_meetings_detail.count || 4);
-        setRmRate(q.review_meetings_detail.rate || D.review_meeting_rate);
-      }
-      // Budgeting
-      if (q.budgeting_detail) {
-        setBudEnabled(true);
-        if (q.budgeting_detail.basic) { setBudBasic(true); setBudBasicRate(q.budgeting_detail.basic); }
-        if (q.budgeting_detail.advanced) { setBudAdvanced(true); setBudAdvancedRate(q.budgeting_detail.advanced); }
-        setBudReforecastQty(q.budgeting_detail.reforecast_qty || 0);
-        setBudReforecastRate(q.budgeting_detail.reforecast_rate || D.reforecast);
-      }
-      // CFO
-      if (q.cfo_detail) {
-        setCfoEnabled(true);
-        setCfoDays(q.cfo_detail.days || 1);
-        setCfoDayRate(q.cfo_detail.day_rate || D.cfo_day_rate);
-      }
-
-      // Software
-      if (q.software_detail?.accounting) {
-        setSwId(q.software_detail.accounting.id || 'none');
-      }
-      if (q.software_detail?.dext) {
-        setDextEnabled(true);
-        setDextPrice(q.software_detail.dext.monthly || D.dext.monthly_price);
       }
 
       setFormLoading(false);
     })();
   }, [mode, quoteId, fromId]);
 
-  // ── Client ──
-  const [client, setClient] = useState({
-    name: '',
-    companyNumber: '',
-    entityType: 'limited_company',
-    turnover: '',
-  });
-
-  // ── Setup fees ──
-  const [suFormation, setSuFormation] = useState(false);
-  const [suFormationQty, setSuFormationQty] = useState(1);
-  const [suFormationRate, setSuFormationRate] = useState(D.setup.formation_rate);
-  const [suHmrc, setSuHmrc] = useState(false);
-  const [suHmrcQty, setSuHmrcQty] = useState(1);
-  const [suHmrcRate, setSuHmrcRate] = useState(D.setup.hmrc_reg_rate);
-  const [suRegFee, setSuRegFee] = useState(0);
-  const [suOthers, setSuOthers] = useState([]);
-  const setupTotal =
-    (suFormation ? suFormationQty * suFormationRate : 0) +
-    (suHmrc ? suHmrcQty * suHmrcRate : 0) +
-    suRegFee +
-    suOthers.reduce((s, o) => s + (o.amount || 0), 0);
-
-  // ── Accounts & CT ──
-  const [accEnabled, setAccEnabled] = useState(true);
-  const [accType, setAccType] = useState('trading');
-  const [accRate, setAccRate] = useState(900);
-  const [accProperties, setAccProperties] = useState(1);
-  const [accPropBase, setAccPropBase] = useState(D.property_base);
-  const [accPropExtra, setAccPropExtra] = useState(D.property_per_extra);
-  const [accDormant, setAccDormant] = useState(D.dormant_rate);
-
-  const turnoverNum = parseFloat(client.turnover) || 0;
-  const detectedBand = D.accounts_bands.find(
-    (b) => turnoverNum >= b.min && turnoverNum <= (b.max === Infinity ? 999999999 : b.max)
-  );
-  useEffect(() => {
-    if (accType === 'trading' && detectedBand) setAccRate(detectedBand.rate);
-  }, [turnoverNum, accType]);
-
-  const accAnnual =
-    accType === 'dormant'
-      ? accDormant
-      : accType === 'property'
-      ? accPropBase + Math.max(0, accProperties - 1) * accPropExtra
-      : accRate;
-
-  // ── Confirmation statement ──
-  const [csEnabled, setCsEnabled] = useState(true);
-  const [csFee, setCsFee] = useState(D.confirmation_statement.fee);
-
-  // ── Directors ──
-  const [dtrEnabled, setDtrEnabled] = useState(true);
-  const [addonRates, setAddonRates] = useState({ ...D.director_addons });
-  const onAddonRate = (k, v) => setAddonRates((p) => ({ ...p, [k]: v }));
-  const newDir = () => ({
-    name: '', base: D.director_base, otherDividends: false,
-    hasRentals: false, rentalProperties: 1, capitalGains: false,
-    savingsIncome: false, otherSources: [],
-  });
-  const [directors, setDirectors] = useState([newDir()]);
-  const updateDir = (i, f, v) => {
-    const d = [...directors]; d[i] = { ...d[i], [f]: v }; setDirectors(d);
-  };
-  const dirTotal = (d) =>
-    d.base +
-    (d.otherDividends ? addonRates.other_dividends : 0) +
-    (d.hasRentals ? d.rentalProperties * addonRates.rental_property : 0) +
-    (d.capitalGains ? addonRates.capital_gains : 0) +
-    (d.savingsIncome ? addonRates.savings_income : 0) +
-    (d.otherSources || []).reduce((s, o) => s + (o.amount || 0), 0);
-  const dtrAnnual = directors.reduce((s, d) => s + dirTotal(d), 0);
-
-  // ── Bookkeeping ──
-  const [bkEnabled, setBkEnabled] = useState(false);
-  const [bkHours, setBkHours] = useState(8);
-  const [bkRate, setBkRate] = useState(D.bookkeeping_rate);
-  const [bkIncVat, setBkIncVat] = useState(true);
-  const [bkVatAdj, setBkVatAdj] = useState(0);
-  const bkAnnual = bkHours * bkRate * 12 + (bkIncVat ? bkVatAdj : 0);
-
-  // ── VAT standalone ──
-  const [vatEnabled, setVatEnabled] = useState(false);
-  const [vatFreq, setVatFreq] = useState(4);
-  const [vatRate, setVatRate] = useState(D.vat_per_return);
-  const vatAnnual = vatFreq * vatRate;
-
-  // ── Payroll ──
-  const [prEnabled, setPrEnabled] = useState(false);
-  const prFlatCalc = Math.ceil(
-    (D.payroll.brightpay_annual / D.payroll.payroll_client_count) * (1 + D.payroll.markup_pct / 100)
-  );
-  const [prFlat, setPrFlat] = useState(prFlatCalc);
-  const [prMonthlyEe, setPrMonthlyEe] = useState(0);
-  const [prMonthlyEeRate, setPrMonthlyEeRate] = useState(D.payroll.monthly_ee_rate);
-  const [prWeeklyEe, setPrWeeklyEe] = useState(0);
-  const [prWeeklyEeRate, setPrWeeklyEeRate] = useState(D.payroll.weekly_ee_rate);
-  const [prCis, setPrCis] = useState(0);
-  const [prCisRate, setPrCisRate] = useState(D.payroll.cis_rate);
-  const [prP11d, setPrP11d] = useState(0);
-  const [prP11dRate, setPrP11dRate] = useState(D.payroll.p11d_rate);
-  const prMoCalc = prFlat + prMonthlyEe * prMonthlyEeRate + prWeeklyEe * prWeeklyEeRate * 4.33 + prCis * prCisRate * 4.33;
-  const prAnnual = prMoCalc * 12 + prP11d * prP11dRate;
-
-  // ── Auto-enrolment ──
-  const [aeEnabled, setAeEnabled] = useState(false);
-  const [aeFee, setAeFee] = useState(D.auto_enrolment.standard);
-
-  // ── Modulr Wage Payments ──
-  const [modEnabled, setModEnabled] = useState(false);
-  const [modSwPrice, setModSwPrice] = useState(D.modulr?.software_monthly_price || 20);
-  const [modPayments, setModPayments] = useState(0);
-  const [modPaymentRate, setModPaymentRate] = useState(D.modulr?.per_payment || 0.25);
-  const [modRuns, setModRuns] = useState(0);
-  const [modRunRate, setModRunRate] = useState(D.modulr?.per_run || 5);
-  const modMonthly = modSwPrice + modPayments * modPaymentRate + modRuns * modRunRate;
-  const modAnnual = modMonthly * 12;
-
-  // ── Management Accounts ──
-  const [maEnabled, setMaEnabled] = useState(false);
-  const [maSets, setMaSets] = useState(4);
-  const [maRate, setMaRate] = useState(D.management_accounts_per_set || 158);
-  const maAnnual = maSets * maRate;
-
-  // ── Review Meetings ──
-  const [rmEnabled, setRmEnabled] = useState(false);
-  const [rmCount, setRmCount] = useState(4);
-  const [rmRate, setRmRate] = useState(D.review_meeting_rate || 210);
-  const rmAnnual = rmCount * rmRate;
-
-  // ── Budgeting & Forecasting ──
-  const [budEnabled, setBudEnabled] = useState(false);
-  const [budBasic, setBudBasic] = useState(false);
-  const [budBasicRate, setBudBasicRate] = useState(D.budget_basic || 1085);
-  const [budAdvanced, setBudAdvanced] = useState(false);
-  const [budAdvancedRate, setBudAdvancedRate] = useState(D.budget_advanced || 3255);
-  const [budReforecastQty, setBudReforecastQty] = useState(0);
-  const [budReforecastRate, setBudReforecastRate] = useState(D.reforecast || 225);
-  const budAnnual = (budBasic ? budBasicRate : 0) + (budAdvanced ? budAdvancedRate : 0) + budReforecastQty * budReforecastRate;
-
-  // ── Fractional CFO ──
-  const [cfoEnabled, setCfoEnabled] = useState(false);
-  const [cfoDays, setCfoDays] = useState(1);
-  const [cfoDayRate, setCfoDayRate] = useState(D.cfo_day_rate || 1680);
-  const cfoAnnual = cfoDays * cfoDayRate;
-
-  // ── Registered office ──
-  const [roEnabled, setRoEnabled] = useState(false);
-  const [roFee, setRoFee] = useState(D.registered_office);
-
-  // ── Software ──
-  const [swId, setSwId] = useState('none');
-  const [dextEnabled, setDextEnabled] = useState(false);
-  const [dextPrice, setDextPrice] = useState(D.dext.monthly_price);
-  const sw = D.software.find((s) => s.id === swId) || D.software[0];
-  const swMonthly = (sw?.monthly || 0) + (dextEnabled ? dextPrice : 0);
-  const swAnnual = swMonthly * 12;
-
-  // ── Totals ──
-  const lines = [];
-  if (accEnabled) lines.push({ id: 'accounts_ct', name: 'Accounts & CT', annual: accAnnual, detail: accType === 'dormant' ? 'Dormant' : accType === 'property' ? `Property (${accProperties})` : detectedBand?.label || '' });
-  if (csEnabled) lines.push({ id: 'confirmation_statement', name: 'Conf Statement', annual: csFee });
-  if (dtrEnabled) lines.push({ id: 'directors_tax_return', name: `Directors' Tax (${directors.length})`, annual: dtrAnnual });
-  if (bkEnabled) lines.push({ id: bkIncVat ? 'bookkeeping_vat' : 'bookkeeping', name: bkIncVat ? 'BK & VAT' : 'Bookkeeping', annual: bkAnnual, detail: `${bkHours}h × ${fmt(bkRate)}` });
-  if (vatEnabled) lines.push({ id: 'vat_returns', name: 'VAT Returns', annual: vatAnnual });
-  if (prEnabled) lines.push({ id: 'payroll', name: 'Payroll', annual: prAnnual });
-  if (aeEnabled) lines.push({ id: 'auto_enrolment', name: 'Auto-Enrolment', annual: aeFee });
-  if (modEnabled) lines.push({ id: 'modulr', name: 'Modulr Wages', annual: modAnnual, detail: `${fmt(modMonthly)}/mo` });
-  if (maEnabled) lines.push({ id: 'management_accounts', name: 'Management Accounts', annual: maAnnual, detail: `${maSets} sets` });
-  if (rmEnabled) lines.push({ id: 'review_meetings', name: 'Review Meetings', annual: rmAnnual, detail: `${rmCount} meetings` });
-  if (budEnabled) lines.push({ id: 'budgeting', name: 'Budgeting & Forecasting', annual: budAnnual });
-  if (cfoEnabled) lines.push({ id: 'fractional_cfo', name: 'Fractional CFO', annual: cfoAnnual, detail: `${cfoDays} days` });
-  if (roEnabled) lines.push({ id: 'registered_office', name: 'Registered Office', annual: roFee });
-
-  const annualServices = lines.reduce((s, l) => s + l.annual, 0);
-  const annualTotal = annualServices + swAnnual;
-  const monthlyNet = Math.round((annualTotal / 12) * 100) / 100;
-  const monthlyVat = Math.round(monthlyNet * 0.2 * 100) / 100;
-  const monthlyGross = Math.round((monthlyNet + monthlyVat) * 100) / 100;
-
-  // ── Build quote data object (shared between insert and update) ──
-  const buildQuoteData = () => {
-    const setupLines = [];
-    if (suFormation) setupLines.push({ type: 'formation', description: 'Company formation', qty: suFormationQty, rate: suFormationRate, amount: suFormationQty * suFormationRate });
-    if (suHmrc) setupLines.push({ type: 'hmrc', description: 'HMRC registrations', qty: suHmrcQty, rate: suHmrcRate, amount: suHmrcQty * suHmrcRate });
-    if (suRegFee > 0) setupLines.push({ type: 'reg_fee', description: 'Registration fee', amount: suRegFee });
-    suOthers.forEach((o) => { if (o.amount > 0) setupLines.push({ type: 'other', description: o.description || 'Other', amount: o.amount }); });
-
-    return {
-      data: {
-        estimated_turnover: turnoverNum || null,
-        annual_services: Math.round(annualServices * 100) / 100,
-        annual_software: swAnnual,
-        annual_total: Math.round(annualTotal * 100) / 100,
-        monthly_net: monthlyNet,
-        monthly_vat: monthlyVat,
-        monthly_gross: monthlyGross,
-        one_off_total: setupTotal,
-        defaults_version: D.version,
-        directors: dtrEnabled ? directors.map((d) => ({
-          name: d.name, base: d.base, other_dividends: d.otherDividends,
-          has_rentals: d.hasRentals, rental_properties: d.hasRentals ? d.rentalProperties : 0,
-          capital_gains: d.capitalGains, savings_income: d.savingsIncome,
-          other_sources: d.otherSources || [], addon_rates_used: addonRates, total: dirTotal(d),
-        })) : [],
-        setup_fees: setupLines,
-        payroll_detail: prEnabled ? { flat_monthly: prFlat, monthly_ee: prMonthlyEe, monthly_ee_rate: prMonthlyEeRate, weekly_ee: prWeeklyEe, weekly_ee_rate: prWeeklyEeRate, cis: prCis, cis_rate: prCisRate, p11d: prP11d, p11d_rate: prP11dRate } : null,
-        bookkeeping_detail: bkEnabled ? { hours_per_month: bkHours, rate: bkRate, includes_vat: bkIncVat, vat_adj: bkVatAdj } : null,
-        software_detail: swMonthly > 0 ? { accounting: sw?.id !== 'none' ? { id: sw.id, name: sw.name, monthly: sw.monthly, cost: sw.cost } : null, dext: dextEnabled ? { monthly: dextPrice, cost: D.dext.cost } : null } : null,
-        accounts_detail: accEnabled ? { type: accType, band: detectedBand?.label, rate: accAnnual, properties: accType === 'property' ? accProperties : undefined } : null,
-        modulr_detail: modEnabled ? { software_monthly: modSwPrice, payments_per_month: modPayments, payment_rate: modPaymentRate, runs_per_month: modRuns, run_rate: modRunRate } : null,
-        management_accounts_detail: maEnabled ? { sets: maSets, rate_per_set: maRate } : null,
-        review_meetings_detail: rmEnabled ? { count: rmCount, rate: rmRate } : null,
-        budgeting_detail: budEnabled ? { basic: budBasic ? budBasicRate : null, advanced: budAdvanced ? budAdvancedRate : null, reforecast_qty: budReforecastQty, reforecast_rate: budReforecastRate } : null,
-        cfo_detail: cfoEnabled ? { days: cfoDays, day_rate: cfoDayRate } : null,
-        relationship_group: client.name || null,
-      },
-      setupLines,
-    };
-  };
-
-  const buildLineItems = (qid, setupLines) => {
-    const items = lines.map((l, i) => ({
-      quote_id: qid, service_id: l.id, description: l.name,
-      annual_amount: Math.round(l.annual * 100) / 100,
-      monthly_amount: Math.round((l.annual / 12) * 100) / 100,
-      detail: l.detail || '', is_recurring: true, sort_order: i,
-    }));
-    if (sw?.id !== 'none' && sw?.monthly > 0) {
-      items.push({ quote_id: qid, service_id: 'software_accounting', description: sw.name, annual_amount: sw.monthly * 12, monthly_amount: sw.monthly, detail: '', is_recurring: true, sort_order: items.length });
-    }
-    if (dextEnabled) {
-      items.push({ quote_id: qid, service_id: 'software_dext', description: 'Dext', annual_amount: dextPrice * 12, monthly_amount: dextPrice, detail: '', is_recurring: true, sort_order: items.length });
-    }
-    setupLines.forEach((sl, i) => {
-      items.push({ quote_id: qid, service_id: `setup_${sl.type}`, description: sl.description, annual_amount: sl.amount, monthly_amount: 0, detail: '', is_recurring: false, sort_order: 100 + i });
-    });
-    return items;
-  };
-
   // ── Save to Supabase ──
   const handleSave = async () => {
     setSaving(true);
     setError('');
     try {
-      const { data: quoteData, setupLines } = buildQuoteData();
+      const { data: quoteData, setupLines } = f.buildQuoteData();
 
       if (mode === 'edit') {
-        // UPDATE existing quote
         const { error: updateErr } = await supabase
-          .from('quotes')
-          .update(quoteData)
-          .eq('id', quoteId);
+          .from('quotes').update(quoteData).eq('id', quoteId);
         if (updateErr) throw updateErr;
 
-        // Delete and re-insert line items
         await supabase.from('quote_line_items').delete().eq('quote_id', quoteId);
-        const items = buildLineItems(quoteId, setupLines);
+        const items = f.buildLineItems(quoteId, setupLines);
         if (items.length > 0) {
           const { error: liErr } = await supabase.from('quote_line_items').insert(items);
           if (liErr) throw liErr;
         }
 
-        // Audit log
         await supabase.from('audit_log').insert({
           user_id: profile.id, action: 'updated', entity_type: 'quote', entity_id: quoteId,
-          detail: { monthly_gross: monthlyGross },
+          detail: { monthly_gross: f.monthlyGross },
         });
 
         navigate('/manage/quotes/' + quoteId);
       } else {
-        // Generate quote ref with collision avoidance
-        const nameSlug = (client.name || 'Quote').replace(/[^a-zA-Z0-9]/g, '');
+        const nameSlug = (f.client.name || 'Quote').replace(/[^a-zA-Z0-9]/g, '');
         const dateSlug = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         const prefix = `${nameSlug}_${dateSlug}`;
 
         const { data: existing } = await supabase
-          .from('quotes')
-          .select('quote_ref')
-          .like('quote_ref', `${prefix}%`);
+          .from('quotes').select('quote_ref').like('quote_ref', `${prefix}%`);
 
-        const nums = (existing || [])
-          .map((q) => parseInt(q.quote_ref.split('_').pop()) || 0);
+        const nums = (existing || []).map((q) => parseInt(q.quote_ref.split('_').pop()) || 0);
         const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
         const quoteRef = `${prefix}_${String(next).padStart(3, '0')}`;
 
-        // INSERT new quote
         const { data: savedQuotes, error: quoteErr } = await supabase
           .from('quotes')
           .insert({
@@ -478,7 +119,7 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
         }
 
         const savedQuote = savedQuotes[0];
-        const items = buildLineItems(savedQuote.id, setupLines);
+        const items = f.buildLineItems(savedQuote.id, setupLines);
         if (items.length > 0) {
           const { error: liErr } = await supabase.from('quote_line_items').insert(items);
           if (liErr) throw liErr;
@@ -515,202 +156,202 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
       {/* Client info */}
       <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
         <div className="grid grid-cols-2 gap-2">
-          <input value={client.name} onChange={(e) => setClient({ ...client, name: e.target.value })} placeholder="Client name" className="text-sm border border-gray-200 rounded px-2 py-1.5 col-span-2" />
-          <input value={client.companyNumber} onChange={(e) => setClient({ ...client, companyNumber: e.target.value })} placeholder="Company number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
-          <select value={client.entityType} onChange={(e) => setClient({ ...client, entityType: e.target.value })} className="text-sm border border-gray-200 rounded px-2 py-1.5 bg-white">
+          <input value={f.client.name} onChange={(e) => f.setClient({ ...f.client, name: e.target.value })} placeholder="Client name" className="text-sm border border-gray-200 rounded px-2 py-1.5 col-span-2" />
+          <input value={f.client.companyNumber} onChange={(e) => f.setClient({ ...f.client, companyNumber: e.target.value })} placeholder="Company number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
+          <select value={f.client.entityType} onChange={(e) => f.setClient({ ...f.client, entityType: e.target.value })} className="text-sm border border-gray-200 rounded px-2 py-1.5 bg-white">
             <option value="limited_company">Limited Company</option>
             <option value="sole_trader">Sole Trader</option>
             <option value="partnership">Partnership</option>
             <option value="llp">LLP</option>
           </select>
-          <input value={client.turnover} onChange={(e) => setClient({ ...client, turnover: e.target.value })} placeholder="Est. turnover (£)" type="number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
+          <input value={f.client.turnover} onChange={(e) => f.setClient({ ...f.client, turnover: e.target.value })} placeholder="Est. turnover (\u00A3)" type="number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
         </div>
       </div>
 
       {/* Setup Fees */}
-      <Section title="One-Off Setup Fees" enabled={setupTotal > 0 || suFormation || suHmrc} onToggle={() => { if (!suFormation && !suHmrc) setSuFormation(true); else { setSuFormation(false); setSuHmrc(false); setSuRegFee(0); setSuOthers([]); } }} annual={setupTotal}>
+      <Section title="One-Off Setup Fees" enabled={f.setupTotal > 0 || f.suFormation || f.suHmrc} onToggle={() => { if (!f.suFormation && !f.suHmrc) f.setSuFormation(true); else { f.setSuFormation(false); f.setSuHmrc(false); f.setSuRegFee(0); f.setSuOthers([]); } }} annual={f.setupTotal}>
         <TabRow cells={['Item', 'Qty', 'Rate', 'Total']} header />
         <div className={G4} style={C4}>
-          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={suFormation} onChange={(e) => setSuFormation(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Company formation</label>
-          <span className="text-right"><Inp value={suFormationQty} onChange={setSuFormationQty} min={1} className="w-12" /></span>
-          <span className="text-right"><Inp value={suFormationRate} onChange={setSuFormationRate} prefix="£" className="w-14" /></span>
-          <span className="text-right font-mono">{suFormation ? fmt(suFormationQty * suFormationRate) : '—'}</span>
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={f.suFormation} onChange={(e) => f.setSuFormation(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Company formation</label>
+          <span className="text-right"><Inp value={f.suFormationQty} onChange={f.setSuFormationQty} min={1} className="w-12" /></span>
+          <span className="text-right"><Inp value={f.suFormationRate} onChange={f.setSuFormationRate} prefix="\u00A3" className="w-14" /></span>
+          <span className="text-right font-mono">{f.suFormation ? fmt(f.suFormationQty * f.suFormationRate) : '\u2014'}</span>
         </div>
         <div className={G4} style={C4}>
-          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={suHmrc} onChange={(e) => setSuHmrc(e.target.checked)} className="w-3 h-3 accent-ocean-600" />HMRC registrations</label>
-          <span className="text-right"><Inp value={suHmrcQty} onChange={setSuHmrcQty} min={1} className="w-12" /></span>
-          <span className="text-right"><Inp value={suHmrcRate} onChange={setSuHmrcRate} prefix="£" className="w-14" /></span>
-          <span className="text-right font-mono">{suHmrc ? fmt(suHmrcQty * suHmrcRate) : '—'}</span>
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={f.suHmrc} onChange={(e) => f.setSuHmrc(e.target.checked)} className="w-3 h-3 accent-ocean-600" />HMRC registrations</label>
+          <span className="text-right"><Inp value={f.suHmrcQty} onChange={f.setSuHmrcQty} min={1} className="w-12" /></span>
+          <span className="text-right"><Inp value={f.suHmrcRate} onChange={f.setSuHmrcRate} prefix="\u00A3" className="w-14" /></span>
+          <span className="text-right font-mono">{f.suHmrc ? fmt(f.suHmrcQty * f.suHmrcRate) : '\u2014'}</span>
         </div>
-        {suOthers.map((o, i) => (
+        {f.suOthers.map((o, i) => (
           <div key={i} className={G4} style={C4}>
-            <input value={o.description} onChange={(e) => { const os = [...suOthers]; os[i] = { ...os[i], description: e.target.value }; setSuOthers(os); }} placeholder="Description" className="text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white" />
+            <input value={o.description} onChange={(e) => { const os = [...f.suOthers]; os[i] = { ...os[i], description: e.target.value }; f.setSuOthers(os); }} placeholder="Description" className="text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white" />
             <span></span><span></span>
             <span className="text-right flex items-center justify-end gap-1">
-              <Inp value={o.amount} onChange={(v) => { const os = [...suOthers]; os[i] = { ...os[i], amount: v }; setSuOthers(os); }} prefix="£" className="w-14" />
-              <button onClick={() => setSuOthers(suOthers.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600">✕</button>
+              <Inp value={o.amount} onChange={(v) => { const os = [...f.suOthers]; os[i] = { ...os[i], amount: v }; f.setSuOthers(os); }} prefix="\u00A3" className="w-14" />
+              <button onClick={() => f.setSuOthers(f.suOthers.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600">\u2715</button>
             </span>
           </div>
         ))}
-        <button onClick={() => setSuOthers([...suOthers, { description: '', amount: 0 }])} className="text-xs text-ocean-600 hover:text-ocean-700 mt-1">+ Other setup item</button>
+        <button onClick={() => f.setSuOthers([...f.suOthers, { description: '', amount: 0 }])} className="text-xs text-ocean-600 hover:text-ocean-700 mt-1">+ Other setup item</button>
       </Section>
 
       {/* Accounts & CT */}
-      <Section title="Accounts & CT" enabled={accEnabled} onToggle={() => setAccEnabled(!accEnabled)} annual={accAnnual}>
+      <Section title="Accounts & CT" enabled={f.accEnabled} onToggle={() => f.setAccEnabled(!f.accEnabled)} annual={f.accAnnual}>
         <div className="flex gap-1 mb-3">
           {['trading', 'dormant', 'property'].map((t) => (
-            <button key={t} onClick={() => setAccType(t)} className={`text-xs px-3 py-1.5 rounded-full border transition-all ${accType === t ? 'bg-ocean-600 text-white border-ocean-600' : 'bg-white text-gray-600 border-gray-200 hover:border-ocean-300'}`}>
+            <button key={t} onClick={() => f.setAccType(t)} className={`text-xs px-3 py-1.5 rounded-full border transition-all ${f.accType === t ? 'bg-ocean-600 text-white border-ocean-600' : 'bg-white text-gray-600 border-gray-200 hover:border-ocean-300'}`}>
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
-        {accType === 'trading' && <>
-          {detectedBand && <p className="text-xs text-gray-400 mb-1">Band: {detectedBand.label} → standard {fmt(detectedBand.rate)}</p>}
-          <div className="flex justify-between items-center text-xs"><span className="font-medium">Annual fee</span><Inp value={accRate} onChange={setAccRate} prefix="£" className="w-20" /></div>
+        {f.accType === 'trading' && <>
+          {f.detectedBand && <p className="text-xs text-gray-400 mb-1">Band: {f.detectedBand.label} \u2192 standard {fmt(f.detectedBand.rate)}</p>}
+          <div className="flex justify-between items-center text-xs"><span className="font-medium">Annual fee</span><Inp value={f.accRate} onChange={f.setAccRate} prefix="\u00A3" className="w-20" /></div>
         </>}
-        {accType === 'dormant' && <div className="flex justify-between items-center text-xs"><span className="font-medium">Dormant company fee</span><Inp value={accDormant} onChange={setAccDormant} prefix="£" className="w-20" /></div>}
-        {accType === 'property' && <>
+        {f.accType === 'dormant' && <div className="flex justify-between items-center text-xs"><span className="font-medium">Dormant company fee</span><Inp value={f.accDormant} onChange={f.setAccDormant} prefix="\u00A3" className="w-20" /></div>}
+        {f.accType === 'property' && <>
           <TabRow cells={['Component', 'Qty', 'Rate', 'Total']} header />
-          <div className={G4} style={C4}><span>Base (1 property)</span><span></span><span className="text-right"><Inp value={accPropBase} onChange={setAccPropBase} prefix="£" className="w-14" /></span><span className="text-right font-mono">{fmt(accPropBase)}</span></div>
-          <div className={G4} style={C4}><span>Additional properties</span><span className="text-right"><Inp value={Math.max(0, accProperties - 1)} onChange={(v) => setAccProperties(v + 1)} min={0} className="w-12" /></span><span className="text-right"><Inp value={accPropExtra} onChange={setAccPropExtra} prefix="£" className="w-14" /></span><span className="text-right font-mono">{fmt(Math.max(0, accProperties - 1) * accPropExtra)}</span></div>
+          <div className={G4} style={C4}><span>Base (1 property)</span><span></span><span className="text-right"><Inp value={f.accPropBase} onChange={f.setAccPropBase} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(f.accPropBase)}</span></div>
+          <div className={G4} style={C4}><span>Additional properties</span><span className="text-right"><Inp value={Math.max(0, f.accProperties - 1)} onChange={(v) => f.setAccProperties(v + 1)} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.accPropExtra} onChange={f.setAccPropExtra} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(Math.max(0, f.accProperties - 1) * f.accPropExtra)}</span></div>
         </>}
       </Section>
 
       {/* Confirmation Statement */}
-      <Section title="Confirmation Statement" enabled={csEnabled} onToggle={() => setCsEnabled(!csEnabled)} annual={csFee}>
-        <div className="flex justify-between items-center text-xs"><span className="font-medium">Annual fee (+ VAT)</span><Inp value={csFee} onChange={setCsFee} prefix="£" className="w-16" /></div>
+      <Section title="Confirmation Statement" enabled={f.csEnabled} onToggle={() => f.setCsEnabled(!f.csEnabled)} annual={f.csFee}>
+        <div className="flex justify-between items-center text-xs"><span className="font-medium">Annual fee (+ VAT)</span><Inp value={f.csFee} onChange={f.setCsFee} prefix="\u00A3" className="w-16" /></div>
       </Section>
 
       {/* Directors */}
-      <Section title={`Directors' Tax Returns (${directors.length})`} enabled={dtrEnabled} onToggle={() => setDtrEnabled(!dtrEnabled)} annual={dtrAnnual}>
-        {directors.map((d, i) => (
-          <DirectorCard key={i} d={d} idx={i} addonRates={addonRates} onAddonRate={onAddonRate}
-            onChange={updateDir} onRemove={(idx) => setDirectors(directors.filter((_, j) => j !== idx))} canRemove={directors.length > 1} />
+      <Section title={`Directors' Tax Returns (${f.directors.length})`} enabled={f.dtrEnabled} onToggle={() => f.setDtrEnabled(!f.dtrEnabled)} annual={f.dtrAnnual}>
+        {f.directors.map((d, i) => (
+          <DirectorCard key={i} d={d} idx={i} addonRates={f.addonRates} onAddonRate={f.onAddonRate}
+            onChange={f.updateDir} onRemove={(idx) => f.setDirectors(f.directors.filter((_, j) => j !== idx))} canRemove={f.directors.length > 1} />
         ))}
-        <button onClick={() => setDirectors([...directors, newDir()])} className="text-xs text-ocean-600 hover:text-ocean-700 font-medium">+ Add director</button>
+        <button onClick={() => f.setDirectors([...f.directors, f.newDir()])} className="text-xs text-ocean-600 hover:text-ocean-700 font-medium">+ Add director</button>
       </Section>
 
       {/* Bookkeeping */}
-      <Section title={bkIncVat ? 'Bookkeeping & VAT' : 'Bookkeeping'} enabled={bkEnabled} onToggle={() => setBkEnabled(!bkEnabled)} annual={bkAnnual}>
+      <Section title={f.bkIncVat ? 'Bookkeeping & VAT' : 'Bookkeeping'} enabled={f.bkEnabled} onToggle={() => f.setBkEnabled(!f.bkEnabled)} annual={f.bkAnnual}>
         <TabRow cells={['', 'Qty', 'Rate', 'Annual']} header />
-        <div className={G4} style={C4}><span>Monthly hours</span><span className="text-right"><Inp value={bkHours} onChange={setBkHours} min={1} step={0.5} className="w-12" /></span><span className="text-right"><Inp value={bkRate} onChange={setBkRate} prefix="£" className="w-14" />/hr</span><span className="text-right font-mono">{fmt(bkHours * bkRate * 12)}</span></div>
+        <div className={G4} style={C4}><span>Monthly hours</span><span className="text-right"><Inp value={f.bkHours} onChange={f.setBkHours} min={1} step={0.5} className="w-12" /></span><span className="text-right"><Inp value={f.bkRate} onChange={f.setBkRate} prefix="\u00A3" className="w-14" />/hr</span><span className="text-right font-mono">{fmt(f.bkHours * f.bkRate * 12)}</span></div>
         <div className="flex items-center justify-between text-xs mt-1">
-          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={bkIncVat} onChange={(e) => setBkIncVat(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Includes VAT returns</label>
-          {bkIncVat && <span>adj <Inp value={bkVatAdj} onChange={setBkVatAdj} prefix="£" className="w-14" /></span>}
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={f.bkIncVat} onChange={(e) => f.setBkIncVat(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Includes VAT returns</label>
+          {f.bkIncVat && <span>adj <Inp value={f.bkVatAdj} onChange={f.setBkVatAdj} prefix="\u00A3" className="w-14" /></span>}
         </div>
       </Section>
 
       {/* VAT standalone */}
-      <Section title="VAT Returns (standalone)" enabled={vatEnabled} onToggle={() => setVatEnabled(!vatEnabled)} annual={vatAnnual}>
+      <Section title="VAT Returns (standalone)" enabled={f.vatEnabled} onToggle={() => f.setVatEnabled(!f.vatEnabled)} annual={f.vatAnnual}>
         <TabRow cells={['', 'Returns', 'Per return', 'Annual']} header />
-        <div className={G4} style={C4}><span>VAT returns</span><span className="text-right"><Inp value={vatFreq} onChange={setVatFreq} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={vatRate} onChange={setVatRate} prefix="£" className="w-14" /></span><span className="text-right font-mono">{fmt(vatAnnual)}</span></div>
+        <div className={G4} style={C4}><span>VAT returns</span><span className="text-right"><Inp value={f.vatFreq} onChange={f.setVatFreq} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={f.vatRate} onChange={f.setVatRate} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(f.vatAnnual)}</span></div>
       </Section>
 
       {/* Payroll */}
-      <Section title="Payroll" enabled={prEnabled} onToggle={() => setPrEnabled(!prEnabled)} annual={prAnnual}>
+      <Section title="Payroll" enabled={f.prEnabled} onToggle={() => f.setPrEnabled(!f.prEnabled)} annual={f.prAnnual}>
         <TabRow cells={['Component', 'Qty', 'Rate', 'Monthly']} header />
-        <div className={G4} style={C4}><span>Flat fee</span><span></span><span></span><span className="text-right"><Inp value={prFlat} onChange={setPrFlat} prefix="£" className="w-14" /></span></div>
-        <div className={G4} style={C4}><span>Monthly employees</span><span className="text-right"><Inp value={prMonthlyEe} onChange={setPrMonthlyEe} min={0} className="w-12" /></span><span className="text-right"><Inp value={prMonthlyEeRate} onChange={setPrMonthlyEeRate} prefix="£" className="w-14" />/mo</span><span className="text-right font-mono">{fmt(prMonthlyEe * prMonthlyEeRate)}</span></div>
-        <div className={G4} style={C4}><span>Weekly employees</span><span className="text-right"><Inp value={prWeeklyEe} onChange={setPrWeeklyEe} min={0} className="w-12" /></span><span className="text-right"><Inp value={prWeeklyEeRate} onChange={setPrWeeklyEeRate} prefix="£" className="w-14" />/wk</span><span className="text-right font-mono">{fmt(prWeeklyEe * prWeeklyEeRate * 4.33)}</span></div>
-        <div className={G4} style={C4}><span>CIS subcontractors</span><span className="text-right"><Inp value={prCis} onChange={setPrCis} min={0} className="w-12" /></span><span className="text-right"><Inp value={prCisRate} onChange={setPrCisRate} prefix="£" className="w-14" />/wk</span><span className="text-right font-mono">{fmt(prCis * prCisRate * 4.33)}</span></div>
-        <TabRow cells={['Monthly total', '', '', fmt(prMoCalc)]} bold />
-        <div className={G4} style={{ ...C4, marginTop: '0.5rem' }}><span>P11D returns (annual)</span><span className="text-right"><Inp value={prP11d} onChange={setPrP11d} min={0} className="w-12" /></span><span className="text-right"><Inp value={prP11dRate} onChange={setPrP11dRate} prefix="£" className="w-14" /> ea</span><span className="text-right font-mono">{fmt(prP11d * prP11dRate)}</span></div>
+        <div className={G4} style={C4}><span>Flat fee</span><span></span><span></span><span className="text-right"><Inp value={f.prFlat} onChange={f.setPrFlat} prefix="\u00A3" className="w-14" /></span></div>
+        <div className={G4} style={C4}><span>Monthly employees</span><span className="text-right"><Inp value={f.prMonthlyEe} onChange={f.setPrMonthlyEe} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prMonthlyEeRate} onChange={f.setPrMonthlyEeRate} prefix="\u00A3" className="w-14" />/mo</span><span className="text-right font-mono">{fmt(f.prMonthlyEe * f.prMonthlyEeRate)}</span></div>
+        <div className={G4} style={C4}><span>Weekly employees</span><span className="text-right"><Inp value={f.prWeeklyEe} onChange={f.setPrWeeklyEe} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prWeeklyEeRate} onChange={f.setPrWeeklyEeRate} prefix="\u00A3" className="w-14" />/wk</span><span className="text-right font-mono">{fmt(f.prWeeklyEe * f.prWeeklyEeRate * 4.33)}</span></div>
+        <div className={G4} style={C4}><span>CIS subcontractors</span><span className="text-right"><Inp value={f.prCis} onChange={f.setPrCis} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prCisRate} onChange={f.setPrCisRate} prefix="\u00A3" className="w-14" />/wk</span><span className="text-right font-mono">{fmt(f.prCis * f.prCisRate * 4.33)}</span></div>
+        <TabRow cells={['Monthly total', '', '', fmt(f.prMoCalc)]} bold />
+        <div className={G4} style={{ ...C4, marginTop: '0.5rem' }}><span>P11D returns (annual)</span><span className="text-right"><Inp value={f.prP11d} onChange={f.setPrP11d} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prP11dRate} onChange={f.setPrP11dRate} prefix="\u00A3" className="w-14" /> ea</span><span className="text-right font-mono">{fmt(f.prP11d * f.prP11dRate)}</span></div>
       </Section>
 
       {/* Auto-enrolment */}
-      <Section title="Auto-Enrolment" enabled={aeEnabled} onToggle={() => setAeEnabled(!aeEnabled)} annual={aeFee}>
-        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={aeFee} onChange={setAeFee} prefix="£" className="w-14" /></div>
+      <Section title="Auto-Enrolment" enabled={f.aeEnabled} onToggle={() => f.setAeEnabled(!f.aeEnabled)} annual={f.aeFee}>
+        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.aeFee} onChange={f.setAeFee} prefix="\u00A3" className="w-14" /></div>
       </Section>
 
       {/* Modulr Wage Payments */}
-      <Section title="Modulr Wage Payments" enabled={modEnabled} onToggle={() => setModEnabled(!modEnabled)} annual={modAnnual}>
+      <Section title="Modulr Wage Payments" enabled={f.modEnabled} onToggle={() => f.setModEnabled(!f.modEnabled)} annual={f.modAnnual}>
         <TabRow cells={['Component', 'Qty', 'Rate', 'Monthly']} header />
-        <div className={G4} style={C4}><span>Software</span><span></span><span></span><span className="text-right"><Inp value={modSwPrice} onChange={setModSwPrice} prefix="\u00A3" className="w-14" /></span></div>
-        <div className={G4} style={C4}><span>Payments/month</span><span className="text-right"><Inp value={modPayments} onChange={setModPayments} min={0} className="w-12" /></span><span className="text-right"><Inp value={modPaymentRate} onChange={setModPaymentRate} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(modPayments * modPaymentRate)}</span></div>
-        <div className={G4} style={C4}><span>Pay runs/month</span><span className="text-right"><Inp value={modRuns} onChange={setModRuns} min={0} className="w-12" /></span><span className="text-right"><Inp value={modRunRate} onChange={setModRunRate} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(modRuns * modRunRate)}</span></div>
-        <TabRow cells={['Monthly total', '', '', fmt(modMonthly)]} bold />
+        <div className={G4} style={C4}><span>Software</span><span></span><span></span><span className="text-right"><Inp value={f.modSwPrice} onChange={f.setModSwPrice} prefix="\u00A3" className="w-14" /></span></div>
+        <div className={G4} style={C4}><span>Payments/month</span><span className="text-right"><Inp value={f.modPayments} onChange={f.setModPayments} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.modPaymentRate} onChange={f.setModPaymentRate} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(f.modPayments * f.modPaymentRate)}</span></div>
+        <div className={G4} style={C4}><span>Pay runs/month</span><span className="text-right"><Inp value={f.modRuns} onChange={f.setModRuns} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.modRunRate} onChange={f.setModRunRate} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(f.modRuns * f.modRunRate)}</span></div>
+        <TabRow cells={['Monthly total', '', '', fmt(f.modMonthly)]} bold />
       </Section>
 
       {/* Management Accounts */}
-      <Section title="Management Accounts" enabled={maEnabled} onToggle={() => setMaEnabled(!maEnabled)} annual={maAnnual}>
+      <Section title="Management Accounts" enabled={f.maEnabled} onToggle={() => f.setMaEnabled(!f.maEnabled)} annual={f.maAnnual}>
         <TabRow cells={['', 'Sets/yr', 'Per set', 'Annual']} header />
-        <div className={G4} style={C4}><span>Accounts sets</span><span className="text-right"><Inp value={maSets} onChange={setMaSets} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={maRate} onChange={setMaRate} prefix="\u00A3" className="w-16" /></span><span className="text-right font-mono">{fmt(maAnnual)}</span></div>
+        <div className={G4} style={C4}><span>Accounts sets</span><span className="text-right"><Inp value={f.maSets} onChange={f.setMaSets} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={f.maRate} onChange={f.setMaRate} prefix="\u00A3" className="w-16" /></span><span className="text-right font-mono">{fmt(f.maAnnual)}</span></div>
       </Section>
 
       {/* Review Meetings */}
-      <Section title="Review Meetings" enabled={rmEnabled} onToggle={() => setRmEnabled(!rmEnabled)} annual={rmAnnual}>
+      <Section title="Review Meetings" enabled={f.rmEnabled} onToggle={() => f.setRmEnabled(!f.rmEnabled)} annual={f.rmAnnual}>
         <TabRow cells={['', 'Meetings/yr', 'Rate', 'Annual']} header />
-        <div className={G4} style={C4}><span>Client meetings</span><span className="text-right"><Inp value={rmCount} onChange={setRmCount} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={rmRate} onChange={setRmRate} prefix="\u00A3" className="w-16" /></span><span className="text-right font-mono">{fmt(rmAnnual)}</span></div>
+        <div className={G4} style={C4}><span>Client meetings</span><span className="text-right"><Inp value={f.rmCount} onChange={f.setRmCount} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={f.rmRate} onChange={f.setRmRate} prefix="\u00A3" className="w-16" /></span><span className="text-right font-mono">{fmt(f.rmAnnual)}</span></div>
       </Section>
 
       {/* Budgeting & Forecasting */}
-      <Section title="Budgeting & Forecasting" enabled={budEnabled} onToggle={() => setBudEnabled(!budEnabled)} annual={budAnnual}>
+      <Section title="Budgeting & Forecasting" enabled={f.budEnabled} onToggle={() => f.setBudEnabled(!f.budEnabled)} annual={f.budAnnual}>
         <div className="space-y-1.5">
           <label className="flex items-center justify-between text-xs cursor-pointer">
-            <span className="flex items-center gap-1.5"><input type="checkbox" checked={budBasic} onChange={e => setBudBasic(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Basic budget</span>
-            <Inp value={budBasicRate} onChange={setBudBasicRate} prefix="\u00A3" className="w-20" />
+            <span className="flex items-center gap-1.5"><input type="checkbox" checked={f.budBasic} onChange={e => f.setBudBasic(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Basic budget</span>
+            <Inp value={f.budBasicRate} onChange={f.setBudBasicRate} prefix="\u00A3" className="w-20" />
           </label>
           <label className="flex items-center justify-between text-xs cursor-pointer">
-            <span className="flex items-center gap-1.5"><input type="checkbox" checked={budAdvanced} onChange={e => setBudAdvanced(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Advanced budget</span>
-            <Inp value={budAdvancedRate} onChange={setBudAdvancedRate} prefix="\u00A3" className="w-20" />
+            <span className="flex items-center gap-1.5"><input type="checkbox" checked={f.budAdvanced} onChange={e => f.setBudAdvanced(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Advanced budget</span>
+            <Inp value={f.budAdvancedRate} onChange={f.setBudAdvancedRate} prefix="\u00A3" className="w-20" />
           </label>
           <div className="flex items-center justify-between text-xs">
             <span>Reforecasts</span>
-            <span className="flex items-center gap-1"><Inp value={budReforecastQty} onChange={setBudReforecastQty} min={0} className="w-10" /> x <Inp value={budReforecastRate} onChange={setBudReforecastRate} prefix="\u00A3" className="w-16" /></span>
+            <span className="flex items-center gap-1"><Inp value={f.budReforecastQty} onChange={f.setBudReforecastQty} min={0} className="w-10" /> x <Inp value={f.budReforecastRate} onChange={f.setBudReforecastRate} prefix="\u00A3" className="w-16" /></span>
           </div>
         </div>
       </Section>
 
       {/* Fractional CFO */}
-      <Section title="Fractional CFO" enabled={cfoEnabled} onToggle={() => setCfoEnabled(!cfoEnabled)} annual={cfoAnnual}>
+      <Section title="Fractional CFO" enabled={f.cfoEnabled} onToggle={() => f.setCfoEnabled(!f.cfoEnabled)} annual={f.cfoAnnual}>
         <TabRow cells={['', 'Days/yr', 'Day rate', 'Annual']} header />
-        <div className={G4} style={C4}><span>CFO days</span><span className="text-right"><Inp value={cfoDays} onChange={setCfoDays} min={1} className="w-12" /></span><span className="text-right"><Inp value={cfoDayRate} onChange={setCfoDayRate} prefix="\u00A3" className="w-20" /></span><span className="text-right font-mono">{fmt(cfoAnnual)}</span></div>
+        <div className={G4} style={C4}><span>CFO days</span><span className="text-right"><Inp value={f.cfoDays} onChange={f.setCfoDays} min={1} className="w-12" /></span><span className="text-right"><Inp value={f.cfoDayRate} onChange={f.setCfoDayRate} prefix="\u00A3" className="w-20" /></span><span className="text-right font-mono">{fmt(f.cfoAnnual)}</span></div>
       </Section>
 
       {/* Registered office */}
-      <Section title="Registered Office" enabled={roEnabled} onToggle={() => setRoEnabled(!roEnabled)} annual={roFee}>
-        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={roFee} onChange={setRoFee} prefix="\u00A3" className="w-16" /></div>
+      <Section title="Registered Office" enabled={f.roEnabled} onToggle={() => f.setRoEnabled(!f.roEnabled)} annual={f.roFee}>
+        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.roFee} onChange={f.setRoFee} prefix="\u00A3" className="w-16" /></div>
       </Section>
 
       {/* Software */}
       <div className="bg-white rounded-lg border border-ocean-300 p-3 mb-3">
         <h2 className="text-xs font-semibold text-ocean-600 mb-2">Software</h2>
         <div className="grid gap-1 items-center text-xs text-gray-700 mb-1" style={{ gridTemplateColumns: '2fr 1fr 1fr' }}>
-          <select value={swId} onChange={(e) => setSwId(e.target.value)} className="text-xs border border-gray-200 rounded px-1.5 py-1 bg-white">
-            {D.software.map((s) => <option key={s.id} value={s.id}>{s.name}{s.monthly > 0 ? ` — ${fmt(s.monthly)}/mo` : ''}</option>)}
+          <select value={f.swId} onChange={(e) => f.setSwId(e.target.value)} className="text-xs border border-gray-200 rounded px-1.5 py-1 bg-white">
+            {D.software.map((s) => <option key={s.id} value={s.id}>{s.name}{s.monthly > 0 ? ` \u2014 ${fmt(s.monthly)}/mo` : ''}</option>)}
           </select>
-          <span className="text-right font-mono">{sw.monthly > 0 ? fmt(sw.monthly) : '—'}</span>
-          <span className="text-right font-mono">{sw.monthly > 0 ? fmt(sw.monthly * 12) : '—'}</span>
+          <span className="text-right font-mono">{f.sw.monthly > 0 ? fmt(f.sw.monthly) : '\u2014'}</span>
+          <span className="text-right font-mono">{f.sw.monthly > 0 ? fmt(f.sw.monthly * 12) : '\u2014'}</span>
         </div>
         <div className="grid gap-1 items-center text-xs text-gray-700 mb-1" style={{ gridTemplateColumns: '2fr 1fr 1fr' }}>
           <label className="flex items-center gap-1.5 cursor-pointer">
-            <input type="checkbox" checked={dextEnabled} onChange={(e) => setDextEnabled(e.target.checked)} className="w-3 h-3 accent-ocean-600" />
-            Dext <Inp value={dextPrice} onChange={setDextPrice} prefix="£" className="w-12" />/mo
+            <input type="checkbox" checked={f.dextEnabled} onChange={(e) => f.setDextEnabled(e.target.checked)} className="w-3 h-3 accent-ocean-600" />
+            Dext <Inp value={f.dextPrice} onChange={f.setDextPrice} prefix="\u00A3" className="w-12" />/mo
           </label>
-          <span className="text-right font-mono">{dextEnabled ? fmt(dextPrice) : '—'}</span>
-          <span className="text-right font-mono">{dextEnabled ? fmt(dextPrice * 12) : '—'}</span>
+          <span className="text-right font-mono">{f.dextEnabled ? fmt(f.dextPrice) : '\u2014'}</span>
+          <span className="text-right font-mono">{f.dextEnabled ? fmt(f.dextPrice * 12) : '\u2014'}</span>
         </div>
-        {swMonthly > 0 && <TabRow cells={['Total software', fmt(swMonthly) + '/mo', fmt(swAnnual)]} bold />}
+        {f.swMonthly > 0 && <TabRow cells={['Total software', fmt(f.swMonthly) + '/mo', fmt(f.swAnnual)]} bold />}
       </div>
 
       {/* Totals */}
       <div className="bg-ocean-700 text-white rounded-lg p-4 mb-3">
-        {setupTotal > 0 && <div className="flex justify-between text-xs mb-2 pb-2 border-b border-ocean-600"><span className="text-ocean-300">One-Off Setup</span><span className="font-mono">{fmt(setupTotal)}</span></div>}
+        {f.setupTotal > 0 && <div className="flex justify-between text-xs mb-2 pb-2 border-b border-ocean-600"><span className="text-ocean-300">One-Off Setup</span><span className="font-mono">{fmt(f.setupTotal)}</span></div>}
         <div className="space-y-0.5">
-          {lines.map((l, i) => <div key={i} className="flex justify-between text-xs"><span className="text-ocean-300 truncate mr-3">{l.name}</span><span className="font-mono whitespace-nowrap">{fmt(l.annual)}</span></div>)}
-          {swAnnual > 0 && <div className="flex justify-between text-xs"><span className="text-ocean-300">Software</span><span className="font-mono">{fmt(swAnnual)}</span></div>}
+          {f.lines.map((l, i) => <div key={i} className="flex justify-between text-xs"><span className="text-ocean-300 truncate mr-3">{l.name}</span><span className="font-mono whitespace-nowrap">{fmt(l.annual)}</span></div>)}
+          {f.swAnnual > 0 && <div className="flex justify-between text-xs"><span className="text-ocean-300">Software</span><span className="font-mono">{fmt(f.swAnnual)}</span></div>}
         </div>
         <div className="border-t border-ocean-600 mt-2 pt-2 space-y-1">
-          <div className="flex justify-between text-xs"><span className="text-ocean-300">Annual (Net)</span><span className="font-mono font-medium">{fmt(annualTotal)}</span></div>
-          <div className="flex justify-between text-xs"><span className="text-ocean-300">Monthly (Net)</span><span className="font-mono">{fmt(monthlyNet)}</span></div>
-          <div className="flex justify-between text-xs"><span className="text-ocean-300">VAT</span><span className="font-mono">{fmt(monthlyVat)}</span></div>
-          <div className="flex justify-between text-base font-bold pt-1.5 border-t border-ocean-500"><span>Monthly DD (Inc VAT)</span><span className="font-mono text-sun-300">{fmt(monthlyGross)}</span></div>
+          <div className="flex justify-between text-xs"><span className="text-ocean-300">Annual (Net)</span><span className="font-mono font-medium">{fmt(f.annualTotal)}</span></div>
+          <div className="flex justify-between text-xs"><span className="text-ocean-300">Monthly (Net)</span><span className="font-mono">{fmt(f.monthlyNet)}</span></div>
+          <div className="flex justify-between text-xs"><span className="text-ocean-300">VAT</span><span className="font-mono">{fmt(f.monthlyVat)}</span></div>
+          <div className="flex justify-between text-base font-bold pt-1.5 border-t border-ocean-500"><span>Monthly DD (Inc VAT)</span><span className="font-mono text-sun-300">{fmt(f.monthlyGross)}</span></div>
         </div>
       </div>
 
       {/* Save */}
       <div className="flex gap-2">
-        <Btn onClick={handleSave} disabled={saving || !client.name} className="flex-1">
+        <Btn onClick={handleSave} disabled={saving || !f.client.name} className="flex-1">
           {saving ? 'Saving...' : mode === 'edit' ? 'Update Quote' : 'Save Quote to Athena'}
         </Btn>
         <Btn onClick={() => navigate(-1)} variant="secondary">Cancel</Btn>
