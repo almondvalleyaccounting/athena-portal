@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { STATUS_TRANSITIONS, STATUS_LABELS } from '../lib/quoteStatus';
+import { generateQuotePdf } from '../lib/quotePdf';
 
 export default function QuoteDetailPage({ profile }) {
   const { id } = useParams();
@@ -122,6 +123,7 @@ export default function QuoteDetailPage({ profile }) {
         {profile?.can_edit_quotes && (
           <Btn onClick={() => navigate(`/manage/quotes/new?from=${quote.id}`)} variant="secondary">Re-quote</Btn>
         )}
+        <Btn onClick={() => generateQuotePdf(quote, lineItems)} variant="secondary">Download PDF</Btn>
       </div>
 
       {/* Client Summary */}
