@@ -11,6 +11,14 @@ export default function EntitiesPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [acting, setActing] = useState(false);
+  const [groups, setGroups] = useState([]);
+  const [showGroupPicker, setShowGroupPicker] = useState(false);
+
+  // Load billing groups for "Add to Group"
+  useEffect(() => {
+    supabase.from('billing_groups').select('*').order('name')
+      .then(({ data }) => setGroups(data || []));
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -89,6 +97,24 @@ export default function EntitiesPage() {
     setActing(false);
   };
 
+  // Batch: add selected clients to an existing group
+  const handleAddToGroup = async (groupId) => {
+    setActing(true);
+    setShowGroupPicker(false);
+    try {
+      for (const ent of selectedEntities) {
+        await supabase.from('billing_group_members')
+          .upsert({ entity_id: ent.id, group_id: groupId });
+        await supabase.from('quotes')
+          .update({ group_id: groupId })
+          .eq('entity_id', ent.id)
+          .is('group_id', null);
+      }
+      navigate('/manage/quotes/group/' + groupId);
+    } catch (e) { console.error(e); }
+    setActing(false);
+  };
+
   // Batch: quote all selected clients together (new group + redirect to first quote)
   const handleQuoteAll = async () => {
     if (selected.size < 1) return;
@@ -145,6 +171,20 @@ export default function EntitiesPage() {
               Create Group
             </Btn>
           )}
+          <div className="relative">
+            <Btn onClick={() => setShowGroupPicker(!showGroupPicker)} disabled={acting || groups.length === 0} variant="secondary" className="text-xs py-1 px-2">
+              Add to Group
+            </Btn>
+            {showGroupPicker && groups.length > 0 && (
+              <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[180px]">
+                {groups.map(g => (
+                  <button key={g.id} onClick={() => handleAddToGroup(g.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 last:border-0">
+                    {g.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <Btn onClick={handleQuoteAll} disabled={acting} variant="primary" className="text-xs py-1 px-2">
             {selected.size === 1 ? 'Quote' : `Quote All (${selected.size})`}
           </Btn>

@@ -17,6 +17,13 @@ export default function QuotesPage() {
   const [selected, setSelected] = useState(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [acting, setActing] = useState(false);
+  const [groups, setGroups] = useState([]);
+  const [showGroupPicker, setShowGroupPicker] = useState(false);
+
+  useEffect(() => {
+    supabase.from('billing_groups').select('*').order('name')
+      .then(({ data }) => setGroups(data || []));
+  }, []);
 
   const loadQuotes = async () => {
     try {
@@ -57,6 +64,22 @@ export default function QuotesPage() {
     }
     await loadQuotes();
     setSelected(new Set());
+    setActing(false);
+  };
+
+  const handleAddToGroup = async (groupId) => {
+    setActing(true);
+    setShowGroupPicker(false);
+    try {
+      for (const q of selectedQuotes) {
+        await supabase.from('quotes').update({ group_id: groupId }).eq('id', q.id);
+        if (q.entity_id) {
+          await supabase.from('billing_group_members')
+            .upsert({ entity_id: q.entity_id, group_id: groupId });
+        }
+      }
+      navigate('/manage/quotes/group/' + groupId);
+    } catch (e) { console.error(e); }
     setActing(false);
   };
 
@@ -156,7 +179,21 @@ export default function QuotesPage() {
         <div className="flex items-center gap-2 mb-3 bg-ocean-50 rounded-lg p-2 border border-ocean-200">
           <span className="text-xs text-ocean-700 font-medium">{selected.size} selected</span>
           <span className="text-ocean-300">|</span>
-          {canGroup && <Btn onClick={handleCreateGroup} disabled={acting} variant="secondary" className="text-xs py-1 px-2">Group</Btn>}
+          {canGroup && <Btn onClick={handleCreateGroup} disabled={acting} variant="secondary" className="text-xs py-1 px-2">Create Group</Btn>}
+          <div className="relative">
+            <Btn onClick={() => setShowGroupPicker(!showGroupPicker)} disabled={acting || groups.length === 0} variant="secondary" className="text-xs py-1 px-2">
+              Add to Group
+            </Btn>
+            {showGroupPicker && groups.length > 0 && (
+              <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[180px]">
+                {groups.map(g => (
+                  <button key={g.id} onClick={() => handleAddToGroup(g.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 last:border-0">
+                    {g.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {canSubmit && <Btn onClick={() => batchUpdateStatus('pending_approval')} disabled={acting} variant="secondary" className="text-xs py-1 px-2">Submit for Approval</Btn>}
           {canApprove && <Btn onClick={() => batchUpdateStatus('approved')} disabled={acting} variant="primary" className="text-xs py-1 px-2">Approve</Btn>}
           {canMarkSent && <Btn onClick={() => batchUpdateStatus('sent')} disabled={acting} variant="secondary" className="text-xs py-1 px-2">Mark Sent</Btn>}
