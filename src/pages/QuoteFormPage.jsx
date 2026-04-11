@@ -142,6 +142,44 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
   const [aeEnabled, setAeEnabled] = useState(false);
   const [aeFee, setAeFee] = useState(D.auto_enrolment.standard);
 
+  // ── Modulr Wage Payments ──
+  const [modEnabled, setModEnabled] = useState(false);
+  const [modSwPrice, setModSwPrice] = useState(D.modulr?.software_monthly_price || 20);
+  const [modPayments, setModPayments] = useState(0);
+  const [modPaymentRate, setModPaymentRate] = useState(D.modulr?.per_payment || 0.25);
+  const [modRuns, setModRuns] = useState(0);
+  const [modRunRate, setModRunRate] = useState(D.modulr?.per_run || 5);
+  const modMonthly = modSwPrice + modPayments * modPaymentRate + modRuns * modRunRate;
+  const modAnnual = modMonthly * 12;
+
+  // ── Management Accounts ──
+  const [maEnabled, setMaEnabled] = useState(false);
+  const [maSets, setMaSets] = useState(4);
+  const [maRate, setMaRate] = useState(D.management_accounts_per_set || 158);
+  const maAnnual = maSets * maRate;
+
+  // ── Review Meetings ──
+  const [rmEnabled, setRmEnabled] = useState(false);
+  const [rmCount, setRmCount] = useState(4);
+  const [rmRate, setRmRate] = useState(D.review_meeting_rate || 210);
+  const rmAnnual = rmCount * rmRate;
+
+  // ── Budgeting & Forecasting ──
+  const [budEnabled, setBudEnabled] = useState(false);
+  const [budBasic, setBudBasic] = useState(false);
+  const [budBasicRate, setBudBasicRate] = useState(D.budget_basic || 1085);
+  const [budAdvanced, setBudAdvanced] = useState(false);
+  const [budAdvancedRate, setBudAdvancedRate] = useState(D.budget_advanced || 3255);
+  const [budReforecastQty, setBudReforecastQty] = useState(0);
+  const [budReforecastRate, setBudReforecastRate] = useState(D.reforecast || 225);
+  const budAnnual = (budBasic ? budBasicRate : 0) + (budAdvanced ? budAdvancedRate : 0) + budReforecastQty * budReforecastRate;
+
+  // ── Fractional CFO ──
+  const [cfoEnabled, setCfoEnabled] = useState(false);
+  const [cfoDays, setCfoDays] = useState(1);
+  const [cfoDayRate, setCfoDayRate] = useState(D.cfo_day_rate || 1680);
+  const cfoAnnual = cfoDays * cfoDayRate;
+
   // ── Registered office ──
   const [roEnabled, setRoEnabled] = useState(false);
   const [roFee, setRoFee] = useState(D.registered_office);
@@ -163,6 +201,11 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
   if (vatEnabled) lines.push({ id: 'vat_returns', name: 'VAT Returns', annual: vatAnnual });
   if (prEnabled) lines.push({ id: 'payroll', name: 'Payroll', annual: prAnnual });
   if (aeEnabled) lines.push({ id: 'auto_enrolment', name: 'Auto-Enrolment', annual: aeFee });
+  if (modEnabled) lines.push({ id: 'modulr', name: 'Modulr Wages', annual: modAnnual, detail: `${fmt(modMonthly)}/mo` });
+  if (maEnabled) lines.push({ id: 'management_accounts', name: 'Management Accounts', annual: maAnnual, detail: `${maSets} sets` });
+  if (rmEnabled) lines.push({ id: 'review_meetings', name: 'Review Meetings', annual: rmAnnual, detail: `${rmCount} meetings` });
+  if (budEnabled) lines.push({ id: 'budgeting', name: 'Budgeting & Forecasting', annual: budAnnual });
+  if (cfoEnabled) lines.push({ id: 'fractional_cfo', name: 'Fractional CFO', annual: cfoAnnual, detail: `${cfoDays} days` });
   if (roEnabled) lines.push({ id: 'registered_office', name: 'Registered Office', annual: roFee });
 
   const annualServices = lines.reduce((s, l) => s + l.annual, 0);
@@ -226,6 +269,11 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
           bookkeeping_detail: bkEnabled ? { hours_per_month: bkHours, rate: bkRate, includes_vat: bkIncVat, vat_adj: bkVatAdj } : null,
           software_detail: swMonthly > 0 ? { accounting: sw?.id !== 'none' ? { id: sw.id, name: sw.name, monthly: sw.monthly, cost: sw.cost } : null, dext: dextEnabled ? { monthly: dextPrice, cost: D.dext.cost } : null } : null,
           accounts_detail: accEnabled ? { type: accType, band: detectedBand?.label, rate: accAnnual, properties: accType === 'property' ? accProperties : undefined } : null,
+          modulr_detail: modEnabled ? { software_monthly: modSwPrice, payments_per_month: modPayments, payment_rate: modPaymentRate, runs_per_month: modRuns, run_rate: modRunRate } : null,
+          management_accounts_detail: maEnabled ? { sets: maSets, rate_per_set: maRate } : null,
+          review_meetings_detail: rmEnabled ? { count: rmCount, rate: rmRate } : null,
+          budgeting_detail: budEnabled ? { basic: budBasic ? budBasicRate : null, advanced: budAdvanced ? budAdvancedRate : null, reforecast_qty: budReforecastQty, reforecast_rate: budReforecastRate } : null,
+          cfo_detail: cfoEnabled ? { days: cfoDays, day_rate: cfoDayRate } : null,
           relationship_group: client.name || null,
           created_by: profile.id,
         })
@@ -400,9 +448,54 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
         <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={aeFee} onChange={setAeFee} prefix="£" className="w-14" /></div>
       </Section>
 
+      {/* Modulr Wage Payments */}
+      <Section title="Modulr Wage Payments" enabled={modEnabled} onToggle={() => setModEnabled(!modEnabled)} annual={modAnnual}>
+        <TabRow cells={['Component', 'Qty', 'Rate', 'Monthly']} header />
+        <div className={G4} style={C4}><span>Software</span><span></span><span></span><span className="text-right"><Inp value={modSwPrice} onChange={setModSwPrice} prefix="\u00A3" className="w-14" /></span></div>
+        <div className={G4} style={C4}><span>Payments/month</span><span className="text-right"><Inp value={modPayments} onChange={setModPayments} min={0} className="w-12" /></span><span className="text-right"><Inp value={modPaymentRate} onChange={setModPaymentRate} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(modPayments * modPaymentRate)}</span></div>
+        <div className={G4} style={C4}><span>Pay runs/month</span><span className="text-right"><Inp value={modRuns} onChange={setModRuns} min={0} className="w-12" /></span><span className="text-right"><Inp value={modRunRate} onChange={setModRunRate} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(modRuns * modRunRate)}</span></div>
+        <TabRow cells={['Monthly total', '', '', fmt(modMonthly)]} bold />
+      </Section>
+
+      {/* Management Accounts */}
+      <Section title="Management Accounts" enabled={maEnabled} onToggle={() => setMaEnabled(!maEnabled)} annual={maAnnual}>
+        <TabRow cells={['', 'Sets/yr', 'Per set', 'Annual']} header />
+        <div className={G4} style={C4}><span>Accounts sets</span><span className="text-right"><Inp value={maSets} onChange={setMaSets} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={maRate} onChange={setMaRate} prefix="\u00A3" className="w-16" /></span><span className="text-right font-mono">{fmt(maAnnual)}</span></div>
+      </Section>
+
+      {/* Review Meetings */}
+      <Section title="Review Meetings" enabled={rmEnabled} onToggle={() => setRmEnabled(!rmEnabled)} annual={rmAnnual}>
+        <TabRow cells={['', 'Meetings/yr', 'Rate', 'Annual']} header />
+        <div className={G4} style={C4}><span>Client meetings</span><span className="text-right"><Inp value={rmCount} onChange={setRmCount} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={rmRate} onChange={setRmRate} prefix="\u00A3" className="w-16" /></span><span className="text-right font-mono">{fmt(rmAnnual)}</span></div>
+      </Section>
+
+      {/* Budgeting & Forecasting */}
+      <Section title="Budgeting & Forecasting" enabled={budEnabled} onToggle={() => setBudEnabled(!budEnabled)} annual={budAnnual}>
+        <div className="space-y-1.5">
+          <label className="flex items-center justify-between text-xs cursor-pointer">
+            <span className="flex items-center gap-1.5"><input type="checkbox" checked={budBasic} onChange={e => setBudBasic(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Basic budget</span>
+            <Inp value={budBasicRate} onChange={setBudBasicRate} prefix="\u00A3" className="w-20" />
+          </label>
+          <label className="flex items-center justify-between text-xs cursor-pointer">
+            <span className="flex items-center gap-1.5"><input type="checkbox" checked={budAdvanced} onChange={e => setBudAdvanced(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Advanced budget</span>
+            <Inp value={budAdvancedRate} onChange={setBudAdvancedRate} prefix="\u00A3" className="w-20" />
+          </label>
+          <div className="flex items-center justify-between text-xs">
+            <span>Reforecasts</span>
+            <span className="flex items-center gap-1"><Inp value={budReforecastQty} onChange={setBudReforecastQty} min={0} className="w-10" /> x <Inp value={budReforecastRate} onChange={setBudReforecastRate} prefix="\u00A3" className="w-16" /></span>
+          </div>
+        </div>
+      </Section>
+
+      {/* Fractional CFO */}
+      <Section title="Fractional CFO" enabled={cfoEnabled} onToggle={() => setCfoEnabled(!cfoEnabled)} annual={cfoAnnual}>
+        <TabRow cells={['', 'Days/yr', 'Day rate', 'Annual']} header />
+        <div className={G4} style={C4}><span>CFO days</span><span className="text-right"><Inp value={cfoDays} onChange={setCfoDays} min={1} className="w-12" /></span><span className="text-right"><Inp value={cfoDayRate} onChange={setCfoDayRate} prefix="\u00A3" className="w-20" /></span><span className="text-right font-mono">{fmt(cfoAnnual)}</span></div>
+      </Section>
+
       {/* Registered office */}
       <Section title="Registered Office" enabled={roEnabled} onToggle={() => setRoEnabled(!roEnabled)} annual={roFee}>
-        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={roFee} onChange={setRoFee} prefix="£" className="w-16" /></div>
+        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={roFee} onChange={setRoFee} prefix="\u00A3" className="w-16" /></div>
       </Section>
 
       {/* Software */}
