@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { INITIAL_DEFAULTS } from './lib/defaults';
 import NavShell from './components/NavShell';
@@ -8,6 +9,8 @@ import DashboardPage from './pages/DashboardPage';
 import EntitiesPage from './pages/EntitiesPage';
 import QuotesPage from './pages/QuotesPage';
 import QuoteFormPage from './pages/QuoteFormPage';
+import QuoteDetailPage from './pages/QuoteDetailPage';
+import PricingDefaultsPage from './pages/PricingDefaultsPage';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -15,18 +18,16 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [profileChecked, setProfileChecked] = useState(false);
   const [defaults, setDefaults] = useState(INITIAL_DEFAULTS);
-  const [view, setView] = useState('dashboard');
-  const [selectedEntity, setSelectedEntity] = useState(null);
 
-  // ── Listen for auth state changes ──
+  const navigate = useNavigate();
+
+  // -- Listen for auth state changes --
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
       setSessionLoading(false);
     });
 
-    // Subscribe to changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       if (!s) {
@@ -38,7 +39,7 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ── Check staff profile after auth ──
+  // -- Check staff profile after auth --
   useEffect(() => {
     if (!session) {
       setProfile(null);
@@ -66,7 +67,7 @@ export default function App() {
     })();
   }, [session]);
 
-  // ── Load defaults after profile confirmed ──
+  // -- Load defaults after profile confirmed --
   useEffect(() => {
     if (!profile) return;
 
@@ -88,41 +89,36 @@ export default function App() {
     })();
   }, [profile]);
 
-  // ── Handlers ──
+  // -- Handlers --
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    setView('dashboard');
-    setSelectedEntity(null);
+    navigate('/');
   };
 
   const handleRetryProfile = () => {
     setProfileChecked(false);
-    // Re-trigger the profile check effect
     setProfile(null);
-    // Small delay then re-check
     setTimeout(() => {
       setProfileChecked(false);
-      // Force re-run of the effect by toggling session reference
       setSession((s) => s ? { ...s } : s);
     }, 100);
   };
 
-  const handleSelectEntity = (entity) => {
-    setSelectedEntity(entity);
-    setView('quote-new');
+  const reloadDefaults = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('quote_defaults')
+        .select('*')
+        .eq('is_current', true)
+        .single();
+      if (!error && data?.rates) {
+        const dbRates = typeof data.rates === 'string' ? JSON.parse(data.rates) : data.rates;
+        setDefaults({ ...INITIAL_DEFAULTS, ...dbRates, version: data.version || dbRates.version });
+      }
+    } catch { /* silent */ }
   };
 
-  const handleQuoteSaved = () => {
-    setView('quotes');
-    setSelectedEntity(null);
-  };
-
-  const handleSetView = (v) => {
-    setView(v);
-    if (v !== 'quote-new') setSelectedEntity(null);
-  };
-
-  // ── Loading ──
+  // -- Loading --
   if (sessionLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -131,10 +127,10 @@ export default function App() {
     );
   }
 
-  // ── Not logged in ──
+  // -- Not logged in --
   if (!session) return <LoginPage />;
 
-  // ── Checking profile ──
+  // -- Checking profile --
   if (!profileChecked) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -143,26 +139,32 @@ export default function App() {
     );
   }
 
-  // ── No staff profile ──
+  // -- No staff profile --
   if (!profile) {
     return <BootstrapPage user={session.user} onRetry={handleRetryProfile} onLogout={handleLogout} />;
   }
 
-  // ── Authenticated with profile ──
+  // -- Authenticated with profile --
   return (
-    <NavShell view={view} setView={handleSetView} profile={profile} onLogout={handleLogout}>
-      {view === 'dashboard' && <DashboardPage setView={setView} />}
-      {view === 'entities' && <EntitiesPage onSelectEntity={handleSelectEntity} />}
-      {view === 'quotes' && <QuotesPage onEdit={() => {}} />}
-      {view === 'quote-new' && (
-        <QuoteFormPage
-          defaults={defaults}
-          profile={profile}
-          entity={selectedEntity}
-          onSaved={handleQuoteSaved}
-          onCancel={() => setView('dashboard')}
-        />
-      )}
+    <NavShell profile={profile} onLogout={handleLogout}>
+      <Routes>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/manage/clients" element={<EntitiesPage />} />
+        <Route path="/manage/quotes" element={<QuotesPage />} />
+        <Route path="/manage/quotes/new" element={
+          <QuoteFormPage defaults={defaults} profile={profile} mode="new" />
+        } />
+        <Route path="/manage/quotes/pricing" element={
+          <PricingDefaultsPage defaults={defaults} profile={profile} onSaved={reloadDefaults} />
+        } />
+        <Route path="/manage/quotes/:id" element={
+          <QuoteDetailPage profile={profile} />
+        } />
+        <Route path="/manage/quotes/:id/edit" element={
+          <QuoteFormPage defaults={defaults} profile={profile} mode="edit" />
+        } />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </NavShell>
   );
 }

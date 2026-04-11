@@ -1,17 +1,44 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Inp, TabRow, Section, Btn, fmt, G4, C4 } from '../components/ui';
 import DirectorCard from '../components/DirectorCard';
 
-export default function QuoteFormPage({ defaults: D, profile, entity, onSaved, onCancel }) {
+export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { id: quoteId } = useParams();
+  const entityId = searchParams.get('entity');
+  const fromId = searchParams.get('from');
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [entity, setEntity] = useState(null);
+  const [existingQuoteRef, setExistingQuoteRef] = useState(null);
+
+  // Load entity from URL param
+  useEffect(() => {
+    if (entityId) {
+      supabase.from('entities').select('*').eq('id', entityId).single()
+        .then(({ data }) => {
+          if (data) {
+            setEntity(data);
+            setClient(c => ({
+              ...c,
+              name: data.name || c.name,
+              companyNumber: data.company_number || c.companyNumber,
+              entityType: data.type || c.entityType,
+            }));
+          }
+        });
+    }
+  }, [entityId]);
 
   // ── Client ──
   const [client, setClient] = useState({
-    name: entity?.name || '',
-    companyNumber: entity?.company_number || '',
-    entityType: entity?.type || 'limited_company',
+    name: '',
+    companyNumber: '',
+    entityType: 'limited_company',
     turnover: '',
   });
 
@@ -243,7 +270,7 @@ export default function QuoteFormPage({ defaults: D, profile, entity, onSaved, o
         if (liErr) throw liErr;
       }
 
-      onSaved(savedQuote);
+      navigate('/manage/quotes/' + savedQuote.id);
     } catch (e) {
       setError(e.message || 'Save failed');
     }
@@ -258,7 +285,7 @@ export default function QuoteFormPage({ defaults: D, profile, entity, onSaved, o
           <h2 className="text-lg font-bold text-ocean-700">New Quote</h2>
           {entity && <p className="text-xs text-gray-400">{entity.name} {entity.company_number ? `(${entity.company_number})` : ''}</p>}
         </div>
-        <Btn onClick={onCancel} variant="ghost">Cancel</Btn>
+        <Btn onClick={() => navigate(-1)} variant="ghost">Cancel</Btn>
       </div>
 
       {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2 mb-3">{error}</div>}
@@ -419,7 +446,7 @@ export default function QuoteFormPage({ defaults: D, profile, entity, onSaved, o
         <Btn onClick={handleSave} disabled={saving || !client.name} className="flex-1">
           {saving ? 'Saving...' : 'Save Quote to Athena'}
         </Btn>
-        <Btn onClick={onCancel} variant="secondary">Cancel</Btn>
+        <Btn onClick={() => navigate(-1)} variant="secondary">Cancel</Btn>
       </div>
     </div>
   );

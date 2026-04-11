@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Btn } from '../components/ui';
 
-export default function EntitiesPage({ onSelectEntity }) {
+export default function EntitiesPage() {
+  const navigate = useNavigate();
   const [entities, setEntities] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -47,10 +49,10 @@ export default function EntitiesPage({ onSelectEntity }) {
               <div>
                 <p className="text-sm font-medium text-gray-700">{e.name}</p>
                 <p className="text-xs text-gray-400">
-                  {e.type?.replace('_', ' ')} {e.company_number ? `· ${e.company_number}` : ''}
+                  {e.type?.replace('_', ' ')} {e.company_number ? `\u00B7 ${e.company_number}` : ''}
                 </p>
               </div>
-              <Btn onClick={() => onSelectEntity(e)} variant="secondary" className="text-xs py-1 px-3">
+              <Btn onClick={() => navigate('/manage/quotes/new?entity=' + e.id)} variant="secondary" className="text-xs py-1 px-3">
                 Quote
               </Btn>
             </div>

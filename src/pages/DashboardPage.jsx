@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 
-export default function DashboardPage({ setView }) {
+export default function DashboardPage() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState({ entities: 0, quotes: 0, drafts: 0 });
   const [recent, setRecent] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,8 +37,8 @@ export default function DashboardPage({ setView }) {
         <>
           <div className="grid grid-cols-3 gap-3 mb-6">
             {[
-              { label: 'Clients', value: stats.entities, action: () => setView('entities') },
-              { label: 'Quotes', value: stats.quotes, action: () => setView('quotes') },
+              { label: 'Clients', value: stats.entities, action: () => navigate('/manage/clients') },
+              { label: 'Quotes', value: stats.quotes, action: () => navigate('/manage/quotes') },
               { label: 'Drafts', value: stats.drafts },
             ].map((s, i) => (
               <div
@@ -54,7 +56,11 @@ export default function DashboardPage({ setView }) {
             <div className="bg-white rounded-lg border border-gray-200 p-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Quotes</h3>
               {recent.map((q) => (
-                <div key={q.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                <div
+                  key={q.id}
+                  onClick={() => navigate('/manage/quotes/' + q.id)}
+                  className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0 cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1"
+                >
                   <div>
                     <p className="text-sm text-gray-700">{q.quote_ref}</p>
                     <p className="text-xs text-gray-400">{new Date(q.created_at).toLocaleDateString('en-GB')}</p>
@@ -69,7 +75,7 @@ export default function DashboardPage({ setView }) {
           )}
 
           <div className="mt-4">
-            <Btn onClick={() => setView('quote-new')}>New Quote</Btn>
+            <Btn onClick={() => navigate('/manage/quotes/new')}>New Quote</Btn>
           </div>
         </>
       )}
