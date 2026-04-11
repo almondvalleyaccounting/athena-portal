@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { STATUS_TRANSITIONS, STATUS_LABELS } from '../lib/quoteStatus';
 import { generateQuotePdf } from '../lib/quotePdf';
+import ConsolidationTable from '../components/ConsolidationTable';
 
 export default function QuoteDetailPage({ profile }) {
   const { id } = useParams();
@@ -14,6 +15,7 @@ export default function QuoteDetailPage({ profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [transitioning, setTransitioning] = useState(false);
+  const [groupData, setGroupData] = useState(null); // { billingGroup, quoteEntities, entityLineItems }
 
   useEffect(() => {
     loadQuote();
@@ -30,6 +32,21 @@ export default function QuoteDetailPage({ profile }) {
       setQuote(q);
       setLineItems(li || []);
       setAudit(au || []);
+
+      // Load group data if this is a group quote
+      if (q?.group_id) {
+        const [{ data: qEntities }, { data: bg }] = await Promise.all([
+          supabase.from('quote_entities').select('*, entity:entities(id, name, company_number, type)').eq('quote_id', q.id).order('sort_order'),
+          supabase.from('billing_groups').select('*').eq('id', q.group_id).single(),
+        ]);
+        // Load line items per entity
+        const entityLineItems = {};
+        for (const qe of (qEntities || [])) {
+          const { data: eli } = await supabase.from('quote_line_items').select('*').eq('quote_entity_id', qe.id).order('sort_order');
+          entityLineItems[qe.id] = eli || [];
+        }
+        setGroupData({ billingGroup: bg, quoteEntities: qEntities || [], entityLineItems });
+      }
     } catch (e) {
       setError('Failed to load quote');
     }
@@ -118,13 +135,38 @@ export default function QuoteDetailPage({ profile }) {
           )
         ))}
         {quote.status === 'draft' && profile?.can_edit_quotes && (
-          <Btn onClick={() => navigate(`/manage/quotes/${quote.id}/edit`)} variant="secondary">Edit</Btn>
+          <Btn onClick={() => navigate(quote.group_id ? `/manage/quotes/group/${quote.id}/edit` : `/manage/quotes/${quote.id}/edit`)} variant="secondary">Edit</Btn>
         )}
         {profile?.can_edit_quotes && (
           <Btn onClick={() => navigate(`/manage/quotes/new?from=${quote.id}`)} variant="secondary">Re-quote</Btn>
         )}
         <Btn onClick={() => generateQuotePdf(quote, lineItems)} variant="secondary">Download PDF</Btn>
       </div>
+
+      {/* Group Quote: Consolidation Table */}
+      {groupData && groupData.quoteEntities.length > 0 && (
+        <div className="mb-4">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
+            Group: {groupData.billingGroup?.name || quote.relationship_group} ({groupData.quoteEntities.length} entities)
+          </h3>
+          <ConsolidationTable
+            entities={groupData.quoteEntities.map(qe => qe.entity || { id: qe.entity_id, name: 'Entity' })}
+            entityTotals={Object.fromEntries(
+              groupData.quoteEntities.map(qe => [
+                qe.entity_id,
+                {
+                  lines: (groupData.entityLineItems[qe.id] || []).filter(l => l.is_recurring).map(l => ({ id: l.service_id, name: l.description, annual: Number(l.annual_amount) })),
+                  annualServices: Number(qe.annual_before_discount) - (groupData.entityLineItems[qe.id] || []).filter(l => l.is_recurring && l.service_id?.startsWith('software')).reduce((s, l) => s + Number(l.annual_amount), 0),
+                  swAnnual: (groupData.entityLineItems[qe.id] || []).filter(l => l.service_id?.startsWith('software')).reduce((s, l) => s + Number(l.annual_amount), 0),
+                  annualTotal: Number(qe.annual_before_discount),
+                }
+              ])
+            )}
+            discounts={Object.fromEntries(groupData.quoteEntities.map(qe => [qe.entity_id, Number(qe.discount_pct) || 0]))}
+            readOnly={true}
+          />
+        </div>
+      )}
 
       {/* Client Summary */}
       <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">

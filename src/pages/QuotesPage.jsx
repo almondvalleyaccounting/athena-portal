@@ -73,7 +73,10 @@ export default function QuotesPage() {
     <div className="p-6 max-w-4xl">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-ocean-700">Quotes</h2>
-        <Btn onClick={() => navigate('/manage/quotes/new')}>New Quote</Btn>
+        <div className="flex gap-2">
+          <Btn onClick={() => navigate('/manage/quotes/new')}>New Quote</Btn>
+          <Btn onClick={() => navigate('/manage/quotes/group/new')} variant="secondary">Group Quote</Btn>
+        </div>
       </div>
 
       {/* Status filter tabs */}
