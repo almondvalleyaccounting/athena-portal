@@ -14,9 +14,11 @@ Internal portal for Almond Valley Accounting. Quote Builder is the first module.
 Create `.env` in the project root (or set in Vercel dashboard):
 
 ```
-VITE_SUPABASE_URL=https://neksyvneljgxvpchwgch.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5la3N5dm5lbGpneHZwY2h3Z2NoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4MDg2NjEsImV4cCI6MjA5MTM4NDY2MX0.fAF6XY0aAYNU9JbpeugNkyd1dXhoQcC3euJJeyzjmuU
+VITE_SUPABASE_URL=<your-supabase-project-url>
+VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
 ```
+
+Values are in the Vercel environment variables and the Supabase dashboard.
 
 ## Setup
 

@@ -4,7 +4,7 @@ const { Client } = require('pg');
 const sql = process.argv[2];
 if (!sql) { console.error('Usage: node scripts/db.js "SQL"'); process.exit(1); }
 const c = new Client({
-  connectionString: 'postgresql://postgres:S3MF5WiGSeErz3TQ@db.neksyvneljgxvpchwgch.supabase.co:5432/postgres',
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT.supabase.co:5432/postgres',
   ssl: { rejectUnauthorized: false }
 });
 c.connect()
