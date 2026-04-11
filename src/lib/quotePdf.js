@@ -228,3 +228,68 @@ export async function generateQuotePdf(quote, lineItems) {
   // Save
   doc.save(`${quote.quote_ref || 'Quote'}.pdf`);
 }
+
+// Returns base64-encoded PDF string (for email attachment)
+export async function generateQuotePdfBase64(quote, lineItems) {
+  // Reuse the same generation logic but return base64 instead of saving
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF('p', 'mm', 'a4');
+  // We'll call the internal builder — for now, generate and return base64
+  // This is a simplified approach: generate the same PDF, output as base64
+  await generateQuotePdfInternal(doc, quote, lineItems);
+  return doc.output('datauristring').split(',')[1]; // strip the data:application/pdf;base64, prefix
+}
+
+// Internal shared builder (extracted for reuse)
+async function generateQuotePdfInternal(doc, quote, lineItems) {
+  const pw = 210, margin = 15, cw = pw - margin * 2;
+  let y = margin;
+  const checkPage = (n) => { if (y + n > 280) { doc.addPage(); y = margin; } };
+
+  // Header
+  doc.setFillColor(25, 58, 80);
+  doc.rect(0, 0, pw, 28, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+  doc.text('ATHENA', margin, 12);
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  doc.text('Almond Valley Accounting', margin, 18);
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+  doc.text(quote.quote_ref || 'Quote', pw - margin, 12, { align: 'right' });
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  doc.text(new Date(quote.created_at).toLocaleDateString('en-GB'), pw - margin, 18, { align: 'right' });
+  y = 35;
+
+  // Client
+  doc.setTextColor(30, 30, 30);
+  doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+  doc.text(quote.relationship_group || 'Client', margin, y); y += 6;
+
+  // Services
+  const recurring = lineItems.filter(l => l.is_recurring);
+  if (recurring.length > 0) {
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(25, 58, 80);
+    doc.text('Services', margin, y); y += 5;
+    doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30);
+    recurring.forEach(l => {
+      checkPage(5);
+      doc.text(l.description, margin + 1, y);
+      doc.text(fmtNum(l.annual_amount), margin + cw - 1, y, { align: 'right' });
+      y += 4;
+    });
+    y += 3;
+  }
+
+  // Totals
+  checkPage(30);
+  doc.setFillColor(25, 58, 80);
+  doc.rect(margin, y - 3, cw, 30, 'F');
+  doc.setTextColor(255, 255, 255); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  doc.text('Annual Total (Net)', margin + 3, y); doc.text(fmtNum(quote.annual_total), margin + cw - 3, y, { align: 'right' }); y += 5;
+  doc.text('Monthly (Net)', margin + 3, y); doc.text(fmtNum(quote.monthly_net), margin + cw - 3, y, { align: 'right' }); y += 5;
+  doc.text('VAT', margin + 3, y); doc.text(fmtNum(quote.monthly_vat), margin + cw - 3, y, { align: 'right' }); y += 5;
+  doc.setFillColor(245, 197, 24);
+  doc.rect(margin, y - 3, cw, 8, 'F');
+  doc.setTextColor(25, 58, 80); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+  doc.text('Monthly DD (Inc VAT)', margin + 3, y + 1); doc.text(fmtNum(quote.monthly_gross), margin + cw - 3, y + 1, { align: 'right' });
+}

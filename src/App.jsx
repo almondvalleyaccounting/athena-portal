@@ -11,7 +11,7 @@ import QuotesPage from './pages/QuotesPage';
 import QuoteFormPage from './pages/QuoteFormPage';
 import QuoteDetailPage from './pages/QuoteDetailPage';
 import PricingDefaultsPage from './pages/PricingDefaultsPage';
-import GroupQuoteFormPage from './pages/GroupQuoteFormPage';
+import GroupDetailPage from './pages/GroupDetailPage';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -158,11 +158,8 @@ export default function App() {
         <Route path="/manage/quotes/pricing" element={
           <PricingDefaultsPage defaults={defaults} profile={profile} onSaved={reloadDefaults} />
         } />
-        <Route path="/manage/quotes/group/new" element={
-          <GroupQuoteFormPage defaults={defaults} profile={profile} mode="new" />
-        } />
-        <Route path="/manage/quotes/group/:id/edit" element={
-          <GroupQuoteFormPage defaults={defaults} profile={profile} mode="edit" />
+        <Route path="/manage/quotes/group/:groupId" element={
+          <GroupDetailPage profile={profile} defaults={defaults} />
         } />
         <Route path="/manage/quotes/:id" element={
           <QuoteDetailPage profile={profile} />

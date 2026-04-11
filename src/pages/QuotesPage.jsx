@@ -14,6 +14,45 @@ export default function QuotesPage() {
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState('created_at');
   const [sortAsc, setSortAsc] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [creatingGroup, setCreatingGroup] = useState(false);
+
+  const toggleSelect = (id, e) => {
+    e.stopPropagation();
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleCreateGroup = async () => {
+    if (selected.size < 2) return;
+    setCreatingGroup(true);
+    try {
+      const selectedQuotes = quotes.filter(q => selected.has(q.id));
+      const groupName = selectedQuotes.map(q => q.relationship_group || 'Entity').join(' + ');
+
+      const { data: group } = await supabase
+        .from('billing_groups')
+        .insert({ name: groupName })
+        .select().single();
+
+      // Link all selected quotes to the group
+      for (const q of selectedQuotes) {
+        await supabase.from('quotes').update({ group_id: group.id }).eq('id', q.id);
+        if (q.entity_id) {
+          await supabase.from('billing_group_members')
+            .upsert({ entity_id: q.entity_id, group_id: group.id });
+        }
+      }
+
+      navigate('/manage/quotes/group/' + group.id);
+    } catch (e) {
+      console.error(e);
+    }
+    setCreatingGroup(false);
+  };
 
   useEffect(() => {
     (async () => {
@@ -74,8 +113,12 @@ export default function QuotesPage() {
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-ocean-700">Quotes</h2>
         <div className="flex gap-2">
+          {selected.size >= 2 && (
+            <Btn onClick={handleCreateGroup} disabled={creatingGroup} variant="primary">
+              {creatingGroup ? 'Creating...' : `Group ${selected.size} Quotes`}
+            </Btn>
+          )}
           <Btn onClick={() => navigate('/manage/quotes/new')}>New Quote</Btn>
-          <Btn onClick={() => navigate('/manage/quotes/group/new')} variant="secondary">Group Quote</Btn>
         </div>
       </div>
 
@@ -117,7 +160,8 @@ export default function QuotesPage() {
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           {/* Column headers */}
-          <div className="grid gap-2 px-4 py-2 border-b border-gray-200 bg-gray-50" style={{ gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr 1fr' }}>
+          <div className="grid gap-2 px-4 py-2 border-b border-gray-200 bg-gray-50" style={{ gridTemplateColumns: '24px 2fr 1.5fr 1fr 1fr 1fr 1fr' }}>
+            <span></span>
             <SortHeader col="quote_ref">Quote Ref</SortHeader>
             <SortHeader col="relationship_group">Client</SortHeader>
             <SortHeader col="status">Status</SortHeader>
@@ -131,9 +175,19 @@ export default function QuotesPage() {
               key={q.id}
               onClick={() => navigate('/manage/quotes/' + q.id)}
               className="grid gap-2 px-4 py-2.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer items-center text-xs"
-              style={{ gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr 1fr' }}
+              style={{ gridTemplateColumns: '24px 2fr 1.5fr 1fr 1fr 1fr 1fr' }}
             >
-              <span className="font-medium text-gray-700 truncate">{q.quote_ref}</span>
+              <input
+                type="checkbox"
+                checked={selected.has(q.id)}
+                onChange={(e) => toggleSelect(q.id, e)}
+                onClick={(e) => e.stopPropagation()}
+                className="w-3 h-3 accent-ocean-600"
+              />
+              <span className="font-medium text-gray-700 truncate">
+                {q.quote_ref}
+                {q.group_id && <span className="ml-1 text-[9px] bg-ocean-50 text-ocean-600 px-1 rounded">group</span>}
+              </span>
               <span className="text-gray-500 truncate">{q.relationship_group || '\u2014'}</span>
               <span><StatusBadge status={q.status} /></span>
               <span className="text-right font-mono text-ocean-600">{fmt(q.monthly_gross)}</span>

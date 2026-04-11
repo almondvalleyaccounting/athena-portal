@@ -5,6 +5,8 @@ import { fmt, StatusBadge, Btn } from '../components/ui';
 import { STATUS_TRANSITIONS, STATUS_LABELS } from '../lib/quoteStatus';
 import { generateQuotePdf } from '../lib/quotePdf';
 import ConsolidationTable from '../components/ConsolidationTable';
+import AddToGroupPanel from '../components/AddToGroupPanel';
+import SendQuoteModal from '../components/SendQuoteModal';
 
 export default function QuoteDetailPage({ profile }) {
   const { id } = useParams();
@@ -15,7 +17,8 @@ export default function QuoteDetailPage({ profile }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [transitioning, setTransitioning] = useState(false);
-  const [groupData, setGroupData] = useState(null); // { billingGroup, quoteEntities, entityLineItems }
+  const [groupData, setGroupData] = useState(null);
+  const [showSendModal, setShowSendModal] = useState(false);
 
   useEffect(() => {
     loadQuote();
@@ -141,6 +144,9 @@ export default function QuoteDetailPage({ profile }) {
           <Btn onClick={() => navigate(`/manage/quotes/new?from=${quote.id}`)} variant="secondary">Re-quote</Btn>
         )}
         <Btn onClick={() => generateQuotePdf(quote, lineItems)} variant="secondary">Download PDF</Btn>
+        {(quote.status === 'approved' || quote.status === 'sent') && profile?.can_approve_quotes && (
+          <Btn onClick={() => setShowSendModal(true)} variant="primary">Send to Client</Btn>
+        )}
       </div>
 
       {/* Group Quote: Consolidation Table */}
@@ -306,6 +312,11 @@ export default function QuoteDetailPage({ profile }) {
         </div>
       </div>
 
+      {/* Add to Group / Group Info */}
+      <div className="mb-3">
+        <AddToGroupPanel quote={quote} profile={profile} />
+      </div>
+
       {/* Audit Trail */}
       {audit.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-3">
@@ -329,6 +340,17 @@ export default function QuoteDetailPage({ profile }) {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Send Quote Modal */}
+      {showSendModal && (
+        <SendQuoteModal
+          quote={quote}
+          lineItems={lineItems}
+          profile={profile}
+          onSent={() => { setShowSendModal(false); loadQuote(); }}
+          onClose={() => setShowSendModal(false)}
+        />
       )}
     </div>
   );

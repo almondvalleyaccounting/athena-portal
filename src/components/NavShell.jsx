@@ -6,7 +6,6 @@ const NAV_ITEMS = [
   { path: '/manage/clients', label: 'Clients', icon: '\u25C7' },
   { path: '/manage/quotes', label: 'Quotes', icon: '\u25A4' },
   { path: '/manage/quotes/new', label: 'New Quote', icon: '+' },
-  { path: '/manage/quotes/group/new', label: 'Group Quote', icon: '\u25A8' },
 ];
 
 const PRICING_ITEM = { path: '/manage/quotes/pricing', label: 'Pricing', icon: '\u2699' };

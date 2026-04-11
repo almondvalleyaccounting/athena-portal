@@ -11,6 +11,7 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
   const { id: quoteId } = useParams();
   const entityId = searchParams.get('entity');
   const fromId = searchParams.get('from');
+  const groupParam = searchParams.get('group');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -61,7 +62,7 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
   }, [mode, quoteId, fromId]);
 
   // ── Save to Supabase ──
-  const handleSave = async () => {
+  const handleSave = async (redirectTo) => {
     setSaving(true);
     setError('');
     try {
@@ -103,7 +104,7 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
             ...quoteData,
             quote_ref: quoteRef,
             entity_id: entity?.id || null,
-            group_id: null,
+            group_id: groupParam || null,
             status: 'draft',
             created_by: profile.id,
           })
@@ -125,7 +126,27 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
           if (liErr) throw liErr;
         }
 
-        navigate('/manage/quotes/' + savedQuote.id);
+        // If "Save & Add Another", ensure group exists then navigate to new form
+        if (redirectTo === 'add-another') {
+          let gid = savedQuote.group_id || groupParam;
+          if (!gid) {
+            // Create a group from the client name
+            const { data: newGroup } = await supabase
+              .from('billing_groups')
+              .insert({ name: f.client.name || 'Group', created_by: profile.id })
+              .select().single();
+            gid = newGroup.id;
+            // Link this quote to the group
+            await supabase.from('quotes').update({ group_id: gid }).eq('id', savedQuote.id);
+            if (entity?.id) {
+              await supabase.from('billing_group_members')
+                .upsert({ entity_id: entity.id, group_id: gid });
+            }
+          }
+          navigate('/manage/quotes/new?group=' + gid);
+        } else {
+          navigate('/manage/quotes/' + savedQuote.id);
+        }
       }
     } catch (e) {
       setError(e.message || 'Save failed');
@@ -350,11 +371,16 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
       </div>
 
       {/* Save */}
-      <div className="flex gap-2">
-        <Btn onClick={handleSave} disabled={saving || !f.client.name} className="flex-1">
-          {saving ? 'Saving...' : mode === 'edit' ? 'Update Quote' : 'Save Quote to Athena'}
+      <div className="flex gap-2 flex-wrap">
+        <Btn onClick={() => handleSave()} disabled={saving || !f.client.name} className="flex-1">
+          {saving ? 'Saving...' : mode === 'edit' ? 'Update Quote' : 'Save Quote'}
         </Btn>
-        <Btn onClick={() => navigate(-1)} variant="secondary">Cancel</Btn>
+        {mode !== 'edit' && (
+          <Btn onClick={() => handleSave('add-another')} disabled={saving || !f.client.name} variant="secondary">
+            Save & Add Another Entity
+          </Btn>
+        )}
+        <Btn onClick={() => navigate(-1)} variant="ghost">Cancel</Btn>
       </div>
     </div>
   );
