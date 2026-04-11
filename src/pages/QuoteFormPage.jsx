@@ -98,12 +98,29 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
         const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
         const quoteRef = `${prefix}_${String(next).padStart(3, '0')}`;
 
+        // Auto-create entity if none linked
+        let entityId = entity?.id || null;
+        if (!entityId && f.client.name) {
+          const { data: newEntity } = await supabase
+            .from('entities')
+            .insert({
+              name: f.client.name,
+              type: f.client.entityType || 'limited_company',
+              company_number: f.client.companyNumber || null,
+            })
+            .select().single();
+          if (newEntity) {
+            entityId = newEntity.id;
+            setEntity(newEntity);
+          }
+        }
+
         const { data: savedQuotes, error: quoteErr } = await supabase
           .from('quotes')
           .insert({
             ...quoteData,
             quote_ref: quoteRef,
-            entity_id: entity?.id || null,
+            entity_id: entityId,
             group_id: groupParam || null,
             status: 'draft',
             created_by: profile.id,
