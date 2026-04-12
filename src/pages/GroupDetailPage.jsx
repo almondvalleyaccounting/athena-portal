@@ -33,6 +33,9 @@ export default function GroupDetailPage({ profile, defaults }) {
   const [editName, setEditName] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [groupEntities, setGroupEntities] = useState([]);
+  const [removingEntity, setRemovingEntity] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
 
   const handleRenameGroup = async () => {
     if (!editName.trim() || editName.trim() === group?.name) { setEditingName(false); return; }
@@ -131,6 +134,33 @@ export default function GroupDetailPage({ profile, defaults }) {
     setTransitioning(false);
   };
 
+  const handleRemoveFromGroup = async (entityId, entityName) => {
+    if (!confirm(`Remove "${entityName}" from this group? The client will not be deleted.`)) return;
+    setRemovingEntity(entityId);
+    try {
+      await supabase.from('billing_group_members').delete().eq('entity_id', entityId).eq('group_id', groupId);
+      // Unlink any quotes for this entity from the group
+      await supabase.from('quotes').update({ group_id: null }).eq('entity_id', entityId).eq('group_id', groupId);
+      await loadGroup();
+    } catch (e) {
+      setError('Failed to remove client from group');
+    }
+    setRemovingEntity(null);
+  };
+
+  const handlePreview = async () => {
+    try {
+      const allLI = quotes.flatMap(q => q.line_items || []);
+      const doc = await generateQuotePdf({ ...quotes[0], relationship_group: group.name, monthly_gross: groupMonthlyDD, annual_total: groupAnnual }, allLI, { returnDoc: true });
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+      setShowPreview(true);
+    } catch (e) {
+      setError('Failed to generate preview: ' + (e.message || ''));
+    }
+  };
+
   const handleExportPdf = async () => {
     // Use the first quote as the base for PDF generation
     if (quotes.length > 0) {
@@ -199,6 +229,9 @@ export default function GroupDetailPage({ profile, defaults }) {
           <Btn onClick={() => setShowSendModal(true)} variant="secondary" className="text-xs py-1 px-3">
             Send to Client
           </Btn>
+          <Btn onClick={handlePreview} variant="secondary" className="text-xs py-1 px-3">
+            Preview Quote
+          </Btn>
           <Btn onClick={handleExportPdf} variant="ghost" className="text-xs py-1 px-3">
             Export PDF
           </Btn>
@@ -210,6 +243,9 @@ export default function GroupDetailPage({ profile, defaults }) {
         <div className="flex items-center gap-2 mb-4">
           <Btn onClick={() => setShowSendModal(true)} variant="secondary" className="text-xs py-1 px-3">
             Send to Client
+          </Btn>
+          <Btn onClick={handlePreview} variant="secondary" className="text-xs py-1 px-3">
+            Preview Quote
           </Btn>
           <Btn onClick={handleExportPdf} variant="ghost" className="text-xs py-1 px-3">
             Export PDF
@@ -234,12 +270,20 @@ export default function GroupDetailPage({ profile, defaults }) {
                       {ent.type?.replace('_', ' ')}{ent.company_number ? ` \u00B7 ${ent.company_number}` : ''}
                     </p>
                   </div>
-                  <div className="text-xs">
+                  <div className="flex items-center gap-2 text-xs">
                     {clientQuoteCount > 0 ? (
                       <span className="text-gray-600">{clientQuoteCount} quote{clientQuoteCount !== 1 ? 's' : ''}</span>
                     ) : (
                       <span className="text-gray-300">No quotes</span>
                     )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleRemoveFromGroup(ent.id, ent.name); }}
+                      disabled={removingEntity === ent.id}
+                      className="text-gray-400 hover:text-red-600 hover:bg-red-50 rounded px-1.5 py-0.5 transition-colors"
+                      title="Remove from group"
+                    >
+                      {removingEntity === ent.id ? '...' : '\u2715'}
+                    </button>
                   </div>
                 </div>
               );
@@ -299,6 +343,22 @@ export default function GroupDetailPage({ profile, defaults }) {
           onSent={() => { setShowSendModal(false); loadGroup(); }}
           onClose={() => setShowSendModal(false)}
         />
+      )}
+
+      {/* Quote Preview Modal */}
+      {showPreview && previewUrl && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-[90vw] h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center p-3 border-b border-gray-200">
+              <h3 className="text-sm font-semibold text-ocean-700">Quote Preview</h3>
+              <div className="flex gap-2">
+                <Btn onClick={handleExportPdf} variant="primary" className="text-xs">Export PDF</Btn>
+                <Btn onClick={() => { setShowPreview(false); URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }} variant="ghost" className="text-xs">Close</Btn>
+              </div>
+            </div>
+            <iframe src={previewUrl} className="flex-1 w-full" title="Quote Preview" />
+          </div>
+        </div>
       )}
     </div>
   );

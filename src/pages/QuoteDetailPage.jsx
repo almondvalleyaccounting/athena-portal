@@ -24,6 +24,20 @@ export default function QuoteDetailPage({ profile }) {
   const [showExtend, setShowExtend] = useState(false);
   const [extendDate, setExtendDate] = useState('');
   const [extendSaving, setExtendSaving] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+
+  const handlePreview = async () => {
+    try {
+      const doc = await generateQuotePdf(quote, lineItems, { returnDoc: true });
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+      setShowPreview(true);
+    } catch (e) {
+      setError('Failed to generate preview: ' + (e.message || ''));
+    }
+  };
 
   useEffect(() => {
     loadQuote();
@@ -188,6 +202,7 @@ export default function QuoteDetailPage({ profile }) {
         {profile?.can_edit_quotes && (
           <Btn onClick={() => navigate(`/manage/quotes/new?from=${quote.id}`)} variant="secondary" className="min-w-[120px]">Re-quote</Btn>
         )}
+        <Btn onClick={handlePreview} variant="secondary" className="min-w-[120px]">Preview Quote</Btn>
         <Btn onClick={() => generateQuotePdf(quote, lineItems)} variant="secondary" className="min-w-[120px]">Export PDF</Btn>
         {(quote.status === 'approved' || quote.status === 'sent') && profile?.can_approve_quotes && (
           <Btn onClick={() => setShowSendModal(true)} variant="primary" className="min-w-[120px]">Send to Client</Btn>
@@ -195,7 +210,7 @@ export default function QuoteDetailPage({ profile }) {
         {quote.status === 'accepted' && !quote.committed_at && profile?.can_approve_quotes && (
           <Btn onClick={() => setShowCommitModal(true)} variant="primary" className="min-w-[120px]">Commit to Live</Btn>
         )}
-        {(quote.status === 'draft' || quote.status === 'pending_approval') && profile?.can_edit_quotes && (
+        {quote.status !== 'committed' && profile?.can_edit_quotes && (
           <Btn onClick={handleDelete} variant="danger" disabled={transitioning} className="min-w-[120px]">Delete</Btn>
         )}
       </div>
@@ -416,6 +431,22 @@ export default function QuoteDetailPage({ profile }) {
           onCommitted={() => { setShowCommitModal(false); loadQuote(); }}
           onClose={() => setShowCommitModal(false)}
         />
+      )}
+
+      {/* Quote Preview Modal */}
+      {showPreview && previewUrl && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-[90vw] h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center p-3 border-b border-gray-200">
+              <h3 className="text-sm font-semibold text-ocean-700">Quote Preview</h3>
+              <div className="flex gap-2">
+                <Btn onClick={() => generateQuotePdf(quote, lineItems)} variant="primary" className="text-xs">Export PDF</Btn>
+                <Btn onClick={() => { setShowPreview(false); URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }} variant="ghost" className="text-xs">Close</Btn>
+              </div>
+            </div>
+            <iframe src={previewUrl} className="flex-1 w-full" title="Quote Preview" />
+          </div>
+        </div>
       )}
     </div>
   );

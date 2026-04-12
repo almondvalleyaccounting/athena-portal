@@ -17,7 +17,6 @@ const STATUS_CARDS = [
   { key: 'accepted', label: 'Accepted', statuses: ['accepted'] },
   { key: 'pipeline', label: 'Total Pipeline', statuses: PIPELINE_STATUSES },
   { key: 'declined', label: 'Rejected', statuses: ['declined'] },
-  { key: 'committed', label: 'Committed', statuses: ['committed'] },
 ];
 
 export default function QuotesPage() {
@@ -166,7 +165,7 @@ export default function QuotesPage() {
   const allApproved = selectedStatuses.size === 1 && selectedStatuses.has('approved');
   const allSent = selectedStatuses.size === 1 && selectedStatuses.has('sent');
   const canReject = selectedQuotes.length > 0 && selectedQuotes.every(q => q.status !== 'accepted' && q.status !== 'committed');
-  const canDelete = selectedQuotes.length > 0 && selectedQuotes.every(q => q.status === 'draft' || q.status === 'pending_approval');
+  const canDelete = selectedQuotes.length > 0 && selectedQuotes.every(q => q.status !== 'committed');
   const canGroup = selected.size >= 2;
   const canAddToGroup = selected.size > 0;
 
@@ -186,7 +185,7 @@ export default function QuotesPage() {
 
   // ── Filtering & sorting ──
   const filtered = useMemo(() => {
-    let list = quotes.filter(q => q.status !== 'deleted');
+    let list = quotes.filter(q => q.status !== 'deleted' && q.status !== 'committed');
 
     // Apply active card filter
     const card = STATUS_CARDS.find(c => c.key === activeCard);
@@ -525,7 +524,7 @@ export default function QuotesPage() {
                   <span className="text-gray-300">{'\u2014'}</span>
                 )}
               </span>
-              <span><StatusBadge status={q.status} /></span>
+              <span className="whitespace-nowrap"><StatusBadge status={q.status} /></span>
               <span className="text-right font-mono text-ocean-600">{fmt(netGross === 'net' ? q.monthly_net : q.monthly_gross)}</span>
               <span className="text-right font-mono text-gray-500">{fmt(q.annual_total)}</span>
               <div className="text-right">

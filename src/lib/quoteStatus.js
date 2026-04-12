@@ -15,7 +15,7 @@ export const STATUS_TRANSITIONS = {
     { action: 'expire', next: 'expired', label: 'Mark Expired', permission: 'can_approve_quotes', variant: 'secondary' },
   ],
   accepted: [
-    { action: 'commit', next: 'committed', label: 'Commit to Live', permission: 'can_approve_quotes', variant: 'primary' },
+    { action: 'revert_to_sent', next: 'sent', label: 'Revert to Sent', permission: 'can_approve_quotes', variant: 'secondary' },
   ],
   committed: [],
   declined: [],

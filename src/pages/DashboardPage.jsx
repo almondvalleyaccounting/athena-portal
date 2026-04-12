@@ -10,6 +10,8 @@ const STATUS_VIEW_FILTERS = {
   sent: ['sent'],
   accepted: ['accepted'],
   pipeline: ['draft', 'pending_approval', 'approved', 'sent', 'accepted'],
+  committed: ['committed'],
+  pipeline_committed: ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'committed'],
   rejected: ['declined'],
 };
 
@@ -20,6 +22,8 @@ const STATUS_VIEW_LABELS = {
   sent: 'Sent to Client',
   accepted: 'Accepted',
   pipeline: 'Pipeline',
+  committed: 'Committed',
+  pipeline_committed: 'Pipeline + Committed',
   rejected: 'Rejected',
 };
 
@@ -484,8 +488,9 @@ export default function DashboardPage() {
           </div>
 
           {/* Revenue by Service */}
-          {filtered.revenueByService.length > 0 && (
-            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            {filtered.revenueByService.length > 0 ? (
+              <>
               <h3 className="text-sm font-semibold text-gray-700 mb-2">
                 Revenue by Service ({effectiveRevenueLabel}, {pLabel})
               </h3>
@@ -558,8 +563,16 @@ export default function DashboardPage() {
                 {/* Grand total */}
                 {renderSubtotalRow('TOTAL', filtered.grandTotalAnnual, filtered.grandPrevAnnual, filtered.grandTotalAnnual - filtered.grandPrevAnnual)}
               </div>
-            </div>
-          )}
+              </>
+            ) : (
+              <>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                  Revenue by Service ({effectiveRevenueLabel}, {pLabel})
+                </h3>
+                <p className="text-xs text-gray-400 py-4 text-center">No revenue data for this filter combination.</p>
+              </>
+            )}
+          </div>
 
           {/* Service Filter */}
           {filtered.allServices.length > 0 && (

@@ -43,7 +43,7 @@ function drawFooter(doc, pw, margin, cw) {
   });
 }
 
-export async function generateQuotePdf(quote, lineItems) {
+export async function generateQuotePdf(quote, lineItems, options = {}) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF('p', 'mm', 'a4');
   const pw = 210, margin = 18, cw = pw - margin * 2;
@@ -249,6 +249,7 @@ export async function generateQuotePdf(quote, lineItems) {
   // ── Footer ──
   drawFooter(doc, pw, margin, cw);
 
+  if (options.returnDoc) return doc;
   doc.save(`${quote.quote_ref || 'Quote'}.pdf`);
 }
 
