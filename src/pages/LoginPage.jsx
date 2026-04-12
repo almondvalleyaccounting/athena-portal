@@ -48,7 +48,6 @@ export default function LoginPage() {
             style={{ imageRendering: 'auto' }}
           />
           <h1 className="text-2xl font-bold text-ocean-700 tracking-tight">ATHENA</h1>
-          <p className="text-xs text-gray-400 mt-1">Fee Engine</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">

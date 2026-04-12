@@ -5,7 +5,7 @@ import { fmt, StatusBadge, Btn } from '../components/ui';
 import { downloadCSV } from '../lib/exportUtils';
 
 const STATUSES = ['all', 'draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
-const STATUS_LABELS = { all: 'All', draft: 'Draft', pending_approval: 'Pending', approved: 'Approved', sent: 'Sent', accepted: 'Accepted', declined: 'Declined', expired: 'Expired' };
+const STATUS_LABELS = { all: 'All', draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', declined: 'Rejected', expired: 'Expired' };
 const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
 
 export default function QuotesPage() {

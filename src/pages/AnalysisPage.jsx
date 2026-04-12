@@ -8,7 +8,9 @@ const STATUS_VIEW_FILTERS = {
   draft: ['draft'],
   awaiting_approval: ['pending_approval'],
   approved: ['approved'],
-  pipeline: ['draft', 'pending_approval', 'approved'],
+  sent: ['sent'],
+  accepted: ['accepted'],
+  pipeline: ['draft', 'pending_approval', 'approved', 'sent', 'accepted'],
   rejected: ['declined'],
 };
 
@@ -16,6 +18,8 @@ const STATUS_VIEW_LABELS = {
   draft: 'Draft',
   awaiting_approval: 'Awaiting Approval',
   approved: 'Approved',
+  sent: 'Sent to Client',
+  accepted: 'Accepted',
   pipeline: 'Pipeline',
   rejected: 'Rejected',
 };

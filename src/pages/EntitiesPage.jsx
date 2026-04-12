@@ -299,7 +299,7 @@ export default function EntitiesPage() {
                           'bg-gray-100 text-gray-600'
                         }`}
                       >
-                        {count} {status === 'pending_approval' ? 'Pending' : status.charAt(0).toUpperCase() + status.slice(1)}
+                        {count} {status === 'pending_approval' ? 'Awaiting Approval' : status === 'sent' ? 'Sent' : status === 'declined' ? 'Rejected' : status === 'accepted' ? 'Accepted' : status.charAt(0).toUpperCase() + status.slice(1)}
                       </button>
                     ))}
                   </div>

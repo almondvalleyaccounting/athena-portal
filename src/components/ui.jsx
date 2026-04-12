@@ -69,19 +69,31 @@ export function Section({ title, enabled, onToggle, children, annual }) {
   );
 }
 
+const STATUS_BADGE_LABELS = {
+  draft: 'Draft',
+  pending_approval: 'Awaiting Approval',
+  approved: 'Approved',
+  sent: 'Sent to Client',
+  accepted: 'Accepted',
+  declined: 'Rejected',
+  expired: 'Expired',
+  deleted: 'Deleted',
+};
+
 export function StatusBadge({ status }) {
   const colors = {
     draft: 'bg-gray-100 text-gray-600',
     pending_approval: 'bg-amber-100 text-amber-700',
-    approved: 'bg-green-100 text-green-700',
-    sent: 'bg-blue-100 text-blue-700',
-    accepted: 'bg-ocean-100 text-ocean-600',
+    approved: 'bg-blue-100 text-blue-700',
+    sent: 'bg-purple-100 text-purple-700',
+    accepted: 'bg-green-100 text-green-700',
     declined: 'bg-red-100 text-red-600',
     expired: 'bg-gray-100 text-gray-400',
+    deleted: 'bg-gray-100 text-gray-400',
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[status] || colors.draft}`}>
-      {(status || 'draft').replace('_', ' ')}
+      {STATUS_BADGE_LABELS[status] || (status || 'draft').replace('_', ' ')}
     </span>
   );
 }

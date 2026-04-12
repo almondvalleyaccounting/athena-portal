@@ -22,11 +22,11 @@ export const STATUS_TRANSITIONS = {
 
 export const STATUS_LABELS = {
   draft: 'Draft',
-  pending_approval: 'Pending Approval',
+  pending_approval: 'Awaiting Approval',
   approved: 'Approved',
-  sent: 'Sent',
+  sent: 'Sent to Client',
   accepted: 'Accepted',
-  declined: 'Declined',
+  declined: 'Rejected',
   expired: 'Expired',
   deleted: 'Deleted',
 };
