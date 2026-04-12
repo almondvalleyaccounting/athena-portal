@@ -189,9 +189,16 @@ export default function QuotesPage() {
     </button>
   );
 
+  // Map group_id to group name for display
+  const groupMap = useMemo(() => {
+    const m = {};
+    groups.forEach(g => { m[g.id] = g.name; });
+    return m;
+  }, [groups]);
+
   const gridCols = selectMode
-    ? '24px 2fr 1.5fr 1fr 1fr 1fr 1fr'
-    : '2fr 1.5fr 1fr 1fr 1fr 1fr';
+    ? '24px 2fr 1fr 1fr 1fr 1fr 1fr 1fr'
+    : '2fr 1fr 1fr 1fr 1fr 1fr 1fr';
 
   return (
     <div className="p-6 max-w-4xl">
@@ -349,6 +356,7 @@ export default function QuotesPage() {
             )}
             <SortHeader col="quote_ref">Quote Ref</SortHeader>
             <SortHeader col="relationship_group">Client</SortHeader>
+            <span className="text-xs text-gray-400">Group</span>
             <SortHeader col="status">Status</SortHeader>
             <SortHeader col="monthly_gross" className="justify-end">Monthly Direct Debit</SortHeader>
             <SortHeader col="annual_total" className="justify-end">Annual</SortHeader>
@@ -378,6 +386,18 @@ export default function QuotesPage() {
                 {q.group_id && <span className="ml-1 text-[9px] bg-ocean-50 text-ocean-600 px-1 rounded">group</span>}
               </span>
               <span className="text-gray-500 truncate">{q.relationship_group || '\u2014'}</span>
+              <span className="truncate">
+                {q.group_id && groupMap[q.group_id] ? (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigate('/manage/quotes/group/' + q.group_id); }}
+                    className="text-ocean-600 hover:text-ocean-700 hover:underline text-xs"
+                  >
+                    {groupMap[q.group_id]}
+                  </button>
+                ) : (
+                  <span className="text-gray-300">{'\u2014'}</span>
+                )}
+              </span>
               <span><StatusBadge status={q.status} /></span>
               <span className="text-right font-mono text-ocean-600">{fmt(q.monthly_gross)}</span>
               <span className="text-right font-mono text-gray-500">{fmt(q.annual_total)}</span>

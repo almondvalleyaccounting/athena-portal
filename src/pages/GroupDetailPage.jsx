@@ -1,8 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { fmt, StatusBadge, Btn, Inp } from '../components/ui';
+import { fmt, StatusBadge, Btn } from '../components/ui';
+import { STATUS_TRANSITIONS, STATUS_LABELS } from '../lib/quoteStatus';
+import { generateQuotePdf } from '../lib/quotePdf';
 import ConsolidationTable from '../components/ConsolidationTable';
+import SendQuoteModal from '../components/SendQuoteModal';
+
+// Determine the "worst" (earliest in workflow) status across quotes
+const STATUS_ORDER = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
+function groupStatus(quotes) {
+  if (!quotes.length) return 'draft';
+  const statuses = quotes.map(q => q.status);
+  // Return the earliest status in the workflow
+  for (const s of STATUS_ORDER) {
+    if (statuses.includes(s)) return s;
+  }
+  return statuses[0] || 'draft';
+}
 
 export default function GroupDetailPage({ profile, defaults }) {
   const { groupId } = useParams();
@@ -11,6 +26,9 @@ export default function GroupDetailPage({ profile, defaults }) {
   const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [discounts, setDiscounts] = useState({});
+  const [transitioning, setTransitioning] = useState(false);
+  const [error, setError] = useState('');
+  const [showSendModal, setShowSendModal] = useState(false);
 
   useEffect(() => { loadGroup(); }, [groupId]);
 
@@ -32,7 +50,7 @@ export default function GroupDetailPage({ profile, defaults }) {
 
   // Build entity data for consolidation table
   const entities = quotes.map(q => ({
-    id: q.entity_id || q.id, // use entity_id if available, else quote id
+    id: q.entity_id || q.id,
     name: q.relationship_group || q.quote_ref,
     quoteId: q.id,
     company_number: '',
@@ -68,15 +86,104 @@ export default function GroupDetailPage({ profile, defaults }) {
   const groupMonthlyVat = Math.round(groupMonthlyNet * 0.2 * 100) / 100;
   const groupMonthlyDD = Math.round((groupMonthlyNet + groupMonthlyVat) * 100) / 100;
 
+  // Status workflow for the group
+  const currentStatus = groupStatus(quotes);
+  const transitions = STATUS_TRANSITIONS[currentStatus] || [];
+
+  const handleGroupTransition = async (transition) => {
+    setTransitioning(true);
+    setError('');
+    try {
+      for (const q of quotes) {
+        const updates = { status: transition.next };
+        if (transition.next === 'approved') {
+          updates.approved_by = profile?.id;
+          updates.approved_at = new Date().toISOString();
+        }
+        if (transition.next === 'sent') {
+          updates.sent_at = new Date().toISOString();
+        }
+        if (transition.next === 'accepted') {
+          updates.accepted_at = new Date().toISOString();
+        }
+        const { error: err } = await supabase.from('quotes').update(updates).eq('id', q.id);
+        if (err) throw err;
+      }
+      await loadGroup();
+    } catch (e) {
+      setError(e.message || 'Failed to update status');
+    }
+    setTransitioning(false);
+  };
+
+  const handleExportPdf = async () => {
+    // Use the first quote as the base for PDF generation
+    if (quotes.length > 0) {
+      const allLineItems = quotes.flatMap(q => q.line_items || []);
+      await generateQuotePdf({ ...quotes[0], relationship_group: group.name, monthly_gross: groupMonthlyDD, annual_total: groupAnnual }, allLineItems);
+    }
+  };
+
+  // Build a synthetic quote object for SendQuoteModal
+  const syntheticQuote = quotes.length > 0 ? {
+    ...quotes[0],
+    relationship_group: group.name,
+    monthly_gross: groupMonthlyDD,
+    annual_total: groupAnnual,
+    quote_ref: quotes.map(q => q.quote_ref).join(', '),
+  } : null;
+  const allLineItems = quotes.flatMap(q => q.line_items || []);
+
   return (
     <div className="p-6 max-w-4xl">
       <div className="flex justify-between items-start mb-4">
         <div>
           <h2 className="text-lg font-bold text-ocean-700">{group.name}</h2>
-          <p className="text-xs text-gray-400">{quotes.length} entities \u00B7 Group quote</p>
+          <p className="text-xs text-gray-400">{quotes.length} entities · Group quote</p>
+          <div className="mt-1">
+            <StatusBadge status={currentStatus} />
+          </div>
         </div>
         <Btn onClick={() => navigate('/manage/quotes')} variant="ghost">Back</Btn>
       </div>
+
+      {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2 mb-3">{error}</div>}
+
+      {/* Status workflow actions */}
+      {transitions.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 bg-gray-50 rounded-lg p-2 border border-gray-200">
+          <span className="text-xs text-gray-500 mr-1">Actions:</span>
+          {transitions.map(t => (
+            <Btn
+              key={t.action}
+              onClick={() => handleGroupTransition(t)}
+              disabled={transitioning}
+              variant={t.variant || 'secondary'}
+              className="text-xs py-1 px-3"
+            >
+              {t.label} (All)
+            </Btn>
+          ))}
+          <Btn onClick={() => setShowSendModal(true)} variant="secondary" className="text-xs py-1 px-3">
+            Send to Client
+          </Btn>
+          <Btn onClick={handleExportPdf} variant="ghost" className="text-xs py-1 px-3">
+            Export PDF
+          </Btn>
+        </div>
+      )}
+
+      {/* If no transitions but still want send/export */}
+      {transitions.length === 0 && (
+        <div className="flex items-center gap-2 mb-4">
+          <Btn onClick={() => setShowSendModal(true)} variant="secondary" className="text-xs py-1 px-3">
+            Send to Client
+          </Btn>
+          <Btn onClick={handleExportPdf} variant="ghost" className="text-xs py-1 px-3">
+            Export PDF
+          </Btn>
+        </div>
+      )}
 
       {/* Consolidation Table */}
       <div className="mb-4">
@@ -100,7 +207,7 @@ export default function GroupDetailPage({ profile, defaults }) {
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-sm font-medium text-gray-700">{q.relationship_group || q.quote_ref}</p>
-                <p className="text-xs text-gray-400">{q.quote_ref} \u00B7 {new Date(q.created_at).toLocaleDateString('en-GB')}</p>
+                <p className="text-xs text-gray-400">{q.quote_ref} · {new Date(q.created_at).toLocaleDateString('en-GB')}</p>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-sm font-mono text-ocean-600">{fmt(q.monthly_gross)}/mo</span>
@@ -116,6 +223,17 @@ export default function GroupDetailPage({ profile, defaults }) {
         <Btn onClick={() => navigate('/manage/quotes/new?group=' + groupId)}>Add Entity</Btn>
         <Btn onClick={() => navigate('/manage/quotes')} variant="secondary">Back to Quotes</Btn>
       </div>
+
+      {/* Send Quote Modal */}
+      {showSendModal && syntheticQuote && (
+        <SendQuoteModal
+          quote={syntheticQuote}
+          lineItems={allLineItems}
+          profile={profile}
+          onSent={() => { setShowSendModal(false); loadGroup(); }}
+          onClose={() => setShowSendModal(false)}
+        />
+      )}
     </div>
   );
 }

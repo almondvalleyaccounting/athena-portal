@@ -142,7 +142,7 @@ export default function AddToGroupPanel({ quote, profile, onDone }) {
               <input
                 value={newGroupName}
                 onChange={e => setNewGroupName(e.target.value)}
-                placeholder="e.g. Clarkson Group"
+                placeholder="e.g. Acme Group"
                 className="w-full text-xs border border-gray-200 rounded px-2 py-1.5"
               />
             </div>
