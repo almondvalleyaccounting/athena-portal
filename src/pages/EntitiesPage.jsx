@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Btn, fmt } from '../components/ui';
 
+const PIPELINE_STATUSES = ['draft', 'pending_approval', 'approved', 'sent', 'accepted'];
+
 export default function EntitiesPage() {
   const navigate = useNavigate();
   const [entities, setEntities] = useState([]);
@@ -13,8 +15,8 @@ export default function EntitiesPage() {
   const [acting, setActing] = useState(false);
   const [groups, setGroups] = useState([]);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
+  const [deleting, setDeleting] = useState(null);
 
-  // Load billing groups for "Add to Group"
   useEffect(() => {
     supabase.from('billing_groups').select('*').order('name')
       .then(({ data }) => setGroups(data || []));
@@ -22,55 +24,61 @@ export default function EntitiesPage() {
 
   const [membershipMap, setMembershipMap] = useState({});
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: ents } = await supabase
-          .from('entities')
-          .select('*')
-          .order('name');
+  const loadEntities = async () => {
+    try {
+      const { data: ents } = await supabase
+        .from('entities')
+        .select('*')
+        .order('name');
 
-        if (ents?.length) {
-          const [{ data: quotes }, { data: members }] = await Promise.all([
-            supabase
-              .from('quotes')
-              .select('entity_id, status, monthly_gross, quote_ref, created_at')
-              .in('entity_id', ents.map(e => e.id))
-              .order('created_at', { ascending: false }),
-            supabase
-              .from('billing_group_members')
-              .select('entity_id, group_id, group:billing_groups(id, name)')
-              .in('entity_id', ents.map(e => e.id)),
-          ]);
+      if (ents?.length) {
+        const [{ data: quotes }, { data: members }] = await Promise.all([
+          supabase
+            .from('quotes')
+            .select('entity_id, status, monthly_gross, monthly_net, annual_total, quote_ref, created_at')
+            .in('entity_id', ents.map(e => e.id))
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('billing_group_members')
+            .select('entity_id, group_id, group:billing_groups(id, name)')
+            .in('entity_id', ents.map(e => e.id)),
+        ]);
 
-          // Build membership map: entity_id -> { groupId, groupName }
-          const mMap = {};
-          (members || []).forEach(m => {
-            if (m.group) mMap[m.entity_id] = { groupId: m.group.id, groupName: m.group.name };
+        const mMap = {};
+        (members || []).forEach(m => {
+          if (m.group) mMap[m.entity_id] = { groupId: m.group.id, groupName: m.group.name };
+        });
+        setMembershipMap(mMap);
+
+        const enriched = ents.map(e => {
+          const entityQuotes = (quotes || []).filter(q => q.entity_id === e.id);
+          const statusCounts = {};
+          entityQuotes.forEach(q => {
+            statusCounts[q.status] = (statusCounts[q.status] || 0) + 1;
           });
-          setMembershipMap(mMap);
+          // Pipeline total: sum of annual_total for all pipeline-status quotes
+          const pipelineQuotes = entityQuotes.filter(q => PIPELINE_STATUSES.includes(q.status));
+          const pipelineTotal = pipelineQuotes.reduce((s, q) => s + (parseFloat(q.annual_total) || 0), 0);
+          const hasPendingQuotes = pipelineQuotes.length > 0;
+          return { ...e, entityQuotes, statusCounts, pipelineTotal, hasPendingQuotes, pipelineCount: pipelineQuotes.length };
+        });
+        setEntities(enriched);
+      } else {
+        setEntities([]);
+      }
+    } catch {}
+    setLoading(false);
+  };
 
-          const enriched = ents.map(e => {
-            const entityQuotes = (quotes || []).filter(q => q.entity_id === e.id);
-            // Count quotes by status
-            const statusCounts = {};
-            entityQuotes.forEach(q => {
-              statusCounts[q.status] = (statusCounts[q.status] || 0) + 1;
-            });
-            return { ...e, entityQuotes, statusCounts };
-          });
-          setEntities(enriched);
-        } else {
-          setEntities([]);
-        }
-      } catch {}
-      setLoading(false);
-    })();
-  }, []);
+  useEffect(() => { loadEntities(); }, []);
 
   const filtered = entities.filter(
     (e) => !search || e.name?.toLowerCase().includes(search.toLowerCase()) || e.company_number?.includes(search)
   );
+
+  // Split into pending (has pipeline quotes) and other
+  const withPending = filtered.filter(e => e.hasPendingQuotes);
+  const withoutPending = filtered.filter(e => !e.hasPendingQuotes);
 
   const toggleSelect = (id, e) => {
     if (e) e.stopPropagation();
@@ -90,7 +98,6 @@ export default function EntitiesPage() {
 
   const selectedEntities = entities.filter(e => selected.has(e.id));
 
-  // Batch: create billing group from selected clients
   const handleCreateGroup = async () => {
     if (selected.size < 2) return;
     setActing(true);
@@ -104,20 +111,16 @@ export default function EntitiesPage() {
       for (const ent of selectedEntities) {
         await supabase.from('billing_group_members')
           .upsert({ entity_id: ent.id, group_id: group.id });
-
-        // Link any existing quotes for these entities to the group
         await supabase.from('quotes')
           .update({ group_id: group.id })
           .eq('entity_id', ent.id)
           .is('group_id', null);
       }
-
       navigate('/manage/quotes/group/' + group.id);
     } catch (e) { console.error(e); }
     setActing(false);
   };
 
-  // Batch: add selected clients to an existing group
   const handleAddToGroup = async (groupId) => {
     setActing(true);
     setShowGroupPicker(false);
@@ -135,34 +138,129 @@ export default function EntitiesPage() {
     setActing(false);
   };
 
-  // Batch: quote all selected clients together (new group + redirect to first quote)
   const handleQuoteAll = async () => {
     if (selected.size < 1) return;
     setActing(true);
     try {
       if (selected.size === 1) {
-        // Single client — just quote them
         navigate('/manage/quotes/new?entity=' + selectedEntities[0].id);
         return;
       }
-
-      // Multiple clients — create group, then redirect to quote first entity with group linked
       const groupName = selectedEntities.map(e => e.name).join(' + ');
       const { data: group } = await supabase
         .from('billing_groups')
         .insert({ name: groupName })
         .select().single();
-
       for (const ent of selectedEntities) {
         await supabase.from('billing_group_members')
           .upsert({ entity_id: ent.id, group_id: group.id });
       }
-
-      // Navigate to quote the first entity, with group linked
       navigate(`/manage/quotes/new?entity=${selectedEntities[0].id}&group=${group.id}`);
     } catch (e) { console.error(e); }
     setActing(false);
   };
+
+  const handleDeleteClient = async (entityId, entityName) => {
+    if (!confirm(`Delete client "${entityName}"? This will remove the client record. Quotes linked to this client will remain but lose their client link.`)) return;
+    setDeleting(entityId);
+    try {
+      // Remove from billing group memberships
+      await supabase.from('billing_group_members').delete().eq('entity_id', entityId);
+      // Delete entity
+      const { error } = await supabase.from('entities').delete().eq('id', entityId);
+      if (error) throw error;
+      await loadEntities();
+    } catch (err) {
+      alert('Failed to delete client: ' + (err.message || 'Unknown error'));
+    }
+    setDeleting(null);
+  };
+
+  const renderClientRow = (e) => (
+    <div
+      key={e.id}
+      onClick={() => selectMode ? toggleSelect(e.id) : null}
+      className={`flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-0 transition-all ${
+        selected.has(e.id) ? 'bg-ocean-50' : 'hover:bg-gray-50'
+      } ${selectMode ? 'cursor-pointer' : ''}`}
+    >
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        {selectMode && (
+          <input
+            type="checkbox"
+            checked={selected.has(e.id)}
+            onChange={(ev) => toggleSelect(e.id, ev)}
+            onClick={(ev) => ev.stopPropagation()}
+            className="w-3 h-3 accent-ocean-600 shrink-0"
+          />
+        )}
+        <div className="min-w-0" onClick={(ev) => { if (!selectMode) { ev.stopPropagation(); navigate('/manage/clients/' + e.id); } }}>
+          <p className={`text-sm font-medium text-gray-700 ${!selectMode ? 'hover:text-ocean-600 cursor-pointer' : ''}`}>{e.name}</p>
+          <p className="text-xs text-gray-400">
+            {e.type?.replace('_', ' ')}{e.company_number ? ` \u00B7 ${e.company_number}` : ''}
+            {e.status && e.status !== 'prospect' && ` \u00B7 ${e.status}`}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        {/* Pipeline total */}
+        {e.pipelineTotal > 0 && (
+          <span className="text-xs font-mono text-ocean-600 bg-ocean-50 border border-ocean-200 rounded px-2 py-0.5">
+            {fmt(e.pipelineTotal)}/yr
+          </span>
+        )}
+        {membershipMap[e.id] && (
+          <button
+            onClick={(ev) => { ev.stopPropagation(); navigate('/manage/quotes/group/' + membershipMap[e.id].groupId); }}
+            className="text-[10px] bg-ocean-50 text-ocean-600 border border-ocean-200 rounded px-1.5 py-0.5 hover:bg-ocean-100 truncate max-w-[120px]"
+            title={membershipMap[e.id].groupName}
+          >
+            {membershipMap[e.id].groupName}
+          </button>
+        )}
+        {e.statusCounts && Object.keys(e.statusCounts).length > 0 ? (
+          <div className="flex items-center gap-1 flex-wrap">
+            {Object.entries(e.statusCounts).map(([status, count]) => (
+              <button
+                key={status}
+                onClick={(ev) => { ev.stopPropagation(); navigate(`/manage/quotes?client=${encodeURIComponent(e.name)}&status=${status}`); }}
+                className={`text-[10px] rounded px-1.5 py-0.5 font-medium hover:opacity-80 ${
+                  status === 'draft' ? 'bg-gray-100 text-gray-600' :
+                  status === 'pending_approval' ? 'bg-amber-50 text-amber-700' :
+                  status === 'approved' ? 'bg-blue-50 text-blue-700' :
+                  status === 'sent' ? 'bg-purple-50 text-purple-700' :
+                  status === 'accepted' ? 'bg-green-50 text-green-700' :
+                  status === 'committed' ? 'bg-teal-50 text-teal-700' :
+                  status === 'declined' ? 'bg-red-50 text-red-600' :
+                  status === 'expired' ? 'bg-gray-50 text-gray-400' :
+                  'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {count} {status === 'pending_approval' ? 'Pending' : status === 'sent' ? 'Sent' : status === 'declined' ? 'Rejected' : status === 'accepted' ? 'Accepted' : status === 'committed' ? 'Committed' : status.charAt(0).toUpperCase() + status.slice(1)}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-gray-300">No quotes</span>
+        )}
+        {!selectMode && (
+          <div className="flex gap-1">
+            <Btn onClick={() => navigate('/manage/quotes/new?entity=' + e.id)} variant="secondary" className="text-xs py-1 px-3">
+              Quote
+            </Btn>
+            <button
+              onClick={(ev) => { ev.stopPropagation(); handleDeleteClient(e.id, e.name); }}
+              disabled={deleting === e.id}
+              className="text-xs text-gray-400 hover:text-red-600 px-1.5 py-1 rounded hover:bg-red-50 transition-colors"
+              title="Delete client"
+            >
+              {deleting === e.id ? '...' : '\u2715'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="p-6 max-w-3xl">
@@ -233,87 +331,52 @@ export default function EntitiesPage() {
           )}
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          {/* Header row in select mode */}
-          {selectMode && (
-            <div className="flex items-center px-4 py-2 border-b border-gray-200 bg-gray-50">
-              <input
-                type="checkbox"
-                checked={selected.size === filtered.length && filtered.length > 0}
-                onChange={selectAll}
-                className="w-3 h-3 accent-ocean-600 mr-3"
-              />
-              <span className="text-xs text-gray-400">Select all</span>
+        <div className="space-y-4">
+          {/* Clients with pending quotes */}
+          {withPending.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-ocean-700 uppercase tracking-wide mb-2">
+                Clients with Pending Quotes ({withPending.length})
+              </h3>
+              <div className="bg-white rounded-lg border-2 border-ocean-200 overflow-hidden">
+                {selectMode && (
+                  <div className="flex items-center px-4 py-2 border-b border-gray-200 bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={selected.size === filtered.length && filtered.length > 0}
+                      onChange={selectAll}
+                      className="w-3 h-3 accent-ocean-600 mr-3"
+                    />
+                    <span className="text-xs text-gray-400">Select all</span>
+                  </div>
+                )}
+                {withPending.map(renderClientRow)}
+              </div>
             </div>
           )}
-          {filtered.map((e) => (
-            <div
-              key={e.id}
-              onClick={() => selectMode ? toggleSelect(e.id) : null}
-              className={`flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-0 transition-all ${
-                selected.has(e.id) ? 'bg-ocean-50' : 'hover:bg-gray-50'
-              } ${selectMode ? 'cursor-pointer' : ''}`}
-            >
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                {selectMode && (
-                  <input
-                    type="checkbox"
-                    checked={selected.has(e.id)}
-                    onChange={(ev) => toggleSelect(e.id, ev)}
-                    onClick={(ev) => ev.stopPropagation()}
-                    className="w-3 h-3 accent-ocean-600 shrink-0"
-                  />
-                )}
-                <div className="min-w-0" onClick={(ev) => { if (!selectMode) { ev.stopPropagation(); navigate('/manage/clients/' + e.id); } }}>
-                  <p className={`text-sm font-medium text-gray-700 ${!selectMode ? 'hover:text-ocean-600 cursor-pointer' : ''}`}>{e.name}</p>
-                  <p className="text-xs text-gray-400">
-                    {e.type?.replace('_', ' ')}{e.company_number ? ` \u00B7 ${e.company_number}` : ''}
-                    {e.status && e.status !== 'prospect' && ` \u00B7 ${e.status}`}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                {membershipMap[e.id] && (
-                  <button
-                    onClick={(ev) => { ev.stopPropagation(); navigate('/manage/quotes/group/' + membershipMap[e.id].groupId); }}
-                    className="text-[10px] bg-ocean-50 text-ocean-600 border border-ocean-200 rounded px-1.5 py-0.5 hover:bg-ocean-100 truncate max-w-[120px]"
-                    title={membershipMap[e.id].groupName}
-                  >
-                    {membershipMap[e.id].groupName}
-                  </button>
-                )}
-                {e.statusCounts && Object.keys(e.statusCounts).length > 0 ? (
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {Object.entries(e.statusCounts).map(([status, count]) => (
-                      <button
-                        key={status}
-                        onClick={(ev) => { ev.stopPropagation(); navigate(`/manage/quotes?client=${encodeURIComponent(e.name)}&status=${status}`); }}
-                        className={`text-[10px] rounded px-1.5 py-0.5 font-medium hover:opacity-80 ${
-                          status === 'draft' ? 'bg-gray-100 text-gray-600' :
-                          status === 'pending_approval' ? 'bg-amber-50 text-amber-700' :
-                          status === 'approved' ? 'bg-blue-50 text-blue-700' :
-                          status === 'sent' ? 'bg-purple-50 text-purple-700' :
-                          status === 'accepted' ? 'bg-green-50 text-green-700' :
-                          status === 'declined' ? 'bg-red-50 text-red-600' :
-                          status === 'expired' ? 'bg-gray-50 text-gray-400' :
-                          'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {count} {status === 'pending_approval' ? 'Awaiting Approval' : status === 'sent' ? 'Sent' : status === 'declined' ? 'Rejected' : status === 'accepted' ? 'Accepted' : status.charAt(0).toUpperCase() + status.slice(1)}
-                      </button>
-                    ))}
+
+          {/* All other clients */}
+          {withoutPending.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                {withPending.length > 0 ? 'Other Clients' : 'All Clients'} ({withoutPending.length})
+              </h3>
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                {selectMode && !withPending.length && (
+                  <div className="flex items-center px-4 py-2 border-b border-gray-200 bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={selected.size === filtered.length && filtered.length > 0}
+                      onChange={selectAll}
+                      className="w-3 h-3 accent-ocean-600 mr-3"
+                    />
+                    <span className="text-xs text-gray-400">Select all</span>
                   </div>
-                ) : (
-                  <span className="text-xs text-gray-300">No quotes</span>
                 )}
-                {!selectMode && (
-                  <Btn onClick={() => navigate('/manage/quotes/new?entity=' + e.id)} variant="secondary" className="text-xs py-1 px-3">
-                    Quote
-                  </Btn>
-                )}
+                {withoutPending.map(renderClientRow)}
               </div>
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>

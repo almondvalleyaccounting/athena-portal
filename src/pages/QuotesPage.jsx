@@ -15,7 +15,7 @@ const STATUS_CARDS = [
   { key: 'approved', label: 'Approved', statuses: ['approved'] },
   { key: 'sent', label: 'Sent to Client', statuses: ['sent'] },
   { key: 'accepted', label: 'Accepted', statuses: ['accepted'] },
-  { key: 'pipeline', label: 'Pipeline', statuses: PIPELINE_STATUSES },
+  { key: 'pipeline', label: 'Total Pipeline', statuses: PIPELINE_STATUSES },
   { key: 'declined', label: 'Rejected', statuses: ['declined'] },
   { key: 'committed', label: 'Committed', statuses: ['committed'] },
 ];
@@ -339,15 +339,19 @@ export default function QuotesPage() {
               key={card.key}
               onClick={() => setActiveCard(card.key)}
               className={`text-left rounded-lg border-2 px-3 py-2.5 transition-all ${
-                isActive
-                  ? 'border-ocean-500 bg-ocean-50'
-                  : 'border-gray-200 bg-white hover:border-ocean-200'
-              } ${isPipeline ? 'col-span-2' : ''}`}
+                isPipeline
+                  ? isActive
+                    ? 'border-ocean-500 bg-ocean-700 text-white'
+                    : 'border-ocean-400 bg-ocean-600 text-white hover:border-ocean-500'
+                  : isActive
+                    ? 'border-ocean-500 bg-ocean-50'
+                    : 'border-gray-200 bg-white hover:border-ocean-200'
+              }`}
             >
-              <div className="text-[11px] text-gray-500 font-medium mb-1">{card.label}</div>
+              <div className={`text-[11px] font-medium mb-1 ${isPipeline ? 'text-ocean-200' : 'text-gray-500'}`}>{card.label}</div>
               <div className="flex items-baseline justify-between gap-2">
-                <span className={`text-lg font-bold ${isActive ? 'text-ocean-700' : 'text-gray-700'}`}>{d.count}</span>
-                <span className={`text-xs font-mono ${isActive ? 'text-ocean-600' : 'text-gray-400'}`}>{fmt(d.value)}</span>
+                <span className={`text-lg font-bold ${isPipeline ? 'text-white' : isActive ? 'text-ocean-700' : 'text-gray-700'}`}>{d.count}</span>
+                <span className={`text-xs font-mono ${isPipeline ? 'text-ocean-200' : isActive ? 'text-ocean-600' : 'text-gray-400'}`}>{fmt(d.value)}</span>
               </div>
             </button>
           );
