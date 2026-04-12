@@ -78,6 +78,7 @@ const STATUS_BADGE_LABELS = {
   declined: 'Rejected',
   expired: 'Expired',
   deleted: 'Deleted',
+  committed: 'Committed',
 };
 
 export function StatusBadge({ status }) {
@@ -90,6 +91,7 @@ export function StatusBadge({ status }) {
     declined: 'bg-red-100 text-red-600',
     expired: 'bg-gray-100 text-gray-400',
     deleted: 'bg-gray-100 text-gray-400',
+    committed: 'bg-teal-100 text-teal-700',
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[status] || colors.draft}`}>

@@ -7,6 +7,7 @@ import { generateQuotePdf } from '../lib/quotePdf';
 import ConsolidationTable from '../components/ConsolidationTable';
 import AddToGroupPanel from '../components/AddToGroupPanel';
 import SendQuoteModal from '../components/SendQuoteModal';
+import CommitToLiveModal from '../components/CommitToLiveModal';
 
 export default function QuoteDetailPage({ profile }) {
   const { id } = useParams();
@@ -19,6 +20,7 @@ export default function QuoteDetailPage({ profile }) {
   const [transitioning, setTransitioning] = useState(false);
   const [groupData, setGroupData] = useState(null);
   const [showSendModal, setShowSendModal] = useState(false);
+  const [showCommitModal, setShowCommitModal] = useState(false);
   const [showExtend, setShowExtend] = useState(false);
   const [extendDate, setExtendDate] = useState('');
   const [extendSaving, setExtendSaving] = useState(false);
@@ -189,6 +191,9 @@ export default function QuoteDetailPage({ profile }) {
         <Btn onClick={() => generateQuotePdf(quote, lineItems)} variant="secondary" className="min-w-[120px]">Export PDF</Btn>
         {(quote.status === 'approved' || quote.status === 'sent') && profile?.can_approve_quotes && (
           <Btn onClick={() => setShowSendModal(true)} variant="primary" className="min-w-[120px]">Send to Client</Btn>
+        )}
+        {quote.status === 'accepted' && !quote.committed_at && profile?.can_approve_quotes && (
+          <Btn onClick={() => setShowCommitModal(true)} variant="primary" className="min-w-[120px]">Commit to Live</Btn>
         )}
         {(quote.status === 'draft' || quote.status === 'pending_approval') && profile?.can_edit_quotes && (
           <Btn onClick={handleDelete} variant="danger" disabled={transitioning} className="min-w-[120px]">Delete</Btn>
@@ -399,6 +404,17 @@ export default function QuoteDetailPage({ profile }) {
           profile={profile}
           onSent={() => { setShowSendModal(false); loadQuote(); }}
           onClose={() => setShowSendModal(false)}
+        />
+      )}
+
+      {/* Commit to Live Modal */}
+      {showCommitModal && (
+        <CommitToLiveModal
+          quote={quote}
+          lineItems={lineItems}
+          profile={profile}
+          onCommitted={() => { setShowCommitModal(false); loadQuote(); }}
+          onClose={() => setShowCommitModal(false)}
         />
       )}
     </div>

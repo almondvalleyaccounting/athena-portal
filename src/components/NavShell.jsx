@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { path: '/manage/clients', label: 'Clients', icon: '\u25C7' },
   { path: '/manage/quotes', label: 'Quotes', icon: '\u25A4' },
   { path: '/manage/groups', label: 'Groups', icon: '\u25A6' },
+  { path: '/manage/billing', label: 'Billing', icon: '\u00A3' },
   { path: '/manage/quotes/new', label: 'New Quote', icon: '+' },
 ];
 
@@ -24,6 +25,9 @@ export default function NavShell({ profile, onLogout, children }) {
     }
     if (item.path === '/manage/groups') {
       return location.pathname === '/manage/groups';
+    }
+    if (item.path === '/manage/billing') {
+      return location.pathname === '/manage/billing';
     }
     if (item.path === '/manage/quotes/new') {
       return location.pathname === '/manage/quotes/new';

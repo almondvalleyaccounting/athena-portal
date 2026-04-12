@@ -16,6 +16,7 @@ import GroupsPage from './pages/GroupsPage';
 import GroupQuoteInputPage from './pages/GroupQuoteInputPage';
 import ClientDetailPage from './pages/ClientDetailPage';
 import AnalysisPage from './pages/AnalysisPage';
+import BillingPage from './pages/BillingPage';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -164,6 +165,7 @@ export default function App() {
           <PricingDefaultsPage defaults={defaults} profile={profile} onSaved={reloadDefaults} />
         } />
         <Route path="/manage/quotes/analysis" element={<AnalysisPage profile={profile} />} />
+        <Route path="/manage/billing" element={<BillingPage profile={profile} />} />
         <Route path="/manage/groups" element={<GroupsPage profile={profile} />} />
         <Route path="/manage/quotes/group/:groupId/quote" element={
           <GroupQuoteInputPage defaults={defaults} profile={profile} />

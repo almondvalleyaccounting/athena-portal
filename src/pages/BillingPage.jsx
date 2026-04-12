@@ -1,0 +1,536 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from '../lib/supabase';
+import { fmt, Btn, StatusBadge } from '../components/ui';
+import { exportQboCsv, downloadCsv, generateQboImportCsv } from '../lib/qboExport';
+
+export default function BillingPage({ profile }) {
+  const [billing, setBilling] = useState([]);
+  const [quotes, setQuotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importSuccess, setImportSuccess] = useState('');
+  const fileRef = useRef(null);
+
+  // Manual entry form state
+  const [newEntry, setNewEntry] = useState({
+    entity_name: '',
+    entity_id: '',
+    billing_type: 'recurring',
+    monthly_net: 0,
+    monthly_vat: 0,
+    monthly_gross: 0,
+    annual_total: 0,
+    services: [],
+  });
+
+  // Entities lookup for manual entry
+  const [entities, setEntities] = useState([]);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // Load live_billing with entity join
+      const { data: billingData } = await supabase
+        .from('live_billing')
+        .select('*, entity:entities(id, name, company_number)')
+        .order('committed_at', { ascending: false });
+
+      // Load accepted quotes for comparison
+      const { data: acceptedQuotes } = await supabase
+        .from('quotes')
+        .select('id, entity_id, primary_entity_id, relationship_group, monthly_gross, monthly_net, annual_total, status, accepted_at, committed_at')
+        .in('status', ['accepted', 'committed'])
+        .order('accepted_at', { ascending: false });
+
+      // Load entities for manual entry
+      const { data: ents } = await supabase
+        .from('entities')
+        .select('id, name')
+        .order('name');
+
+      setBilling(billingData || []);
+      setQuotes(acceptedQuotes || []);
+      setEntities(ents || []);
+    } catch (e) {
+      console.error('Failed to load billing data:', e);
+    }
+    setLoading(false);
+  };
+
+  // -- Summary calculations --
+  const activeBilling = billing.filter((b) => b.status === 'active');
+  const totalMonthlyGross = activeBilling.reduce((s, b) => s + (Number(b.monthly_gross) || 0), 0);
+  const totalAnnual = activeBilling.reduce((s, b) => s + (Number(b.annual_total) || 0), 0);
+  const clientsWithBilling = new Set(activeBilling.map((b) => b.entity_id)).size;
+  const allEntityIds = new Set(entities.map((e) => e.id));
+  const billedEntityIds = new Set(activeBilling.map((b) => b.entity_id));
+  const clientsWithout = allEntityIds.size - billedEntityIds.size;
+
+  // -- Filtered billing --
+  const filtered = billing.filter((b) => {
+    if (!search) return true;
+    const name = b.entity?.name || '';
+    return name.toLowerCase().includes(search.toLowerCase());
+  });
+
+  // -- Comparison data: build map of entity_id -> latest accepted quote --
+  const latestQuoteByEntity = {};
+  for (const q of quotes) {
+    const eid = q.entity_id || q.primary_entity_id;
+    if (!eid) continue;
+    if (!latestQuoteByEntity[eid] || new Date(q.accepted_at) > new Date(latestQuoteByEntity[eid].accepted_at)) {
+      latestQuoteByEntity[eid] = q;
+    }
+  }
+
+  // -- CSV Import --
+  const handleCsvImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportError('');
+    setImportSuccess('');
+
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row');
+
+      const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, ''));
+      const custIdx = headers.findIndex((h) => /customer/i.test(h));
+      const svcIdx = headers.findIndex((h) => /service/i.test(h));
+      const descIdx = headers.findIndex((h) => /description/i.test(h));
+      const annualIdx = headers.findIndex((h) => /annual/i.test(h));
+      const monthlyIdx = headers.findIndex((h) => /monthly/i.test(h));
+
+      if (custIdx < 0) throw new Error('CSV must have a "Customer" column');
+
+      // Group rows by customer
+      const byCustomer = {};
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCsvLine(lines[i]);
+        const customer = cols[custIdx]?.trim();
+        if (!customer) continue;
+        if (!byCustomer[customer]) byCustomer[customer] = [];
+        byCustomer[customer].push({
+          service: cols[svcIdx]?.trim() || '',
+          description: cols[descIdx >= 0 ? descIdx : svcIdx]?.trim() || '',
+          annual_amount: parseFloat(cols[annualIdx] || '0') || 0,
+          monthly_amount: parseFloat(cols[monthlyIdx] || '0') || 0,
+        });
+      }
+
+      let created = 0;
+      for (const [customer, items] of Object.entries(byCustomer)) {
+        // Try to find matching entity
+        const { data: matchedEntity } = await supabase
+          .from('entities')
+          .select('id')
+          .ilike('name', customer)
+          .limit(1)
+          .single();
+
+        const entityId = matchedEntity?.id || null;
+        const services = items.map((it) => ({
+          service_id: it.service,
+          description: it.description || it.service,
+          annual_amount: it.annual_amount,
+          monthly_amount: it.monthly_amount,
+        }));
+
+        const annualTotal = items.reduce((s, it) => s + it.annual_amount, 0);
+        const monthlyNet = items.reduce((s, it) => s + it.monthly_amount, 0);
+        const monthlyVat = monthlyNet * 0.2;
+        const monthlyGross = monthlyNet + monthlyVat;
+
+        // Insert live_billing record
+        const { error: bErr } = await supabase.from('live_billing').insert({
+          entity_id: entityId,
+          billing_type: 'recurring',
+          monthly_net: monthlyNet,
+          monthly_vat: monthlyVat,
+          monthly_gross: monthlyGross,
+          annual_total: annualTotal,
+          services,
+          status: 'active',
+          committed_at: new Date().toISOString(),
+          committed_by: profile.id,
+          source: 'csv_import',
+        });
+
+        if (bErr) {
+          console.error('Error inserting billing for', customer, bErr);
+          continue;
+        }
+
+        // Insert entity_fees if we have entity match
+        if (entityId) {
+          for (const svc of services) {
+            await supabase.from('entity_fees').upsert(
+              {
+                entity_id: entityId,
+                service_id: svc.service_id || svc.description,
+                description: svc.description,
+                annual_amount: svc.annual_amount,
+                monthly_amount: svc.monthly_amount,
+                source: 'csv_import',
+              },
+              { onConflict: 'entity_id,service_id' }
+            );
+          }
+        }
+        created++;
+      }
+
+      setImportSuccess(`Imported ${created} billing records from ${Object.keys(byCustomer).length} customers.`);
+      loadData();
+    } catch (err) {
+      setImportError(err.message || 'CSV import failed');
+    }
+    setImporting(false);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  // -- Manual Entry --
+  const handleAddManual = async () => {
+    if (!newEntry.entity_id) return;
+    try {
+      const { error: bErr } = await supabase.from('live_billing').insert({
+        entity_id: newEntry.entity_id,
+        billing_type: newEntry.billing_type,
+        monthly_net: Number(newEntry.monthly_net) || 0,
+        monthly_vat: Number(newEntry.monthly_vat) || 0,
+        monthly_gross: Number(newEntry.monthly_gross) || 0,
+        annual_total: Number(newEntry.annual_total) || 0,
+        services: newEntry.services,
+        status: 'active',
+        committed_at: new Date().toISOString(),
+        committed_by: profile.id,
+        source: 'manual',
+      });
+      if (bErr) throw bErr;
+
+      await supabase.from('audit_log').insert({
+        user_id: profile.id,
+        action: 'manual_billing_entry',
+        entity_type: 'live_billing',
+        entity_id: newEntry.entity_id,
+        detail: { monthly_gross: Number(newEntry.monthly_gross), annual_total: Number(newEntry.annual_total) },
+      });
+
+      setShowAddForm(false);
+      setNewEntry({ entity_name: '', entity_id: '', billing_type: 'recurring', monthly_net: 0, monthly_vat: 0, monthly_gross: 0, annual_total: 0, services: [] });
+      loadData();
+    } catch (err) {
+      setImportError(err.message || 'Failed to add manual entry');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <p className="text-sm text-gray-400">Loading billing data...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 max-w-5xl">
+      {/* Header */}
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <h2 className="text-lg font-bold text-ocean-700">Live Billing</h2>
+          <p className="text-xs text-gray-400">Manage live billing records and compare against quotes</p>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        <SummaryCard label="Total Monthly (Gross)" value={fmt(totalMonthlyGross)} color="ocean" />
+        <SummaryCard label="Total Annual" value={fmt(totalAnnual)} color="ocean" />
+        <SummaryCard label="Clients with Billing" value={clientsWithBilling} color="green" />
+        <SummaryCard label="Clients Without Billing" value={clientsWithout < 0 ? 0 : clientsWithout} color="amber" />
+      </div>
+
+      {/* Search + Actions */}
+      <div className="flex items-center gap-3 mb-4">
+        <input
+          type="text"
+          placeholder="Search by client name..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-2 w-64 focus:outline-none focus:ring-1 focus:ring-ocean-300"
+        />
+        <Btn onClick={() => setShowAddForm(!showAddForm)} variant="secondary">
+          {showAddForm ? 'Cancel' : 'Add Manual Entry'}
+        </Btn>
+        <label className="cursor-pointer">
+          <Btn onClick={() => fileRef.current?.click()} variant="secondary" disabled={importing}>
+            {importing ? 'Importing...' : 'Import from CSV'}
+          </Btn>
+          <input ref={fileRef} type="file" accept=".csv" onChange={handleCsvImport} className="hidden" />
+        </label>
+      </div>
+
+      {importError && <div className="text-xs text-red-600 bg-red-50 rounded p-2 mb-3">{importError}</div>}
+      {importSuccess && <div className="text-xs text-green-600 bg-green-50 rounded p-2 mb-3">{importSuccess}</div>}
+
+      {/* Manual Entry Form */}
+      {showAddForm && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+          <h3 className="text-sm font-semibold text-ocean-700 mb-3">Add Manual Billing Entry</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Client</label>
+              <select
+                value={newEntry.entity_id}
+                onChange={(e) => setNewEntry({ ...newEntry, entity_id: e.target.value })}
+                className="w-full text-sm border border-gray-200 rounded px-2 py-1.5"
+              >
+                <option value="">Select client...</option>
+                {entities.map((ent) => (
+                  <option key={ent.id} value={ent.id}>{ent.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Billing Type</label>
+              <select
+                value={newEntry.billing_type}
+                onChange={(e) => setNewEntry({ ...newEntry, billing_type: e.target.value })}
+                className="w-full text-sm border border-gray-200 rounded px-2 py-1.5"
+              >
+                <option value="recurring">Recurring</option>
+                <option value="one_off">One-Off</option>
+                <option value="ad_hoc">Ad Hoc</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Monthly Net</label>
+              <input
+                type="number"
+                step="0.01"
+                value={newEntry.monthly_net}
+                onChange={(e) => {
+                  const net = parseFloat(e.target.value) || 0;
+                  const vat = net * 0.2;
+                  setNewEntry({ ...newEntry, monthly_net: net, monthly_vat: vat, monthly_gross: net + vat, annual_total: net * 12 });
+                }}
+                className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Monthly Gross</label>
+              <input
+                type="number"
+                step="0.01"
+                value={newEntry.monthly_gross}
+                disabled
+                className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 font-mono bg-gray-50"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Annual Total</label>
+              <input
+                type="number"
+                step="0.01"
+                value={newEntry.annual_total}
+                disabled
+                className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 font-mono bg-gray-50"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-3">
+            <Btn onClick={() => setShowAddForm(false)} variant="ghost">Cancel</Btn>
+            <Btn onClick={handleAddManual} variant="primary" disabled={!newEntry.entity_id}>Add Entry</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* Billing Table */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
+        <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr' }}>
+          <span>Client</span>
+          <span className="text-right">Type</span>
+          <span className="text-right">Monthly Net</span>
+          <span className="text-right">Monthly Gross</span>
+          <span className="text-right">Annual</span>
+          <span className="text-right">Status</span>
+          <span className="text-right">QBO Sync</span>
+        </div>
+        {filtered.length === 0 ? (
+          <div className="px-4 py-6 text-center text-xs text-gray-400">
+            No billing records found.
+          </div>
+        ) : (
+          filtered.map((b) => {
+            const isExpanded = expandedId === b.id;
+            const services = Array.isArray(b.services) ? b.services : [];
+            return (
+              <div key={b.id}>
+                <div
+                  className={`grid text-xs px-4 py-2.5 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-ocean-50' : ''}`}
+                  style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr' }}
+                  onClick={() => setExpandedId(isExpanded ? null : b.id)}
+                >
+                  <span className="text-gray-700 font-medium">{b.entity?.name || 'Unknown'}</span>
+                  <span className="text-right text-gray-500 capitalize">{(b.billing_type || '').replace('_', ' ')}</span>
+                  <span className="text-right font-mono text-gray-700">{fmt(b.monthly_net)}</span>
+                  <span className="text-right font-mono text-ocean-700 font-semibold">{fmt(b.monthly_gross)}</span>
+                  <span className="text-right font-mono text-gray-700">{fmt(b.annual_total)}</span>
+                  <span className="text-right">
+                    <span className={`inline-block px-1.5 py-0.5 rounded-full text-xs font-medium ${b.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {b.status || 'active'}
+                    </span>
+                  </span>
+                  <span className="text-right text-gray-400">
+                    {b.last_qbo_sync ? new Date(b.last_qbo_sync).toLocaleDateString('en-GB') : '--'}
+                  </span>
+                </div>
+                {/* Expanded Service Breakdown */}
+                {isExpanded && (
+                  <div className="px-6 py-3 bg-gray-50 border-b border-gray-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase">Service Breakdown</h4>
+                      <Btn
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const qboItems = services.map((s) => ({
+                            service_id: s.service_id,
+                            description: s.description,
+                            qty: 1,
+                            rate: s.monthly_amount,
+                            amount: s.monthly_amount,
+                          }));
+                          exportQboCsv(b.entity?.name || 'Client', qboItems, true);
+                        }}
+                        variant="ghost"
+                        className="text-xs"
+                      >
+                        Export QBO CSV
+                      </Btn>
+                    </div>
+                    {services.length > 0 ? (
+                      <div className="space-y-1">
+                        {services.map((s, idx) => (
+                          <div key={idx} className="flex justify-between text-xs py-1 border-b border-gray-100 last:border-0">
+                            <span className="text-gray-600">{s.description || s.service_id}</span>
+                            <span className="font-mono text-gray-700">
+                              {fmt(s.annual_amount)}/yr ({fmt(s.monthly_amount)}/mo)
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400">No service breakdown available.</p>
+                    )}
+                    {b.quote_id && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        Source Quote: <span className="text-ocean-600">{b.quote_id.slice(0, 8)}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Comparison Section */}
+      <div className="mb-6">
+        <h3 className="text-sm font-bold text-ocean-700 mb-3">Live vs Quote Comparison</h3>
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
+            <span>Client</span>
+            <span className="text-right">Live Monthly</span>
+            <span className="text-right">Quote Monthly</span>
+            <span className="text-right">Delta</span>
+          </div>
+          {activeBilling.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-gray-400">
+              No active billing records to compare.
+            </div>
+          ) : (
+            activeBilling.map((b) => {
+              const latestQuote = latestQuoteByEntity[b.entity_id];
+              const liveGross = Number(b.monthly_gross) || 0;
+              const quoteGross = latestQuote ? Number(latestQuote.monthly_gross) || 0 : null;
+              const delta = quoteGross != null ? liveGross - quoteGross : null;
+              let deltaColor = 'text-gray-400';
+              let deltaBg = '';
+              if (delta != null && delta > 0.5) {
+                deltaColor = 'text-green-700';
+                deltaBg = 'bg-green-50';
+              } else if (delta != null && delta < -0.5) {
+                deltaColor = 'text-red-700';
+                deltaBg = 'bg-red-50';
+              }
+              return (
+                <div key={b.id} className={`grid text-xs px-4 py-2.5 border-b border-gray-50 ${deltaBg}`} style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
+                  <span className="text-gray-700 font-medium">{b.entity?.name || 'Unknown'}</span>
+                  <span className="text-right font-mono text-ocean-700 font-semibold">{fmt(liveGross)}</span>
+                  <span className="text-right font-mono text-gray-600">
+                    {quoteGross != null ? fmt(quoteGross) : <span className="text-gray-300">No quote</span>}
+                  </span>
+                  <span className={`text-right font-mono font-semibold ${deltaColor}`}>
+                    {delta != null ? (delta >= 0 ? '+' : '') + fmt(delta) : '--'}
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -- Helper Components --
+
+function SummaryCard({ label, value, color }) {
+  const colors = {
+    ocean: 'bg-ocean-50 text-ocean-700 border-ocean-200',
+    green: 'bg-green-50 text-green-700 border-green-200',
+    amber: 'bg-amber-50 text-amber-700 border-amber-200',
+  };
+  return (
+    <div className={`rounded-lg border p-3 ${colors[color] || colors.ocean}`}>
+      <p className="text-xs opacity-70 mb-1">{label}</p>
+      <p className="text-lg font-bold font-mono">{value}</p>
+    </div>
+  );
+}
+
+// Simple CSV line parser handling quoted fields
+function parseCsvLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
