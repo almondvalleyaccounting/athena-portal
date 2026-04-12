@@ -372,31 +372,68 @@ export default function ReportsPage() {
           })}
         </div>
 
-        {/* Run button */}
-        <button
-          onClick={handleRun}
-          disabled={!canRun}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            width: '100%',
-            backgroundColor: canRun ? '#38bdf8' : '#e5e7eb',
-            color: canRun ? '#ffffff' : '#94a3b8',
-            fontFamily: "'Outfit', sans-serif",
-            fontSize: '14px',
-            fontWeight: 600,
-            borderRadius: '10px',
-            padding: '14px',
-            border: 'none',
-            cursor: canRun ? 'pointer' : 'not-allowed',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <Play size={16} />
-          {running ? 'Running...' : `Run Reports${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
-        </button>
+        {/* Run button / running indicator */}
+        {running ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              width: '100%',
+              padding: '14px',
+              borderRadius: '10px',
+              backgroundColor: '#f0f9ff',
+              border: '1px solid #bae6fd',
+            }}
+          >
+            <span
+              style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                backgroundColor: '#38bdf8',
+                animation: 'pulse-dot 1.4s ease-in-out infinite',
+              }}
+            />
+            <span
+              style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: '14px',
+                fontWeight: 600,
+                color: '#0369a1',
+              }}
+            >
+              Running reports\u2026
+            </span>
+            <style>{`@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }`}</style>
+          </div>
+        ) : (
+          <button
+            onClick={handleRun}
+            disabled={!canRun}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              width: '100%',
+              backgroundColor: canRun ? '#38bdf8' : '#e5e7eb',
+              color: canRun ? '#ffffff' : '#94a3b8',
+              fontFamily: "'Outfit', sans-serif",
+              fontSize: '14px',
+              fontWeight: 600,
+              borderRadius: '10px',
+              padding: '14px',
+              border: 'none',
+              cursor: canRun ? 'pointer' : 'not-allowed',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <Play size={16} />
+            Run Reports
+          </button>
+        )}
       </div>
 
       {/* ── Run log ── */}
