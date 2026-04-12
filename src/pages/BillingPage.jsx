@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, Btn, StatusBadge } from '../components/ui';
 import { exportQboCsv, downloadCsv, generateQboImportCsv } from '../lib/qboExport';
+import { pushToQbo } from '../lib/qboApi';
+import QboConnectionPanel from '../components/QboConnectionPanel';
 
 export default function BillingPage({ profile }) {
   const [billing, setBilling] = useState([]);
@@ -13,7 +16,11 @@ export default function BillingPage({ profile }) {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
+  const [pushingId, setPushingId] = useState(null);
+  const [syncLog, setSyncLog] = useState([]);
+  const [showSyncLog, setShowSyncLog] = useState(false);
   const fileRef = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Manual entry form state
   const [newEntry, setNewEntry] = useState({
@@ -32,6 +39,19 @@ export default function BillingPage({ profile }) {
 
   useEffect(() => {
     loadData();
+    // Detect QBO connection callback
+    const qboParam = searchParams.get('qbo');
+    if (qboParam === 'connected') {
+      setImportSuccess('Successfully connected to QuickBooks Online!');
+      searchParams.delete('qbo');
+      setSearchParams(searchParams, { replace: true });
+    } else if (qboParam === 'error') {
+      const msg = searchParams.get('message') || 'QBO connection failed';
+      setImportError(`QBO connection error: ${msg}`);
+      searchParams.delete('qbo');
+      searchParams.delete('message');
+      setSearchParams(searchParams, { replace: true });
+    }
   }, []);
 
   const loadData = async () => {
@@ -56,13 +76,39 @@ export default function BillingPage({ profile }) {
         .select('id, name')
         .order('name');
 
+      // Load QBO sync log
+      const { data: logData } = await supabase
+        .from('qbo_sync_log')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20);
+
       setBilling(billingData || []);
       setQuotes(acceptedQuotes || []);
       setEntities(ents || []);
+      setSyncLog(logData || []);
     } catch (e) {
       console.error('Failed to load billing data:', e);
     }
     setLoading(false);
+  };
+
+  // Push a single billing record to QBO
+  const handlePushToQbo = async (billingId) => {
+    setPushingId(billingId);
+    setImportError('');
+    try {
+      const result = await pushToQbo(billingId, profile.id);
+      if (result?.success) {
+        setImportSuccess('Successfully pushed to QuickBooks Online!');
+        loadData();
+      } else {
+        setImportError(result?.error || 'Push to QBO failed');
+      }
+    } catch (err) {
+      setImportError(err.message || 'Push to QBO failed');
+    }
+    setPushingId(null);
   };
 
   // -- Summary calculations --
@@ -252,6 +298,9 @@ export default function BillingPage({ profile }) {
         </div>
       </div>
 
+      {/* QBO Connection Panel */}
+      <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
+
       {/* Summary Cards */}
       <div className="grid grid-cols-4 gap-3 mb-4">
         <SummaryCard label="Total Monthly (Gross)" value={fmt(totalMonthlyGross)} color="ocean" />
@@ -391,7 +440,13 @@ export default function BillingPage({ profile }) {
                       {b.status || 'active'}
                     </span>
                   </span>
-                  <span className="text-right text-gray-400">
+                  <span className="text-right text-gray-400 flex items-center justify-end gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      b.qbo_sync_status === 'synced' ? 'bg-green-500'
+                      : b.qbo_sync_status === 'pending' ? 'bg-amber-500'
+                      : b.qbo_sync_status === 'error' ? 'bg-red-500'
+                      : 'bg-gray-300'
+                    }`} />
                     {b.last_qbo_sync ? new Date(b.last_qbo_sync).toLocaleDateString('en-GB') : '--'}
                   </span>
                 </div>
@@ -400,23 +455,36 @@ export default function BillingPage({ profile }) {
                   <div className="px-6 py-3 bg-gray-50 border-b border-gray-100">
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="text-xs font-semibold text-gray-500 uppercase">Service Breakdown</h4>
-                      <Btn
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const qboItems = services.map((s) => ({
-                            service_id: s.service_id,
-                            description: s.description,
-                            qty: 1,
-                            rate: s.monthly_amount,
-                            amount: s.monthly_amount,
-                          }));
-                          exportQboCsv(b.entity?.name || 'Client', qboItems, true);
-                        }}
-                        variant="ghost"
-                        className="text-xs"
-                      >
-                        Export QBO CSV
-                      </Btn>
+                      <div className="flex gap-2">
+                        <Btn
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePushToQbo(b.id);
+                          }}
+                          variant="secondary"
+                          className="text-xs"
+                          disabled={pushingId === b.id}
+                        >
+                          {pushingId === b.id ? 'Pushing...' : 'Push to QBO'}
+                        </Btn>
+                        <Btn
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const qboItems = services.map((s) => ({
+                              service_id: s.service_id,
+                              description: s.description,
+                              qty: 1,
+                              rate: s.monthly_amount,
+                              amount: s.monthly_amount,
+                            }));
+                            exportQboCsv(b.entity?.name || 'Client', qboItems, true);
+                          }}
+                          variant="ghost"
+                          className="text-xs"
+                        >
+                          Export CSV
+                        </Btn>
+                      </div>
                     </div>
                     {services.length > 0 ? (
                       <div className="space-y-1">
@@ -444,6 +512,54 @@ export default function BillingPage({ profile }) {
           })
         )}
       </div>
+
+      {/* QBO Sync History */}
+      {syncLog.length > 0 && (
+        <div className="mb-6">
+          <button
+            onClick={() => setShowSyncLog(!showSyncLog)}
+            className="flex items-center gap-1 text-sm font-bold text-ocean-700 mb-3 hover:underline"
+          >
+            <span className={`transition-transform ${showSyncLog ? 'rotate-90' : ''}`}>&#9654;</span>
+            QBO Sync History ({syncLog.length})
+          </button>
+          {showSyncLog && (
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '60px 1.5fr 1fr 1fr 2fr' }}>
+                <span>Dir</span>
+                <span>Entity</span>
+                <span>Status</span>
+                <span>Time</span>
+                <span>Detail</span>
+              </div>
+              {syncLog.map((log) => (
+                <div key={log.id} className="grid text-xs px-4 py-2 border-b border-gray-50" style={{ gridTemplateColumns: '60px 1.5fr 1fr 1fr 2fr' }}>
+                  <span className={`font-medium ${log.direction === 'push' ? 'text-blue-600' : 'text-purple-600'}`}>
+                    {log.direction === 'push' ? '↑ Push' : '↓ Pull'}
+                  </span>
+                  <span className="text-gray-700">{log.entity_name || '--'}</span>
+                  <span>
+                    <span className={`inline-block px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                      log.status === 'success' ? 'bg-green-100 text-green-700'
+                      : log.status === 'error' ? 'bg-red-100 text-red-700'
+                      : log.status === 'skipped' ? 'bg-gray-100 text-gray-500'
+                      : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {log.status}
+                    </span>
+                  </span>
+                  <span className="text-gray-400">
+                    {new Date(log.created_at).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <span className="text-gray-500 truncate">
+                    {log.error_message || (log.detail ? JSON.stringify(log.detail).slice(0, 80) : '--')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Comparison Section */}
       <div className="mb-6">

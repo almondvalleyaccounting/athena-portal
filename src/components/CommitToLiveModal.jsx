@@ -1,12 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { fmt, Btn } from './ui';
 import { exportQboCsv } from '../lib/qboExport';
+import { pushToQbo, getQboStatus } from '../lib/qboApi';
 
 export default function CommitToLiveModal({ quote, lineItems, profile, onCommitted, onClose }) {
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState('');
-  const [generateQbo, setGenerateQbo] = useState(false);
+  const [qboAction, setQboAction] = useState('none'); // 'none' | 'push' | 'csv'
+  const [qboConnected, setQboConnected] = useState(false);
+  const [pushStatus, setPushStatus] = useState(''); // '' | 'pushing' | 'pushed' | 'push_error'
+
+  // Check QBO connection on mount
+  useEffect(() => {
+    getQboStatus()
+      .then((data) => {
+        if (data?.connected) {
+          setQboConnected(true);
+          setQboAction('push'); // Default to push when connected
+        }
+      })
+      .catch(() => { /* not connected */ });
+  }, []);
 
   const recurring = (lineItems || []).filter((l) => l.is_recurring);
   const clientName = quote?.relationship_group || 'Unnamed Client';
@@ -90,8 +105,29 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         },
       });
 
-      // 6. Optionally generate QBO CSV
-      if (generateQbo) {
+      // 6. QBO action: push or CSV
+      if (qboAction === 'push' && billingRow?.id) {
+        setPushStatus('pushing');
+        try {
+          const pushResult = await pushToQbo(billingRow.id, profile.id);
+          if (pushResult?.success) {
+            setPushStatus('pushed');
+          } else {
+            setPushStatus('push_error');
+            setError(`Committed successfully but QBO push failed: ${pushResult?.error || 'Unknown error'}. You can push from the Billing page later.`);
+            setCommitting(false);
+            // Still call onCommitted since the commit itself succeeded
+            onCommitted();
+            return;
+          }
+        } catch (pushErr) {
+          setPushStatus('push_error');
+          setError(`Committed successfully but QBO push failed: ${pushErr.message}. You can push from the Billing page later.`);
+          setCommitting(false);
+          onCommitted();
+          return;
+        }
+      } else if (qboAction === 'csv') {
         const qboItems = recurring.map((l) => ({
           service_id: l.service_id,
           description: l.description,
@@ -151,16 +187,49 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
             </div>
           </div>
 
-          {/* QBO Option */}
-          <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={generateQbo}
-              onChange={(e) => setGenerateQbo(e.target.checked)}
-              className="w-4 h-4 accent-ocean-600"
-            />
-            Generate QBO import CSV on commit
-          </label>
+          {/* QBO Options */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase">QuickBooks Export</p>
+            {qboConnected && (
+              <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                <input
+                  type="radio"
+                  name="qboAction"
+                  checked={qboAction === 'push'}
+                  onChange={() => setQboAction('push')}
+                  className="w-4 h-4 accent-ocean-600"
+                />
+                <span>Push directly to QBO</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 ml-1" title="Connected" />
+              </label>
+            )}
+            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+              <input
+                type="radio"
+                name="qboAction"
+                checked={qboAction === 'csv'}
+                onChange={() => setQboAction('csv')}
+                className="w-4 h-4 accent-ocean-600"
+              />
+              Download QBO import CSV
+            </label>
+            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+              <input
+                type="radio"
+                name="qboAction"
+                checked={qboAction === 'none'}
+                onChange={() => setQboAction('none')}
+                className="w-4 h-4 accent-ocean-600"
+              />
+              Skip QBO export
+            </label>
+            {pushStatus === 'pushing' && (
+              <p className="text-xs text-ocean-600">Pushing to QBO...</p>
+            )}
+            {pushStatus === 'pushed' && (
+              <p className="text-xs text-green-600">Successfully pushed to QBO</p>
+            )}
+          </div>
 
           {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2">{error}</div>}
         </div>
