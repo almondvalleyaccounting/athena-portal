@@ -46,7 +46,7 @@ export default function NavShell({ profile, onLogout, children }) {
   return (
     <div className="min-h-screen bg-gray-50 flex">
       <div className="w-48 bg-white border-r border-gray-200 flex flex-col shrink-0">
-        <div className="p-4 border-b border-gray-100">
+        <div className="p-4 border-b border-gray-100 cursor-pointer" onClick={() => navigate('/home')}>
           <img
             src="/ava-logo.jpg"
             alt="AVA"
