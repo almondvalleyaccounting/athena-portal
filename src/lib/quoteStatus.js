@@ -12,7 +12,7 @@ export const STATUS_TRANSITIONS = {
   sent: [
     { action: 'accept', next: 'accepted', label: 'Mark Accepted', permission: 'can_approve_quotes', variant: 'primary' },
     { action: 'decline', next: 'declined', label: 'Mark Declined', permission: 'can_approve_quotes', variant: 'danger' },
-    { action: 'expire', next: 'expired', label: 'Mark Expired', permission: 'can_approve_quotes', variant: 'ghost' },
+    { action: 'expire', next: 'expired', label: 'Mark Expired', permission: 'can_approve_quotes', variant: 'secondary' },
   ],
   accepted: [],
   declined: [],

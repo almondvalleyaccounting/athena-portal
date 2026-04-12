@@ -140,13 +140,13 @@ export default function QuoteDetailPage({ profile }) {
       {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <div>
+          <h2 className="text-lg font-bold text-ocean-700">{quote.relationship_group || 'Unnamed client'}</h2>
           <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-lg font-bold text-ocean-700">{quote.quote_ref}</h2>
+            <span className="text-xs text-gray-500">{quote.quote_ref}</span>
             <StatusBadge status={quote.status} />
           </div>
           <p className="text-xs text-gray-400">
-            {quote.relationship_group || 'Unnamed client'}
-            {' \u00B7 '}
+            {new Date(quote.created_at).toLocaleDateString('en-GB')}
             {new Date(quote.created_at).toLocaleDateString('en-GB')}
             {quote.defaults_version && ` \u00B7 v${quote.defaults_version}`}
             {quote.valid_until && ` \u00B7 Valid until ${new Date(quote.valid_until + 'T00:00:00').toLocaleDateString('en-GB')}`}
@@ -175,23 +175,23 @@ export default function QuoteDetailPage({ profile }) {
       <div className="flex gap-2 flex-wrap mb-4">
         {transitions.map(t => (
           profile?.[t.permission] && (
-            <Btn key={t.action} onClick={() => handleTransition(t)} variant={t.variant} disabled={transitioning}>
+            <Btn key={t.action} onClick={() => handleTransition(t)} variant={t.variant} disabled={transitioning} className="min-w-[120px]">
               {t.label}
             </Btn>
           )
         ))}
-        {quote.status === 'draft' && profile?.can_edit_quotes && (
-          <Btn onClick={() => navigate(quote.group_id ? `/manage/quotes/group/${quote.id}/edit` : `/manage/quotes/${quote.id}/edit`)} variant="secondary">Edit</Btn>
+        {(quote.status === 'draft' || quote.status === 'pending_approval') && profile?.can_edit_quotes && (
+          <Btn onClick={() => navigate(quote.group_id ? `/manage/quotes/group/${quote.id}/edit` : `/manage/quotes/${quote.id}/edit`)} variant="secondary" className="min-w-[120px]">Edit</Btn>
         )}
         {profile?.can_edit_quotes && (
-          <Btn onClick={() => navigate(`/manage/quotes/new?from=${quote.id}`)} variant="secondary">Re-quote</Btn>
+          <Btn onClick={() => navigate(`/manage/quotes/new?from=${quote.id}`)} variant="secondary" className="min-w-[120px]">Re-quote</Btn>
         )}
-        <Btn onClick={() => generateQuotePdf(quote, lineItems)} variant="secondary">Download PDF</Btn>
+        <Btn onClick={() => generateQuotePdf(quote, lineItems)} variant="secondary" className="min-w-[120px]">Export PDF</Btn>
         {(quote.status === 'approved' || quote.status === 'sent') && profile?.can_approve_quotes && (
-          <Btn onClick={() => setShowSendModal(true)} variant="primary">Send to Client</Btn>
+          <Btn onClick={() => setShowSendModal(true)} variant="primary" className="min-w-[120px]">Send to Client</Btn>
         )}
-        {quote.status === 'draft' && profile?.can_edit_quotes && (
-          <Btn onClick={handleDelete} variant="ghost" disabled={transitioning} className="text-red-500 hover:text-red-700 hover:bg-red-50">Delete</Btn>
+        {(quote.status === 'draft' || quote.status === 'pending_approval') && profile?.can_edit_quotes && (
+          <Btn onClick={handleDelete} variant="danger" disabled={transitioning} className="min-w-[120px]">Delete</Btn>
         )}
       </div>
 
@@ -220,13 +220,16 @@ export default function QuoteDetailPage({ profile }) {
         </div>
       )}
 
-      {/* Client Summary */}
+      {/* Client Overview */}
       <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Client</h3>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <span className="text-gray-400">Name</span><span className="text-gray-700">{quote.relationship_group || '\u2014'}</span>
-          {quote.estimated_turnover && <><span className="text-gray-400">Est. Turnover</span><span className="text-gray-700 font-mono">{fmt(quote.estimated_turnover)}</span></>}
-          {quote.accounts_detail?.type && <><span className="text-gray-400">Accounts Type</span><span className="text-gray-700 capitalize">{quote.accounts_detail.type}</span></>}
+        <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Client Overview</h3>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+          {quote.estimated_turnover > 0 && <><span className="text-gray-400">Estimated Turnover</span><span className="text-gray-700 font-mono">{fmt(quote.estimated_turnover)}</span></>}
+          {quote.accounts_detail?.type && <><span className="text-gray-400">Type of Business</span><span className="text-gray-700 capitalize">{quote.accounts_detail.type === 'trading' ? 'Trading Company' : quote.accounts_detail.type === 'dormant' ? 'Dormant Company' : quote.accounts_detail.type === 'property' ? 'Property Company' : quote.accounts_detail.type.replace('_', ' ')}</span></>}
+          {quote.payroll_detail && <><span className="text-gray-400">Total Employees</span><span className="text-gray-700">{(quote.payroll_detail.monthly_ee || 0) + (quote.payroll_detail.weekly_ee || 0)}</span></>}
+          <span className="text-gray-400">VAT Registered</span><span className="text-gray-700">{quote.bookkeeping_detail?.includes_vat || recurring.some(l => l.service_id === 'vat_returns' || l.service_id === 'bookkeeping_vat') ? 'Yes' : 'No'}</span>
+          {dirs.length > 0 && <><span className="text-gray-400">Number of Directors</span><span className="text-gray-700">{dirs.length}</span></>}
+          <span className="text-gray-400">Services Required</span><span className="text-gray-700">{recurring.map(l => l.description).join(', ') || 'None'}</span>
         </div>
       </div>
 

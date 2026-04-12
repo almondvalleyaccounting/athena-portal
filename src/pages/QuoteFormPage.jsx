@@ -48,7 +48,7 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
     (async () => {
       const { data: q } = await supabase.from('quotes').select('*').eq('id', loadId).single();
       if (!q) { navigate('/manage/quotes'); return; }
-      if (mode === 'edit' && q.status !== 'draft') { navigate(`/manage/quotes/${loadId}`); return; }
+      if (mode === 'edit' && q.status !== 'draft' && q.status !== 'pending_approval') { navigate(`/manage/quotes/${loadId}`); return; }
 
       f.loadFromQuote(q);
 

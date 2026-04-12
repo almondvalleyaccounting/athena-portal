@@ -6,9 +6,10 @@ import { Btn } from './ui';
 // Generates PDF client-side, sends via Supabase Edge Function.
 export default function SendQuoteModal({ quote, lineItems, profile, onSent, onClose }) {
   const [recipientEmail, setRecipientEmail] = useState('');
-  const [subject, setSubject] = useState(`Quote ${quote.quote_ref} - Almond Valley Accounting`);
+  const [subject, setSubject] = useState(`Services Quote: ${quote.relationship_group || 'Client'}`);
+  const expiryStr = quote.valid_until ? new Date(quote.valid_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   const [message, setMessage] = useState(
-    `Dear Client,\n\nPlease find attached your quote from Almond Valley Accounting.\n\nQuote Reference: ${quote.quote_ref}\nMonthly Direct Debit: £${Number(quote.monthly_gross).toFixed(2)} (inc VAT)\n\nPlease don't hesitate to get in touch if you have any questions.\n\nKind regards,\n${profile?.name || 'Almond Valley Accounting'}`
+    `Dear Client,\n\nPlease find attached your services quote from Almond Valley Accounting.\n\nQuote Reference: ${quote.quote_ref}\nMonthly Direct Debit: \u00A3${Number(quote.monthly_gross).toFixed(2)} (inc VAT)${expiryStr ? `\nThis quote is valid until ${expiryStr}.` : ''}\n\nPlease don't hesitate to get in touch if you have any questions.\n\nKind regards,\n${profile?.name || 'Almond Valley Accounting'}`
   );
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
