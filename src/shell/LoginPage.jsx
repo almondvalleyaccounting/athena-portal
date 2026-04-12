@@ -7,9 +7,8 @@ function CinematicIntro({ onComplete }) {
   const [phase, setPhase] = useState('text'); // text → dots → burst → done
 
   useEffect(() => {
-    // ATHENA text visible immediately, dots start sequentially
     const dotTimers = [];
-    const dotStart = 1200; // ms after mount before first dot lights
+    const dotStart = 1200;
     for (let i = 0; i < 7; i++) {
       dotTimers.push(
         setTimeout(() => {
@@ -18,10 +17,8 @@ function CinematicIntro({ onComplete }) {
       );
     }
 
-    // Starburst on 7th dot
     const burstTimer = setTimeout(() => setPhase('burst'), dotStart + 7 * 500);
 
-    // Fade out and complete
     const doneTimer = setTimeout(() => {
       setPhase('fadeout');
       setTimeout(onComplete, 800);
@@ -46,29 +43,19 @@ function CinematicIntro({ onComplete }) {
         transition: 'opacity 0.8s ease',
       }}
     >
-      {/* ATHENA title */}
       <h1
         style={{
           fontFamily: "'Major Mono Display', monospace",
           fontSize: '62px',
           color: '#ffffff',
           letterSpacing: '0.12em',
-          opacity: phase === 'text' ? 0 : 1,
-          transition: 'opacity 1.2s ease',
-          animation: phase !== 'text' ? undefined : undefined,
         }}
       >
-        <span
-          style={{
-            opacity: 1,
-            animation: 'fadeInText 1.2s ease forwards',
-          }}
-        >
+        <span style={{ animation: 'fadeInText 1.2s ease forwards' }}>
           ATHENA
         </span>
       </h1>
 
-      {/* Seven dots */}
       <div className="flex items-center gap-3 mt-8">
         {Array.from({ length: 7 }).map((_, i) => {
           const isLit = dotIndex >= i || isBurst;
@@ -96,7 +83,6 @@ function CinematicIntro({ onComplete }) {
         })}
       </div>
 
-      {/* Powered by */}
       <p
         style={{
           position: 'absolute',
@@ -122,38 +108,21 @@ function CinematicIntro({ onComplete }) {
   );
 }
 
-/* ─── Login form ───────────────────────────────────────────────── */
+/* ─── Login page ───────────────────────────────────────────────── */
 export default function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showIntro, setShowIntro] = useState(false);
-  const [introComplete, setIntroComplete] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
 
-  // Check if intro already played this session
-  useEffect(() => {
-    const shown = sessionStorage.getItem('athena_intro_shown');
-    if (shown) {
-      setIntroComplete(true);
-    } else {
-      setShowIntro(true);
-    }
-  }, []);
-
-  // If user is already logged in, redirect
+  // If user is already logged in, skip straight to /home
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) navigate('/home', { replace: true });
     });
   }, [navigate]);
-
-  const handleIntroComplete = () => {
-    sessionStorage.setItem('athena_intro_shown', 'true');
-    setShowIntro(false);
-    setIntroComplete(true);
-  };
 
   const handleSubmit = async () => {
     setError('');
@@ -165,7 +134,8 @@ export default function LoginPage() {
         password,
       });
       if (err) throw err;
-      navigate('/home', { replace: true });
+      // Auth succeeded — trigger cinematic
+      setAuthenticated(true);
     } catch (e) {
       setError(e.message || 'Authentication failed');
     }
@@ -173,14 +143,17 @@ export default function LoginPage() {
     setLoading(false);
   };
 
-  // Show intro if not yet played
-  if (showIntro) {
-    return <CinematicIntro onComplete={handleIntroComplete} />;
+  // After cinematic completes, enter the portal
+  const handleCinematicComplete = () => {
+    navigate('/home', { replace: true });
+  };
+
+  // Show cinematic after successful login
+  if (authenticated) {
+    return <CinematicIntro onComplete={handleCinematicComplete} />;
   }
 
-  // Don't render form until intro is resolved
-  if (!introComplete) return null;
-
+  // Static login form
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4"
@@ -188,7 +161,6 @@ export default function LoginPage() {
         background: 'radial-gradient(ellipse at center, #0a0a0f 0%, #000000 100%)',
       }}
     >
-      {/* Login card */}
       <div
         style={{
           backgroundColor: '#ffffff',
@@ -196,7 +168,6 @@ export default function LoginPage() {
           padding: '40px',
           maxWidth: '400px',
           width: '100%',
-          animation: 'fadeInCard 0.6s ease forwards',
         }}
       >
         {/* Logo */}
@@ -327,13 +298,6 @@ export default function LoginPage() {
           </p>
         )}
       </div>
-
-      <style>{`
-        @keyframes fadeInCard {
-          from { opacity: 0; transform: translateY(12px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   );
 }
