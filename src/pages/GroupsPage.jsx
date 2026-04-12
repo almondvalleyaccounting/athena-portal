@@ -29,6 +29,10 @@ export default function GroupsPage({ profile }) {
   const [selectedClients, setSelectedClients] = useState([]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientType, setNewClientType] = useState('limited_company');
+  const [showNewClient, setShowNewClient] = useState(false);
+  const [addingNew, setAddingNew] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -72,7 +76,9 @@ export default function GroupsPage({ profile }) {
     : [];
 
   const handleAddClient = (entity) => {
-    setSelectedClients(prev => [...prev, entity]);
+    if (!selectedClients.find(c => c.id === entity.id)) {
+      setSelectedClients(prev => [...prev, entity]);
+    }
     setSearchTerm('');
   };
 
@@ -80,15 +86,34 @@ export default function GroupsPage({ profile }) {
     setSelectedClients(prev => prev.filter(c => c.id !== id));
   };
 
+  const handleCreateNewClient = async () => {
+    if (!newClientName.trim()) return;
+    setAddingNew(true);
+    try {
+      const { data: newEnt, error: err } = await supabase
+        .from('entities')
+        .insert({ name: newClientName.trim(), type: newClientType })
+        .select().single();
+      if (err) throw err;
+      setSelectedClients(prev => [...prev, newEnt]);
+      setEntities(prev => [...prev, newEnt]);
+      setNewClientName('');
+      setShowNewClient(false);
+    } catch (e) {
+      setError(e.message || 'Failed to create client');
+    }
+    setAddingNew(false);
+  };
+
   const handleCreateGroup = async () => {
-    if (!newName.trim()) { setError('Group name is required.'); return; }
     if (selectedClients.length === 0) { setError('Add at least one client.'); return; }
+    const groupName = newName.trim() || selectedClients.map(c => c.name).join(' & ');
     setCreating(true);
     setError('');
     try {
       const { data: group, error: gErr } = await supabase
         .from('billing_groups')
-        .insert({ name: newName.trim() })
+        .insert({ name: groupName })
         .select()
         .single();
       if (gErr) throw gErr;
@@ -119,61 +144,110 @@ export default function GroupsPage({ profile }) {
         </Btn>
       </div>
 
-      {/* New Group Panel */}
+      {/* New Group Panel — Step by step */}
       {showCreate && (
         <div className="bg-white rounded-lg border border-ocean-200 p-4 mb-4">
-          <h3 className="text-sm font-semibold text-ocean-700 mb-3">Create New Group</h3>
-          {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2 mb-2">{error}</div>}
+          <h3 className="text-sm font-semibold text-ocean-700 mb-1">Create New Group</h3>
+          <p className="text-xs text-gray-400 mb-3">Add clients one at a time, then name the group and create it.</p>
+          {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2 mb-3">{error}</div>}
 
-          <div className="mb-3">
-            <label className="text-xs text-gray-500 block mb-1">Group Name</label>
-            <input
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              placeholder="e.g. Smith Family Group"
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2"
-            />
-          </div>
-
-          <div className="mb-3">
-            <label className="text-xs text-gray-500 block mb-1">Add Clients</label>
-            <input
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Search clients by name or company number..."
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2"
-            />
-            {filteredEntities.length > 0 && (
-              <div className="mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                {filteredEntities.map(e => (
-                  <button
-                    key={e.id}
-                    onClick={() => handleAddClient(e)}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-ocean-50 border-b border-gray-50 last:border-0"
-                  >
-                    <span className="font-medium text-gray-700">{e.name}</span>
-                    {e.company_number && <span className="text-gray-400 ml-2">{e.company_number}</span>}
-                  </button>
+          {/* Step 1: Clients added so far */}
+          {selectedClients.length > 0 && (
+            <div className="mb-3">
+              <label className="text-xs text-gray-500 block mb-1.5">Clients in this group ({selectedClients.length})</label>
+              <div className="space-y-1">
+                {selectedClients.map((c, i) => (
+                  <div key={c.id} className="flex items-center justify-between bg-ocean-50 border border-ocean-100 rounded-lg px-3 py-2">
+                    <div>
+                      <span className="text-xs font-medium text-ocean-700">{i + 1}. {c.name}</span>
+                      {c.company_number && <span className="text-xs text-ocean-400 ml-2">{c.company_number}</span>}
+                      <span className="text-[10px] text-ocean-400 ml-2 capitalize">{c.type?.replace('_', ' ')}</span>
+                    </div>
+                    <button onClick={() => handleRemoveClient(c.id)} className="text-ocean-400 hover:text-red-500 text-sm">&times;</button>
+                  </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Add another client */}
+          <div className="mb-3 bg-gray-50 rounded-lg p-3 border border-gray-100">
+            <label className="text-xs font-medium text-gray-600 block mb-2">
+              {selectedClients.length === 0 ? 'Add first client' : 'Add another client'}
+            </label>
+
+            {/* Search existing */}
+            <div className="relative mb-2">
+              <input
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder="Search existing clients..."
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white"
+              />
+              {filteredEntities.length > 0 && (
+                <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {filteredEntities.map(e => (
+                    <button
+                      key={e.id}
+                      onClick={() => handleAddClient(e)}
+                      className="w-full text-left px-3 py-2.5 text-xs hover:bg-ocean-50 border-b border-gray-50 last:border-0"
+                    >
+                      <span className="font-medium text-gray-700">{e.name}</span>
+                      {e.company_number && <span className="text-gray-400 ml-2">{e.company_number}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Or create new */}
+            {!showNewClient ? (
+              <button onClick={() => setShowNewClient(true)} className="text-xs text-ocean-600 hover:text-ocean-700 font-medium">
+                + Create new client
+              </button>
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
+                <p className="text-xs text-gray-500 mb-2">New client details</p>
+                <input
+                  value={newClientName}
+                  onChange={e => setNewClientName(e.target.value)}
+                  placeholder="Client name"
+                  className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 mb-2"
+                />
+                <select value={newClientType} onChange={e => setNewClientType(e.target.value)} className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 bg-white mb-2">
+                  <option value="limited_company">Limited Company</option>
+                  <option value="sole_trader">Sole Trader</option>
+                  <option value="partnership">Partnership</option>
+                  <option value="llp">LLP</option>
+                </select>
+                <div className="flex gap-2">
+                  <Btn onClick={handleCreateNewClient} disabled={addingNew || !newClientName.trim()} variant="secondary" className="text-xs py-1 px-3">
+                    {addingNew ? 'Adding...' : 'Add Client'}
+                  </Btn>
+                  <button onClick={() => { setShowNewClient(false); setNewClientName(''); }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Selected clients chips */}
-          {selectedClients.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {selectedClients.map(c => (
-                <span key={c.id} className="inline-flex items-center gap-1 text-xs bg-ocean-50 text-ocean-700 border border-ocean-200 rounded-full px-2.5 py-1">
-                  {c.name}
-                  <button onClick={() => handleRemoveClient(c.id)} className="text-ocean-400 hover:text-ocean-700 ml-0.5">&times;</button>
-                </span>
-              ))}
+          {/* Step 3: Name group and create */}
+          {selectedClients.length >= 1 && (
+            <div className="border-t border-gray-100 pt-3">
+              <label className="text-xs text-gray-500 block mb-1">Group name</label>
+              <input
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder={selectedClients.map(c => c.name).join(' & ') || 'e.g. Acme Group'}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3"
+              />
+              <div className="flex gap-2">
+                <Btn onClick={handleCreateGroup} disabled={creating || selectedClients.length === 0}>
+                  {creating ? 'Creating...' : `Create Group (${selectedClients.length} clients)`}
+                </Btn>
+                <Btn onClick={() => { setShowCreate(false); setSelectedClients([]); setNewName(''); setError(''); }} variant="ghost">Cancel</Btn>
+              </div>
             </div>
           )}
-
-          <Btn onClick={handleCreateGroup} disabled={creating}>
-            {creating ? 'Creating...' : 'Create Group'}
-          </Btn>
         </div>
       )}
 
