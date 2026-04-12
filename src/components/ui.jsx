@@ -1,11 +1,9 @@
 import React from 'react';
 
 export const fmt = (n) => {
-  if (n == null || isNaN(n)) return '£0';
-  if (Math.abs(n) < 0.005) return '£0';
-  return n === Math.floor(n)
-    ? `£${n.toLocaleString()}`
-    : `£${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (n == null || isNaN(n)) return '£0.00';
+  if (Math.abs(n) < 0.005) return '£0.00';
+  return '£' + Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 export function Inp({ value, onChange, prefix, suffix, type = 'number', min, max, step, className = 'w-20', placeholder, disabled }) {

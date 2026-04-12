@@ -4,7 +4,7 @@ export const STATUS_TRANSITIONS = {
   ],
   pending_approval: [
     { action: 'approve', next: 'approved', label: 'Approve', permission: 'can_approve_quotes', variant: 'primary' },
-    { action: 'reject', next: 'draft', label: 'Reject to Draft', permission: 'can_approve_quotes', variant: 'danger' },
+    { action: 'reject', next: 'draft', label: 'Reject', permission: 'can_approve_quotes', variant: 'danger' },
   ],
   approved: [
     { action: 'send', next: 'sent', label: 'Mark as Sent', permission: 'can_approve_quotes', variant: 'primary' },

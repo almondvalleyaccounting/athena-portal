@@ -176,74 +176,74 @@ export default function PricingDefaultsPage({ defaults: currentDefaults, profile
             <span className="text-gray-600">{b.label}</span>
             <span className="text-right font-mono text-gray-400">{fmt(b.min)}</span>
             <span className="text-right font-mono text-gray-400">{b.max >= 999999999 ? '\u221E' : fmt(b.max)}</span>
-            <Inp value={b.rate} onChange={v => setBand(i, 'rate', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} />
+            <Inp value={b.rate} onChange={v => setBand(i, 'rate', v)} prefix="£" className="w-16" disabled={!canEdit} />
           </div>
         ))}
 
         {/* Dormant & Property */}
         <SectionHeader title="Dormant & Property" />
-        <Row label="Dormant company"><Inp value={D.dormant_rate} onChange={v => set('dormant_rate', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Property base (1 property)"><Inp value={D.property_base} onChange={v => set('property_base', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Per additional property"><Inp value={D.property_per_extra} onChange={v => set('property_per_extra', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Dormant company"><Inp value={D.dormant_rate} onChange={v => set('dormant_rate', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Property base (1 property)"><Inp value={D.property_base} onChange={v => set('property_base', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Per additional property"><Inp value={D.property_per_extra} onChange={v => set('property_per_extra', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
 
         {/* Confirmation Statement */}
         <SectionHeader title="Confirmation Statement" />
-        <Row label="Client fee"><Inp value={D.confirmation_statement.fee} onChange={v => set('confirmation_statement.fee', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="CH filing fee (cost)"><Inp value={D.confirmation_statement.ch_filing_fee} onChange={v => set('confirmation_statement.ch_filing_fee', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Client fee"><Inp value={D.confirmation_statement.fee} onChange={v => set('confirmation_statement.fee', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="CH filing fee (cost)"><Inp value={D.confirmation_statement.ch_filing_fee} onChange={v => set('confirmation_statement.ch_filing_fee', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
 
         {/* Directors */}
         <SectionHeader title="Directors' Tax Returns" />
-        <Row label="Base return rate"><Inp value={D.director_base} onChange={v => set('director_base', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Other dividends add-on"><Inp value={D.director_addons.other_dividends} onChange={v => set('director_addons.other_dividends', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Rental property add-on"><Inp value={D.director_addons.rental_property} onChange={v => set('director_addons.rental_property', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Capital gains add-on"><Inp value={D.director_addons.capital_gains} onChange={v => set('director_addons.capital_gains', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Savings income add-on"><Inp value={D.director_addons.savings_income} onChange={v => set('director_addons.savings_income', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Base return rate"><Inp value={D.director_base} onChange={v => set('director_base', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Other dividends add-on"><Inp value={D.director_addons.other_dividends} onChange={v => set('director_addons.other_dividends', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Rental property add-on"><Inp value={D.director_addons.rental_property} onChange={v => set('director_addons.rental_property', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Capital gains add-on"><Inp value={D.director_addons.capital_gains} onChange={v => set('director_addons.capital_gains', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Savings income add-on"><Inp value={D.director_addons.savings_income} onChange={v => set('director_addons.savings_income', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
 
         {/* Bookkeeping & VAT */}
         <SectionHeader title="Bookkeeping & VAT" />
-        <Row label="Bookkeeping hourly rate"><Inp value={D.bookkeeping_rate} onChange={v => set('bookkeeping_rate', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="VAT per return"><Inp value={D.vat_per_return} onChange={v => set('vat_per_return', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Bookkeeping hourly rate"><Inp value={D.bookkeeping_rate} onChange={v => set('bookkeeping_rate', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="VAT per return"><Inp value={D.vat_per_return} onChange={v => set('vat_per_return', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
 
         {/* Payroll */}
         <SectionHeader title="Payroll" />
-        <Row label="BrightPay annual cost"><Inp value={D.payroll.brightpay_annual} onChange={v => set('payroll.brightpay_annual', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="BrightPay annual cost"><Inp value={D.payroll.brightpay_annual} onChange={v => set('payroll.brightpay_annual', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
         <Row label="Payroll client count"><Inp value={D.payroll.payroll_client_count} onChange={v => set('payroll.payroll_client_count', v)} className="w-14" disabled={!canEdit} /></Row>
         <Row label="Markup %"><Inp value={D.payroll.markup_pct} onChange={v => set('payroll.markup_pct', v)} suffix="%" className="w-14" disabled={!canEdit} /></Row>
         {D.payroll.brightpay_annual > 0 && D.payroll.payroll_client_count > 0 && (
           <p className="text-[10px] text-gray-400 mb-1">Calc flat fee: {fmt(Math.ceil((D.payroll.brightpay_annual / D.payroll.payroll_client_count) * (1 + D.payroll.markup_pct / 100)))}/mo</p>
         )}
-        <Row label="Monthly employee rate"><Inp value={D.payroll.monthly_ee_rate} onChange={v => set('payroll.monthly_ee_rate', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Weekly employee rate"><Inp value={D.payroll.weekly_ee_rate} onChange={v => set('payroll.weekly_ee_rate', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="CIS rate"><Inp value={D.payroll.cis_rate} onChange={v => set('payroll.cis_rate', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="P11D rate"><Inp value={D.payroll.p11d_rate} onChange={v => set('payroll.p11d_rate', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Monthly employee rate"><Inp value={D.payroll.monthly_ee_rate} onChange={v => set('payroll.monthly_ee_rate', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Weekly employee rate"><Inp value={D.payroll.weekly_ee_rate} onChange={v => set('payroll.weekly_ee_rate', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="CIS rate"><Inp value={D.payroll.cis_rate} onChange={v => set('payroll.cis_rate', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="P11D rate"><Inp value={D.payroll.p11d_rate} onChange={v => set('payroll.p11d_rate', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
 
         {/* Auto-Enrolment */}
         <SectionHeader title="Auto-Enrolment" />
-        <Row label="Standard rate"><Inp value={D.auto_enrolment.standard} onChange={v => set('auto_enrolment.standard', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Active rate"><Inp value={D.auto_enrolment.active} onChange={v => set('auto_enrolment.active', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Standard rate"><Inp value={D.auto_enrolment.standard} onChange={v => set('auto_enrolment.standard', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Active rate"><Inp value={D.auto_enrolment.active} onChange={v => set('auto_enrolment.active', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
 
         {/* Modulr */}
         <SectionHeader title="Modulr" />
-        <Row label="Software monthly cost"><Inp value={D.modulr.software_monthly_cost} onChange={v => set('modulr.software_monthly_cost', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Software monthly price"><Inp value={D.modulr.software_monthly_price} onChange={v => set('modulr.software_monthly_price', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Per payment"><Inp value={D.modulr.per_payment} onChange={v => set('modulr.per_payment', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Per pay run"><Inp value={D.modulr.per_run} onChange={v => set('modulr.per_run', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Software monthly cost"><Inp value={D.modulr.software_monthly_cost} onChange={v => set('modulr.software_monthly_cost', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Software monthly price"><Inp value={D.modulr.software_monthly_price} onChange={v => set('modulr.software_monthly_price', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Per payment"><Inp value={D.modulr.per_payment} onChange={v => set('modulr.per_payment', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Per pay run"><Inp value={D.modulr.per_run} onChange={v => set('modulr.per_run', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
 
         {/* Other Rates */}
         <SectionHeader title="Other Rates" />
-        <Row label="Management accounts (per set)"><Inp value={D.management_accounts_per_set} onChange={v => set('management_accounts_per_set', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Review meeting rate"><Inp value={D.review_meeting_rate} onChange={v => set('review_meeting_rate', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Registered office"><Inp value={D.registered_office} onChange={v => set('registered_office', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Budget basic"><Inp value={D.budget_basic} onChange={v => set('budget_basic', v)} prefix="\u00A3" className="w-20" disabled={!canEdit} /></Row>
-        <Row label="Budget advanced"><Inp value={D.budget_advanced} onChange={v => set('budget_advanced', v)} prefix="\u00A3" className="w-20" disabled={!canEdit} /></Row>
-        <Row label="Reforecast"><Inp value={D.reforecast} onChange={v => set('reforecast', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="CFO day rate"><Inp value={D.cfo_day_rate} onChange={v => set('cfo_day_rate', v)} prefix="\u00A3" className="w-20" disabled={!canEdit} /></Row>
+        <Row label="Management accounts (per set)"><Inp value={D.management_accounts_per_set} onChange={v => set('management_accounts_per_set', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Review meeting rate"><Inp value={D.review_meeting_rate} onChange={v => set('review_meeting_rate', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Registered office"><Inp value={D.registered_office} onChange={v => set('registered_office', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Budget basic"><Inp value={D.budget_basic} onChange={v => set('budget_basic', v)} prefix="£" className="w-20" disabled={!canEdit} /></Row>
+        <Row label="Budget advanced"><Inp value={D.budget_advanced} onChange={v => set('budget_advanced', v)} prefix="£" className="w-20" disabled={!canEdit} /></Row>
+        <Row label="Reforecast"><Inp value={D.reforecast} onChange={v => set('reforecast', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="CFO day rate"><Inp value={D.cfo_day_rate} onChange={v => set('cfo_day_rate', v)} prefix="£" className="w-20" disabled={!canEdit} /></Row>
 
         {/* Setup Fees */}
         <SectionHeader title="Setup Fees" />
-        <Row label="Company formation"><Inp value={D.setup.formation_rate} onChange={v => set('setup.formation_rate', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="HMRC registrations"><Inp value={D.setup.hmrc_reg_rate} onChange={v => set('setup.hmrc_reg_rate', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Registration fee"><Inp value={D.setup.reg_fee} onChange={v => set('setup.reg_fee', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Company formation"><Inp value={D.setup.formation_rate} onChange={v => set('setup.formation_rate', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="HMRC registrations"><Inp value={D.setup.hmrc_reg_rate} onChange={v => set('setup.hmrc_reg_rate', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Registration fee"><Inp value={D.setup.reg_fee} onChange={v => set('setup.reg_fee', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
 
         {/* Software Products */}
         <SectionHeader title="Software Products" />
@@ -255,17 +255,17 @@ export default function PricingDefaultsPage({ defaults: currentDefaults, profile
           return (
             <div key={s.id} className="grid gap-1 items-center text-xs" style={{ gridTemplateColumns: '2fr 1fr 1fr' }}>
               <span className="text-gray-600">{s.name}</span>
-              <Inp value={s.monthly} onChange={v => setSoftware(realIdx, 'monthly', v)} prefix="\u00A3" className="w-14" disabled={!canEdit} />
-              <Inp value={s.cost} onChange={v => setSoftware(realIdx, 'cost', v)} prefix="\u00A3" className="w-14" disabled={!canEdit} />
+              <Inp value={s.monthly} onChange={v => setSoftware(realIdx, 'monthly', v)} prefix="£" className="w-14" disabled={!canEdit} />
+              <Inp value={s.cost} onChange={v => setSoftware(realIdx, 'cost', v)} prefix="£" className="w-14" disabled={!canEdit} />
             </div>
           );
         })}
 
         {/* Dext */}
         <SectionHeader title="Dext" />
-        <Row label="Monthly price"><Inp value={D.dext.monthly_price} onChange={v => set('dext.monthly_price', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Cost"><Inp value={D.dext.cost} onChange={v => set('dext.cost', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
-        <Row label="Direct cost"><Inp value={D.dext.direct_cost} onChange={v => set('dext.direct_cost', v)} prefix="\u00A3" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Monthly price"><Inp value={D.dext.monthly_price} onChange={v => set('dext.monthly_price', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Cost"><Inp value={D.dext.cost} onChange={v => set('dext.cost', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
+        <Row label="Direct cost"><Inp value={D.dext.direct_cost} onChange={v => set('dext.direct_cost', v)} prefix="£" className="w-16" disabled={!canEdit} /></Row>
       </div>
 
       {/* Change note + save */}

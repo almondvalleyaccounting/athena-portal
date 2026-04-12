@@ -8,7 +8,7 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
   const [recipientEmail, setRecipientEmail] = useState('');
   const [subject, setSubject] = useState(`Quote ${quote.quote_ref} - Almond Valley Accounting`);
   const [message, setMessage] = useState(
-    `Dear Client,\n\nPlease find attached your quote from Almond Valley Accounting.\n\nQuote Reference: ${quote.quote_ref}\nMonthly Direct Debit: \u00A3${Number(quote.monthly_gross).toFixed(2)} (inc VAT)\n\nPlease don't hesitate to get in touch if you have any questions.\n\nKind regards,\n${profile?.name || 'Almond Valley Accounting'}`
+    `Dear Client,\n\nPlease find attached your quote from Almond Valley Accounting.\n\nQuote Reference: ${quote.quote_ref}\nMonthly Direct Debit: £${Number(quote.monthly_gross).toFixed(2)} (inc VAT)\n\nPlease don't hesitate to get in touch if you have any questions.\n\nKind regards,\n${profile?.name || 'Almond Valley Accounting'}`
   );
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');

@@ -244,8 +244,8 @@ export default function EntitiesPage() {
                     className="w-3 h-3 accent-ocean-600 shrink-0"
                   />
                 )}
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-700">{e.name}</p>
+                <div className="min-w-0" onClick={(ev) => { if (!selectMode) { ev.stopPropagation(); navigate('/manage/clients/' + e.id); } }}>
+                  <p className={`text-sm font-medium text-gray-700 ${!selectMode ? 'hover:text-ocean-600 cursor-pointer' : ''}`}>{e.name}</p>
                   <p className="text-xs text-gray-400">
                     {e.type?.replace('_', ' ')}{e.company_number ? ` \u00B7 ${e.company_number}` : ''}
                     {e.status && e.status !== 'prospect' && ` \u00B7 ${e.status}`}

@@ -306,7 +306,7 @@ export default function QuoteDetailPage({ profile }) {
           <div className="flex justify-between text-xs"><span className="text-ocean-300">Monthly (Net)</span><span className="font-mono">{fmt(quote.monthly_net)}</span></div>
           <div className="flex justify-between text-xs"><span className="text-ocean-300">VAT</span><span className="font-mono">{fmt(quote.monthly_vat)}</span></div>
           <div className="flex justify-between text-base font-bold pt-1.5 border-t border-ocean-500">
-            <span>Monthly DD (Inc VAT)</span>
+            <span>Monthly Direct Debit (Inc VAT)</span>
             <span className="font-mono text-sun-300">{fmt(quote.monthly_gross)}</span>
           </div>
         </div>

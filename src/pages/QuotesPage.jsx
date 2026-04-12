@@ -253,7 +253,7 @@ export default function QuotesPage() {
             <SortHeader col="quote_ref">Quote Ref</SortHeader>
             <SortHeader col="relationship_group">Client</SortHeader>
             <SortHeader col="status">Status</SortHeader>
-            <SortHeader col="monthly_gross" className="justify-end">Monthly DD</SortHeader>
+            <SortHeader col="monthly_gross" className="justify-end">Monthly Direct Debit</SortHeader>
             <SortHeader col="annual_total" className="justify-end">Annual</SortHeader>
             <SortHeader col="created_at" className="justify-end">Created</SortHeader>
           </div>

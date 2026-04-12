@@ -122,16 +122,16 @@ export default function ConsolidationTable({ entities, entityTotals, discounts =
         <span className="text-right font-mono text-ocean-700 font-bold">{fmt(groupAnnual)}</span>
       </div>
 
-      {/* Monthly DD per entity */}
+      {/* Monthly Direct Debit per entity */}
       <div className="grid gap-1 px-3 py-1.5 border-b border-gray-100 text-xs" style={{ gridTemplateColumns: gridCols }}>
-        <span className="text-gray-500">Monthly DD (each)</span>
+        <span className="text-gray-500">Monthly Direct Debit (each)</span>
         {entities.map(e => <span key={e.id} className="text-right font-mono text-gray-500">{fmt(entityMonthlyDD[e.id])}</span>)}
         <span></span>
       </div>
 
-      {/* Group Monthly DD */}
+      {/* Group Monthly Direct Debit */}
       <div className="grid gap-1 px-3 py-2 bg-ocean-700 text-white text-sm font-bold rounded-b-lg" style={{ gridTemplateColumns: gridCols }}>
-        <span>Monthly DD (Inc VAT)</span>
+        <span>Monthly Direct Debit (Inc VAT)</span>
         {entities.map(e => <span key={e.id}></span>)}
         <span className="text-right font-mono text-sun-300">{fmt(groupMonthlyDD)}</span>
       </div>

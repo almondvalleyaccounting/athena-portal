@@ -12,6 +12,7 @@ import QuoteFormPage from './pages/QuoteFormPage';
 import QuoteDetailPage from './pages/QuoteDetailPage';
 import PricingDefaultsPage from './pages/PricingDefaultsPage';
 import GroupDetailPage from './pages/GroupDetailPage';
+import ClientDetailPage from './pages/ClientDetailPage';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -151,6 +152,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/manage/clients" element={<EntitiesPage />} />
+        <Route path="/manage/clients/:id" element={<ClientDetailPage profile={profile} />} />
         <Route path="/manage/quotes" element={<QuotesPage />} />
         <Route path="/manage/quotes/new" element={
           <QuoteFormPage defaults={defaults} profile={profile} mode="new" />

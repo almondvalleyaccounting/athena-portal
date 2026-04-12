@@ -202,7 +202,7 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
             <option value="partnership">Partnership</option>
             <option value="llp">LLP</option>
           </select>
-          <input value={f.client.turnover} onChange={(e) => f.setClient({ ...f.client, turnover: e.target.value })} placeholder="Est. turnover (\u00A3)" type="number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
+          <input value={f.client.turnover} onChange={(e) => f.setClient({ ...f.client, turnover: e.target.value })} placeholder="Est. turnover (£)" type="number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
         </div>
       </div>
 
@@ -212,13 +212,13 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
         <div className={G4} style={C4}>
           <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={f.suFormation} onChange={(e) => f.setSuFormation(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Company formation</label>
           <span className="text-right"><Inp value={f.suFormationQty} onChange={f.setSuFormationQty} min={1} className="w-12" /></span>
-          <span className="text-right"><Inp value={f.suFormationRate} onChange={f.setSuFormationRate} prefix="\u00A3" className="w-14" /></span>
+          <span className="text-right"><Inp value={f.suFormationRate} onChange={f.setSuFormationRate} prefix="£" className="w-14" /></span>
           <span className="text-right font-mono">{f.suFormation ? fmt(f.suFormationQty * f.suFormationRate) : '\u2014'}</span>
         </div>
         <div className={G4} style={C4}>
           <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={f.suHmrc} onChange={(e) => f.setSuHmrc(e.target.checked)} className="w-3 h-3 accent-ocean-600" />HMRC registrations</label>
           <span className="text-right"><Inp value={f.suHmrcQty} onChange={f.setSuHmrcQty} min={1} className="w-12" /></span>
-          <span className="text-right"><Inp value={f.suHmrcRate} onChange={f.setSuHmrcRate} prefix="\u00A3" className="w-14" /></span>
+          <span className="text-right"><Inp value={f.suHmrcRate} onChange={f.setSuHmrcRate} prefix="£" className="w-14" /></span>
           <span className="text-right font-mono">{f.suHmrc ? fmt(f.suHmrcQty * f.suHmrcRate) : '\u2014'}</span>
         </div>
         {f.suOthers.map((o, i) => (
@@ -226,7 +226,7 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
             <input value={o.description} onChange={(e) => { const os = [...f.suOthers]; os[i] = { ...os[i], description: e.target.value }; f.setSuOthers(os); }} placeholder="Description" className="text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white" />
             <span></span><span></span>
             <span className="text-right flex items-center justify-end gap-1">
-              <Inp value={o.amount} onChange={(v) => { const os = [...f.suOthers]; os[i] = { ...os[i], amount: v }; f.setSuOthers(os); }} prefix="\u00A3" className="w-14" />
+              <Inp value={o.amount} onChange={(v) => { const os = [...f.suOthers]; os[i] = { ...os[i], amount: v }; f.setSuOthers(os); }} prefix="£" className="w-14" />
               <button onClick={() => f.setSuOthers(f.suOthers.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600">\u2715</button>
             </span>
           </div>
@@ -245,19 +245,19 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
         </div>
         {f.accType === 'trading' && <>
           {f.detectedBand && <p className="text-xs text-gray-400 mb-1">Band: {f.detectedBand.label} \u2192 standard {fmt(f.detectedBand.rate)}</p>}
-          <div className="flex justify-between items-center text-xs"><span className="font-medium">Annual fee</span><Inp value={f.accRate} onChange={f.setAccRate} prefix="\u00A3" className="w-20" /></div>
+          <div className="flex justify-between items-center text-xs"><span className="font-medium">Annual fee</span><Inp value={f.accRate} onChange={f.setAccRate} prefix="£" className="w-20" /></div>
         </>}
-        {f.accType === 'dormant' && <div className="flex justify-between items-center text-xs"><span className="font-medium">Dormant company fee</span><Inp value={f.accDormant} onChange={f.setAccDormant} prefix="\u00A3" className="w-20" /></div>}
+        {f.accType === 'dormant' && <div className="flex justify-between items-center text-xs"><span className="font-medium">Dormant company fee</span><Inp value={f.accDormant} onChange={f.setAccDormant} prefix="£" className="w-20" /></div>}
         {f.accType === 'property' && <>
           <TabRow cells={['Component', 'Qty', 'Rate', 'Total']} header />
-          <div className={G4} style={C4}><span>Base (1 property)</span><span></span><span className="text-right"><Inp value={f.accPropBase} onChange={f.setAccPropBase} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(f.accPropBase)}</span></div>
-          <div className={G4} style={C4}><span>Additional properties</span><span className="text-right"><Inp value={Math.max(0, f.accProperties - 1)} onChange={(v) => f.setAccProperties(v + 1)} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.accPropExtra} onChange={f.setAccPropExtra} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(Math.max(0, f.accProperties - 1) * f.accPropExtra)}</span></div>
+          <div className={G4} style={C4}><span>Base (1 property)</span><span></span><span className="text-right"><Inp value={f.accPropBase} onChange={f.setAccPropBase} prefix="£" className="w-14" /></span><span className="text-right font-mono">{fmt(f.accPropBase)}</span></div>
+          <div className={G4} style={C4}><span>Additional properties</span><span className="text-right"><Inp value={Math.max(0, f.accProperties - 1)} onChange={(v) => f.setAccProperties(v + 1)} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.accPropExtra} onChange={f.setAccPropExtra} prefix="£" className="w-14" /></span><span className="text-right font-mono">{fmt(Math.max(0, f.accProperties - 1) * f.accPropExtra)}</span></div>
         </>}
       </Section>
 
       {/* Confirmation Statement */}
       <Section title="Confirmation Statement" enabled={f.csEnabled} onToggle={() => f.setCsEnabled(!f.csEnabled)} annual={f.csFee}>
-        <div className="flex justify-between items-center text-xs"><span className="font-medium">Annual fee (+ VAT)</span><Inp value={f.csFee} onChange={f.setCsFee} prefix="\u00A3" className="w-16" /></div>
+        <div className="flex justify-between items-center text-xs"><span className="font-medium">Annual fee (+ VAT)</span><Inp value={f.csFee} onChange={f.setCsFee} prefix="£" className="w-16" /></div>
       </Section>
 
       {/* Directors */}
@@ -272,54 +272,54 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
       {/* Bookkeeping */}
       <Section title={f.bkIncVat ? 'Bookkeeping & VAT' : 'Bookkeeping'} enabled={f.bkEnabled} onToggle={() => f.setBkEnabled(!f.bkEnabled)} annual={f.bkAnnual}>
         <TabRow cells={['', 'Qty', 'Rate', 'Annual']} header />
-        <div className={G4} style={C4}><span>Monthly hours</span><span className="text-right"><Inp value={f.bkHours} onChange={f.setBkHours} min={1} step={0.5} className="w-12" /></span><span className="text-right"><Inp value={f.bkRate} onChange={f.setBkRate} prefix="\u00A3" className="w-14" />/hr</span><span className="text-right font-mono">{fmt(f.bkHours * f.bkRate * 12)}</span></div>
+        <div className={G4} style={C4}><span>Monthly hours</span><span className="text-right"><Inp value={f.bkHours} onChange={f.setBkHours} min={1} step={0.5} className="w-12" /></span><span className="text-right"><Inp value={f.bkRate} onChange={f.setBkRate} prefix="£" className="w-14" />/hr</span><span className="text-right font-mono">{fmt(f.bkHours * f.bkRate * 12)}</span></div>
         <div className="flex items-center justify-between text-xs mt-1">
           <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={f.bkIncVat} onChange={(e) => f.setBkIncVat(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Includes VAT returns</label>
-          {f.bkIncVat && <span>adj <Inp value={f.bkVatAdj} onChange={f.setBkVatAdj} prefix="\u00A3" className="w-14" /></span>}
+          {f.bkIncVat && <span>adj <Inp value={f.bkVatAdj} onChange={f.setBkVatAdj} prefix="£" className="w-14" /></span>}
         </div>
       </Section>
 
       {/* VAT standalone */}
       <Section title="VAT Returns (standalone)" enabled={f.vatEnabled} onToggle={() => f.setVatEnabled(!f.vatEnabled)} annual={f.vatAnnual}>
         <TabRow cells={['', 'Returns', 'Per return', 'Annual']} header />
-        <div className={G4} style={C4}><span>VAT returns</span><span className="text-right"><Inp value={f.vatFreq} onChange={f.setVatFreq} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={f.vatRate} onChange={f.setVatRate} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(f.vatAnnual)}</span></div>
+        <div className={G4} style={C4}><span>VAT returns</span><span className="text-right"><Inp value={f.vatFreq} onChange={f.setVatFreq} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={f.vatRate} onChange={f.setVatRate} prefix="£" className="w-14" /></span><span className="text-right font-mono">{fmt(f.vatAnnual)}</span></div>
       </Section>
 
       {/* Payroll */}
       <Section title="Payroll" enabled={f.prEnabled} onToggle={() => f.setPrEnabled(!f.prEnabled)} annual={f.prAnnual}>
         <TabRow cells={['Component', 'Qty', 'Rate', 'Monthly']} header />
-        <div className={G4} style={C4}><span>Flat fee</span><span></span><span></span><span className="text-right"><Inp value={f.prFlat} onChange={f.setPrFlat} prefix="\u00A3" className="w-14" /></span></div>
-        <div className={G4} style={C4}><span>Monthly employees</span><span className="text-right"><Inp value={f.prMonthlyEe} onChange={f.setPrMonthlyEe} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prMonthlyEeRate} onChange={f.setPrMonthlyEeRate} prefix="\u00A3" className="w-14" />/mo</span><span className="text-right font-mono">{fmt(f.prMonthlyEe * f.prMonthlyEeRate)}</span></div>
-        <div className={G4} style={C4}><span>Weekly employees</span><span className="text-right"><Inp value={f.prWeeklyEe} onChange={f.setPrWeeklyEe} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prWeeklyEeRate} onChange={f.setPrWeeklyEeRate} prefix="\u00A3" className="w-14" />/wk</span><span className="text-right font-mono">{fmt(f.prWeeklyEe * f.prWeeklyEeRate * 4.33)}</span></div>
-        <div className={G4} style={C4}><span>CIS subcontractors</span><span className="text-right"><Inp value={f.prCis} onChange={f.setPrCis} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prCisRate} onChange={f.setPrCisRate} prefix="\u00A3" className="w-14" />/wk</span><span className="text-right font-mono">{fmt(f.prCis * f.prCisRate * 4.33)}</span></div>
+        <div className={G4} style={C4}><span>Flat fee</span><span></span><span></span><span className="text-right"><Inp value={f.prFlat} onChange={f.setPrFlat} prefix="£" className="w-14" /></span></div>
+        <div className={G4} style={C4}><span>Monthly employees</span><span className="text-right"><Inp value={f.prMonthlyEe} onChange={f.setPrMonthlyEe} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prMonthlyEeRate} onChange={f.setPrMonthlyEeRate} prefix="£" className="w-14" />/mo</span><span className="text-right font-mono">{fmt(f.prMonthlyEe * f.prMonthlyEeRate)}</span></div>
+        <div className={G4} style={C4}><span>Weekly employees</span><span className="text-right"><Inp value={f.prWeeklyEe} onChange={f.setPrWeeklyEe} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prWeeklyEeRate} onChange={f.setPrWeeklyEeRate} prefix="£" className="w-14" />/wk</span><span className="text-right font-mono">{fmt(f.prWeeklyEe * f.prWeeklyEeRate * 4.33)}</span></div>
+        <div className={G4} style={C4}><span>CIS subcontractors</span><span className="text-right"><Inp value={f.prCis} onChange={f.setPrCis} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prCisRate} onChange={f.setPrCisRate} prefix="£" className="w-14" />/wk</span><span className="text-right font-mono">{fmt(f.prCis * f.prCisRate * 4.33)}</span></div>
         <TabRow cells={['Monthly total', '', '', fmt(f.prMoCalc)]} bold />
-        <div className={G4} style={{ ...C4, marginTop: '0.5rem' }}><span>P11D returns (annual)</span><span className="text-right"><Inp value={f.prP11d} onChange={f.setPrP11d} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prP11dRate} onChange={f.setPrP11dRate} prefix="\u00A3" className="w-14" /> ea</span><span className="text-right font-mono">{fmt(f.prP11d * f.prP11dRate)}</span></div>
+        <div className={G4} style={{ ...C4, marginTop: '0.5rem' }}><span>P11D returns (annual)</span><span className="text-right"><Inp value={f.prP11d} onChange={f.setPrP11d} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.prP11dRate} onChange={f.setPrP11dRate} prefix="£" className="w-14" /> ea</span><span className="text-right font-mono">{fmt(f.prP11d * f.prP11dRate)}</span></div>
       </Section>
 
       {/* Auto-enrolment */}
       <Section title="Auto-Enrolment" enabled={f.aeEnabled} onToggle={() => f.setAeEnabled(!f.aeEnabled)} annual={f.aeFee}>
-        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.aeFee} onChange={f.setAeFee} prefix="\u00A3" className="w-14" /></div>
+        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.aeFee} onChange={f.setAeFee} prefix="£" className="w-14" /></div>
       </Section>
 
       {/* Modulr Wage Payments */}
       <Section title="Modulr Wage Payments" enabled={f.modEnabled} onToggle={() => f.setModEnabled(!f.modEnabled)} annual={f.modAnnual}>
         <TabRow cells={['Component', 'Qty', 'Rate', 'Monthly']} header />
-        <div className={G4} style={C4}><span>Software</span><span></span><span></span><span className="text-right"><Inp value={f.modSwPrice} onChange={f.setModSwPrice} prefix="\u00A3" className="w-14" /></span></div>
-        <div className={G4} style={C4}><span>Payments/month</span><span className="text-right"><Inp value={f.modPayments} onChange={f.setModPayments} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.modPaymentRate} onChange={f.setModPaymentRate} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(f.modPayments * f.modPaymentRate)}</span></div>
-        <div className={G4} style={C4}><span>Pay runs/month</span><span className="text-right"><Inp value={f.modRuns} onChange={f.setModRuns} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.modRunRate} onChange={f.setModRunRate} prefix="\u00A3" className="w-14" /></span><span className="text-right font-mono">{fmt(f.modRuns * f.modRunRate)}</span></div>
+        <div className={G4} style={C4}><span>Software</span><span></span><span></span><span className="text-right"><Inp value={f.modSwPrice} onChange={f.setModSwPrice} prefix="£" className="w-14" /></span></div>
+        <div className={G4} style={C4}><span>Payments/month</span><span className="text-right"><Inp value={f.modPayments} onChange={f.setModPayments} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.modPaymentRate} onChange={f.setModPaymentRate} prefix="£" className="w-14" /></span><span className="text-right font-mono">{fmt(f.modPayments * f.modPaymentRate)}</span></div>
+        <div className={G4} style={C4}><span>Pay runs/month</span><span className="text-right"><Inp value={f.modRuns} onChange={f.setModRuns} min={0} className="w-12" /></span><span className="text-right"><Inp value={f.modRunRate} onChange={f.setModRunRate} prefix="£" className="w-14" /></span><span className="text-right font-mono">{fmt(f.modRuns * f.modRunRate)}</span></div>
         <TabRow cells={['Monthly total', '', '', fmt(f.modMonthly)]} bold />
       </Section>
 
       {/* Management Accounts */}
       <Section title="Management Accounts" enabled={f.maEnabled} onToggle={() => f.setMaEnabled(!f.maEnabled)} annual={f.maAnnual}>
         <TabRow cells={['', 'Sets/yr', 'Per set', 'Annual']} header />
-        <div className={G4} style={C4}><span>Accounts sets</span><span className="text-right"><Inp value={f.maSets} onChange={f.setMaSets} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={f.maRate} onChange={f.setMaRate} prefix="\u00A3" className="w-16" /></span><span className="text-right font-mono">{fmt(f.maAnnual)}</span></div>
+        <div className={G4} style={C4}><span>Accounts sets</span><span className="text-right"><Inp value={f.maSets} onChange={f.setMaSets} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={f.maRate} onChange={f.setMaRate} prefix="£" className="w-16" /></span><span className="text-right font-mono">{fmt(f.maAnnual)}</span></div>
       </Section>
 
       {/* Review Meetings */}
       <Section title="Review Meetings" enabled={f.rmEnabled} onToggle={() => f.setRmEnabled(!f.rmEnabled)} annual={f.rmAnnual}>
         <TabRow cells={['', 'Meetings/yr', 'Rate', 'Annual']} header />
-        <div className={G4} style={C4}><span>Client meetings</span><span className="text-right"><Inp value={f.rmCount} onChange={f.setRmCount} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={f.rmRate} onChange={f.setRmRate} prefix="\u00A3" className="w-16" /></span><span className="text-right font-mono">{fmt(f.rmAnnual)}</span></div>
+        <div className={G4} style={C4}><span>Client meetings</span><span className="text-right"><Inp value={f.rmCount} onChange={f.setRmCount} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={f.rmRate} onChange={f.setRmRate} prefix="£" className="w-16" /></span><span className="text-right font-mono">{fmt(f.rmAnnual)}</span></div>
       </Section>
 
       {/* Budgeting & Forecasting */}
@@ -327,15 +327,15 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
         <div className="space-y-1.5">
           <label className="flex items-center justify-between text-xs cursor-pointer">
             <span className="flex items-center gap-1.5"><input type="checkbox" checked={f.budBasic} onChange={e => f.setBudBasic(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Basic budget</span>
-            <Inp value={f.budBasicRate} onChange={f.setBudBasicRate} prefix="\u00A3" className="w-20" />
+            <Inp value={f.budBasicRate} onChange={f.setBudBasicRate} prefix="£" className="w-20" />
           </label>
           <label className="flex items-center justify-between text-xs cursor-pointer">
             <span className="flex items-center gap-1.5"><input type="checkbox" checked={f.budAdvanced} onChange={e => f.setBudAdvanced(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Advanced budget</span>
-            <Inp value={f.budAdvancedRate} onChange={f.setBudAdvancedRate} prefix="\u00A3" className="w-20" />
+            <Inp value={f.budAdvancedRate} onChange={f.setBudAdvancedRate} prefix="£" className="w-20" />
           </label>
           <div className="flex items-center justify-between text-xs">
             <span>Reforecasts</span>
-            <span className="flex items-center gap-1"><Inp value={f.budReforecastQty} onChange={f.setBudReforecastQty} min={0} className="w-10" /> x <Inp value={f.budReforecastRate} onChange={f.setBudReforecastRate} prefix="\u00A3" className="w-16" /></span>
+            <span className="flex items-center gap-1"><Inp value={f.budReforecastQty} onChange={f.setBudReforecastQty} min={0} className="w-10" /> x <Inp value={f.budReforecastRate} onChange={f.setBudReforecastRate} prefix="£" className="w-16" /></span>
           </div>
         </div>
       </Section>
@@ -343,12 +343,12 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
       {/* Fractional CFO */}
       <Section title="Fractional CFO" enabled={f.cfoEnabled} onToggle={() => f.setCfoEnabled(!f.cfoEnabled)} annual={f.cfoAnnual}>
         <TabRow cells={['', 'Days/yr', 'Day rate', 'Annual']} header />
-        <div className={G4} style={C4}><span>CFO days</span><span className="text-right"><Inp value={f.cfoDays} onChange={f.setCfoDays} min={1} className="w-12" /></span><span className="text-right"><Inp value={f.cfoDayRate} onChange={f.setCfoDayRate} prefix="\u00A3" className="w-20" /></span><span className="text-right font-mono">{fmt(f.cfoAnnual)}</span></div>
+        <div className={G4} style={C4}><span>CFO days</span><span className="text-right"><Inp value={f.cfoDays} onChange={f.setCfoDays} min={1} className="w-12" /></span><span className="text-right"><Inp value={f.cfoDayRate} onChange={f.setCfoDayRate} prefix="£" className="w-20" /></span><span className="text-right font-mono">{fmt(f.cfoAnnual)}</span></div>
       </Section>
 
       {/* Registered office */}
       <Section title="Registered Office" enabled={f.roEnabled} onToggle={() => f.setRoEnabled(!f.roEnabled)} annual={f.roFee}>
-        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.roFee} onChange={f.setRoFee} prefix="\u00A3" className="w-16" /></div>
+        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.roFee} onChange={f.setRoFee} prefix="£" className="w-16" /></div>
       </Section>
 
       {/* Software */}
@@ -364,7 +364,7 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
         <div className="grid gap-1 items-center text-xs text-gray-700 mb-1" style={{ gridTemplateColumns: '2fr 1fr 1fr' }}>
           <label className="flex items-center gap-1.5 cursor-pointer">
             <input type="checkbox" checked={f.dextEnabled} onChange={(e) => f.setDextEnabled(e.target.checked)} className="w-3 h-3 accent-ocean-600" />
-            Dext <Inp value={f.dextPrice} onChange={f.setDextPrice} prefix="\u00A3" className="w-12" />/mo
+            Dext <Inp value={f.dextPrice} onChange={f.setDextPrice} prefix="£" className="w-12" />/mo
           </label>
           <span className="text-right font-mono">{f.dextEnabled ? fmt(f.dextPrice) : '\u2014'}</span>
           <span className="text-right font-mono">{f.dextEnabled ? fmt(f.dextPrice * 12) : '\u2014'}</span>
@@ -380,10 +380,10 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
           {f.swAnnual > 0 && <div className="flex justify-between text-xs"><span className="text-ocean-300">Software</span><span className="font-mono">{fmt(f.swAnnual)}</span></div>}
         </div>
         <div className="border-t border-ocean-600 mt-2 pt-2 space-y-1">
-          <div className="flex justify-between text-xs"><span className="text-ocean-300">Annual (Net)</span><span className="font-mono font-medium">{fmt(f.annualTotal)}</span></div>
+          <div className="flex justify-between text-xs"><span className="text-ocean-300">Annual Total (Net)</span><span className="font-mono font-medium">{fmt(f.annualTotal)}</span></div>
           <div className="flex justify-between text-xs"><span className="text-ocean-300">Monthly (Net)</span><span className="font-mono">{fmt(f.monthlyNet)}</span></div>
           <div className="flex justify-between text-xs"><span className="text-ocean-300">VAT</span><span className="font-mono">{fmt(f.monthlyVat)}</span></div>
-          <div className="flex justify-between text-base font-bold pt-1.5 border-t border-ocean-500"><span>Monthly DD (Inc VAT)</span><span className="font-mono text-sun-300">{fmt(f.monthlyGross)}</span></div>
+          <div className="flex justify-between text-base font-bold pt-1.5 border-t border-ocean-500"><span>Monthly Direct Debit (Inc VAT)</span><span className="font-mono text-sun-300">{fmt(f.monthlyGross)}</span></div>
         </div>
       </div>
 

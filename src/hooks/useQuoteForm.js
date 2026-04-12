@@ -157,18 +157,18 @@ export default function useQuoteForm(D) {
 
   // ── Totals ──
   const lines = [];
-  if (accEnabled) lines.push({ id: 'accounts_ct', name: 'Accounts & CT', annual: accAnnual, detail: accType === 'dormant' ? 'Dormant' : accType === 'property' ? `Property (${accProperties})` : detectedBand?.label || '' });
-  if (csEnabled) lines.push({ id: 'confirmation_statement', name: 'Conf Statement', annual: csFee });
-  if (dtrEnabled) lines.push({ id: 'directors_tax_return', name: `Directors' Tax (${directors.length})`, annual: dtrAnnual });
-  if (bkEnabled) lines.push({ id: bkIncVat ? 'bookkeeping_vat' : 'bookkeeping', name: bkIncVat ? 'BK & VAT' : 'Bookkeeping', annual: bkAnnual, detail: `${bkHours}h \u00D7 ${fmt(bkRate)}` });
+  if (accEnabled) lines.push({ id: 'accounts_ct', name: 'Accounts & CT', annual: accAnnual });
+  if (csEnabled) lines.push({ id: 'confirmation_statement', name: 'Confirmation Statement', annual: csFee });
+  if (dtrEnabled) lines.push({ id: 'directors_tax_return', name: `Directors' Tax Returns`, annual: dtrAnnual });
+  if (bkEnabled) lines.push({ id: bkIncVat ? 'bookkeeping_vat' : 'bookkeeping', name: bkIncVat ? 'Bookkeeping & VAT Returns' : 'Bookkeeping', annual: bkAnnual });
   if (vatEnabled) lines.push({ id: 'vat_returns', name: 'VAT Returns', annual: vatAnnual });
   if (prEnabled) lines.push({ id: 'payroll', name: 'Payroll', annual: prAnnual });
   if (aeEnabled) lines.push({ id: 'auto_enrolment', name: 'Auto-Enrolment', annual: aeFee });
-  if (modEnabled) lines.push({ id: 'modulr', name: 'Modulr Wages', annual: modAnnual, detail: `${fmt(modMonthly)}/mo` });
-  if (maEnabled) lines.push({ id: 'management_accounts', name: 'Management Accounts', annual: maAnnual, detail: `${maSets} sets` });
-  if (rmEnabled) lines.push({ id: 'review_meetings', name: 'Review Meetings', annual: rmAnnual, detail: `${rmCount} meetings` });
+  if (modEnabled) lines.push({ id: 'modulr', name: 'Modulr Wage Payments', annual: modAnnual });
+  if (maEnabled) lines.push({ id: 'management_accounts', name: 'Management Accounts', annual: maAnnual });
+  if (rmEnabled) lines.push({ id: 'review_meetings', name: 'Review Meetings', annual: rmAnnual });
   if (budEnabled) lines.push({ id: 'budgeting', name: 'Budgeting & Forecasting', annual: budAnnual });
-  if (cfoEnabled) lines.push({ id: 'fractional_cfo', name: 'Fractional CFO', annual: cfoAnnual, detail: `${cfoDays} days` });
+  if (cfoEnabled) lines.push({ id: 'fractional_cfo', name: 'Fractional CFO', annual: cfoAnnual });
   if (roEnabled) lines.push({ id: 'registered_office', name: 'Registered Office', annual: roFee });
 
   const annualServices = lines.reduce((s, l) => s + l.annual, 0);

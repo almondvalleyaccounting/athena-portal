@@ -47,7 +47,7 @@ export default function EntityQuoteTab({ defaults: D, entity, onTotalsChange }) 
       <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
         <div className="grid grid-cols-2 gap-2">
           <span className="text-xs text-gray-500 col-span-2">{entity?.name} {entity?.company_number ? `(${entity.company_number})` : ''}</span>
-          <input value={f.client.turnover} onChange={(e) => f.setClient({ ...f.client, turnover: e.target.value })} placeholder="Est. turnover (\u00A3)" type="number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
+          <input value={f.client.turnover} onChange={(e) => f.setClient({ ...f.client, turnover: e.target.value })} placeholder="Est. turnover (£)" type="number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
           <select value={f.client.entityType} onChange={(e) => f.setClient({ ...f.client, entityType: e.target.value })} className="text-sm border border-gray-200 rounded px-2 py-1.5 bg-white">
             <option value="limited_company">Limited Company</option>
             <option value="sole_trader">Sole Trader</option>
@@ -68,20 +68,20 @@ export default function EntityQuoteTab({ defaults: D, entity, onTotalsChange }) 
         </div>
         {f.accType === 'trading' && <>
           {f.detectedBand && <p className="text-xs text-gray-400 mb-1">Band: {f.detectedBand.label}</p>}
-          <div className="flex justify-between items-center text-xs"><span>Annual fee</span><Inp value={f.accRate} onChange={f.setAccRate} prefix="\u00A3" className="w-20" /></div>
+          <div className="flex justify-between items-center text-xs"><span>Annual fee</span><Inp value={f.accRate} onChange={f.setAccRate} prefix="£" className="w-20" /></div>
         </>}
-        {f.accType === 'dormant' && <div className="flex justify-between items-center text-xs"><span>Dormant fee</span><Inp value={f.accDormant} onChange={f.setAccDormant} prefix="\u00A3" className="w-20" /></div>}
+        {f.accType === 'dormant' && <div className="flex justify-between items-center text-xs"><span>Dormant fee</span><Inp value={f.accDormant} onChange={f.setAccDormant} prefix="£" className="w-20" /></div>}
         {f.accType === 'property' && <>
-          <div className="flex justify-between items-center text-xs mb-1"><span>Base</span><Inp value={f.accPropBase} onChange={f.setAccPropBase} prefix="\u00A3" className="w-14" /></div>
-          <div className="flex justify-between items-center text-xs"><span>Extra props</span><Inp value={Math.max(0, f.accProperties - 1)} onChange={(v) => f.setAccProperties(v + 1)} min={0} className="w-12" /> x <Inp value={f.accPropExtra} onChange={f.setAccPropExtra} prefix="\u00A3" className="w-14" /></div>
+          <div className="flex justify-between items-center text-xs mb-1"><span>Base</span><Inp value={f.accPropBase} onChange={f.setAccPropBase} prefix="£" className="w-14" /></div>
+          <div className="flex justify-between items-center text-xs"><span>Extra props</span><Inp value={Math.max(0, f.accProperties - 1)} onChange={(v) => f.setAccProperties(v + 1)} min={0} className="w-12" /> x <Inp value={f.accPropExtra} onChange={f.setAccPropExtra} prefix="£" className="w-14" /></div>
         </>}
       </Section>
 
       <Section title="Confirmation Statement" enabled={f.csEnabled} onToggle={() => f.setCsEnabled(!f.csEnabled)} annual={f.csFee}>
-        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.csFee} onChange={f.setCsFee} prefix="\u00A3" className="w-16" /></div>
+        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.csFee} onChange={f.setCsFee} prefix="£" className="w-16" /></div>
       </Section>
 
-      <Section title={`Directors' Tax (${f.directors.length})`} enabled={f.dtrEnabled} onToggle={() => f.setDtrEnabled(!f.dtrEnabled)} annual={f.dtrAnnual}>
+      <Section title={`Directors' Tax Returns (${f.directors.length})`} enabled={f.dtrEnabled} onToggle={() => f.setDtrEnabled(!f.dtrEnabled)} annual={f.dtrAnnual}>
         {f.directors.map((d, i) => (
           <DirectorCard key={i} d={d} idx={i} addonRates={f.addonRates} onAddonRate={f.onAddonRate}
             onChange={f.updateDir} onRemove={(idx) => f.setDirectors(f.directors.filter((_, j) => j !== idx))} canRemove={f.directors.length > 1} />
@@ -90,29 +90,29 @@ export default function EntityQuoteTab({ defaults: D, entity, onTotalsChange }) 
       </Section>
 
       <Section title={f.bkIncVat ? 'Bookkeeping & VAT' : 'Bookkeeping'} enabled={f.bkEnabled} onToggle={() => f.setBkEnabled(!f.bkEnabled)} annual={f.bkAnnual}>
-        <div className="flex justify-between text-xs mb-1"><span>Hours/mo</span><Inp value={f.bkHours} onChange={f.setBkHours} min={1} className="w-12" /> x <Inp value={f.bkRate} onChange={f.setBkRate} prefix="\u00A3" className="w-14" />/hr</div>
+        <div className="flex justify-between text-xs mb-1"><span>Hours/mo</span><Inp value={f.bkHours} onChange={f.setBkHours} min={1} className="w-12" /> x <Inp value={f.bkRate} onChange={f.setBkRate} prefix="£" className="w-14" />/hr</div>
         <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={f.bkIncVat} onChange={(e) => f.setBkIncVat(e.target.checked)} className="w-3 h-3 accent-ocean-600" />Inc VAT</label>
       </Section>
 
       <Section title="VAT Returns" enabled={f.vatEnabled} onToggle={() => f.setVatEnabled(!f.vatEnabled)} annual={f.vatAnnual}>
-        <div className="flex justify-between text-xs"><span>Returns/yr</span><Inp value={f.vatFreq} onChange={f.setVatFreq} min={1} className="w-12" /> x <Inp value={f.vatRate} onChange={f.setVatRate} prefix="\u00A3" className="w-14" /></div>
+        <div className="flex justify-between text-xs"><span>Returns/yr</span><Inp value={f.vatFreq} onChange={f.setVatFreq} min={1} className="w-12" /> x <Inp value={f.vatRate} onChange={f.setVatRate} prefix="£" className="w-14" /></div>
       </Section>
 
       <Section title="Payroll" enabled={f.prEnabled} onToggle={() => f.setPrEnabled(!f.prEnabled)} annual={f.prAnnual}>
         <div className="space-y-1 text-xs">
-          <div className="flex justify-between"><span>Flat/mo</span><Inp value={f.prFlat} onChange={f.setPrFlat} prefix="\u00A3" className="w-14" /></div>
-          <div className="flex justify-between"><span>Monthly EE</span><Inp value={f.prMonthlyEe} onChange={f.setPrMonthlyEe} min={0} className="w-12" /> x <Inp value={f.prMonthlyEeRate} onChange={f.setPrMonthlyEeRate} prefix="\u00A3" className="w-14" /></div>
-          <div className="flex justify-between"><span>Weekly EE</span><Inp value={f.prWeeklyEe} onChange={f.setPrWeeklyEe} min={0} className="w-12" /> x <Inp value={f.prWeeklyEeRate} onChange={f.setPrWeeklyEeRate} prefix="\u00A3" className="w-14" /></div>
-          <div className="flex justify-between"><span>P11D</span><Inp value={f.prP11d} onChange={f.setPrP11d} min={0} className="w-12" /> x <Inp value={f.prP11dRate} onChange={f.setPrP11dRate} prefix="\u00A3" className="w-14" /></div>
+          <div className="flex justify-between"><span>Flat/mo</span><Inp value={f.prFlat} onChange={f.setPrFlat} prefix="£" className="w-14" /></div>
+          <div className="flex justify-between"><span>Monthly employees</span><Inp value={f.prMonthlyEe} onChange={f.setPrMonthlyEe} min={0} className="w-12" /> x <Inp value={f.prMonthlyEeRate} onChange={f.setPrMonthlyEeRate} prefix="£" className="w-14" /></div>
+          <div className="flex justify-between"><span>Weekly employees</span><Inp value={f.prWeeklyEe} onChange={f.setPrWeeklyEe} min={0} className="w-12" /> x <Inp value={f.prWeeklyEeRate} onChange={f.setPrWeeklyEeRate} prefix="£" className="w-14" /></div>
+          <div className="flex justify-between"><span>P11D</span><Inp value={f.prP11d} onChange={f.setPrP11d} min={0} className="w-12" /> x <Inp value={f.prP11dRate} onChange={f.setPrP11dRate} prefix="£" className="w-14" /></div>
         </div>
       </Section>
 
       <Section title="Auto-Enrolment" enabled={f.aeEnabled} onToggle={() => f.setAeEnabled(!f.aeEnabled)} annual={f.aeFee}>
-        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.aeFee} onChange={f.setAeFee} prefix="\u00A3" className="w-14" /></div>
+        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.aeFee} onChange={f.setAeFee} prefix="£" className="w-14" /></div>
       </Section>
 
       <Section title="Registered Office" enabled={f.roEnabled} onToggle={() => f.setRoEnabled(!f.roEnabled)} annual={f.roFee}>
-        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.roFee} onChange={f.setRoFee} prefix="\u00A3" className="w-16" /></div>
+        <div className="flex justify-between text-xs"><span>Annual fee</span><Inp value={f.roFee} onChange={f.setRoFee} prefix="£" className="w-16" /></div>
       </Section>
 
       {/* Software */}
