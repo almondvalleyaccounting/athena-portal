@@ -3,7 +3,21 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 
-const ACTIVE_STATUSES = ['draft', 'pending_approval', 'approved', 'sent', 'accepted'];
+const STATUS_VIEW_FILTERS = {
+  draft: ['draft'],
+  awaiting_approval: ['pending_approval'],
+  approved: ['approved'],
+  pipeline: ['draft', 'pending_approval', 'approved'],
+  rejected: ['declined'],
+};
+
+const STATUS_VIEW_LABELS = {
+  draft: 'Draft',
+  awaiting_approval: 'Awaiting Approval',
+  approved: 'Approved',
+  pipeline: 'Pipeline',
+  rejected: 'Rejected',
+};
 
 const TIME_FILTERS = [
   { label: 'All Time', value: 'all' },
@@ -49,7 +63,6 @@ function getPreviousDateRange(filter) {
   const now = new Date();
   let from, to;
   if (filter === 'this_month') {
-    // Previous period = last month
     from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     to = new Date(now.getFullYear(), now.getMonth(), 1);
   } else if (filter === 'last_3') {
@@ -85,6 +98,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [timePeriod, setTimePeriod] = useState('all');
   const [selectedServices, setSelectedServices] = useState([]);
+  const [statusView, setStatusView] = useState('pipeline');
+  const [revenueStatusFilter, setRevenueStatusFilter] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -109,48 +124,68 @@ export default function DashboardPage() {
     })();
   }, []);
 
-  // Derived filtered data
-  const filtered = useMemo(() => {
+  // Compute status card data (UNFILTERED by statusView, but filtered by time period)
+  const statusCards = useMemo(() => {
     const dateFrom = getDateRange(timePeriod);
-
-    const filteredQuotes = quotes.filter((q) => {
+    const timeFiltered = quotes.filter((q) => {
+      if (q.status === 'deleted') return false;
       if (dateFrom && q.created_at < dateFrom) return false;
       return true;
     });
 
-    const activeQuotes = filteredQuotes.filter(
-      (q) => q.status !== 'deleted' && ACTIVE_STATUSES.includes(q.status)
-    );
+    const cards = {};
+    Object.keys(STATUS_VIEW_FILTERS).forEach((key) => {
+      const statuses = STATUS_VIEW_FILTERS[key];
+      const matching = timeFiltered.filter((q) => statuses.includes(q.status));
+      cards[key] = {
+        volume: matching.length,
+        value: matching.reduce((sum, q) => sum + (parseFloat(q.annual_total) || 0), 0),
+      };
+    });
+    return cards;
+  }, [quotes, timePeriod]);
 
-    const nonDeletedQuotes = filteredQuotes.filter(
-      (q) => q.status !== 'deleted' && q.status !== 'expired' && q.status !== 'declined'
-    );
+  // Derived filtered data
+  const filtered = useMemo(() => {
+    const dateFrom = getDateRange(timePeriod);
+    const allowedStatuses = STATUS_VIEW_FILTERS[statusView] || STATUS_VIEW_FILTERS.pipeline;
+
+    // Apply status view filter FIRST, then time period
+    const filteredQuotes = quotes.filter((q) => {
+      if (q.status === 'deleted') return false;
+      if (!allowedStatuses.includes(q.status)) return false;
+      if (dateFrom && q.created_at < dateFrom) return false;
+      return true;
+    });
 
     const filteredEntities = entities.filter((e) => {
       if (dateFrom && e.created_at < dateFrom) return false;
       return true;
     });
 
-    // Summary stats
+    // Summary stats (from status-filtered quotes)
     const totalClients = filteredEntities.length;
-    const activeQuoteCount = activeQuotes.length;
-    const totalAnnual = activeQuotes.reduce((sum, q) => sum + (parseFloat(q.annual_total) || 0), 0);
-    const totalMonthlyDD = activeQuotes.reduce((sum, q) => sum + (parseFloat(q.monthly_gross) || 0), 0);
+    const activeQuoteCount = filteredQuotes.length;
+    const totalAnnual = filteredQuotes.reduce((sum, q) => sum + (parseFloat(q.annual_total) || 0), 0);
+    const totalMonthlyDD = filteredQuotes.reduce((sum, q) => sum + (parseFloat(q.monthly_gross) || 0), 0);
 
-    // Status breakdown across all non-deleted filtered quotes
-    const statusCounts = {};
-    filteredQuotes
-      .filter((q) => q.status !== 'deleted')
-      .forEach((q) => {
-        const s = q.status || 'draft';
-        statusCounts[s] = (statusCounts[s] || 0) + 1;
-      });
+    // Revenue section uses its own status filter (or falls back to page-level)
+    const revenueStatuses = revenueStatusFilter
+      ? STATUS_VIEW_FILTERS[revenueStatusFilter]
+      : allowedStatuses;
+
+    const revenueQuotes = quotes.filter((q) => {
+      if (q.status === 'deleted') return false;
+      if (!revenueStatuses.includes(q.status)) return false;
+      if (dateFrom && q.created_at < dateFrom) return false;
+      return true;
+    });
 
     // Revenue by service (current period)
-    const activeQuoteIds = new Set(activeQuotes.map((q) => q.id));
+    const revenueQuoteIds = new Set(revenueQuotes.map((q) => q.id));
     const serviceMap = {};
     lineItems.forEach((li) => {
-      if (!activeQuoteIds.has(li.quote_id)) return;
+      if (!revenueQuoteIds.has(li.quote_id)) return;
       const key = li.description || li.service_id || 'Unknown';
       if (!serviceMap[key]) serviceMap[key] = { service: key, serviceId: li.service_id || '', totalAnnual: 0, quoteIds: new Set() };
       serviceMap[key].totalAnnual += parseFloat(li.annual_amount) || 0;
@@ -159,17 +194,17 @@ export default function DashboardPage() {
 
     // Revenue by service (previous period)
     const prevRange = getPreviousDateRange(timePeriod);
-    const prevActiveQuotes = prevRange
+    const prevRevenueQuotes = prevRange
       ? quotes.filter((q) => {
-          if (q.status === 'deleted' || !ACTIVE_STATUSES.includes(q.status)) return false;
+          if (q.status === 'deleted' || !revenueStatuses.includes(q.status)) return false;
           return q.created_at >= prevRange.from && q.created_at < prevRange.to;
         })
       : [];
-    const prevActiveQuoteIds = new Set(prevActiveQuotes.map((q) => q.id));
+    const prevRevenueQuoteIds = new Set(prevRevenueQuotes.map((q) => q.id));
     const prevServiceMap = {};
     if (prevRange) {
       lineItems.forEach((li) => {
-        if (!prevActiveQuoteIds.has(li.quote_id)) return;
+        if (!prevRevenueQuoteIds.has(li.quote_id)) return;
         const key = li.description || li.service_id || 'Unknown';
         if (!prevServiceMap[key]) prevServiceMap[key] = { totalAnnual: 0 };
         prevServiceMap[key].totalAnnual += parseFloat(li.annual_amount) || 0;
@@ -196,8 +231,8 @@ export default function DashboardPage() {
     const grandTotalAnnual = servicesTotalAnnual + softwareTotalAnnual;
     const grandPrevAnnual = servicesPrevAnnual + softwarePrevAnnual;
 
-    // Recent quotes (non-deleted, non-expired, non-declined)
-    const recentQuotes = nonDeletedQuotes.slice(0, 8);
+    // Recent Quotes (from status-filtered set)
+    const recentQuotes = filteredQuotes.slice(0, 8);
 
     // All unique services for filter
     const allServices = [...new Set(lineItems.map(li => li.description || li.service_id).filter(Boolean))].sort();
@@ -210,16 +245,15 @@ export default function DashboardPage() {
       months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }) });
     }
 
-    // Filter quotes by selected services
+    // Filter quotes by selected services (within status-filtered set)
     const serviceFilteredQuotes = (selectedServices.length === 0)
-      ? filteredQuotes.filter(q => q.status !== 'deleted')
+      ? filteredQuotes
       : filteredQuotes.filter(q => {
-          if (q.status === 'deleted') return false;
           const qLineItems = lineItems.filter(li => li.quote_id === q.id);
           return qLineItems.some(li => selectedServices.includes(li.description || li.service_id));
         });
 
-    // Build trend: { month -> { status -> { value, count } } }
+    // Build trend
     const trendValue = {};
     const trendVolume = {};
     months.forEach(m => { trendValue[m.key] = {}; trendVolume[m.key] = {}; });
@@ -230,7 +264,6 @@ export default function DashboardPage() {
       if (!trendValue[mKey]) return;
       const s = q.status || 'draft';
 
-      // If services are selected, sum only those line items' annual values
       let annual = parseFloat(q.annual_total) || 0;
       if (selectedServices.length > 0) {
         const qLines = lineItems.filter(li => li.quote_id === q.id && selectedServices.includes(li.description || li.service_id));
@@ -246,7 +279,6 @@ export default function DashboardPage() {
       activeQuoteCount,
       totalAnnual,
       totalMonthlyDD,
-      statusCounts,
       revenueByService,
       serviceRows,
       softwareRows,
@@ -262,20 +294,12 @@ export default function DashboardPage() {
       trendValue,
       trendVolume,
     };
-  }, [quotes, entities, lineItems, timePeriod, selectedServices]);
+  }, [quotes, entities, lineItems, timePeriod, selectedServices, statusView, revenueStatusFilter]);
 
   const STATUS_ORDER = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
-  const STATUS_LABELS = {
-    draft: 'Draft',
-    pending_approval: 'Pending',
-    approved: 'Approved',
-    sent: 'Sent',
-    accepted: 'Accepted',
-    declined: 'Declined',
-    expired: 'Expired',
-  };
 
   const pLabel = periodLabel(timePeriod);
+  const svLabel = STATUS_VIEW_LABELS[statusView];
   const hasPrevPeriod = timePeriod !== 'all';
   const prevPeriodLabel = {
     this_month: 'Last Month',
@@ -289,6 +313,10 @@ export default function DashboardPage() {
     ? '2fr 1fr 1fr 1fr 1fr'
     : '2fr 1fr 1fr';
 
+  const effectiveRevenueLabel = revenueStatusFilter
+    ? STATUS_VIEW_LABELS[revenueStatusFilter]
+    : svLabel;
+
   function renderRevenueRow(row, i) {
     const ch = fmtChange(row.change);
     return (
@@ -296,7 +324,7 @@ export default function DashboardPage() {
         key={i}
         className="grid gap-2 items-center text-gray-700 py-1 border-b border-gray-50 last:border-0 cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1"
         style={{ gridTemplateColumns: gridCols }}
-        onClick={() => navigate(`/manage/quotes/analysis?service=${encodeURIComponent(row.service)}&period=${timePeriod}`)}
+        onClick={() => navigate(`/manage/quotes/analysis?service=${encodeURIComponent(row.service)}&period=${timePeriod}&statusView=${revenueStatusFilter || statusView}`)}
       >
         <span className="truncate">{row.service}</span>
         <span className="text-right font-mono">{fmt(row.totalAnnual)}</span>
@@ -331,6 +359,21 @@ export default function DashboardPage() {
     );
   }
 
+  function StatusPill({ viewKey, active, onClick }) {
+    return (
+      <button
+        onClick={onClick}
+        className={`text-xs px-3 py-1.5 rounded-full border transition-all font-medium ${
+          active
+            ? 'bg-ocean-600 text-white border-ocean-600'
+            : 'bg-white text-gray-500 border-gray-200 hover:border-ocean-300'
+        }`}
+      >
+        {STATUS_VIEW_LABELS[viewKey]}
+      </button>
+    );
+  }
+
   return (
     <div className="p-6 max-w-4xl">
       {/* Header row with title + time filter */}
@@ -349,41 +392,82 @@ export default function DashboardPage() {
         </select>
       </div>
 
+      {/* Status View Filter Bar */}
+      <div className="flex flex-wrap gap-2 mb-5">
+        {Object.keys(STATUS_VIEW_FILTERS).map((key) => (
+          <StatusPill
+            key={key}
+            viewKey={key}
+            active={statusView === key}
+            onClick={() => {
+              setStatusView(key);
+              setRevenueStatusFilter(null);
+            }}
+          />
+        ))}
+      </div>
+
       {loading ? (
         <p className="text-sm text-gray-400">Loading...</p>
       ) : (
         <>
+          {/* 5 Status Cards (always visible, unfiltered by statusView) */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+            {Object.keys(STATUS_VIEW_FILTERS).map((key) => {
+              const isActive = statusView === key;
+              return (
+                <div
+                  key={key}
+                  onClick={() => {
+                    setStatusView(key);
+                    setRevenueStatusFilter(null);
+                  }}
+                  className={`bg-white rounded-lg border-2 p-3 cursor-pointer transition-all ${
+                    isActive
+                      ? 'border-ocean-500 shadow-sm'
+                      : 'border-gray-200 hover:border-ocean-300'
+                  }`}
+                >
+                  <p className={`text-xs font-medium mb-1 ${isActive ? 'text-ocean-700' : 'text-gray-400'}`}>
+                    {STATUS_VIEW_LABELS[key]}
+                  </p>
+                  <p className="text-lg font-bold font-mono text-ocean-700">{statusCards[key]?.volume || 0}</p>
+                  <p className="text-xs font-mono text-green-700">{fmt(statusCards[key]?.value || 0)}</p>
+                </div>
+              );
+            })}
+          </div>
+
           {/* Summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             {[
               {
-                label: `Total Clients (${pLabel})`,
+                label: `Total Clients (${svLabel}, ${pLabel})`,
                 value: filtered.totalClients,
                 metric: 'total_clients',
                 action: () => navigate('/manage/clients'),
               },
               {
-                label: `Active Quotes (${pLabel})`,
+                label: `Active Quotes (${svLabel}, ${pLabel})`,
                 value: filtered.activeQuoteCount,
                 metric: 'active_quotes',
-                action: () => navigate('/manage/quotes'),
               },
               {
-                label: `Annual Value (${pLabel})`,
+                label: `Annual Value (${svLabel}, ${pLabel})`,
                 value: fmt(filtered.totalAnnual),
-                metric: 'total_annual',
+                metric: 'totalAnnual',
                 isMoney: true,
               },
               {
-                label: `Monthly Direct Debit (${pLabel})`,
+                label: `Monthly Direct Debit (${svLabel}, ${pLabel})`,
                 value: fmt(filtered.totalMonthlyDD),
-                metric: 'monthly_dd',
+                metric: 'monthlyDD',
                 isMoney: true,
               },
             ].map((s, i) => (
               <div
                 key={i}
-                onClick={s.action || (() => navigate(`/manage/quotes/analysis?metric=${s.metric}&period=${timePeriod}`))}
+                onClick={s.action || (() => navigate(`/manage/quotes/analysis?metric=${s.metric}&period=${timePeriod}&statusView=${statusView}`))}
                 className="bg-white rounded-lg border border-gray-200 p-4 cursor-pointer hover:border-ocean-300"
               >
                 <p className="text-xs text-gray-400 mb-1">{s.label}</p>
@@ -394,29 +478,43 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* Quotes by status breakdown */}
-          {Object.keys(filtered.statusCounts).length > 0 && (
-            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Quotes by Status ({pLabel})</h3>
-              <div className="flex flex-wrap gap-2">
-                {STATUS_ORDER.filter((s) => filtered.statusCounts[s]).map((s) => (
-                  <div
-                    key={s}
-                    className="flex items-center gap-1.5 cursor-pointer hover:opacity-75"
-                    onClick={() => navigate(`/manage/quotes/analysis?status=${s}&period=${timePeriod}`)}
-                  >
-                    <span className="text-sm font-mono font-semibold text-gray-700">{filtered.statusCounts[s]}</span>
-                    <StatusBadge status={s} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Revenue by Service */}
           {filtered.revenueByService.length > 0 && (
             <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Revenue by Service ({pLabel})</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                Revenue by Service ({effectiveRevenueLabel}, {pLabel})
+              </h3>
+
+              {/* Revenue-specific status pills */}
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {Object.keys(STATUS_VIEW_FILTERS).map((key) => {
+                  const isActive = revenueStatusFilter
+                    ? revenueStatusFilter === key
+                    : statusView === key;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setRevenueStatusFilter(revenueStatusFilter === key ? null : key)}
+                      className={`text-[11px] px-2 py-1 rounded-full border transition-all ${
+                        isActive
+                          ? 'bg-ocean-600 text-white border-ocean-600'
+                          : 'bg-white text-gray-400 border-gray-200 hover:border-ocean-300'
+                      }`}
+                    >
+                      {STATUS_VIEW_LABELS[key]}
+                    </button>
+                  );
+                })}
+                {revenueStatusFilter && (
+                  <button
+                    onClick={() => setRevenueStatusFilter(null)}
+                    className="text-[11px] text-gray-400 hover:text-gray-600 px-1"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+
               <div className="grid gap-0 text-xs">
                 {/* Header */}
                 <div
@@ -488,7 +586,7 @@ export default function DashboardPage() {
           {filtered.months.length > 0 && (
             <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6 overflow-x-auto">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">
-                12-Month Trend: Annual Values
+                12-Month Trend: Annual Values ({svLabel}, {pLabel})
                 {selectedServices.length > 0 && <span className="text-xs text-ocean-500 font-normal ml-2">({selectedServices.length} services selected)</span>}
               </h3>
               <table className="w-full text-xs">
@@ -522,7 +620,7 @@ export default function DashboardPage() {
           {filtered.months.length > 0 && (
             <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6 overflow-x-auto">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">
-                12-Month Trend: Quote Volumes
+                12-Month Trend: Quote Volumes ({svLabel}, {pLabel})
                 {selectedServices.length > 0 && <span className="text-xs text-ocean-500 font-normal ml-2">({selectedServices.length} services selected)</span>}
               </h3>
               <table className="w-full text-xs">
@@ -555,7 +653,7 @@ export default function DashboardPage() {
           {/* Recent Quotes */}
           {filtered.recentQuotes.length > 0 && (
             <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Quotes ({pLabel})</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Quotes ({svLabel}, {pLabel})</h3>
               {filtered.recentQuotes.map((q) => (
                 <div
                   key={q.id}

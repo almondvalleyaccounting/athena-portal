@@ -4,7 +4,21 @@ import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { downloadCSV, downloadTablePdf } from '../lib/exportUtils';
 
-const ACTIVE_STATUSES = ['draft', 'pending_approval', 'approved', 'sent', 'accepted'];
+const STATUS_VIEW_FILTERS = {
+  draft: ['draft'],
+  awaiting_approval: ['pending_approval'],
+  approved: ['approved'],
+  pipeline: ['draft', 'pending_approval', 'approved'],
+  rejected: ['declined'],
+};
+
+const STATUS_VIEW_LABELS = {
+  draft: 'Draft',
+  awaiting_approval: 'Awaiting Approval',
+  approved: 'Approved',
+  pipeline: 'Pipeline',
+  rejected: 'Rejected',
+};
 
 const PERIOD_LABELS = {
   all: 'All Time',
@@ -12,6 +26,7 @@ const PERIOD_LABELS = {
   last_3: 'Last 3 Months',
   last_6: 'Last 6 Months',
   this_year: 'This Year',
+  last_12: 'Last 12 Months',
 };
 
 function getDateRange(period) {
@@ -26,23 +41,10 @@ function getDateRange(period) {
     from = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
   } else if (period === 'this_year') {
     from = new Date(now.getFullYear(), 0, 1);
+  } else if (period === 'last_12') {
+    from = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
   }
   return from ? from.toISOString() : null;
-}
-
-function buildTitle(params) {
-  const period = PERIOD_LABELS[params.get('period')] || 'All Time';
-
-  if (params.get('metric') === 'totalAnnual') return `Annual Value: ${period}`;
-  if (params.get('metric') === 'activeQuotes') return `Active Quotes: ${period}`;
-  if (params.get('metric') === 'monthlyDD') return `Monthly Direct Debit: ${period}`;
-  if (params.get('service')) return `Quotes with ${params.get('service')}: ${period}`;
-  if (params.get('status')) {
-    const s = params.get('status').replace('_', ' ');
-    const label = s.charAt(0).toUpperCase() + s.slice(1);
-    return `${label} Quotes: ${period}`;
-  }
-  return `Analysis: ${period}`;
 }
 
 export default function AnalysisPage() {
@@ -50,6 +52,7 @@ export default function AnalysisPage() {
   const navigate = useNavigate();
 
   const [quotes, setQuotes] = useState([]);
+  const [allLineItems, setAllLineItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortCol, setSortCol] = useState('created_at');
   const [sortAsc, setSortAsc] = useState(false);
@@ -58,22 +61,51 @@ export default function AnalysisPage() {
   const period = searchParams.get('period') || 'all';
   const service = searchParams.get('service');
   const status = searchParams.get('status');
-  const title = buildTitle(searchParams);
+  const statusView = searchParams.get('statusView') || 'pipeline';
   const dateFrom = getDateRange(period);
+
+  // Determine which statuses to filter by
+  const effectiveStatuses = useMemo(() => {
+    if (status) {
+      // Direct status filter (e.g., clicking a specific status)
+      return [status];
+    }
+    // Use statusView from dashboard context
+    return STATUS_VIEW_FILTERS[statusView] || STATUS_VIEW_FILTERS.pipeline;
+  }, [status, statusView]);
+
+  const effectiveStatusLabel = status
+    ? (status.charAt(0).toUpperCase() + status.slice(1)).replace('_', ' ')
+    : STATUS_VIEW_LABELS[statusView] || 'Pipeline';
+
+  const periodLabelText = PERIOD_LABELS[period] || 'All Time';
+
+  // Build title
+  const title = useMemo(() => {
+    if (service) return `${service}: ${effectiveStatusLabel} (${periodLabelText})`;
+    if (metric === 'totalAnnual') return `Annual Value: ${effectiveStatusLabel} (${periodLabelText})`;
+    if (metric === 'activeQuotes') return `Active Quotes: ${effectiveStatusLabel} (${periodLabelText})`;
+    if (metric === 'monthlyDD') return `Monthly Direct Debit: ${effectiveStatusLabel} (${periodLabelText})`;
+    if (metric === 'total_clients') return `Total Clients: ${effectiveStatusLabel} (${periodLabelText})`;
+    if (status) return `${effectiveStatusLabel} Quotes (${periodLabelText})`;
+    return `Analysis: ${effectiveStatusLabel} (${periodLabelText})`;
+  }, [metric, service, status, effectiveStatusLabel, periodLabelText]);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
+        // Always fetch line items for service drill-down
+        const { data: items } = await supabase
+          .from('quote_line_items')
+          .select('id,quote_id,service_id,description,annual_amount');
+        setAllLineItems(items || []);
+
         if (service) {
           // Fetch quotes that contain a specific service via line items
-          const { data: lineItems } = await supabase
-            .from('quote_line_items')
-            .select('quote_id, description, service_id');
-
           const matchingQuoteIds = [
             ...new Set(
-              (lineItems || [])
+              (items || [])
                 .filter((li) => (li.description || li.service_id) === service)
                 .map((li) => li.quote_id)
             ),
@@ -90,6 +122,7 @@ export default function AnalysisPage() {
             .select('*')
             .in('id', matchingQuoteIds)
             .neq('status', 'deleted')
+            .in('status', effectiveStatuses)
             .order('created_at', { ascending: false });
 
           if (dateFrom) query = query.gte('created_at', dateFrom);
@@ -97,20 +130,15 @@ export default function AnalysisPage() {
           const { data } = await query;
           setQuotes(data || []);
         } else {
-          // Standard query -- filter by metric or status
+          // Standard query -- filter by metric or status using effectiveStatuses
           let query = supabase
             .from('quotes')
             .select('*')
             .neq('status', 'deleted')
+            .in('status', effectiveStatuses)
             .order('created_at', { ascending: false });
 
           if (dateFrom) query = query.gte('created_at', dateFrom);
-
-          if (status) {
-            query = query.eq('status', status);
-          } else if (metric === 'activeQuotes' || metric === 'totalAnnual' || metric === 'monthlyDD') {
-            query = query.in('status', ACTIVE_STATUSES);
-          }
 
           const { data } = await query;
           setQuotes(data || []);
@@ -120,7 +148,7 @@ export default function AnalysisPage() {
       }
       setLoading(false);
     })();
-  }, [metric, period, service, status, dateFrom]);
+  }, [metric, period, service, status, statusView, dateFrom, effectiveStatuses]);
 
   // Sorting
   const toggleSort = (col) => {
@@ -138,11 +166,36 @@ export default function AnalysisPage() {
     </button>
   );
 
+  // For service drill-down, compute per-quote service amounts
+  const serviceAmountByQuote = useMemo(() => {
+    if (!service) return {};
+    const map = {};
+    allLineItems.forEach((li) => {
+      if ((li.description || li.service_id) === service) {
+        map[li.quote_id] = (map[li.quote_id] || 0) + (parseFloat(li.annual_amount) || 0);
+      }
+    });
+    return map;
+  }, [service, allLineItems]);
+
   const sorted = useMemo(() => {
-    return [...quotes].sort((a, b) => {
+    const list = [...quotes];
+
+    // If service drill-down, add the service amount as a virtual field for sorting
+    if (service) {
+      list.forEach((q) => {
+        q._serviceAnnual = serviceAmountByQuote[q.id] || 0;
+      });
+    }
+
+    return list.sort((a, b) => {
       let va = a[sortCol], vb = b[sortCol];
+      if (sortCol === '_serviceAnnual') {
+        va = a._serviceAnnual || 0;
+        vb = b._serviceAnnual || 0;
+      }
       if (sortCol === 'created_at') { va = new Date(va); vb = new Date(vb); }
-      if (sortCol === 'annual_total' || sortCol === 'monthly_net' || sortCol === 'monthly_gross') {
+      if (sortCol === 'annual_total' || sortCol === 'monthly_net' || sortCol === 'monthly_gross' || sortCol === '_serviceAnnual') {
         va = parseFloat(va) || 0;
         vb = parseFloat(vb) || 0;
       }
@@ -154,28 +207,55 @@ export default function AnalysisPage() {
       if (va > vb) return sortAsc ? 1 : -1;
       return 0;
     });
-  }, [quotes, sortCol, sortAsc]);
+  }, [quotes, sortCol, sortAsc, service, serviceAmountByQuote]);
 
   // Summary number
   const summaryValue = useMemo(() => {
     if (metric === 'totalAnnual') return fmt(quotes.reduce((s, q) => s + (parseFloat(q.annual_total) || 0), 0));
     if (metric === 'monthlyDD') return fmt(quotes.reduce((s, q) => s + (parseFloat(q.monthly_gross) || 0), 0));
+    if (service) {
+      const total = quotes.reduce((s, q) => s + (serviceAmountByQuote[q.id] || 0), 0);
+      return fmt(total);
+    }
     return String(quotes.length);
-  }, [quotes, metric]);
+  }, [quotes, metric, service, serviceAmountByQuote]);
+
+  const summaryLabel = useMemo(() => {
+    if (metric === 'totalAnnual') return 'Total Annual Value';
+    if (metric === 'monthlyDD') return 'Total Monthly DD';
+    if (service) return `Total Annual for ${service}`;
+    return 'Total Quotes';
+  }, [metric, service]);
+
+  const isMoneySummary = metric === 'totalAnnual' || metric === 'monthlyDD' || !!service;
 
   // Export helpers
-  const TABLE_HEADERS = ['Quote Ref', 'Client', 'Status', 'Annual (Net)', 'Monthly (Net)', 'Monthly (Gross)', 'Created'];
+  const isServiceView = !!service;
+  const TABLE_HEADERS = isServiceView
+    ? ['Quote Ref', 'Client', 'Status', `${service} Annual`, 'Quote Annual (Net)', 'Monthly (Gross)', 'Created']
+    : ['Quote Ref', 'Client', 'Status', 'Annual (Net)', 'Monthly (Net)', 'Monthly (Gross)', 'Created'];
 
   const buildRows = () =>
-    sorted.map((q) => [
-      q.quote_ref || '',
-      q.relationship_group || '',
-      (q.status || 'draft').replace('_', ' '),
-      fmt(q.annual_total),
-      fmt(q.monthly_net),
-      fmt(q.monthly_gross),
-      new Date(q.created_at).toLocaleDateString('en-GB'),
-    ]);
+    sorted.map((q) => isServiceView
+      ? [
+          q.quote_ref || '',
+          q.relationship_group || '',
+          (q.status || 'draft').replace('_', ' '),
+          fmt(serviceAmountByQuote[q.id] || 0),
+          fmt(q.annual_total),
+          fmt(q.monthly_gross),
+          new Date(q.created_at).toLocaleDateString('en-GB'),
+        ]
+      : [
+          q.quote_ref || '',
+          q.relationship_group || '',
+          (q.status || 'draft').replace('_', ' '),
+          fmt(q.annual_total),
+          fmt(q.monthly_net),
+          fmt(q.monthly_gross),
+          new Date(q.created_at).toLocaleDateString('en-GB'),
+        ]
+    );
 
   const handleExportCSV = () => {
     downloadCSV(title.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '_') + '.csv', TABLE_HEADERS, buildRows());
@@ -185,7 +265,9 @@ export default function AnalysisPage() {
     downloadTablePdf(title, TABLE_HEADERS, buildRows());
   };
 
-  const gridCols = '1.5fr 1.5fr 0.8fr 1fr 1fr 1fr 0.8fr';
+  const gridCols = isServiceView
+    ? '1.5fr 1.5fr 0.8fr 1fr 1fr 1fr 0.8fr'
+    : '1.5fr 1.5fr 0.8fr 1fr 1fr 1fr 0.8fr';
 
   return (
     <div className="p-6 max-w-5xl">
@@ -205,12 +287,11 @@ export default function AnalysisPage() {
 
       {/* Summary card */}
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4 inline-block">
-        <p className="text-xs text-gray-400 mb-1">
-          {metric === 'totalAnnual' ? 'Total Annual Value' : metric === 'monthlyDD' ? 'Total Monthly DD' : 'Total Quotes'}
-        </p>
-        <p className={`text-2xl font-bold font-mono ${metric === 'totalAnnual' || metric === 'monthlyDD' ? 'text-green-700' : 'text-ocean-700'}`}>
+        <p className="text-xs text-gray-400 mb-1">{summaryLabel}</p>
+        <p className={`text-2xl font-bold font-mono ${isMoneySummary ? 'text-green-700' : 'text-ocean-700'}`}>
           {loading ? '...' : summaryValue}
         </p>
+        <p className="text-xs text-gray-400 mt-1">{quotes.length} quote{quotes.length !== 1 ? 's' : ''}</p>
       </div>
 
       {/* Data table */}
@@ -227,8 +308,16 @@ export default function AnalysisPage() {
             <SortHeader col="quote_ref">Quote Ref</SortHeader>
             <SortHeader col="relationship_group">Client</SortHeader>
             <SortHeader col="status">Status</SortHeader>
-            <SortHeader col="annual_total" className="justify-end">Annual (Net)</SortHeader>
-            <span className="text-xs text-gray-400 text-right">Monthly (Net)</span>
+            {isServiceView ? (
+              <SortHeader col="_serviceAnnual" className="justify-end">{service} Annual</SortHeader>
+            ) : (
+              <SortHeader col="annual_total" className="justify-end">Annual (Net)</SortHeader>
+            )}
+            {isServiceView ? (
+              <SortHeader col="annual_total" className="justify-end">Quote Annual</SortHeader>
+            ) : (
+              <span className="text-xs text-gray-400 text-right">Monthly (Net)</span>
+            )}
             <SortHeader col="monthly_gross" className="justify-end">Monthly (Gross)</SortHeader>
             <SortHeader col="created_at" className="justify-end">Created</SortHeader>
           </div>
@@ -243,8 +332,16 @@ export default function AnalysisPage() {
               <span className="font-medium text-gray-700 truncate">{q.quote_ref}</span>
               <span className="text-gray-500 truncate">{q.relationship_group || '\u2014'}</span>
               <span><StatusBadge status={q.status} /></span>
-              <span className="text-right font-mono text-gray-600">{fmt(q.annual_total)}</span>
-              <span className="text-right font-mono text-gray-500">{fmt(q.monthly_net)}</span>
+              {isServiceView ? (
+                <span className="text-right font-mono text-green-700 font-semibold">{fmt(serviceAmountByQuote[q.id] || 0)}</span>
+              ) : (
+                <span className="text-right font-mono text-gray-600">{fmt(q.annual_total)}</span>
+              )}
+              {isServiceView ? (
+                <span className="text-right font-mono text-gray-500">{fmt(q.annual_total)}</span>
+              ) : (
+                <span className="text-right font-mono text-gray-500">{fmt(q.monthly_net)}</span>
+              )}
               <span className="text-right font-mono text-ocean-600">{fmt(q.monthly_gross)}</span>
               <span className="text-right text-gray-500">{new Date(q.created_at).toLocaleDateString('en-GB')}</span>
             </div>
