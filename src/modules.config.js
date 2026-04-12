@@ -11,7 +11,7 @@ export const MODULES = [
   {
     id: 'reports',
     label: 'Reports',
-    route: '/manage/quotes/analysis',
+    route: '/reports',
     icon: 'bar-chart-2',
     permissions: ['can_view_reports'],
     status: 'live',
