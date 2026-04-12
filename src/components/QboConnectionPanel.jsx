@@ -135,9 +135,24 @@ export default function QboConnectionPanel({ profile, onSyncComplete }) {
       {/* Pull result feedback */}
       {pullResult && (
         <div className="mt-3 text-xs bg-green-50 text-green-700 rounded p-2">
-          Pulled from QBO: {pullResult.created || 0} created, {pullResult.updated || 0} updated, {pullResult.skipped || 0} skipped
+          <p>Pulled from QBO: {pullResult.created || 0} created, {pullResult.updated || 0} updated, {pullResult.skipped || 0} skipped, {pullResult.matched || 0} matched</p>
+          {pullResult.unique_customers > 0 && (
+            <p className="text-gray-500 mt-1">{pullResult.recurring_found || 0} recurring transactions, {pullResult.invoices_found || 0} invoices, {pullResult.unique_customers || 0} unique customers</p>
+          )}
+          {pullResult.unmatched_customers?.length > 0 && (
+            <details className="mt-2">
+              <summary className="text-amber-600 cursor-pointer">
+                {pullResult.unmatched_customers.length} QBO customers not matched to portal clients
+              </summary>
+              <div className="mt-1 text-gray-500 space-y-0.5 max-h-32 overflow-auto">
+                {pullResult.unmatched_customers.map((name, i) => (
+                  <p key={i}>{name}</p>
+                ))}
+              </div>
+            </details>
+          )}
           {pullResult.errors?.length > 0 && (
-            <span className="text-red-600 ml-2">({pullResult.errors.length} errors)</span>
+            <p className="text-red-600 mt-1">{pullResult.errors.length} errors: {pullResult.errors.slice(0, 3).join(', ')}</p>
           )}
         </div>
       )}
