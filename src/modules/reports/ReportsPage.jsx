@@ -1,61 +1,37 @@
-import React from 'react';
-import { BarChart2 } from 'lucide-react';
+import React, { useState } from 'react';
+import ReportForm from './ReportForm';
+import RunLog from './RunLog';
 
 export default function ReportsPage() {
+  const [refreshKey, setRefreshKey] = useState(0);
+
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '40px 24px' }}>
+    <div className="mx-auto" style={{ maxWidth: '1080px', padding: '40px 24px' }}>
       <h1
+        className="mb-1"
         style={{
           fontFamily: "'Playfair Display', serif",
           fontSize: '28px',
           fontWeight: 500,
           color: '#0f172a',
-          marginBottom: '8px',
         }}
       >
         Reports
       </h1>
-      <p
-        style={{
-          fontFamily: "'Outfit', sans-serif",
-          fontSize: '14px',
-          color: '#64748b',
-          marginBottom: '48px',
-        }}
-      >
-        Practice analytics and reporting.
+      <p className="mb-8" style={{ fontSize: '14px', color: '#64748b' }}>
+        Pull financial reports from QuickBooks Online.
       </p>
 
-      <div
-        style={{
-          textAlign: 'center',
-          padding: '60px 0',
-        }}
-      >
-        <BarChart2
-          size={36}
-          style={{ color: '#e5e7eb', margin: '0 auto 16px' }}
-        />
-        <p
-          style={{
-            fontFamily: "'Outfit', sans-serif",
-            fontSize: '15px',
-            fontWeight: 500,
-            color: '#94a3b8',
-            marginBottom: '4px',
-          }}
-        >
-          Coming soon
-        </p>
-        <p
-          style={{
-            fontFamily: "'Outfit', sans-serif",
-            fontSize: '13px',
-            color: '#cbd5e1',
-          }}
-        >
-          Reports and dashboards are in development.
-        </p>
+      <div className="flex flex-col md:flex-row gap-10">
+        {/* Left column — Report builder (60%) */}
+        <div className="w-full md:w-3/5">
+          <ReportForm onSuccess={() => setRefreshKey((k) => k + 1)} />
+        </div>
+
+        {/* Right column — Run log (40%) */}
+        <div className="w-full md:w-2/5">
+          <RunLog refreshKey={refreshKey} />
+        </div>
       </div>
     </div>
   );
