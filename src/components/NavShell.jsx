@@ -50,7 +50,7 @@ export default function NavShell({ profile, onLogout, children }) {
             style={{ imageRendering: 'auto' }}
           />
           <h1 className="text-lg font-bold text-ocean-700 tracking-tight text-center">ATHENA</h1>
-          <p className="text-xs text-gray-400 text-center">AVA Portal</p>
+          <p className="text-xs text-gray-400 text-center">Fee Engine</p>
         </div>
         <nav className="flex-1 p-2">
           {items.map((n) => (

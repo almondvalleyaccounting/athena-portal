@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Btn, fmt, StatusBadge } from '../components/ui';
+import { Btn, fmt } from '../components/ui';
 
 export default function EntitiesPage() {
   const navigate = useNavigate();
@@ -20,6 +20,8 @@ export default function EntitiesPage() {
       .then(({ data }) => setGroups(data || []));
   }, []);
 
+  const [membershipMap, setMembershipMap] = useState({});
+
   useEffect(() => {
     (async () => {
       try {
@@ -29,15 +31,33 @@ export default function EntitiesPage() {
           .order('name');
 
         if (ents?.length) {
-          const { data: quotes } = await supabase
-            .from('quotes')
-            .select('entity_id, status, monthly_gross, quote_ref, created_at')
-            .in('entity_id', ents.map(e => e.id))
-            .order('created_at', { ascending: false });
+          const [{ data: quotes }, { data: members }] = await Promise.all([
+            supabase
+              .from('quotes')
+              .select('entity_id, status, monthly_gross, quote_ref, created_at')
+              .in('entity_id', ents.map(e => e.id))
+              .order('created_at', { ascending: false }),
+            supabase
+              .from('billing_group_members')
+              .select('entity_id, group_id, group:billing_groups(id, name)')
+              .in('entity_id', ents.map(e => e.id)),
+          ]);
+
+          // Build membership map: entity_id -> { groupId, groupName }
+          const mMap = {};
+          (members || []).forEach(m => {
+            if (m.group) mMap[m.entity_id] = { groupId: m.group.id, groupName: m.group.name };
+          });
+          setMembershipMap(mMap);
 
           const enriched = ents.map(e => {
-            const latestQuote = quotes?.find(q => q.entity_id === e.id);
-            return { ...e, latestQuote };
+            const entityQuotes = (quotes || []).filter(q => q.entity_id === e.id);
+            // Count quotes by status
+            const statusCounts = {};
+            entityQuotes.forEach(q => {
+              statusCounts[q.status] = (statusCounts[q.status] || 0) + 1;
+            });
+            return { ...e, entityQuotes, statusCounts };
           });
           setEntities(enriched);
         } else {
@@ -253,11 +273,36 @@ export default function EntitiesPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                {e.latestQuote ? (
-                  <>
-                    <span className="text-xs font-mono text-ocean-600">{fmt(e.latestQuote.monthly_gross)}/mo</span>
-                    <StatusBadge status={e.latestQuote.status} />
-                  </>
+                {membershipMap[e.id] && (
+                  <button
+                    onClick={(ev) => { ev.stopPropagation(); navigate('/manage/quotes/group/' + membershipMap[e.id].groupId); }}
+                    className="text-[10px] bg-ocean-50 text-ocean-600 border border-ocean-200 rounded px-1.5 py-0.5 hover:bg-ocean-100 truncate max-w-[120px]"
+                    title={membershipMap[e.id].groupName}
+                  >
+                    {membershipMap[e.id].groupName}
+                  </button>
+                )}
+                {e.statusCounts && Object.keys(e.statusCounts).length > 0 ? (
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {Object.entries(e.statusCounts).map(([status, count]) => (
+                      <button
+                        key={status}
+                        onClick={(ev) => { ev.stopPropagation(); navigate(`/manage/quotes?client=${encodeURIComponent(e.name)}&status=${status}`); }}
+                        className={`text-[10px] rounded px-1.5 py-0.5 font-medium hover:opacity-80 ${
+                          status === 'draft' ? 'bg-gray-100 text-gray-600' :
+                          status === 'pending_approval' ? 'bg-amber-50 text-amber-700' :
+                          status === 'approved' ? 'bg-blue-50 text-blue-700' :
+                          status === 'sent' ? 'bg-purple-50 text-purple-700' :
+                          status === 'accepted' ? 'bg-green-50 text-green-700' :
+                          status === 'declined' ? 'bg-red-50 text-red-600' :
+                          status === 'expired' ? 'bg-gray-50 text-gray-400' :
+                          'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {count} {status === 'pending_approval' ? 'Pending' : status.charAt(0).toUpperCase() + status.slice(1)}
+                      </button>
+                    ))}
+                  </div>
                 ) : (
                   <span className="text-xs text-gray-300">No quotes</span>
                 )}

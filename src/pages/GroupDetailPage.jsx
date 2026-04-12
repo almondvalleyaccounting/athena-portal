@@ -32,6 +32,7 @@ export default function GroupDetailPage({ profile, defaults }) {
   const [editingName, setEditingName] = useState(false);
   const [editName, setEditName] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [groupEntities, setGroupEntities] = useState([]);
 
   const handleRenameGroup = async () => {
     if (!editName.trim() || editName.trim() === group?.name) { setEditingName(false); return; }
@@ -47,12 +48,14 @@ export default function GroupDetailPage({ profile, defaults }) {
   const loadGroup = async () => {
     setLoading(true);
     try {
-      const [{ data: bg }, { data: gQuotes }] = await Promise.all([
+      const [{ data: bg }, { data: gQuotes }, { data: members }] = await Promise.all([
         supabase.from('billing_groups').select('*').eq('id', groupId).single(),
         supabase.from('quotes').select('*, line_items:quote_line_items(*)').eq('group_id', groupId).order('created_at'),
+        supabase.from('billing_group_members').select('entity_id, entity:entities(id, name, company_number, type)').eq('group_id', groupId),
       ]);
       setGroup(bg);
       setQuotes(gQuotes || []);
+      setGroupEntities((members || []).map(m => m.entity).filter(Boolean));
     } catch {}
     setLoading(false);
   };
@@ -211,6 +214,37 @@ export default function GroupDetailPage({ profile, defaults }) {
           <Btn onClick={handleExportPdf} variant="ghost" className="text-xs py-1 px-3">
             Export PDF
           </Btn>
+        </div>
+      )}
+
+      {/* Clients in this Group */}
+      {groupEntities.length > 0 && (
+        <div className="mb-4">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Clients in this Group</h3>
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            {groupEntities.map(ent => {
+              const clientQuoteCount = quotes.filter(q => q.entity_id === ent.id).length;
+              return (
+                <div key={ent.id} className="flex items-center justify-between px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                  <div>
+                    <button onClick={() => navigate('/manage/clients/' + ent.id)} className="text-sm font-medium text-ocean-600 hover:text-ocean-800 hover:underline">
+                      {ent.name}
+                    </button>
+                    <p className="text-xs text-gray-400">
+                      {ent.type?.replace('_', ' ')}{ent.company_number ? ` \u00B7 ${ent.company_number}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-xs">
+                    {clientQuoteCount > 0 ? (
+                      <span className="text-gray-600">{clientQuoteCount} quote{clientQuoteCount !== 1 ? 's' : ''}</span>
+                    ) : (
+                      <span className="text-gray-300">No quotes</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
