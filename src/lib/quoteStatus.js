@@ -17,6 +17,7 @@ export const STATUS_TRANSITIONS = {
   accepted: [],
   declined: [],
   expired: [],
+  deleted: [],
 };
 
 export const STATUS_LABELS = {
@@ -27,4 +28,5 @@ export const STATUS_LABELS = {
   accepted: 'Accepted',
   declined: 'Declined',
   expired: 'Expired',
+  deleted: 'Deleted',
 };

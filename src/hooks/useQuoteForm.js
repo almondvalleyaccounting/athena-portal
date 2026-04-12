@@ -7,6 +7,14 @@ export default function useQuoteForm(D) {
     name: '', companyNumber: '', entityType: 'limited_company', turnover: '',
   });
 
+  // ── Valid Until ──
+  const defaultValidUntil = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().slice(0, 10);
+  };
+  const [validUntil, setValidUntil] = useState(defaultValidUntil());
+
   // ── Setup fees ──
   const [suFormation, setSuFormation] = useState(false);
   const [suFormationQty, setSuFormationQty] = useState(1);
@@ -213,6 +221,7 @@ export default function useQuoteForm(D) {
         budgeting_detail: budEnabled ? { basic: budBasic ? budBasicRate : null, advanced: budAdvanced ? budAdvancedRate : null, reforecast_qty: budReforecastQty, reforecast_rate: budReforecastRate } : null,
         cfo_detail: cfoEnabled ? { days: cfoDays, day_rate: cfoDayRate } : null,
         relationship_group: client.name || null,
+        valid_until: validUntil || null,
       },
       setupLines,
     };
@@ -348,11 +357,14 @@ export default function useQuoteForm(D) {
     // Software
     if (q.software_detail?.accounting) setSwId(q.software_detail.accounting.id || 'none');
     if (q.software_detail?.dext) { setDextEnabled(true); setDextPrice(q.software_detail.dext.monthly || D.dext.monthly_price); }
+
+    // Valid until
+    if (q.valid_until) setValidUntil(q.valid_until);
   };
 
   return {
     // Client
-    client, setClient,
+    client, setClient, validUntil, setValidUntil,
     // Setup
     suFormation, setSuFormation, suFormationQty, setSuFormationQty, suFormationRate, setSuFormationRate,
     suHmrc, setSuHmrc, suHmrcQty, setSuHmrcQty, suHmrcRate, setSuHmrcRate,

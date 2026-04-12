@@ -19,6 +19,9 @@ export default function QuoteDetailPage({ profile }) {
   const [transitioning, setTransitioning] = useState(false);
   const [groupData, setGroupData] = useState(null);
   const [showSendModal, setShowSendModal] = useState(false);
+  const [showExtend, setShowExtend] = useState(false);
+  const [extendDate, setExtendDate] = useState('');
+  const [extendSaving, setExtendSaving] = useState(false);
 
   useEffect(() => {
     loadQuote();
@@ -91,6 +94,31 @@ export default function QuoteDetailPage({ profile }) {
     setTransitioning(false);
   };
 
+  const handleExtendValidity = async () => {
+    if (!extendDate) return;
+    setExtendSaving(true);
+    try {
+      await supabase.from('quotes').update({ valid_until: extendDate }).eq('id', quote.id);
+      setQuote({ ...quote, valid_until: extendDate });
+      setShowExtend(false);
+    } catch (e) { setError(e.message || 'Failed to extend'); }
+    setExtendSaving(false);
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete this quote? This action will mark the quote as deleted.')) return;
+    setTransitioning(true);
+    try {
+      await supabase.from('quotes').update({ status: 'deleted' }).eq('id', quote.id);
+      await supabase.from('audit_log').insert({
+        user_id: profile.id, action: 'status_change', entity_type: 'quote', entity_id: quote.id,
+        detail: { from: quote.status, to: 'deleted', action: 'delete' },
+      });
+      navigate('/manage/quotes');
+    } catch (e) { setError(e.message || 'Delete failed'); }
+    setTransitioning(false);
+  };
+
   if (loading) return <div className="p-6"><p className="text-sm text-gray-400">Loading quote...</p></div>;
   if (!quote) return <div className="p-6"><p className="text-sm text-red-500">Quote not found.</p></div>;
 
@@ -121,7 +149,22 @@ export default function QuoteDetailPage({ profile }) {
             {' \u00B7 '}
             {new Date(quote.created_at).toLocaleDateString('en-GB')}
             {quote.defaults_version && ` \u00B7 v${quote.defaults_version}`}
+            {quote.valid_until && ` \u00B7 Valid until ${new Date(quote.valid_until + 'T00:00:00').toLocaleDateString('en-GB')}`}
           </p>
+          {quote.valid_until && quote.valid_until < new Date().toISOString().slice(0, 10) && (quote.status === 'sent' || quote.status === 'approved') && (
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-xs text-red-600 bg-red-50 rounded px-2 py-0.5 font-medium">Expired -- valid until date has passed</span>
+              {!showExtend ? (
+                <button onClick={() => { setShowExtend(true); setExtendDate(''); }} className="text-xs text-ocean-600 hover:text-ocean-700 underline">Extend</button>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <input type="date" value={extendDate} onChange={e => setExtendDate(e.target.value)} className="text-xs border border-gray-200 rounded px-1.5 py-0.5" />
+                  <Btn onClick={handleExtendValidity} disabled={extendSaving || !extendDate} variant="secondary" className="text-xs py-0.5 px-2">Save</Btn>
+                  <button onClick={() => setShowExtend(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <Btn onClick={() => navigate('/manage/quotes')} variant="ghost">Back</Btn>
       </div>
@@ -146,6 +189,9 @@ export default function QuoteDetailPage({ profile }) {
         <Btn onClick={() => generateQuotePdf(quote, lineItems)} variant="secondary">Download PDF</Btn>
         {(quote.status === 'approved' || quote.status === 'sent') && profile?.can_approve_quotes && (
           <Btn onClick={() => setShowSendModal(true)} variant="primary">Send to Client</Btn>
+        )}
+        {quote.status === 'draft' && profile?.can_edit_quotes && (
+          <Btn onClick={handleDelete} variant="ghost" disabled={transitioning} className="text-red-500 hover:text-red-700 hover:bg-red-50">Delete</Btn>
         )}
       </div>
 

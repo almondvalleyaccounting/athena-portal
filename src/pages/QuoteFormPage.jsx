@@ -203,6 +203,10 @@ export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
             <option value="llp">LLP</option>
           </select>
           <input value={f.client.turnover} onChange={(e) => f.setClient({ ...f.client, turnover: e.target.value })} placeholder="Est. turnover (£)" type="number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
+          <div className="col-span-2 flex items-center gap-2">
+            <label className="text-xs text-gray-500 whitespace-nowrap">Valid until</label>
+            <input type="date" value={f.validUntil} onChange={e => f.setValidUntil(e.target.value)} className="text-sm border border-gray-200 rounded px-2 py-1.5" />
+          </div>
         </div>
       </div>
 

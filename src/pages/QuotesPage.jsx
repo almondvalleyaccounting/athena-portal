@@ -5,6 +5,7 @@ import { fmt, StatusBadge, Btn } from '../components/ui';
 
 const STATUSES = ['all', 'draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
 const STATUS_LABELS = { all: 'All', draft: 'Draft', pending_approval: 'Pending', approved: 'Approved', sent: 'Sent', accepted: 'Accepted', declined: 'Declined', expired: 'Expired' };
+const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
 
 export default function QuotesPage() {
   const navigate = useNavigate();
@@ -19,6 +20,34 @@ export default function QuotesPage() {
   const [acting, setActing] = useState(false);
   const [groups, setGroups] = useState([]);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
+
+  // ── Filter chips ──
+  const [chipFilters, setChipFilters] = useState([]); // [{ type: 'status', value: 'draft' }, { type: 'client', value: 'Acme' }]
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [showStatusSubmenu, setShowStatusSubmenu] = useState(false);
+  const [showClientInput, setShowClientInput] = useState(false);
+  const [clientFilterInput, setClientFilterInput] = useState('');
+
+  const addChip = (type, value) => {
+    setChipFilters(prev => {
+      // For status, replace existing status chip
+      if (type === 'status') return [...prev.filter(c => c.type !== 'status'), { type, value }];
+      // For client, replace existing client chip
+      if (type === 'client') return [...prev.filter(c => c.type !== 'client'), { type, value }];
+      return [...prev, { type, value }];
+    });
+    setShowFilterMenu(false);
+    setShowStatusSubmenu(false);
+    setShowClientInput(false);
+    setClientFilterInput('');
+  };
+
+  const removeChip = (idx) => {
+    setChipFilters(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const chipStatusFilter = chipFilters.find(c => c.type === 'status')?.value || null;
+  const chipClientFilter = chipFilters.find(c => c.type === 'client')?.value || null;
 
   useEffect(() => {
     supabase.from('billing_groups').select('*').order('name')
@@ -114,8 +143,14 @@ export default function QuotesPage() {
 
   // ── Filtering & sorting ──
   const filtered = useMemo(() => {
-    let list = quotes;
+    let list = quotes.filter(q => q.status !== 'deleted');
     if (statusFilter !== 'all') list = list.filter(q => q.status === statusFilter);
+    // Apply chip filters (AND logic)
+    if (chipStatusFilter) list = list.filter(q => q.status === chipStatusFilter);
+    if (chipClientFilter) {
+      const cf = chipClientFilter.toLowerCase();
+      list = list.filter(q => q.relationship_group?.toLowerCase().includes(cf));
+    }
     if (search) {
       const s = search.toLowerCase();
       list = list.filter(q =>
@@ -133,11 +168,12 @@ export default function QuotesPage() {
       return 0;
     });
     return list;
-  }, [quotes, statusFilter, search, sortCol, sortAsc]);
+  }, [quotes, statusFilter, search, sortCol, sortAsc, chipStatusFilter, chipClientFilter]);
 
   const statusCounts = useMemo(() => {
-    const c = { all: quotes.length };
-    STATUSES.forEach(s => { if (s !== 'all') c[s] = quotes.filter(q => q.status === s).length; });
+    const visible = quotes.filter(q => q.status !== 'deleted');
+    const c = { all: visible.length };
+    STATUSES.forEach(s => { if (s !== 'all') c[s] = visible.filter(q => q.status === s).length; });
     return c;
   }, [quotes]);
 
@@ -208,7 +244,7 @@ export default function QuotesPage() {
         {STATUSES.filter(s => s === 'all' || statusCounts[s] > 0).map(s => (
           <button
             key={s}
-            onClick={() => setStatusFilter(s)}
+            onClick={() => { setStatusFilter(s); if (s !== 'all') addChip('status', s); else setChipFilters(prev => prev.filter(c => c.type !== 'status')); }}
             className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
               statusFilter === s
                 ? 'bg-ocean-600 text-white border-ocean-600'
@@ -219,6 +255,67 @@ export default function QuotesPage() {
             <span className="ml-1 opacity-60">{statusCounts[s]}</span>
           </button>
         ))}
+      </div>
+
+      {/* Filter chips bar */}
+      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+        {chipFilters.map((chip, i) => (
+          <span key={i} className="inline-flex items-center gap-1 text-xs bg-ocean-50 text-ocean-700 border border-ocean-200 rounded-full px-2.5 py-1">
+            {chip.type === 'status' ? `Status: ${STATUS_LABELS[chip.value] || chip.value}` : `Client: ${chip.value}`}
+            <button onClick={() => { removeChip(i); if (chip.type === 'status') setStatusFilter('all'); }} className="text-ocean-400 hover:text-ocean-700 ml-0.5">&times;</button>
+          </span>
+        ))}
+        <div className="relative">
+          <button
+            onClick={() => { setShowFilterMenu(!showFilterMenu); setShowStatusSubmenu(false); setShowClientInput(false); }}
+            className="text-xs px-2.5 py-1 rounded-full border border-dashed border-gray-300 text-gray-500 hover:border-ocean-400 hover:text-ocean-600 transition-all"
+          >
+            + Filter
+          </button>
+          {showFilterMenu && (
+            <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[160px]">
+              <button
+                onClick={() => { setShowStatusSubmenu(!showStatusSubmenu); setShowClientInput(false); }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 flex justify-between items-center"
+              >
+                Status <span className="text-gray-400">&rsaquo;</span>
+              </button>
+              {showStatusSubmenu && (
+                <div className="border-b border-gray-100">
+                  {FILTER_STATUS_OPTIONS.map(s => (
+                    <button key={s} onClick={() => { addChip('status', s); setStatusFilter(s); }} className="w-full text-left px-5 py-1.5 text-xs hover:bg-ocean-50 text-gray-600">
+                      {STATUS_LABELS[s] || s}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                onClick={() => { setShowClientInput(!showClientInput); setShowStatusSubmenu(false); }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex justify-between items-center"
+              >
+                Client <span className="text-gray-400">&rsaquo;</span>
+              </button>
+              {showClientInput && (
+                <div className="px-3 pb-2">
+                  <input
+                    value={clientFilterInput}
+                    onChange={e => setClientFilterInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && clientFilterInput.trim()) addChip('client', clientFilterInput.trim()); }}
+                    placeholder="Type client name..."
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => { if (clientFilterInput.trim()) addChip('client', clientFilterInput.trim()); }}
+                    className="text-xs text-ocean-600 hover:text-ocean-700 mt-1"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Search */}
