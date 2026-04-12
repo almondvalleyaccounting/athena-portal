@@ -301,6 +301,7 @@ export default function DashboardPage() {
   }, [quotes, entities, lineItems, timePeriod, selectedServices, statusView, revenueStatusFilter]);
 
   const STATUS_ORDER = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
+  const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', declined: 'Rejected', expired: 'Expired' };
 
   const pLabel = periodLabel(timePeriod);
   const svLabel = STATUS_VIEW_LABELS[statusView];
@@ -606,7 +607,7 @@ export default function DashboardPage() {
                     if (!hasData) return null;
                     return (
                       <tr key={s} className="border-b border-gray-50">
-                        <td className="py-1.5 pr-2"><StatusBadge status={s} /></td>
+                        <td className="py-1.5 pr-2 text-gray-500">{STATUS_LABELS[s] || s}</td>
                         {filtered.months.map(m => (
                           <td key={m.key} className="text-right py-1.5 px-1 font-mono text-gray-600">
                             {filtered.trendValue[m.key]?.[s] ? fmt(filtered.trendValue[m.key][s]) : <span className="text-gray-200">-</span>}
@@ -640,7 +641,7 @@ export default function DashboardPage() {
                     if (!hasData) return null;
                     return (
                       <tr key={s} className="border-b border-gray-50">
-                        <td className="py-1.5 pr-2"><StatusBadge status={s} /></td>
+                        <td className="py-1.5 pr-2 text-gray-500">{STATUS_LABELS[s] || s}</td>
                         {filtered.months.map(m => (
                           <td key={m.key} className="text-right py-1.5 px-1 font-mono text-gray-600">
                             {filtered.trendVolume[m.key]?.[s] || <span className="text-gray-200">-</span>}
@@ -676,10 +677,10 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
+                    <StatusBadge status={q.status} />
                     {q.monthly_gross != null && (
                       <span className="text-sm font-mono text-ocean-600">{fmt(q.monthly_gross)}/mo</span>
                     )}
-                    <StatusBadge status={q.status} />
                   </div>
                 </div>
               ))}

@@ -21,7 +21,7 @@ export default function QuotesPage() {
   const [acting, setActing] = useState(false);
   const [groups, setGroups] = useState([]);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
-  const [netGross, setNetGross] = useState('gross'); // 'net' or 'gross'
+  const [netGross, setNetGross] = useState('net'); // 'net' or 'gross'
 
   // ── Filter chips ──
   const [chipFilters, setChipFilters] = useState([]); // [{ type: 'status', value: 'draft' }, { type: 'client', value: 'Acme' }, { type: 'group', value: '...', groupId: '...' }]
@@ -33,10 +33,16 @@ export default function QuotesPage() {
 
   const addChip = (type, value, extra) => {
     setChipFilters(prev => {
-      // For status, replace existing status chip
-      if (type === 'status') return [...prev.filter(c => c.type !== 'status'), { type, value }];
-      // For client, replace existing client chip
-      if (type === 'client') return [...prev.filter(c => c.type !== 'client'), { type, value }];
+      // For status, allow multiple — but don't add duplicates
+      if (type === 'status') {
+        if (prev.some(c => c.type === 'status' && c.value === value)) return prev;
+        return [...prev, { type, value }];
+      }
+      // For client, allow multiple — but don't add duplicates
+      if (type === 'client') {
+        if (prev.some(c => c.type === 'client' && c.value === value)) return prev;
+        return [...prev, { type, value }];
+      }
       // For group, replace existing group chip
       if (type === 'group') return [...prev.filter(c => c.type !== 'group'), { type, value, ...extra }];
       return [...prev, { type, value }];
@@ -52,8 +58,8 @@ export default function QuotesPage() {
     setChipFilters(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const chipStatusFilter = chipFilters.find(c => c.type === 'status')?.value || null;
-  const chipClientFilter = chipFilters.find(c => c.type === 'client')?.value || null;
+  const chipStatusFilters = chipFilters.filter(c => c.type === 'status').map(c => c.value);
+  const chipClientFilters = chipFilters.filter(c => c.type === 'client').map(c => c.value);
   const chipGroupFilter = chipFilters.find(c => c.type === 'group')?.groupId || null;
 
   useEffect(() => {
@@ -149,15 +155,22 @@ export default function QuotesPage() {
   const canGroup = selected.size >= 2;
 
   // ── Filtering & sorting ──
+  // Default excluded statuses (hidden unless user adds a chip for them)
+  const DEFAULT_EXCLUDED = ['deleted', 'declined', 'expired'];
+
   const filtered = useMemo(() => {
-    let list = quotes.filter(q => q.status !== 'deleted');
+    let list = quotes;
+    // Determine which default exclusions are still active (remove exclusion if user has a chip for that status)
+    const activeExclusions = DEFAULT_EXCLUDED.filter(s => !chipStatusFilters.includes(s));
+    list = list.filter(q => !activeExclusions.includes(q.status));
     if (statusFilter !== 'all') list = list.filter(q => q.status === statusFilter);
-    // Apply chip filters (AND logic)
-    if (chipStatusFilter) list = list.filter(q => q.status === chipStatusFilter);
-    if (chipClientFilter) {
-      const cf = chipClientFilter.toLowerCase();
-      list = list.filter(q => q.relationship_group?.toLowerCase().includes(cf));
-    }
+    // Apply chip filters (AND logic) — multiple status chips = OR within status, AND with other types
+    if (chipStatusFilters.length > 0) list = list.filter(q => chipStatusFilters.includes(q.status));
+    // Multiple client chips = AND (each must match)
+    chipClientFilters.forEach(cf => {
+      const lower = cf.toLowerCase();
+      list = list.filter(q => q.relationship_group?.toLowerCase().includes(lower));
+    });
     if (chipGroupFilter) list = list.filter(q => q.group_id === chipGroupFilter);
     if (search) {
       const s = search.toLowerCase();
@@ -176,7 +189,7 @@ export default function QuotesPage() {
       return 0;
     });
     return list;
-  }, [quotes, statusFilter, search, sortCol, sortAsc, chipStatusFilter, chipClientFilter, chipGroupFilter]);
+  }, [quotes, statusFilter, search, sortCol, sortAsc, chipStatusFilters, chipClientFilters, chipGroupFilter]);
 
   const statusCounts = useMemo(() => {
     const visible = quotes.filter(q => q.status !== 'deleted');
@@ -346,7 +359,7 @@ export default function QuotesPage() {
         {chipFilters.map((chip, i) => (
           <span key={i} className="inline-flex items-center gap-1 text-xs bg-ocean-50 text-ocean-700 border border-ocean-200 rounded-full px-2.5 py-1">
             {chip.type === 'status' ? `Status: ${STATUS_LABELS[chip.value] || chip.value}` : chip.type === 'group' ? `Group: ${chip.value}` : `Client: ${chip.value}`}
-            <button onClick={() => { removeChip(i); if (chip.type === 'status') setStatusFilter('all'); }} className="text-ocean-400 hover:text-ocean-700 ml-0.5">&times;</button>
+            <button onClick={() => { removeChip(i); if (chip.type === 'status' && chipFilters.filter(c => c.type === 'status').length <= 1) setStatusFilter('all'); }} className="text-ocean-400 hover:text-ocean-700 ml-0.5">&times;</button>
           </span>
         ))}
         <div className="relative">
@@ -426,6 +439,24 @@ export default function QuotesPage() {
         placeholder="Search by quote ref or client name..."
         className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3"
       />
+
+      {/* Summary totals bar */}
+      {!loading && filtered.length > 0 && (
+        <div className="flex items-center gap-6 mb-3 px-4 py-2 bg-gray-50 rounded-lg border border-gray-200 text-xs">
+          <div>
+            <span className="text-gray-400">Total Quotes</span>
+            <span className="ml-1.5 font-semibold text-gray-700">{filtered.length}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Total Annual (Net)</span>
+            <span className="ml-1.5 font-semibold font-mono text-ocean-700">{fmt(filtered.reduce((s, q) => s + (parseFloat(q.annual_total) || 0), 0))}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Total Monthly (Net)</span>
+            <span className="ml-1.5 font-semibold font-mono text-ocean-700">{fmt(filtered.reduce((s, q) => s + (parseFloat(q.monthly_net) || 0), 0))}</span>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-gray-400">Loading...</p>
