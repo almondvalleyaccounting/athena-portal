@@ -171,11 +171,11 @@ export default function App() {
         <Route path="/manage/quotes/group/:groupId" element={
           <GroupDetailPage profile={profile} defaults={defaults} />
         } />
-        <Route path="/manage/quotes/:id" element={
-          <QuoteDetailPage profile={profile} />
-        } />
         <Route path="/manage/quotes/:id/edit" element={
           <QuoteFormPage defaults={defaults} profile={profile} mode="edit" />
+        } />
+        <Route path="/manage/quotes/:id" element={
+          <QuoteDetailPage profile={profile} />
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
