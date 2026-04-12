@@ -100,10 +100,9 @@ export default function ReportsPage() {
     setLog(reportsToRun.map((r) => ({ label: r.label, status: 'pending' })));
 
     // Build the payload for Apps Script doPost
-    const reportTypes = reportsToRun.map((r) => r.name);
+    // Send zero-based indices into the REPORTS array — unambiguous, no string matching
+    const reportIndices = reportsToRun.map((r) => REPORTS.indexOf(r));
 
-    // Determine dates — Apps Script handles prior_range internally via REPORTS config,
-    // but we send the user-selected dates. For prior_range, we send the prior-year dates.
     const payload = {
       clientName: selectedClient.name,
       realmId: selectedClient.realmId,
@@ -111,7 +110,7 @@ export default function ReportsPage() {
       endDate: toDate,
       reportDate: asAtDate,
       accountingMethod: basis,
-      reportTypes,
+      reportIndices,
       outputFormat: 'excel',
     };
 
