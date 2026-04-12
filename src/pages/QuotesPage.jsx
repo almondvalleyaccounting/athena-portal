@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
+import { downloadCSV } from '../lib/exportUtils';
 
 const STATUSES = ['all', 'draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
 const STATUS_LABELS = { all: 'All', draft: 'Draft', pending_approval: 'Pending', approved: 'Approved', sent: 'Sent', accepted: 'Accepted', declined: 'Declined', expired: 'Expired' };
@@ -20,25 +21,30 @@ export default function QuotesPage() {
   const [acting, setActing] = useState(false);
   const [groups, setGroups] = useState([]);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
+  const [netGross, setNetGross] = useState('gross'); // 'net' or 'gross'
 
   // ── Filter chips ──
-  const [chipFilters, setChipFilters] = useState([]); // [{ type: 'status', value: 'draft' }, { type: 'client', value: 'Acme' }]
+  const [chipFilters, setChipFilters] = useState([]); // [{ type: 'status', value: 'draft' }, { type: 'client', value: 'Acme' }, { type: 'group', value: '...', groupId: '...' }]
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showStatusSubmenu, setShowStatusSubmenu] = useState(false);
   const [showClientInput, setShowClientInput] = useState(false);
   const [clientFilterInput, setClientFilterInput] = useState('');
+  const [showGroupSubmenu, setShowGroupSubmenu] = useState(false);
 
-  const addChip = (type, value) => {
+  const addChip = (type, value, extra) => {
     setChipFilters(prev => {
       // For status, replace existing status chip
       if (type === 'status') return [...prev.filter(c => c.type !== 'status'), { type, value }];
       // For client, replace existing client chip
       if (type === 'client') return [...prev.filter(c => c.type !== 'client'), { type, value }];
+      // For group, replace existing group chip
+      if (type === 'group') return [...prev.filter(c => c.type !== 'group'), { type, value, ...extra }];
       return [...prev, { type, value }];
     });
     setShowFilterMenu(false);
     setShowStatusSubmenu(false);
     setShowClientInput(false);
+    setShowGroupSubmenu(false);
     setClientFilterInput('');
   };
 
@@ -48,6 +54,7 @@ export default function QuotesPage() {
 
   const chipStatusFilter = chipFilters.find(c => c.type === 'status')?.value || null;
   const chipClientFilter = chipFilters.find(c => c.type === 'client')?.value || null;
+  const chipGroupFilter = chipFilters.find(c => c.type === 'group')?.groupId || null;
 
   useEffect(() => {
     supabase.from('billing_groups').select('*').order('name')
@@ -151,6 +158,7 @@ export default function QuotesPage() {
       const cf = chipClientFilter.toLowerCase();
       list = list.filter(q => q.relationship_group?.toLowerCase().includes(cf));
     }
+    if (chipGroupFilter) list = list.filter(q => q.group_id === chipGroupFilter);
     if (search) {
       const s = search.toLowerCase();
       list = list.filter(q =>
@@ -168,7 +176,7 @@ export default function QuotesPage() {
       return 0;
     });
     return list;
-  }, [quotes, statusFilter, search, sortCol, sortAsc, chipStatusFilter, chipClientFilter]);
+  }, [quotes, statusFilter, search, sortCol, sortAsc, chipStatusFilter, chipClientFilter, chipGroupFilter]);
 
   const statusCounts = useMemo(() => {
     const visible = quotes.filter(q => q.status !== 'deleted');
@@ -196,6 +204,58 @@ export default function QuotesPage() {
     return m;
   }, [groups]);
 
+  // ── Export helpers ──
+  const getExportRows = () => filtered.map(q => [
+    q.quote_ref || '',
+    q.relationship_group || '',
+    (q.group_id && groupMap[q.group_id]) || '',
+    STATUS_LABELS[q.status] || q.status || '',
+    q.annual_total ?? '',
+    q.monthly_net ?? '',
+    q.vat ?? '',
+    q.monthly_gross ?? '',
+    q.created_at ? new Date(q.created_at).toLocaleDateString('en-GB') : '',
+    q.valid_until ? new Date(q.valid_until).toLocaleDateString('en-GB') : '',
+  ]);
+  const exportHeaders = ['Quote Ref', 'Client', 'Group', 'Status', 'Annual Net', 'Monthly Net', 'VAT', 'Monthly Gross', 'Created Date', 'Valid Until'];
+
+  const handleExportCSV = () => {
+    downloadCSV('quotes_export.csv', exportHeaders, getExportRows());
+  };
+
+  const handleExportPDF = async () => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 10;
+    const usable = pageWidth - margin * 2;
+    const colWidth = usable / exportHeaders.length;
+    const rowHeight = 7;
+    let y = 15;
+
+    doc.setFontSize(14);
+    doc.text('Quotes Export', margin, y);
+    y += 10;
+
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'bold');
+    exportHeaders.forEach((h, i) => { doc.text(h, margin + i * colWidth, y); });
+    doc.setFont(undefined, 'normal');
+    y += 2;
+    doc.setDrawColor(180);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += rowHeight - 2;
+
+    doc.setFontSize(7);
+    getExportRows().forEach(row => {
+      if (y > doc.internal.pageSize.getHeight() - 15) { doc.addPage(); y = 15; }
+      row.forEach((cell, i) => { doc.text(String(cell ?? ''), margin + i * colWidth, y); });
+      y += rowHeight;
+    });
+
+    doc.save('quotes_export.pdf');
+  };
+
   const gridCols = selectMode
     ? '24px 2fr 1fr 1fr 1fr 1fr 1fr 1fr'
     : '2fr 1fr 1fr 1fr 1fr 1fr 1fr';
@@ -205,7 +265,24 @@ export default function QuotesPage() {
       {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-ocean-700">Quotes</h2>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* Net / Gross toggle */}
+          <div className="inline-flex rounded-md border border-gray-200 overflow-hidden text-xs">
+            <button
+              onClick={() => setNetGross('net')}
+              className={`px-3 py-1.5 transition-all ${netGross === 'net' ? 'bg-ocean-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+            >
+              Net
+            </button>
+            <button
+              onClick={() => setNetGross('gross')}
+              className={`px-3 py-1.5 transition-all ${netGross === 'gross' ? 'bg-ocean-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+            >
+              Gross
+            </button>
+          </div>
+          <Btn onClick={handleExportCSV} variant="ghost" className="text-xs">Export Excel</Btn>
+          <Btn onClick={handleExportPDF} variant="ghost" className="text-xs">Export PDF</Btn>
           {!selectMode ? (
             <>
               <Btn onClick={() => setSelectMode(true)} variant="ghost">Select</Btn>
@@ -268,13 +345,13 @@ export default function QuotesPage() {
       <div className="flex items-center gap-1.5 mb-3 flex-wrap">
         {chipFilters.map((chip, i) => (
           <span key={i} className="inline-flex items-center gap-1 text-xs bg-ocean-50 text-ocean-700 border border-ocean-200 rounded-full px-2.5 py-1">
-            {chip.type === 'status' ? `Status: ${STATUS_LABELS[chip.value] || chip.value}` : `Client: ${chip.value}`}
+            {chip.type === 'status' ? `Status: ${STATUS_LABELS[chip.value] || chip.value}` : chip.type === 'group' ? `Group: ${chip.value}` : `Client: ${chip.value}`}
             <button onClick={() => { removeChip(i); if (chip.type === 'status') setStatusFilter('all'); }} className="text-ocean-400 hover:text-ocean-700 ml-0.5">&times;</button>
           </span>
         ))}
         <div className="relative">
           <button
-            onClick={() => { setShowFilterMenu(!showFilterMenu); setShowStatusSubmenu(false); setShowClientInput(false); }}
+            onClick={() => { setShowFilterMenu(!showFilterMenu); setShowStatusSubmenu(false); setShowClientInput(false); setShowGroupSubmenu(false); }}
             className="text-xs px-2.5 py-1 rounded-full border border-dashed border-gray-300 text-gray-500 hover:border-ocean-400 hover:text-ocean-600 transition-all"
           >
             + Filter
@@ -297,8 +374,8 @@ export default function QuotesPage() {
                 </div>
               )}
               <button
-                onClick={() => { setShowClientInput(!showClientInput); setShowStatusSubmenu(false); }}
-                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex justify-between items-center"
+                onClick={() => { setShowClientInput(!showClientInput); setShowStatusSubmenu(false); setShowGroupSubmenu(false); }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 flex justify-between items-center"
               >
                 Client <span className="text-gray-400">&rsaquo;</span>
               </button>
@@ -318,6 +395,23 @@ export default function QuotesPage() {
                   >
                     Apply
                   </button>
+                </div>
+              )}
+              <button
+                onClick={() => { setShowGroupSubmenu(!showGroupSubmenu); setShowStatusSubmenu(false); setShowClientInput(false); }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex justify-between items-center"
+              >
+                Group <span className="text-gray-400">&rsaquo;</span>
+              </button>
+              {showGroupSubmenu && (
+                <div className="border-t border-gray-100 max-h-48 overflow-y-auto">
+                  {groups.length === 0 ? (
+                    <span className="block px-5 py-1.5 text-xs text-gray-400">No groups</span>
+                  ) : groups.map(g => (
+                    <button key={g.id} onClick={() => addChip('group', g.name, { groupId: g.id })} className="w-full text-left px-5 py-1.5 text-xs hover:bg-ocean-50 text-gray-600">
+                      {g.name}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -358,8 +452,8 @@ export default function QuotesPage() {
             <SortHeader col="relationship_group">Client</SortHeader>
             <span className="text-xs text-gray-400">Group</span>
             <SortHeader col="status">Status</SortHeader>
-            <SortHeader col="monthly_gross" className="justify-end">Monthly Direct Debit</SortHeader>
-            <SortHeader col="annual_total" className="justify-end">Annual</SortHeader>
+            <SortHeader col={netGross === 'net' ? 'monthly_net' : 'monthly_gross'} className="justify-end">{netGross === 'net' ? 'Monthly (Net)' : 'Monthly (Gross)'}</SortHeader>
+            <SortHeader col="annual_total" className="justify-end">Annual (Net)</SortHeader>
             <SortHeader col="created_at" className="justify-end">Created</SortHeader>
           </div>
           {/* Rows */}
@@ -399,7 +493,7 @@ export default function QuotesPage() {
                 )}
               </span>
               <span><StatusBadge status={q.status} /></span>
-              <span className="text-right font-mono text-ocean-600">{fmt(q.monthly_gross)}</span>
+              <span className="text-right font-mono text-ocean-600">{fmt(netGross === 'net' ? q.monthly_net : q.monthly_gross)}</span>
               <span className="text-right font-mono text-gray-500">{fmt(q.annual_total)}</span>
               <div className="text-right">
                 <span className="text-gray-500">{new Date(q.created_at).toLocaleDateString('en-GB')}</span>

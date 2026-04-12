@@ -11,7 +11,20 @@ const TIME_FILTERS = [
   { label: 'Last 3 Months', value: 'last_3' },
   { label: 'Last 6 Months', value: 'last_6' },
   { label: 'This Year', value: 'this_year' },
+  { label: 'Last 12 Months', value: 'last_12' },
 ];
+
+function periodLabel(filter) {
+  const map = {
+    all: 'All Time',
+    this_month: 'This Month',
+    last_3: 'Last 3 Months',
+    last_6: 'Last 6 Months',
+    this_year: 'This Year',
+    last_12: 'Last 12 Months',
+  };
+  return map[filter] || 'All Time';
+}
 
 function getDateRange(filter) {
   if (filter === 'all') return null;
@@ -25,8 +38,43 @@ function getDateRange(filter) {
     from = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
   } else if (filter === 'this_year') {
     from = new Date(now.getFullYear(), 0, 1);
+  } else if (filter === 'last_12') {
+    from = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
   }
   return from ? from.toISOString() : null;
+}
+
+function getPreviousDateRange(filter) {
+  if (filter === 'all') return null;
+  const now = new Date();
+  let from, to;
+  if (filter === 'this_month') {
+    // Previous period = last month
+    from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    to = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (filter === 'last_3') {
+    from = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+    to = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+  } else if (filter === 'last_6') {
+    from = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
+    to = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+  } else if (filter === 'this_year') {
+    from = new Date(now.getFullYear() - 1, 0, 1);
+    to = new Date(now.getFullYear(), 0, 1);
+  } else if (filter === 'last_12') {
+    from = new Date(now.getFullYear(), now.getMonth() - 24, now.getDate());
+    to = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
+  }
+  return from && to ? { from: from.toISOString(), to: to.toISOString() } : null;
+}
+
+function fmtChange(value) {
+  if (value === 0) return { text: '\u00A30.00', color: 'text-gray-400' };
+  const prefix = value > 0 ? '+' : '-';
+  const abs = Math.abs(value);
+  const formatted = abs.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const color = value > 0 ? 'text-green-600' : 'text-red-600';
+  return { text: `${prefix}\u00A3${formatted}`, color };
 }
 
 export default function DashboardPage() {
@@ -98,19 +146,55 @@ export default function DashboardPage() {
         statusCounts[s] = (statusCounts[s] || 0) + 1;
       });
 
-    // Revenue by service
+    // Revenue by service (current period)
     const activeQuoteIds = new Set(activeQuotes.map((q) => q.id));
     const serviceMap = {};
     lineItems.forEach((li) => {
       if (!activeQuoteIds.has(li.quote_id)) return;
       const key = li.description || li.service_id || 'Unknown';
-      if (!serviceMap[key]) serviceMap[key] = { service: key, totalAnnual: 0, quoteIds: new Set() };
+      if (!serviceMap[key]) serviceMap[key] = { service: key, serviceId: li.service_id || '', totalAnnual: 0, quoteIds: new Set() };
       serviceMap[key].totalAnnual += parseFloat(li.annual_amount) || 0;
       serviceMap[key].quoteIds.add(li.quote_id);
     });
+
+    // Revenue by service (previous period)
+    const prevRange = getPreviousDateRange(timePeriod);
+    const prevActiveQuotes = prevRange
+      ? quotes.filter((q) => {
+          if (q.status === 'deleted' || !ACTIVE_STATUSES.includes(q.status)) return false;
+          return q.created_at >= prevRange.from && q.created_at < prevRange.to;
+        })
+      : [];
+    const prevActiveQuoteIds = new Set(prevActiveQuotes.map((q) => q.id));
+    const prevServiceMap = {};
+    if (prevRange) {
+      lineItems.forEach((li) => {
+        if (!prevActiveQuoteIds.has(li.quote_id)) return;
+        const key = li.description || li.service_id || 'Unknown';
+        if (!prevServiceMap[key]) prevServiceMap[key] = { totalAnnual: 0 };
+        prevServiceMap[key].totalAnnual += parseFloat(li.annual_amount) || 0;
+      });
+    }
+
     const revenueByService = Object.values(serviceMap)
-      .map((s) => ({ ...s, quoteCount: s.quoteIds.size }))
+      .map((s) => ({
+        ...s,
+        quoteCount: s.quoteIds.size,
+        prevAnnual: prevServiceMap[s.service]?.totalAnnual || 0,
+        change: s.totalAnnual - (prevServiceMap[s.service]?.totalAnnual || 0),
+      }))
       .sort((a, b) => b.totalAnnual - a.totalAnnual);
+
+    // Split into services vs software
+    const softwareRows = revenueByService.filter((r) => r.serviceId && r.serviceId.startsWith('software'));
+    const serviceRows = revenueByService.filter((r) => !(r.serviceId && r.serviceId.startsWith('software')));
+
+    const servicesTotalAnnual = serviceRows.reduce((s, r) => s + r.totalAnnual, 0);
+    const servicesPrevAnnual = serviceRows.reduce((s, r) => s + r.prevAnnual, 0);
+    const softwareTotalAnnual = softwareRows.reduce((s, r) => s + r.totalAnnual, 0);
+    const softwarePrevAnnual = softwareRows.reduce((s, r) => s + r.prevAnnual, 0);
+    const grandTotalAnnual = servicesTotalAnnual + softwareTotalAnnual;
+    const grandPrevAnnual = servicesPrevAnnual + softwarePrevAnnual;
 
     // Recent quotes (non-deleted, non-expired, non-declined)
     const recentQuotes = nonDeletedQuotes.slice(0, 8);
@@ -164,6 +248,14 @@ export default function DashboardPage() {
       totalMonthlyDD,
       statusCounts,
       revenueByService,
+      serviceRows,
+      softwareRows,
+      servicesTotalAnnual,
+      servicesPrevAnnual,
+      softwareTotalAnnual,
+      softwarePrevAnnual,
+      grandTotalAnnual,
+      grandPrevAnnual,
       recentQuotes,
       allServices,
       months,
@@ -182,6 +274,62 @@ export default function DashboardPage() {
     declined: 'Declined',
     expired: 'Expired',
   };
+
+  const pLabel = periodLabel(timePeriod);
+  const hasPrevPeriod = timePeriod !== 'all';
+  const prevPeriodLabel = {
+    this_month: 'Last Month',
+    last_3: 'Previous 3 Months',
+    last_6: 'Previous 6 Months',
+    this_year: 'Last Year',
+    last_12: 'Previous 12 Months',
+  }[timePeriod] || '';
+
+  const gridCols = hasPrevPeriod
+    ? '2fr 1fr 1fr 1fr 1fr'
+    : '2fr 1fr 1fr';
+
+  function renderRevenueRow(row, i) {
+    const ch = fmtChange(row.change);
+    return (
+      <div
+        key={i}
+        className="grid gap-2 items-center text-gray-700 py-1 border-b border-gray-50 last:border-0 cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1"
+        style={{ gridTemplateColumns: gridCols }}
+        onClick={() => navigate(`/manage/quotes/analysis?service=${encodeURIComponent(row.service)}&period=${timePeriod}`)}
+      >
+        <span className="truncate">{row.service}</span>
+        <span className="text-right font-mono">{fmt(row.totalAnnual)}</span>
+        {hasPrevPeriod && (
+          <>
+            <span className="text-right font-mono text-gray-400">{fmt(row.prevAnnual)}</span>
+            <span className={`text-right font-mono ${ch.color}`}>{ch.text}</span>
+          </>
+        )}
+        <span className="text-right font-mono">{row.quoteCount}</span>
+      </div>
+    );
+  }
+
+  function renderSubtotalRow(label, total, prev, change) {
+    const ch = fmtChange(change);
+    return (
+      <div
+        className="grid gap-2 items-center text-gray-700 py-1.5 border-t border-gray-300 font-semibold"
+        style={{ gridTemplateColumns: gridCols }}
+      >
+        <span>{label}</span>
+        <span className="text-right font-mono">{fmt(total)}</span>
+        {hasPrevPeriod && (
+          <>
+            <span className="text-right font-mono text-gray-400">{fmt(prev)}</span>
+            <span className={`text-right font-mono ${ch.color}`}>{ch.text}</span>
+          </>
+        )}
+        <span className="text-right font-mono"></span>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-4xl">
@@ -208,15 +356,35 @@ export default function DashboardPage() {
           {/* Summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             {[
-              { label: 'Total Clients', value: filtered.totalClients, action: () => navigate('/manage/clients') },
-              { label: 'Active Quotes', value: filtered.activeQuoteCount, action: () => navigate('/manage/quotes') },
-              { label: 'Total Annual Value', value: fmt(filtered.totalAnnual), isMoney: true },
-              { label: 'Monthly Direct Debit', value: fmt(filtered.totalMonthlyDD), isMoney: true },
+              {
+                label: `Total Clients (${pLabel})`,
+                value: filtered.totalClients,
+                metric: 'total_clients',
+                action: () => navigate('/manage/clients'),
+              },
+              {
+                label: `Active Quotes (${pLabel})`,
+                value: filtered.activeQuoteCount,
+                metric: 'active_quotes',
+                action: () => navigate('/manage/quotes'),
+              },
+              {
+                label: `Annual Value (${pLabel})`,
+                value: fmt(filtered.totalAnnual),
+                metric: 'total_annual',
+                isMoney: true,
+              },
+              {
+                label: `Monthly Direct Debit (${pLabel})`,
+                value: fmt(filtered.totalMonthlyDD),
+                metric: 'monthly_dd',
+                isMoney: true,
+              },
             ].map((s, i) => (
               <div
                 key={i}
-                onClick={s.action}
-                className={`bg-white rounded-lg border border-gray-200 p-4 ${s.action ? 'cursor-pointer hover:border-ocean-300' : ''}`}
+                onClick={s.action || (() => navigate(`/manage/quotes/analysis?metric=${s.metric}&period=${timePeriod}`))}
+                className="bg-white rounded-lg border border-gray-200 p-4 cursor-pointer hover:border-ocean-300"
               >
                 <p className="text-xs text-gray-400 mb-1">{s.label}</p>
                 <p className={`text-xl font-bold font-mono ${s.isMoney ? 'text-green-700' : 'text-ocean-700'}`}>
@@ -229,10 +397,14 @@ export default function DashboardPage() {
           {/* Quotes by status breakdown */}
           {Object.keys(filtered.statusCounts).length > 0 && (
             <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Quotes by Status</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Quotes by Status ({pLabel})</h3>
               <div className="flex flex-wrap gap-2">
                 {STATUS_ORDER.filter((s) => filtered.statusCounts[s]).map((s) => (
-                  <div key={s} className="flex items-center gap-1.5">
+                  <div
+                    key={s}
+                    className="flex items-center gap-1.5 cursor-pointer hover:opacity-75"
+                    onClick={() => navigate(`/manage/quotes/analysis?status=${s}&period=${timePeriod}`)}
+                  >
                     <span className="text-sm font-mono font-semibold text-gray-700">{filtered.statusCounts[s]}</span>
                     <StatusBadge status={s} />
                   </div>
@@ -244,29 +416,44 @@ export default function DashboardPage() {
           {/* Revenue by Service */}
           {filtered.revenueByService.length > 0 && (
             <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Revenue by Service</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Revenue by Service ({pLabel})</h3>
               <div className="grid gap-0 text-xs">
                 {/* Header */}
                 <div
                   className="grid gap-2 items-center text-gray-400 font-medium border-b border-gray-200 pb-1.5 mb-1"
-                  style={{ gridTemplateColumns: '2fr 1fr 1fr' }}
+                  style={{ gridTemplateColumns: gridCols }}
                 >
                   <span>Service</span>
-                  <span className="text-right">Total Annual</span>
+                  <span className="text-right">Annual (Net)</span>
+                  {hasPrevPeriod && (
+                    <>
+                      <span className="text-right">Previous Period</span>
+                      <span className="text-right">Change</span>
+                    </>
+                  )}
                   <span className="text-right">Quotes</span>
                 </div>
-                {/* Rows */}
-                {filtered.revenueByService.map((row, i) => (
-                  <div
-                    key={i}
-                    className="grid gap-2 items-center text-gray-700 py-1 border-b border-gray-50 last:border-0"
-                    style={{ gridTemplateColumns: '2fr 1fr 1fr' }}
-                  >
-                    <span className="truncate">{row.service}</span>
-                    <span className="text-right font-mono">{fmt(row.totalAnnual)}</span>
-                    <span className="text-right font-mono">{row.quoteCount}</span>
-                  </div>
-                ))}
+
+                {/* Services section */}
+                {filtered.serviceRows.length > 0 && (
+                  <>
+                    <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold pt-2 pb-1">Services</div>
+                    {filtered.serviceRows.map((row, i) => renderRevenueRow(row, `svc-${i}`))}
+                    {renderSubtotalRow('Services Subtotal', filtered.servicesTotalAnnual, filtered.servicesPrevAnnual, filtered.servicesTotalAnnual - filtered.servicesPrevAnnual)}
+                  </>
+                )}
+
+                {/* Software section */}
+                {filtered.softwareRows.length > 0 && (
+                  <>
+                    <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold pt-3 pb-1">Software</div>
+                    {filtered.softwareRows.map((row, i) => renderRevenueRow(row, `sw-${i}`))}
+                    {renderSubtotalRow('Software Subtotal', filtered.softwareTotalAnnual, filtered.softwarePrevAnnual, filtered.softwareTotalAnnual - filtered.softwarePrevAnnual)}
+                  </>
+                )}
+
+                {/* Grand total */}
+                {renderSubtotalRow('TOTAL', filtered.grandTotalAnnual, filtered.grandPrevAnnual, filtered.grandTotalAnnual - filtered.grandPrevAnnual)}
               </div>
             </div>
           )}
@@ -368,7 +555,7 @@ export default function DashboardPage() {
           {/* Recent Quotes */}
           {filtered.recentQuotes.length > 0 && (
             <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Quotes</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Quotes ({pLabel})</h3>
               {filtered.recentQuotes.map((q) => (
                 <div
                   key={q.id}
