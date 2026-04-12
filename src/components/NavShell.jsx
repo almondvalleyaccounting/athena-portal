@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: '\u25C6' },
   { path: '/manage/clients', label: 'Clients', icon: '\u25C7' },
   { path: '/manage/quotes', label: 'Quotes', icon: '\u25A4' },
+  { path: '/manage/groups', label: 'Groups', icon: '\u25A6' },
   { path: '/manage/quotes/new', label: 'New Quote', icon: '+' },
 ];
 
@@ -20,6 +21,9 @@ export default function NavShell({ profile, onLogout, children }) {
       return location.pathname === '/manage/quotes' ||
         (/^\/manage\/quotes\/[0-9a-f-]+/.test(location.pathname) &&
          !location.pathname.includes('/edit'));
+    }
+    if (item.path === '/manage/groups') {
+      return location.pathname === '/manage/groups';
     }
     if (item.path === '/manage/quotes/new') {
       return location.pathname === '/manage/quotes/new';

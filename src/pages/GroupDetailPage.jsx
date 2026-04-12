@@ -220,6 +220,9 @@ export default function GroupDetailPage({ profile, defaults }) {
 
       {/* Actions */}
       <div className="flex gap-2">
+        <Btn onClick={() => navigate(`/manage/quotes/group/${groupId}/quote`)} variant="primary">
+          Build Group Quote
+        </Btn>
         <Btn onClick={() => navigate('/manage/quotes/new?group=' + groupId)}>Add Entity</Btn>
         <Btn onClick={() => navigate('/manage/quotes')} variant="secondary">Back to Quotes</Btn>
       </div>

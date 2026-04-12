@@ -12,6 +12,8 @@ import QuoteFormPage from './pages/QuoteFormPage';
 import QuoteDetailPage from './pages/QuoteDetailPage';
 import PricingDefaultsPage from './pages/PricingDefaultsPage';
 import GroupDetailPage from './pages/GroupDetailPage';
+import GroupsPage from './pages/GroupsPage';
+import GroupQuoteInputPage from './pages/GroupQuoteInputPage';
 import ClientDetailPage from './pages/ClientDetailPage';
 import AnalysisPage from './pages/AnalysisPage';
 
@@ -162,6 +164,10 @@ export default function App() {
           <PricingDefaultsPage defaults={defaults} profile={profile} onSaved={reloadDefaults} />
         } />
         <Route path="/manage/quotes/analysis" element={<AnalysisPage profile={profile} />} />
+        <Route path="/manage/groups" element={<GroupsPage profile={profile} />} />
+        <Route path="/manage/quotes/group/:groupId/quote" element={
+          <GroupQuoteInputPage defaults={defaults} profile={profile} />
+        } />
         <Route path="/manage/quotes/group/:groupId" element={
           <GroupDetailPage profile={profile} defaults={defaults} />
         } />
