@@ -4,15 +4,27 @@ import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { downloadCSV } from '../lib/exportUtils';
 
-const STATUSES = ['all', 'draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
-const STATUS_LABELS = { all: 'All', draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', declined: 'Rejected', expired: 'Expired' };
+const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', declined: 'Rejected', expired: 'Expired' };
 const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
+
+// Status card definitions — pipeline is the aggregate default
+const PIPELINE_STATUSES = ['draft', 'pending_approval', 'approved', 'sent', 'accepted'];
+const STATUS_CARDS = [
+  { key: 'draft', label: 'Draft', statuses: ['draft'] },
+  { key: 'pending_approval', label: 'Awaiting Approval', statuses: ['pending_approval'] },
+  { key: 'approved', label: 'Approved', statuses: ['approved'] },
+  { key: 'sent', label: 'Sent to Client', statuses: ['sent'] },
+  { key: 'accepted', label: 'Accepted', statuses: ['accepted'] },
+  { key: 'pipeline', label: 'Pipeline', statuses: PIPELINE_STATUSES },
+  { key: 'declined', label: 'Rejected', statuses: ['declined'] },
+  { key: 'committed', label: 'Committed', statuses: ['committed'] },
+];
 
 export default function QuotesPage() {
   const navigate = useNavigate();
   const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [activeCard, setActiveCard] = useState('pipeline'); // default card
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState('created_at');
   const [sortAsc, setSortAsc] = useState(false);
@@ -21,34 +33,25 @@ export default function QuotesPage() {
   const [acting, setActing] = useState(false);
   const [groups, setGroups] = useState([]);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
-  const [netGross, setNetGross] = useState('net'); // 'net' or 'gross'
+  const [netGross, setNetGross] = useState('net');
 
-  // ── Filter chips ──
-  const [chipFilters, setChipFilters] = useState([]); // [{ type: 'status', value: 'draft' }, { type: 'client', value: 'Acme' }, { type: 'group', value: '...', groupId: '...' }]
+  // ── Filter chips (client/group only — status is handled by cards) ──
+  const [chipFilters, setChipFilters] = useState([]);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
-  const [showStatusSubmenu, setShowStatusSubmenu] = useState(false);
   const [showClientInput, setShowClientInput] = useState(false);
   const [clientFilterInput, setClientFilterInput] = useState('');
   const [showGroupSubmenu, setShowGroupSubmenu] = useState(false);
 
   const addChip = (type, value, extra) => {
     setChipFilters(prev => {
-      // For status, allow multiple — but don't add duplicates
-      if (type === 'status') {
-        if (prev.some(c => c.type === 'status' && c.value === value)) return prev;
-        return [...prev, { type, value }];
-      }
-      // For client, allow multiple — but don't add duplicates
       if (type === 'client') {
         if (prev.some(c => c.type === 'client' && c.value === value)) return prev;
         return [...prev, { type, value }];
       }
-      // For group, replace existing group chip
       if (type === 'group') return [...prev.filter(c => c.type !== 'group'), { type, value, ...extra }];
       return [...prev, { type, value }];
     });
     setShowFilterMenu(false);
-    setShowStatusSubmenu(false);
     setShowClientInput(false);
     setShowGroupSubmenu(false);
     setClientFilterInput('');
@@ -58,7 +61,6 @@ export default function QuotesPage() {
     setChipFilters(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const chipStatusFilters = chipFilters.filter(c => c.type === 'status').map(c => c.value);
   const chipClientFilters = chipFilters.filter(c => c.type === 'client').map(c => c.value);
   const chipGroupFilter = chipFilters.find(c => c.type === 'group')?.groupId || null;
 
@@ -109,6 +111,16 @@ export default function QuotesPage() {
     setActing(false);
   };
 
+  const batchDelete = async () => {
+    setActing(true);
+    for (const q of selectedQuotes) {
+      await supabase.from('quotes').update({ status: 'deleted' }).eq('id', q.id);
+    }
+    await loadQuotes();
+    setSelected(new Set());
+    setActing(false);
+  };
+
   const handleAddToGroup = async (groupId) => {
     setActing(true);
     setShowGroupPicker(false);
@@ -147,31 +159,48 @@ export default function QuotesPage() {
     setActing(false);
   };
 
-  // What batch actions are available based on selected quotes' statuses
+  // Determine valid batch actions based on selected quotes
   const selectedStatuses = new Set(selectedQuotes.map(q => q.status));
-  const canSubmit = selectedStatuses.size === 1 && selectedStatuses.has('draft');
-  const canApprove = selectedStatuses.size === 1 && selectedStatuses.has('pending_approval');
-  const canMarkSent = selectedStatuses.size === 1 && selectedStatuses.has('approved');
+  const allDraft = selectedStatuses.size === 1 && selectedStatuses.has('draft');
+  const allPendingApproval = selectedStatuses.size === 1 && selectedStatuses.has('pending_approval');
+  const allApproved = selectedStatuses.size === 1 && selectedStatuses.has('approved');
+  const allSent = selectedStatuses.size === 1 && selectedStatuses.has('sent');
+  const canReject = selectedQuotes.length > 0 && selectedQuotes.every(q => q.status !== 'accepted' && q.status !== 'committed');
+  const canDelete = selectedQuotes.length > 0 && selectedQuotes.every(q => q.status === 'draft' || q.status === 'pending_approval');
   const canGroup = selected.size >= 2;
+  const canAddToGroup = selected.size > 0;
+
+  // ── Status card aggregates (always computed from ALL quotes, unfiltered) ──
+  const cardData = useMemo(() => {
+    const visible = quotes.filter(q => q.status !== 'deleted');
+    const result = {};
+    STATUS_CARDS.forEach(card => {
+      const matching = visible.filter(q => card.statuses.includes(q.status));
+      result[card.key] = {
+        count: matching.length,
+        value: matching.reduce((s, q) => s + (parseFloat(q.annual_total) || 0), 0),
+      };
+    });
+    return result;
+  }, [quotes]);
 
   // ── Filtering & sorting ──
-  // Default excluded statuses (hidden unless user adds a chip for them)
-  const DEFAULT_EXCLUDED = ['deleted', 'declined', 'expired'];
-
   const filtered = useMemo(() => {
-    let list = quotes;
-    // Determine which default exclusions are still active (remove exclusion if user has a chip for that status)
-    const activeExclusions = DEFAULT_EXCLUDED.filter(s => !chipStatusFilters.includes(s));
-    list = list.filter(q => !activeExclusions.includes(q.status));
-    if (statusFilter !== 'all') list = list.filter(q => q.status === statusFilter);
-    // Apply chip filters (AND logic) — multiple status chips = OR within status, AND with other types
-    if (chipStatusFilters.length > 0) list = list.filter(q => chipStatusFilters.includes(q.status));
-    // Multiple client chips = AND (each must match)
+    let list = quotes.filter(q => q.status !== 'deleted');
+
+    // Apply active card filter
+    const card = STATUS_CARDS.find(c => c.key === activeCard);
+    if (card) {
+      list = list.filter(q => card.statuses.includes(q.status));
+    }
+
+    // Apply chip filters (client/group only)
     chipClientFilters.forEach(cf => {
       const lower = cf.toLowerCase();
       list = list.filter(q => q.relationship_group?.toLowerCase().includes(lower));
     });
     if (chipGroupFilter) list = list.filter(q => q.group_id === chipGroupFilter);
+
     if (search) {
       const s = search.toLowerCase();
       list = list.filter(q =>
@@ -182,21 +211,14 @@ export default function QuotesPage() {
     list = [...list].sort((a, b) => {
       let va = a[sortCol], vb = b[sortCol];
       if (sortCol === 'created_at') { va = new Date(va); vb = new Date(vb); }
-      if (sortCol === 'monthly_gross' || sortCol === 'annual_total') { va = va || 0; vb = vb || 0; }
+      if (sortCol === 'monthly_gross' || sortCol === 'annual_total' || sortCol === 'monthly_net') { va = va || 0; vb = vb || 0; }
       if (sortCol === 'quote_ref' || sortCol === 'relationship_group' || sortCol === 'status') { va = (va || '').toLowerCase(); vb = (vb || '').toLowerCase(); }
       if (va < vb) return sortAsc ? -1 : 1;
       if (va > vb) return sortAsc ? 1 : -1;
       return 0;
     });
     return list;
-  }, [quotes, statusFilter, search, sortCol, sortAsc, chipStatusFilters, chipClientFilters, chipGroupFilter]);
-
-  const statusCounts = useMemo(() => {
-    const visible = quotes.filter(q => q.status !== 'deleted');
-    const c = { all: visible.length };
-    STATUSES.forEach(s => { if (s !== 'all') c[s] = visible.filter(q => q.status === s).length; });
-    return c;
-  }, [quotes]);
+  }, [quotes, activeCard, search, sortCol, sortAsc, chipClientFilters, chipGroupFilter]);
 
   const toggleSort = (col) => {
     if (sortCol === col) setSortAsc(!sortAsc);
@@ -210,7 +232,6 @@ export default function QuotesPage() {
     </button>
   );
 
-  // Map group_id to group name for display
   const groupMap = useMemo(() => {
     const m = {};
     groups.forEach(g => { m[g.id] = g.name; });
@@ -274,7 +295,7 @@ export default function QuotesPage() {
     : '2fr 1fr 1fr 1fr 1fr 1fr 1fr';
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-6 max-w-5xl">
       {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-ocean-700">Quotes</h2>
@@ -307,64 +328,82 @@ export default function QuotesPage() {
         </div>
       </div>
 
+      {/* Status Cards */}
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        {STATUS_CARDS.map(card => {
+          const d = cardData[card.key] || { count: 0, value: 0 };
+          const isActive = activeCard === card.key;
+          const isPipeline = card.key === 'pipeline';
+          return (
+            <button
+              key={card.key}
+              onClick={() => setActiveCard(card.key)}
+              className={`text-left rounded-lg border-2 px-3 py-2.5 transition-all ${
+                isActive
+                  ? 'border-ocean-500 bg-ocean-50'
+                  : 'border-gray-200 bg-white hover:border-ocean-200'
+              } ${isPipeline ? 'col-span-2' : ''}`}
+            >
+              <div className="text-[11px] text-gray-500 font-medium mb-1">{card.label}</div>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className={`text-lg font-bold ${isActive ? 'text-ocean-700' : 'text-gray-700'}`}>{d.count}</span>
+                <span className={`text-xs font-mono ${isActive ? 'text-ocean-600' : 'text-gray-400'}`}>{fmt(d.value)}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Batch action bar */}
       {selectMode && selected.size > 0 && (
-        <div className="flex items-center gap-2 mb-3 bg-ocean-50 rounded-lg p-2 border border-ocean-200">
+        <div className="flex items-center gap-2 mb-3 bg-ocean-50 rounded-lg p-2 border border-ocean-200 flex-wrap">
           <span className="text-xs text-ocean-700 font-medium">{selected.size} selected</span>
           <span className="text-ocean-300">|</span>
+          {allDraft && <Btn onClick={() => batchUpdateStatus('pending_approval')} disabled={acting} variant="secondary" className="text-xs py-1 px-2">Submit for Approval</Btn>}
+          {allPendingApproval && <Btn onClick={() => batchUpdateStatus('approved')} disabled={acting} variant="primary" className="text-xs py-1 px-2">Approve</Btn>}
+          {allApproved && <Btn onClick={() => batchUpdateStatus('sent')} disabled={acting} variant="secondary" className="text-xs py-1 px-2">Mark as Sent</Btn>}
+          {allSent && <Btn onClick={() => batchUpdateStatus('accepted')} disabled={acting} variant="secondary" className="text-xs py-1 px-2">Mark Accepted</Btn>}
+          {canReject && <Btn onClick={() => batchUpdateStatus('declined')} disabled={acting} variant="ghost" className="text-xs py-1 px-2 text-red-600 hover:bg-red-50">Reject</Btn>}
+          {canDelete && <Btn onClick={batchDelete} disabled={acting} variant="ghost" className="text-xs py-1 px-2 text-red-600 hover:bg-red-50">Delete</Btn>}
           {canGroup && <Btn onClick={handleCreateGroup} disabled={acting} variant="secondary" className="text-xs py-1 px-2">Create Group</Btn>}
-          <div className="relative">
-            <Btn onClick={() => setShowGroupPicker(!showGroupPicker)} disabled={acting || groups.length === 0} variant="secondary" className="text-xs py-1 px-2">
-              Add to Group
-            </Btn>
-            {showGroupPicker && groups.length > 0 && (
-              <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[180px]">
-                {groups.map(g => (
-                  <button key={g.id} onClick={() => handleAddToGroup(g.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 last:border-0">
-                    {g.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {canSubmit && <Btn onClick={() => batchUpdateStatus('pending_approval')} disabled={acting} variant="secondary" className="text-xs py-1 px-2">Submit for Approval</Btn>}
-          {canApprove && <Btn onClick={() => batchUpdateStatus('approved')} disabled={acting} variant="primary" className="text-xs py-1 px-2">Approve</Btn>}
-          {canMarkSent && <Btn onClick={() => batchUpdateStatus('sent')} disabled={acting} variant="secondary" className="text-xs py-1 px-2">Mark Sent</Btn>}
-          {!canSubmit && !canApprove && !canMarkSent && !canGroup && (
-            <span className="text-xs text-gray-400">No batch actions available for this selection</span>
+          {canAddToGroup && (
+            <div className="relative">
+              <Btn onClick={() => setShowGroupPicker(!showGroupPicker)} disabled={acting || groups.length === 0} variant="secondary" className="text-xs py-1 px-2">
+                Add to Group
+              </Btn>
+              {showGroupPicker && groups.length > 0 && (
+                <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[180px]">
+                  {groups.map(g => (
+                    <button key={g.id} onClick={() => handleAddToGroup(g.id)} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 last:border-0">
+                      {g.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
 
-      {/* Status filter tabs */}
-      <div className="flex gap-1 mb-3 flex-wrap">
-        {STATUSES.filter(s => s === 'all' || statusCounts[s] > 0).map(s => (
-          <button
-            key={s}
-            onClick={() => { setStatusFilter(s); if (s !== 'all') addChip('status', s); else setChipFilters(prev => prev.filter(c => c.type !== 'status')); }}
-            className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
-              statusFilter === s
-                ? 'bg-ocean-600 text-white border-ocean-600'
-                : 'bg-white text-gray-500 border-gray-200 hover:border-ocean-300'
-            }`}
-          >
-            {STATUS_LABELS[s]}
-            <span className="ml-1 opacity-60">{statusCounts[s]}</span>
-          </button>
-        ))}
-      </div>
+      {/* Search */}
+      <input
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        placeholder="Search by quote ref or client name..."
+        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3"
+      />
 
-      {/* Filter chips bar */}
+      {/* Filter chips bar (client/group only) */}
       <div className="flex items-center gap-1.5 mb-3 flex-wrap">
         {chipFilters.map((chip, i) => (
           <span key={i} className="inline-flex items-center gap-1 text-xs bg-ocean-50 text-ocean-700 border border-ocean-200 rounded-full px-2.5 py-1">
-            {chip.type === 'status' ? `Status: ${STATUS_LABELS[chip.value] || chip.value}` : chip.type === 'group' ? `Group: ${chip.value}` : `Client: ${chip.value}`}
-            <button onClick={() => { removeChip(i); if (chip.type === 'status' && chipFilters.filter(c => c.type === 'status').length <= 1) setStatusFilter('all'); }} className="text-ocean-400 hover:text-ocean-700 ml-0.5">&times;</button>
+            {chip.type === 'group' ? `Group: ${chip.value}` : `Client: ${chip.value}`}
+            <button onClick={() => removeChip(i)} className="text-ocean-400 hover:text-ocean-700 ml-0.5">&times;</button>
           </span>
         ))}
         <div className="relative">
           <button
-            onClick={() => { setShowFilterMenu(!showFilterMenu); setShowStatusSubmenu(false); setShowClientInput(false); setShowGroupSubmenu(false); }}
+            onClick={() => { setShowFilterMenu(!showFilterMenu); setShowClientInput(false); setShowGroupSubmenu(false); }}
             className="text-xs px-2.5 py-1 rounded-full border border-dashed border-gray-300 text-gray-500 hover:border-ocean-400 hover:text-ocean-600 transition-all"
           >
             + Filter
@@ -372,22 +411,7 @@ export default function QuotesPage() {
           {showFilterMenu && (
             <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[160px]">
               <button
-                onClick={() => { setShowStatusSubmenu(!showStatusSubmenu); setShowClientInput(false); }}
-                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 flex justify-between items-center"
-              >
-                Status <span className="text-gray-400">&rsaquo;</span>
-              </button>
-              {showStatusSubmenu && (
-                <div className="border-b border-gray-100">
-                  {FILTER_STATUS_OPTIONS.map(s => (
-                    <button key={s} onClick={() => { addChip('status', s); setStatusFilter(s); }} className="w-full text-left px-5 py-1.5 text-xs hover:bg-ocean-50 text-gray-600">
-                      {STATUS_LABELS[s] || s}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <button
-                onClick={() => { setShowClientInput(!showClientInput); setShowStatusSubmenu(false); setShowGroupSubmenu(false); }}
+                onClick={() => { setShowClientInput(!showClientInput); setShowGroupSubmenu(false); }}
                 className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 flex justify-between items-center"
               >
                 Client <span className="text-gray-400">&rsaquo;</span>
@@ -411,7 +435,7 @@ export default function QuotesPage() {
                 </div>
               )}
               <button
-                onClick={() => { setShowGroupSubmenu(!showGroupSubmenu); setShowStatusSubmenu(false); setShowClientInput(false); }}
+                onClick={() => { setShowGroupSubmenu(!showGroupSubmenu); setShowClientInput(false); }}
                 className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex justify-between items-center"
               >
                 Group <span className="text-gray-400">&rsaquo;</span>
@@ -431,32 +455,6 @@ export default function QuotesPage() {
           )}
         </div>
       </div>
-
-      {/* Search */}
-      <input
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Search by quote ref or client name..."
-        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3"
-      />
-
-      {/* Summary totals bar */}
-      {!loading && filtered.length > 0 && (
-        <div className="flex items-center gap-6 mb-3 px-4 py-2 bg-gray-50 rounded-lg border border-gray-200 text-xs">
-          <div>
-            <span className="text-gray-400">Total Quotes</span>
-            <span className="ml-1.5 font-semibold text-gray-700">{filtered.length}</span>
-          </div>
-          <div>
-            <span className="text-gray-400">Total Annual (Net)</span>
-            <span className="ml-1.5 font-semibold font-mono text-ocean-700">{fmt(filtered.reduce((s, q) => s + (parseFloat(q.annual_total) || 0), 0))}</span>
-          </div>
-          <div>
-            <span className="text-gray-400">Total Monthly (Net)</span>
-            <span className="ml-1.5 font-semibold font-mono text-ocean-700">{fmt(filtered.reduce((s, q) => s + (parseFloat(q.monthly_net) || 0), 0))}</span>
-          </div>
-        </div>
-      )}
 
       {loading ? (
         <p className="text-sm text-gray-400">Loading...</p>

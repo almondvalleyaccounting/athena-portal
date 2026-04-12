@@ -3,11 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: '\u25C6' },
+  { path: '/manage/quotes/new', label: 'New Quote', icon: '+' },
   { path: '/manage/clients', label: 'Clients', icon: '\u25C7' },
   { path: '/manage/quotes', label: 'Quotes', icon: '\u25A4' },
   { path: '/manage/groups', label: 'Groups', icon: '\u25A6' },
   { path: '/manage/billing', label: 'Billing', icon: '\u00A3' },
-  { path: '/manage/quotes/new', label: 'New Quote', icon: '+' },
 ];
 
 const PRICING_ITEM = { path: '/manage/quotes/pricing', label: 'Pricing', icon: '\u2699' };
