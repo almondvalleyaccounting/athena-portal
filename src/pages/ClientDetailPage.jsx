@@ -9,6 +9,9 @@ export default function ClientDetailPage({ profile }) {
   const [entity, setEntity] = useState(null);
   const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -22,6 +25,15 @@ export default function ClientDetailPage({ profile }) {
     })();
   }, [id]);
 
+  const handleRename = async () => {
+    if (!editName.trim() || editName.trim() === entity.name) { setEditing(false); return; }
+    setSaving(true);
+    await supabase.from('entities').update({ name: editName.trim() }).eq('id', entity.id);
+    setEntity({ ...entity, name: editName.trim() });
+    setEditing(false);
+    setSaving(false);
+  };
+
   if (loading) return <div className="p-6"><p className="text-sm text-gray-400">Loading client...</p></div>;
   if (!entity) return <div className="p-6"><p className="text-sm text-red-500">Client not found.</p></div>;
 
@@ -34,7 +46,24 @@ export default function ClientDetailPage({ profile }) {
       {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h2 className="text-lg font-bold text-ocean-700">{entity.name}</h2>
+          {editing ? (
+            <div className="flex items-center gap-2 mb-1">
+              <input
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditing(false); }}
+                className="text-lg font-bold text-ocean-700 border border-ocean-300 rounded px-2 py-0.5 w-64"
+                autoFocus
+              />
+              <Btn onClick={handleRename} disabled={saving} variant="secondary" className="text-xs py-1 px-2">{saving ? '...' : 'Save'}</Btn>
+              <button onClick={() => setEditing(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+            </div>
+          ) : (
+            <h2 className="text-lg font-bold text-ocean-700 cursor-pointer hover:text-ocean-500 group" onClick={() => { setEditName(entity.name); setEditing(true); }}>
+              {entity.name}
+              <span className="text-xs text-gray-300 font-normal ml-2 opacity-0 group-hover:opacity-100 transition-opacity">edit</span>
+            </h2>
+          )}
           <p className="text-xs text-gray-400">
             {entity.type?.replace('_', ' ')}
             {entity.company_number ? ` \u00B7 ${entity.company_number}` : ''}

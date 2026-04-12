@@ -29,6 +29,18 @@ export default function GroupDetailPage({ profile, defaults }) {
   const [transitioning, setTransitioning] = useState(false);
   const [error, setError] = useState('');
   const [showSendModal, setShowSendModal] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [savingName, setSavingName] = useState(false);
+
+  const handleRenameGroup = async () => {
+    if (!editName.trim() || editName.trim() === group?.name) { setEditingName(false); return; }
+    setSavingName(true);
+    await supabase.from('billing_groups').update({ name: editName.trim() }).eq('id', groupId);
+    setGroup({ ...group, name: editName.trim() });
+    setEditingName(false);
+    setSavingName(false);
+  };
 
   useEffect(() => { loadGroup(); }, [groupId]);
 
@@ -138,7 +150,24 @@ export default function GroupDetailPage({ profile, defaults }) {
     <div className="p-6 max-w-4xl">
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h2 className="text-lg font-bold text-ocean-700">{group.name}</h2>
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleRenameGroup(); if (e.key === 'Escape') setEditingName(false); }}
+                className="text-lg font-bold text-ocean-700 border border-ocean-300 rounded px-2 py-0.5 w-64"
+                autoFocus
+              />
+              <Btn onClick={handleRenameGroup} disabled={savingName} variant="secondary" className="text-xs py-1 px-2">{savingName ? '...' : 'Save'}</Btn>
+              <button onClick={() => setEditingName(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+            </div>
+          ) : (
+            <h2 className="text-lg font-bold text-ocean-700 cursor-pointer hover:text-ocean-500 group" onClick={() => { setEditName(group.name); setEditingName(true); }}>
+              {group.name}
+              <span className="text-xs text-gray-300 font-normal ml-2 opacity-0 group-hover:opacity-100 transition-opacity">edit</span>
+            </h2>
+          )}
           <p className="text-xs text-gray-400">{quotes.length} entities · Group quote</p>
           <div className="mt-1">
             <StatusBadge status={currentStatus} />
