@@ -155,6 +155,7 @@ export default function App() {
     <NavShell profile={profile} onLogout={handleLogout}>
       <Routes>
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/manage" element={<DashboardPage />} />
         <Route path="/manage/clients" element={<EntitiesPage />} />
         <Route path="/manage/clients/:id" element={<ClientDetailPage profile={profile} />} />
         <Route path="/manage/quotes" element={<QuotesPage />} />

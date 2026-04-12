@@ -1,6 +1,7 @@
-import React from 'react';
-import { useLocation } from 'react-router-dom';
-import { Bell } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Bell, LogOut } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { MODULES } from '../modules.config';
 import { useAuth } from './AppShell';
 
@@ -29,7 +30,10 @@ function useBreadcrumb() {
 /* ─── TopBar component ─────────────────────────────────────────── */
 export default function TopBar() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const breadcrumb = useBreadcrumb();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   const initials = profile?.full_name
     ? profile.full_name
@@ -39,6 +43,24 @@ export default function TopBar() {
         .toUpperCase()
         .slice(0, 2)
     : '?';
+
+  const handleLogout = async () => {
+    setMenuOpen(false);
+    await supabase.auth.signOut();
+    navigate('/login');
+  };
+
+  // Close menu on click outside
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [menuOpen]);
 
   return (
     <header
@@ -119,7 +141,7 @@ export default function TopBar() {
         )}
       </div>
 
-      {/* ── Right: Bell + Avatar + AVA logo ── */}
+      {/* ── Right: Bell + Avatar (with menu) + AVA logo ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
         {/* Notifications bell — decorative */}
         <button
@@ -136,30 +158,115 @@ export default function TopBar() {
           <Bell size={20} style={{ color: '#94a3b8' }} />
         </button>
 
-        {/* User avatar */}
-        <div
-          title={profile?.full_name || 'User'}
-          style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
-            backgroundColor: '#38bdf8',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <span
+        {/* User avatar with dropdown */}
+        <div ref={menuRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setMenuOpen((prev) => !prev)}
             style={{
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: '12px',
-              fontWeight: 600,
-              color: '#ffffff',
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              backgroundColor: '#38bdf8',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'box-shadow 0.2s ease',
+              boxShadow: menuOpen ? '0 0 0 2px #ffffff, 0 0 0 4px #38bdf8' : 'none',
             }}
+            title={profile?.full_name || 'User'}
           >
-            {initials}
-          </span>
+            <span
+              style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: '12px',
+                fontWeight: 600,
+                color: '#ffffff',
+              }}
+            >
+              {initials}
+            </span>
+          </button>
+
+          {/* Dropdown menu */}
+          {menuOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '40px',
+                right: '0',
+                backgroundColor: '#ffffff',
+                border: '1px solid #e5e7eb',
+                borderRadius: '10px',
+                padding: '6px',
+                minWidth: '160px',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)',
+                zIndex: 100,
+              }}
+            >
+              {/* User info */}
+              <div
+                style={{
+                  padding: '8px 10px',
+                  borderBottom: '1px solid #f1f5f9',
+                  marginBottom: '4px',
+                }}
+              >
+                <p
+                  style={{
+                    fontFamily: "'Outfit', sans-serif",
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: '#0f172a',
+                  }}
+                >
+                  {profile?.full_name || 'User'}
+                </p>
+                <p
+                  style={{
+                    fontFamily: "'Outfit', sans-serif",
+                    fontSize: '11px',
+                    color: '#94a3b8',
+                  }}
+                >
+                  {profile?.email || ''}
+                </p>
+              </div>
+
+              {/* Sign out */}
+              <button
+                onClick={handleLogout}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  width: '100%',
+                  padding: '8px 10px',
+                  background: 'none',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontFamily: "'Outfit', sans-serif",
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  color: '#64748b',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#fef2f2';
+                  e.currentTarget.style.color = '#ef4444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = '#64748b';
+                }}
+              >
+                <LogOut size={14} />
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
 
         {/* AVA logo */}
