@@ -87,12 +87,11 @@ export default function Sidebar() {
 
   const isOwner = profile?.is_portal_admin === true;
   const initials = profile?.full_name
-    ? profile.full_name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
+    ? profile.full_name.trim().charAt(0).toUpperCase()
+    : profile?.name
+    ? profile.name.trim().charAt(0).toUpperCase()
+    : profile?.email
+    ? profile.email.charAt(0).toUpperCase()
     : '?';
 
   const isActive = (route) => location.pathname.startsWith(route);
@@ -188,9 +187,8 @@ export default function Sidebar() {
               label="Admin"
               active={isActive('/admin')}
               collapsed={collapsed}
-              clickable={false}
-              planned
-              onClick={() => {}}
+              clickable
+              onClick={() => navigate('/admin')}
             />
           </>
         )}

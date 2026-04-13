@@ -6,6 +6,7 @@ import LoginPage from './shell/LoginPage';
 import HomeScreen from './shell/HomeScreen';
 import IdeasPage from './modules/ideas/IdeasPage';
 import ReportsPage from './modules/reports/ReportsPage';
+import AdminPage from './shell/AdminPage';
 import App from './App';
 import './index.css';
 
@@ -40,6 +41,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/home" element={<HomeScreen />} />
           <Route path="/ideas" element={<IdeasPage />} />
           <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Route>
 
         {/* Root redirect */}

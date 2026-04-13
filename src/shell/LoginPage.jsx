@@ -129,6 +129,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
   const [introComplete, setIntroComplete] = useState(false);
 
@@ -171,6 +172,20 @@ export default function LoginPage() {
     }
 
     setLoading(false);
+  };
+
+  const handleResetPassword = async () => {
+    if (!email) {
+      setError('Enter your email address first');
+      return;
+    }
+    setError('');
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email);
+    if (err) {
+      setError(err.message);
+    } else {
+      setResetSent(true);
+    }
   };
 
   // Show intro if not yet played
@@ -311,6 +326,37 @@ export default function LoginPage() {
             'Sign in'
           )}
         </button>
+
+        {/* Forgot password */}
+        <div style={{ textAlign: 'center', marginTop: '12px' }}>
+          {resetSent ? (
+            <p
+              style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: '13px',
+                color: '#22c55e',
+              }}
+            >
+              Reset link sent — check your email.
+            </p>
+          ) : (
+            <button
+              onClick={handleResetPassword}
+              type="button"
+              style={{
+                background: 'none',
+                border: 'none',
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: '13px',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              Forgot password?
+            </button>
+          )}
+        </div>
 
         {/* Error message */}
         {error && (
