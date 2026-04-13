@@ -332,9 +332,9 @@ export default function HomeScreen() {
   const { profile } = useAuth();
   const navigate = useNavigate();
 
-  const firstName = profile?.full_name?.split(' ')[0] || 'there';
-  const isOwner = profile?.is_portal_admin === true;
-  const isManager = profile?.role === 'manager';
+  const firstName = profile?.name?.split(' ')[0] || 'there';
+  const isOwner = profile?.can_manage_portal === true;
+  const isManager = false;
   const canSeeAttention = profile?.can_approve_quotes === true || isManager;
   const canSeeStats = isOwner || isManager;
 

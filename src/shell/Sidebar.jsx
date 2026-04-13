@@ -25,8 +25,8 @@ const ICON_MAP = {
 
 /* ─── Visibility rules ─────────────────────────────────────────── */
 function isModuleVisible(mod, profile) {
-  const isOwner = profile?.is_portal_admin === true;
-  const isManager = profile?.role === 'manager';
+  const isOwner = profile?.can_manage_portal === true;
+  const isManager = false; // role column not yet in DB
 
   if (mod.status === 'live') {
     // No permissions required → visible to all
@@ -85,9 +85,9 @@ export default function Sidebar() {
   const mainModules = visibleModules.filter((m) => m.group !== 'meta');
   const metaModules = visibleModules.filter((m) => m.group === 'meta');
 
-  const isOwner = profile?.is_portal_admin === true;
-  const initials = profile?.full_name
-    ? profile.full_name.trim().charAt(0).toUpperCase()
+  const isOwner = profile?.can_manage_portal === true;
+  const initials = profile?.name
+    ? profile.name.trim().charAt(0).toUpperCase()
     : profile?.name
     ? profile.name.trim().charAt(0).toUpperCase()
     : profile?.email
@@ -204,7 +204,7 @@ export default function Sidebar() {
         {collapsed ? (
           <div className="flex justify-center">
             <div
-              title={profile?.full_name || 'User'}
+              title={profile?.name || 'User'}
               style={{
                 width: '28px',
                 height: '28px',
@@ -256,7 +256,7 @@ export default function Sidebar() {
                   textOverflow: 'ellipsis',
                 }}
               >
-                {profile?.full_name || 'User'}
+                {profile?.name || 'User'}
               </p>
               <p
                 style={{

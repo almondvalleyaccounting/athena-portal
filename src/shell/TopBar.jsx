@@ -35,7 +35,7 @@ export default function TopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  const initials = profile?.full_name
+  const initials = profile?.name
     ? profile.full_name.trim().charAt(0).toUpperCase()
     : profile?.name
     ? profile.name.trim().charAt(0).toUpperCase()
@@ -174,7 +174,7 @@ export default function TopBar() {
               transition: 'box-shadow 0.2s ease',
               boxShadow: menuOpen ? '0 0 0 2px #ffffff, 0 0 0 4px #38bdf8' : 'none',
             }}
-            title={profile?.full_name || 'User'}
+            title={profile?.name || 'User'}
           >
             <span
               style={{
@@ -220,7 +220,7 @@ export default function TopBar() {
                     color: '#0f172a',
                   }}
                 >
-                  {profile?.full_name || 'User'}
+                  {profile?.name || 'User'}
                 </p>
                 <p
                   style={{

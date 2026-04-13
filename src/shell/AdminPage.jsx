@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { MODULES } from '../modules.config';
 
 /*
   Permission columns on staff_profiles that map to module access.
@@ -15,25 +14,34 @@ const PERMISSION_COLS = [
   { key: 'can_view_reports', label: 'Reports' },
   { key: 'can_view_work_planner', label: 'Work planner' },
   { key: 'can_view_pd_tracker', label: 'PD tracker' },
-  { key: 'is_portal_admin', label: 'Portal admin' },
+  { key: 'can_manage_portal', label: 'Portal admin' },
 ];
 
 const SELECT_COLS = [
-  'id', 'full_name', 'name', 'email', 'role', 'is_active',
+  'id', 'name', 'email', 'is_active',
   ...PERMISSION_COLS.map((p) => p.key),
 ].join(', ');
 
 export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(null); // "userId:key" while saving
+  const [saving, setSaving] = useState(null);
+
+  // Invite form state
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [invitePassword, setInvitePassword] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState('');
+  const [inviteSuccess, setInviteSuccess] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
     const { data } = await supabase
       .from('staff_profiles')
       .select(SELECT_COLS)
-      .order('full_name', { ascending: true });
+      .order('name', { ascending: true });
     setUsers(data || []);
     setLoading(false);
   };
@@ -57,32 +65,215 @@ export default function AdminPage() {
     setSaving(null);
   };
 
-  const displayName = (u) => u.full_name || u.name || u.email || 'Unknown';
+  const handleInvite = async () => {
+    setInviteError('');
+    setInviteSuccess('');
+
+    if (!inviteName.trim() || !inviteEmail.trim() || !invitePassword.trim()) {
+      setInviteError('All fields are required.');
+      return;
+    }
+    if (invitePassword.length < 6) {
+      setInviteError('Password must be at least 6 characters.');
+      return;
+    }
+
+    setInviting(true);
+
+    try {
+      // Call the Edge Function to create the user
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            name: inviteName.trim(),
+            email: inviteEmail.trim(),
+            password: invitePassword.trim(),
+          }),
+        }
+      );
+
+      const result = await resp.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create user');
+      }
+
+      setInviteSuccess(`${inviteName.trim()} has been added. They can sign in now.`);
+      setInviteName('');
+      setInviteEmail('');
+      setInvitePassword('');
+      fetchUsers();
+    } catch (err) {
+      setInviteError(String(err.message || err));
+    }
+
+    setInviting(false);
+  };
+
+  const displayName = (u) => u.name || u.email || 'Unknown';
+
+  const inputStyle = {
+    width: '100%',
+    border: '1px solid #e5e7eb',
+    borderRadius: '10px',
+    padding: '10px 14px',
+    fontSize: '13px',
+    fontFamily: "'Outfit', sans-serif",
+    outline: 'none',
+    boxSizing: 'border-box',
+    transition: 'border-color 0.2s ease',
+  };
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '40px 24px' }}>
-      <h1
-        style={{
-          fontFamily: "'Playfair Display', serif",
-          fontSize: '28px',
-          fontWeight: 500,
-          color: '#0f172a',
-          marginBottom: '8px',
-        }}
-      >
-        Admin
-      </h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+        <h1
+          style={{
+            fontFamily: "'Playfair Display', serif",
+            fontSize: '28px',
+            fontWeight: 500,
+            color: '#0f172a',
+          }}
+        >
+          Admin
+        </h1>
+        <button
+          onClick={() => { setShowInvite(!showInvite); setInviteError(''); setInviteSuccess(''); }}
+          style={{
+            fontFamily: "'Outfit', sans-serif",
+            fontSize: '13px',
+            fontWeight: 600,
+            color: '#ffffff',
+            backgroundColor: '#0f172a',
+            border: 'none',
+            borderRadius: '10px',
+            padding: '10px 20px',
+            cursor: 'pointer',
+            transition: 'opacity 0.2s ease',
+          }}
+        >
+          {showInvite ? 'Cancel' : '+ Add user'}
+        </button>
+      </div>
       <p
         style={{
           fontFamily: "'Outfit', sans-serif",
           fontSize: '14px',
           color: '#64748b',
-          marginBottom: '32px',
+          marginBottom: '24px',
         }}
       >
         Manage user access to portal modules.
       </p>
 
+      {/* Invite user form */}
+      {showInvite && (
+        <div
+          style={{
+            backgroundColor: '#ffffff',
+            border: '1px solid #e5e7eb',
+            borderRadius: '12px',
+            padding: '24px',
+            marginBottom: '24px',
+          }}
+        >
+          <h3
+            style={{
+              fontFamily: "'Outfit', sans-serif",
+              fontSize: '15px',
+              fontWeight: 600,
+              color: '#0f172a',
+              marginBottom: '16px',
+            }}
+          >
+            Add new user
+          </h3>
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 180px' }}>
+              <label style={{ fontFamily: "'Outfit', sans-serif", fontSize: '12px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                Full name
+              </label>
+              <input
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+                placeholder="e.g. Tracy Smith"
+                disabled={inviting}
+                style={inputStyle}
+                onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+                onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+              />
+            </div>
+            <div style={{ flex: '1 1 220px' }}>
+              <label style={{ fontFamily: "'Outfit', sans-serif", fontSize: '12px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                Email
+              </label>
+              <input
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="tracy@example.com"
+                type="email"
+                disabled={inviting}
+                style={inputStyle}
+                onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+                onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+              />
+            </div>
+            <div style={{ flex: '1 1 160px' }}>
+              <label style={{ fontFamily: "'Outfit', sans-serif", fontSize: '12px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                Temporary password
+              </label>
+              <input
+                value={invitePassword}
+                onChange={(e) => setInvitePassword(e.target.value)}
+                placeholder="min 6 characters"
+                type="text"
+                disabled={inviting}
+                style={inputStyle}
+                onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+                onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={handleInvite}
+              disabled={inviting}
+              style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: '13px',
+                fontWeight: 600,
+                color: '#ffffff',
+                backgroundColor: inviting ? '#94a3b8' : '#38bdf8',
+                border: 'none',
+                borderRadius: '10px',
+                padding: '10px 24px',
+                cursor: inviting ? 'wait' : 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {inviting ? 'Creating...' : 'Create user'}
+            </button>
+            {inviteError && (
+              <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', color: '#ef4444' }}>
+                {inviteError}
+              </p>
+            )}
+            {inviteSuccess && (
+              <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', color: '#22c55e' }}>
+                {inviteSuccess}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Permissions grid */}
       {loading ? (
         <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '14px', color: '#94a3b8' }}>
           Loading users...
