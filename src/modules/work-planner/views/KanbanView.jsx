@@ -1,14 +1,15 @@
 import React, { useState, useRef } from 'react';
 import { STATUSES } from '../lib/constants';
-import { durFmt, formatDateShort, clientName, addDays, addMonths, today } from '../lib/helpers';
+import { durFmt, formatDateShort, clientName, addDays, addMonths, today, dueBadge } from '../lib/helpers';
 import { generateInstances } from '../lib/instanceEngine';
 import Avatar from '../components/Avatar';
+import DueBadge from '../components/DueBadge';
 import { useWorkPlanner } from '../WorkPlannerModule';
 
 export default function KanbanView({ dueFilter, onAction }) {
   const {
     scheduledTasks, overridesMap, completedKeys, staffMap, entityMap,
-    filters, highlightId, saveOverride,
+    quickTasks, filters, highlightId, saveOverride,
   } = useWorkPlanner();
 
   const [dragCol, setDragCol] = useState(null);
@@ -50,8 +51,87 @@ export default function KanbanView({ dueFilter, onAction }) {
     setDragCol(null);
   }
 
+  // Quick tasks filtered
+  let quickFiltered = [...quickTasks];
+  if (filters.teamFilter) quickFiltered = quickFiltered.filter((t) => t.assignee_id === filters.teamFilter);
+  if (filters.clientFilter) quickFiltered = quickFiltered.filter((t) => t.entity_id === filters.clientFilter);
+  if (filters.serviceFilter) quickFiltered = quickFiltered.filter((t) => t.service === filters.serviceFilter);
+  quickFiltered.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
   return (
     <div style={{ display: 'flex', gap: 10, padding: 10, height: '100%', overflowX: 'auto' }}>
+      {/* Quick Tasks column */}
+      <div
+        style={{
+          flex: 1, minWidth: 175, maxWidth: 240,
+          display: 'flex', flexDirection: 'column',
+          background: '#f8fafc', borderRadius: 10,
+          border: '1px solid #e5e7eb', overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: 10, borderBottom: '1px solid #e5e7eb', background: '#fff',
+        }}>
+          <div style={{
+            fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+            fontFamily: "'Outfit', sans-serif",
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8' }} />
+            Quick Tasks
+          </div>
+          <span style={{
+            fontSize: 9, color: '#94a3b8', padding: '1px 5px',
+            borderRadius: 6, border: '1px solid #f1f5f9',
+          }}>
+            {quickFiltered.length}
+          </span>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 5 }}>
+          {quickFiltered.map((task) => {
+            const isHl = highlightId === task.id;
+            return (
+              <div
+                key={task.id}
+                onClick={(e) => onAction(e, { ...task, _isQuick: true })}
+                style={{
+                  padding: '7px 9px', background: '#fff',
+                  border: `1px solid ${isHl ? '#0e7fe0' : '#e5e7eb'}`,
+                  borderLeft: '3px solid #38bdf8',
+                  borderRadius: 6, marginBottom: 5, cursor: 'pointer',
+                  transition: 'all 0.12s',
+                  boxShadow: isHl ? '0 0 0 2px #dbeafe' : 'none',
+                  fontFamily: "'Outfit', sans-serif",
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 500, marginBottom: 2 }}>
+                  {task.title}
+                </div>
+                <div style={{ fontSize: 9, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                  {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={18} />}
+                  {task.entity_id && <span>{clientName(task.entity_id, entityMap)}</span>}
+                </div>
+                <div style={{ fontSize: 8, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {task.service}
+                  {task.due_date && (
+                    <>
+                      <span>&middot;</span>
+                      <DueBadge date={task.due_date} />
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {quickFiltered.length === 0 && (
+            <div style={{ padding: 14, fontSize: 10, color: '#cbd5e1', textAlign: 'center' }}>
+              No quick tasks
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Status columns */}
       {STATUSES.map((col) => {
         const items = allInstances.filter((t) => t.status === col.id);
         const isDropTarget = dragCol === col.id;
