@@ -89,7 +89,7 @@ export default function QuickTasksView({ compact, onAction }) {
         <select style={selectStyle} value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
           <option value="">Assign</option>
           {staffList.map((s) => (
-            <option key={s.id} value={s.id}>{(s.full_name || s.name || '').split(' ')[0]}</option>
+            <option key={s.id} value={s.id}>{(s.name || '').split(' ')[0]}</option>
           ))}
         </select>
         <button

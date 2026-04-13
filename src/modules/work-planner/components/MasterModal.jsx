@@ -157,7 +157,7 @@ export default function MasterModal({
             <label style={labelStyle}>Default Owner</label>
             <select style={selectStyle} value={form.assignee_id || ''} onChange={(e) => set('assignee_id', e.target.value || null)}>
               <option value="">&#8212;</option>
-              {staffList.map((s) => <option key={s.id} value={s.id}>{s.full_name || s.name}</option>)}
+              {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div style={{ ...fieldStyle, flex: 1 }}>

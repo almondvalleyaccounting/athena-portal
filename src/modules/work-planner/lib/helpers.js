@@ -125,7 +125,7 @@ export function applyFilters(list, { teamFilter, clientFilter, serviceFilter, st
 export function staffName(id, staffMap) {
   if (!id || !staffMap) return 'Unassigned';
   const s = staffMap[id];
-  return s ? s.full_name || s.name || 'Unknown' : 'Former staff';
+  return s ? s.name || 'Unknown' : 'Former staff';
 }
 
 export function staffFirstName(id, staffMap) {

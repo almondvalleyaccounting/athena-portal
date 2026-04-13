@@ -65,7 +65,7 @@ export default function InstanceModal({ instance, master, staffList, onSave, onR
           <select style={selectStyle} value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
             <option value="">&#8212;</option>
             {staffList.map((s) => (
-              <option key={s.id} value={s.id}>{s.full_name || s.name}</option>
+              <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
         </div>

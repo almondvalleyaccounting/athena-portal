@@ -155,8 +155,8 @@ export async function insertCompletedTask(task) {
 export async function fetchStaffProfiles() {
   const { data, error } = await supabase
     .from('staff_profiles')
-    .select('id, full_name, name, email, work_planner')
-    .order('full_name', { ascending: true });
+    .select('id, name, email, work_planner')
+    .order('name', { ascending: true });
   if (error) throw error;
   return data || [];
 }

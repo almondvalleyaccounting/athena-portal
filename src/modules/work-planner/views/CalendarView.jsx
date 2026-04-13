@@ -196,7 +196,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
               {t.title}
             </div>
             <div style={{ fontSize: 9, color: '#64748b' }}>
-              {staffMap[t.assignee_id]?.full_name?.split(' ')[0] || 'Unassigned'} &middot; {durFmt(t.duration)}
+              {staffMap[t.assignee_id]?.name?.split(' ')[0] || 'Unassigned'} &middot; {durFmt(t.duration)}
             </div>
           </div>
         ))}
@@ -230,7 +230,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
               >
                 <div style={{ fontWeight: 500, fontSize: 10 }}>{t.title}</div>
                 <div style={{ fontSize: 9, color: '#64748b' }}>
-                  {staffMap[t.assignee_id]?.full_name?.split(' ')[0] || 'Unassigned'}
+                  {staffMap[t.assignee_id]?.name?.split(' ')[0] || 'Unassigned'}
                 </div>
               </div>
             ))}

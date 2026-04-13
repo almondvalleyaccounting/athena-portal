@@ -39,7 +39,7 @@ export default function FilterBar({
   // Scheduled-specific
   sort, setSort,
 }) {
-  const teamItems = staffList.map((s) => ({ id: s.id, label: s.full_name || s.name }));
+  const teamItems = staffList.map((s) => ({ id: s.id, label: s.name }));
   const entityItems = entityList.map((e) => ({ id: e.id, label: e.name }));
   const serviceItems = SERVICES.map((s) => ({ id: s, label: s }));
   const statusItems = STATUSES.map((s) => ({ id: s.id, label: s.label }));
