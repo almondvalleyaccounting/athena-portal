@@ -75,6 +75,12 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
 
   function eventsOnDay(d) { return allInstances.filter((t) => sameDay(t.planned_date, d)); }
   function quickOnDay(d) { return quickPlanned.filter((t) => sameDay(t.planned_date, d)); }
+  // Extract hour/min from quick task's planned_date TIMESTAMPTZ
+  function quickHourMin(task) {
+    if (!task.planned_date) return { h: 9, m: 0 };
+    const dt = new Date(task.planned_date);
+    return { h: dt.getHours(), m: dt.getMinutes() };
+  }
 
   // Drag handlers
   function startDrag(id, type) { dragRef.current = id; dragTypeRef.current = type; }
@@ -85,7 +91,10 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
     const type = dragTypeRef.current;
 
     if (type === 'quick') {
-      updateQuickTask(id, { planned_date: date.toISOString() });
+      // Encode time into the TIMESTAMPTZ planned_date
+      const dt = new Date(date);
+      dt.setHours(h != null ? h : 9, m != null ? m : 0, 0, 0);
+      updateQuickTask(id, { planned_date: dt.toISOString() });
     } else if (type === 'instance') {
       // id is the instance key: "{masterId}_{YYYY-MM-DD}"
       const parts = id.split('_');
@@ -114,6 +123,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
     if (type === 'quick') {
       updateQuickTask(id, { planned_date: null });
     } else if (type === 'instance') {
+
       const parts = id.split('_');
       const dateStr = parts.pop();
       const masterId = parts.join('_');
@@ -382,8 +392,13 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                   const cellEvents = eventsOnDay(d).filter(
                     (t) => t.planned_hour === slot.h && (t.planned_min || 0) === slot.m
                   );
-                  // Quick tasks at 09:00
-                  const cellQuick = (slot.h === 9 && slot.m === 0) ? quickOnDay(d) : [];
+                  // Quick tasks — match by their planned_date hour/min
+                  const cellQuick = quickOnDay(d).filter((t) => {
+                    const hm = quickHourMin(t);
+                    // Snap to nearest 15-min slot
+                    const snappedMin = Math.floor(hm.m / 15) * 15;
+                    return hm.h === slot.h && snappedMin === slot.m;
+                  });
 
                   return (
                     <div
@@ -448,6 +463,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
 
                       {cellQuick.map((t) => {
                         const isHl = highlightId === t.id;
+                        const qSpan = Math.max(1, Math.round((t.duration || 15) / 15));
                         return (
                           <div
                             key={t.id}
@@ -457,12 +473,14 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
                               padding: '1px 4px', borderRadius: 3,
-                              fontSize: 8, fontWeight: 500, color: '#fff',
-                              background: '#64748b', height: 16, opacity: 0.7,
+                              fontSize: 9, fontWeight: 500, color: '#fff',
+                              background: teamColour(t.assignee_id),
+                              height: `${qSpan * 18 - 1}px`,
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                               border: '1px dashed rgba(255,255,255,0.5)',
                               cursor: 'grab', zIndex: isHl ? 5 : 1,
                               boxShadow: isHl ? '0 0 0 2px #0e7fe0' : 'none',
+                              display: 'flex', alignItems: 'center', gap: 2,
                             }}
                           >
                             {t.title}
