@@ -147,7 +147,7 @@ export default function GroupQuoteInputPage({ defaults, profile }) {
   // Discounts
   const [discounts, setDiscounts] = useState({});
 
-  useEffect(() => { loadGroupData(); }, [groupId]);
+  useEffect(() => { loadGroupData(); }, [groupId, defaults]);
 
   const loadGroupData = async () => {
     setLoading(true);
@@ -163,7 +163,17 @@ export default function GroupQuoteInputPage({ defaults, profile }) {
         setEntities(ents || []);
         const initDrivers = {}, initOverrides = {}, initDiscounts = {};
         (ents || []).forEach(e => {
-          initDrivers[e.id] = {};
+          initDrivers[e.id] = {
+            director_base: defaults?.director_base || 240,
+            payroll_flat: defaults?.payroll ? Math.ceil((defaults.payroll.brightpay_annual / defaults.payroll.payroll_client_count) * (1 + defaults.payroll.markup_pct / 100)) : 0,
+            bk_rate: defaults?.bookkeeping_rate || 45,
+            vat_per_return: defaults?.vat_per_return || 45,
+            monthly_ee_rate: defaults?.payroll?.monthly_ee_rate || 6,
+            weekly_ee_rate: defaults?.payroll?.weekly_ee_rate || 1.80,
+            ma_rate: defaults?.management_accounts_per_set || 158,
+            rm_rate: defaults?.review_meeting_rate || 210,
+            cfo_day_rate: defaults?.cfo_day_rate || 1680,
+          };
           initOverrides[e.id] = {};
           initDiscounts[e.id] = 0;
         });
