@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const NAV_ITEMS = [
-  { path: '/', label: 'Dashboard', icon: '\u25C6' },
+  { path: '/manage', label: 'Dashboard', icon: '\u25C6' },
   { path: '/manage/quotes/new', label: 'New Quote', icon: '+' },
   { path: '/manage/clients', label: 'Clients', icon: '\u25C7' },
   { path: '/manage/quotes', label: 'Quotes', icon: '\u25A4' },
