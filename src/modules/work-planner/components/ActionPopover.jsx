@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-export default function ActionPopover({ x, y, task, onClose, onOpen, onComplete, onNotReq }) {
+export default function ActionPopover({ x, y, task, onClose, onOpen, onComplete, onNotReq, onDelete }) {
   const ref = useRef(null);
   const [mode, setMode] = useState('menu');
   const [mins, setMins] = useState('15');
@@ -154,6 +154,17 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onComplete,
         <span style={{ fontSize: 14, lineHeight: 1 }}>&#10005;</span>
         Not Req
       </button>
+      {onDelete && (
+        <button
+          style={{ ...btnStyle, color: '#dc2626' }}
+          onClick={() => onDelete(task)}
+          onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+        >
+          <span style={{ fontSize: 14, lineHeight: 1 }}>&#128465;</span>
+          Delete
+        </button>
+      )}
     </div>
   );
 }

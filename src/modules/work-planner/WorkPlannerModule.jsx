@@ -19,6 +19,7 @@ import FilterBar from './components/FilterBar';
 import ActionPopover from './components/ActionPopover';
 import MasterModal from './components/MasterModal';
 import InstanceModal from './components/InstanceModal';
+import QuickTaskModal from './components/QuickTaskModal';
 
 import QuickTasksView from './views/QuickTasksView';
 import ScheduledView from './views/ScheduledView';
@@ -66,6 +67,7 @@ export default function WorkPlannerModule() {
   const [sort, setSort] = useState('next');
   const [modal, setModal] = useState(null); // null | 'new' | masterObject
   const [instanceModal, setInstanceModal] = useState(null);
+  const [quickModal, setQuickModal] = useState(null); // null | quickTaskObject
   const [popover, setPopover] = useState(null);
   const [highlightId, setHighlightId] = useState(null);
 
@@ -352,10 +354,11 @@ export default function WorkPlannerModule() {
     if (task._instance) {
       setInstanceModal(task);
       setPopover(null);
-    } else if (!task._isQuick && !task.due_date) {
-      setModal(task);
+    } else if (task._isQuick || task.due_date != null) {
+      setQuickModal(task);
       setPopover(null);
     } else {
+      setModal(task);
       setPopover(null);
     }
   }
@@ -453,6 +456,7 @@ export default function WorkPlannerModule() {
     function handleKey(e) {
       if (e.key === 'Escape') {
         if (popover) { setPopover(null); return; }
+        if (quickModal) { setQuickModal(null); return; }
         if (instanceModal) { setInstanceModal(null); return; }
         if (modal) { setModal(null); return; }
       }
@@ -615,6 +619,25 @@ export default function WorkPlannerModule() {
         />
       )}
 
+      {/* Quick Task Modal */}
+      {quickModal != null && (
+        <QuickTaskModal
+          task={quickModal}
+          staffList={staffList}
+          entityList={entityList}
+          onSave={async (id, patch) => {
+            await updateQuickTask(id, patch);
+            setQuickModal(null);
+          }}
+          onDelete={async (id) => {
+            setQuickTasks((prev) => prev.filter((t) => t.id !== id));
+            await deleteQuickTaskDb(id);
+            setQuickModal(null);
+          }}
+          onClose={() => setQuickModal(null)}
+        />
+      )}
+
       {/* Action Popover */}
       {popover != null && (
         <ActionPopover
@@ -625,6 +648,20 @@ export default function WorkPlannerModule() {
           onOpen={handleOpen}
           onComplete={completeTask}
           onNotReq={markNotRequired}
+          onDelete={async (task) => {
+            const isQuick = !!task._isQuick || task.due_date != null;
+            if (isQuick) {
+              setQuickTasks((prev) => prev.filter((t) => t.id !== task.id));
+              await deleteQuickTaskDb(task.id);
+            } else if (task._instance) {
+              // For instances, delete the master
+              await deleteScheduledTask(task._masterId);
+            } else {
+              await deleteScheduledTask(task.id);
+            }
+            setPopover(null);
+            setHighlightId(null);
+          }}
         />
       )}
     </WorkPlannerContext.Provider>
