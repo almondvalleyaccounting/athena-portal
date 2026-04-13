@@ -36,12 +36,11 @@ export default function TopBar() {
   const menuRef = useRef(null);
 
   const initials = profile?.full_name
-    ? profile.full_name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
+    ? profile.full_name.trim().charAt(0).toUpperCase()
+    : profile?.name
+    ? profile.name.trim().charAt(0).toUpperCase()
+    : profile?.email
+    ? profile.email.charAt(0).toUpperCase()
     : '?';
 
   const handleLogout = async () => {
