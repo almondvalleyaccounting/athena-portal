@@ -36,8 +36,6 @@ export default function TopBar() {
   const menuRef = useRef(null);
 
   const initials = profile?.name
-    ? profile.full_name.trim().charAt(0).toUpperCase()
-    : profile?.name
     ? profile.name.trim().charAt(0).toUpperCase()
     : profile?.email
     ? profile.email.charAt(0).toUpperCase()
