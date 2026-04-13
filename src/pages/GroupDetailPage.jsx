@@ -148,7 +148,22 @@ export default function GroupDetailPage({ profile, defaults }) {
     setRemovingEntity(null);
   };
 
-  const handlePreview = async () => {
+  const handleDeleteGroup = async () => {
+    if (!window.confirm('Delete group "' + group.name + '"? Clients and quotes will not be deleted, but quotes will be unlinked from this group. This cannot be undone.')) return;
+    setTransitioning(true);
+    try {
+      await supabase.from('billing_group_members').delete().eq('group_id', groupId);
+      await supabase.from('quotes').update({ group_id: null }).eq('group_id', groupId);
+      const { error: delErr } = await supabase.from('billing_groups').delete().eq('id', groupId);
+      if (delErr) throw delErr;
+      navigate('/manage/groups');
+    } catch (e) {
+      setError(e.message || 'Failed to delete group');
+      setTransitioning(false);
+    }
+  };
+
+    const handlePreview = async () => {
     try {
       const allLI = quotes.flatMap(q => q.line_items || []);
       const doc = await generateQuotePdf({ ...quotes[0], relationship_group: group.name, monthly_gross: groupMonthlyDD, annual_total: groupAnnual }, allLI, { returnDoc: true });
@@ -332,6 +347,13 @@ export default function GroupDetailPage({ profile, defaults }) {
         </Btn>
         <Btn onClick={() => navigate('/manage/quotes/new?group=' + groupId)}>Add Entity</Btn>
         <Btn onClick={() => navigate('/manage/quotes')} variant="secondary">Back to Quotes</Btn>
+      </div>
+
+      {/* Delete Group */}
+      <div className="mt-6 pt-4 border-t border-gray-200">
+        <Btn onClick={handleDeleteGroup} variant="danger" disabled={transitioning}>
+          {transitioning ? 'Deleting...' : 'Delete Group'}
+        </Btn>
       </div>
 
       {/* Send Quote Modal */}
