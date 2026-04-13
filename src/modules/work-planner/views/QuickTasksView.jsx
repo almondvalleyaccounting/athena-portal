@@ -14,15 +14,17 @@ export default function QuickTasksView({ compact, onAction }) {
 
   const [title, setTitle] = useState('');
   const [clientId, setClientId] = useState('');
-  const [service, setService] = useState('Admin');
+  const [service, setService] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [expandedNote, setExpandedNote] = useState(null);
   const [dragId, setDragId] = useState(null);
 
   const now = today();
 
+  const canAdd = title.trim() && clientId && service && assigneeId;
+
   async function handleAdd() {
-    if (!title.trim()) return;
+    if (!canAdd) return;
     await addQuickTask({
       title: title.trim(),
       entity_id: clientId || null,
@@ -84,6 +86,7 @@ export default function QuickTasksView({ compact, onAction }) {
           {entityList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
         <select style={selectStyle} value={service} onChange={(e) => setService(e.target.value)}>
+          <option value="">Service</option>
           {SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <select style={selectStyle} value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
@@ -94,10 +97,16 @@ export default function QuickTasksView({ compact, onAction }) {
         </select>
         <button
           onClick={handleAdd}
+          disabled={!canAdd}
           style={{
             padding: '5px 12px', fontSize: 11, fontWeight: 500,
-            fontFamily: "'Outfit', sans-serif", border: '1px solid #0f172a',
-            borderRadius: 8, background: '#0f172a', color: '#fff', cursor: 'pointer',
+            fontFamily: "'Outfit', sans-serif",
+            border: canAdd ? '1px solid #0f172a' : '1px solid #e5e7eb',
+            borderRadius: 8,
+            background: canAdd ? '#0f172a' : '#f1f5f9',
+            color: canAdd ? '#fff' : '#94a3b8',
+            cursor: canAdd ? 'pointer' : 'default',
+            transition: 'all 0.15s',
           }}
         >
           Add
