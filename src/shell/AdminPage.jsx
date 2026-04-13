@@ -26,6 +26,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
+  const [deleting, setDeleting] = useState(null); // user id while deleting
 
   // Invite form state
   const [showInvite, setShowInvite] = useState(false);
@@ -114,6 +115,35 @@ export default function AdminPage() {
     }
 
     setInviting(false);
+  };
+
+  const handleDelete = async (user) => {
+    if (!window.confirm(`Delete ${user.name || user.email}? This cannot be undone.`)) return;
+
+    setDeleting(user.id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ user_id: user.id }),
+        }
+      );
+      const result = await resp.json();
+      if (result.success) {
+        setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      } else {
+        alert(result.error || 'Failed to delete user');
+      }
+    } catch (err) {
+      alert(String(err));
+    }
+    setDeleting(null);
   };
 
   const displayName = (u) => u.name || u.email || 'Unknown';
@@ -322,6 +352,17 @@ export default function AdminPage() {
                     {col.label}
                   </th>
                 ))}
+                <th
+                  style={{
+                    textAlign: 'center',
+                    padding: '10px 12px',
+                    fontWeight: 600,
+                    color: '#0f172a',
+                    borderBottom: '2px solid #e5e7eb',
+                    whiteSpace: 'nowrap',
+                    width: '1%',
+                  }}
+                />
               </tr>
             </thead>
             <tbody>
@@ -390,6 +431,33 @@ export default function AdminPage() {
                       </td>
                     );
                   })}
+                  <td
+                    style={{
+                      textAlign: 'center',
+                      padding: '10px 8px',
+                      borderBottom: '1px solid #f1f5f9',
+                    }}
+                  >
+                    <button
+                      onClick={() => handleDelete(user)}
+                      disabled={deleting === user.id}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: deleting === user.id ? 'wait' : 'pointer',
+                        padding: '4px',
+                        opacity: deleting === user.id ? 0.4 : 0.4,
+                        transition: 'opacity 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => { if (deleting !== user.id) e.currentTarget.style.opacity = '1'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.4'; }}
+                      title={`Delete ${displayName(user)}`}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M11 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
