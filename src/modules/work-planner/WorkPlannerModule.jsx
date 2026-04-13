@@ -62,7 +62,7 @@ export default function WorkPlannerModule() {
   const [statusFilter, setStatusFilter] = useState('');
   const [calendarView, setCalendarView] = useState('workweek');
   const [anchor, setAnchor] = useState(new Date(today()));
-  const [dueFilter, setDueFilter] = useState('all');
+  const [dueFilter, setDueFilter] = useState('month');
   const [compact, setCompact] = useState(false);
   const [sort, setSort] = useState('next');
   const [modal, setModal] = useState(null); // null | 'new' | masterObject
