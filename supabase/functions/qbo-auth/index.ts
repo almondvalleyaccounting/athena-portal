@@ -182,7 +182,6 @@ async function handleCallback(url: URL) {
         const syncResult = await syncResp.text();
         console.log("Token sync to Apps Script:", syncResp.status, syncResult);
       } catch (syncErr) {
-        // Non-blocking — client is connected in portal even if spreadsheet sync fails
         console.error("Token sync to Apps Script failed:", syncErr);
       }
     }
