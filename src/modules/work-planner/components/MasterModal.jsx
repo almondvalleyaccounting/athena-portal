@@ -3,6 +3,7 @@ import { SERVICES, STATUSES, TASK_TYPES, RECURRENCE_OPTIONS, TIME_OPTIONS } from
 import { defaultDuration } from '../lib/constants';
 import { countOverrides } from '../lib/instanceEngine';
 import { formatISO } from '../lib/helpers';
+import ClientTypeAhead from './ClientTypeAhead';
 
 const labelStyle = {
   display: 'block', fontSize: 9, fontWeight: 600, color: '#94a3b8',
@@ -26,6 +27,7 @@ export default function MasterModal({
   onSave,
   onDelete,
   onClose,
+  onAddEntity,
 }) {
   const isEdit = !!master;
   const [form, setForm] = useState(() => {
@@ -130,10 +132,12 @@ export default function MasterModal({
         <div style={rowStyle}>
           <div style={{ ...fieldStyle, flex: 1 }}>
             <label style={labelStyle}>Client</label>
-            <select style={selectStyle} value={form.entity_id || ''} onChange={(e) => set('entity_id', e.target.value || null)}>
-              <option value="">&#8212;</option>
-              {entityList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
+            <ClientTypeAhead
+              entityList={entityList}
+              value={form.entity_id || ''}
+              onChange={(id) => set('entity_id', id || null)}
+              onAddNew={onAddEntity}
+            />
           </div>
           <div style={{ ...fieldStyle, flex: 1 }}>
             <label style={labelStyle}>Service</label>

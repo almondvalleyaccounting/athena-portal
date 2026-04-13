@@ -170,6 +170,16 @@ export async function fetchEntities() {
   return data || [];
 }
 
+export async function insertEntity(name) {
+  const { data, error } = await supabase
+    .from('entities')
+    .insert({ name })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ── Real-time subscription ──
 
 export function subscribeToWorkPlanner(handlers) {

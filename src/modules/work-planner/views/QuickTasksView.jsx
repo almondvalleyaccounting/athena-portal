@@ -3,13 +3,14 @@ import { SERVICES } from '../lib/constants';
 import { clientName, formatISO, addDays, today, formatDateShort, sameDay } from '../lib/helpers';
 import Avatar from '../components/Avatar';
 import DueBadge from '../components/DueBadge';
+import ClientTypeAhead from '../components/ClientTypeAhead';
 import { useWorkPlanner } from '../WorkPlannerModule';
 
 export default function QuickTasksView({ compact, onAction }) {
   const {
     quickTasks, staffList, entityList, staffMap, entityMap,
     addQuickTask, updateQuickTask, reorderQuickTasks, filters,
-    highlightId, profile,
+    highlightId, profile, addEntity,
   } = useWorkPlanner();
 
   const [title, setTitle] = useState('');
@@ -81,10 +82,13 @@ export default function QuickTasksView({ compact, onAction }) {
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
         />
-        <select style={selectStyle} value={clientId} onChange={(e) => setClientId(e.target.value)}>
-          <option value="">Client</option>
-          {entityList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </select>
+        <ClientTypeAhead
+          entityList={entityList}
+          value={clientId}
+          onChange={setClientId}
+          onAddNew={addEntity}
+          size="small"
+        />
         <select style={selectStyle} value={service} onChange={(e) => setService(e.target.value)}>
           <option value="">Service</option>
           {SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}

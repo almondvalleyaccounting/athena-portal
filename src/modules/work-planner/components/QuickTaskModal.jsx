@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SERVICES } from '../lib/constants';
 import { formatISO } from '../lib/helpers';
+import ClientTypeAhead from './ClientTypeAhead';
 
 const labelStyle = {
   display: 'block', fontSize: 9, fontWeight: 600, color: '#94a3b8',
@@ -19,7 +20,7 @@ const btnBase = {
   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
 };
 
-export default function QuickTaskModal({ task, staffList, entityList, onSave, onDelete, onClose }) {
+export default function QuickTaskModal({ task, staffList, entityList, onSave, onDelete, onClose, onAddEntity }) {
   const [form, setForm] = useState({
     title: task.title || '',
     entity_id: task.entity_id || '',
@@ -77,10 +78,12 @@ export default function QuickTaskModal({ task, staffList, entityList, onSave, on
         <div style={{ display: 'flex', gap: 10 }}>
           <div style={{ flex: 1, marginBottom: 10 }}>
             <label style={labelStyle}>Client</label>
-            <select style={selectStyle} value={form.entity_id} onChange={(e) => set('entity_id', e.target.value)}>
-              <option value="">&#8212;</option>
-              {entityList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
+            <ClientTypeAhead
+              entityList={entityList}
+              value={form.entity_id}
+              onChange={(id) => set('entity_id', id)}
+              onAddNew={onAddEntity}
+            />
           </div>
           <div style={{ flex: 1, marginBottom: 10 }}>
             <label style={labelStyle}>Service</label>

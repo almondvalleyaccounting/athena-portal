@@ -8,7 +8,7 @@ import {
   deleteScheduledTask as deleteScheduledTaskDb,
   fetchInstanceOverrides, upsertInstanceOverride, deleteInstanceOverride,
   fetchCompletedTasks, insertCompletedTask,
-  fetchStaffProfiles, fetchEntities,
+  fetchStaffProfiles, fetchEntities, insertEntity,
   subscribeToWorkPlanner,
 } from './lib/supabaseQueries';
 import { instanceKey, generateInstances } from './lib/instanceEngine';
@@ -193,6 +193,12 @@ export default function WorkPlannerModule() {
   }, []);
 
   // ── Actions ──
+
+  const addEntity = useCallback(async (name) => {
+    const data = await insertEntity(name);
+    setEntityList((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+    return data;
+  }, []);
 
   const addQuickTask = useCallback(async (task) => {
     const data = await insertQuickTask(task);
@@ -476,7 +482,7 @@ export default function WorkPlannerModule() {
     addQuickTask, updateQuickTask, reorderQuickTasks,
     addScheduledTask, updateScheduledTask, deleteScheduledTask,
     saveOverride, deleteOverride,
-    completeTask, markNotRequired,
+    completeTask, markNotRequired, addEntity,
   }), [
     quickTasks, scheduledTasks, overrides, completedTasks,
     overridesMap, completedKeys,
@@ -487,7 +493,7 @@ export default function WorkPlannerModule() {
     addQuickTask, updateQuickTask, reorderQuickTasks,
     addScheduledTask, updateScheduledTask, deleteScheduledTask,
     saveOverride, deleteOverride,
-    completeTask, markNotRequired,
+    completeTask, markNotRequired, addEntity,
   ]);
 
   // ── Loading / Error ──
@@ -603,6 +609,7 @@ export default function WorkPlannerModule() {
           entityList={entityList}
           onSave={handleSaveMaster}
           onDelete={handleDeleteMaster}
+          onAddEntity={addEntity}
           onClose={() => setModal(null)}
         />
       )}
@@ -634,6 +641,7 @@ export default function WorkPlannerModule() {
             await deleteQuickTaskDb(id);
             setQuickModal(null);
           }}
+          onAddEntity={addEntity}
           onClose={() => setQuickModal(null)}
         />
       )}
