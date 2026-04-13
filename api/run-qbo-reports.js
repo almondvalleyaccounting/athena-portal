@@ -1,5 +1,5 @@
 // Apps Script Web App URL — replace after deploying doPost in ControlPanel.gs
-const APPS_SCRIPT_URL = process.env.QBO_REPORTS_SCRIPT_URL || 'DEPLOY_APPS_SCRIPT_AND_SET_ENV_VAR';
+const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_REPORT_URL || 'DEPLOY_APPS_SCRIPT_AND_SET_ENV_VAR';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

@@ -6,7 +6,7 @@ const QBO_REDIRECT_URI = Deno.env.get("QBO_REDIRECT_URI")!;
 const PORTAL_URL = Deno.env.get("PORTAL_URL") || "https://portal.almondvalleyaccounting.co.uk";
 const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
-const APPS_SCRIPT_URL = Deno.env.get("QBO_REPORTS_SCRIPT_URL") || "";
+const APPS_SCRIPT_URL = Deno.env.get("APPS_SCRIPT_REPORT_URL") || "";
 const PORTAL_SYNC_SECRET = Deno.env.get("PORTAL_SYNC_SECRET") || "";
 
 Deno.serve(async (req) => {
