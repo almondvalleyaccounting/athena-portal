@@ -1,0 +1,632 @@
+import React, { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../shell/AppShell';
+import {
+  fetchQuickTasks, insertQuickTask, updateQuickTask as updateQuickTaskDb,
+  deleteQuickTask as deleteQuickTaskDb, reorderQuickTasks as reorderQuickTasksDb,
+  fetchScheduledTasks, insertScheduledTask, updateScheduledTask as updateScheduledTaskDb,
+  deleteScheduledTask as deleteScheduledTaskDb,
+  fetchInstanceOverrides, upsertInstanceOverride, deleteInstanceOverride,
+  fetchCompletedTasks, insertCompletedTask,
+  fetchStaffProfiles, fetchEntities,
+  subscribeToWorkPlanner,
+} from './lib/supabaseQueries';
+import { instanceKey, generateInstances } from './lib/instanceEngine';
+import { formatISO, today, addDays, addMonths, startOfWeek } from './lib/helpers';
+import { defaultDuration, CALENDAR_VIEWS } from './lib/constants';
+
+import FilterBar from './components/FilterBar';
+import ActionPopover from './components/ActionPopover';
+import MasterModal from './components/MasterModal';
+import InstanceModal from './components/InstanceModal';
+
+import QuickTasksView from './views/QuickTasksView';
+import ScheduledView from './views/ScheduledView';
+import CalendarView from './views/CalendarView';
+import KanbanView from './views/KanbanView';
+import CompletedView from './views/CompletedView';
+
+// ── Context ──
+const WorkPlannerContext = createContext(null);
+export function useWorkPlanner() { return useContext(WorkPlannerContext); }
+
+// ── Tab config ──
+const TABS = [
+  { id: 'quick', label: 'Quick Tasks', path: '/planner' },
+  { id: 'sched', label: 'Scheduled', path: '/planner/scheduled' },
+  { id: 'calendar', label: 'Calendar', path: '/planner/calendar' },
+  { id: 'kanban', label: 'Kanban', path: '/planner/kanban' },
+  { id: 'completed', label: 'Completed', path: '/planner/completed' },
+];
+
+export default function WorkPlannerModule() {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // ── Data state ──
+  const [quickTasks, setQuickTasks] = useState([]);
+  const [scheduledTasks, setScheduledTasks] = useState([]);
+  const [overrides, setOverrides] = useState([]);
+  const [completedTasks, setCompletedTasks] = useState([]);
+  const [staffList, setStaffList] = useState([]);
+  const [entityList, setEntityList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // ── UI state ──
+  const [teamFilter, setTeamFilter] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [calendarView, setCalendarView] = useState('workweek');
+  const [anchor, setAnchor] = useState(new Date(today()));
+  const [dueFilter, setDueFilter] = useState('all');
+  const [compact, setCompact] = useState(false);
+  const [sort, setSort] = useState('next');
+  const [modal, setModal] = useState(null); // null | 'new' | masterObject
+  const [instanceModal, setInstanceModal] = useState(null);
+  const [popover, setPopover] = useState(null);
+  const [highlightId, setHighlightId] = useState(null);
+
+  // ── Determine active tab from URL ──
+  const activeTab = useMemo(() => {
+    const path = location.pathname;
+    const tab = TABS.find((t) => t.path === path);
+    return tab ? tab.id : 'quick';
+  }, [location.pathname]);
+
+  // ── Derived: overridesMap and completedKeys ──
+  const overridesMap = useMemo(() => {
+    const map = new Map();
+    overrides.forEach((ov) => {
+      const key = instanceKey(ov.master_id, ov.occurrence_date);
+      map.set(key, ov);
+    });
+    return map;
+  }, [overrides]);
+
+  const completedKeys = useMemo(() => {
+    const set = new Set();
+    completedTasks.forEach((ct) => {
+      if (ct.source_type === 'scheduled_instance' && ct.source_id && ct.occurrence_date) {
+        set.add(instanceKey(ct.source_id, ct.occurrence_date));
+      }
+    });
+    return set;
+  }, [completedTasks]);
+
+  // ── Derived: lookup maps ──
+  const staffMap = useMemo(() => {
+    const m = {};
+    staffList.forEach((s) => { m[s.id] = s; });
+    return m;
+  }, [staffList]);
+
+  const entityMap = useMemo(() => {
+    const m = {};
+    entityList.forEach((e) => { m[e.id] = e; });
+    return m;
+  }, [entityList]);
+
+  // ── Initial data load ──
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [qt, st, ov, ct, staff, entities] = await Promise.all([
+          fetchQuickTasks(),
+          fetchScheduledTasks(),
+          fetchInstanceOverrides(),
+          fetchCompletedTasks(),
+          fetchStaffProfiles(),
+          fetchEntities(),
+        ]);
+        if (cancelled) return;
+        setQuickTasks(qt);
+        setScheduledTasks(st);
+        setOverrides(ov);
+        setCompletedTasks(ct);
+        setStaffList(staff);
+        setEntityList(entities);
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Failed to load data');
+      }
+      if (!cancelled) setLoading(false);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Real-time subscriptions ──
+  useEffect(() => {
+    const unsubscribe = subscribeToWorkPlanner({
+      onQuickTasks: (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setQuickTasks((prev) => {
+            if (prev.some((t) => t.id === payload.new.id)) return prev;
+            return [...prev, payload.new].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          setQuickTasks((prev) => prev.map((t) => t.id === payload.new.id ? payload.new : t));
+        } else if (payload.eventType === 'DELETE') {
+          setQuickTasks((prev) => prev.filter((t) => t.id !== payload.old.id));
+        }
+      },
+      onScheduledTasks: (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setScheduledTasks((prev) => {
+            if (prev.some((t) => t.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          setScheduledTasks((prev) => prev.map((t) => t.id === payload.new.id ? payload.new : t));
+        } else if (payload.eventType === 'DELETE') {
+          setScheduledTasks((prev) => prev.filter((t) => t.id !== payload.old.id));
+        }
+      },
+      onOverrides: (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setOverrides((prev) => {
+            if (prev.some((o) => o.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          setOverrides((prev) => prev.map((o) => o.id === payload.new.id ? payload.new : o));
+        } else if (payload.eventType === 'DELETE') {
+          setOverrides((prev) => prev.filter((o) => o.id !== payload.old.id));
+        }
+      },
+      onCompleted: (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setCompletedTasks((prev) => {
+            if (prev.some((c) => c.id === payload.new.id)) return prev;
+            return [payload.new, ...prev];
+          });
+        }
+      },
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // ── Actions ──
+
+  const addQuickTask = useCallback(async (task) => {
+    const data = await insertQuickTask(task);
+    // Real-time will handle state update, but set optimistically too
+    setQuickTasks((prev) => [data, ...prev]);
+  }, []);
+
+  const updateQuickTask = useCallback(async (id, patch) => {
+    setQuickTasks((prev) => prev.map((t) => t.id === id ? { ...t, ...patch } : t));
+    await updateQuickTaskDb(id, patch);
+  }, []);
+
+  const reorderQuickTasks = useCallback(async (ids) => {
+    // Optimistic: reorder in state
+    setQuickTasks((prev) => {
+      const map = {};
+      prev.forEach((t) => { map[t.id] = t; });
+      return ids.filter((id) => map[id]).map((id, i) => ({ ...map[id], sort_order: i }));
+    });
+    await reorderQuickTasksDb(ids);
+  }, []);
+
+  const addScheduledTask = useCallback(async (task) => {
+    const data = await insertScheduledTask({
+      ...task,
+      created_by: profile.id,
+    });
+    setScheduledTasks((prev) => [data, ...prev]);
+    return data;
+  }, [profile]);
+
+  const updateScheduledTask = useCallback(async (id, patch) => {
+    setScheduledTasks((prev) => prev.map((t) => t.id === id ? { ...t, ...patch } : t));
+    await updateScheduledTaskDb(id, patch);
+  }, []);
+
+  const deleteScheduledTask = useCallback(async (id) => {
+    setScheduledTasks((prev) => prev.filter((t) => t.id !== id));
+    setOverrides((prev) => prev.filter((o) => o.master_id !== id));
+    await deleteScheduledTaskDb(id);
+  }, []);
+
+  const saveOverride = useCallback(async (masterId, date, fields) => {
+    const dateStr = date instanceof Date ? formatISO(date) : formatISO(new Date(date));
+    const key = instanceKey(masterId, dateStr);
+
+    // Optimistic update
+    setOverrides((prev) => {
+      const existing = prev.find((o) => o.master_id === masterId && o.occurrence_date === dateStr);
+      if (existing) {
+        return prev.map((o) =>
+          o.master_id === masterId && o.occurrence_date === dateStr
+            ? { ...o, ...fields } : o
+        );
+      }
+      return [...prev, { id: 'temp_' + key, master_id: masterId, occurrence_date: dateStr, ...fields }];
+    });
+
+    const data = await upsertInstanceOverride(masterId, dateStr, fields);
+    // Replace temp with real
+    setOverrides((prev) => prev.map((o) =>
+      (o.id === ('temp_' + key) || (o.master_id === masterId && o.occurrence_date === dateStr))
+        ? data : o
+    ));
+  }, []);
+
+  const deleteOverride = useCallback(async (masterId, dateStr) => {
+    setOverrides((prev) => prev.filter((o) =>
+      !(o.master_id === masterId && o.occurrence_date === dateStr)
+    ));
+    await deleteInstanceOverride(masterId, dateStr);
+  }, []);
+
+  const completeTask = useCallback(async (task, mins) => {
+    const isQuick = !!task._isQuick || !!task.due_date;
+
+    const entry = {
+      source_type: isQuick ? 'quick' : 'scheduled_instance',
+      source_id: isQuick ? task.id : task._masterId,
+      occurrence_date: task._date ? formatISO(task._date) : null,
+      title: task.title,
+      entity_id: task.entity_id || null,
+      service: task.service || null,
+      assignee_id: task.assignee_id || null,
+      completed_by: profile.id,
+      completion_mins: mins,
+      not_required: false,
+    };
+
+    await insertCompletedTask(entry);
+
+    if (isQuick) {
+      setQuickTasks((prev) => prev.filter((t) => t.id !== task.id));
+      await deleteQuickTaskDb(task.id);
+    } else if (task._instance && task._date) {
+      // Delete override if exists
+      const dateStr = formatISO(task._date);
+      const hasOverride = overrides.some(
+        (o) => o.master_id === task._masterId && o.occurrence_date === dateStr
+      );
+      if (hasOverride) {
+        await deleteInstanceOverride(task._masterId, dateStr);
+        setOverrides((prev) => prev.filter((o) =>
+          !(o.master_id === task._masterId && o.occurrence_date === dateStr)
+        ));
+      }
+    }
+
+    setPopover(null);
+    setHighlightId(null);
+  }, [profile, overrides]);
+
+  const markNotRequired = useCallback(async (task) => {
+    const isQuick = !!task._isQuick || !!task.due_date;
+
+    const entry = {
+      source_type: isQuick ? 'quick' : 'scheduled_instance',
+      source_id: isQuick ? task.id : task._masterId,
+      occurrence_date: task._date ? formatISO(task._date) : null,
+      title: task.title,
+      entity_id: task.entity_id || null,
+      service: task.service || null,
+      assignee_id: task.assignee_id || null,
+      completed_by: profile.id,
+      completion_mins: null,
+      not_required: true,
+    };
+
+    await insertCompletedTask(entry);
+
+    if (isQuick) {
+      setQuickTasks((prev) => prev.filter((t) => t.id !== task.id));
+      await deleteQuickTaskDb(task.id);
+    }
+
+    setPopover(null);
+    setHighlightId(null);
+  }, [profile]);
+
+  // ── Event handlers ──
+
+  function handleAction(e, task) {
+    if (task._promote) {
+      handlePromote(task);
+      return;
+    }
+    if (e) {
+      const rect = e.target.getBoundingClientRect();
+      setHighlightId(task.id);
+      setPopover({
+        x: Math.min(rect.left, window.innerWidth - 200),
+        y: Math.min(rect.bottom + 2, window.innerHeight - 60),
+        task,
+      });
+    }
+  }
+
+  function handleOpen(task) {
+    if (task._instance) {
+      setInstanceModal(task);
+      setPopover(null);
+    } else if (!task._isQuick && !task.due_date) {
+      setModal(task);
+      setPopover(null);
+    } else {
+      setPopover(null);
+    }
+  }
+
+  async function handlePromote(qt) {
+    const newMaster = {
+      title: qt.title,
+      task_type: qt.entity_id ? 'client_work' : 'admin',
+      entity_id: qt.entity_id || null,
+      service: qt.service || 'Admin',
+      assignee_id: qt.assignee_id || null,
+      recurring: false,
+      recurrence: null,
+      status: 'not_started',
+      source: 'manual',
+      planned_date: qt.planned_date || null,
+      planned_hour: null,
+      planned_min: null,
+      duration: defaultDuration(qt.service, 'manual'),
+    };
+
+    // Delete quick task
+    setQuickTasks((prev) => prev.filter((t) => t.id !== qt.id));
+    await deleteQuickTaskDb(qt.id);
+
+    // Create scheduled task
+    const created = await addScheduledTask(newMaster);
+    setModal(created);
+  }
+
+  async function handleSaveMaster(formData) {
+    if (formData.id && scheduledTasks.some((t) => t.id === formData.id)) {
+      // Update existing
+      const { id, created_at, created_by, ...patch } = formData;
+      await updateScheduledTask(id, patch);
+    } else {
+      // Create new
+      const { id, ...rest } = formData;
+      await addScheduledTask(rest);
+    }
+    setModal(null);
+  }
+
+  async function handleDeleteMaster(id) {
+    await deleteScheduledTask(id);
+    setModal(null);
+  }
+
+  async function handleSaveOverride(key, overrideData) {
+    if (!overrideData) {
+      // No changes — just close
+      setInstanceModal(null);
+      return;
+    }
+    const parts = key.split('_');
+    const dateStr = parts.pop();
+    const masterId = parts.join('_');
+    await saveOverride(masterId, dateStr, overrideData);
+    setInstanceModal(null);
+  }
+
+  async function handleResetOverride(instance) {
+    await deleteOverride(instance._masterId, formatISO(instance._date));
+    setInstanceModal(null);
+  }
+
+  // Calendar navigation
+  function calNav(dir) {
+    setAnchor((prev) => {
+      const d = new Date(prev);
+      if (calendarView === 'month') d.setMonth(d.getMonth() + dir);
+      else if (calendarView === 'day') d.setDate(d.getDate() + dir);
+      else if (calendarView === '3day') d.setDate(d.getDate() + dir * 3);
+      else d.setDate(d.getDate() + dir * 7);
+      return d;
+    });
+  }
+
+  function calTitle() {
+    if (calendarView === 'month') return anchor.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    if (calendarView === 'day') return anchor.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    const cv = CALENDAR_VIEWS.find((v) => v.id === calendarView);
+    const s = (calendarView === '3day') ? anchor : startOfWeek(anchor);
+    const end = addDays(s, (cv ? cv.days : 7) - 1);
+    return `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} \u2014 ${end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+  }
+
+  // Clear highlight when popover closes
+  useEffect(() => {
+    if (!popover) setHighlightId(null);
+  }, [popover]);
+
+  // Escape key closes modals/popovers
+  useEffect(() => {
+    function handleKey(e) {
+      if (e.key === 'Escape') {
+        if (popover) { setPopover(null); return; }
+        if (instanceModal) { setInstanceModal(null); return; }
+        if (modal) { setModal(null); return; }
+      }
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [popover, instanceModal, modal]);
+
+  // ── Context value ──
+  const contextValue = useMemo(() => ({
+    quickTasks, scheduledTasks, overrides, completedTasks,
+    overridesMap, completedKeys,
+    staffList, entityList, staffMap, entityMap,
+    profile,
+    filters: { teamFilter, clientFilter, serviceFilter, statusFilter },
+    highlightId,
+    addQuickTask, updateQuickTask, reorderQuickTasks,
+    addScheduledTask, updateScheduledTask, deleteScheduledTask,
+    saveOverride, deleteOverride,
+    completeTask, markNotRequired,
+  }), [
+    quickTasks, scheduledTasks, overrides, completedTasks,
+    overridesMap, completedKeys,
+    staffList, entityList, staffMap, entityMap,
+    profile,
+    teamFilter, clientFilter, serviceFilter, statusFilter,
+    highlightId,
+    addQuickTask, updateQuickTask, reorderQuickTasks,
+    addScheduledTask, updateScheduledTask, deleteScheduledTask,
+    saveOverride, deleteOverride,
+    completeTask, markNotRequired,
+  ]);
+
+  // ── Loading / Error ──
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100%', fontFamily: "'Outfit', sans-serif", color: '#94a3b8', fontSize: 14,
+      }}>
+        Loading Work Planner...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100%', fontFamily: "'Outfit', sans-serif", color: '#dc2626', fontSize: 14,
+      }}>
+        Error: {error}
+      </div>
+    );
+  }
+
+  // ── Render ──
+  const showNewBtn = activeTab === 'sched' || activeTab === 'calendar' || activeTab === 'kanban';
+
+  return (
+    <WorkPlannerContext.Provider value={contextValue}>
+      <div style={{
+        display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden',
+        fontFamily: "'Outfit', sans-serif",
+      }}>
+        {/* Tab bar */}
+        <div style={{
+          display: 'flex', background: '#fff', borderBottom: '1px solid #e5e7eb',
+          padding: '0 20px', alignItems: 'center',
+        }}>
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => navigate(tab.path)}
+              style={{
+                padding: '8px 16px', fontSize: 12, fontWeight: 500,
+                color: activeTab === tab.id ? '#0e7fe0' : '#64748b',
+                cursor: 'pointer', border: 'none', background: 'none',
+                borderBottom: activeTab === tab.id ? '2px solid #0e7fe0' : '2px solid transparent',
+                fontFamily: "'Outfit', sans-serif",
+                transition: 'all 0.15s',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+          <div style={{ flex: 1 }} />
+          {showNewBtn && (
+            <button
+              onClick={() => setModal('new')}
+              style={{
+                padding: '5px 12px', fontSize: 11, fontWeight: 500,
+                fontFamily: "'Outfit', sans-serif", border: '1px solid #0f172a',
+                borderRadius: 8, background: '#0f172a', color: '#fff', cursor: 'pointer',
+              }}
+            >
+              + Scheduled Task
+            </button>
+          )}
+        </div>
+
+        {/* Filter bar */}
+        <FilterBar
+          staffList={staffList}
+          entityList={entityList}
+          teamFilter={teamFilter} setTeamFilter={setTeamFilter}
+          clientFilter={clientFilter} setClientFilter={setClientFilter}
+          serviceFilter={serviceFilter} setServiceFilter={setServiceFilter}
+          statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+          view={activeTab}
+          calendarView={calendarView} setCalendarView={setCalendarView}
+          calTitle={calTitle()} onCalNav={calNav} onCalToday={() => setAnchor(new Date(today()))}
+          dueFilter={dueFilter} setDueFilter={setDueFilter}
+          compact={compact} setCompact={setCompact}
+          sort={sort} setSort={setSort}
+        />
+
+        {/* Active view */}
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          {activeTab === 'quick' && (
+            <QuickTasksView compact={compact} onAction={handleAction} />
+          )}
+          {activeTab === 'sched' && (
+            <ScheduledView sort={sort} onEdit={(m) => setModal(m)} />
+          )}
+          {activeTab === 'calendar' && (
+            <CalendarView calendarView={calendarView} anchor={anchor} onAction={handleAction} />
+          )}
+          {activeTab === 'kanban' && (
+            <KanbanView dueFilter={dueFilter} onAction={handleAction} />
+          )}
+          {activeTab === 'completed' && (
+            <CompletedView />
+          )}
+        </div>
+      </div>
+
+      {/* Master Modal */}
+      {modal != null && (
+        <MasterModal
+          master={modal === 'new' ? null : modal}
+          overridesMap={overridesMap}
+          staffList={staffList}
+          entityList={entityList}
+          onSave={handleSaveMaster}
+          onDelete={handleDeleteMaster}
+          onClose={() => setModal(null)}
+        />
+      )}
+
+      {/* Instance Modal */}
+      {instanceModal != null && (
+        <InstanceModal
+          instance={instanceModal}
+          master={scheduledTasks.find((m) => m.id === instanceModal._masterId)}
+          staffList={staffList}
+          onSave={handleSaveOverride}
+          onReset={handleResetOverride}
+          onClose={() => setInstanceModal(null)}
+        />
+      )}
+
+      {/* Action Popover */}
+      {popover != null && (
+        <ActionPopover
+          x={popover.x}
+          y={popover.y}
+          task={popover.task}
+          onClose={() => setPopover(null)}
+          onOpen={handleOpen}
+          onComplete={completeTask}
+          onNotReq={markNotRequired}
+        />
+      )}
+    </WorkPlannerContext.Provider>
+  );
+}

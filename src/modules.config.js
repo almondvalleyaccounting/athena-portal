@@ -19,11 +19,11 @@ export const MODULES = [
   },
   {
     id: 'work-planner',
-    label: 'Work planner',
-    route: '/team/work',
+    label: 'Work Planner',
+    route: '/planner',
     icon: 'clock',
-    permissions: ['can_view_work_planner'],
-    status: 'planned',
+    permissions: ['work_planner'],
+    status: 'live',
     group: 'team',
   },
   {

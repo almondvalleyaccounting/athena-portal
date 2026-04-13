@@ -7,6 +7,7 @@ import HomeScreen from './shell/HomeScreen';
 import IdeasPage from './modules/ideas/IdeasPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import AdminPage from './shell/AdminPage';
+import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
 import App from './App';
 import './index.css';
 
@@ -42,6 +43,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/ideas" element={<IdeasPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          {/* Work Planner — requires work_planner */}
+          <Route path="/planner/*" element={<WorkPlannerModule />} />
         </Route>
 
         {/* Root redirect */}
