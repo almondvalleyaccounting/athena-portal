@@ -6,6 +6,8 @@ const QBO_REDIRECT_URI = Deno.env.get("QBO_REDIRECT_URI")!;
 const PORTAL_URL = Deno.env.get("PORTAL_URL") || "https://portal.almondvalleyaccounting.co.uk";
 const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
+const APPS_SCRIPT_URL = Deno.env.get("QBO_REPORTS_SCRIPT_URL") || "";
+const PORTAL_SYNC_SECRET = Deno.env.get("PORTAL_SYNC_SECRET") || "";
 
 Deno.serve(async (req) => {
   // CORS preflight
@@ -159,6 +161,30 @@ async function handleCallback(url: URL) {
       console.error("Failed to store report connection:", upsertErr);
       const redirectUrl = `${PORTAL_URL}/reports?qbo=error&message=Failed+to+store+connection`;
       return new Response(null, { status: 302, headers: { Location: redirectUrl } });
+    }
+
+    // Sync tokens to Apps Script Clients tab so it can run reports for this client
+    if (APPS_SCRIPT_URL && PORTAL_SYNC_SECRET) {
+      try {
+        const syncResp = await fetch(APPS_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "sync_tokens",
+            auth: `Bearer ${PORTAL_SYNC_SECRET}`,
+            realmId,
+            clientName: companyName || `QBO Company ${realmId}`,
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token,
+          }),
+          redirect: "follow",
+        });
+        const syncResult = await syncResp.text();
+        console.log("Token sync to Apps Script:", syncResp.status, syncResult);
+      } catch (syncErr) {
+        // Non-blocking — client is connected in portal even if spreadsheet sync fails
+        console.error("Token sync to Apps Script failed:", syncErr);
+      }
     }
 
     const redirectUrl = `${PORTAL_URL}/reports?qbo=connected`;
