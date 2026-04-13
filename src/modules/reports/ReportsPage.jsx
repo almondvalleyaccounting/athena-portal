@@ -533,7 +533,7 @@ export default function ReportsPage() {
                 color: '#0369a1',
               }}
             >
-              Running reports\u2026
+              Running reports…
             </span>
             <style>{`@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }`}</style>
           </div>
