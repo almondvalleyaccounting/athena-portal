@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
-import { CheckSquare, Square, Play, ExternalLink, CheckCircle, AlertCircle, Loader, FlaskConical } from 'lucide-react';
-
-/* ─── Config ───────────────────────────────────────────────────── */
-const CLIENTS = [
-  { name: 'GB Cabins', realmId: '9130357945100516' },
-  { name: 'Almond Valley Accounting', realmId: '123145912118784' },
-];
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { CheckSquare, Square, Play, ExternalLink, CheckCircle, AlertCircle, Loader, FlaskConical, Plus, X } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { getReportsAuthUrl } from '../../lib/qboApi';
+import { useAuth } from '../../shell/AppShell';
 
 /*
   Full 15-report list matching ControlPanel.gs REPORTS array.
@@ -60,6 +58,10 @@ function priorYear(dateStr) {
 
 /* ─── Reports page ─────────────────────────────────────────────── */
 export default function ReportsPage() {
+  const { profile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [clients, setClients] = useState([]);
+  const [clientsLoading, setClientsLoading] = useState(true);
   const [client, setClient] = useState('');
   const [fromDate, setFromDate] = useState(startOfMonth());
   const [toDate, setToDate] = useState(todayStr());
@@ -72,8 +74,55 @@ export default function ReportsPage() {
   });
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState([]);
+  const [flash, setFlash] = useState(null);
 
-  const selectedClient = CLIENTS.find((c) => c.realmId === client);
+  // Load connected clients from Supabase
+  const loadClients = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('qbo_report_connections')
+        .select('realm_id, company_name')
+        .eq('status', 'active')
+        .order('company_name');
+      if (!error && data) setClients(data);
+    } catch { /* silent */ }
+    setClientsLoading(false);
+  };
+
+  useEffect(() => { loadClients(); }, []);
+
+  // Handle OAuth return flash message
+  useEffect(() => {
+    const qbo = searchParams.get('qbo');
+    if (qbo === 'connected') {
+      setFlash({ type: 'success', message: 'Client connected successfully.' });
+      loadClients(); // refresh the list
+    } else if (qbo === 'error') {
+      const msg = searchParams.get('message') || 'Connection failed.';
+      setFlash({ type: 'error', message: msg });
+    }
+    if (qbo) {
+      // Clear the params from URL without a navigation
+      searchParams.delete('qbo');
+      searchParams.delete('message');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, []);
+
+  const handleConnect = () => {
+    window.location.href = getReportsAuthUrl(profile?.id || '');
+  };
+
+  const handleDisconnect = async (realmId) => {
+    await supabase
+      .from('qbo_report_connections')
+      .update({ status: 'disconnected' })
+      .eq('realm_id', realmId);
+    setClients((prev) => prev.filter((c) => c.realm_id !== realmId));
+    if (client === realmId) setClient('');
+  };
+
+  const selectedClient = clients.find((c) => c.realm_id === client);
   const selectedCount = Object.values(selected).filter(Boolean).length;
   const allSelected = selectedCount === REPORTS.length;
   const canRun = client && selectedCount > 0 && !running;
@@ -104,8 +153,8 @@ export default function ReportsPage() {
     const reportIndices = reportsToRun.map((r) => REPORTS.indexOf(r));
 
     const payload = {
-      clientName: selectedClient.name,
-      realmId: selectedClient.realmId,
+      clientName: selectedClient.company_name,
+      realmId: selectedClient.realm_id,
       startDate: fromDate,
       endDate: toDate,
       reportDate: asAtDate,
@@ -166,6 +215,33 @@ export default function ReportsPage() {
         Extract reports from QuickBooks Online into the Shared Drive.
       </p>
 
+      {/* ── Flash message ── */}
+      {flash && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            marginBottom: '16px',
+            backgroundColor: flash.type === 'success' ? '#f0fdf4' : '#fef2f2',
+            border: `1px solid ${flash.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
+          }}
+        >
+          {flash.type === 'success'
+            ? <CheckCircle size={16} style={{ color: '#22c55e' }} />
+            : <AlertCircle size={16} style={{ color: '#ef4444' }} />
+          }
+          <span style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', fontWeight: 500, color: flash.type === 'success' ? '#166534' : '#991b1b', flex: 1 }}>
+            {flash.message}
+          </span>
+          <button onClick={() => setFlash(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}>
+            <X size={14} style={{ color: '#94a3b8' }} />
+          </button>
+        </div>
+      )}
+
       {/* ── Form card ── */}
       <div
         style={{
@@ -178,18 +254,71 @@ export default function ReportsPage() {
       >
         {/* Client selector */}
         <label style={labelStyle}>Client</label>
-        <select
-          value={client}
-          onChange={(e) => setClient(e.target.value)}
-          style={selectStyle}
-        >
-          <option value="">Select a client...</option>
-          {CLIENTS.map((c) => (
-            <option key={c.realmId} value={c.realmId}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          <select
+            value={client}
+            onChange={(e) => setClient(e.target.value)}
+            style={{ ...selectStyle, marginBottom: 0, flex: 1 }}
+            disabled={clientsLoading}
+          >
+            <option value="">{clientsLoading ? 'Loading clients...' : 'Select a client...'}</option>
+            {clients.map((c) => (
+              <option key={c.realm_id} value={c.realm_id}>
+                {c.company_name}
+              </option>
+            ))}
+          </select>
+          {/* Disconnect button — only when a client is selected */}
+          {client && (
+            <button
+              onClick={() => handleDisconnect(client)}
+              title="Remove this client"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '42px',
+                border: '1px solid #fecaca',
+                borderRadius: '10px',
+                backgroundColor: '#ffffff',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#fef2f2'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#ffffff'; }}
+            >
+              <X size={16} style={{ color: '#ef4444' }} />
+            </button>
+          )}
+          {/* Connect new client button */}
+          <button
+            onClick={handleConnect}
+            title="Connect a new QBO client"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '0 16px',
+              border: '1px solid #e5e7eb',
+              borderRadius: '10px',
+              backgroundColor: '#ffffff',
+              cursor: 'pointer',
+              fontFamily: "'Outfit', sans-serif",
+              fontSize: '13px',
+              fontWeight: 600,
+              color: '#38bdf8',
+              transition: 'all 0.2s ease',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f0f9ff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#ffffff'; }}
+          >
+            <Plus size={14} />
+            Connect
+          </button>
+        </div>
 
         {/* Date inputs row */}
         <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>

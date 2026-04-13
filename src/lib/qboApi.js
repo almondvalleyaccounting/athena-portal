@@ -36,7 +36,12 @@ export async function disconnectQbo() {
   return data;
 }
 
-/** Get the QBO OAuth authorization URL */
+/** Get the QBO OAuth authorization URL (billing connection) */
 export function getQboAuthUrl(userId) {
   return `${SUPABASE_URL}/functions/v1/qbo-auth?action=authorize&user_id=${encodeURIComponent(userId)}`;
+}
+
+/** Get the QBO OAuth authorization URL for reports (separate connection) */
+export function getReportsAuthUrl(userId) {
+  return `${SUPABASE_URL}/functions/v1/qbo-auth?action=authorize&user_id=${encodeURIComponent(userId)}&purpose=reports`;
 }

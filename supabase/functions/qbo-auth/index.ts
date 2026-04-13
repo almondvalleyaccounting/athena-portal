@@ -38,9 +38,10 @@ Deno.serve(async (req) => {
 
 function handleAuthorize(url: URL) {
   const userId = url.searchParams.get("user_id") || "";
+  const purpose = url.searchParams.get("purpose") || "billing";
 
-  // Build state with user ID for tracking who connected
-  const state = btoa(JSON.stringify({ user_id: userId, ts: Date.now() }));
+  // Build state with user ID and purpose for tracking through OAuth round-trip
+  const state = btoa(JSON.stringify({ user_id: userId, purpose, ts: Date.now() }));
 
   const params = new URLSearchParams({
     client_id: QBO_CLIENT_ID,
@@ -66,23 +67,28 @@ async function handleCallback(url: URL) {
 
   // Handle user denial
   if (error) {
-    const redirectUrl = `${PORTAL_URL}/manage/billing?qbo=error&message=${encodeURIComponent(error)}`;
+    const redirectUrl = `${PORTAL_URL}${errorRedirectBase}?qbo=error&message=${encodeURIComponent(error)}`;
     return new Response(null, { status: 302, headers: { Location: redirectUrl } });
   }
 
   if (!code || !realmId) {
-    const redirectUrl = `${PORTAL_URL}/manage/billing?qbo=error&message=Missing+code+or+realmId`;
+    const redirectUrl = `${PORTAL_URL}${errorRedirectBase}?qbo=error&message=Missing+code+or+realmId`;
     return new Response(null, { status: 302, headers: { Location: redirectUrl } });
   }
 
-  // Parse state to get user_id
+  // Parse state to get user_id and purpose
   let userId: string | null = null;
+  let purpose = "billing";
   if (state) {
     try {
       const parsed = JSON.parse(atob(state));
       userId = parsed.user_id || null;
+      purpose = parsed.purpose || "billing";
     } catch { /* ignore */ }
   }
+
+  const isReports = purpose === "reports";
+  const errorRedirectBase = isReports ? "/reports" : "/manage/billing";
 
   // Exchange authorization code for tokens
   const basicAuth = btoa(`${QBO_CLIENT_ID}:${QBO_CLIENT_SECRET}`);
@@ -104,7 +110,7 @@ async function handleCallback(url: URL) {
   if (!tokenResp.ok) {
     const errBody = await tokenResp.text();
     console.error("Token exchange failed:", errBody);
-    const redirectUrl = `${PORTAL_URL}/manage/billing?qbo=error&message=Token+exchange+failed`;
+    const redirectUrl = `${PORTAL_URL}${errorRedirectBase}?qbo=error&message=Token+exchange+failed`;
     return new Response(null, { status: 302, headers: { Location: redirectUrl } });
   }
 
@@ -133,44 +139,70 @@ async function handleCallback(url: URL) {
     }
   } catch { /* non-critical */ }
 
-  // Store tokens in qbo_connections (upsert - replace any existing connection)
   const sb = getServiceClient();
 
-  // Deactivate any existing connections
-  await sb.from("qbo_connections").update({
-    status: "disconnected",
-    updated_at: new Date().toISOString(),
-  }).eq("status", "active");
+  if (isReports) {
+    // ── Reports mode: store only realm_id + company_name (no tokens) ──
+    // Upsert — if realm_id already exists, update the name and reactivate
+    const { error: upsertErr } = await sb.from("qbo_report_connections").upsert(
+      {
+        realm_id: realmId,
+        company_name: companyName || `QBO Company ${realmId}`,
+        connected_by: userId || null,
+        connected_at: new Date().toISOString(),
+        status: "active",
+      },
+      { onConflict: "realm_id" }
+    );
 
-  // Insert new connection
-  const { error: insertErr } = await sb.from("qbo_connections").insert({
-    realm_id: realmId,
-    company_name: companyName,
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token,
-    token_expires_at: expiresAt.toISOString(),
-    refresh_token_expires_at: refreshExpiresAt?.toISOString() || null,
-    scope: tokens.scope || "com.intuit.quickbooks.accounting",
-    connected_by: userId || null,
-    status: "active",
-  });
+    if (upsertErr) {
+      console.error("Failed to store report connection:", upsertErr);
+      const redirectUrl = `${PORTAL_URL}/reports?qbo=error&message=Failed+to+store+connection`;
+      return new Response(null, { status: 302, headers: { Location: redirectUrl } });
+    }
 
-  if (insertErr) {
-    console.error("Failed to store QBO connection:", insertErr);
-    const redirectUrl = `${PORTAL_URL}/manage/billing?qbo=error&message=Failed+to+store+connection`;
+    const redirectUrl = `${PORTAL_URL}/reports?qbo=connected`;
+    return new Response(null, { status: 302, headers: { Location: redirectUrl } });
+
+  } else {
+    // ── Billing mode: full token storage (existing behaviour) ──
+
+    // Deactivate any existing connections
+    await sb.from("qbo_connections").update({
+      status: "disconnected",
+      updated_at: new Date().toISOString(),
+    }).eq("status", "active");
+
+    // Insert new connection
+    const { error: insertErr } = await sb.from("qbo_connections").insert({
+      realm_id: realmId,
+      company_name: companyName,
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      token_expires_at: expiresAt.toISOString(),
+      refresh_token_expires_at: refreshExpiresAt?.toISOString() || null,
+      scope: tokens.scope || "com.intuit.quickbooks.accounting",
+      connected_by: userId || null,
+      status: "active",
+    });
+
+    if (insertErr) {
+      console.error("Failed to store QBO connection:", insertErr);
+      const redirectUrl = `${PORTAL_URL}/manage/billing?qbo=error&message=Failed+to+store+connection`;
+      return new Response(null, { status: 302, headers: { Location: redirectUrl } });
+    }
+
+    // Log the connection
+    await sb.from("audit_log").insert({
+      action: "qbo_connected",
+      entity_type: "qbo_connection",
+      detail: { realm_id: realmId, company_name: companyName },
+      performed_by: userId || null,
+    });
+
+    const redirectUrl = `${PORTAL_URL}/manage/billing?qbo=connected`;
     return new Response(null, { status: 302, headers: { Location: redirectUrl } });
   }
-
-  // Log the connection
-  await sb.from("audit_log").insert({
-    action: "qbo_connected",
-    entity_type: "qbo_connection",
-    detail: { realm_id: realmId, company_name: companyName },
-    performed_by: userId || null,
-  });
-
-  const redirectUrl = `${PORTAL_URL}/manage/billing?qbo=connected`;
-  return new Response(null, { status: 302, headers: { Location: redirectUrl } });
 }
 
 async function handleDisconnect(req: Request) {
