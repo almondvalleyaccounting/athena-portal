@@ -423,6 +423,8 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                             key={t.id}
                             draggable
                             onDragStart={(e) => { e.stopPropagation(); startDrag(t._key || t.id, 'instance'); }}
+                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTarget(cellKey); }}
+                            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleDrop(d, slot.h, slot.m); }}
                             onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
@@ -453,9 +455,11 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                             <div
                               onMouseDown={(e) => handleResize(e, t)}
                               style={{
-                                position: 'absolute', left: 3, right: 3, bottom: 0,
-                                height: 4, cursor: 'ns-resize', borderRadius: '0 0 2px 2px',
+                                position: 'absolute', left: 0, right: 0, bottom: 0,
+                                height: 8, cursor: 'ns-resize', borderRadius: '0 0 2px 2px',
                               }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                             />
                           </div>
                         );
@@ -469,6 +473,8 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                             key={t.id}
                             draggable
                             onDragStart={(e) => { e.stopPropagation(); startDrag(t.id, 'quick'); }}
+                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTarget(cellKey); }}
+                            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleDrop(d, slot.h, slot.m); }}
                             onClick={(e) => { e.stopPropagation(); onAction(e, { ...t, _isQuick: true }); }}
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
