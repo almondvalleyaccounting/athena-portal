@@ -3,6 +3,7 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
+import ChangePasswordScreen from './ChangePasswordScreen';
 
 /* ─── Auth context ─────────────────────────────────────────────── */
 const AuthContext = createContext(null);
@@ -155,6 +156,22 @@ export default function AppShell() {
           </button>
         </div>
       </div>
+    );
+  }
+
+  // ── Must change password on first login ──
+  if (profile.must_change_password) {
+    return (
+      <ChangePasswordScreen
+        onComplete={async () => {
+          await supabase
+            .from('staff_profiles')
+            .update({ must_change_password: false })
+            .eq('id', session.user.id);
+          setProfile((p) => ({ ...p, must_change_password: false }));
+        }}
+        onLogout={handleLogout}
+      />
     );
   }
 
