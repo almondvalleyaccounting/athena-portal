@@ -122,14 +122,17 @@ export default function QuoteDetailPage({ profile }) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this quote? This action will mark the quote as deleted.')) return;
+    if (!window.confirm(`Delete quote ${quote.quote_ref}? This cannot be undone.`)) return;
     setTransitioning(true);
     try {
-      await supabase.from('quotes').update({ status: 'deleted' }).eq('id', quote.id);
+      await supabase.from('quote_line_items').delete().eq('quote_id', quote.id);
+      await supabase.from('quote_entities').delete().eq('quote_id', quote.id);
       await supabase.from('audit_log').insert({
-        user_id: profile.id, action: 'status_change', entity_type: 'quote', entity_id: quote.id,
-        detail: { from: quote.status, to: 'deleted', action: 'delete' },
+        user_id: profile.id, action: 'hard_delete', entity_type: 'quote', entity_id: quote.id,
+        detail: { quote_ref: quote.quote_ref, status_at_delete: quote.status },
       });
+      const { error: delErr } = await supabase.from('quotes').delete().eq('id', quote.id);
+      if (delErr) throw delErr;
       navigate('/manage/quotes');
     } catch (e) { setError(e.message || 'Delete failed'); }
     setTransitioning(false);

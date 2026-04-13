@@ -34,6 +34,22 @@ export default function ClientDetailPage({ profile }) {
     setSaving(false);
   };
 
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteClient = async () => {
+    if (!window.confirm('Delete client "' + entity.name + '"? This will remove the client record. Quotes linked to this client will remain but lose their client link. This cannot be undone.')) return;
+    setDeleting(true);
+    try {
+      await supabase.from('billing_group_members').delete().eq('entity_id', entity.id);
+      const { error } = await supabase.from('entities').delete().eq('id', entity.id);
+      if (error) throw error;
+      navigate('/manage/clients');
+    } catch (err) {
+      alert('Failed to delete: ' + (err.message || 'Unknown error'));
+      setDeleting(false);
+    }
+  };
+
   if (loading) return <div className="p-6"><p className="text-sm text-gray-400">Loading client...</p></div>;
   if (!entity) return <div className="p-6"><p className="text-sm text-red-500">Client not found.</p></div>;
 
@@ -136,6 +152,12 @@ export default function ClientDetailPage({ profile }) {
           ))}
         </div>
       )}
+      {/* Delete */}
+      <div className="mt-6 pt-4 border-t border-gray-200">
+        <Btn onClick={handleDeleteClient} variant="danger" disabled={deleting}>
+          {deleting ? 'Deleting...' : 'Delete Client'}
+        </Btn>
+      </div>
     </div>
   );
 }

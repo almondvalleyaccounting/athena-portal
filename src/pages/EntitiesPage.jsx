@@ -15,7 +15,6 @@ export default function EntitiesPage() {
   const [acting, setActing] = useState(false);
   const [groups, setGroups] = useState([]);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
-  const [deleting, setDeleting] = useState(null);
 
   useEffect(() => {
     supabase.from('billing_groups').select('*').order('name')
@@ -160,21 +159,6 @@ export default function EntitiesPage() {
     setActing(false);
   };
 
-  const handleDeleteClient = async (entityId, entityName) => {
-    if (!confirm(`Delete client "${entityName}"? This will remove the client record. Quotes linked to this client will remain but lose their client link.`)) return;
-    setDeleting(entityId);
-    try {
-      // Remove from billing group memberships
-      await supabase.from('billing_group_members').delete().eq('entity_id', entityId);
-      // Delete entity
-      const { error } = await supabase.from('entities').delete().eq('id', entityId);
-      if (error) throw error;
-      await loadEntities();
-    } catch (err) {
-      alert('Failed to delete client: ' + (err.message || 'Unknown error'));
-    }
-    setDeleting(null);
-  };
 
   const renderClientRow = (e) => (
     <div
@@ -248,14 +232,6 @@ export default function EntitiesPage() {
             <Btn onClick={() => navigate('/manage/quotes/new?entity=' + e.id)} variant="secondary" className="text-xs py-1 px-3">
               Quote
             </Btn>
-            <button
-              onClick={(ev) => { ev.stopPropagation(); handleDeleteClient(e.id, e.name); }}
-              disabled={deleting === e.id}
-              className="text-xs text-gray-400 hover:text-red-600 px-1.5 py-1 rounded hover:bg-red-50 transition-colors"
-              title="Delete client"
-            >
-              {deleting === e.id ? '...' : '\u2715'}
-            </button>
           </div>
         )}
       </div>
