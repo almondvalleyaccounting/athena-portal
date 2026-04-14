@@ -170,13 +170,28 @@ export async function fetchEntities() {
   return data || [];
 }
 
-export async function insertEntity(name) {
+export async function insertEntity(fields) {
+  // Accepts either a string (legacy) or an object with { name, type, status, prospect_email }
+  const row = typeof fields === 'string'
+    ? { name: fields, type: 'limited_company', status: 'prospect', source: 'athena' }
+    : {
+        name: fields.name,
+        type: fields.type || 'limited_company',
+        status: fields.status || 'prospect',
+        source: 'athena',
+        prospect_email: fields.prospect_email || fields.email || null,
+      };
+
   const { data, error } = await supabase
     .from('entities')
-    .insert({ name })
+    .insert(row)
     .select()
     .single();
-  if (error) throw error;
+
+  if (error) {
+    console.error('[insertEntity] Supabase error:', error.message, error.details, error.hint);
+    throw error;
+  }
   return data;
 }
 

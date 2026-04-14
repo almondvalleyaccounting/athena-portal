@@ -205,9 +205,8 @@ export default function WorkPlannerModule() {
   }, []);
 
   const handleNewClientSave = useCallback(async (fields) => {
-    // Insert with the fields from the modal
-    // For now we send name + type; email and status will be enabled once schema is confirmed
-    const data = await insertEntity(fields.name);
+    // Pass full fields object — insertEntity sends name, type, status, source, prospect_email
+    const data = await insertEntity(fields);
     setEntityList((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
     // Resolve the promise so the ClientTypeAhead selects the new entity
     if (newClientModal.resolve) newClientModal.resolve(data);

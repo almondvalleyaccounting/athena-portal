@@ -53,7 +53,7 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
     try {
       const result = await onSave({
         name: name.trim(),
-        email: email.trim() || null,
+        prospect_email: email.trim() || null,
         type: entityType,
         status: 'prospect',
       });
