@@ -122,11 +122,17 @@ export default function Sidebar() {
     setExpandedModules((prev) => ({ ...prev, [modId]: !prev[modId] }));
   };
 
-  // Check if a child item matches the current path exactly (or is the active sub-page)
-  const isChildActive = (child) => {
-    if (child.route === '/manage' && location.pathname === '/manage') return true;
-    if (child.route !== '/manage' && location.pathname.startsWith(child.route)) return true;
-    return false;
+  // Check if a child is the BEST match for the current path.
+  // A more specific child route wins over a shorter prefix match.
+  const isChildActive = (child, siblings) => {
+    const p = location.pathname;
+    if (child.route === '/manage') return p === '/manage';
+    if (!p.startsWith(child.route)) return false;
+    // Check no sibling has a longer, more specific match
+    const dominated = (siblings || []).some(
+      (s) => s.id !== child.id && s.route.length > child.route.length && p.startsWith(s.route)
+    );
+    return !dominated;
   };
 
   // Filter children by permissions
@@ -260,16 +266,16 @@ export default function Sidebar() {
                         padding: '6px 12px 6px 44px',
                         borderRadius: 6,
                         border: 'none',
-                        background: isChildActive(child) ? 'rgba(56, 189, 248, 0.08)' : 'transparent',
+                        background: isChildActive(child, kids) ? 'rgba(56, 189, 248, 0.08)' : 'transparent',
                         cursor: 'pointer',
                         marginBottom: 1,
                         transition: 'background 0.15s',
                         position: 'relative',
                       }}
-                      onMouseEnter={(e) => { if (!isChildActive(child)) e.currentTarget.style.background = '#f8fafc'; }}
-                      onMouseLeave={(e) => { if (!isChildActive(child)) e.currentTarget.style.background = 'transparent'; }}
+                      onMouseEnter={(e) => { if (!isChildActive(child, kids)) e.currentTarget.style.background = '#f8fafc'; }}
+                      onMouseLeave={(e) => { if (!isChildActive(child, kids)) e.currentTarget.style.background = 'transparent'; }}
                     >
-                      {isChildActive(child) && (
+                      {isChildActive(child, kids) && (
                         <div style={{
                           position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
                           width: 2, height: 14, backgroundColor: '#38bdf8', borderRadius: '0 2px 2px 0',
@@ -278,8 +284,8 @@ export default function Sidebar() {
                       <span style={{
                         fontFamily: "'Outfit', sans-serif",
                         fontSize: 13,
-                        fontWeight: isChildActive(child) ? 600 : 400,
-                        color: isChildActive(child) ? '#0f172a' : '#64748b',
+                        fontWeight: isChildActive(child, kids) ? 600 : 400,
+                        color: isChildActive(child, kids) ? '#0f172a' : '#64748b',
                       }}>
                         {child.label}
                       </span>
