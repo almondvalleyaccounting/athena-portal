@@ -11,7 +11,12 @@ function startOfWeek(d) {
 function startOfMonth(d) { const r = new Date(d); r.setDate(1); r.setHours(0,0,0,0); return r; }
 function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
 function addMonths(d, n) { const r = new Date(d); r.setMonth(r.getMonth() + n); return r; }
-function formatISO(d) { return d.toISOString().split('T')[0]; }
+function formatISO(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 function minutesToDisplay(mins) {
   if (!mins) return '0h';
   const h = Math.floor(mins / 60); const m = mins % 60;
