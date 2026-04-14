@@ -182,20 +182,22 @@ export default function TimesheetView() {
   const handleAddRow = useCallback(async () => {
     if (!newRowClient && !newRowService) return;
     try {
-      await upsertTimesheetEntry({
+      const entry = {
         staffId: selectedStaff,
         entityId: newRowClient || null,
-        service: newRowService || '',
+        service: newRowService || null,
         workDate: formatISO(weekDays[0]),
         minutes: 0,
-      });
+      };
+      console.log('[Timesheets] adding manual row:', entry);
+      await upsertTimesheetEntry(entry);
       const updated = await fetchTimesheetEntries(selectedStaff, weekStartISO, weekEndISO);
       setManualEntries(updated);
       setAddingRow(false);
       setNewRowClient('');
       setNewRowService('');
     } catch (e) {
-      console.error('[Timesheets] add row error:', e);
+      console.error('[Timesheets] add row error:', e.message || e);
     }
   }, [selectedStaff, newRowClient, newRowService, weekDays, weekStartISO, weekEndISO]);
 

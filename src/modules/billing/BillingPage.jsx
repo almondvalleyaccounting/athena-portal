@@ -159,7 +159,21 @@ export default function BillingPage() {
             </div>
             <div style={{ flex: 1, minWidth: 140 }}>
               <label style={formLabel}>Service *</label>
-              <input value={formService} onChange={(e) => setFormService(e.target.value)} placeholder="e.g. Accounts Production" style={inputStyle} />
+              <select value={formService} onChange={(e) => setFormService(e.target.value)} style={inputStyle}>
+                <option value="">Select service...</option>
+                <option value="Admin">Admin</option>
+                <option value="Accounts Production">Accounts Production</option>
+                <option value="Corporation Tax">Corporation Tax</option>
+                <option value="Self Assessment">Self Assessment</option>
+                <option value="VAT Returns">VAT Returns</option>
+                <option value="Bookkeeping">Bookkeeping</option>
+                <option value="Payroll">Payroll</option>
+                <option value="Management Accounts">Management Accounts</option>
+                <option value="Company Secretarial">Company Secretarial</option>
+                <option value="Advisory">Advisory</option>
+                <option value="SA302s">SA302s</option>
+                <option value="Accountant Certificates">Accountant Certificates</option>
+              </select>
             </div>
             <div style={{ flex: 2, minWidth: 200 }}>
               <label style={formLabel}>Description</label>
