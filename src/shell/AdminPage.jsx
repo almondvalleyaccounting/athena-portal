@@ -15,6 +15,8 @@ const PERMISSION_COLS = [
   { key: 'can_view_reports', label: 'Reports' },
   { key: 'can_view_work_planner', label: 'Work planner' },
   { key: 'can_view_timesheets', label: 'Timesheets' },
+  { key: 'can_view_billing', label: 'Billing' },
+  { key: 'can_approve_billing', label: 'Approve billing' },
   { key: 'can_view_pd_tracker', label: 'PD tracker' },
   { key: 'can_manage_portal', label: 'Portal admin' },
 ];

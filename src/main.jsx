@@ -10,6 +10,8 @@ import ReportsPage from './modules/reports/ReportsPage';
 import AdminPage from './shell/AdminPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
+import BillingPage from './modules/billing/BillingPage';
+import IssuesPage from './modules/issues/IssuesPage';
 import ClientsPage from './modules/clients/ClientsPage';
 import ClientDetailView from './modules/clients/ClientDetailView';
 import App from './App';
@@ -56,6 +58,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/planner/*" element={<WorkPlannerModule />} />
           {/* Timesheets — requires can_view_timesheets */}
           <Route path="/timesheets/*" element={<TimesheetModule />} />
+          {/* Billing — requires can_view_billing */}
+          <Route path="/billing" element={<BillingPage />} />
+          {/* Issues Log — all active staff */}
+          <Route path="/issues" element={<IssuesPage />} />
         </Route>
 
         {/* Root redirect */}

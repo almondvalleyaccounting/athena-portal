@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Download } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
+import { SERVICES } from '../../work-planner/lib/constants';
 import {
   fetchCompletedForWeek, fetchTimesheetEntries, upsertTimesheetEntry,
   fetchScheduledForStaff, fetchStaffList, fetchEntities,
@@ -9,45 +10,29 @@ import {
 /* ─── Helpers ──────────────────────────────────────────────── */
 function startOfWeek(d) {
   const date = new Date(d);
-  const day = date.getDay(); // 0=Sun
+  const day = date.getDay();
   const diff = date.getDate() - day + (day === 0 ? -6 : 1);
   date.setDate(diff);
   date.setHours(0, 0, 0, 0);
   return date;
 }
-
-function addDays(d, n) {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
-}
-
-function formatISO(d) {
-  return d.toISOString().split('T')[0]; // YYYY-MM-DD
-}
-
-function formatShort(d) {
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-}
-
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function formatISO(d) { return d.toISOString().split('T')[0]; }
 function formatWeekTitle(start) {
   const end = addDays(start, 6);
   return `${start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — ${end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 }
-
 function minutesToDisplay(mins) {
-  if (!mins && mins !== 0) return '';
-  if (mins === 0) return '';
+  if (!mins) return '';
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   if (h === 0) return `${m}m`;
   return m ? `${h}h ${m}m` : `${h}h`;
 }
-
+function hoursDecimal(mins) { return mins ? (mins / 60).toFixed(2) : '0.00'; }
 function sameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
-
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 /* ─── TimesheetView ───────────────────────────────────────── */
@@ -56,13 +41,13 @@ export default function TimesheetView() {
 
   const [staffList, setStaffList] = useState([]);
   const [entityList, setEntityList] = useState([]);
-  const [selectedStaff, setSelectedStaff] = useState(profile?.id || '');
+  const [selectedStaff, setSelectedStaff] = useState('');
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date()));
   const [completedTasks, setCompletedTasks] = useState([]);
   const [manualEntries, setManualEntries] = useState([]);
   const [scheduledTasks, setScheduledTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sort, setSort] = useState('client'); // 'client' | 'service'
+  const [sort, setSort] = useState('client');
   const [addingRow, setAddingRow] = useState(false);
   const [newRowClient, setNewRowClient] = useState('');
   const [newRowService, setNewRowService] = useState('');
@@ -79,12 +64,13 @@ export default function TimesheetView() {
         const [staff, ents] = await Promise.all([fetchStaffList(), fetchEntities()]);
         setStaffList(staff);
         setEntityList(ents);
-        if (!selectedStaff && profile?.id) setSelectedStaff(profile.id);
+        // Default to logged-in user
+        if (profile?.id) setSelectedStaff(profile.id);
       } catch (e) {
         console.error('[Timesheets] init error:', e);
       }
     })();
-  }, []);
+  }, [profile?.id]);
 
   // Load data when staff or week changes
   useEffect(() => {
@@ -107,66 +93,47 @@ export default function TimesheetView() {
     })();
   }, [selectedStaff, weekStartISO, weekEndISO]);
 
-  // Build entity map
   const entityMap = useMemo(() => {
     const m = {};
     entityList.forEach((e) => { m[e.id] = e; });
     return m;
   }, [entityList]);
 
-  // ── Build rows: each row = unique (entity_id, service) combination ──
+  // ── Build rows ──
   const rows = useMemo(() => {
-    const rowMap = new Map(); // key = `${entity_id}|${service}`
-
+    const rowMap = new Map();
     function getRow(entityId, service) {
-      const key = `${entityId || ''}|${service || ''}`;
+      const key = `${entityId || '_none'}|${service || '_none'}`;
       if (!rowMap.has(key)) {
         rowMap.set(key, {
-          key,
-          entityId: entityId || null,
-          service: service || '',
+          key, entityId: entityId || null, service: service || '',
           days: Array(7).fill(null).map(() => ({ completed: 0, manual: 0, scheduled: false })),
         });
       }
       return rowMap.get(key);
     }
 
-    // Auto-populate from completed tasks
     completedTasks.forEach((t) => {
       const d = new Date(t.completed_at);
       const dayIdx = weekDays.findIndex((wd) => sameDay(wd, d));
-      if (dayIdx >= 0) {
-        const row = getRow(t.entity_id, t.service);
-        row.days[dayIdx].completed += t.completion_mins || 0;
-      }
+      if (dayIdx >= 0) getRow(t.entity_id, t.service).days[dayIdx].completed += t.completion_mins || 0;
     });
 
-    // Manual entries
     manualEntries.forEach((e) => {
       const d = new Date(e.work_date + 'T00:00:00');
       const dayIdx = weekDays.findIndex((wd) => sameDay(wd, d));
-      if (dayIdx >= 0) {
-        const row = getRow(e.entity_id, e.service);
-        row.days[dayIdx].manual += e.minutes || 0;
-      }
+      if (dayIdx >= 0) getRow(e.entity_id, e.service).days[dayIdx].manual += e.minutes || 0;
     });
 
-    // Scheduled placeholders — mark rows that have scheduled work this week
     scheduledTasks.forEach((m) => {
       if (!m.planned_date) return;
       const d = new Date(m.planned_date);
       d.setHours(0, 0, 0, 0);
-      // Check if this task falls in the current week
       const dayIdx = weekDays.findIndex((wd) => sameDay(wd, d));
-      if (dayIdx >= 0) {
-        const row = getRow(m.entity_id, m.service);
-        row.days[dayIdx].scheduled = true;
-      }
+      if (dayIdx >= 0) getRow(m.entity_id, m.service).days[dayIdx].scheduled = true;
     });
 
     let result = [...rowMap.values()];
-
-    // Sort
     if (sort === 'client') {
       result.sort((a, b) => {
         const na = a.entityId ? (entityMap[a.entityId]?.name || '') : 'zzz';
@@ -174,50 +141,21 @@ export default function TimesheetView() {
         return na.localeCompare(nb) || a.service.localeCompare(b.service);
       });
     } else {
-      result.sort((a, b) => a.service.localeCompare(b.service) || (
-        (a.entityId ? (entityMap[a.entityId]?.name || '') : 'zzz').localeCompare(
-          b.entityId ? (entityMap[b.entityId]?.name || '') : 'zzz'
-        )
-      ));
+      result.sort((a, b) => a.service.localeCompare(b.service));
     }
-
     return result;
   }, [completedTasks, manualEntries, scheduledTasks, weekDays, entityMap, sort]);
 
-  // Daily and weekly totals
   const dayTotals = useMemo(() => {
     const totals = Array(7).fill(0);
-    rows.forEach((r) => {
-      r.days.forEach((d, i) => { totals[i] += d.completed + d.manual; });
-    });
+    rows.forEach((r) => r.days.forEach((d, i) => { totals[i] += d.completed + d.manual; }));
     return totals;
   }, [rows]);
-
   const weekTotal = dayTotals.reduce((s, v) => s + v, 0);
-
-  // Handle cell edit
-  const handleCellEdit = useCallback(async (row, dayIdx, value) => {
-    const mins = parseInt(value, 10) || 0;
-    try {
-      await upsertTimesheetEntry({
-        staffId: selectedStaff,
-        entityId: row.entityId,
-        service: row.service,
-        workDate: formatISO(weekDays[dayIdx]),
-        minutes: mins,
-      });
-      // Refresh manual entries
-      const updated = await fetchTimesheetEntries(selectedStaff, weekStartISO, weekEndISO);
-      setManualEntries(updated);
-    } catch (e) {
-      console.error('[Timesheets] save error:', e);
-    }
-  }, [selectedStaff, weekDays, weekStartISO, weekEndISO]);
 
   // Add new row
   const handleAddRow = useCallback(async () => {
     if (!newRowClient && !newRowService) return;
-    // Insert a zero-minute entry to create the row
     try {
       await upsertTimesheetEntry({
         staffId: selectedStaff,
@@ -236,37 +174,55 @@ export default function TimesheetView() {
     }
   }, [selectedStaff, newRowClient, newRowService, weekDays, weekStartISO, weekEndISO]);
 
-  const staffName = (id) => {
-    const s = staffList.find((st) => st.id === id);
-    return s?.name || s?.full_name || 'Unknown';
+  // Export CSV
+  const handleExport = () => {
+    const staffName = staffList.find((s) => s.id === selectedStaff)?.name || 'Unknown';
+    const headers = ['Client', 'Service', ...weekDays.map((d) => formatISO(d)), 'Total (hrs)'];
+    const csvRows = rows.map((r) => {
+      const client = r.entityId ? (entityMap[r.entityId]?.name || '') : '';
+      const daily = r.days.map((d) => hoursDecimal(d.completed + d.manual));
+      const total = hoursDecimal(r.days.reduce((s, d) => s + d.completed + d.manual, 0));
+      return [
+        `"${client.replace(/"/g, '""')}"`,
+        `"${(r.service || '').replace(/"/g, '""')}"`,
+        ...daily,
+        total,
+      ].join(',');
+    });
+    // Totals row
+    csvRows.push(['"TOTAL"', '""', ...dayTotals.map((t) => hoursDecimal(t)), hoursDecimal(weekTotal)].join(','));
+
+    const csv = [headers.join(','), ...csvRows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `timesheet-${staffName.replace(/\s/g, '_')}-${weekStartISO}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
-  const selectedStaffName = staffName(selectedStaff);
-
   return (
-    <div style={{ padding: '16px 20px', maxWidth: 1200 }}>
+    <div style={{ padding: '16px 20px', maxWidth: 1200, fontFamily: "'Outfit', sans-serif" }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         {/* Staff selector */}
+        <span style={labelStyle}>Staff</span>
         <select
           value={selectedStaff}
           onChange={(e) => setSelectedStaff(e.target.value)}
-          style={{
-            padding: '6px 12px', fontSize: 13, fontFamily: "'Outfit', sans-serif",
-            border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff',
-            color: '#0f172a', fontWeight: 500, outline: 'none',
-          }}
+          style={{ ...selectStyle, fontWeight: 600, minWidth: 140 }}
         >
           {staffList.map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
 
-        <div style={{ width: 1, height: 20, background: '#e5e7eb' }} />
+        <div style={sepStyle} />
 
         {/* Week navigation */}
         <button onClick={() => setAnchor((p) => addDays(p, -7))} style={navBtn}><ChevronLeft size={16} /></button>
-        <span style={{ fontSize: 14, fontWeight: 500, minWidth: 180, textAlign: 'center' }}>
+        <span style={{ fontSize: 14, fontWeight: 500, minWidth: 190, textAlign: 'center' }}>
           {formatWeekTitle(weekStart)}
         </span>
         <button onClick={() => setAnchor((p) => addDays(p, 7))} style={navBtn}><ChevronRight size={16} /></button>
@@ -274,19 +230,17 @@ export default function TimesheetView() {
 
         <div style={{ flex: 1 }} />
 
-        {/* Sort */}
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>Sort</span>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value)}
-          style={{
-            padding: '4px 8px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
-            border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', outline: 'none',
-          }}
-        >
+        <span style={labelStyle}>Sort</span>
+        <select value={sort} onChange={(e) => setSort(e.target.value)} style={selectStyle}>
           <option value="client">Client</option>
           <option value="service">Service</option>
         </select>
+
+        {rows.length > 0 && (
+          <button onClick={handleExport} style={{ ...navBtn, gap: 5 }}>
+            <Download size={13} /> Export
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -323,32 +277,20 @@ export default function TimesheetView() {
                 {rows.map((row) => {
                   const clientName = row.entityId ? (entityMap[row.entityId]?.name || 'Unknown') : '—';
                   const rowTotal = row.days.reduce((s, d) => s + d.completed + d.manual, 0);
-
                   return (
                     <tr key={row.key} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={tdStyle}>
-                        <span style={{ fontWeight: 500, color: '#0f172a' }}>{clientName}</span>
-                      </td>
-                      <td style={tdStyle}>
-                        <span style={{ color: '#64748b' }}>{row.service || '—'}</span>
-                      </td>
+                      <td style={tdStyle}><span style={{ fontWeight: 500, color: '#0f172a' }}>{clientName}</span></td>
+                      <td style={tdStyle}><span style={{ color: '#64748b' }}>{row.service || '—'}</span></td>
                       {row.days.map((day, di) => {
                         const total = day.completed + day.manual;
                         const isScheduled = day.scheduled && total === 0;
                         return (
-                          <td key={di} style={{ ...tdStyle, textAlign: 'center', position: 'relative' }}>
+                          <td key={di} style={{ ...tdStyle, textAlign: 'center' }}>
                             {total > 0 ? (
-                              <span style={{ fontWeight: 500, color: '#0f172a' }}>
-                                {minutesToDisplay(total)}
-                              </span>
+                              <span style={{ fontWeight: 500, color: '#0f172a' }}>{minutesToDisplay(total)}</span>
                             ) : isScheduled ? (
                               <span style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>planned</span>
                             ) : null}
-                            {day.completed > 0 && day.manual > 0 && (
-                              <div style={{ fontSize: 9, color: '#94a3b8' }}>
-                                {minutesToDisplay(day.completed)} + {minutesToDisplay(day.manual)}
-                              </div>
-                            )}
                           </td>
                         );
                       })}
@@ -363,9 +305,7 @@ export default function TimesheetView() {
                 <tr style={{ background: '#f8fafc', borderTop: '2px solid #e5e7eb' }}>
                   <td colSpan={2} style={{ ...tdStyle, fontWeight: 600, color: '#64748b' }}>Daily Total</td>
                   {dayTotals.map((t, i) => (
-                    <td key={i} style={{ ...tdStyle, textAlign: 'center', fontWeight: 600, color: '#0f172a' }}>
-                      {minutesToDisplay(t)}
-                    </td>
+                    <td key={i} style={{ ...tdStyle, textAlign: 'center', fontWeight: 600, color: '#0f172a' }}>{minutesToDisplay(t)}</td>
                   ))}
                   <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: '#0e7fe0', fontSize: 14 }}>
                     {minutesToDisplay(weekTotal)}
@@ -378,38 +318,21 @@ export default function TimesheetView() {
           {/* Add row */}
           <div style={{ marginTop: 12 }}>
             {!addingRow ? (
-              <button
-                onClick={() => setAddingRow(true)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  fontSize: 12, fontWeight: 500, color: '#64748b',
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '6px 0', fontFamily: "'Outfit', sans-serif",
-                }}
-              >
+              <button onClick={() => setAddingRow(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0', fontFamily: "'Outfit', sans-serif" }}>
                 <Plus size={14} /> Add row
               </button>
             ) : (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <select
-                  value={newRowClient}
-                  onChange={(e) => setNewRowClient(e.target.value)}
-                  style={selectStyle}
-                >
-                  <option value="">No client</option>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select value={newRowClient} onChange={(e) => setNewRowClient(e.target.value)} style={{ ...selectStyle, minWidth: 160 }}>
+                  <option value="">— Select client —</option>
                   {entityList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
                 </select>
-                <input
-                  value={newRowService}
-                  onChange={(e) => setNewRowService(e.target.value)}
-                  placeholder="Service..."
-                  style={{
-                    padding: '5px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
-                    border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', width: 140,
-                  }}
-                />
-                <button onClick={handleAddRow} style={{ ...navBtn, fontSize: 12 }}>Add</button>
-                <button onClick={() => setAddingRow(false)} style={{ ...navBtn, fontSize: 12, color: '#94a3b8' }}>Cancel</button>
+                <select value={newRowService} onChange={(e) => setNewRowService(e.target.value)} style={{ ...selectStyle, minWidth: 140 }}>
+                  <option value="">— Select service —</option>
+                  {SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <button onClick={handleAddRow} disabled={!newRowClient && !newRowService} style={{ ...navBtn, fontSize: 12, opacity: (!newRowClient && !newRowService) ? 0.4 : 1 }}>Add</button>
+                <button onClick={() => { setAddingRow(false); setNewRowClient(''); setNewRowService(''); }} style={{ ...navBtn, fontSize: 12, color: '#94a3b8' }}>Cancel</button>
               </div>
             )}
           </div>
@@ -419,26 +342,9 @@ export default function TimesheetView() {
   );
 }
 
-const thStyle = {
-  padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#64748b',
-  borderBottom: '2px solid #e5e7eb', fontFamily: "'Outfit', sans-serif",
-  textTransform: 'uppercase', letterSpacing: '0.03em',
-};
-
-const tdStyle = {
-  padding: '8px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
-};
-
-const navBtn = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  padding: '5px 10px', fontSize: 13, fontWeight: 500,
-  fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
-  borderRadius: 8, background: '#fff', color: '#1e293b',
-  cursor: 'pointer', whiteSpace: 'nowrap',
-};
-
-const selectStyle = {
-  padding: '5px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
-  border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
-  color: '#1e293b', outline: 'none',
-};
+const thStyle = { padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#64748b', borderBottom: '2px solid #e5e7eb', fontFamily: "'Outfit', sans-serif", textTransform: 'uppercase', letterSpacing: '0.03em' };
+const tdStyle = { padding: '8px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif" };
+const navBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '5px 10px', fontSize: 13, fontWeight: 500, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#1e293b', cursor: 'pointer', whiteSpace: 'nowrap' };
+const selectStyle = { padding: '5px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
+const labelStyle = { fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.03em' };
+const sepStyle = { width: 1, height: 20, background: '#e5e7eb' };

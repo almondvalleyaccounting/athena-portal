@@ -9,6 +9,8 @@ import {
   Bug,
   Users,
   Table,
+  FileText,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Settings,
@@ -27,6 +29,8 @@ const ICON_MAP = {
   bug: Bug,
   users: Users,
   table: Table,
+  'file-text': FileText,
+  'alert-triangle': AlertTriangle,
 };
 
 /* ─── Visibility rules ─────────────────────────────────────────── */
