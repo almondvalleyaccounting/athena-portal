@@ -81,7 +81,7 @@ export default function ScheduledView({ sort, onEdit }) {
                 </div>
 
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 1, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-                  {master.entity_id && <span>{clientName(master.entity_id, entityMap)}</span>}
+                  {master.entity_id && <span onClick={(e) => { e.stopPropagation(); window.location.href = `/clients/${master.entity_id}`; }} style={{ cursor: 'pointer', color: '#0e7fe0' }} onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'} onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}>{clientName(master.entity_id, entityMap)}</span>}
                   {master.service && <span style={{ color: '#94a3b8' }}>{master.service}</span>}
                   <span style={{
                     padding: '1px 5px', fontSize: 10, borderRadius: 3, fontWeight: 500, ...srcStyle,

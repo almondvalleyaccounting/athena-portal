@@ -10,6 +10,8 @@ export default function IdeasPage() {
   const [newIdea, setNewIdea] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState('');
 
   // ── Load ideas ──
   useEffect(() => {
@@ -76,6 +78,21 @@ export default function IdeasPage() {
     } catch {
       // Silent
     }
+  };
+
+  // ── Edit idea ──
+  const handleEdit = async (idea) => {
+    if (!editText.trim() || editText.trim() === idea.text) { setEditingId(null); return; }
+    try {
+      const { error } = await supabase
+        .from('ideas')
+        .update({ text: editText.trim() })
+        .eq('id', idea.id);
+      if (!error) {
+        setIdeas((prev) => prev.map((i) => i.id === idea.id ? { ...i, text: editText.trim() } : i));
+      }
+    } catch { /* silent */ }
+    setEditingId(null);
   };
 
   return (
@@ -258,18 +275,38 @@ export default function IdeasPage() {
 
               {/* Idea content */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p
-                  style={{
-                    fontFamily: "'Outfit', sans-serif",
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    color: '#0f172a',
-                    lineHeight: '1.5',
-                    marginBottom: '6px',
-                  }}
-                >
-                  {idea.text}
-                </p>
+                {editingId === idea.id ? (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                    <input
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleEdit(idea); if (e.key === 'Escape') setEditingId(null); }}
+                      autoFocus
+                      style={{
+                        flex: 1, padding: '6px 10px', fontSize: 14, fontFamily: "'Outfit', sans-serif",
+                        border: '1px solid #38bdf8', borderRadius: 8, outline: 'none',
+                      }}
+                    />
+                    <button onClick={() => handleEdit(idea)} style={{ fontSize: 12, fontWeight: 600, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Save</button>
+                    <button onClick={() => setEditingId(null)} style={{ fontSize: 12, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Cancel</button>
+                  </div>
+                ) : (
+                  <p
+                    onClick={() => { setEditingId(idea.id); setEditText(idea.text); }}
+                    style={{
+                      fontFamily: "'Outfit', sans-serif",
+                      fontSize: '14px',
+                      fontWeight: 500,
+                      color: '#0f172a',
+                      lineHeight: '1.5',
+                      marginBottom: '6px',
+                      cursor: 'pointer',
+                    }}
+                    title="Click to edit"
+                  >
+                    {idea.text}
+                  </p>
+                )}
                 <p
                   style={{
                     fontFamily: "'Outfit', sans-serif",

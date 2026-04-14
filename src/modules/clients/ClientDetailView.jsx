@@ -55,13 +55,13 @@ export default function ClientDetailView() {
     setTaskCreating(true);
     try {
       await supabase.from('quick_tasks').insert({
-        title: `Change: ${entity.name} — ${changeTaskText.trim()}`,
+        title: `Action: ${entity.name} — ${changeTaskText.trim()}`,
         entity_id: entity.id,
         service: 'Admin',
         assignee_id: profile?.id || null,
         due_date: new Date(Date.now() + 5 * 86400000).toISOString(),
         planned_date: null, duration: 15,
-        notes: `Raised from client page.\n${changeTaskText.trim()}`,
+        notes: `Raised from client page`,
         sort_order: 0, created_by: profile?.id,
       });
       setChangeTaskText('');
@@ -101,11 +101,12 @@ export default function ClientDetailView() {
       </div>
 
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
         <SummaryCard icon={Receipt} label="Monthly Billing" value={fmt(totalMonthly)} accent="#0e7fe0" />
         <SummaryCard icon={FileText} label="Quotes" value={`${quotes.length} (${activeQuotes.length} active)`} accent="#059669" />
         <SummaryCard icon={Clock} label="Time Logged" value={durFmt(totalCompleted)} accent="#d97706" />
         <SummaryCard icon={AlertTriangle} label="Open Issues" value={openIssues.length} accent={openIssues.length > 0 ? '#dc2626' : '#059669'} />
+        <SummaryCard icon={Clipboard} label="Outstanding Actions" value={tasks.length} accent={tasks.length > 0 ? '#d97706' : '#059669'} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
@@ -192,17 +193,17 @@ export default function ClientDetailView() {
         )}
       </div>
 
-      {/* Raise Change Task */}
+      {/* Raise Action */}
       <div style={cardStyle}>
-        <h3 style={sectionTitle}>Raise Change Task</h3>
-        <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>Create a quick task in the Work Planner for changes needed on this client.</p>
+        <h3 style={sectionTitle}>Raise Action</h3>
+        <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>Create a task in the Work Planner linked to this client — changes, follow-ups, reviews, or anything that needs doing.</p>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <input value={changeTaskText} onChange={(e) => setChangeTaskText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleRaiseChangeTask(); }} placeholder="e.g. Update registered address to..." disabled={taskCreating} style={{ flex: 1, padding: '9px 14px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 10, outline: 'none', fontFamily: "'Outfit', sans-serif" }} />
+          <input value={changeTaskText} onChange={(e) => setChangeTaskText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleRaiseChangeTask(); }} placeholder="e.g. Chase outstanding documents, update address, review fees..." disabled={taskCreating} style={{ flex: 1, padding: '9px 14px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 10, outline: 'none', fontFamily: "'Outfit', sans-serif" }} />
           <button onClick={handleRaiseChangeTask} disabled={!changeTaskText.trim() || taskCreating} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: !changeTaskText.trim() ? '#e5e7eb' : '#0f172a', color: !changeTaskText.trim() ? '#94a3b8' : '#fff', border: 'none', borderRadius: 10, cursor: !changeTaskText.trim() ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif", flexShrink: 0 }}>
-            {taskCreating ? 'Creating...' : 'Raise Task'}
+            {taskCreating ? 'Creating...' : 'Raise Action'}
           </button>
         </div>
-        {taskCreated && <div style={{ marginTop: 8, fontSize: 12, color: '#059669', fontWeight: 500 }}>✓ Task created in Work Planner</div>}
+        {taskCreated && <div style={{ marginTop: 8, fontSize: 12, color: '#059669', fontWeight: 500 }}>✓ Action created in Work Planner</div>}
       </div>
     </div>
   );

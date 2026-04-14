@@ -170,7 +170,7 @@ export default function QuickTasksView({ compact, onAction }) {
                   marginTop: compact ? 0 : 1,
                   display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap',
                 }}>
-                  {task.entity_id && <span>{clientName(task.entity_id, entityMap)}</span>}
+                  {task.entity_id && <span onClick={(e) => { e.stopPropagation(); window.location.href = `/clients/${task.entity_id}`; }} style={{ cursor: 'pointer', color: '#0e7fe0', textDecoration: 'none' }} onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'} onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}>{clientName(task.entity_id, entityMap)}</span>}
                   <span style={{ color: '#94a3b8' }}>{task.service}</span>
                   <DueBadge date={task.due_date} />
                   {isPlanned && (

@@ -305,7 +305,7 @@ export default function TimesheetView() {
                   return (
                     <tr key={row.key} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={tdStyle}>
-                        <span style={{ fontWeight: 500, color: '#0f172a' }}>{clientName}</span>
+                        <span onClick={() => row.entityId && (window.location.href = `/clients/${row.entityId}`)} style={{ fontWeight: 500, color: row.entityId ? '#0e7fe0' : '#0f172a', cursor: row.entityId ? 'pointer' : 'default' }}>{clientName}</span>
                         {row.isManual && <span style={{ fontSize: 9, color: '#94a3b8', marginLeft: 6 }}>manual</span>}
                       </td>
                       <td style={tdStyle}><span style={{ color: '#64748b' }}>{row.service || '—'}</span></td>

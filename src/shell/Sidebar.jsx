@@ -245,8 +245,14 @@ export default function Sidebar() {
                 onClick={() => {
                   if (!clickable) return;
                   if (hasChildren) {
-                    toggleExpand(mod.id);
-                    navigate(mod.route);
+                    if (isExpanded) {
+                      // Already expanded — just collapse, don't navigate
+                      toggleExpand(mod.id);
+                    } else {
+                      // Collapsed — expand and navigate to module root
+                      toggleExpand(mod.id);
+                      navigate(mod.route);
+                    }
                   } else {
                     navigate(mod.route);
                   }

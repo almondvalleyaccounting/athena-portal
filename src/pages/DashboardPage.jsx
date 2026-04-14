@@ -401,20 +401,7 @@ export default function DashboardPage() {
         </select>
       </div>
 
-      {/* Status View Filter Bar */}
-      <div className="flex flex-wrap gap-2 mb-5">
-        {Object.keys(STATUS_VIEW_FILTERS).map((key) => (
-          <StatusPill
-            key={key}
-            viewKey={key}
-            active={statusView === key}
-            onClick={() => {
-              setStatusView(key);
-              setRevenueStatusFilter(null);
-            }}
-          />
-        ))}
-      </div>
+      {/* Status filter tiles below handle this — pills removed */}
 
       {loading ? (
         <p className="text-sm text-gray-400">Loading...</p>
