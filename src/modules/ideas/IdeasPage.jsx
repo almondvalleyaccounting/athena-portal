@@ -44,7 +44,7 @@ export default function IdeasPage() {
       const { error } = await supabase.from('ideas').insert({
         text: newIdea.trim(),
         submitted_by: profile?.id,
-        submitted_by_name: profile?.full_name || 'Unknown',
+        submitted_by_name: profile?.full_name || profile?.name || profile?.email || 'Unknown',
         votes: 0,
       });
 
