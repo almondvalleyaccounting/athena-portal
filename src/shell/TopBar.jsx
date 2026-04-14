@@ -104,8 +104,8 @@ export default function TopBar() {
       {/* ── Center: Quick Search ── */}
       <QuickSearch />
 
-      {/* ── Right: Bell + Avatar + AVA logo ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+      {/* ── Right: Bell + Avatar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, marginLeft: 'auto' }}>
         <ActivityBell />
 
         {/* User avatar with dropdown */}
@@ -163,11 +163,6 @@ export default function TopBar() {
           )}
         </div>
 
-        {/* AVA logo */}
-        <img
-          src="/ava-logo.jpg" alt="AVA"
-          style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0 }}
-        />
       </div>
     </header>
   );

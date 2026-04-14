@@ -61,7 +61,10 @@ export default function TimesheetView() {
   useEffect(() => {
     (async () => {
       try {
-        const [staff, ents] = await Promise.all([fetchStaffList(), fetchEntities()]);
+        const [staff, ents] = await Promise.all([
+          fetchStaffList().catch(() => []),
+          fetchEntities().catch(() => []),
+        ]);
         setStaffList(staff);
         setEntityList(ents);
         // Default to logged-in user
@@ -69,6 +72,7 @@ export default function TimesheetView() {
       } catch (e) {
         console.error('[Timesheets] init error:', e);
       }
+      setLoading(false);
     })();
   }, [profile?.id]);
 

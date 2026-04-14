@@ -54,6 +54,8 @@ export default function IssuesPage() {
   const [formPriority, setFormPriority] = useState('medium');
   const [formCategory, setFormCategory] = useState('Other');
   const [formAssignee, setFormAssignee] = useState('');
+  const [formClient, setFormClient] = useState('');
+  const [entities, setEntities] = useState([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -62,12 +64,14 @@ export default function IssuesPage() {
 
   const loadData = async () => {
     try {
-      const [{ data: iss }, { data: staff }] = await Promise.all([
+      const [{ data: iss }, { data: staff }, { data: ents }] = await Promise.all([
         supabase.from('issues_log').select('*').order('created_at', { ascending: false }),
         supabase.from('staff_profiles').select('id, full_name, name, email').eq('is_active', true).order('full_name'),
+        supabase.from('entities').select('id, name').order('name'),
       ]);
       setIssues(iss || []);
       setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email })));
+      setEntities(ents || []);
     } catch (e) {
       console.error('[Issues] load error:', e);
       try { const { data: staff } = await supabase.from('staff_profiles').select('id, full_name, name, email').eq('is_active', true); setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email }))); } catch {}
@@ -93,6 +97,7 @@ export default function IssuesPage() {
 
   const handleAdd = async () => {
     if (!formTitle.trim()) return;
+    if (formCategory === 'Client' && !formClient) return; // Force client selection
     setSaving(true);
     try {
       const { error } = await supabase.from('issues_log').insert({
@@ -104,9 +109,10 @@ export default function IssuesPage() {
         reported_by: profile?.id,
         reported_by_name: profile?.full_name || profile?.name || 'Unknown',
         assignee_id: formAssignee || null,
+        entity_id: formCategory === 'Client' ? formClient : null,
       });
       if (!error) {
-        setFormTitle(''); setFormDesc(''); setFormPriority('medium'); setFormCategory('Other'); setFormAssignee('');
+        setFormTitle(''); setFormDesc(''); setFormPriority('medium'); setFormCategory('Other'); setFormAssignee(''); setFormClient('');
         setShowAdd(false);
         await loadData();
       }
@@ -193,6 +199,15 @@ export default function IssuesPage() {
                   {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
+              {formCategory === 'Client' && (
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <label style={formLabel}>Client *</label>
+                  <select value={formClient} onChange={(e) => setFormClient(e.target.value)} style={{ ...inputStyle, borderColor: !formClient ? '#f87171' : '#e5e7eb' }}>
+                    <option value="">— Select client —</option>
+                    {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={handleAdd} disabled={!formTitle.trim() || saving} style={{ ...btnPrimary, opacity: (!formTitle.trim() || saving) ? 0.4 : 1 }}>{saving ? 'Saving...' : 'Log Issue'}</button>

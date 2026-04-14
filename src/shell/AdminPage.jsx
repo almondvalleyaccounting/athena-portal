@@ -21,10 +21,9 @@ const PERMISSION_COLS = [
   { key: 'can_manage_portal', label: 'Portal admin' },
 ];
 
-const SELECT_COLS = [
-  'id', 'name', 'email', 'is_active', 'colour',
-  ...PERMISSION_COLS.map((p) => p.key),
-].join(', ');
+// Use select('*') to avoid failing on missing columns — the admin page
+// renders whatever columns exist and toggles create them on first use
+const SELECT_COLS = '*';
 
 const COLOUR_SWATCHES = [
   '#0e7fe0', '#2563eb', '#3b82f6', '#60a5fa', '#38bdf8',
