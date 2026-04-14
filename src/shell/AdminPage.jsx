@@ -19,9 +19,19 @@ const PERMISSION_COLS = [
 ];
 
 const SELECT_COLS = [
-  'id', 'name', 'email', 'is_active',
+  'id', 'name', 'email', 'is_active', 'colour',
   ...PERMISSION_COLS.map((p) => p.key),
 ].join(', ');
+
+const COLOUR_SWATCHES = [
+  '#0e7fe0', '#2563eb', '#3b82f6', '#60a5fa', '#38bdf8',
+  '#059669', '#10b981', '#15803d', '#65a30d',
+  '#d97706', '#f59e0b', '#eab308', '#ca8a04',
+  '#dc2626', '#ef4444', '#db2777',
+  '#7c3aed', '#8b5cf6', '#4f46e5',
+  '#0891b2', '#0d9488',
+  '#0f172a', '#475569', '#64748b',
+];
 
 export default function AdminPage() {
   const [users, setUsers] = useState([]);
@@ -62,6 +72,21 @@ export default function AdminPage() {
     if (!error) {
       setUsers((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, [key]: !currentValue } : u))
+      );
+    }
+    setSaving(null);
+  };
+
+  const setUserColour = async (userId, colour) => {
+    setSaving(`${userId}:colour`);
+    const { error } = await supabase
+      .from('staff_profiles')
+      .update({ colour: colour || null })
+      .eq('id', userId);
+
+    if (!error) {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, colour } : u))
       );
     }
     setSaving(null);
@@ -338,6 +363,18 @@ export default function AdminPage() {
                 >
                   User
                 </th>
+                <th
+                  style={{
+                    textAlign: 'center',
+                    padding: '10px 12px',
+                    fontWeight: 600,
+                    color: '#0f172a',
+                    borderBottom: '2px solid #e5e7eb',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Colour
+                </th>
                 {PERMISSION_COLS.map((col) => (
                   <th
                     key={col.key}
@@ -385,6 +422,39 @@ export default function AdminPage() {
                     </div>
                     <div style={{ fontSize: '11px', color: '#94a3b8' }}>
                       {user.email}
+                    </div>
+                  </td>
+                  <td
+                    style={{
+                      textAlign: 'center',
+                      padding: '6px 8px',
+                      borderBottom: '1px solid #f1f5f9',
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 140 }}>
+                      {COLOUR_SWATCHES.map((c) => (
+                        <div
+                          key={c}
+                          onClick={() => setUserColour(user.id, c)}
+                          style={{
+                            width: 14, height: 14, borderRadius: 3, background: c, cursor: 'pointer',
+                            border: user.colour === c ? '2px solid #0f172a' : '1px solid #e5e7eb',
+                            transition: 'border-color 0.1s',
+                          }}
+                        />
+                      ))}
+                      {user.colour && (
+                        <div
+                          onClick={() => setUserColour(user.id, null)}
+                          style={{
+                            fontSize: 9, color: '#94a3b8', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', padding: '0 2px',
+                          }}
+                          title="Reset to default"
+                        >
+                          ✕
+                        </div>
+                      )}
                     </div>
                   </td>
                   {PERMISSION_COLS.map((col) => {
