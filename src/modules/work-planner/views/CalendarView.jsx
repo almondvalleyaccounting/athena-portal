@@ -299,13 +299,14 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                   {evs.slice(0, 2).map((t) => (
                     <div
                       key={t.id}
-                      onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
+                      onClick={(e) => { if (!draggingId) { e.stopPropagation(); onAction(e, t); } }}
                       style={{
                         padding: '2px 4px', marginBottom: 1, borderRadius: 3,
                         fontSize: 10, fontWeight: 500, color: '#fff',
                         background: tileColour(t, colourMode),
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2,
+                        pointerEvents: draggingId ? 'none' : 'auto',
                       }}
                     >
                       <StatusIcon status={t.status} dark size={8} />
@@ -426,10 +427,10 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                         return (
                           <div
                             key={t.id}
-                            draggable
+                            draggable={!draggingId}
                             onDragStart={(e) => { e.stopPropagation(); startDrag(tileId, t._instance ? 'instance' : 'sched'); }}
                             onDragEnd={() => clearDrag()}
-                            onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
+                            onClick={(e) => { if (!draggingId) { e.stopPropagation(); onAction(e, t); } }}
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
                               padding: '1px 4px', borderRadius: 3,
@@ -437,13 +438,14 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                               background: tileColour(t, colourMode),
                               height: `${span * 18 - 1}px`,
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-                              zIndex: isHl ? 5 : 1,
-                              boxShadow: isHl
+                              zIndex: isDragging ? 0 : isHl ? 5 : 1,
+                              boxShadow: isHl && !draggingId
                                 ? '0 0 0 2px #0e7fe0'
                                 : '0 1px 2px rgba(0,0,0,0.04)',
                               display: 'flex', alignItems: 'center', gap: 2,
-                              cursor: 'grab',
+                              cursor: draggingId ? 'default' : 'grab',
                               opacity: isDragging ? 0 : 1,
+                              pointerEvents: draggingId ? 'none' : 'auto',
                               transition: 'opacity 0.1s',
                             }}
                           >
@@ -481,10 +483,10 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                         return (
                           <div
                             key={t.id}
-                            draggable
+                            draggable={!draggingId}
                             onDragStart={(e) => { e.stopPropagation(); startDrag(t.id, 'quick'); }}
                             onDragEnd={() => clearDrag()}
-                            onClick={(e) => { e.stopPropagation(); onAction(e, { ...t, _isQuick: true }); }}
+                            onClick={(e) => { if (!draggingId) { e.stopPropagation(); onAction(e, { ...t, _isQuick: true }); } }}
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
                               padding: '1px 4px', borderRadius: 3,
@@ -493,10 +495,12 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                               height: `${qSpan * 18 - 1}px`,
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                               border: '1px dashed rgba(255,255,255,0.5)',
-                              cursor: 'grab', zIndex: isHl ? 5 : 1,
-                              boxShadow: isHl ? '0 0 0 2px #0e7fe0' : 'none',
+                              cursor: draggingId ? 'default' : 'grab',
+                              zIndex: isDragging ? 0 : isHl ? 5 : 1,
+                              boxShadow: isHl && !draggingId ? '0 0 0 2px #0e7fe0' : 'none',
                               display: 'flex', alignItems: 'center', gap: 2,
                               opacity: isDragging ? 0 : 1,
+                              pointerEvents: draggingId ? 'none' : 'auto',
                               transition: 'opacity 0.1s',
                             }}
                           >
