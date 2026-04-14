@@ -147,7 +147,8 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
   const handleDragEnd = useCallback((event) => {
     setActiveTask(null);
     const { active, over } = event;
-    if (!over) return; // dropped outside any target
+    console.log('[DnD] dragEnd', { activeId: active?.id, activeType: active?.data?.current?.taskType, overId: over?.id, overNull: over === null });
+    if (!over) { console.log('[DnD] DROPPED OUTSIDE — no over target detected'); return; }
 
     const taskId = active.id;
     const taskType = active.data.current?.taskType;
@@ -184,11 +185,13 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
         m = TIME_SLOTS[slotIdx].m;
       }
 
-      if (!date) return;
+      console.log('[DnD] cell drop parsed', { dropId, dayIdx: parts[1], slotIdx: parts[2], date: date?.toISOString(), h, m });
+      if (!date) { console.log('[DnD] ERROR: date is undefined for dayIdx', parts[1]); return; }
 
       if (taskType === 'quick') {
         const dt = new Date(date);
         dt.setHours(h, m, 0, 0);
+        console.log('[DnD] updating quick task', taskId, 'to', dt.toISOString());
         updateQuickTask(taskId, { planned_date: dt.toISOString() });
       } else if (taskType === 'instance') {
         const idParts = taskId.split('_');
