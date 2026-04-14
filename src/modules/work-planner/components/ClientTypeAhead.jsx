@@ -28,12 +28,12 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
 
   const inputStyle = isSmall
     ? {
-        padding: '2px 6px', fontSize: 10, fontFamily: "'Outfit', sans-serif",
-        border: `1px solid ${hasValue ? '#0e7fe0' : '#e5e7eb'}`, borderRadius: 5,
+        padding: '3px 8px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+        border: `1px solid ${hasValue ? '#0e7fe0' : '#e5e7eb'}`, borderRadius: 6,
         background: hasValue ? '#eff6ff' : '#fff',
         color: hasValue ? '#0e7fe0' : '#1e293b',
         fontWeight: hasValue ? 600 : 400,
-        outline: 'none', width: open ? 140 : 100, transition: 'all 0.15s',
+        outline: 'none', width: 130, transition: 'border-color 0.15s, background 0.15s',
       }
     : {
         padding: '7px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif",

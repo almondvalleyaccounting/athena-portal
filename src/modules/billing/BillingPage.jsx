@@ -27,6 +27,9 @@ export default function BillingPage() {
   const [formService, setFormService] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formNet, setFormNet] = useState('');
+  const [formVat, setFormVat] = useState('');
+  const [formGross, setFormGross] = useState('');
+  const [vatManual, setVatManual] = useState(false); // true if user overrode VAT
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -67,8 +70,8 @@ export default function BillingPage() {
     if (!formClient || !formService || !formNet) return;
     setSaving(true);
     const net = parseFloat(formNet) || 0;
-    const vat = Math.round(net * VAT_RATE * 100) / 100;
-    const gross = Math.round((net + vat) * 100) / 100;
+    const vat = parseFloat(formVat) || Math.round(net * VAT_RATE * 100) / 100;
+    const gross = parseFloat(formGross) || Math.round((net + vat) * 100) / 100;
 
     try {
       const { error } = await supabase.from('billing_items').insert({
@@ -83,7 +86,7 @@ export default function BillingPage() {
       });
       if (error) { console.error('[Billing] insert error:', error); }
       else {
-        setFormClient(''); setFormService(''); setFormDesc(''); setFormNet('');
+        setFormClient(''); setFormService(''); setFormDesc(''); setFormNet(''); setFormVat(''); setFormGross(''); setVatManual(false);
         setShowAdd(false);
         await loadData();
       }
@@ -162,22 +165,48 @@ export default function BillingPage() {
               <label style={formLabel}>Description</label>
               <input value={formDesc} onChange={(e) => setFormDesc(e.target.value)} placeholder="Optional description..." style={inputStyle} />
             </div>
-            <div style={{ width: 120 }}>
+            <div style={{ width: 110 }}>
               <label style={formLabel}>Net (£) *</label>
-              <input type="number" step="0.01" value={formNet} onChange={(e) => setFormNet(e.target.value)} placeholder="0.00" style={inputStyle} />
+              <input
+                type="number" step="0.01" value={formNet} placeholder="0.00" style={inputStyle}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setFormNet(v);
+                  if (!vatManual) {
+                    const n = parseFloat(v) || 0;
+                    const vt = Math.round(n * VAT_RATE * 100) / 100;
+                    setFormVat(vt ? vt.toFixed(2) : '');
+                    setFormGross(vt ? (n + vt).toFixed(2) : '');
+                  } else {
+                    const n = parseFloat(v) || 0;
+                    const vt = parseFloat(formVat) || 0;
+                    setFormGross((n + vt).toFixed(2));
+                  }
+                }}
+              />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {formNet && (
-                <div style={{ fontSize: 10, color: '#64748b', textAlign: 'right' }}>
-                  VAT: {fmt(parseFloat(formNet) * VAT_RATE)} · Gross: {fmt(parseFloat(formNet) * (1 + VAT_RATE))}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={handleAdd} disabled={!formClient || !formService || !formNet || saving} style={{ ...btnStyle, background: '#0f172a', color: '#fff', border: 'none', opacity: (!formClient || !formService || !formNet || saving) ? 0.4 : 1 }}>
-                  {saving ? 'Saving...' : 'Add'}
-                </button>
-                <button onClick={() => setShowAdd(false)} style={btnStyle}>Cancel</button>
-              </div>
+            <div style={{ width: 100 }}>
+              <label style={formLabel}>VAT (£)</label>
+              <input
+                type="number" step="0.01" value={formVat} placeholder="0.00" style={inputStyle}
+                onChange={(e) => {
+                  setFormVat(e.target.value);
+                  setVatManual(true);
+                  const n = parseFloat(formNet) || 0;
+                  const v = parseFloat(e.target.value) || 0;
+                  setFormGross((n + v).toFixed(2));
+                }}
+              />
+            </div>
+            <div style={{ width: 110 }}>
+              <label style={formLabel}>Gross (£)</label>
+              <input type="number" step="0.01" value={formGross} placeholder="0.00" style={{ ...inputStyle, background: '#f8fafc' }} readOnly />
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', paddingBottom: 1 }}>
+              <button onClick={handleAdd} disabled={!formClient || !formService || !formNet || saving} style={{ ...btnStyle, background: '#0f172a', color: '#fff', border: 'none', opacity: (!formClient || !formService || !formNet || saving) ? 0.4 : 1 }}>
+                {saving ? 'Saving...' : 'Add'}
+              </button>
+              <button onClick={() => setShowAdd(false)} style={btnStyle}>Cancel</button>
             </div>
           </div>
         </div>

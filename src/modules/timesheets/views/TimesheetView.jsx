@@ -106,15 +106,18 @@ export default function TimesheetView() {
   // ── Build rows ──
   const rows = useMemo(() => {
     const rowMap = new Map();
-    function getRow(entityId, service) {
+    function getRow(entityId, service, isManual) {
       const key = `${entityId || '_none'}|${service || '_none'}`;
       if (!rowMap.has(key)) {
         rowMap.set(key, {
           key, entityId: entityId || null, service: service || '',
+          isManual: false,
           days: Array(7).fill(null).map(() => ({ completed: 0, manual: 0, scheduled: false })),
         });
       }
-      return rowMap.get(key);
+      const row = rowMap.get(key);
+      if (isManual) row.isManual = true;
+      return row;
     }
 
     completedTasks.forEach((t) => {
@@ -126,7 +129,7 @@ export default function TimesheetView() {
     manualEntries.forEach((e) => {
       const d = new Date(e.work_date + 'T00:00:00');
       const dayIdx = weekDays.findIndex((wd) => sameDay(wd, d));
-      if (dayIdx >= 0) getRow(e.entity_id, e.service).days[dayIdx].manual += e.minutes || 0;
+      if (dayIdx >= 0) getRow(e.entity_id, e.service, true).days[dayIdx].manual += e.minutes || 0;
     });
 
     scheduledTasks.forEach((m) => {
@@ -156,6 +159,24 @@ export default function TimesheetView() {
     return totals;
   }, [rows]);
   const weekTotal = dayTotals.reduce((s, v) => s + v, 0);
+
+  // Edit a manual cell
+  const handleCellEdit = useCallback(async (row, dayIdx, value) => {
+    const mins = parseInt(value, 10) || 0;
+    try {
+      await upsertTimesheetEntry({
+        staffId: selectedStaff,
+        entityId: row.entityId,
+        service: row.service,
+        workDate: formatISO(weekDays[dayIdx]),
+        minutes: mins,
+      });
+      const updated = await fetchTimesheetEntries(selectedStaff, weekStartISO, weekEndISO);
+      setManualEntries(updated);
+    } catch (e) {
+      console.error('[Timesheets] save error:', e);
+    }
+  }, [selectedStaff, weekDays, weekStartISO, weekEndISO]);
 
   // Add new row
   const handleAddRow = useCallback(async () => {
@@ -283,14 +304,33 @@ export default function TimesheetView() {
                   const rowTotal = row.days.reduce((s, d) => s + d.completed + d.manual, 0);
                   return (
                     <tr key={row.key} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={tdStyle}><span style={{ fontWeight: 500, color: '#0f172a' }}>{clientName}</span></td>
+                      <td style={tdStyle}>
+                        <span style={{ fontWeight: 500, color: '#0f172a' }}>{clientName}</span>
+                        {row.isManual && <span style={{ fontSize: 9, color: '#94a3b8', marginLeft: 6 }}>manual</span>}
+                      </td>
                       <td style={tdStyle}><span style={{ color: '#64748b' }}>{row.service || '—'}</span></td>
                       {row.days.map((day, di) => {
                         const total = day.completed + day.manual;
                         const isScheduled = day.scheduled && total === 0;
                         return (
                           <td key={di} style={{ ...tdStyle, textAlign: 'center' }}>
-                            {total > 0 ? (
+                            {row.isManual ? (
+                              <input
+                                type="number"
+                                defaultValue={day.manual || ''}
+                                placeholder={day.completed > 0 ? minutesToDisplay(day.completed) : ''}
+                                onBlur={(e) => {
+                                  const mins = parseInt(e.target.value, 10) || 0;
+                                  if (mins !== day.manual) handleCellEdit(row, di, e.target.value);
+                                }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                style={{
+                                  width: 50, padding: '3px 4px', fontSize: 12, textAlign: 'center',
+                                  border: '1px solid #e5e7eb', borderRadius: 4, outline: 'none',
+                                  fontFamily: "'Outfit', sans-serif",
+                                }}
+                              />
+                            ) : total > 0 ? (
                               <span style={{ fontWeight: 500, color: '#0f172a' }}>{minutesToDisplay(total)}</span>
                             ) : isScheduled ? (
                               <span style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>planned</span>
@@ -323,7 +363,7 @@ export default function TimesheetView() {
           <div style={{ marginTop: 12 }}>
             {!addingRow ? (
               <button onClick={() => setAddingRow(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0', fontFamily: "'Outfit', sans-serif" }}>
-                <Plus size={14} /> Add row
+                <Plus size={14} /> Add manual row
               </button>
             ) : (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

@@ -118,11 +118,15 @@ export async function fetchScheduledForStaff(staffId) {
 export async function fetchStaffList() {
   const { data, error } = await supabase
     .from('staff_profiles')
-    .select('id, full_name, name, email, role')
-    .eq('is_active', true)
-    .order('full_name', { ascending: true });
-  if (error) throw error;
-  return (data || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email }));
+    .select('*')
+    .order('name', { ascending: true });
+  if (error) {
+    console.error('[timesheetQueries] fetchStaffList error:', error.message);
+    return [];
+  }
+  return (data || [])
+    .filter((s) => s.is_active !== false)
+    .map((s) => ({ ...s, name: s.full_name || s.name || s.email || 'Unknown' }));
 }
 
 /* ─── Fetch entities (for row labels) ── */

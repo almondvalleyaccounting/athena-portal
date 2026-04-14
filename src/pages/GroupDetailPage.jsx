@@ -338,6 +338,12 @@ export default function GroupDetailPage() {
               <div className="flex items-center gap-3">
                 <span className="text-sm font-mono text-ocean-600">{fmt(q.monthly_gross)}/mo</span>
                 <StatusBadge status={q.status} />
+                <button
+                  onClick={(ev) => { ev.stopPropagation(); navigate(`/manage/quotes/${q.id}/edit`); }}
+                  className="text-xs text-ocean-600 hover:text-ocean-700 font-medium px-2 py-1 border border-ocean-200 rounded hover:bg-ocean-50 transition-all"
+                >
+                  Edit
+                </button>
               </div>
             </div>
           </div>
