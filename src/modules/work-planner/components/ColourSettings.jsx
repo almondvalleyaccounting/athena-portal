@@ -10,9 +10,20 @@ import { initials } from '../lib/helpers';
 */
 
 const PALETTE = [
-  '#0e7fe0', '#059669', '#d97706', '#dc2626', '#7c3aed',
-  '#db2777', '#0891b2', '#65a30d', '#ea580c', '#4f46e5', '#0d9488',
-  '#0f172a', '#475569', '#78716c', '#0369a1', '#15803d',
+  // Blues
+  '#1e3a5f', '#1e40af', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#38bdf8', '#0ea5e9', '#0284c7', '#0369a1',
+  // Greens
+  '#059669', '#10b981', '#34d399', '#15803d', '#65a30d', '#84cc16', '#0d9488', '#14b8a6',
+  // Yellows & Ambers
+  '#ca8a04', '#eab308', '#facc15', '#fde047', '#d97706', '#f59e0b', '#fbbf24',
+  // Reds & Pinks
+  '#dc2626', '#ef4444', '#f87171', '#db2777', '#ec4899', '#f472b6',
+  // Purples
+  '#7c3aed', '#8b5cf6', '#a78bfa', '#4f46e5', '#6366f1',
+  // Teals & Cyans
+  '#0891b2', '#06b6d4', '#22d3ee',
+  // Neutrals
+  '#0f172a', '#334155', '#475569', '#64748b', '#78716c', '#ea580c',
 ];
 
 const LS_STAFF_KEY = 'athena_wp_staff_colours';
