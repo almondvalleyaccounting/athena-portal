@@ -108,25 +108,57 @@ export default function Sidebar() {
         transition: 'width 0.2s ease',
       }}
     >
-      {/* ── Company logo ── */}
+      {/* ── Company logo + branding ── */}
       <div
         style={{
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          padding: collapsed ? '16px 0 8px' : '16px 16px 8px',
+          padding: collapsed ? '16px 0 8px' : '20px 16px 12px',
+          borderBottom: '1px solid #f1f5f9',
+          cursor: 'pointer',
         }}
+        onClick={() => navigate('/home')}
       >
         <img
           src="/ava-logo.jpg"
-          alt="Almond Valley Accounting"
+          alt="AVA"
           style={{
-            height: collapsed ? '28px' : '36px',
-            borderRadius: '6px',
-            objectFit: 'contain',
-            transition: 'height 0.2s ease',
+            width: collapsed ? '32px' : '80px',
+            height: 'auto',
+            borderRadius: collapsed ? '6px' : '8px',
+            imageRendering: 'auto',
+            transition: 'width 0.2s ease',
+            marginBottom: collapsed ? '0' : '8px',
           }}
         />
+        {!collapsed && (
+          <>
+            <h1
+              style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: '16px',
+                fontWeight: 700,
+                color: '#0f172a',
+                letterSpacing: '0.08em',
+                textAlign: 'center',
+                marginBottom: '2px',
+              }}
+            >
+              ATHENA
+            </h1>
+            <p
+              style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: '11px',
+                color: '#94a3b8',
+                textAlign: 'center',
+              }}
+            >
+              Almond Valley Accounting
+            </p>
+          </>
+        )}
       </div>
 
       {/* ── Home link ── */}
