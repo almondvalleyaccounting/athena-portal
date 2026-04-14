@@ -124,11 +124,14 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
     if (type === 'quick') {
       updateQuickTask(id, { planned_date: null });
     } else if (type === 'instance') {
-
       const parts = id.split('_');
       const dateStr = parts.pop();
       const masterId = parts.join('_');
+      // Delete any override for this instance
       deleteOverride(masterId, dateStr);
+      // Also clear the master's planned fields — required for non-recurring
+      // tasks where the instance comes directly from master.planned_date
+      updateScheduledTask(masterId, { planned_date: null, planned_hour: null, planned_min: null });
     } else if (type === 'sched') {
       updateScheduledTask(id, { planned_date: null, planned_hour: null, planned_min: null });
     }
@@ -445,7 +448,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                               display: 'flex', alignItems: 'center', gap: 2,
                               cursor: 'grab',
                               opacity: isDragging ? 0 : 1,
-                              pointerEvents: (draggingId && !isDragging) ? 'none' : 'auto',
+                              pointerEvents: draggingId ? 'none' : 'auto',
                               transition: 'opacity 0.1s',
                             }}
                           >
@@ -500,7 +503,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                               boxShadow: isHl && !draggingId ? '0 0 0 2px #0e7fe0' : 'none',
                               display: 'flex', alignItems: 'center', gap: 2,
                               opacity: isDragging ? 0 : 1,
-                              pointerEvents: (draggingId && !isDragging) ? 'none' : 'auto',
+                              pointerEvents: draggingId ? 'none' : 'auto',
                               transition: 'opacity 0.1s',
                             }}
                           >
