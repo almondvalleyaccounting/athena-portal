@@ -7,6 +7,7 @@ import {
   GraduationCap,
   Lightbulb,
   Bug,
+  Users,
   ChevronLeft,
   ChevronRight,
   Settings,
@@ -23,6 +24,7 @@ const ICON_MAP = {
   'graduation-cap': GraduationCap,
   lightbulb: Lightbulb,
   bug: Bug,
+  users: Users,
 };
 
 /* ─── Visibility rules ─────────────────────────────────────────── */

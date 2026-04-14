@@ -9,6 +9,8 @@ import BugReportPage from './modules/bugs/BugReportPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import AdminPage from './shell/AdminPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
+import EntitiesPage from './pages/EntitiesPage';
+import ClientDetailPage from './pages/ClientDetailPage';
 import App from './App';
 import './index.css';
 
@@ -46,6 +48,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/bugs" element={<BugReportPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          {/* Clients — all active staff */}
+          <Route path="/clients" element={<EntitiesPage />} />
+          <Route path="/clients/:id" element={<ClientDetailPage />} />
           {/* Work Planner — requires work_planner */}
           <Route path="/planner/*" element={<WorkPlannerModule />} />
         </Route>

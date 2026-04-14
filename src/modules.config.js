@@ -9,6 +9,15 @@ export const MODULES = [
     group: 'billing',
   },
   {
+    id: 'clients',
+    label: 'Clients',
+    route: '/clients',
+    icon: 'users',
+    permissions: [],
+    status: 'live',
+    group: 'billing',
+  },
+  {
     id: 'reports',
     label: 'Reports',
     route: '/reports',
