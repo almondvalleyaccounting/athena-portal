@@ -21,6 +21,8 @@ import MasterModal from './components/MasterModal';
 import InstanceModal from './components/InstanceModal';
 import QuickTaskModal from './components/QuickTaskModal';
 
+import NewClientModal from '../../components/NewClientModal';
+
 import QuickTasksView from './views/QuickTasksView';
 import ScheduledView from './views/ScheduledView';
 import CalendarView from './views/CalendarView';
@@ -70,6 +72,7 @@ export default function WorkPlannerModule() {
   const [quickModal, setQuickModal] = useState(null); // null | quickTaskObject
   const [popover, setPopover] = useState(null);
   const [highlightId, setHighlightId] = useState(null);
+  const [newClientModal, setNewClientModal] = useState({ open: false, initialName: '', resolve: null });
 
   // ── Determine active tab from URL ──
   const activeTab = useMemo(() => {
@@ -194,11 +197,28 @@ export default function WorkPlannerModule() {
 
   // ── Actions ──
 
-  const addEntity = useCallback(async (name) => {
-    const data = await insertEntity(name);
-    setEntityList((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
-    return data;
+  // Opens the NewClientModal and returns a promise that resolves with the new entity
+  const addEntity = useCallback((name) => {
+    return new Promise((resolve) => {
+      setNewClientModal({ open: true, initialName: name, resolve });
+    });
   }, []);
+
+  const handleNewClientSave = useCallback(async (fields) => {
+    // Insert with the fields from the modal
+    // For now we send name + type; email and status will be enabled once schema is confirmed
+    const data = await insertEntity(fields.name);
+    setEntityList((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+    // Resolve the promise so the ClientTypeAhead selects the new entity
+    if (newClientModal.resolve) newClientModal.resolve(data);
+    return data;
+  }, [newClientModal.resolve]);
+
+  const handleNewClientClose = useCallback(() => {
+    // Resolve with null so the ClientTypeAhead doesn't hang
+    if (newClientModal.resolve) newClientModal.resolve(null);
+    setNewClientModal({ open: false, initialName: '', resolve: null });
+  }, [newClientModal.resolve]);
 
   const addQuickTask = useCallback(async (task) => {
     const data = await insertQuickTask(task);
@@ -672,6 +692,14 @@ export default function WorkPlannerModule() {
           }}
         />
       )}
+
+      {/* New Client Modal */}
+      <NewClientModal
+        open={newClientModal.open}
+        initialName={newClientModal.initialName}
+        onSave={handleNewClientSave}
+        onClose={handleNewClientClose}
+      />
     </WorkPlannerContext.Provider>
   );
 }

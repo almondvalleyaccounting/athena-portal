@@ -102,11 +102,15 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
           {query.trim() && !exactMatch && (
             <div
               onClick={async () => {
-                const newEntity = await onAddNew(query.trim());
-                if (newEntity) {
-                  onChange(newEntity.id);
-                  setQuery('');
-                  setOpen(false);
+                try {
+                  const newEntity = await onAddNew(query.trim());
+                  if (newEntity) {
+                    onChange(newEntity.id);
+                    setQuery('');
+                    setOpen(false);
+                  }
+                } catch {
+                  // Modal handles its own error display
                 }
               }}
               style={{
