@@ -36,6 +36,15 @@ export const MODULES = [
     group: 'team',
   },
   {
+    id: 'timesheets',
+    label: 'Timesheets',
+    route: '/timesheets',
+    icon: 'table',
+    permissions: ['can_view_timesheets'],
+    status: 'live',
+    group: 'team',
+  },
+  {
     id: 'pd-tracker',
     label: 'PD tracker',
     route: '/team/pd',

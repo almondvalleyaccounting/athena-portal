@@ -8,6 +8,7 @@ import {
   Lightbulb,
   Bug,
   Users,
+  Table,
   ChevronLeft,
   ChevronRight,
   Settings,
@@ -25,6 +26,7 @@ const ICON_MAP = {
   lightbulb: Lightbulb,
   bug: Bug,
   users: Users,
+  table: Table,
 };
 
 /* ─── Visibility rules ─────────────────────────────────────────── */
