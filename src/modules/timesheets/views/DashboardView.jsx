@@ -46,8 +46,9 @@ function periodDates(period) {
 
 export default function DashboardView() {
   const [period, setPeriod] = useState('week');
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
+  // Date inputs always shown — dropdown sets defaults, but user can override
+  const [customFrom, setCustomFrom] = useState(() => formatISO(periodDates('week').from));
+  const [customTo, setCustomTo] = useState(() => formatISO(addDays(periodDates('week').to, -1)));
   const [staffList, setStaffList] = useState([]);
   const [entityList, setEntityList] = useState([]);
   const [completed, setCompleted] = useState([]);
@@ -57,10 +58,11 @@ export default function DashboardView() {
   const [expandedSection, setExpandedSection] = useState(null); // 'staff:id', 'service:name', 'client:name'
 
   const dates = useMemo(() => {
-    if (period === 'custom' && customFrom && customTo)
-      return { from: new Date(customFrom+'T00:00:00'), to: addDays(new Date(customTo+'T00:00:00'), 1) };
+    if (customFrom && customTo) {
+      return { from: new Date(customFrom + 'T00:00:00'), to: addDays(new Date(customTo + 'T00:00:00'), 1) };
+    }
     return periodDates(period);
-  }, [period, customFrom, customTo]);
+  }, [customFrom, customTo, period]);
 
   const fromISO = formatISO(dates.from);
   const toISO = formatISO(dates.to);
@@ -175,15 +177,22 @@ export default function DashboardView() {
         <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 500, color: '#0f172a', margin: 0 }}>Timesheets Dashboard</h2>
         <div style={{ flex: 1 }} />
         <span style={labelStyle}>Period</span>
-        <select value={period} onChange={(e) => { setPeriod(e.target.value); setExpandedSection(null); }} style={{ ...selectStyle, fontWeight: 500 }}>
+        <select value={period} onChange={(e) => {
+          const p = e.target.value;
+          setPeriod(p);
+          setExpandedSection(null);
+          // Pre-populate the date inputs from the selected period
+          if (p !== 'custom') {
+            const d = periodDates(p);
+            setCustomFrom(formatISO(d.from));
+            setCustomTo(formatISO(addDays(d.to, -1)));
+          }
+        }} style={{ ...selectStyle, fontWeight: 500 }}>
           {PERIODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
         </select>
-        {period === 'custom' && (<>
-          <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} style={{ ...selectStyle, width: 130 }} />
-          <span style={{ color: '#94a3b8' }}>to</span>
-          <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} style={{ ...selectStyle, width: 130 }} />
-        </>)}
-        <span style={{ fontSize: 12, color: '#64748b' }}>{rangeLabel}</span>
+        <input type="date" value={customFrom} onChange={(e) => { setCustomFrom(e.target.value); setPeriod('custom'); }} style={{ ...selectStyle, width: 135 }} />
+        <span style={{ color: '#94a3b8', fontSize: 12 }}>to</span>
+        <input type="date" value={customTo} onChange={(e) => { setCustomTo(e.target.value); setPeriod('custom'); }} style={{ ...selectStyle, width: 135 }} />
         <button onClick={handleExport} style={{ ...navBtn, gap: 5 }}><Download size={13} /> Export</button>
       </div>
 
