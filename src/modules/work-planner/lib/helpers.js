@@ -22,6 +22,28 @@ export function tileColour(task, mode, customStaff, customStatus) {
   return teamColour(task.assignee_id);
 }
 
+// ── Working day helpers ──
+const DAY_MAP = { 0: 'sun', 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat' };
+
+export function isWorkingDay(date, workingDays) {
+  const days = (workingDays || 'mon,tue,wed,thu,fri').split(',').map((d) => d.trim());
+  return days.includes(DAY_MAP[date.getDay()]);
+}
+
+export function countWorkingDaysSince(fromDate, toDate, workingDays) {
+  let count = 0;
+  const d = new Date(fromDate);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 1); // start counting from the day AFTER planned date
+  const end = new Date(toDate);
+  end.setHours(0, 0, 0, 0);
+  while (d <= end) {
+    if (isWorkingDay(d, workingDays)) count++;
+    d.setDate(d.getDate() + 1);
+  }
+  return count;
+}
+
 // ── Initials from full name ──
 export function initials(name) {
   if (!name) return '?';

@@ -134,11 +134,12 @@ export default function QuickTasksView({ compact, onAction }) {
                 gap: compact ? 5 : 8,
                 padding: compact ? '3px 10px' : '8px 11px',
                 background: isHl ? '#eff6ff' : '#fff',
-                border: `1px solid ${isHl ? '#0e7fe0' : '#e5e7eb'}`,
+                border: task._overdue ? '2px solid #f59e0b' : `1px solid ${isHl ? '#0e7fe0' : '#e5e7eb'}`,
+                borderLeft: task._overdue ? '3px solid #f59e0b' : undefined,
                 borderRadius: 8,
                 transition: 'all 0.12s',
                 opacity: isDrag ? 0.25 : 1,
-                boxShadow: isHl ? '0 0 0 2px #dbeafe' : 'none',
+                boxShadow: task._overdue ? '0 0 0 1px #f59e0b' : isHl ? '0 0 0 2px #dbeafe' : 'none',
               }}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => { e.preventDefault(); handleDrop(task.id); }}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../shell/AppShell';
 import {
@@ -12,7 +12,7 @@ import {
   subscribeToWorkPlanner,
 } from './lib/supabaseQueries';
 import { instanceKey, generateInstances } from './lib/instanceEngine';
-import { formatISO, today, addDays, addMonths, startOfWeek } from './lib/helpers';
+import { formatISO, today, addDays, addMonths, startOfWeek, countWorkingDaysSince } from './lib/helpers';
 import { defaultDuration, CALENDAR_VIEWS } from './lib/constants';
 
 import FilterBar from './components/FilterBar';
@@ -152,6 +152,60 @@ export default function WorkPlannerModule() {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  // ── Process overdue tasks on mount ──
+  // Runs once after data loads. Moves 2+ working-day-overdue tasks to unplanned.
+  const overdueProcessed = useRef(false);
+  useEffect(() => {
+    if (loading || overdueProcessed.current) return;
+    overdueProcessed.current = true;
+    const now = today();
+
+    // Process quick tasks
+    quickTasks.forEach(async (t) => {
+      if (!t.planned_date) return;
+      const planned = new Date(t.planned_date);
+      planned.setHours(0, 0, 0, 0);
+      if (planned >= now) return; // not past yet
+      const assignee = staffList.find((s) => s.id === t.assignee_id);
+      const wd = assignee?.working_days || 'mon,tue,wed,thu,fri';
+      const overdueDays = countWorkingDaysSince(planned, now, wd);
+      if (overdueDays >= 2) {
+        try {
+          await updateQuickTaskDb(t.id, { planned_date: null });
+          setQuickTasks((prev) => prev.map((qt) =>
+            qt.id === t.id ? { ...qt, planned_date: null, _overdue: 'late' } : qt
+          ));
+        } catch { /* silent */ }
+      } else if (overdueDays === 1) {
+        setQuickTasks((prev) => prev.map((qt) =>
+          qt.id === t.id ? { ...qt, _overdue: 'warning' } : qt
+        ));
+      }
+    });
+
+    // Process non-recurring scheduled tasks
+    scheduledTasks.forEach(async (m) => {
+      if (!m.planned_date || m.recurring) return;
+      const planned = new Date(m.planned_date);
+      planned.setHours(0, 0, 0, 0);
+      if (planned >= now) return;
+      // Check if completed
+      const key = `${m.id}_${formatISO(planned)}`;
+      if (completedTasks.some((c) => c.source_id === m.id && c.occurrence_date === formatISO(planned))) return;
+      const assignee = staffList.find((s) => s.id === m.assignee_id);
+      const wd = assignee?.working_days || 'mon,tue,wed,thu,fri';
+      const overdueDays = countWorkingDaysSince(planned, now, wd);
+      if (overdueDays >= 2) {
+        try {
+          await updateScheduledTaskDb(m.id, { planned_date: null, planned_hour: null, planned_min: null });
+          setScheduledTasks((prev) => prev.map((st) =>
+            st.id === m.id ? { ...st, planned_date: null, planned_hour: null, planned_min: null, _overdue: 'late' } : st
+          ));
+        } catch { /* silent */ }
+      }
+    });
+  }, [loading]);
 
   // ── Real-time subscriptions ──
   useEffect(() => {

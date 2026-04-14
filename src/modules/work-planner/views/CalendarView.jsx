@@ -4,7 +4,7 @@ import { TIME_SLOTS, CALENDAR_VIEWS } from '../lib/constants';
 import {
   sameDay, addDays, addMonths, startOfWeek, today,
   formatDateFull, formatDateShort, formatISO, formatTime,
-  teamColour, tileColour, durFmt, clientName,
+  teamColour, tileColour, durFmt, clientName, countWorkingDaysSince,
 } from '../lib/helpers';
 import { generateInstances } from '../lib/instanceEngine';
 import StatusIcon from '../components/StatusIcon';
@@ -243,11 +243,26 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
     const bg = tileColour(t, colourMode, staffColours, statusColours);
     const isHl = highlightId === t.id || highlightId === t._key;
 
+    // Overdue detection
+    let overdue = t._overdue || null;
+    if (!overdue && t.planned_date) {
+      const planned = new Date(t.planned_date);
+      planned.setHours(0, 0, 0, 0);
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      if (planned < now) {
+        const wd = staffMap[t.assignee_id]?.working_days || 'mon,tue,wed,thu,fri';
+        const days = countWorkingDaysSince(planned, now, wd);
+        if (days >= 2) overdue = 'late';
+        else if (days >= 1) overdue = 'warning';
+      }
+    }
+    const overdueBorder = overdue ? '2px solid #f59e0b' : undefined;
+
     if (isSidebar && isQuick) {
       return (
         <div style={{
           padding: '4px 8px', background: '#f1f5f9',
-          border: '1px solid #e5e7eb', borderLeft: '3px solid #94a3b8',
+          border: overdueBorder || '1px solid #e5e7eb', borderLeft: overdue ? '3px solid #f59e0b' : '3px solid #94a3b8',
           borderRadius: 5, fontSize: 12,
           boxShadow: isHl ? '0 0 0 2px #dbeafe' : 'none',
         }}>
@@ -263,10 +278,10 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
       return (
         <div style={{
           padding: '4px 8px', background: '#fff',
-          border: '1px solid #e5e7eb',
-          borderLeft: `3px solid ${t.assignee_id ? (staffColours?.[t.assignee_id] || teamColour(t.assignee_id)) : '#0e7fe0'}`,
+          border: overdueBorder || '1px solid #e5e7eb',
+          borderLeft: overdue ? '3px solid #f59e0b' : `3px solid ${t.assignee_id ? (staffColours?.[t.assignee_id] || teamColour(t.assignee_id)) : '#0e7fe0'}`,
           borderRadius: 5, fontSize: 12,
-          boxShadow: isHl ? '0 0 0 2px #dbeafe' : 'none',
+          boxShadow: isHl ? '0 0 0 2px #dbeafe' : overdue ? '0 0 0 1px #f59e0b' : 'none',
         }}>
           <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 3 }}>
             <StatusIcon status={t.status} size={9} />
@@ -288,9 +303,9 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
         fontSize: 11, fontWeight: 500, color: '#fff', background: bg,
         overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
         zIndex: isHl ? 5 : 1,
-        boxShadow: isHl ? '0 0 0 2px #0e7fe0' : '0 1px 2px rgba(0,0,0,0.04)',
+        boxShadow: overdue ? '0 0 0 2px #f59e0b' : isHl ? '0 0 0 2px #0e7fe0' : '0 1px 2px rgba(0,0,0,0.04)',
         display: 'flex', alignItems: 'center', gap: 2,
-        border: isQuick ? '1px dashed rgba(255,255,255,0.5)' : 'none',
+        border: overdue ? '2px solid #f59e0b' : isQuick ? '1px dashed rgba(255,255,255,0.5)' : 'none',
       }}>
         {!isQuick && <StatusIcon status={t.status} dark size={9} />}
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>

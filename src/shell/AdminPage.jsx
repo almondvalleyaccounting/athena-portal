@@ -377,6 +377,18 @@ export default function AdminPage() {
                 >
                   Colour
                 </th>
+                <th
+                  style={{
+                    textAlign: 'center',
+                    padding: '10px 12px',
+                    fontWeight: 600,
+                    color: '#0f172a',
+                    borderBottom: '2px solid #e5e7eb',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Working Days
+                </th>
                 {PERMISSION_COLS.map((col) => (
                   <th
                     key={col.key}
@@ -436,6 +448,17 @@ export default function AdminPage() {
                     <ColourPicker
                       colour={user.colour}
                       onChange={(c) => setUserColour(user.id, c)}
+                    />
+                  </td>
+                  <td style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #f1f5f9' }}>
+                    <WorkingDaysEditor
+                      value={user.working_days || 'mon,tue,wed,thu,fri'}
+                      onChange={async (days) => {
+                        setSaving(`${user.id}:working_days`);
+                        await supabase.from('staff_profiles').update({ working_days: days }).eq('id', user.id);
+                        setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, working_days: days } : u));
+                        setSaving(null);
+                      }}
                     />
                   </td>
                   {PERMISSION_COLS.map((col) => {
@@ -585,6 +608,47 @@ function ColourPicker({ colour, onChange }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ─── Working days editor: 7 day toggle buttons ── */
+const ALL_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const DAY_LABELS = { mon: 'M', tue: 'T', wed: 'W', thu: 'T', fri: 'F', sat: 'S', sun: 'S' };
+const DAY_FULL = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+
+function WorkingDaysEditor({ value, onChange }) {
+  const active = new Set((value || 'mon,tue,wed,thu,fri').split(',').map((d) => d.trim()));
+
+  const toggle = (day) => {
+    const next = new Set(active);
+    if (next.has(day)) next.delete(day);
+    else next.add(day);
+    onChange(ALL_DAYS.filter((d) => next.has(d)).join(','));
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+      {ALL_DAYS.map((day) => {
+        const isActive = active.has(day);
+        return (
+          <button
+            key={day}
+            onClick={() => toggle(day)}
+            title={DAY_FULL[day]}
+            style={{
+              width: 22, height: 22, borderRadius: 4, border: 'none',
+              fontSize: 10, fontWeight: 600, cursor: 'pointer',
+              fontFamily: "'Outfit', sans-serif",
+              background: isActive ? '#0f172a' : '#f1f5f9',
+              color: isActive ? '#fff' : '#94a3b8',
+              transition: 'all 0.12s',
+            }}
+          >
+            {DAY_LABELS[day]}
+          </button>
+        );
+      })}
     </div>
   );
 }
