@@ -12,18 +12,24 @@ import { useWorkPlanner } from '../WorkPlannerModule';
 
 /* ─── Small sub-components for dnd-kit hooks ──────────────── */
 
-function DraggableTile({ id, taskType, children, style, onClick }) {
+function DraggableTile({ id, taskType, children, style, onClick, anyDragActive }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id,
     data: { taskType },
   });
+  // During any active drag, non-active tiles get pointerEvents:none so the
+  // pointer passes through to the DroppableCell underneath. @dnd-kit's
+  // PointerSensor has already captured the active drag — it doesn't need
+  // pointer events on other tiles. This prevents tall absolutely-positioned
+  // tiles from blocking drop detection on cells they overflow into.
+  const pe = anyDragActive && !isDragging ? 'none' : 'auto';
   return (
     <div
       ref={setNodeRef}
       {...listeners}
       {...attributes}
       onClick={onClick}
-      style={{ ...style, opacity: isDragging ? 0.2 : 1, cursor: 'grab' }}
+      style={{ ...style, opacity: isDragging ? 0.2 : 1, cursor: 'grab', pointerEvents: pe }}
     >
       {children}
     </div>
@@ -320,6 +326,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
             key={t.id}
             id={t.id}
             taskType="sched"
+            anyDragActive={!!activeTask}
             onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
             style={{ marginBottom: 3 }}
           >
@@ -346,6 +353,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                 key={t.id}
                 id={t.id}
                 taskType="quick"
+                anyDragActive={!!activeTask}
                 onClick={(e) => { e.stopPropagation(); onAction(e, { ...t, _isQuick: true }); }}
                 style={{ marginBottom: 3 }}
               >
@@ -530,6 +538,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                               key={t.id}
                               id={tileId}
                               taskType={t._instance ? 'instance' : 'sched'}
+                              anyDragActive={!!activeTask}
                               onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
                               style={{
                                 position: 'absolute', left: 1, right: 1, top: 0,
@@ -561,6 +570,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                               key={t.id}
                               id={t.id}
                               taskType="quick"
+                              anyDragActive={!!activeTask}
                               onClick={(e) => { e.stopPropagation(); onAction(e, { ...t, _isQuick: true }); }}
                               style={{
                                 position: 'absolute', left: 1, right: 1, top: 0,
