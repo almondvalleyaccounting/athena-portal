@@ -6,6 +6,7 @@ import {
   Clock,
   GraduationCap,
   Lightbulb,
+  Bug,
   ChevronLeft,
   ChevronRight,
   Settings,
@@ -21,6 +22,7 @@ const ICON_MAP = {
   clock: Clock,
   'graduation-cap': GraduationCap,
   lightbulb: Lightbulb,
+  bug: Bug,
 };
 
 /* ─── Visibility rules ─────────────────────────────────────────── */

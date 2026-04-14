@@ -36,6 +36,15 @@ export const MODULES = [
     group: 'team',
   },
   {
+    id: 'bug-reports',
+    label: 'Bug Reports',
+    route: '/bugs',
+    icon: 'bug',
+    permissions: [],
+    status: 'live',
+    group: 'meta',
+  },
+  {
     id: 'ideas',
     label: 'Ideas',
     route: '/ideas',

@@ -5,6 +5,7 @@ import AppShell from './shell/AppShell';
 import LoginPage from './shell/LoginPage';
 import HomeScreen from './shell/HomeScreen';
 import IdeasPage from './modules/ideas/IdeasPage';
+import BugReportPage from './modules/bugs/BugReportPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import AdminPage from './shell/AdminPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
@@ -41,6 +42,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route element={<AppShell />}>
           <Route path="/home" element={<HomeScreen />} />
           <Route path="/ideas" element={<IdeasPage />} />
+          {/* Bug Reports — all active staff */}
+          <Route path="/bugs" element={<BugReportPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           {/* Work Planner — requires work_planner */}
