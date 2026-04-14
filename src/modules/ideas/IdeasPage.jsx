@@ -58,8 +58,12 @@ export default function IdeasPage() {
     setSubmitting(false);
   };
 
-  // ── Vote on idea ──
+  // ── Vote tracking (one vote per user per idea) ──
+  const getVotedKey = (ideaId) => `athena_idea_vote_${profile?.id}_${ideaId}`;
+  const hasVoted = (ideaId) => localStorage.getItem(getVotedKey(ideaId)) === '1';
+
   const handleVote = async (idea) => {
+    if (hasVoted(idea.id)) return; // already voted
     try {
       const { error } = await supabase
         .from('ideas')
@@ -67,6 +71,7 @@ export default function IdeasPage() {
         .eq('id', idea.id);
 
       if (!error) {
+        localStorage.setItem(getVotedKey(idea.id), '1');
         setIdeas((prev) =>
           prev
             .map((i) =>
@@ -239,26 +244,29 @@ export default function IdeasPage() {
               {/* Vote button */}
               <button
                 onClick={() => handleVote(idea)}
+                disabled={hasVoted(idea.id)}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   gap: '4px',
-                  background: 'none',
+                  background: hasVoted(idea.id) ? '#f0f9ff' : 'none',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: hasVoted(idea.id) ? 'default' : 'pointer',
                   padding: '4px 8px',
                   borderRadius: '8px',
                   transition: 'all 0.2s ease',
                   flexShrink: 0,
+                  opacity: hasVoted(idea.id) ? 0.6 : 1,
                 }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.backgroundColor = '#f0f9ff')
+                onMouseEnter={(e) => {
+                  if (!hasVoted(idea.id)) e.currentTarget.style.backgroundColor = '#f0f9ff';
+                }}
+                onMouseLeave={(e) => {
+                  if (!hasVoted(idea.id)) e.currentTarget.style.backgroundColor = 'transparent';
                 }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.backgroundColor = 'transparent')
                 }
-                title="Vote for this idea"
+                title={hasVoted(idea.id) ? 'You already voted' : 'Vote for this idea'}
               >
                 <ThumbsUp size={16} style={{ color: '#38bdf8' }} />
                 <span
