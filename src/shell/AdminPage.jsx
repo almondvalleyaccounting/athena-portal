@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Palette } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 /*
@@ -431,31 +432,10 @@ export default function AdminPage() {
                       borderBottom: '1px solid #f1f5f9',
                     }}
                   >
-                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 140 }}>
-                      {COLOUR_SWATCHES.map((c) => (
-                        <div
-                          key={c}
-                          onClick={() => setUserColour(user.id, c)}
-                          style={{
-                            width: 14, height: 14, borderRadius: 3, background: c, cursor: 'pointer',
-                            border: user.colour === c ? '2px solid #0f172a' : '1px solid #e5e7eb',
-                            transition: 'border-color 0.1s',
-                          }}
-                        />
-                      ))}
-                      {user.colour && (
-                        <div
-                          onClick={() => setUserColour(user.id, null)}
-                          style={{
-                            fontSize: 9, color: '#94a3b8', cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', padding: '0 2px',
-                          }}
-                          title="Reset to default"
-                        >
-                          ✕
-                        </div>
-                      )}
-                    </div>
+                    <ColourPicker
+                      colour={user.colour}
+                      onChange={(c) => setUserColour(user.id, c)}
+                    />
                   </td>
                   {PERMISSION_COLS.map((col) => {
                     const val = user[col.key] === true;
@@ -533,6 +513,75 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Colour picker: palette icon → popover with swatches ── */
+function ColourPicker({ colour, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          width: 28, height: 28, borderRadius: 6, border: '1px solid #e5e7eb',
+          background: colour || '#fff', cursor: 'pointer',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'border-color 0.15s',
+        }}
+        title={colour || 'Default colour'}
+      >
+        {!colour && <Palette size={14} style={{ color: '#94a3b8' }} />}
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+          marginTop: 6, background: '#fff', border: '1px solid #e5e7eb',
+          borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+          padding: 10, zIndex: 50, width: 180,
+        }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: colour ? 8 : 0 }}>
+            {COLOUR_SWATCHES.map((c) => (
+              <div
+                key={c}
+                onClick={() => { onChange(c); setOpen(false); }}
+                style={{
+                  width: 20, height: 20, borderRadius: 4, background: c, cursor: 'pointer',
+                  border: colour === c ? '2px solid #0f172a' : '1px solid #e5e7eb',
+                  transition: 'transform 0.1s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.2)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              />
+            ))}
+          </div>
+          {colour && (
+            <button
+              onClick={() => { onChange(null); setOpen(false); }}
+              style={{
+                width: '100%', fontSize: 11, color: '#94a3b8', background: 'none',
+                border: 'none', cursor: 'pointer', padding: '4px 0',
+                fontFamily: "'Outfit', sans-serif", fontWeight: 500,
+              }}
+            >
+              Reset to default
+            </button>
+          )}
         </div>
       )}
     </div>
