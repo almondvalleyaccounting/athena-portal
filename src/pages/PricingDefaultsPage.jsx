@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { INITIAL_DEFAULTS } from '../lib/defaults';
 import { Inp, Btn, fmt } from '../components/ui';
+import { useAuth } from '../shell/AppShell';
+import { useFeeEngine } from '../contexts/FeeEngineContext';
 
 const SectionHeader = ({ title }) => (
   <h3 className="text-xs font-semibold text-ocean-600 uppercase tracking-wider mt-8 mb-3 border-b border-gray-100 pb-1">{title}</h3>
@@ -14,7 +16,9 @@ const Row = ({ label, children }) => (
   </div>
 );
 
-export default function PricingDefaultsPage({ defaults: currentDefaults, profile, onSaved }) {
+export default function PricingDefaultsPage() {
+  const { profile } = useAuth();
+  const { defaults: currentDefaults, reloadDefaults } = useFeeEngine();
   const [rates, setRates] = useState(null);
   const [version, setVersion] = useState('');
   const [dbId, setDbId] = useState(null);
@@ -137,7 +141,7 @@ export default function PricingDefaultsPage({ defaults: currentDefaults, profile
       setDbId(data.id);
       setSaved(true);
       setNote('');
-      if (onSaved) onSaved();
+      reloadDefaults();
     } catch (e) {
       setError(e.message || 'Save failed');
     }

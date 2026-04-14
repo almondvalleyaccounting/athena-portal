@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
+import { useAuth } from '../shell/AppShell';
 
-export default function ClientDetailPage({ profile }) {
+export default function ClientDetailPage() {
+  const { profile } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const [entity, setEntity] = useState(null);

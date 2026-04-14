@@ -8,8 +8,10 @@ import ConsolidationTable from '../components/ConsolidationTable';
 import AddToGroupPanel from '../components/AddToGroupPanel';
 import SendQuoteModal from '../components/SendQuoteModal';
 import CommitToLiveModal from '../components/CommitToLiveModal';
+import { useAuth } from '../shell/AppShell';
 
-export default function QuoteDetailPage({ profile }) {
+export default function QuoteDetailPage() {
+  const { profile } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const [quote, setQuote] = useState(null);

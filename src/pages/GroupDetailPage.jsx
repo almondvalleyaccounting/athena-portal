@@ -6,6 +6,8 @@ import { STATUS_TRANSITIONS, STATUS_LABELS } from '../lib/quoteStatus';
 import { generateQuotePdf } from '../lib/quotePdf';
 import ConsolidationTable from '../components/ConsolidationTable';
 import SendQuoteModal from '../components/SendQuoteModal';
+import { useAuth } from '../shell/AppShell';
+import { useFeeEngine } from '../contexts/FeeEngineContext';
 
 // Determine the "worst" (earliest in workflow) status across quotes
 const STATUS_ORDER = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
@@ -19,7 +21,9 @@ function groupStatus(quotes) {
   return statuses[0] || 'draft';
 }
 
-export default function GroupDetailPage({ profile, defaults }) {
+export default function GroupDetailPage() {
+  const { profile } = useAuth();
+  const { defaults } = useFeeEngine();
   const { groupId } = useParams();
   const navigate = useNavigate();
   const [group, setGroup] = useState(null);

@@ -14,27 +14,22 @@ import BillingPage from './modules/billing/BillingPage';
 import IssuesPage from './modules/issues/IssuesPage';
 import ClientsPage from './modules/clients/ClientsPage';
 import ClientDetailView from './modules/clients/ClientDetailView';
-import App from './App';
+import FeeEngineLayout from './contexts/FeeEngineContext';
+
+// Fee Engine pages (now render inside AppShell via FeeEngineLayout)
+import DashboardPage from './pages/DashboardPage';
+import EntitiesPage from './pages/EntitiesPage';
+import QuotesPage from './pages/QuotesPage';
+import QuoteFormPage from './pages/QuoteFormPage';
+import QuoteDetailPage from './pages/QuoteDetailPage';
+import PricingDefaultsPage from './pages/PricingDefaultsPage';
+import GroupDetailPage from './pages/GroupDetailPage';
+import GroupsPage from './pages/GroupsPage';
+import GroupQuoteInputPage from './pages/GroupQuoteInputPage';
+import ClientDetailPage from './pages/ClientDetailPage';
+import AnalysisPage from './pages/AnalysisPage';
+import FEBillingPage from './pages/BillingPage';
 import './index.css';
-
-/*
-  Routing strategy:
-  - /login       → new cinematic LoginPage (public)
-  - /home        → new HomeScreen inside AppShell (protected)
-  - /ideas       → IdeasPage inside AppShell (protected)
-  - /reports     → ReportsPage inside AppShell (protected)
-  - /manage/*    → existing Fee Engine App (has its own auth + NavShell)
-  - /            → redirect to /home
-
-  The Fee Engine's App component handles its own session check and
-  renders its own NavShell. It is mounted at /manage/* and its internal
-  routes (/, /manage/clients, etc.) resolve relative to the full URL.
-
-  App's internal <Route path="/"> matches /manage/ (the base of its mount).
-  App's internal <Route path="/manage/clients"> won't match because of
-  path stripping — so we mount App without a prefix wrapper and let it
-  handle /manage/* paths directly.
-*/
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -43,33 +38,43 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         {/* Public route */}
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Protected shell routes */}
+        {/* Protected shell — all modules render inside AppShell */}
         <Route element={<AppShell />}>
           <Route path="/home" element={<HomeScreen />} />
           <Route path="/ideas" element={<IdeasPage />} />
-          {/* Bug Reports — all active staff */}
           <Route path="/bugs" element={<BugReportPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/admin" element={<AdminPage />} />
-          {/* Clients — all active staff */}
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/clients/:id" element={<ClientDetailView />} />
-          {/* Work Planner — requires work_planner */}
           <Route path="/planner/*" element={<WorkPlannerModule />} />
-          {/* Timesheets — requires can_view_timesheets */}
           <Route path="/timesheets/*" element={<TimesheetModule />} />
-          {/* Billing — requires can_view_billing */}
           <Route path="/billing" element={<BillingPage />} />
-          {/* Issues Log — all active staff */}
           <Route path="/issues" element={<IssuesPage />} />
+
+          {/* Fee Engine — wrapped in FeeEngineLayout for defaults context */}
+          <Route element={<FeeEngineLayout />}>
+            <Route path="/manage" element={<DashboardPage />} />
+            <Route path="/manage/clients" element={<EntitiesPage />} />
+            <Route path="/manage/clients/:id" element={<ClientDetailPage />} />
+            <Route path="/manage/quotes" element={<QuotesPage />} />
+            <Route path="/manage/quotes/new" element={<QuoteFormPage mode="new" />} />
+            <Route path="/manage/quotes/pricing" element={<PricingDefaultsPage />} />
+            <Route path="/manage/quotes/analysis" element={<AnalysisPage />} />
+            <Route path="/manage/billing" element={<FEBillingPage />} />
+            <Route path="/manage/groups" element={<GroupsPage />} />
+            <Route path="/manage/quotes/group/:groupId/quote" element={<GroupQuoteInputPage />} />
+            <Route path="/manage/quotes/group/:groupId" element={<GroupDetailPage />} />
+            <Route path="/manage/quotes/:id/edit" element={<QuoteFormPage mode="edit" />} />
+            <Route path="/manage/quotes/:id" element={<QuoteDetailPage />} />
+          </Route>
+
+          {/* Catch-all → home */}
+          <Route path="*" element={<Navigate to="/home" replace />} />
         </Route>
 
         {/* Root redirect */}
         <Route path="/" element={<Navigate to="/home" replace />} />
-
-        {/* Fee Engine — catch remaining /manage/* routes
-            App renders its own <Routes> internally with absolute paths */}
-        <Route path="/*" element={<App />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>

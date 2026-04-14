@@ -7,6 +7,15 @@ export const MODULES = [
     permissions: ['can_view_quotes'],
     status: 'live',
     group: 'billing',
+    children: [
+      { id: 'fe-dashboard', label: 'Dashboard', route: '/manage' },
+      { id: 'fe-new-quote', label: 'New Quote', route: '/manage/quotes/new' },
+      { id: 'fe-clients', label: 'Clients', route: '/manage/clients' },
+      { id: 'fe-quotes', label: 'Quotes', route: '/manage/quotes' },
+      { id: 'fe-groups', label: 'Groups', route: '/manage/groups' },
+      { id: 'fe-billing', label: 'Fee Billing', route: '/manage/billing' },
+      { id: 'fe-pricing', label: 'Pricing', route: '/manage/quotes/pricing', permissions: ['can_edit_fee_schedule'] },
+    ],
   },
   {
     id: 'clients',

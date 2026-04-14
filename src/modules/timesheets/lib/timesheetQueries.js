@@ -118,7 +118,7 @@ export async function fetchScheduledForStaff(staffId) {
 export async function fetchStaffList() {
   const { data, error } = await supabase
     .from('staff_profiles')
-    .select('id, full_name, name, email, role, is_portal_admin, colour')
+    .select('id, full_name, name, email, role, can_manage_portal, colour')
     .eq('is_active', true)
     .order('full_name', { ascending: true });
   if (error) throw error;

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
+import { useAuth } from '../shell/AppShell';
 
 const STATUS_ORDER = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
 
@@ -14,7 +15,8 @@ function worstStatus(quotes) {
   return statuses[0] || 'draft';
 }
 
-export default function GroupsPage({ profile }) {
+export default function GroupsPage() {
+  const { profile } = useAuth();
   const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
   const [members, setMembers] = useState([]);

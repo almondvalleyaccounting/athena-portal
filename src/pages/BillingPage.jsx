@@ -5,8 +5,10 @@ import { fmt, Btn, StatusBadge } from '../components/ui';
 import { exportQboCsv, downloadCsv, generateQboImportCsv } from '../lib/qboExport';
 import { pushToQbo } from '../lib/qboApi';
 import QboConnectionPanel from '../components/QboConnectionPanel';
+import { useAuth } from '../shell/AppShell';
 
-export default function BillingPage({ profile }) {
+export default function BillingPage() {
+  const { profile } = useAuth();
   const [billing, setBilling] = useState([]);
   const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -4,8 +4,12 @@ import { supabase } from '../lib/supabase';
 import { Inp, TabRow, Section, Btn, fmt, G4, C4 } from '../components/ui';
 import DirectorCard from '../components/DirectorCard';
 import useQuoteForm from '../hooks/useQuoteForm';
+import { useAuth } from '../shell/AppShell';
+import { useFeeEngine } from '../contexts/FeeEngineContext';
 
-export default function QuoteFormPage({ defaults: D, profile, mode = 'new' }) {
+export default function QuoteFormPage({ mode = 'new' }) {
+  const { profile } = useAuth();
+  const { defaults: D } = useFeeEngine();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { id: quoteId } = useParams();

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, Btn } from '../components/ui';
+import { useAuth } from '../shell/AppShell';
+import { useFeeEngine } from '../contexts/FeeEngineContext';
 
 // Driver definitions: what inputs drive each service's annual value
 const DRIVER_DEFS = [
@@ -129,7 +131,9 @@ function Tooltip({ text, children }) {
   );
 }
 
-export default function GroupQuoteInputPage({ defaults, profile }) {
+export default function GroupQuoteInputPage() {
+  const { profile } = useAuth();
+  const { defaults } = useFeeEngine();
   const { groupId } = useParams();
   const navigate = useNavigate();
 

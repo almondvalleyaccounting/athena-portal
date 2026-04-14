@@ -11,6 +11,7 @@ import {
   Table,
   FileText,
   AlertTriangle,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Settings,
@@ -104,7 +105,38 @@ export default function Sidebar() {
     ? profile.email.charAt(0).toUpperCase()
     : '?';
 
+  const [expandedModules, setExpandedModules] = useState({});
+
   const isActive = (route) => location.pathname.startsWith(route);
+
+  // Auto-expand modules whose route matches the current path
+  useEffect(() => {
+    mainModules.forEach((mod) => {
+      if (mod.children && isActive(mod.route)) {
+        setExpandedModules((prev) => ({ ...prev, [mod.id]: true }));
+      }
+    });
+  }, [location.pathname]);
+
+  const toggleExpand = (modId) => {
+    setExpandedModules((prev) => ({ ...prev, [modId]: !prev[modId] }));
+  };
+
+  // Check if a child item matches the current path exactly (or is the active sub-page)
+  const isChildActive = (child) => {
+    if (child.route === '/manage' && location.pathname === '/manage') return true;
+    if (child.route !== '/manage' && location.pathname.startsWith(child.route)) return true;
+    return false;
+  };
+
+  // Filter children by permissions
+  const visibleChildren = (children) => {
+    if (!children) return [];
+    return children.filter((child) => {
+      if (!child.permissions || child.permissions.length === 0) return true;
+      return child.permissions.every((p) => profile?.[p] === true);
+    });
+  };
 
   return (
     <div
@@ -188,19 +220,74 @@ export default function Sidebar() {
           const IconComp = ICON_MAP[mod.icon] || Receipt;
           const active = isActive(mod.route);
           const clickable = isModuleClickable(mod);
+          const hasChildren = mod.children && mod.children.length > 0;
+          const isExpanded = expandedModules[mod.id] && !collapsed;
+          const kids = visibleChildren(mod.children);
 
           return (
-            <NavItem
-              key={mod.id}
-              icon={IconComp}
-              label={mod.label}
-              active={active}
-              collapsed={collapsed}
-              clickable={clickable}
-              planned={mod.status === 'planned'}
-              beta={mod.status === 'beta'}
-              onClick={() => clickable && navigate(mod.route)}
-            />
+            <React.Fragment key={mod.id}>
+              <NavItem
+                icon={IconComp}
+                label={mod.label}
+                active={active}
+                collapsed={collapsed}
+                clickable={clickable}
+                planned={mod.status === 'planned'}
+                beta={mod.status === 'beta'}
+                hasChevron={hasChildren && !collapsed}
+                chevronOpen={isExpanded}
+                onClick={() => {
+                  if (!clickable) return;
+                  if (hasChildren) {
+                    toggleExpand(mod.id);
+                    navigate(mod.route);
+                  } else {
+                    navigate(mod.route);
+                  }
+                }}
+              />
+              {/* Sub-items */}
+              {isExpanded && kids.length > 0 && (
+                <div style={{ overflow: 'hidden', transition: 'max-height 0.2s ease' }}>
+                  {kids.map((child) => (
+                    <button
+                      key={child.id}
+                      onClick={() => navigate(child.route)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        width: '100%',
+                        padding: '6px 12px 6px 44px',
+                        borderRadius: 6,
+                        border: 'none',
+                        background: isChildActive(child) ? 'rgba(56, 189, 248, 0.08)' : 'transparent',
+                        cursor: 'pointer',
+                        marginBottom: 1,
+                        transition: 'background 0.15s',
+                        position: 'relative',
+                      }}
+                      onMouseEnter={(e) => { if (!isChildActive(child)) e.currentTarget.style.background = '#f8fafc'; }}
+                      onMouseLeave={(e) => { if (!isChildActive(child)) e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      {isChildActive(child) && (
+                        <div style={{
+                          position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
+                          width: 2, height: 14, backgroundColor: '#38bdf8', borderRadius: '0 2px 2px 0',
+                        }} />
+                      )}
+                      <span style={{
+                        fontFamily: "'Outfit', sans-serif",
+                        fontSize: 13,
+                        fontWeight: isChildActive(child) ? 600 : 400,
+                        color: isChildActive(child) ? '#0f172a' : '#64748b',
+                      }}>
+                        {child.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </React.Fragment>
           );
         })}
 
@@ -364,7 +451,7 @@ export default function Sidebar() {
 }
 
 /* ─── Nav item sub-component ───────────────────────────────────── */
-function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, beta, onClick }) {
+function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, beta, hasChevron, chevronOpen, onClick }) {
   const [hovered, setHovered] = useState(false);
 
   const baseStyle = {
@@ -426,6 +513,18 @@ function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, bet
           >
             {label}
           </span>
+          {hasChevron && (
+            <ChevronDown
+              size={14}
+              style={{
+                color: '#94a3b8',
+                marginLeft: 'auto',
+                transform: chevronOpen ? 'rotate(180deg)' : 'rotate(0)',
+                transition: 'transform 0.2s ease',
+                flexShrink: 0,
+              }}
+            />
+          )}
           {beta && (
             <span
               style={{
