@@ -108,8 +108,29 @@ export default function Sidebar() {
         transition: 'width 0.2s ease',
       }}
     >
+      {/* ── Company logo ── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          padding: collapsed ? '16px 0 8px' : '16px 16px 8px',
+        }}
+      >
+        <img
+          src="/ava-logo.jpg"
+          alt="Almond Valley Accounting"
+          style={{
+            height: collapsed ? '28px' : '36px',
+            borderRadius: '6px',
+            objectFit: 'contain',
+            transition: 'height 0.2s ease',
+          }}
+        />
+      </div>
+
       {/* ── Home link ── */}
-      <div style={{ padding: collapsed ? '16px 0' : '16px' }}>
+      <div style={{ padding: collapsed ? '0 0 16px' : '0 16px 16px' }}>
         <NavItem
           icon={Home}
           label="Home"

@@ -364,19 +364,6 @@ export default function HomeScreen() {
 
   return (
     <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '40px 24px' }}>
-      {/* ── Company logo ── */}
-      <div style={{ marginBottom: '24px' }}>
-        <img
-          src="/ava-logo.jpg"
-          alt="Almond Valley Accounting"
-          style={{
-            height: '48px',
-            borderRadius: '8px',
-            objectFit: 'contain',
-          }}
-        />
-      </div>
-
       {/* ── Header row ── */}
       <div
         style={{
