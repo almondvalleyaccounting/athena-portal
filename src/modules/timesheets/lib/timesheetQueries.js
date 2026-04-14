@@ -33,32 +33,8 @@ export async function fetchTimesheetEntries(staffId, weekStart, weekEnd) {
 
 /* ─── Upsert a timesheet entry (create or update minutes for a cell) ── */
 export async function upsertTimesheetEntry({ staffId, entityId, service, workDate, minutes, notes }) {
-  // Check if entry exists for this staff/entity/service/date
-  let query = supabase
-    .from('timesheet_entries')
-    .select('id')
-    .eq('staff_id', staffId)
-    .eq('work_date', workDate);
-
-  // Handle null entity_id and service correctly (can't .eq() null)
-  if (entityId) { query = query.eq('entity_id', entityId); }
-  else { query = query.is('entity_id', null); }
-  if (service) { query = query.eq('service', service); }
-  else { query = query.is('service', null); }
-
-  const { data: existing } = await query.maybeSingle();
-
-  if (existing) {
-    const { data, error } = await supabase
-      .from('timesheet_entries')
-      .update({ minutes, notes, updated_at: new Date().toISOString() })
-      .eq('id', existing.id)
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
-  }
-
+  // Skip the lookup — just insert directly. If it conflicts, update.
+  // The old check-then-insert pattern was fragile with RLS.
   const { data, error } = await supabase
     .from('timesheet_entries')
     .insert({
@@ -66,13 +42,17 @@ export async function upsertTimesheetEntry({ staffId, entityId, service, workDat
       entity_id: entityId || null,
       service: service || null,
       work_date: workDate,
-      minutes,
+      minutes: minutes || 0,
       notes: notes || null,
       source: 'manual',
     })
     .select()
     .single();
-  if (error) throw error;
+
+  if (error) {
+    console.error('[upsertTimesheetEntry] insert error:', error.message, error.details, error.hint, error.code);
+    throw error;
+  }
   return data;
 }
 
