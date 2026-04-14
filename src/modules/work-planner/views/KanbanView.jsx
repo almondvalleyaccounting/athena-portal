@@ -74,14 +74,14 @@ export default function KanbanView({ dueFilter, onAction }) {
           padding: 10, borderBottom: '1px solid #e5e7eb', background: '#fff',
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+            fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
             fontFamily: "'Outfit', sans-serif",
           }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8' }} />
             Quick Tasks
           </div>
           <span style={{
-            fontSize: 9, color: '#94a3b8', padding: '1px 5px',
+            fontSize: 11, color: '#94a3b8', padding: '1px 5px',
             borderRadius: 6, border: '1px solid #f1f5f9',
           }}>
             {quickFiltered.length}
@@ -107,11 +107,11 @@ export default function KanbanView({ dueFilter, onAction }) {
                 <div style={{ fontSize: 11, fontWeight: 500, marginBottom: 2 }}>
                   {task.title}
                 </div>
-                <div style={{ fontSize: 9, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                   {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={18} />}
                   {task.entity_id && <span>{clientName(task.entity_id, entityMap)}</span>}
                 </div>
-                <div style={{ fontSize: 8, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                   {task.service}
                   {task.due_date && (
                     <>
@@ -124,7 +124,7 @@ export default function KanbanView({ dueFilter, onAction }) {
             );
           })}
           {quickFiltered.length === 0 && (
-            <div style={{ padding: 14, fontSize: 10, color: '#cbd5e1', textAlign: 'center' }}>
+            <div style={{ padding: 14, fontSize: 12, color: '#cbd5e1', textAlign: 'center' }}>
               No quick tasks
             </div>
           )}
@@ -152,14 +152,14 @@ export default function KanbanView({ dueFilter, onAction }) {
               padding: 10, borderBottom: '1px solid #e5e7eb', background: '#fff',
             }}>
               <div style={{
-                fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+                fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
                 fontFamily: "'Outfit', sans-serif",
               }}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: col.colour }} />
                 {col.label}
               </div>
               <span style={{
-                fontSize: 9, color: '#94a3b8', padding: '1px 5px',
+                fontSize: 11, color: '#94a3b8', padding: '1px 5px',
                 borderRadius: 6, border: '1px solid #f1f5f9',
               }}>
                 {items.length}
@@ -200,18 +200,18 @@ export default function KanbanView({ dueFilter, onAction }) {
                         <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
                       )}
                     </div>
-                    <div style={{ fontSize: 9, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                       {inst.assignee_id && <Avatar id={inst.assignee_id} staffMap={staffMap} size={18} />}
                       {inst.entity_id && <span>{clientName(inst.entity_id, entityMap)}</span>}
                     </div>
-                    <div style={{ fontSize: 8, color: '#94a3b8', marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
                       {formatDateShort(inst._date)} &middot; {durFmt(inst.duration)}
                     </div>
                   </div>
                 );
               })}
               {items.length === 0 && (
-                <div style={{ padding: 14, fontSize: 10, color: '#cbd5e1', textAlign: 'center' }} />
+                <div style={{ padding: 14, fontSize: 12, color: '#cbd5e1', textAlign: 'center' }} />
               )}
             </div>
           </div>

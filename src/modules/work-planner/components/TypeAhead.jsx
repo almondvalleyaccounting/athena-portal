@@ -28,17 +28,17 @@ export default function TypeAhead({ items, value, onChange, placeholder = 'All' 
         onFocus={() => { setOpen(true); setQuery(''); }}
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         style={{
-          padding: '2px 6px',
-          fontSize: 10,
+          padding: '3px 8px',
+          fontSize: 12,
           fontFamily: "'Outfit', sans-serif",
           border: `1px solid ${hasValue ? '#0e7fe0' : '#e5e7eb'}`,
-          borderRadius: 5,
+          borderRadius: 6,
           background: hasValue ? '#eff6ff' : '#fff',
           color: hasValue ? '#0e7fe0' : '#1e293b',
           fontWeight: hasValue ? 600 : 400,
           outline: 'none',
-          width: open ? 110 : 85,
-          transition: 'all 0.15s',
+          width: 120,
+          transition: 'border-color 0.15s, background 0.15s',
         }}
       />
       {open && (
@@ -47,8 +47,8 @@ export default function TypeAhead({ items, value, onChange, placeholder = 'All' 
             position: 'absolute',
             top: '100%',
             left: 0,
-            minWidth: 130,
-            maxHeight: 150,
+            minWidth: 150,
+            maxHeight: 180,
             overflowY: 'auto',
             background: '#fff',
             border: '1px solid #e5e7eb',
@@ -61,8 +61,8 @@ export default function TypeAhead({ items, value, onChange, placeholder = 'All' 
           <div
             onClick={() => { onChange(''); setOpen(false); }}
             style={{
-              padding: '3px 9px',
-              fontSize: 10,
+              padding: '4px 10px',
+              fontSize: 12,
               cursor: 'pointer',
               color: !value ? '#0e7fe0' : '#1e293b',
               fontWeight: !value ? 600 : 400,
@@ -76,8 +76,8 @@ export default function TypeAhead({ items, value, onChange, placeholder = 'All' 
               key={it.id}
               onClick={() => { onChange(it.id); setOpen(false); }}
               style={{
-                padding: '3px 9px',
-                fontSize: 10,
+                padding: '4px 10px',
+                fontSize: 12,
                 cursor: 'pointer',
                 color: value === it.id ? '#0e7fe0' : '#1e293b',
                 fontWeight: value === it.id ? 600 : 400,

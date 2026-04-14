@@ -61,13 +61,13 @@ export default function QuickTasksView({ compact, onAction }) {
   }
 
   const inputStyle = {
-    padding: '7px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+    padding: '8px 12px', fontSize: 14, fontFamily: "'Outfit', sans-serif",
     border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff',
-    color: '#0f172a', outline: 'none', flex: 1, minWidth: 180,
+    color: '#0f172a', outline: 'none', flex: 1, minWidth: 200,
   };
   const selectStyle = {
-    padding: '2px 5px', fontSize: 10, fontFamily: "'Outfit', sans-serif",
-    border: '1px solid #e5e7eb', borderRadius: 5, background: '#fff',
+    padding: '4px 8px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+    border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
     color: '#1e293b', outline: 'none',
   };
 
@@ -103,7 +103,7 @@ export default function QuickTasksView({ compact, onAction }) {
           onClick={handleAdd}
           disabled={!canAdd}
           style={{
-            padding: '5px 12px', fontSize: 11, fontWeight: 500,
+            padding: '6px 14px', fontSize: 13, fontWeight: 500,
             fontFamily: "'Outfit', sans-serif",
             border: canAdd ? '1px solid #0f172a' : '1px solid #e5e7eb',
             borderRadius: 8,
@@ -148,7 +148,7 @@ export default function QuickTasksView({ compact, onAction }) {
                 draggable
                 onDragStart={() => setDragId(task.id)}
                 onDragEnd={() => setDragId(null)}
-                style={{ cursor: 'grab', color: '#cbd5e1', fontSize: 10, userSelect: 'none', flexShrink: 0, marginTop: compact ? 0 : 1 }}
+                style={{ cursor: 'grab', color: '#cbd5e1', fontSize: 12, userSelect: 'none', flexShrink: 0, marginTop: compact ? 0 : 1 }}
               >
                 &#9776;
               </span>
@@ -160,12 +160,12 @@ export default function QuickTasksView({ compact, onAction }) {
               <div style={{ flex: 1, minWidth: 0, display: compact ? 'flex' : 'block', alignItems: 'center', gap: compact ? 8 : 0 }}>
                 <div
                   onClick={(e) => onAction(e, task)}
-                  style={{ fontSize: compact ? 11 : 12, fontWeight: 500, cursor: 'pointer' }}
+                  style={{ fontSize: compact ? 12 : 14, fontWeight: 500, cursor: 'pointer' }}
                 >
                   {task.title}
                 </div>
                 <div style={{
-                  fontSize: compact ? 9 : 10, color: '#64748b',
+                  fontSize: compact ? 11 : 12, color: '#64748b',
                   marginTop: compact ? 0 : 1,
                   display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap',
                 }}>
@@ -281,7 +281,7 @@ export default function QuickTasksView({ compact, onAction }) {
         })}
 
         {list.length === 0 && (
-          <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 11 }}>
+          <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 13 }}>
             No quick tasks. Type above to add one.
           </div>
         )}
@@ -291,8 +291,8 @@ export default function QuickTasksView({ compact, onAction }) {
 }
 
 const miniBtn = {
-  padding: '2px 6px', fontSize: 9, fontWeight: 500,
-  border: '1px solid #e5e7eb', borderRadius: 3,
+  padding: '3px 8px', fontSize: 11, fontWeight: 500,
+  border: '1px solid #e5e7eb', borderRadius: 4,
   background: '#fff', color: '#0e7fe0', cursor: 'pointer',
   fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap',
 };

@@ -167,7 +167,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
   const sidebar = (
     <div
       style={{
-        width: 220, borderRight: '1px solid #e5e7eb', background: '#fff',
+        width: 260, borderRight: '1px solid #e5e7eb', background: '#fff',
         display: 'flex', flexDirection: 'column', flexShrink: 0,
         fontFamily: "'Outfit', sans-serif",
       }}
@@ -176,7 +176,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
       onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleUnplan(); setDropTarget(null); }}
     >
       <div style={{
-        padding: '8px 10px', fontSize: 9, fontWeight: 600, color: sideDropActive ? '#0e7fe0' : '#94a3b8',
+        padding: '8px 10px', fontSize: 11, fontWeight: 600, color: sideDropActive ? '#0e7fe0' : '#94a3b8',
         textTransform: 'uppercase', letterSpacing: '0.4px',
         borderBottom: '1px solid #e5e7eb',
         background: sideDropActive ? '#dbeafe' : 'transparent',
@@ -197,29 +197,29 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
               padding: '4px 8px', marginBottom: 3, background: '#fff',
               border: '1px solid #e5e7eb',
               borderLeft: `3px solid ${t.assignee_id ? teamColour(t.assignee_id) : '#0e7fe0'}`,
-              borderRadius: 5, fontSize: 10, cursor: 'grab', transition: 'all 0.12s',
+              borderRadius: 5, fontSize: 12, cursor: 'grab', transition: 'all 0.12s',
               boxShadow: highlightId === t.id ? '0 0 0 2px #dbeafe' : 'none',
               opacity: draggingId === t.id ? 0 : 1,
             }}
           >
-            <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <StatusIcon status={t.status} size={8} />
+            <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 3 }}>
+              <StatusIcon status={t.status} size={9} />
               {t.title}
             </div>
-            <div style={{ fontSize: 9, color: '#64748b' }}>
+            <div style={{ fontSize: 11, color: '#64748b' }}>
               {staffMap[t.assignee_id]?.name?.split(' ')[0] || 'Unassigned'} &middot; {durFmt(t.duration)}
             </div>
           </div>
         ))}
         {unplannedMasters.length === 0 && !sideDropActive && (
-          <div style={{ padding: 8, fontSize: 9, color: '#cbd5e1', textAlign: 'center' }}>All planned</div>
+          <div style={{ padding: 8, fontSize: 11, color: '#cbd5e1', textAlign: 'center' }}>All planned</div>
         )}
       </div>
 
       {quickUnplanned.length > 0 && (
         <>
           <div style={{
-            padding: '8px 10px', fontSize: 9, fontWeight: 600, color: '#94a3b8',
+            padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#94a3b8',
             textTransform: 'uppercase', letterSpacing: '0.4px',
             borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb',
           }}>
@@ -236,13 +236,13 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                 style={{
                   padding: '4px 8px', marginBottom: 3, background: '#f1f5f9',
                   border: '1px solid #e5e7eb', borderLeft: '3px solid #94a3b8',
-                  borderRadius: 5, fontSize: 10, cursor: 'grab',
+                  borderRadius: 5, fontSize: 12, cursor: 'grab',
                   boxShadow: highlightId === t.id ? '0 0 0 2px #dbeafe' : 'none',
                   opacity: draggingId === t.id ? 0 : 1,
                 }}
               >
-                <div style={{ fontWeight: 500, fontSize: 10 }}>{t.title}</div>
-                <div style={{ fontSize: 9, color: '#64748b' }}>
+                <div style={{ fontWeight: 500, fontSize: 12 }}>{t.title}</div>
+                <div style={{ fontSize: 11, color: '#64748b' }}>
                   {staffMap[t.assignee_id]?.name?.split(' ')[0] || 'Unassigned'}
                 </div>
               </div>
@@ -262,7 +262,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', height: '100%' }}>
             {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
               <div key={d} style={{
-                padding: 4, fontSize: 10, fontWeight: 600, color: '#94a3b8',
+                padding: 4, fontSize: 12, fontWeight: 600, color: '#94a3b8',
                 textAlign: 'center', borderBottom: '1px solid #e5e7eb', background: '#fff',
                 fontFamily: "'Outfit', sans-serif",
               }}>
@@ -291,7 +291,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                   onDrop={(e) => { e.preventDefault(); handleDrop(d, 9, 0); }}
                 >
                   <div style={{
-                    fontSize: 11, fontWeight: isToday ? 700 : 500, marginBottom: 2,
+                    fontSize: 13, fontWeight: isToday ? 700 : 500, marginBottom: 2,
                     color: isToday ? '#0e7fe0' : '#64748b',
                   }}>
                     {d.getDate()}
@@ -301,21 +301,21 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                       key={t.id}
                       onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
                       style={{
-                        padding: '1px 3px', marginBottom: 1, borderRadius: 2,
-                        fontSize: 8, fontWeight: 500, color: '#fff',
+                        padding: '2px 4px', marginBottom: 1, borderRadius: 3,
+                        fontSize: 10, fontWeight: 500, color: '#fff',
                         background: tileColour(t, colourMode),
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2,
                       }}
                     >
-                      <StatusIcon status={t.status} dark size={7} />
+                      <StatusIcon status={t.status} dark size={8} />
                       {t.title}
                     </div>
                   ))}
                   {qs.slice(0, 1).map((t) => (
                     <div key={t.id} style={{
-                      padding: '1px 3px', marginBottom: 1, borderRadius: 2,
-                      fontSize: 8, fontWeight: 500, color: '#fff',
+                      padding: '2px 4px', marginBottom: 1, borderRadius: 3,
+                      fontSize: 10, fontWeight: 500, color: '#fff',
                       background: '#64748b', opacity: 0.7,
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
@@ -323,7 +323,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                     </div>
                   ))}
                   {(evs.length + qs.length) > 3 && (
-                    <div style={{ fontSize: 8, color: '#94a3b8' }}>+{evs.length + qs.length - 3}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>+{evs.length + qs.length - 3}</div>
                   )}
                 </div>
               );
@@ -356,7 +356,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
           {/* Day headers */}
           {days.map((d, i) => (
             <div key={i} style={{
-              textAlign: 'center', padding: 4, fontSize: 10, fontWeight: 600,
+              textAlign: 'center', padding: 5, fontSize: 12, fontWeight: 600,
               color: sameDay(d, now) ? '#0e7fe0' : '#64748b',
               borderBottom: '1px solid #e5e7eb',
               borderRight: '1px solid #f1f5f9',
@@ -376,7 +376,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
               <React.Fragment key={si}>
                 {/* Time label */}
                 <div style={{
-                  padding: '1px 4px', fontSize: 8, color: isHour ? '#64748b' : '#94a3b8',
+                  padding: '1px 4px', fontSize: 10, color: isHour ? '#64748b' : '#94a3b8',
                   fontWeight: isHour ? 600 : 400,
                   textAlign: 'right', borderRight: '1px solid #e5e7eb',
                   borderBottom: `1px solid ${isHourBottom ? '#e5e7eb' : '#f1f5f9'}`,
@@ -433,7 +433,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
                               padding: '1px 4px', borderRadius: 3,
-                              fontSize: 9, fontWeight: 500, color: '#fff',
+                              fontSize: 11, fontWeight: 500, color: '#fff',
                               background: tileColour(t, colourMode),
                               height: `${span * 18 - 1}px`,
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
@@ -447,7 +447,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                               transition: 'opacity 0.1s',
                             }}
                           >
-                            <StatusIcon status={t.status} dark size={7} />
+                            <StatusIcon status={t.status} dark size={9} />
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
                               {t.title}
                             </span>
@@ -488,7 +488,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
                               padding: '1px 4px', borderRadius: 3,
-                              fontSize: 9, fontWeight: 500, color: '#fff',
+                              fontSize: 11, fontWeight: 500, color: '#fff',
                               background: tileColour(t, colourMode),
                               height: `${qSpan * 18 - 1}px`,
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',

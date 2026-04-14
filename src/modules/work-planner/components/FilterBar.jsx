@@ -4,22 +4,22 @@ import Avatar from './Avatar';
 import { SERVICES, STATUSES, CALENDAR_VIEWS, KANBAN_DUE_FILTERS } from '../lib/constants';
 import { teamColour } from '../lib/helpers';
 
-const sepStyle = { width: 1, height: 16, background: '#e5e7eb', margin: '0 2px' };
+const sepStyle = { width: 1, height: 20, background: '#e5e7eb', margin: '0 4px' };
 const labelStyle = {
   fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase',
-  letterSpacing: '0.4px', fontSize: 10, fontFamily: "'Outfit', sans-serif",
+  letterSpacing: '0.4px', fontSize: 11, fontFamily: "'Outfit', sans-serif",
 };
 const btnStyle = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '3px 7px', fontSize: 10, fontWeight: 500,
+  padding: '4px 10px', fontSize: 12, fontWeight: 500,
   fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
   borderRadius: 8, background: '#fff', color: '#1e293b',
   cursor: 'pointer', whiteSpace: 'nowrap',
 };
 const btnActiveStyle = { ...btnStyle, background: '#dbeafe', borderColor: '#0e7fe0', color: '#0e7fe0' };
 const selectStyle = {
-  padding: '2px 5px', fontSize: 10, fontFamily: "'Outfit', sans-serif",
-  border: '1px solid #e5e7eb', borderRadius: 5, background: '#fff',
+  padding: '3px 8px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+  border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
   color: '#1e293b', outline: 'none',
 };
 
@@ -55,9 +55,9 @@ export default function FilterBar({
     <div
       style={{
         display: 'flex', alignItems: 'center', gap: 5,
-        padding: '5px 16px', background: '#fff',
+        padding: '6px 16px', background: '#fff',
         borderBottom: '1px solid #e5e7eb', flexWrap: 'wrap',
-        fontSize: 10, fontFamily: "'Outfit', sans-serif",
+        fontSize: 12, fontFamily: "'Outfit', sans-serif",
       }}
     >
       {/* Staff avatar buttons */}
@@ -97,7 +97,7 @@ export default function FilterBar({
         <>
           <div style={sepStyle} />
           <button style={btnStyle} onClick={() => onCalNav(-1)}>&#8592;</button>
-          <span style={{ fontSize: 11, fontWeight: 500, minWidth: 110, textAlign: 'center' }}>
+          <span style={{ fontSize: 13, fontWeight: 500, minWidth: 120, textAlign: 'center' }}>
             {calTitle}
           </span>
           <button style={btnStyle} onClick={() => onCalNav(1)}>&#8594;</button>
