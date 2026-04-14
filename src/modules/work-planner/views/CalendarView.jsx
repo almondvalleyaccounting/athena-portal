@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, pointerWithin } from '@dnd-kit/core';
 import { TIME_SLOTS, CALENDAR_VIEWS } from '../lib/constants';
 import {
   sameDay, addDays, addMonths, startOfWeek, today,
@@ -371,7 +371,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
   // ── Month view ──
   if (calendarView === 'month') {
     return (
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div style={{ display: 'flex', height: '100%' }}>
           {sidebar}
           <div style={{ flex: 1, overflow: 'auto' }}>
@@ -453,7 +453,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
   const cols = days.length;
 
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div style={{ display: 'flex', height: '100%' }}>
         {sidebar}
         <div style={{ flex: 1, overflow: 'auto' }}>
