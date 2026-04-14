@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useRef, useCallback } from 'react';
 import { TIME_SLOTS, CALENDAR_VIEWS } from '../lib/constants';
 import {
   sameDay, addDays, addMonths, startOfWeek, today,
@@ -18,10 +18,9 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
     colourMode, staffColours, statusColours,
   } = useWorkPlanner();
 
-  const [dropTarget, setDropTarget] = useState(null);
-  const [draggingId, setDraggingId] = useState(null);
-  const dragRef = useRef(null);
-  const dragTypeRef = useRef(null);
+  // ── Drag state: refs only, NO React state during drag ──
+  const rootRef = useRef(null);
+  const dragDataRef = useRef(null); // { taskId, taskType }
 
   const now = today();
 
@@ -77,69 +76,110 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
 
   function eventsOnDay(d) { return allInstances.filter((t) => sameDay(t.planned_date, d)); }
   function quickOnDay(d) { return quickPlanned.filter((t) => sameDay(t.planned_date, d)); }
-  // Extract hour/min from quick task's planned_date TIMESTAMPTZ
   function quickHourMin(task) {
     if (!task.planned_date) return { h: 9, m: 0 };
     const dt = new Date(task.planned_date);
     return { h: dt.getHours(), m: dt.getMinutes() };
   }
 
-  // Drag handlers
-  function startDrag(id, type) { dragRef.current = id; dragTypeRef.current = type; setDraggingId(id); }
-  function clearDrag() { dragRef.current = null; dragTypeRef.current = null; setDraggingId(null); setDropTarget(null); }
+  // ── Drag handlers: NO React state changes during drag ──
 
-  function handleDrop(date, h, m) {
-    if (!dragRef.current) return;
-    const id = dragRef.current;
-    const type = dragTypeRef.current;
+  const handleDragStart = useCallback((e, taskId, taskType) => {
+    dragDataRef.current = { taskId, taskType };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', taskId);
 
-    if (type === 'quick') {
-      // Encode time into the TIMESTAMPTZ planned_date
+    // CRITICAL: defer DOM changes by one animation frame so the browser
+    // can capture the ghost image and fully initiate the drag first
+    requestAnimationFrame(() => {
+      const root = rootRef.current;
+      if (!root) return;
+      root.classList.add('planner-root--dragging');
+      const tile = root.querySelector(`[data-task-id="${taskId}"]`);
+      if (tile) tile.classList.add('cal-tile--drag-source');
+    });
+  }, []);
+
+  const handleCellDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('cal-cell--drop-target');
+  }, []);
+
+  const handleCellDragLeave = useCallback((e) => {
+    e.currentTarget.classList.remove('cal-cell--drop-target');
+  }, []);
+
+  const handleSidebarDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('unplanned-zone--drop-target');
+  }, []);
+
+  const handleSidebarDragLeave = useCallback((e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      e.currentTarget.classList.remove('unplanned-zone--drop-target');
+    }
+  }, []);
+
+  function cleanupDrag() {
+    dragDataRef.current = null;
+    const root = rootRef.current;
+    if (!root) return;
+    root.classList.remove('planner-root--dragging');
+    root.querySelectorAll('.cal-tile--drag-source').forEach((el) => el.classList.remove('cal-tile--drag-source'));
+    root.querySelectorAll('.cal-cell--drop-target').forEach((el) => el.classList.remove('cal-cell--drop-target'));
+    root.querySelectorAll('.unplanned-zone--drop-target').forEach((el) => el.classList.remove('unplanned-zone--drop-target'));
+  }
+
+  const handleDragEnd = useCallback(() => { cleanupDrag(); }, []);
+
+  const handleDropOnCell = useCallback((e, date, h, m) => {
+    e.preventDefault();
+    const drag = dragDataRef.current;
+    if (!drag) return;
+    const { taskId, taskType } = drag;
+
+    if (taskType === 'quick') {
       const dt = new Date(date);
       dt.setHours(h != null ? h : 9, m != null ? m : 0, 0, 0);
-      updateQuickTask(id, { planned_date: dt.toISOString() });
-    } else if (type === 'instance') {
-      // id is the instance key: "{masterId}_{YYYY-MM-DD}"
-      const parts = id.split('_');
+      updateQuickTask(taskId, { planned_date: dt.toISOString() });
+    } else if (taskType === 'instance') {
+      const parts = taskId.split('_');
       const dateStr = parts.pop();
       const masterId = parts.join('_');
-      // Move to new date+time by creating an override on the new date
       saveOverride(masterId, date, { planned_hour: h, planned_min: m });
-    } else if (type === 'sched') {
-      updateScheduledTask(id, {
+    } else if (taskType === 'sched') {
+      updateScheduledTask(taskId, {
         planned_date: date.toISOString(),
         planned_hour: h != null ? h : 9,
         planned_min: m != null ? m : 0,
       });
     }
+    cleanupDrag();
+  }, [updateQuickTask, saveOverride, updateScheduledTask]);
 
-    clearDrag();
-  }
+  const handleDropOnUnplanned = useCallback((e) => {
+    e.preventDefault();
+    const drag = dragDataRef.current;
+    if (!drag) return;
+    const { taskId, taskType } = drag;
 
-  function handleUnplan() {
-    if (!dragRef.current) return;
-    const id = dragRef.current;
-    const type = dragTypeRef.current;
-
-    if (type === 'quick') {
-      updateQuickTask(id, { planned_date: null });
-    } else if (type === 'instance') {
-      const parts = id.split('_');
+    if (taskType === 'quick') {
+      updateQuickTask(taskId, { planned_date: null });
+    } else if (taskType === 'instance') {
+      const parts = taskId.split('_');
       const dateStr = parts.pop();
       const masterId = parts.join('_');
-      // Delete any override for this instance
       deleteOverride(masterId, dateStr);
-      // Also clear the master's planned fields — required for non-recurring
-      // tasks where the instance comes directly from master.planned_date
       updateScheduledTask(masterId, { planned_date: null, planned_hour: null, planned_min: null });
-    } else if (type === 'sched') {
-      updateScheduledTask(id, { planned_date: null, planned_hour: null, planned_min: null });
+    } else if (taskType === 'sched') {
+      updateScheduledTask(taskId, { planned_date: null, planned_hour: null, planned_min: null });
     }
+    cleanupDrag();
+  }, [updateQuickTask, deleteOverride, updateScheduledTask]);
 
-    clearDrag();
-  }
-
-  // Resize handler
+  // Resize handler (unchanged — uses mousedown/mousemove, not DnD)
   function handleResize(e, inst) {
     e.stopPropagation();
     e.preventDefault();
@@ -164,45 +204,44 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
     document.addEventListener('mouseup', onUp);
   }
 
-  const sideDropActive = dropTarget === 'sidebar';
-
   // ── Sidebar ──
   const sidebar = (
     <div
+      className="unplanned-zone"
       style={{
         width: 260, borderRight: '1px solid #e5e7eb', background: '#fff',
         display: 'flex', flexDirection: 'column', flexShrink: 0,
         fontFamily: "'Outfit', sans-serif",
       }}
-      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTarget('sidebar'); }}
-      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropTarget(null); }}
-      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleUnplan(); setDropTarget(null); }}
+      onDragOver={handleSidebarDragOver}
+      onDragLeave={handleSidebarDragLeave}
+      onDrop={handleDropOnUnplanned}
     >
       <div style={{
-        padding: '8px 10px', fontSize: 11, fontWeight: 600, color: sideDropActive ? '#0e7fe0' : '#94a3b8',
+        padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#94a3b8',
         textTransform: 'uppercase', letterSpacing: '0.4px',
         borderBottom: '1px solid #e5e7eb',
-        background: sideDropActive ? '#dbeafe' : 'transparent',
         transition: 'all 0.15s',
       }}>
-        {sideDropActive ? '\u2B07 Drop to unplan' : `Unplanned (${unplannedMasters.length})`}
+        Unplanned ({unplannedMasters.length})
       </div>
 
       <div style={{ overflowY: 'auto', padding: 5, maxHeight: quickUnplanned.length > 0 ? '50%' : undefined }}>
         {unplannedMasters.map((t) => (
           <div
             key={t.id}
+            className="cal-tile"
+            data-task-id={t.id}
             draggable
-            onDragStart={(e) => { e.stopPropagation(); startDrag(t.id, 'sched'); }}
-            onDragEnd={() => clearDrag()}
+            onDragStart={(e) => { e.stopPropagation(); handleDragStart(e, t.id, 'sched'); }}
+            onDragEnd={handleDragEnd}
             onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
             style={{
               padding: '4px 8px', marginBottom: 3, background: '#fff',
               border: '1px solid #e5e7eb',
               borderLeft: `3px solid ${t.assignee_id ? teamColour(t.assignee_id) : '#0e7fe0'}`,
-              borderRadius: 5, fontSize: 12, cursor: 'grab', transition: 'all 0.12s',
+              borderRadius: 5, fontSize: 12, cursor: 'grab', transition: 'opacity 0.12s',
               boxShadow: highlightId === t.id ? '0 0 0 2px #dbeafe' : 'none',
-              opacity: draggingId === t.id ? 0 : 1,
             }}
           >
             <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -214,7 +253,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
             </div>
           </div>
         ))}
-        {unplannedMasters.length === 0 && !sideDropActive && (
+        {unplannedMasters.length === 0 && (
           <div style={{ padding: 8, fontSize: 11, color: '#cbd5e1', textAlign: 'center' }}>All planned</div>
         )}
       </div>
@@ -232,16 +271,17 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
             {quickUnplanned.map((t) => (
               <div
                 key={t.id}
+                className="cal-tile"
+                data-task-id={t.id}
                 draggable
-                onDragStart={(e) => { e.stopPropagation(); startDrag(t.id, 'quick'); }}
-                onDragEnd={() => clearDrag()}
+                onDragStart={(e) => { e.stopPropagation(); handleDragStart(e, t.id, 'quick'); }}
+                onDragEnd={handleDragEnd}
                 onClick={(e) => { e.stopPropagation(); onAction(e, { ...t, _isQuick: true }); }}
                 style={{
                   padding: '4px 8px', marginBottom: 3, background: '#f1f5f9',
                   border: '1px solid #e5e7eb', borderLeft: '3px solid #94a3b8',
-                  borderRadius: 5, fontSize: 12, cursor: 'grab',
+                  borderRadius: 5, fontSize: 12, cursor: 'grab', transition: 'opacity 0.12s',
                   boxShadow: highlightId === t.id ? '0 0 0 2px #dbeafe' : 'none',
-                  opacity: draggingId === t.id ? 0 : 1,
                 }}
               >
                 <div style={{ fontWeight: 500, fontSize: 12 }}>{t.title}</div>
@@ -259,7 +299,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
   // ── Month view ──
   if (calendarView === 'month') {
     return (
-      <div style={{ display: 'flex', height: '100%' }}>
+      <div ref={rootRef} className="planner-root" style={{ display: 'flex', height: '100%' }}>
         {sidebar}
         <div style={{ flex: 1, overflow: 'auto' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', height: '100%' }}>
@@ -277,21 +317,21 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
               const qs = quickOnDay(d);
               const isOther = d.getMonth() !== anchor.getMonth();
               const isToday = sameDay(d, now);
-              const isDrop = dropTarget === `m${i}`;
 
               return (
                 <div
                   key={i}
+                  className="cal-cell"
                   style={{
                     borderRight: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9',
                     padding: 3, minHeight: 68, overflow: 'hidden',
                     opacity: isOther ? 0.3 : 1,
-                    background: isDrop ? '#dbeafe' : isToday ? '#eff6ff' : 'transparent',
+                    background: isToday ? '#eff6ff' : 'transparent',
                     fontFamily: "'Outfit', sans-serif",
                   }}
-                  onDragOver={(e) => { e.preventDefault(); setDropTarget(`m${i}`); }}
-                  onDragLeave={() => setDropTarget(null)}
-                  onDrop={(e) => { e.preventDefault(); handleDrop(d, 9, 0); }}
+                  onDragOver={handleCellDragOver}
+                  onDragLeave={handleCellDragLeave}
+                  onDrop={(e) => handleDropOnCell(e, d, 9, 0)}
                 >
                   <div style={{
                     fontSize: 13, fontWeight: isToday ? 700 : 500, marginBottom: 2,
@@ -302,14 +342,15 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                   {evs.slice(0, 2).map((t) => (
                     <div
                       key={t.id}
-                      onClick={(e) => { if (!draggingId) { e.stopPropagation(); onAction(e, t); } }}
+                      className="cal-tile"
+                      data-task-id={t._key || t.id}
+                      onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
                       style={{
                         padding: '2px 4px', marginBottom: 1, borderRadius: 3,
                         fontSize: 10, fontWeight: 500, color: '#fff',
                         background: tileColour(t, colourMode, staffColours, statusColours),
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2,
-                        pointerEvents: draggingId ? 'none' : 'auto',
                       }}
                     >
                       <StatusIcon status={t.status} dark size={8} />
@@ -342,7 +383,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
   const cols = days.length;
 
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
+    <div ref={rootRef} className="planner-root" style={{ display: 'flex', height: '100%' }}>
       {sidebar}
       <div style={{ flex: 1, overflow: 'auto' }}>
         <div style={{
@@ -393,7 +434,6 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                 {/* Day cells */}
                 {days.map((d, di) => {
                   const cellKey = `${di}-${si}`;
-                  const isDrop = dropTarget === cellKey;
 
                   // Events starting at this slot
                   const cellEvents = eventsOnDay(d).filter(
@@ -402,7 +442,6 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                   // Quick tasks — match by their planned_date hour/min
                   const cellQuick = quickOnDay(d).filter((t) => {
                     const hm = quickHourMin(t);
-                    // Snap to nearest 15-min slot
                     const snappedMin = Math.floor(hm.m / 15) * 15;
                     return hm.h === slot.h && snappedMin === slot.m;
                   });
@@ -410,29 +449,29 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                   return (
                     <div
                       key={cellKey}
+                      className="cal-cell"
                       style={{
                         borderRight: '1px solid #f1f5f9',
                         borderBottom: `1px solid ${isHourBottom ? '#e5e7eb' : '#f1f5f9'}`,
                         position: 'relative', minHeight: 18,
-                        background: isDrop ? '#dbeafe' : 'transparent',
-                        transition: 'background 0.1s',
                       }}
-                      onDragOver={(e) => { e.preventDefault(); setDropTarget(cellKey); }}
-                      onDragLeave={() => setDropTarget(null)}
-                      onDrop={(e) => { e.preventDefault(); handleDrop(d, slot.h, slot.m); }}
+                      onDragOver={handleCellDragOver}
+                      onDragLeave={handleCellDragLeave}
+                      onDrop={(e) => handleDropOnCell(e, d, slot.h, slot.m)}
                     >
                       {cellEvents.map((t) => {
                         const span = Math.max(1, Math.round((t.duration || 30) / 15));
                         const isHl = highlightId === t.id;
                         const tileId = t._key || t.id;
-                        const isDragging = draggingId === tileId;
 
                         return (
                           <div
                             key={t.id}
+                            className="cal-tile"
+                            data-task-id={tileId}
                             draggable
-                            onDragStart={(e) => { e.stopPropagation(); startDrag(tileId, t._instance ? 'instance' : 'sched'); }}
-                            onDragEnd={() => clearDrag()}
+                            onDragStart={(e) => { e.stopPropagation(); handleDragStart(e, tileId, t._instance ? 'instance' : 'sched'); }}
+                            onDragEnd={handleDragEnd}
                             onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
@@ -441,15 +480,12 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                               background: tileColour(t, colourMode, staffColours, statusColours),
                               height: `${span * 18 - 1}px`,
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-                              zIndex: isDragging ? 0 : isHl ? 5 : 1,
-                              boxShadow: isHl && !draggingId
+                              zIndex: isHl ? 5 : 1,
+                              boxShadow: isHl
                                 ? '0 0 0 2px #0e7fe0'
                                 : '0 1px 2px rgba(0,0,0,0.04)',
                               display: 'flex', alignItems: 'center', gap: 2,
                               cursor: 'grab',
-                              opacity: isDragging ? 0 : 1,
-                              pointerEvents: draggingId ? 'none' : 'auto',
-                              transition: 'opacity 0.1s',
                             }}
                           >
                             <StatusIcon status={t.status} dark size={9} />
@@ -482,13 +518,14 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                       {cellQuick.map((t) => {
                         const isHl = highlightId === t.id;
                         const qSpan = Math.max(1, Math.round((t.duration || 15) / 15));
-                        const isDragging = draggingId === t.id;
                         return (
                           <div
                             key={t.id}
+                            className="cal-tile"
+                            data-task-id={t.id}
                             draggable
-                            onDragStart={(e) => { e.stopPropagation(); startDrag(t.id, 'quick'); }}
-                            onDragEnd={() => clearDrag()}
+                            onDragStart={(e) => { e.stopPropagation(); handleDragStart(e, t.id, 'quick'); }}
+                            onDragEnd={handleDragEnd}
                             onClick={(e) => { e.stopPropagation(); onAction(e, { ...t, _isQuick: true }); }}
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
@@ -499,12 +536,9 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                               border: '1px dashed rgba(255,255,255,0.5)',
                               cursor: 'grab',
-                              zIndex: isDragging ? 0 : isHl ? 5 : 1,
-                              boxShadow: isHl && !draggingId ? '0 0 0 2px #0e7fe0' : 'none',
+                              zIndex: isHl ? 5 : 1,
+                              boxShadow: isHl ? '0 0 0 2px #0e7fe0' : 'none',
                               display: 'flex', alignItems: 'center', gap: 2,
-                              opacity: isDragging ? 0 : 1,
-                              pointerEvents: draggingId ? 'none' : 'auto',
-                              transition: 'opacity 0.1s',
                             }}
                           >
                             {t.title}
