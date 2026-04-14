@@ -108,8 +108,12 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
   if (filters.clientFilter) quickFiltered = quickFiltered.filter((t) => t.entity_id === filters.clientFilter);
   if (filters.serviceFilter) quickFiltered = quickFiltered.filter((t) => t.service === filters.serviceFilter);
 
-  const quickUnplanned = quickFiltered.filter((t) => !t.planned_date || new Date(t.planned_date) < now);
-  const quickPlanned = quickFiltered.filter((t) => t.planned_date && new Date(t.planned_date) >= now);
+  // Split quick tasks: show on calendar if planned_date is within visible range,
+  // otherwise show in sidebar. Uses the calendar's visible start date (from),
+  // NOT today — so tasks on past-but-visible days (e.g. Monday when today is
+  // Tuesday in workweek view) appear on the calendar, not the sidebar.
+  const quickUnplanned = quickFiltered.filter((t) => !t.planned_date || new Date(t.planned_date) < from);
+  const quickPlanned = quickFiltered.filter((t) => t.planned_date && new Date(t.planned_date) >= from);
   const unplannedMasters = scheduledTasks.filter((m) => {
     if (m.planned_date) return false;
     if (filters.teamFilter && m.assignee_id !== filters.teamFilter) return false;
