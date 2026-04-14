@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Download, Check, Send, Trash2, Pencil, ChevronDown, Minimize2, Maximize2 } from 'lucide-react';
+import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 
 const VAT_RATE = 0.20;
 const STATUS_CONFIG = {
   draft: { label: 'Draft', colour: '#64748b', bg: '#f1f5f9' },
-  pending_approval: { label: 'Pending', colour: '#d97706', bg: '#fffbeb' },
   approved: { label: 'Approved', colour: '#059669', bg: '#f0fdf4' },
   pushed: { label: 'Pushed to QBO', colour: '#0e7fe0', bg: '#eff6ff' },
   rejected: { label: 'Rejected', colour: '#dc2626', bg: '#fef2f2' },
@@ -19,12 +18,14 @@ export default function BillingPage() {
   const [entities, setEntities] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('pipeline'); // default to pipeline
   const [compact, setCompact] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+  const [showPushConfirm, setShowPushConfirm] = useState(false);
+  const [pushing, setPushing] = useState(false);
 
-  // Form state (shared for add + edit)
   const [formClient, setFormClient] = useState('');
   const [formService, setFormService] = useState('');
   const [formDesc, setFormDesc] = useState('');
@@ -41,40 +42,40 @@ export default function BillingPage() {
       const [{ data: bills }, { data: ents }, { data: staff }] = await Promise.all([
         supabase.from('billing_items').select('*').order('created_at', { ascending: false }),
         supabase.from('entities').select('id, name').order('name'),
-        supabase.from('staff_profiles').select('id, full_name, name, email').order('name'),
+        supabase.from('staff_profiles').select('*').order('name'),
       ]);
       setItems(bills || []);
       setEntities(ents || []);
-      setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email })));
-    } catch (e) {
-      console.error('[Billing] load error:', e);
-      try { const { data: ents } = await supabase.from('entities').select('id, name').order('name'); setEntities(ents || []); } catch {}
-    }
+      setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email || 'Unknown' })));
+    } catch (e) { console.error('[Billing] load error:', e); }
     setLoading(false);
   };
 
   const entityMap = useMemo(() => { const m = {}; entities.forEach((e) => { m[e.id] = e; }); return m; }, [entities]);
   const staffMap = useMemo(() => { const m = {}; staffList.forEach((s) => { m[s.id] = s; }); return m; }, [staffList]);
-  const filtered = filter === 'all' ? items : items.filter((i) => i.status === filter);
+
+  // Pipeline = draft + approved (everything not yet pushed or rejected)
+  const filtered = useMemo(() => {
+    if (filter === 'pipeline') return items.filter((i) => i.status === 'draft' || i.status === 'approved');
+    if (filter === 'all') return items;
+    return items.filter((i) => i.status === filter);
+  }, [items, filter]);
+
   const counts = useMemo(() => {
-    const c = { all: items.length };
+    const c = { all: items.length, pipeline: items.filter((i) => i.status === 'draft' || i.status === 'approved').length };
     Object.keys(STATUS_CONFIG).forEach((k) => { c[k] = items.filter((i) => i.status === k).length; });
     return c;
   }, [items]);
 
-  const resetForm = () => { setFormClient(''); setFormService(''); setFormDesc(''); setFormNet(''); setFormVat(''); setFormGross(''); setVatManual(false); };
+  // Totals for filtered view
+  const totals = useMemo(() => {
+    let net = 0, vat = 0, gross = 0;
+    filtered.forEach((i) => { net += i.net_amount || 0; vat += i.vat_amount || 0; gross += i.gross_amount || 0; });
+    return { net, vat, gross };
+  }, [filtered]);
 
-  const updateNetCalc = (net, vatOverride) => {
-    const n = parseFloat(net) || 0;
-    if (!vatOverride) {
-      const vt = Math.round(n * VAT_RATE * 100) / 100;
-      setFormVat(vt ? vt.toFixed(2) : '');
-      setFormGross(vt ? (n + vt).toFixed(2) : '');
-    } else {
-      const vt = parseFloat(formVat) || 0;
-      setFormGross((n + vt).toFixed(2));
-    }
-  };
+  const fmt = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n || 0);
+  const resetForm = () => { setFormClient(''); setFormService(''); setFormDesc(''); setFormNet(''); setFormVat(''); setFormGross(''); setVatManual(false); };
 
   const handleAdd = async () => {
     if (!formClient || !formService || !formNet) return;
@@ -114,6 +115,7 @@ export default function BillingPage() {
     try {
       await supabase.from('billing_items').delete().eq('id', item.id);
       setItems((prev) => prev.filter((i) => i.id !== item.id));
+      setSelected((prev) => { const n = new Set(prev); n.delete(item.id); return n; });
     } catch (e) { console.error(e); }
   };
 
@@ -126,211 +128,229 @@ export default function BillingPage() {
     } catch (e) { console.error(e); }
   };
 
-  const startEdit = (item) => {
-    setEditingId(item.id);
-    setFormClient(item.entity_id || '');
-    setFormService(item.service || '');
-    setFormDesc(item.description || '');
-    setFormNet(String(item.net_amount || ''));
-    setFormVat(String(item.vat_amount || ''));
-    setFormGross(String(item.gross_amount || ''));
-    setVatManual(false);
-    setShowAdd(false);
+  // Batch push to QB
+  const approvedItems = items.filter((i) => i.status === 'approved');
+  const selectedApproved = approvedItems.filter((i) => selected.has(i.id));
+  const pushTargets = selectedApproved.length > 0 ? selectedApproved : approvedItems;
+
+  const handleBatchPush = async () => {
+    setPushing(true);
+    try {
+      for (const item of pushTargets) {
+        await supabase.from('billing_items').update({ status: 'pushed' }).eq('id', item.id);
+      }
+      await loadData();
+      setSelected(new Set());
+    } catch (e) { console.error(e); }
+    setPushing(false);
+    setShowPushConfirm(false);
   };
 
+  const startEdit = (item) => {
+    setEditingId(item.id); setShowAdd(false);
+    setFormClient(item.entity_id || ''); setFormService(item.service || '');
+    setFormDesc(item.description || ''); setFormNet(String(item.net_amount || ''));
+    setFormVat(String(item.vat_amount || '')); setFormGross(String(item.gross_amount || ''));
+    setVatManual(false);
+  };
+
+  const toggleSelect = (id) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleSelectAll = () => { if (selected.size === filtered.length) setSelected(new Set()); else setSelected(new Set(filtered.map((i) => i.id))); };
+
   const handleExport = () => {
+    const toExport = selected.size > 0 ? filtered.filter((i) => selected.has(i.id)) : filtered;
     const headers = ['Client','Service','Description','Net','VAT','Gross','Status','Added By','Date'];
-    const rows = filtered.map((i) => [
-      `"${(entityMap[i.entity_id]?.name || '').replace(/"/g,'""')}"`,
-      `"${(i.service || '').replace(/"/g,'""')}"`,
-      `"${(i.description || '').replace(/"/g,'""')}"`,
-      (i.net_amount||0).toFixed(2), (i.vat_amount||0).toFixed(2), (i.gross_amount||0).toFixed(2),
-      i.status,
-      `"${(staffMap[i.created_by]?.name || '').replace(/"/g,'""')}"`,
+    const rows = toExport.map((i) => [
+      `"${(entityMap[i.entity_id]?.name||'').replace(/"/g,'""')}"`,`"${(i.service||'').replace(/"/g,'""')}"`,
+      `"${(i.description||'').replace(/"/g,'""')}"`, (i.net_amount||0).toFixed(2),(i.vat_amount||0).toFixed(2),(i.gross_amount||0).toFixed(2),
+      i.status, `"${(staffMap[i.created_by]?.name||'Unknown').replace(/"/g,'""')}"`,
       new Date(i.created_at).toLocaleDateString('en-GB'),
     ].join(','));
     const csv = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url;
-    a.download = `billing-${new Date().toISOString().split('T')[0]}.csv`; a.click();
-    URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url;
+    a.download=`billing-${new Date().toISOString().split('T')[0]}.csv`; a.click(); URL.revokeObjectURL(url);
   };
 
-  const fmt = (n) => new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP',minimumFractionDigits:2}).format(n||0);
-
-  // Inline form renderer (shared for add + edit)
   const renderForm = (onSubmit, submitLabel, onCancel) => (
     <div style={{ background:'#fff', borderRadius:12, border:'1px solid #e5e7eb', padding:'20px 24px', marginBottom:20 }}>
       <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'flex-end' }}>
-        <div style={{ flex:1, minWidth:160 }}>
-          <label style={formLabel}>Client *</label>
-          <select value={formClient} onChange={(e)=>setFormClient(e.target.value)} style={inputStyle}>
-            <option value="">Select client...</option>
-            {entities.map((e)=><option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
-        </div>
-        <div style={{ flex:1, minWidth:140 }}>
-          <label style={formLabel}>Service *</label>
-          <select value={formService} onChange={(e)=>setFormService(e.target.value)} style={inputStyle}>
-            <option value="">Select service...</option>
-            {SERVICES.map((s)=><option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        <div style={{ flex:2, minWidth:200 }}>
-          <label style={formLabel}>Description</label>
-          <input value={formDesc} onChange={(e)=>setFormDesc(e.target.value)} placeholder="Optional..." style={inputStyle} />
-        </div>
-        <div style={{ width:110 }}>
-          <label style={formLabel}>Net (£) *</label>
-          <input type="number" step="0.01" value={formNet} placeholder="0.00" style={inputStyle} onChange={(e)=>{setFormNet(e.target.value); updateNetCalc(e.target.value, vatManual);}} />
-        </div>
-        <div style={{ width:100 }}>
-          <label style={formLabel}>VAT (£)</label>
-          <input type="number" step="0.01" value={formVat} placeholder="0.00" style={inputStyle} onChange={(e)=>{setFormVat(e.target.value);setVatManual(true);const n=parseFloat(formNet)||0;setFormGross((n+(parseFloat(e.target.value)||0)).toFixed(2));}} />
-        </div>
-        <div style={{ width:110 }}>
-          <label style={formLabel}>Gross (£)</label>
-          <input type="number" value={formGross} placeholder="0.00" style={{...inputStyle,background:'#f8fafc'}} readOnly />
-        </div>
-        <div style={{ display:'flex', gap:6, alignItems:'flex-end', paddingBottom:1 }}>
-          <button onClick={onSubmit} disabled={!formClient||!formService||!formNet||saving} style={{...btnPrimary, opacity:(!formClient||!formService||!formNet||saving)?0.4:1}}>
-            {saving?'Saving...':submitLabel}
-          </button>
-          <button onClick={onCancel} style={btnOutline}>Cancel</button>
-        </div>
+        <div style={{flex:1,minWidth:160}}><label style={formLabel}>Client *</label>
+          <select value={formClient} onChange={(e)=>setFormClient(e.target.value)} style={inputStyle}><option value="">Select client...</option>{entities.map((e)=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+        <div style={{flex:1,minWidth:140}}><label style={formLabel}>Service *</label>
+          <select value={formService} onChange={(e)=>setFormService(e.target.value)} style={inputStyle}><option value="">Select service...</option>{SERVICES.map((s)=><option key={s} value={s}>{s}</option>)}</select></div>
+        <div style={{flex:2,minWidth:200}}><label style={formLabel}>Description</label>
+          <input value={formDesc} onChange={(e)=>setFormDesc(e.target.value)} placeholder="Optional..." style={inputStyle}/></div>
+        <div style={{width:110}}><label style={formLabel}>Net (£) *</label>
+          <input type="number" step="0.01" value={formNet} placeholder="0.00" style={inputStyle} onChange={(e)=>{setFormNet(e.target.value);const n=parseFloat(e.target.value)||0;if(!vatManual){const vt=Math.round(n*VAT_RATE*100)/100;setFormVat(vt?vt.toFixed(2):'');setFormGross(vt?(n+vt).toFixed(2):'');}else{setFormGross((n+(parseFloat(formVat)||0)).toFixed(2));}}}/></div>
+        <div style={{width:100}}><label style={formLabel}>VAT (£)</label>
+          <input type="number" step="0.01" value={formVat} placeholder="0.00" style={inputStyle} onChange={(e)=>{setFormVat(e.target.value);setVatManual(true);setFormGross(((parseFloat(formNet)||0)+(parseFloat(e.target.value)||0)).toFixed(2));}}/></div>
+        <div style={{width:110}}><label style={formLabel}>Gross (£)</label>
+          <input type="number" value={formGross} placeholder="0.00" style={{...inputStyle,background:'#f8fafc'}} readOnly/></div>
+        <div style={{display:'flex',gap:6,alignItems:'flex-end',paddingBottom:1}}>
+          <button onClick={onSubmit} disabled={!formClient||!formService||!formNet||saving} style={{...btnPrimary,opacity:(!formClient||!formService||!formNet||saving)?0.4:1}}>{saving?'Saving...':submitLabel}</button>
+          <button onClick={onCancel} style={btnOutline}>Cancel</button></div>
       </div>
     </div>
   );
 
   return (
-    <div style={{ maxWidth:1000, margin:'0 auto', padding:'32px 24px', fontFamily:"'Outfit', sans-serif" }}>
+    <div style={{maxWidth:1000,margin:'0 auto',padding:'32px 24px',fontFamily:"'Outfit', sans-serif"}}>
       {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
         <div>
-          <h1 style={{ fontFamily:"'Playfair Display', serif", fontSize:26, fontWeight:500, color:'#0f172a', marginBottom:4 }}>Billing</h1>
-          <p style={{ fontSize:13, color:'#64748b' }}>{items.length} items · {counts.pending_approval||0} awaiting approval</p>
+          <h1 style={{fontFamily:"'Playfair Display', serif",fontSize:26,fontWeight:500,color:'#0f172a',marginBottom:4}}>Billing</h1>
+          <p style={{fontSize:13,color:'#64748b'}}>{counts.pipeline} in pipeline · {counts.all} total</p>
         </div>
-        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {approvedItems.length > 0 && (
+            <button onClick={()=>setShowPushConfirm(true)} style={{...btnPrimary,background:'#059669',gap:5}}>
+              <Send size={14}/> Push to QB ({selectedApproved.length > 0 ? selectedApproved.length : approvedItems.length})
+            </button>
+          )}
           <button onClick={()=>setCompact(!compact)} style={btnOutline} title={compact?'Full view':'Compact view'}>
-            {compact ? <Maximize2 size={14}/> : <Minimize2 size={14}/>}
+            {compact?<Maximize2 size={14}/>:<Minimize2 size={14}/>}
           </button>
-          {filtered.length > 0 && <button onClick={handleExport} style={{...btnOutline, gap:5}}><Download size={14}/> Export</button>}
+          {filtered.length>0 && <button onClick={handleExport} style={{...btnOutline,gap:5}}><Download size={14}/> Export{selected.size>0?` (${selected.size})`:''}</button>}
           <button onClick={()=>{setShowAdd(!showAdd);setEditingId(null);resetForm();}} style={btnPrimary}><Plus size={14}/> New Item</button>
         </div>
       </div>
 
-      {/* Add form */}
-      {showAdd && renderForm(handleAdd, 'Add', () => { setShowAdd(false); resetForm(); })}
-
-      {/* Edit form (shown inline above the item) */}
-      {editingId && !showAdd && renderForm(
-        () => handleUpdate(items.find((i)=>i.id===editingId)),
-        'Save',
-        () => { setEditingId(null); resetForm(); }
-      )}
+      {showAdd && renderForm(handleAdd, 'Add', ()=>{setShowAdd(false);resetForm();})}
+      {editingId && !showAdd && renderForm(()=>handleUpdate(items.find((i)=>i.id===editingId)), 'Save', ()=>{setEditingId(null);resetForm();})}
 
       {/* Filter tabs */}
-      <div style={{ display:'flex', gap:2, marginBottom:16, borderBottom:'1px solid #e5e7eb' }}>
-        {[{value:'all',label:'All'}, ...Object.entries(STATUS_CONFIG).map(([k,v])=>({value:k,label:v.label}))].map((tab)=>(
-          <button key={tab.value} onClick={()=>setFilter(tab.value)} style={{
-            padding:'8px 14px', fontSize:12, fontWeight:filter===tab.value?600:400,
-            color:filter===tab.value?'#0f172a':'#94a3b8', background:'none', border:'none',
+      <div style={{display:'flex',gap:2,marginBottom:16,borderBottom:'1px solid #e5e7eb'}}>
+        {[{value:'pipeline',label:'Pipeline'},{value:'all',label:'All'},...Object.entries(STATUS_CONFIG).map(([k,v])=>({value:k,label:v.label}))].map((tab)=>(
+          <button key={tab.value} onClick={()=>{setFilter(tab.value);setSelected(new Set());}} style={{
+            padding:'8px 14px',fontSize:12,fontWeight:filter===tab.value?600:400,
+            color:filter===tab.value?'#0f172a':'#94a3b8',background:'none',border:'none',
             borderBottom:filter===tab.value?'2px solid #38bdf8':'2px solid transparent',
-            cursor:'pointer', fontFamily:"'Outfit', sans-serif",
+            cursor:'pointer',fontFamily:"'Outfit', sans-serif",
           }}>
-            {tab.label} <span style={{fontSize:10, color:filter===tab.value?'#38bdf8':'#cbd5e1', marginLeft:4}}>{counts[tab.value]||0}</span>
+            {tab.label} <span style={{fontSize:10,color:filter===tab.value?'#38bdf8':'#cbd5e1',marginLeft:4}}>{counts[tab.value]||0}</span>
           </button>
         ))}
       </div>
 
+      {/* Totals bar */}
+      {filtered.length > 0 && (
+        <div style={{display:'flex',gap:20,marginBottom:16,padding:'10px 18px',background:'#f8fafc',borderRadius:10,fontSize:13}}>
+          <span style={{color:'#64748b'}}>{filtered.length} items</span>
+          <span><b style={{color:'#0f172a'}}>Net:</b> {fmt(totals.net)}</span>
+          <span><b style={{color:'#0f172a'}}>VAT:</b> {fmt(totals.vat)}</span>
+          <span><b style={{color:'#0e7fe0'}}>Gross:</b> <b>{fmt(totals.gross)}</b></span>
+        </div>
+      )}
+
+      {/* Select all */}
+      {filtered.length > 0 && (
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,padding:'0 4px'}}>
+          <input type="checkbox" checked={selected.size===filtered.length&&filtered.length>0} onChange={toggleSelectAll} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0'}}/>
+          <span style={{fontSize:11,color:'#94a3b8'}}>Select all</span>
+        </div>
+      )}
+
       {/* List */}
       {loading ? <p style={{textAlign:'center',color:'#94a3b8',fontSize:13,padding:40}}>Loading...</p>
-      : filtered.length === 0 ? (
+      : filtered.length===0 ? (
         <div style={{textAlign:'center',padding:60,background:'#fff',borderRadius:12,border:'1px solid #e5e7eb'}}>
-          <p style={{fontSize:14,color:'#94a3b8'}}>No billing items{filter!=='all'?` with status "${STATUS_CONFIG[filter]?.label}"`:''}</p>
+          <p style={{fontSize:14,color:'#94a3b8'}}>No billing items in this view.</p>
         </div>
       ) : (
-        <div style={{display:'flex',flexDirection:'column',gap: compact?3:6}}>
-          {filtered.map((item) => {
-            const sc = STATUS_CONFIG[item.status] || STATUS_CONFIG.draft;
-            const clientName = entityMap[item.entity_id]?.name || 'Unknown';
-            const createdByName = staffMap[item.created_by]?.name?.split(' ')[0] || '';
+        <div style={{display:'flex',flexDirection:'column',gap:compact?3:6}}>
+          {filtered.map((item)=>{
+            const sc = STATUS_CONFIG[item.status]||STATUS_CONFIG.draft;
+            const clientName = entityMap[item.entity_id]?.name||'Unknown';
+            const addedBy = staffMap[item.created_by]?.name || 'Unknown';
             const dateStr = new Date(item.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+            const isSelected = selected.has(item.id);
 
-            if (compact) {
-              return (
-                <div key={item.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 12px', background:'#fff', borderRadius:8, border:'1px solid #e5e7eb', borderLeft:`3px solid ${sc.colour}`, fontSize:12 }}>
-                  <span style={{fontWeight:500, color:'#0f172a', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{clientName} — {item.service}</span>
-                  <span style={{fontWeight:600, color:'#0f172a', flexShrink:0}}>{fmt(item.gross_amount)}</span>
-                  <span style={{fontSize:10, fontWeight:600, color:sc.colour, background:sc.bg, padding:'2px 6px', borderRadius:4, flexShrink:0}}>{sc.label}</span>
-                  <span style={{fontSize:10, color:'#94a3b8', flexShrink:0}}>{createdByName} · {dateStr}</span>
-                  <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} compact />
-                </div>
-              );
-            }
+            if (compact) return (
+              <div key={item.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',background:isSelected?'#eff6ff':'#fff',borderRadius:8,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,fontSize:12}}>
+                <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:13,height:13,cursor:'pointer',accentColor:'#0e7fe0',flexShrink:0}}/>
+                <span style={{fontWeight:500,color:'#0f172a',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clientName} — {item.service}</span>
+                <span style={{fontWeight:600,color:'#0f172a',flexShrink:0}}>{fmt(item.gross_amount)}</span>
+                <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 6px',borderRadius:4,flexShrink:0}}>{sc.label}</span>
+                <span style={{fontSize:10,color:'#94a3b8',flexShrink:0}}>{addedBy} · {dateStr}</span>
+                <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} compact/>
+              </div>
+            );
 
             return (
-              <div key={item.id} style={{ display:'flex', alignItems:'flex-start', gap:14, padding:'14px 18px', background:'#fff', borderRadius:12, border:'1px solid #e5e7eb', borderLeft:`3px solid ${sc.colour}` }}>
-                <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontSize:14, fontWeight:500, color:'#0f172a', marginBottom:2}}>{clientName} — {item.service}</div>
-                  {item.description && <div style={{fontSize:12, color:'#64748b'}}>{item.description}</div>}
-                  <div style={{fontSize:11, color:'#94a3b8', marginTop:4, display:'flex', gap:8, alignItems:'center'}}>
-                    <span style={{fontSize:10, fontWeight:600, color:sc.colour, background:sc.bg, padding:'2px 8px', borderRadius:6}}>{sc.label}</span>
-                    <span>{createdByName && `Added by ${createdByName}`}</span>
+              <div key={item.id} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'14px 18px',background:isSelected?'#eff6ff':'#fff',borderRadius:12,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`}}>
+                <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0',marginTop:3,flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:500,color:'#0f172a',marginBottom:2}}>{clientName} — {item.service}</div>
+                  {item.description && <div style={{fontSize:12,color:'#64748b'}}>{item.description}</div>}
+                  <div style={{fontSize:11,color:'#94a3b8',marginTop:4,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                    <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 8px',borderRadius:6}}>{sc.label}</span>
+                    <span>Added by {addedBy}</span>
                     <span>{dateStr}</span>
                   </div>
                 </div>
-                <div style={{textAlign:'right', flexShrink:0}}>
-                  <div style={{fontSize:16, fontWeight:700, color:'#0f172a'}}>{fmt(item.gross_amount)}</div>
-                  <div style={{fontSize:10, color:'#64748b'}}>{fmt(item.net_amount)} + {fmt(item.vat_amount)} VAT</div>
+                <div style={{textAlign:'right',flexShrink:0}}>
+                  <div style={{fontSize:16,fontWeight:700,color:'#0f172a'}}>{fmt(item.gross_amount)}</div>
+                  <div style={{fontSize:10,color:'#64748b'}}>{fmt(item.net_amount)} + {fmt(item.vat_amount)} VAT</div>
                 </div>
-                <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} />
+                <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange}/>
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Push to QB confirmation modal */}
+      {showPushConfirm && (
+        <div onClick={()=>setShowPushConfirm(false)} style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div onClick={(e)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:'32px',maxWidth:480,width:'100%',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+              <AlertTriangle size={24} style={{color:'#d97706'}}/>
+              <h2 style={{fontFamily:"'Playfair Display', serif",fontSize:20,fontWeight:500,color:'#0f172a',margin:0}}>Confirm Push to QuickBooks</h2>
+            </div>
+            <p style={{fontSize:13,color:'#64748b',marginBottom:16,lineHeight:1.6}}>
+              You are about to push <b>{pushTargets.length} approved billing item{pushTargets.length!==1?'s':''}</b> to QuickBooks Online.
+              This action will mark them as committed. Please confirm this is correct.
+            </p>
+            <div style={{background:'#f8fafc',borderRadius:8,padding:'12px 16px',marginBottom:20,maxHeight:200,overflowY:'auto'}}>
+              {pushTargets.map((item)=>(
+                <div key={item.id} style={{display:'flex',justifyContent:'space-between',fontSize:12,padding:'4px 0',borderBottom:'1px solid #f1f5f9'}}>
+                  <span style={{fontWeight:500,color:'#0f172a'}}>{entityMap[item.entity_id]?.name} — {item.service}</span>
+                  <span style={{fontWeight:600}}>{fmt(item.gross_amount)}</span>
+                </div>
+              ))}
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:13,fontWeight:700,padding:'8px 0 0',borderTop:'2px solid #e5e7eb',marginTop:4}}>
+                <span>Total</span>
+                <span style={{color:'#0e7fe0'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.gross_amount||0),0))}</span>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>setShowPushConfirm(false)} style={{...btnOutline,flex:1}}>Cancel</button>
+              <button onClick={handleBatchPush} disabled={pushing} style={{...btnPrimary,flex:1,background:'#059669',justifyContent:'center',opacity:pushing?0.5:1}}>
+                {pushing?'Pushing...':'Confirm Push to QB'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ─── Action buttons (replaces status dropdown) ── */
 function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   const s = item.status;
-  const size = compact ? 12 : 14;
-  const btnS = { background:'none', border:'none', cursor:'pointer', padding: compact?2:4, borderRadius:4, display:'inline-flex', transition:'color 0.12s' };
-
+  const sz = compact?12:14;
+  const b = {background:'none',border:'none',cursor:'pointer',padding:compact?2:4,borderRadius:4,display:'inline-flex',transition:'color 0.12s'};
   return (
-    <div style={{ display:'flex', gap: compact?2:4, alignItems:'center', flexShrink:0 }}>
-      {s === 'draft' && (
-        <button onClick={()=>onStatus(item,'pending_approval')} style={{...btnS}} title="Submit for approval" onMouseEnter={(e)=>e.currentTarget.style.color='#d97706'} onMouseLeave={(e)=>e.currentTarget.style.color='#94a3b8'}>
-          <Send size={size} style={{color:'#94a3b8'}} />
-        </button>
-      )}
-      {s === 'pending_approval' && (
-        <button onClick={()=>onStatus(item,'approved')} style={{...btnS}} title="Approve" onMouseEnter={(e)=>e.currentTarget.style.color='#059669'} onMouseLeave={(e)=>e.currentTarget.style.color='#94a3b8'}>
-          <Check size={size} style={{color:'#94a3b8'}} />
-        </button>
-      )}
-      {s === 'approved' && (
-        <button onClick={()=>onStatus(item,'pushed')} style={{...btnS}} title="Mark as pushed to QBO" onMouseEnter={(e)=>e.currentTarget.style.color='#0e7fe0'} onMouseLeave={(e)=>e.currentTarget.style.color='#94a3b8'}>
-          <Send size={size} style={{color:'#94a3b8'}} />
-        </button>
-      )}
-      {s !== 'pushed' && (
-        <button onClick={onEdit} style={{...btnS}} title="Edit" onMouseEnter={(e)=>e.currentTarget.style.color='#0e7fe0'} onMouseLeave={(e)=>e.currentTarget.style.color='#cbd5e1'}>
-          <Pencil size={size} style={{color:'#cbd5e1'}} />
-        </button>
-      )}
-      <button onClick={onDelete} style={{...btnS}} title="Delete" onMouseEnter={(e)=>e.currentTarget.style.color='#ef4444'} onMouseLeave={(e)=>e.currentTarget.style.color='#cbd5e1'}>
-        <Trash2 size={size} style={{color:'#cbd5e1'}} />
-      </button>
+    <div style={{display:'flex',gap:compact?2:4,alignItems:'center',flexShrink:0}}>
+      {s==='draft' && <button onClick={()=>onStatus(item,'approved')} style={b} title="Approve"><Check size={sz} style={{color:'#94a3b8'}} onMouseEnter={e=>e.target.style.color='#059669'} onMouseLeave={e=>e.target.style.color='#94a3b8'}/></button>}
+      {s!=='pushed' && <button onClick={onEdit} style={b} title="Edit"><Pencil size={sz} style={{color:'#cbd5e1'}}/></button>}
+      <button onClick={onDelete} style={b} title="Delete"><Trash2 size={sz} style={{color:'#cbd5e1'}}/></button>
     </div>
   );
 }
 
-const btnPrimary = { display:'inline-flex', alignItems:'center', gap:5, padding:'8px 14px', fontSize:13, fontWeight:600, background:'#0f172a', color:'#fff', border:'none', borderRadius:10, cursor:'pointer', fontFamily:"'Outfit', sans-serif" };
-const btnOutline = { display:'inline-flex', alignItems:'center', gap:4, padding:'8px 14px', fontSize:13, fontWeight:600, background:'#fff', color:'#0f172a', border:'1px solid #e5e7eb', borderRadius:10, cursor:'pointer', fontFamily:"'Outfit', sans-serif" };
-const inputStyle = { width:'100%', padding:'8px 12px', fontSize:13, border:'1px solid #e5e7eb', borderRadius:8, outline:'none', fontFamily:"'Outfit', sans-serif", boxSizing:'border-box' };
-const formLabel = { display:'block', fontSize:11, fontWeight:600, color:'#64748b', textTransform:'uppercase', marginBottom:4, fontFamily:"'Outfit', sans-serif" };
+const btnPrimary = {display:'inline-flex',alignItems:'center',gap:5,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#0f172a',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
+const btnOutline = {display:'inline-flex',alignItems:'center',gap:4,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#fff',color:'#0f172a',border:'1px solid #e5e7eb',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
+const inputStyle = {width:'100%',padding:'8px 12px',fontSize:13,border:'1px solid #e5e7eb',borderRadius:8,outline:'none',fontFamily:"'Outfit', sans-serif",boxSizing:'border-box'};
+const formLabel = {display:'block',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',marginBottom:4,fontFamily:"'Outfit', sans-serif"};
