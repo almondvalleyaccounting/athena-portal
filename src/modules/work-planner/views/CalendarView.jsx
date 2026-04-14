@@ -3,7 +3,7 @@ import { TIME_SLOTS, CALENDAR_VIEWS } from '../lib/constants';
 import {
   sameDay, addDays, addMonths, startOfWeek, today,
   formatDateFull, formatDateShort, formatISO, formatTime,
-  teamColour, durFmt, clientName,
+  teamColour, tileColour, durFmt, clientName,
 } from '../lib/helpers';
 import { generateInstances } from '../lib/instanceEngine';
 import StatusIcon from '../components/StatusIcon';
@@ -15,9 +15,11 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
     quickTasks, staffMap, entityMap,
     filters, highlightId,
     updateScheduledTask, saveOverride, deleteOverride, updateQuickTask,
+    colourMode,
   } = useWorkPlanner();
 
   const [dropTarget, setDropTarget] = useState(null);
+  const [draggingId, setDraggingId] = useState(null);
   const dragRef = useRef(null);
   const dragTypeRef = useRef(null);
 
@@ -83,7 +85,8 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
   }
 
   // Drag handlers
-  function startDrag(id, type) { dragRef.current = id; dragTypeRef.current = type; }
+  function startDrag(id, type) { dragRef.current = id; dragTypeRef.current = type; setDraggingId(id); }
+  function clearDrag() { dragRef.current = null; dragTypeRef.current = null; setDraggingId(null); setDropTarget(null); }
 
   function handleDrop(date, h, m) {
     if (!dragRef.current) return;
@@ -110,9 +113,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
       });
     }
 
-    dragRef.current = null;
-    dragTypeRef.current = null;
-    setDropTarget(null);
+    clearDrag();
   }
 
   function handleUnplan() {
@@ -132,9 +133,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
       updateScheduledTask(id, { planned_date: null, planned_hour: null, planned_min: null });
     }
 
-    dragRef.current = null;
-    dragTypeRef.current = null;
-    setDropTarget(null);
+    clearDrag();
   }
 
   // Resize handler
@@ -192,6 +191,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
             key={t.id}
             draggable
             onDragStart={(e) => { e.stopPropagation(); startDrag(t.id, 'sched'); }}
+            onDragEnd={() => clearDrag()}
             onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
             style={{
               padding: '4px 8px', marginBottom: 3, background: '#fff',
@@ -199,6 +199,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
               borderLeft: `3px solid ${t.assignee_id ? teamColour(t.assignee_id) : '#0e7fe0'}`,
               borderRadius: 5, fontSize: 10, cursor: 'grab', transition: 'all 0.12s',
               boxShadow: highlightId === t.id ? '0 0 0 2px #dbeafe' : 'none',
+              opacity: draggingId === t.id ? 0 : 1,
             }}
           >
             <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -230,12 +231,14 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                 key={t.id}
                 draggable
                 onDragStart={(e) => { e.stopPropagation(); startDrag(t.id, 'quick'); }}
+                onDragEnd={() => clearDrag()}
                 onClick={(e) => { e.stopPropagation(); onAction(e, { ...t, _isQuick: true }); }}
                 style={{
                   padding: '4px 8px', marginBottom: 3, background: '#f1f5f9',
                   border: '1px solid #e5e7eb', borderLeft: '3px solid #94a3b8',
                   borderRadius: 5, fontSize: 10, cursor: 'grab',
                   boxShadow: highlightId === t.id ? '0 0 0 2px #dbeafe' : 'none',
+                  opacity: draggingId === t.id ? 0 : 1,
                 }}
               >
                 <div style={{ fontWeight: 500, fontSize: 10 }}>{t.title}</div>
@@ -300,7 +303,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                       style={{
                         padding: '1px 3px', marginBottom: 1, borderRadius: 2,
                         fontSize: 8, fontWeight: 500, color: '#fff',
-                        background: teamColour(t.assignee_id),
+                        background: tileColour(t, colourMode),
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2,
                       }}
@@ -417,28 +420,31 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                       {cellEvents.map((t) => {
                         const span = Math.max(1, Math.round((t.duration || 30) / 15));
                         const isHl = highlightId === t.id;
+                        const tileId = t._key || t.id;
+                        const isDragging = draggingId === tileId;
 
                         return (
                           <div
                             key={t.id}
                             draggable
-                            onDragStart={(e) => { e.stopPropagation(); startDrag(t._key || t.id, 'instance'); }}
-                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTarget(cellKey); }}
-                            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleDrop(d, slot.h, slot.m); }}
+                            onDragStart={(e) => { e.stopPropagation(); startDrag(tileId, t._instance ? 'instance' : 'sched'); }}
+                            onDragEnd={() => clearDrag()}
                             onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
                               padding: '1px 4px', borderRadius: 3,
                               fontSize: 9, fontWeight: 500, color: '#fff',
-                              background: teamColour(t.assignee_id),
+                              background: tileColour(t, colourMode),
                               height: `${span * 18 - 1}px`,
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                               zIndex: isHl ? 5 : 1,
                               boxShadow: isHl
-                                ? `0 0 0 2px #0e7fe0`
+                                ? '0 0 0 2px #0e7fe0'
                                 : '0 1px 2px rgba(0,0,0,0.04)',
                               display: 'flex', alignItems: 'center', gap: 2,
                               cursor: 'grab',
+                              opacity: isDragging ? 0 : 1,
+                              transition: 'opacity 0.1s',
                             }}
                           >
                             <StatusIcon status={t.status} dark size={7} />
@@ -457,9 +463,12 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                               style={{
                                 position: 'absolute', left: 0, right: 0, bottom: 0,
                                 height: 8, cursor: 'ns-resize', borderRadius: '0 0 2px 2px',
+                                background: 'rgba(255,255,255,0.25)',
+                                borderTop: '1px solid rgba(255,255,255,0.35)',
+                                transition: 'background 0.12s',
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.5)'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.25)'; }}
                             />
                           </div>
                         );
@@ -468,25 +477,27 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                       {cellQuick.map((t) => {
                         const isHl = highlightId === t.id;
                         const qSpan = Math.max(1, Math.round((t.duration || 15) / 15));
+                        const isDragging = draggingId === t.id;
                         return (
                           <div
                             key={t.id}
                             draggable
                             onDragStart={(e) => { e.stopPropagation(); startDrag(t.id, 'quick'); }}
-                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTarget(cellKey); }}
-                            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleDrop(d, slot.h, slot.m); }}
+                            onDragEnd={() => clearDrag()}
                             onClick={(e) => { e.stopPropagation(); onAction(e, { ...t, _isQuick: true }); }}
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
                               padding: '1px 4px', borderRadius: 3,
                               fontSize: 9, fontWeight: 500, color: '#fff',
-                              background: teamColour(t.assignee_id),
+                              background: tileColour(t, colourMode),
                               height: `${qSpan * 18 - 1}px`,
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                               border: '1px dashed rgba(255,255,255,0.5)',
                               cursor: 'grab', zIndex: isHl ? 5 : 1,
                               boxShadow: isHl ? '0 0 0 2px #0e7fe0' : 'none',
                               display: 'flex', alignItems: 'center', gap: 2,
+                              opacity: isDragging ? 0 : 1,
+                              transition: 'opacity 0.1s',
                             }}
                           >
                             {t.title}

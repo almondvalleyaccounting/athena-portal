@@ -1,6 +1,8 @@
 import React from 'react';
 import TypeAhead from './TypeAhead';
+import Avatar from './Avatar';
 import { SERVICES, STATUSES, CALENDAR_VIEWS, KANBAN_DUE_FILTERS } from '../lib/constants';
+import { teamColour } from '../lib/helpers';
 
 const sepStyle = { width: 1, height: 16, background: '#e5e7eb', margin: '0 2px' };
 const labelStyle = {
@@ -38,8 +40,13 @@ export default function FilterBar({
   compact, setCompact,
   // Scheduled-specific
   sort, setSort,
+  // Colour mode
+  colourMode, setColourMode,
 }) {
-  const teamItems = staffList.map((s) => ({ id: s.id, label: s.name }));
+  // Build staffMap locally for Avatar
+  const staffMap = {};
+  staffList.forEach((s) => { staffMap[s.id] = s; });
+
   const entityItems = entityList.map((e) => ({ id: e.id, label: e.name }));
   const serviceItems = SERVICES.map((s) => ({ id: s, label: s }));
   const statusItems = STATUSES.map((s) => ({ id: s.id, label: s.label }));
@@ -53,8 +60,25 @@ export default function FilterBar({
         fontSize: 10, fontFamily: "'Outfit', sans-serif",
       }}
     >
+      {/* Staff avatar buttons */}
       <span style={labelStyle}>Team</span>
-      <TypeAhead items={teamItems} value={teamFilter} onChange={setTeamFilter} placeholder="Name..." />
+      {staffList.map((s) => (
+        <div
+          key={s.id}
+          onClick={() => setTeamFilter(teamFilter === s.id ? '' : s.id)}
+          title={s.name}
+          style={{
+            cursor: 'pointer',
+            borderRadius: '50%',
+            border: teamFilter === s.id ? '2px solid #0e7fe0' : '2px solid transparent',
+            padding: 1,
+            transition: 'all 0.12s',
+            opacity: teamFilter && teamFilter !== s.id ? 0.35 : 1,
+          }}
+        >
+          <Avatar id={s.id} staffMap={staffMap} size={22} />
+        </div>
+      ))}
 
       <div style={sepStyle} />
       <span style={labelStyle}>Client</span>
@@ -88,6 +112,20 @@ export default function FilterBar({
               {v.label}
             </button>
           ))}
+          <div style={sepStyle} />
+          <span style={labelStyle}>Colour</span>
+          <button
+            style={colourMode === 'staff' ? btnActiveStyle : btnStyle}
+            onClick={() => setColourMode('staff')}
+          >
+            By Staff
+          </button>
+          <button
+            style={colourMode === 'status' ? btnActiveStyle : btnStyle}
+            onClick={() => setColourMode('status')}
+          >
+            By Status
+          </button>
         </>
       )}
 

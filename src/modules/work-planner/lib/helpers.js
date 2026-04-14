@@ -11,6 +11,15 @@ export function teamColour(uuid) {
   return TEAM_COLOURS[Math.abs(hash) % TEAM_COLOURS.length];
 }
 
+// ── Tile colour based on colour mode ──
+export function tileColour(task, mode) {
+  if (mode === 'status') {
+    const s = STATUSES.find((st) => st.id === task.status);
+    return s ? s.colour : '#94a3b8';
+  }
+  return teamColour(task.assignee_id);
+}
+
 // ── Initials from full name ──
 export function initials(name) {
   if (!name) return '?';

@@ -67,6 +67,7 @@ export default function WorkPlannerModule() {
   const [dueFilter, setDueFilter] = useState('month');
   const [compact, setCompact] = useState(false);
   const [sort, setSort] = useState('next');
+  const [colourMode, setColourMode] = useState('staff'); // 'staff' | 'status'
   const [modal, setModal] = useState(null); // null | 'new' | masterObject
   const [instanceModal, setInstanceModal] = useState(null);
   const [quickModal, setQuickModal] = useState(null); // null | quickTaskObject
@@ -502,6 +503,7 @@ export default function WorkPlannerModule() {
     addScheduledTask, updateScheduledTask, deleteScheduledTask,
     saveOverride, deleteOverride,
     completeTask, markNotRequired, addEntity,
+    colourMode,
   }), [
     quickTasks, scheduledTasks, overrides, completedTasks,
     overridesMap, completedKeys,
@@ -513,6 +515,7 @@ export default function WorkPlannerModule() {
     addScheduledTask, updateScheduledTask, deleteScheduledTask,
     saveOverride, deleteOverride,
     completeTask, markNotRequired, addEntity,
+    colourMode,
   ]);
 
   // ── Loading / Error ──
@@ -597,6 +600,7 @@ export default function WorkPlannerModule() {
           dueFilter={dueFilter} setDueFilter={setDueFilter}
           compact={compact} setCompact={setCompact}
           sort={sort} setSort={setSort}
+          colourMode={colourMode} setColourMode={setColourMode}
         />
 
         {/* Active view */}
