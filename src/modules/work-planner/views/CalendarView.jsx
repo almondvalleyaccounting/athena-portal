@@ -148,7 +148,13 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
       const parts = taskId.split('_');
       const dateStr = parts.pop();
       const masterId = parts.join('_');
-      saveOverride(masterId, date, { planned_hour: h, planned_min: m });
+      // Update master directly — overrides are keyed by original date so
+      // the instance engine won't find one on a different date
+      updateScheduledTask(masterId, {
+        planned_date: date.toISOString(),
+        planned_hour: h != null ? h : 9,
+        planned_min: m != null ? m : 0,
+      });
     } else if (taskType === 'sched') {
       updateScheduledTask(taskId, {
         planned_date: date.toISOString(),
