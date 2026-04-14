@@ -91,12 +91,14 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
 
     // CRITICAL: defer DOM changes by one animation frame so the browser
     // can capture the ghost image and fully initiate the drag first
+    // Defer DOM changes by one frame — browser needs the current frame to
+    // capture the ghost image and fully initiate the drag
     requestAnimationFrame(() => {
       const root = rootRef.current;
       if (!root) return;
+      // This collapses ALL tiles via CSS (visibility:hidden + height:0)
+      // so they cannot intercept drag events over grid cells
       root.classList.add('planner-root--dragging');
-      const tile = root.querySelector(`[data-task-id="${taskId}"]`);
-      if (tile) tile.classList.add('cal-tile--drag-source');
     });
   }, []);
 
@@ -127,7 +129,6 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
     const root = rootRef.current;
     if (!root) return;
     root.classList.remove('planner-root--dragging');
-    root.querySelectorAll('.cal-tile--drag-source').forEach((el) => el.classList.remove('cal-tile--drag-source'));
     root.querySelectorAll('.cal-cell--drop-target').forEach((el) => el.classList.remove('cal-cell--drop-target'));
     root.querySelectorAll('.unplanned-zone--drop-target').forEach((el) => el.classList.remove('unplanned-zone--drop-target'));
   }

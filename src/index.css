@@ -9,16 +9,25 @@ body {
 
 /* ── Work Planner: drag-and-drop visual feedback ──
    All drag visuals via CSS classes, never inline styles.
-   Applied to .planner-root when a drag is active. */
+   Applied to .planner-root when a drag is active.
+
+   During drag, tiles are fully collapsed (visibility + height) so they
+   cannot intercept drag events. pointer-events alone is unreliable
+   for HTML5 DnD across browsers. */
 .planner-root--dragging .cal-tile {
-  pointer-events: none;
-}
-.planner-root--dragging .cal-tile--drag-source {
-  opacity: 0.15;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
 }
 .cal-cell--drop-target {
-  background: rgba(56, 189, 248, 0.12) !important;
+  background: rgba(56, 189, 248, 0.15) !important;
 }
 .unplanned-zone--drop-target {
-  background: rgba(14, 127, 224, 0.08) !important;
+  background: rgba(14, 127, 224, 0.10) !important;
+  color: #0e7fe0 !important;
 }
