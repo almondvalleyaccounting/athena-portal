@@ -1,9 +1,9 @@
 import React from 'react';
 import { teamColour, initials, staffName } from '../lib/helpers';
 
-export default function Avatar({ id, staffMap, size = 22 }) {
+export default function Avatar({ id, staffMap, size = 22, customColour }) {
   const name = staffName(id, staffMap);
-  const colour = teamColour(id);
+  const colour = customColour || teamColour(id);
   const ini = initials(name);
 
   return (

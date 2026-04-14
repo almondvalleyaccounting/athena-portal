@@ -151,8 +151,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
   const handleDragEnd = useCallback((event) => {
     setActiveTask(null);
     const { active, over } = event;
-    console.log('[DnD] dragEnd', { activeId: active?.id, activeType: active?.data?.current?.taskType, overId: over?.id, overNull: over === null });
-    if (!over) { console.log('[DnD] DROPPED OUTSIDE — no over target detected'); return; }
+    if (!over) return;
 
     const taskId = active.id;
     const taskType = active.data.current?.taskType;
@@ -189,13 +188,11 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
         m = TIME_SLOTS[slotIdx].m;
       }
 
-      console.log('[DnD] cell drop parsed', { dropId, dayIdx: parts[1], slotIdx: parts[2], date: date?.toISOString(), h, m });
-      if (!date) { console.log('[DnD] ERROR: date is undefined for dayIdx', parts[1]); return; }
+      if (!date) return;
 
       if (taskType === 'quick') {
         const dt = new Date(date);
         dt.setHours(h, m, 0, 0);
-        console.log('[DnD] updating quick task', taskId, 'to', dt.toISOString());
         updateQuickTask(taskId, { planned_date: dt.toISOString() });
       } else if (taskType === 'instance') {
         const idParts = taskId.split('_');
@@ -267,7 +264,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
         <div style={{
           padding: '4px 8px', background: '#fff',
           border: '1px solid #e5e7eb',
-          borderLeft: `3px solid ${t.assignee_id ? teamColour(t.assignee_id) : '#0e7fe0'}`,
+          borderLeft: `3px solid ${t.assignee_id ? (staffColours?.[t.assignee_id] || teamColour(t.assignee_id)) : '#0e7fe0'}`,
           borderRadius: 5, fontSize: 12,
           boxShadow: isHl ? '0 0 0 2px #dbeafe' : 'none',
         }}>

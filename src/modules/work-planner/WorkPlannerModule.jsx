@@ -606,6 +606,7 @@ export default function WorkPlannerModule() {
           sort={sort} setSort={setSort}
           colourMode={colourMode} setColourMode={setColourMode}
           onOpenColourSettings={() => setColourSettingsOpen(true)}
+          staffColours={staffColours}
         />
 
         {/* Active view */}

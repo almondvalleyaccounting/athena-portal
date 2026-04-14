@@ -44,6 +44,7 @@ export default function FilterBar({
   // Colour mode
   colourMode, setColourMode,
   onOpenColourSettings,
+  staffColours,
 }) {
   // Build staffMap locally for Avatar
   const staffMap = {};
@@ -78,7 +79,7 @@ export default function FilterBar({
             opacity: teamFilter && teamFilter !== s.id ? 0.35 : 1,
           }}
         >
-          <Avatar id={s.id} staffMap={staffMap} size={22} />
+          <Avatar id={s.id} staffMap={staffMap} size={22} customColour={staffColours?.[s.id]} />
         </div>
       ))}
 
