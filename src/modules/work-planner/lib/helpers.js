@@ -11,12 +11,14 @@ export function teamColour(uuid) {
   return TEAM_COLOURS[Math.abs(hash) % TEAM_COLOURS.length];
 }
 
-// ── Tile colour based on colour mode ──
-export function tileColour(task, mode) {
+// ── Tile colour based on colour mode, with optional custom overrides ──
+export function tileColour(task, mode, customStaff, customStatus) {
   if (mode === 'status') {
+    if (customStatus && customStatus[task.status]) return customStatus[task.status];
     const s = STATUSES.find((st) => st.id === task.status);
     return s ? s.colour : '#94a3b8';
   }
+  if (customStaff && customStaff[task.assignee_id]) return customStaff[task.assignee_id];
   return teamColour(task.assignee_id);
 }
 

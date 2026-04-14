@@ -22,6 +22,7 @@ import InstanceModal from './components/InstanceModal';
 import QuickTaskModal from './components/QuickTaskModal';
 
 import NewClientModal from '../../components/NewClientModal';
+import ColourSettings, { loadStaffColours, loadStatusColours } from './components/ColourSettings';
 
 import QuickTasksView from './views/QuickTasksView';
 import ScheduledView from './views/ScheduledView';
@@ -68,6 +69,9 @@ export default function WorkPlannerModule() {
   const [compact, setCompact] = useState(false);
   const [sort, setSort] = useState('next');
   const [colourMode, setColourMode] = useState('staff'); // 'staff' | 'status'
+  const [staffColours, setStaffColours] = useState(() => loadStaffColours());
+  const [statusColours, setStatusColours] = useState(() => loadStatusColours());
+  const [colourSettingsOpen, setColourSettingsOpen] = useState(false);
   const [modal, setModal] = useState(null); // null | 'new' | masterObject
   const [instanceModal, setInstanceModal] = useState(null);
   const [quickModal, setQuickModal] = useState(null); // null | quickTaskObject
@@ -503,7 +507,7 @@ export default function WorkPlannerModule() {
     addScheduledTask, updateScheduledTask, deleteScheduledTask,
     saveOverride, deleteOverride,
     completeTask, markNotRequired, addEntity,
-    colourMode,
+    colourMode, staffColours, statusColours,
   }), [
     quickTasks, scheduledTasks, overrides, completedTasks,
     overridesMap, completedKeys,
@@ -515,7 +519,7 @@ export default function WorkPlannerModule() {
     addScheduledTask, updateScheduledTask, deleteScheduledTask,
     saveOverride, deleteOverride,
     completeTask, markNotRequired, addEntity,
-    colourMode,
+    colourMode, staffColours, statusColours,
   ]);
 
   // ── Loading / Error ──
@@ -601,6 +605,7 @@ export default function WorkPlannerModule() {
           compact={compact} setCompact={setCompact}
           sort={sort} setSort={setSort}
           colourMode={colourMode} setColourMode={setColourMode}
+          onOpenColourSettings={() => setColourSettingsOpen(true)}
         />
 
         {/* Active view */}
@@ -695,6 +700,17 @@ export default function WorkPlannerModule() {
           }}
         />
       )}
+
+      {/* Colour Settings */}
+      <ColourSettings
+        open={colourSettingsOpen}
+        onClose={() => setColourSettingsOpen(false)}
+        staffList={staffList}
+        staffColours={staffColours}
+        setStaffColours={setStaffColours}
+        statusColours={statusColours}
+        setStatusColours={setStatusColours}
+      />
 
       {/* New Client Modal */}
       <NewClientModal

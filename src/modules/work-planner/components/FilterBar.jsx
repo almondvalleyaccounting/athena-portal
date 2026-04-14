@@ -1,6 +1,7 @@
 import React from 'react';
 import TypeAhead from './TypeAhead';
 import Avatar from './Avatar';
+import { Palette } from 'lucide-react';
 import { SERVICES, STATUSES, CALENDAR_VIEWS, KANBAN_DUE_FILTERS } from '../lib/constants';
 import { teamColour } from '../lib/helpers';
 
@@ -42,6 +43,7 @@ export default function FilterBar({
   sort, setSort,
   // Colour mode
   colourMode, setColourMode,
+  onOpenColourSettings,
 }) {
   // Build staffMap locally for Avatar
   const staffMap = {};
@@ -125,6 +127,13 @@ export default function FilterBar({
             onClick={() => setColourMode('status')}
           >
             By Status
+          </button>
+          <button
+            style={btnStyle}
+            onClick={onOpenColourSettings}
+            title="Edit colours"
+          >
+            <Palette size={13} />
           </button>
         </>
       )}

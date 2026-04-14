@@ -15,7 +15,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
     quickTasks, staffMap, entityMap,
     filters, highlightId,
     updateScheduledTask, saveOverride, deleteOverride, updateQuickTask,
-    colourMode,
+    colourMode, staffColours, statusColours,
   } = useWorkPlanner();
 
   const [dropTarget, setDropTarget] = useState(null);
@@ -303,7 +303,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                       style={{
                         padding: '2px 4px', marginBottom: 1, borderRadius: 3,
                         fontSize: 10, fontWeight: 500, color: '#fff',
-                        background: tileColour(t, colourMode),
+                        background: tileColour(t, colourMode, staffColours, statusColours),
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2,
                         pointerEvents: draggingId ? 'none' : 'auto',
@@ -427,15 +427,15 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                         return (
                           <div
                             key={t.id}
-                            draggable={!draggingId}
+                            draggable
                             onDragStart={(e) => { e.stopPropagation(); startDrag(tileId, t._instance ? 'instance' : 'sched'); }}
                             onDragEnd={() => clearDrag()}
-                            onClick={(e) => { if (!draggingId) { e.stopPropagation(); onAction(e, t); } }}
+                            onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
                               padding: '1px 4px', borderRadius: 3,
                               fontSize: 11, fontWeight: 500, color: '#fff',
-                              background: tileColour(t, colourMode),
+                              background: tileColour(t, colourMode, staffColours, statusColours),
                               height: `${span * 18 - 1}px`,
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                               zIndex: isDragging ? 0 : isHl ? 5 : 1,
@@ -443,9 +443,9 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                                 ? '0 0 0 2px #0e7fe0'
                                 : '0 1px 2px rgba(0,0,0,0.04)',
                               display: 'flex', alignItems: 'center', gap: 2,
-                              cursor: draggingId ? 'default' : 'grab',
+                              cursor: 'grab',
                               opacity: isDragging ? 0 : 1,
-                              pointerEvents: draggingId ? 'none' : 'auto',
+                              pointerEvents: (draggingId && !isDragging) ? 'none' : 'auto',
                               transition: 'opacity 0.1s',
                             }}
                           >
@@ -483,24 +483,24 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                         return (
                           <div
                             key={t.id}
-                            draggable={!draggingId}
+                            draggable
                             onDragStart={(e) => { e.stopPropagation(); startDrag(t.id, 'quick'); }}
                             onDragEnd={() => clearDrag()}
-                            onClick={(e) => { if (!draggingId) { e.stopPropagation(); onAction(e, { ...t, _isQuick: true }); } }}
+                            onClick={(e) => { e.stopPropagation(); onAction(e, { ...t, _isQuick: true }); }}
                             style={{
                               position: 'absolute', left: 1, right: 1, top: 0,
                               padding: '1px 4px', borderRadius: 3,
                               fontSize: 11, fontWeight: 500, color: '#fff',
-                              background: tileColour(t, colourMode),
+                              background: tileColour(t, colourMode, staffColours, statusColours),
                               height: `${qSpan * 18 - 1}px`,
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                               border: '1px dashed rgba(255,255,255,0.5)',
-                              cursor: draggingId ? 'default' : 'grab',
+                              cursor: 'grab',
                               zIndex: isDragging ? 0 : isHl ? 5 : 1,
                               boxShadow: isHl && !draggingId ? '0 0 0 2px #0e7fe0' : 'none',
                               display: 'flex', alignItems: 'center', gap: 2,
                               opacity: isDragging ? 0 : 1,
-                              pointerEvents: draggingId ? 'none' : 'auto',
+                              pointerEvents: (draggingId && !isDragging) ? 'none' : 'auto',
                               transition: 'opacity 0.1s',
                             }}
                           >
