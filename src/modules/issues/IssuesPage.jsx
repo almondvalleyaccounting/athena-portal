@@ -130,6 +130,15 @@ export default function IssuesPage() {
     } catch (e) { console.error(e); }
   };
 
+  const handleDelete = async (issue) => {
+    if (!window.confirm(`Delete issue "${issue.title}"?`)) return;
+    try {
+      await supabase.from('issues_log').delete().eq('id', issue.id);
+      setIssues((prev) => prev.filter((i) => i.id !== issue.id));
+      if (expandedId === issue.id) setExpandedId(null);
+    } catch (e) { console.error('[Issues] delete error:', e); }
+  };
+
   const handleExport = () => {
     const headers = ['Title', 'Priority', 'Category', 'Status', 'Assignee', 'Age (days)', 'Reported By', 'Date'];
     const rows = filtered.map((i) => [
@@ -348,6 +357,27 @@ export default function IssuesPage() {
                         rows={2}
                         style={{ ...inputStyle, marginTop: 4, fontSize: 12, resize: 'vertical' }}
                       />
+                    </div>
+
+                    {/* Delete */}
+                    <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
+                      <button
+                        onClick={() => handleDelete(issue)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          fontSize: 11, fontWeight: 500, color: '#dc2626', background: 'none',
+                          border: '1px solid #fecaca', borderRadius: 8, padding: '5px 12px',
+                          cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
+                          transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                          <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M11 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        Delete issue
+                      </button>
                     </div>
                   </div>
                 )}
