@@ -58,7 +58,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
   const {
     scheduledTasks, overridesMap, completedKeys,
     quickTasks, staffMap, entityMap,
-    filters, highlightId,
+    filters, highlightId, notesMap,
     updateScheduledTask, saveOverride, deleteOverride, updateQuickTask,
     colourMode, staffColours, statusColours,
   } = useWorkPlanner();
@@ -287,8 +287,13 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
             <StatusIcon status={t.status} size={9} />
             {t.title}
           </div>
-          <div style={{ fontSize: 11, color: '#64748b' }}>
+          <div style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 3 }}>
             {staffMap[t.assignee_id]?.name?.split(' ')[0] || 'Unassigned'} &middot; {durFmt(t.duration)}
+            {(notesMap[`scheduled:${t.id}`] || []).length > 0 && (
+              <span style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3, fontSize: 8, color: '#64748b', fontWeight: 600 }}>
+                {(notesMap[`scheduled:${t.id}`] || []).length}&#128221;
+              </span>
+            )}
           </div>
         </div>
       );

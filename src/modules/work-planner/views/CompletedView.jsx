@@ -4,13 +4,22 @@ import Avatar from '../components/Avatar';
 import { useWorkPlanner } from '../WorkPlannerModule';
 
 export default function CompletedView() {
-  const { completedTasks, staffMap, entityMap, filters } = useWorkPlanner();
+  const { completedTasks, staffMap, entityMap, filters, progressNotes } = useWorkPlanner();
 
   let list = [...completedTasks];
   if (filters.teamFilter) list = list.filter((t) => t.assignee_id === filters.teamFilter);
   if (filters.clientFilter) list = list.filter((t) => t.entity_id === filters.clientFilter);
   if (filters.serviceFilter) list = list.filter((t) => t.service === filters.serviceFilter);
   // Already ordered by completed_at desc from DB
+
+  // Build a lookup for completion notes by source_id
+  const completionNoteMap = {};
+  progressNotes.forEach((n) => {
+    if (n.is_completion) {
+      if (!completionNoteMap[n.task_id]) completionNoteMap[n.task_id] = [];
+      completionNoteMap[n.task_id].push(n);
+    }
+  });
 
   return (
     <div style={{ padding: '12px 20px', maxWidth: 960 }}>
@@ -59,6 +68,14 @@ export default function CompletedView() {
               {' \u00B7 '}
               {task.source_type === 'quick' ? 'Quick' : 'Scheduled'}
             </div>
+            {(completionNoteMap[task.source_id] || []).map((n) => (
+              <div key={n.id} style={{ fontSize: 10, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>
+                &ldquo;{n.note}&rdquo;
+                <span style={{ color: '#94a3b8', marginLeft: 4, fontSize: 9 }}>
+                  &mdash; {(n.created_by_name || '').split(' ')[0]}
+                </span>
+              </div>
+            ))}
           </div>
 
           {task.completion_mins ? (

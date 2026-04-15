@@ -10,7 +10,7 @@ export default function QuickTasksView({ compact, onAction }) {
   const {
     quickTasks, staffList, entityList, staffMap, entityMap,
     addQuickTask, updateQuickTask, reorderQuickTasks, filters,
-    highlightId, profile, addEntity,
+    highlightId, profile, addEntity, notesMap, addProgressNote,
   } = useWorkPlanner();
 
   const [title, setTitle] = useState('');
@@ -18,6 +18,8 @@ export default function QuickTasksView({ compact, onAction }) {
   const [service, setService] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [expandedNote, setExpandedNote] = useState(null);
+  const [progressInput, setProgressInput] = useState(null);
+  const [progressText, setProgressText] = useState('');
   const [dragId, setDragId] = useState(null);
 
   const now = today();
@@ -180,7 +182,7 @@ export default function QuickTasksView({ compact, onAction }) {
                   )}
                 </div>
 
-                {/* Notes */}
+                {/* Inline note (legacy field) */}
                 {!compact && task.notes && task.notes.trim() && !isExpNote && (
                   <div
                     onClick={() => setExpandedNote(task.id)}
@@ -207,17 +209,77 @@ export default function QuickTasksView({ compact, onAction }) {
                     }}
                   />
                 )}
-                {!compact && (!task.notes || !task.notes.trim()) && !isExpNote && (
-                  <button
-                    onClick={() => { setExpandedNote(task.id); updateQuickTask(task.id, { notes: ' ' }); }}
-                    style={{
-                      border: 'none', background: 'none', color: '#94a3b8',
-                      fontSize: 9, cursor: 'pointer', padding: '2px 0',
-                    }}
-                  >
-                    +note
-                  </button>
-                )}
+
+                {/* Progress notes thread */}
+                {!compact && (() => {
+                  const notes = notesMap[`quick:${task.id}`] || [];
+                  const isAddingNote = progressInput === task.id;
+                  return (
+                    <>
+                      {notes.length > 0 && (
+                        <div style={{ marginTop: 4, borderLeft: '2px solid #e5e7eb', paddingLeft: 6 }}>
+                          {notes.map((n) => (
+                            <div key={n.id} style={{ fontSize: 10, color: '#1e293b', lineHeight: 1.4, marginBottom: 2 }}>
+                              <span>{n.note}</span>
+                              <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 9 }}>
+                                {(n.created_by_name || '').split(' ')[0]} &middot; {timeAgo(n.created_at)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {isAddingNote ? (
+                        <div style={{ display: 'flex', gap: 4, marginTop: 3, alignItems: 'flex-start' }}>
+                          <input
+                            autoFocus
+                            value={progressText}
+                            onChange={(e) => setProgressText(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter' && progressText.trim()) {
+                                await addProgressNote('quick', task.id, progressText.trim());
+                                setProgressText('');
+                                setProgressInput(null);
+                              }
+                              if (e.key === 'Escape') { setProgressInput(null); setProgressText(''); }
+                            }}
+                            placeholder="Progress note..."
+                            style={{
+                              flex: 1, padding: '3px 6px', fontSize: 10,
+                              fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
+                              borderRadius: 3, background: '#fff', color: '#1e293b', outline: 'none',
+                            }}
+                          />
+                          <button
+                            onClick={async () => {
+                              if (progressText.trim()) {
+                                await addProgressNote('quick', task.id, progressText.trim());
+                                setProgressText('');
+                              }
+                              setProgressInput(null);
+                            }}
+                            style={{
+                              border: 'none', background: '#0e7fe0', color: '#fff',
+                              fontSize: 9, fontWeight: 600, padding: '3px 8px',
+                              borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
+                            }}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setProgressInput(task.id); setProgressText(''); }}
+                          style={{
+                            border: 'none', background: 'none', color: '#94a3b8',
+                            fontSize: 9, cursor: 'pointer', padding: '2px 0', marginTop: notes.length > 0 ? 1 : 0,
+                          }}
+                        >
+                          +note
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Actions */}
@@ -297,3 +359,15 @@ const miniBtn = {
   background: '#fff', color: '#0e7fe0', cursor: 'pointer',
   fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap',
 };
+
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}

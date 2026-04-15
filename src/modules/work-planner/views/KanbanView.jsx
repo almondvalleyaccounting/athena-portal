@@ -9,7 +9,7 @@ import { useWorkPlanner } from '../WorkPlannerModule';
 export default function KanbanView({ dueFilter, onAction }) {
   const {
     scheduledTasks, overridesMap, completedKeys, staffMap, entityMap,
-    quickTasks, filters, highlightId, saveOverride,
+    quickTasks, filters, highlightId, saveOverride, notesMap,
   } = useWorkPlanner();
 
   const [dragCol, setDragCol] = useState(null);
@@ -204,8 +204,16 @@ export default function KanbanView({ dueFilter, onAction }) {
                       {inst.assignee_id && <Avatar id={inst.assignee_id} staffMap={staffMap} size={18} />}
                       {inst.entity_id && <span>{clientName(inst.entity_id, entityMap)}</span>}
                     </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                       {formatDateShort(inst._date)} &middot; {durFmt(inst.duration)}
+                      {(notesMap[`scheduled:${inst._masterId}`] || []).length > 0 && (
+                        <span style={{
+                          background: '#f1f5f9', padding: '0 4px', borderRadius: 3,
+                          fontSize: 8, color: '#64748b', fontWeight: 600,
+                        }}>
+                          {(notesMap[`scheduled:${inst._masterId}`] || []).length} note{(notesMap[`scheduled:${inst._masterId}`] || []).length !== 1 ? 's' : ''}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );

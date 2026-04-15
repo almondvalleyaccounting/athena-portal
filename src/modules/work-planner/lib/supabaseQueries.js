@@ -150,6 +150,30 @@ export async function insertCompletedTask(task) {
   return data;
 }
 
+// ── Progress Notes ──
+
+export async function fetchProgressNotes(taskType, taskIds) {
+  if (!taskIds.length) return [];
+  const { data, error } = await supabase
+    .from('task_progress_notes')
+    .select('*')
+    .eq('task_type', taskType)
+    .in('task_id', taskIds)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function insertProgressNote(note) {
+  const { data, error } = await supabase
+    .from('task_progress_notes')
+    .insert(note)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ── Reference Data ──
 
 export async function fetchStaffProfiles() {
@@ -219,6 +243,11 @@ export function subscribeToWorkPlanner(handlers) {
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'completed_tasks' },
       handlers.onCompleted
+    )
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'task_progress_notes' },
+      handlers.onProgressNote
     )
     .subscribe();
 

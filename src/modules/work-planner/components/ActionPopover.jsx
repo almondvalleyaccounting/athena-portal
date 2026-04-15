@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-export default function ActionPopover({ x, y, task, onClose, onOpen, onComplete, onNotReq, onDelete }) {
+export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComplete, onStartNotReq, onDelete }) {
   const ref = useRef(null);
-  const [mode, setMode] = useState('menu');
-  const [mins, setMins] = useState('15');
   const [done, setDone] = useState(false);
 
   useEffect(() => {
@@ -55,59 +53,6 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onComplete,
     );
   }
 
-  if (mode === 'complete') {
-    return (
-      <div ref={ref} style={popStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '3px 5px' }}>
-          <input
-            type="number"
-            min={1}
-            max={999}
-            value={mins}
-            onChange={(e) => setMins(e.target.value)}
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                setDone(true);
-                setTimeout(() => onComplete(task, Number(mins) || 15), 400);
-              }
-            }}
-            style={{
-              width: 44,
-              padding: '2px 4px',
-              fontSize: 10,
-              textAlign: 'center',
-              fontFamily: "'Outfit', sans-serif",
-              border: '1px solid #e5e7eb',
-              borderRadius: 3,
-              outline: 'none',
-            }}
-          />
-          <span style={{ fontSize: 9, color: '#64748b' }}>min</span>
-          <button
-            onClick={() => {
-              setDone(true);
-              setTimeout(() => onComplete(task, Number(mins) || 15), 400);
-            }}
-            style={{
-              padding: '2px 8px',
-              fontSize: 9,
-              fontWeight: 600,
-              background: '#0e7fe0',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 3,
-              cursor: 'pointer',
-              fontFamily: "'Outfit', sans-serif",
-            }}
-          >
-            Done
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const btnStyle = {
     display: 'flex',
     flexDirection: 'column',
@@ -138,7 +83,10 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onComplete,
       </button>
       <button
         style={btnStyle}
-        onClick={() => setMode('complete')}
+        onClick={() => {
+          setDone(true);
+          setTimeout(() => onStartComplete(task), 400);
+        }}
         onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
       >
@@ -147,7 +95,10 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onComplete,
       </button>
       <button
         style={btnStyle}
-        onClick={() => onNotReq(task)}
+        onClick={() => {
+          setDone(true);
+          setTimeout(() => onStartNotReq(task), 400);
+        }}
         onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
       >

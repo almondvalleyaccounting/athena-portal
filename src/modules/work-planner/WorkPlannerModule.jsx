@@ -8,6 +8,7 @@ import {
   deleteScheduledTask as deleteScheduledTaskDb,
   fetchInstanceOverrides, upsertInstanceOverride, deleteInstanceOverride,
   fetchCompletedTasks, insertCompletedTask,
+  fetchProgressNotes, insertProgressNote,
   fetchStaffProfiles, fetchEntities, insertEntity,
   subscribeToWorkPlanner,
 } from './lib/supabaseQueries';
@@ -17,6 +18,7 @@ import { defaultDuration, CALENDAR_VIEWS } from './lib/constants';
 
 import FilterBar from './components/FilterBar';
 import ActionPopover from './components/ActionPopover';
+import CompleteModal from './components/CompleteModal';
 import MasterModal from './components/MasterModal';
 import InstanceModal from './components/InstanceModal';
 import QuickTaskModal from './components/QuickTaskModal';
@@ -55,6 +57,7 @@ export default function WorkPlannerModule() {
   const [completedTasks, setCompletedTasks] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [entityList, setEntityList] = useState([]);
+  const [progressNotes, setProgressNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -74,6 +77,7 @@ export default function WorkPlannerModule() {
   const [instanceModal, setInstanceModal] = useState(null);
   const [quickModal, setQuickModal] = useState(null); // null | quickTaskObject
   const [popover, setPopover] = useState(null);
+  const [completeModal, setCompleteModal] = useState(null);
   const [highlightId, setHighlightId] = useState(null);
   const [newClientModal, setNewClientModal] = useState({ open: false, initialName: '', resolve: null });
 
@@ -144,6 +148,15 @@ export default function WorkPlannerModule() {
         setCompletedTasks(ct);
         setStaffList(staff);
         setEntityList(entities);
+
+        // Load progress notes for active tasks
+        const quickIds = qt.map((t) => t.id);
+        const schedIds = st.map((t) => t.id);
+        const [qNotes, sNotes] = await Promise.all([
+          quickIds.length ? fetchProgressNotes('quick', quickIds) : [],
+          schedIds.length ? fetchProgressNotes('scheduled', schedIds) : [],
+        ]);
+        if (!cancelled) setProgressNotes([...qNotes, ...sNotes]);
       } catch (err) {
         if (!cancelled) setError(err.message || 'Failed to load data');
       }
@@ -251,6 +264,14 @@ export default function WorkPlannerModule() {
           setCompletedTasks((prev) => {
             if (prev.some((c) => c.id === payload.new.id)) return prev;
             return [payload.new, ...prev];
+          });
+        }
+      },
+      onProgressNote: (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setProgressNotes((prev) => {
+            if (prev.some((n) => n.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
           });
         }
       },
@@ -421,6 +442,67 @@ export default function WorkPlannerModule() {
     setHighlightId(null);
   }, [profile]);
 
+  // ── Progress notes ──
+
+  const addProgressNote = useCallback(async (taskType, taskId, noteText) => {
+    const note = {
+      task_type: taskType,
+      task_id: taskId,
+      note: noteText,
+      created_by: profile.id,
+      created_by_name: profile.name || profile.email,
+      is_completion: false,
+    };
+    const saved = await insertProgressNote(note);
+    setProgressNotes((prev) => [...prev, saved]);
+    return saved;
+  }, [profile]);
+
+  // ── Completion modal flow ──
+
+  function handleStartComplete(task) {
+    const enriched = { ...task };
+    if (task.entity_id && entityMap[task.entity_id]) {
+      enriched._entityName = entityMap[task.entity_id].name;
+    }
+    setPopover(null);
+    setCompleteModal({ task: enriched, mode: 'complete' });
+  }
+
+  function handleStartNotReq(task) {
+    const enriched = { ...task };
+    if (task.entity_id && entityMap[task.entity_id]) {
+      enriched._entityName = entityMap[task.entity_id].name;
+    }
+    setPopover(null);
+    setCompleteModal({ task: enriched, mode: 'not_required' });
+  }
+
+  async function handleConfirmComplete(task, mins, noteText) {
+    const isNotReq = mins === null;
+
+    if (noteText) {
+      const taskType = (!!task._isQuick || !!task.due_date) ? 'quick' : 'scheduled';
+      const taskId = (!!task._isQuick || !!task.due_date) ? task.id : task._masterId;
+      await insertProgressNote({
+        task_type: taskType,
+        task_id: taskId,
+        note: noteText,
+        created_by: profile.id,
+        created_by_name: profile.name || profile.email,
+        is_completion: true,
+      });
+    }
+
+    if (isNotReq) {
+      await markNotRequired(task);
+    } else {
+      await completeTask(task, mins);
+    }
+
+    setCompleteModal(null);
+  }
+
   // ── Event handlers ──
 
   function handleAction(e, task) {
@@ -545,6 +627,7 @@ export default function WorkPlannerModule() {
     function handleKey(e) {
       if (e.key === 'Escape') {
         if (popover) { setPopover(null); return; }
+        if (completeModal) { setCompleteModal(null); return; }
         if (quickModal) { setQuickModal(null); return; }
         if (instanceModal) { setInstanceModal(null); return; }
         if (modal) { setModal(null); return; }
@@ -554,6 +637,17 @@ export default function WorkPlannerModule() {
     return () => document.removeEventListener('keydown', handleKey);
   }, [popover, instanceModal, modal]);
 
+  // ── Derived: notes grouped by task key ──
+  const notesMap = useMemo(() => {
+    const map = {};
+    progressNotes.forEach((n) => {
+      const key = `${n.task_type}:${n.task_id}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(n);
+    });
+    return map;
+  }, [progressNotes]);
+
   // ── Context value ──
   const contextValue = useMemo(() => ({
     quickTasks, scheduledTasks, overrides, completedTasks,
@@ -562,6 +656,7 @@ export default function WorkPlannerModule() {
     profile,
     filters: { teamFilter, clientFilter, serviceFilter, statusFilter },
     highlightId,
+    progressNotes, notesMap, addProgressNote,
     addQuickTask, updateQuickTask, reorderQuickTasks,
     addScheduledTask, updateScheduledTask, deleteScheduledTask,
     saveOverride, deleteOverride,
@@ -574,6 +669,7 @@ export default function WorkPlannerModule() {
     profile,
     teamFilter, clientFilter, serviceFilter, statusFilter,
     highlightId,
+    progressNotes, notesMap, addProgressNote,
     addQuickTask, updateQuickTask, reorderQuickTasks,
     addScheduledTask, updateScheduledTask, deleteScheduledTask,
     saveOverride, deleteOverride,
@@ -741,15 +837,14 @@ export default function WorkPlannerModule() {
           task={popover.task}
           onClose={() => setPopover(null)}
           onOpen={handleOpen}
-          onComplete={completeTask}
-          onNotReq={markNotRequired}
+          onStartComplete={handleStartComplete}
+          onStartNotReq={handleStartNotReq}
           onDelete={async (task) => {
             const isQuick = !!task._isQuick || task.due_date != null;
             if (isQuick) {
               setQuickTasks((prev) => prev.filter((t) => t.id !== task.id));
               await deleteQuickTaskDb(task.id);
             } else if (task._instance) {
-              // For instances, delete the master
               await deleteScheduledTask(task._masterId);
             } else {
               await deleteScheduledTask(task.id);
@@ -757,6 +852,16 @@ export default function WorkPlannerModule() {
             setPopover(null);
             setHighlightId(null);
           }}
+        />
+      )}
+
+      {/* Complete Modal */}
+      {completeModal != null && (
+        <CompleteModal
+          task={completeModal.task}
+          mode={completeModal.mode}
+          onConfirm={handleConfirmComplete}
+          onClose={() => setCompleteModal(null)}
         />
       )}
 
