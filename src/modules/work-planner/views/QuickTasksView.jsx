@@ -16,7 +16,7 @@ export default function QuickTasksView({ compact, onAction }) {
   const [title, setTitle] = useState('');
   const [clientId, setClientId] = useState('');
   const [service, setService] = useState('');
-  const [assigneeId, setAssigneeId] = useState('');
+  const [assigneeId, setAssigneeId] = useState(profile?.id || '');
   const [expandedNote, setExpandedNote] = useState(null);
   const [progressInput, setProgressInput] = useState(null);
   const [progressText, setProgressText] = useState('');
@@ -41,6 +41,9 @@ export default function QuickTasksView({ compact, onAction }) {
       created_by: profile.id,
     });
     setTitle('');
+    setClientId('');
+    setService('');
+    setAssigneeId(profile?.id || '');
   }
 
   // Filter
