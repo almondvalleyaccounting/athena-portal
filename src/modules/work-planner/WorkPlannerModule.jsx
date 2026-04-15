@@ -893,14 +893,24 @@ export default function WorkPlannerModule() {
           onStartComplete={handleStartComplete}
           onStartNotReq={handleStartNotReq}
           onDelete={async (task) => {
-            const isQuick = !!task._isQuick || task.due_date != null;
-            if (isQuick) {
-              setQuickTasks((prev) => prev.filter((t) => t.id !== task.id));
-              await deleteQuickTaskDb(task.id);
-            } else if (task._instance) {
-              await deleteScheduledTask(task._masterId);
-            } else {
-              await deleteScheduledTask(task.id);
+            try {
+              const isQuick = !!task._isQuick || task.due_date != null;
+              if (isQuick) {
+                setQuickTasks((prev) => prev.filter((t) => t.id !== task.id));
+                await deleteQuickTaskDb(task.id);
+              } else if (task._instance) {
+                await deleteScheduledTask(task._masterId);
+              } else {
+                await deleteScheduledTask(task.id);
+              }
+            } catch (e) {
+              console.error('[WorkPlanner] delete failed:', e);
+              alert('Delete failed: ' + (e.message || 'Unknown error'));
+              // Re-fetch to restore state if optimistic update removed it
+              try {
+                const qt = await fetchQuickTasks();
+                setQuickTasks(qt);
+              } catch {}
             }
             setPopover(null);
             setHighlightId(null);
