@@ -447,7 +447,7 @@ export default function WorkPlannerModule() {
 
   // ── Progress notes ──
 
-  const addProgressNote = useCallback(async (taskType, taskId, noteText) => {
+  const addProgressNote = useCallback(async (taskType, taskId, noteText, occurrenceDate) => {
     const note = {
       task_type: taskType,
       task_id: taskId,
@@ -455,6 +455,7 @@ export default function WorkPlannerModule() {
       created_by: profile.id,
       created_by_name: profile.name || profile.email,
       is_completion: false,
+      occurrence_date: occurrenceDate || null,
     };
     const saved = await insertProgressNote(note);
     setProgressNotes((prev) => [...prev, saved]);
@@ -487,6 +488,7 @@ export default function WorkPlannerModule() {
     if (noteText) {
       const taskType = (!!task._isQuick || !!task.due_date) ? 'quick' : 'scheduled';
       const taskId = (!!task._isQuick || !!task.due_date) ? task.id : task._masterId;
+      const occDate = task._date ? formatISO(task._date) : null;
       await insertProgressNote({
         task_type: taskType,
         task_id: taskId,
@@ -494,6 +496,7 @@ export default function WorkPlannerModule() {
         created_by: profile.id,
         created_by_name: profile.name || profile.email,
         is_completion: true,
+        occurrence_date: occDate,
       });
     }
 
@@ -648,12 +651,25 @@ export default function WorkPlannerModule() {
   }, [popover, instanceModal, modal]);
 
   // ── Derived: notes grouped by task key ──
+  // For quick tasks: key = "quick:{taskId}"
+  // For scheduled instances: key = "scheduled:{masterId}:{occurrenceDate}" or "scheduled:{masterId}" (notes without date)
+  // For master-level lookups (all notes on a master): key = "master:{masterId}"
   const notesMap = useMemo(() => {
     const map = {};
     progressNotes.forEach((n) => {
-      const key = `${n.task_type}:${n.task_id}`;
-      if (!map[key]) map[key] = [];
-      map[key].push(n);
+      // Instance-specific key (with occurrence_date)
+      const instKey = n.occurrence_date
+        ? `${n.task_type}:${n.task_id}:${n.occurrence_date}`
+        : `${n.task_type}:${n.task_id}`;
+      if (!map[instKey]) map[instKey] = [];
+      map[instKey].push(n);
+
+      // Also index under master key for master-level views
+      if (n.task_type === 'scheduled') {
+        const masterKey = `master:${n.task_id}`;
+        if (!map[masterKey]) map[masterKey] = [];
+        map[masterKey].push(n);
+      }
     });
     return map;
   }, [progressNotes]);
@@ -818,6 +834,7 @@ export default function WorkPlannerModule() {
           overridesMap={overridesMap}
           staffList={staffList}
           entityList={entityList}
+          progressNotes={modal !== 'new' && modal?.id ? (notesMap[`master:${modal.id}`] || []) : []}
           onSave={handleSaveMaster}
           onDelete={handleDeleteMaster}
           onAddEntity={addEntity}
@@ -831,6 +848,9 @@ export default function WorkPlannerModule() {
           instance={instanceModal}
           master={scheduledTasks.find((m) => m.id === instanceModal._masterId)}
           staffList={staffList}
+          progressNotes={instanceModal._date
+            ? (notesMap[`scheduled:${instanceModal._masterId}:${formatISO(instanceModal._date)}`] || [])
+            : []}
           onSave={handleSaveOverride}
           onReset={handleResetOverride}
           onClose={() => setInstanceModal(null)}
@@ -843,6 +863,7 @@ export default function WorkPlannerModule() {
           task={quickModal}
           staffList={staffList}
           entityList={entityList}
+          progressNotes={quickModal?.id ? (notesMap[`quick:${quickModal.id}`] || []) : []}
           onSave={async (id, patch) => {
             if (id) {
               await updateQuickTask(id, patch);

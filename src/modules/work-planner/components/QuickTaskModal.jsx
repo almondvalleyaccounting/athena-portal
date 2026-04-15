@@ -20,7 +20,7 @@ const btnBase = {
   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
 };
 
-export default function QuickTaskModal({ task, staffList, entityList, onSave, onDelete, onClose, onAddEntity }) {
+export default function QuickTaskModal({ task, staffList, entityList, progressNotes = [], onSave, onDelete, onClose, onAddEntity }) {
   const [form, setForm] = useState({
     title: task.title || '',
     entity_id: task.entity_id || '',
@@ -121,13 +121,33 @@ export default function QuickTaskModal({ task, staffList, entityList, onSave, on
           />
         </div>
 
+        {/* Progress notes */}
+        {progressNotes.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <label style={labelStyle}>Progress Notes</label>
+            <div style={{ borderLeft: '2px solid #e5e7eb', paddingLeft: 8, maxHeight: 140, overflowY: 'auto' }}>
+              {progressNotes.map((n) => (
+                <div key={n.id} style={{ fontSize: 11, color: '#1e293b', lineHeight: 1.5, marginBottom: 4 }}>
+                  <span>{n.note}</span>
+                  {n.is_completion && <span style={{ color: '#059669', marginLeft: 4, fontSize: 9 }}>(completion)</span>}
+                  <div style={{ fontSize: 9, color: '#94a3b8' }}>
+                    {(n.created_by_name || '').split(' ')[0]} &middot; {new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} {new Date(n.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 14 }}>
+          {task.id && (
           <button
             onClick={() => onDelete(task.id)}
             style={{ ...btnBase, color: '#dc2626', marginRight: 'auto', border: '1px solid #e5e7eb', background: '#fff' }}
           >
             Delete
           </button>
+          )}
           <button onClick={onClose} style={{ ...btnBase, border: '1px solid #e5e7eb', background: '#fff', color: '#1e293b' }}>
             Cancel
           </button>

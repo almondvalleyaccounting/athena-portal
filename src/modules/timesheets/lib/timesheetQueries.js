@@ -56,6 +56,25 @@ export async function upsertTimesheetEntry({ staffId, entityId, service, workDat
   return data;
 }
 
+/* ─── Delete all manual entries for a row (entity+service+staff) in a week ── */
+export async function deleteManualRow(staffId, entityId, service, weekStart, weekEnd) {
+  let query = supabase
+    .from('timesheet_entries')
+    .delete()
+    .eq('staff_id', staffId)
+    .gte('work_date', weekStart)
+    .lte('work_date', weekEnd);
+
+  if (entityId) query = query.eq('entity_id', entityId);
+  else query = query.is('entity_id', null);
+
+  if (service) query = query.eq('service', service);
+  else query = query.is('service', null);
+
+  const { error } = await query;
+  if (error) throw error;
+}
+
 /* ─── Fetch all completed tasks within a date range (all staff, for dashboard) ── */
 export async function fetchAllCompletedForRange(startDate, endDate) {
   const { data, error } = await supabase

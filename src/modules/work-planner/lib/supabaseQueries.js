@@ -150,6 +150,14 @@ export async function insertCompletedTask(task) {
   return data;
 }
 
+export async function deleteCompletedTask(id) {
+  const { error } = await supabase
+    .from('completed_tasks')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+}
+
 // ── Progress Notes ──
 
 export async function fetchProgressNotes(taskType, taskIds) {

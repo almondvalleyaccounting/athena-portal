@@ -18,7 +18,7 @@ const btnBase = {
   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
 };
 
-export default function InstanceModal({ instance, master, staffList, onSave, onReset, onClose }) {
+export default function InstanceModal({ instance, master, staffList, progressNotes = [], onSave, onReset, onClose }) {
   const [assigneeId, setAssigneeId] = useState(instance.assignee_id || '');
   const [status, setStatus] = useState(instance.status || 'not_started');
   const [hour, setHour] = useState(instance.planned_hour);
@@ -92,6 +92,24 @@ export default function InstanceModal({ instance, master, staffList, onSave, onR
             {TIME_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
+
+        {/* Progress notes for this instance */}
+        {progressNotes.length > 0 && (
+          <div style={{ marginBottom: 10, marginTop: 6 }}>
+            <label style={labelStyle}>Progress Notes</label>
+            <div style={{ borderLeft: '2px solid #e5e7eb', paddingLeft: 8, maxHeight: 120, overflowY: 'auto' }}>
+              {progressNotes.map((n) => (
+                <div key={n.id} style={{ fontSize: 11, color: '#1e293b', lineHeight: 1.5, marginBottom: 4 }}>
+                  <span>{n.note}</span>
+                  {n.is_completion && <span style={{ color: '#059669', marginLeft: 4, fontSize: 9 }}>(completion)</span>}
+                  <div style={{ fontSize: 9, color: '#94a3b8' }}>
+                    {(n.created_by_name || '').split(' ')[0]} &middot; {new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} {new Date(n.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 14 }}>
           {instance._hasOverride && (

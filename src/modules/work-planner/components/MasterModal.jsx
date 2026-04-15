@@ -28,6 +28,7 @@ export default function MasterModal({
   onDelete,
   onClose,
   onAddEntity,
+  progressNotes = [],
 }) {
   const isEdit = !!master;
   const [form, setForm] = useState(() => {
@@ -237,6 +238,25 @@ export default function MasterModal({
             </select>
           )}
         </div>
+
+        {/* Progress notes */}
+        {progressNotes.length > 0 && (
+          <div style={{ marginBottom: 10, marginTop: 6 }}>
+            <label style={labelStyle}>Progress Notes</label>
+            <div style={{ borderLeft: '2px solid #e5e7eb', paddingLeft: 8, maxHeight: 160, overflowY: 'auto' }}>
+              {progressNotes.map((n) => (
+                <div key={n.id} style={{ fontSize: 11, color: '#1e293b', lineHeight: 1.5, marginBottom: 4 }}>
+                  <span>{n.note}</span>
+                  {n.is_completion && <span style={{ color: '#059669', marginLeft: 4, fontSize: 9 }}>(completion)</span>}
+                  {n.occurrence_date && <span style={{ color: '#94a3b8', marginLeft: 4, fontSize: 9 }}>[{n.occurrence_date}]</span>}
+                  <div style={{ fontSize: 9, color: '#94a3b8' }}>
+                    {(n.created_by_name || '').split(' ')[0]} &middot; {new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} {new Date(n.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 14 }}>
           {isEdit && (

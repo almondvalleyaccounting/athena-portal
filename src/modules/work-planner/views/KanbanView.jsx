@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { STATUSES } from '../lib/constants';
-import { durFmt, formatDateShort, clientName, addDays, addMonths, today, dueBadge } from '../lib/helpers';
+import { durFmt, formatDateShort, formatISO, clientName, addDays, addMonths, today, dueBadge } from '../lib/helpers';
 import { generateInstances } from '../lib/instanceEngine';
 import Avatar from '../components/Avatar';
 import DueBadge from '../components/DueBadge';
@@ -209,15 +209,25 @@ export default function KanbanView({ dueFilter, onAction }) {
                     </div>
                     <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                       {formatDateShort(inst._date)} &middot; {durFmt(inst.duration)}
-                      {(notesMap[`scheduled:${inst._masterId}`] || []).length > 0 && (
+                      {(notesMap[inst._date ? `scheduled:${inst._masterId}:${formatISO(inst._date)}` : `scheduled:${inst._masterId}`] || []).length > 0 && (
                         <span style={{
                           background: '#f1f5f9', padding: '0 4px', borderRadius: 3,
                           fontSize: 8, color: '#64748b', fontWeight: 600,
                         }}>
-                          {(notesMap[`scheduled:${inst._masterId}`] || []).length} note{(notesMap[`scheduled:${inst._masterId}`] || []).length !== 1 ? 's' : ''}
+                          {(notesMap[inst._date ? `scheduled:${inst._masterId}:${formatISO(inst._date)}` : `scheduled:${inst._masterId}`] || []).length} note{(notesMap[inst._date ? `scheduled:${inst._masterId}:${formatISO(inst._date)}` : `scheduled:${inst._masterId}`] || []).length !== 1 ? 's' : ''}
                         </span>
                       )}
                     </div>
+                    {(() => {
+                      const nk = inst._date ? `scheduled:${inst._masterId}:${formatISO(inst._date)}` : `scheduled:${inst._masterId}`;
+                      const notes = notesMap[nk] || [];
+                      const last = notes.length > 0 ? notes[notes.length - 1] : null;
+                      return last ? (
+                        <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, fontStyle: 'italic', lineHeight: 1.3, maxHeight: 28, overflow: 'hidden' }}>
+                          &ldquo;{last.note}&rdquo;
+                        </div>
+                      ) : null;
+                    })()}
                     {noteInput === inst._key ? (
                       <div style={{ display: 'flex', gap: 3, marginTop: 3 }} onClick={(e) => e.stopPropagation()}>
                         <input
@@ -226,7 +236,7 @@ export default function KanbanView({ dueFilter, onAction }) {
                           onChange={(e) => setNoteText(e.target.value)}
                           onKeyDown={async (e) => {
                             if (e.key === 'Enter' && noteText.trim()) {
-                              await addProgressNote('scheduled', inst._masterId, noteText.trim());
+                              await addProgressNote('scheduled', inst._masterId, noteText.trim(), inst._date ? formatISO(inst._date) : null);
                               setNoteText(''); setNoteInput(null);
                             }
                             if (e.key === 'Escape') { setNoteInput(null); setNoteText(''); }
@@ -241,7 +251,7 @@ export default function KanbanView({ dueFilter, onAction }) {
                         <button
                           onClick={async (e) => {
                             e.stopPropagation();
-                            if (noteText.trim()) await addProgressNote('scheduled', inst._masterId, noteText.trim());
+                            if (noteText.trim()) await addProgressNote('scheduled', inst._masterId, noteText.trim(), inst._date ? formatISO(inst._date) : null);
                             setNoteText(''); setNoteInput(null);
                           }}
                           style={{

@@ -107,9 +107,9 @@ export default function ScheduledView({ sort, onEdit }) {
                     <span style={{ fontSize: 11, color: '#cbd5e1' }}>No upcoming</span>
                   )}
                   <span style={{ fontSize: 11, color: '#94a3b8' }}>{durFmt(master.duration)}</span>
-                  {(notesMap[`scheduled:${master.id}`] || []).length > 0 && (
+                  {(notesMap[`master:${master.id}`] || []).length > 0 && (
                     <span style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3, fontSize: 9, color: '#64748b', fontWeight: 600 }}>
-                      {(notesMap[`scheduled:${master.id}`] || []).length} note{(notesMap[`scheduled:${master.id}`] || []).length !== 1 ? 's' : ''}
+                      {(notesMap[`master:${master.id}`] || []).length} note{(notesMap[`master:${master.id}`] || []).length !== 1 ? 's' : ''}
                     </span>
                   )}
                 </div>

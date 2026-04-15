@@ -4,7 +4,7 @@ import { useAuth } from '../../../shell/AppShell';
 import { SERVICES } from '../../work-planner/lib/constants';
 import {
   fetchCompletedForWeek, fetchTimesheetEntries, upsertTimesheetEntry,
-  fetchScheduledForStaff, fetchStaffList, fetchEntities,
+  deleteManualRow, fetchScheduledForStaff, fetchStaffList, fetchEntities,
 } from '../lib/timesheetQueries';
 
 /* ─── Helpers ──────────────────────────────────────────────── */
@@ -183,6 +183,18 @@ export default function TimesheetView() {
     }
   }, [selectedStaff, weekDays, weekStartISO, weekEndISO]);
 
+  // Delete a manual row (all entries for that entity+service in the week)
+  const handleDeleteRow = useCallback(async (row) => {
+    if (!window.confirm(`Delete manual row "${row.entityId ? (entityList.find((e) => e.id === row.entityId)?.name || 'Unknown') : '—'} / ${row.service || '—'}"?`)) return;
+    try {
+      await deleteManualRow(selectedStaff, row.entityId, row.service, weekStartISO, weekEndISO);
+      const updated = await fetchTimesheetEntries(selectedStaff, weekStartISO, weekEndISO);
+      setManualEntries(updated);
+    } catch (e) {
+      console.error('[Timesheets] delete error:', e);
+    }
+  }, [selectedStaff, weekStartISO, weekEndISO, entityList]);
+
   // Add new row
   const handleAddRow = useCallback(async () => {
     if (!newRowClient && !newRowService) return;
@@ -296,12 +308,13 @@ export default function TimesheetView() {
                     );
                   })}
                   <th style={{ ...thStyle, width: 80, textAlign: 'center' }}>Total</th>
+                  <th style={{ ...thStyle, width: 32 }} />
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={10} style={{ padding: 32, textAlign: 'center', color: '#cbd5e1', fontSize: 13 }}>
+                    <td colSpan={11} style={{ padding: 32, textAlign: 'center', color: '#cbd5e1', fontSize: 13 }}>
                       No timesheet data for this week.
                     </td>
                   </tr>
@@ -347,6 +360,24 @@ export default function TimesheetView() {
                       })}
                       <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 600, color: '#0f172a' }}>
                         {minutesToDisplay(rowTotal)}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: 'center', width: 32 }}>
+                        {row.isManual && (
+                          <button
+                            onClick={() => handleDeleteRow(row)}
+                            title="Delete manual row"
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              padding: 2, opacity: 0.3, transition: 'opacity 0.15s',
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.3'; }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                              <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M11 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

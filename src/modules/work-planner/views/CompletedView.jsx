@@ -2,6 +2,7 @@ import React from 'react';
 import { durFmt, formatDateShort, clientName, staffName } from '../lib/helpers';
 import Avatar from '../components/Avatar';
 import { useWorkPlanner } from '../WorkPlannerModule';
+import { deleteCompletedTask } from '../lib/supabaseQueries';
 
 export default function CompletedView() {
   const { completedTasks, staffMap, entityMap, filters, progressNotes } = useWorkPlanner();
@@ -20,6 +21,15 @@ export default function CompletedView() {
       completionNoteMap[n.task_id].push(n);
     }
   });
+
+  async function handleDelete(task) {
+    if (!window.confirm(`Delete completed task "${task.title}"?`)) return;
+    try {
+      await deleteCompletedTask(task.id);
+    } catch (e) {
+      alert('Failed to delete: ' + (e.message || 'Unknown error'));
+    }
+  }
 
   return (
     <div style={{ padding: '12px 20px', maxWidth: 960 }}>
@@ -87,6 +97,21 @@ export default function CompletedView() {
           <div style={{ fontSize: 9, color: '#94a3b8' }}>
             {task.completed_at ? formatDateShort(task.completed_at) : ''}
           </div>
+
+          <button
+            onClick={() => handleDelete(task)}
+            title="Delete"
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: 3, opacity: 0.3, transition: 'opacity 0.15s', flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.3'; }}
+          >
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+              <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M11 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
         </div>
       ))}
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { STATUSES } from '../lib/constants';
 import {
-  durFmt, formatDateShort, clientName, today, addDays, addMonths,
+  durFmt, formatDateShort, formatISO, clientName, today, addDays, addMonths,
 } from '../lib/helpers';
 import { generateInstances } from '../lib/instanceEngine';
 import Avatar from '../components/Avatar';
@@ -43,6 +43,7 @@ export default function MyTasksView({ dueFilter, onAction }) {
         _noteKey: `quick:${t.id}`,
         _noteTaskType: 'quick',
         _noteTaskId: t.id,
+        _noteOccDate: null,
       });
     });
   }
@@ -52,13 +53,15 @@ export default function MyTasksView({ dueFilter, onAction }) {
     scheduledTasks.forEach((m) => {
       const instances = generateInstances(m, now, cutoff, overridesMap, completedKeys);
       instances.forEach((inst) => {
+        const occDate = inst._date ? formatISO(inst._date) : null;
         items.push({
           ...inst,
           _source: 'scheduled',
           _sortDate: inst._date || new Date('2099-12-31'),
-          _noteKey: `scheduled:${inst._masterId}`,
+          _noteKey: occDate ? `scheduled:${inst._masterId}:${occDate}` : `scheduled:${inst._masterId}`,
           _noteTaskType: 'scheduled',
           _noteTaskId: inst._masterId,
+          _noteOccDate: occDate,
         });
       });
     });
@@ -190,7 +193,7 @@ export default function MyTasksView({ dueFilter, onAction }) {
                       onChange={(e) => setNoteText(e.target.value)}
                       onKeyDown={async (e) => {
                         if (e.key === 'Enter' && noteText.trim()) {
-                          await addProgressNote(task._noteTaskType, task._noteTaskId, noteText.trim());
+                          await addProgressNote(task._noteTaskType, task._noteTaskId, noteText.trim(), task._noteOccDate);
                           setNoteText(''); setNoteInput(null);
                         }
                         if (e.key === 'Escape') { setNoteInput(null); setNoteText(''); }
@@ -204,7 +207,7 @@ export default function MyTasksView({ dueFilter, onAction }) {
                     />
                     <button
                       onClick={async () => {
-                        if (noteText.trim()) await addProgressNote(task._noteTaskType, task._noteTaskId, noteText.trim());
+                        if (noteText.trim()) await addProgressNote(task._noteTaskType, task._noteTaskId, noteText.trim(), task._noteOccDate);
                         setNoteText(''); setNoteInput(null);
                       }}
                       style={{
