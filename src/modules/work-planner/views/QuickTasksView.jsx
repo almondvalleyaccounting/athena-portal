@@ -308,22 +308,19 @@ export default function QuickTasksView({ compact, onAction }) {
                     });
                   }}
                 />
-                {!isPlanned ? (
-                  <>
-                    <button
-                      style={miniBtn}
-                      onClick={() => updateQuickTask(task.id, { planned_date: now.toISOString() })}
-                    >
-                      Today
-                    </button>
-                    <button
-                      style={miniBtn}
-                      onClick={() => updateQuickTask(task.id, { planned_date: addDays(now, 1).toISOString() })}
-                    >
-                      Tmrw
-                    </button>
-                  </>
-                ) : (
+                <button
+                  style={miniBtn}
+                  onClick={() => updateQuickTask(task.id, { due_date: new Date().toISOString() })}
+                >
+                  Today
+                </button>
+                <button
+                  style={miniBtn}
+                  onClick={() => updateQuickTask(task.id, { due_date: addDays(new Date(), 1).toISOString() })}
+                >
+                  Tmrw
+                </button>
+                {isPlanned && (
                   <button
                     style={miniBtn}
                     onClick={() => updateQuickTask(task.id, { planned_date: null })}
