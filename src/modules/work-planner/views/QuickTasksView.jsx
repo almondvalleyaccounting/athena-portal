@@ -312,8 +312,9 @@ export default function QuickTasksView({ compact, onAction }) {
                   style={miniBtn}
                   onClick={() => {
                     const d = new Date();
-                    d.setHours(0, 0, 0, 0);
-                    updateQuickTask(task.id, { due_date: d.toISOString(), planned_date: d.toISOString() });
+                    const due = new Date(d); due.setHours(0, 0, 0, 0);
+                    d.setHours(9, 0, 0, 0); // 9am for calendar placement
+                    updateQuickTask(task.id, { due_date: due.toISOString(), planned_date: d.toISOString() });
                   }}
                 >
                   Today
@@ -322,8 +323,9 @@ export default function QuickTasksView({ compact, onAction }) {
                   style={miniBtn}
                   onClick={() => {
                     const d = addDays(new Date(), 1);
-                    d.setHours(0, 0, 0, 0);
-                    updateQuickTask(task.id, { due_date: d.toISOString(), planned_date: d.toISOString() });
+                    const due = new Date(d); due.setHours(0, 0, 0, 0);
+                    d.setHours(9, 0, 0, 0); // 9am for calendar placement
+                    updateQuickTask(task.id, { due_date: due.toISOString(), planned_date: d.toISOString() });
                   }}
                 >
                   Tmrw
