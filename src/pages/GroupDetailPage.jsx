@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { STATUS_TRANSITIONS, STATUS_LABELS } from '../lib/quoteStatus';
-import { generateQuotePdf } from '../lib/quotePdf';
+import { generateQuotePdf, generateGroupQuotePdf, generateGroupQuotePdfBase64 } from '../lib/quotePdf';
 import ConsolidationTable from '../components/ConsolidationTable';
 import SendQuoteModal from '../components/SendQuoteModal';
 import { useAuth } from '../shell/AppShell';
@@ -169,8 +169,7 @@ export default function GroupDetailPage() {
 
     const handlePreview = async () => {
     try {
-      const allLI = quotes.flatMap(q => q.line_items || []);
-      const doc = await generateQuotePdf({ ...quotes[0], relationship_group: group.name, monthly_gross: groupMonthlyDD, annual_total: groupAnnual }, allLI, { returnDoc: true });
+      const doc = await generateGroupQuotePdf(group, quotes, groupEntities, discounts, { returnDoc: true });
       const blob = doc.output('blob');
       const url = URL.createObjectURL(blob);
       setPreviewUrl(url);
@@ -181,10 +180,8 @@ export default function GroupDetailPage() {
   };
 
   const handleExportPdf = async () => {
-    // Use the first quote as the base for PDF generation
     if (quotes.length > 0) {
-      const allLineItems = quotes.flatMap(q => q.line_items || []);
-      await generateQuotePdf({ ...quotes[0], relationship_group: group.name, monthly_gross: groupMonthlyDD, annual_total: groupAnnual }, allLineItems);
+      await generateGroupQuotePdf(group, quotes, groupEntities, discounts);
     }
   };
 
@@ -372,6 +369,7 @@ export default function GroupDetailPage() {
           quote={syntheticQuote}
           lineItems={allLineItems}
           profile={profile}
+          pdfGenerator={() => generateGroupQuotePdfBase64(group, quotes, groupEntities, discounts)}
           onSent={() => { setShowSendModal(false); loadGroup(); }}
           onClose={() => setShowSendModal(false)}
         />

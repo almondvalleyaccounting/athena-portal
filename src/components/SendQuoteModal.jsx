@@ -4,7 +4,7 @@ import { Btn } from './ui';
 
 // Modal for composing and sending a quote to a client via email.
 // Generates PDF client-side, sends via Supabase Edge Function.
-export default function SendQuoteModal({ quote, lineItems, profile, onSent, onClose }) {
+export default function SendQuoteModal({ quote, lineItems, profile, onSent, onClose, pdfGenerator }) {
   const [recipientEmail, setRecipientEmail] = useState('');
   const [subject, setSubject] = useState(`Services Quote: ${quote.relationship_group || 'Client'}`);
   const expiryStr = quote.valid_until ? new Date(quote.valid_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
@@ -21,9 +21,14 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
     setError('');
 
     try {
-      // Generate PDF as base64
-      const { generateQuotePdfBase64 } = await import('../lib/quotePdf');
-      const pdfBase64 = await generateQuotePdfBase64(quote, lineItems);
+      // Generate PDF as base64 — use custom generator if provided (e.g. group PDF)
+      let pdfBase64;
+      if (pdfGenerator) {
+        pdfBase64 = await pdfGenerator();
+      } else {
+        const { generateQuotePdfBase64 } = await import('../lib/quotePdf');
+        pdfBase64 = await generateQuotePdfBase64(quote, lineItems);
+      }
 
       // Call Supabase Edge Function
       const { data, error: fnErr } = await supabase.functions.invoke('send-quote-email', {
