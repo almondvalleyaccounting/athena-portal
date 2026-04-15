@@ -305,6 +305,22 @@ export default function IssuesPage() {
                   >
                     {STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                   </select>
+
+                  {/* Delete */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(issue); }}
+                    title="Delete issue"
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      padding: 4, opacity: 0.3, transition: 'opacity 0.15s', flexShrink: 0,
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.3'; }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M11 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
                 </div>
 
                 {/* Expanded detail */}
