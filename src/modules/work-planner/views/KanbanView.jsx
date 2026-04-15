@@ -9,7 +9,7 @@ import { useWorkPlanner } from '../WorkPlannerModule';
 export default function KanbanView({ dueFilter, onAction }) {
   const {
     scheduledTasks, overridesMap, completedKeys, staffMap, entityMap,
-    quickTasks, filters, highlightId, saveOverride, notesMap, addProgressNote,
+    quickTasks, filters, highlightId, saveOverride, notesMap, addProgressNote, staffColours,
   } = useWorkPlanner();
 
   const [noteInput, setNoteInput] = useState(null); // task key with open input
@@ -111,7 +111,7 @@ export default function KanbanView({ dueFilter, onAction }) {
                   {task.title}
                 </div>
                 <div style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                  {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={18} />}
+                  {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={18} customColour={staffColours?.[task.assignee_id]} />}
                   {task.entity_id && <span onClick={(e) => { e.stopPropagation(); window.location.href = `/clients/${task.entity_id}`; }} style={{ cursor: 'pointer', color: '#0e7fe0' }} onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'} onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}>{clientName(task.entity_id, entityMap)}</span>}
                 </div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -204,7 +204,7 @@ export default function KanbanView({ dueFilter, onAction }) {
                       )}
                     </div>
                     <div style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                      {inst.assignee_id && <Avatar id={inst.assignee_id} staffMap={staffMap} size={18} />}
+                      {inst.assignee_id && <Avatar id={inst.assignee_id} staffMap={staffMap} size={18} customColour={staffColours?.[inst.assignee_id]} />}
                       {inst.entity_id && <span>{clientName(inst.entity_id, entityMap)}</span>}
                     </div>
                     <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>

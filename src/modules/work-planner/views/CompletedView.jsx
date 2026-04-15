@@ -5,7 +5,7 @@ import { useWorkPlanner } from '../WorkPlannerModule';
 import { deleteCompletedTask } from '../lib/supabaseQueries';
 
 export default function CompletedView() {
-  const { completedTasks, staffMap, entityMap, filters, progressNotes } = useWorkPlanner();
+  const { completedTasks, staffMap, entityMap, filters, progressNotes, staffColours } = useWorkPlanner();
 
   let list = [...completedTasks];
   if (filters.teamFilter) list = list.filter((t) => t.assignee_id === filters.teamFilter);
@@ -48,7 +48,7 @@ export default function CompletedView() {
           onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; }}
         >
           {task.assignee_id ? (
-            <Avatar id={task.assignee_id} staffMap={staffMap} size={20} />
+            <Avatar id={task.assignee_id} staffMap={staffMap} size={20} customColour={staffColours?.[task.assignee_id]} />
           ) : (
             <div style={{
               width: 20, height: 20, borderRadius: '50%',

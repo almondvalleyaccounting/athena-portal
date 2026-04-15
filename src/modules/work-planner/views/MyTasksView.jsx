@@ -13,7 +13,7 @@ export default function MyTasksView({ dueFilter, onAction }) {
   const {
     quickTasks, scheduledTasks, overridesMap, completedKeys,
     staffMap, entityMap, profile,
-    filters, highlightId, notesMap, addProgressNote,
+    filters, highlightId, notesMap, addProgressNote, staffColours,
   } = useWorkPlanner();
 
   const [noteInput, setNoteInput] = useState(null);
@@ -119,7 +119,7 @@ export default function MyTasksView({ dueFilter, onAction }) {
                 fontFamily: "'Outfit', sans-serif",
               }}
             >
-              {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={22} />}
+              {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={22} customColour={staffColours?.[task.assignee_id]} />}
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div

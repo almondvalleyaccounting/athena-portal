@@ -10,7 +10,7 @@ export default function QuickTasksView({ compact, onAction }) {
   const {
     quickTasks, staffList, entityList, staffMap, entityMap,
     addQuickTask, updateQuickTask, reorderQuickTasks, filters,
-    highlightId, profile, addEntity, notesMap, addProgressNote,
+    highlightId, profile, addEntity, notesMap, addProgressNote, staffColours,
   } = useWorkPlanner();
 
   const [title, setTitle] = useState('');
@@ -157,7 +157,7 @@ export default function QuickTasksView({ compact, onAction }) {
               </span>
 
               {/* Avatar */}
-              {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={compact ? 18 : 22} />}
+              {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={compact ? 18 : 22} customColour={staffColours?.[task.assignee_id]} />}
 
               {/* Body */}
               <div style={{ flex: 1, minWidth: 0, display: compact ? 'flex' : 'block', alignItems: 'center', gap: compact ? 8 : 0 }}>

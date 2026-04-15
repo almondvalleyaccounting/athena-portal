@@ -9,7 +9,7 @@ import { useWorkPlanner } from '../WorkPlannerModule';
 export default function ScheduledView({ sort, onEdit }) {
   const {
     scheduledTasks, overridesMap, completedKeys, staffMap, entityMap,
-    filters, highlightId, notesMap, addProgressNote,
+    filters, highlightId, notesMap, addProgressNote, staffColours,
   } = useWorkPlanner();
 
   const [noteInput, setNoteInput] = useState(null);
@@ -62,7 +62,7 @@ export default function ScheduledView({ sort, onEdit }) {
                 boxShadow: isHl ? '0 0 0 2px #dbeafe' : 'none',
               }}
             >
-              {displayAssignee && <Avatar id={displayAssignee} staffMap={staffMap} />}
+              {displayAssignee && <Avatar id={displayAssignee} staffMap={staffMap} customColour={staffColours?.[displayAssignee]} />}
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
