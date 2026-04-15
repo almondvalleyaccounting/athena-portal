@@ -164,7 +164,24 @@ export default function MyTasksView({ dueFilter, onAction }) {
                   )}
                 </div>
 
-                {/* Progress note input */}
+                {/* Progress notes thread */}
+                {(() => {
+                  const notes = notesMap[task._noteKey] || [];
+                  return notes.length > 0 ? (
+                    <div style={{ marginTop: 4, borderLeft: '2px solid #e5e7eb', paddingLeft: 6 }}>
+                      {notes.map((n) => (
+                        <div key={n.id} style={{ fontSize: 11, color: '#1e293b', lineHeight: 1.4, marginBottom: 2 }}>
+                          <span>{n.note}</span>
+                          <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 9 }}>
+                            {(n.created_by_name || '').split(' ')[0]} &middot; {timeAgo(n.created_at)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
+
+                {/* Add note */}
                 {noteInput === task.id ? (
                   <div style={{ display: 'flex', gap: 4, marginTop: 4, alignItems: 'flex-start' }}>
                     <input
@@ -180,9 +197,9 @@ export default function MyTasksView({ dueFilter, onAction }) {
                       }}
                       placeholder="Progress note..."
                       style={{
-                        flex: 1, padding: '3px 6px', fontSize: 11,
+                        flex: 1, padding: '4px 8px', fontSize: 12,
                         fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
-                        borderRadius: 3, outline: 'none',
+                        borderRadius: 6, outline: 'none',
                       }}
                     />
                     <button
@@ -192,8 +209,8 @@ export default function MyTasksView({ dueFilter, onAction }) {
                       }}
                       style={{
                         border: 'none', background: '#0e7fe0', color: '#fff',
-                        fontSize: 10, fontWeight: 600, padding: '3px 8px',
-                        borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
+                        fontSize: 11, fontWeight: 600, padding: '4px 10px',
+                        borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
                       }}
                     >
                       Add
@@ -203,12 +220,16 @@ export default function MyTasksView({ dueFilter, onAction }) {
                   <button
                     onClick={() => { setNoteInput(task.id); setNoteText(''); }}
                     style={{
-                      border: 'none', background: 'none', color: '#94a3b8',
-                      fontSize: 10, cursor: 'pointer', padding: '2px 0', marginTop: 2,
+                      border: '1px solid #e5e7eb', background: '#f8fafc', color: '#64748b',
+                      fontSize: 11, fontWeight: 500, cursor: 'pointer',
+                      padding: '3px 10px', marginTop: 4, borderRadius: 6,
                       fontFamily: "'Outfit', sans-serif",
+                      transition: 'all 0.15s',
                     }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#dbeafe'; e.currentTarget.style.color = '#0e7fe0'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#64748b'; }}
                   >
-                    +note
+                    + Add note
                   </button>
                 )}
               </div>
@@ -234,4 +255,16 @@ export default function MyTasksView({ dueFilter, onAction }) {
       </div>
     </div>
   );
+}
+
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }

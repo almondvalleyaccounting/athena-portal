@@ -153,12 +153,13 @@ export default function ScheduledView({ sort, onEdit }) {
                   <button
                     onClick={() => { setNoteInput(master.id); setNoteText(''); }}
                     style={{
-                      border: 'none', background: 'none', color: '#94a3b8',
-                      fontSize: 10, cursor: 'pointer', padding: '2px 0', marginTop: 2,
+                      border: '1px solid #e5e7eb', background: '#f8fafc', color: '#64748b',
+                      fontSize: 10, fontWeight: 500, cursor: 'pointer',
+                      padding: '3px 10px', marginTop: 3, borderRadius: 6,
                       fontFamily: "'Outfit', sans-serif",
                     }}
                   >
-                    +note
+                    + Add note
                   </button>
                 )}
               </div>

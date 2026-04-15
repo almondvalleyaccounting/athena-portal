@@ -742,16 +742,30 @@ export default function WorkPlannerModule() {
           ))}
           <div style={{ flex: 1 }} />
           {showNewBtn && (
-            <button
-              onClick={() => setModal('new')}
-              style={{
-                padding: '5px 12px', fontSize: 11, fontWeight: 500,
-                fontFamily: "'Outfit', sans-serif", border: '1px solid #0f172a',
-                borderRadius: 8, background: '#0f172a', color: '#fff', cursor: 'pointer',
-              }}
-            >
-              + Scheduled Task
-            </button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {activeTab === 'mytasks' && (
+                <button
+                  onClick={() => setQuickModal({ _new: true })}
+                  style={{
+                    padding: '5px 12px', fontSize: 11, fontWeight: 500,
+                    fontFamily: "'Outfit', sans-serif", border: '1px solid #38bdf8',
+                    borderRadius: 8, background: '#dbeafe', color: '#0e7fe0', cursor: 'pointer',
+                  }}
+                >
+                  + Quick Task
+                </button>
+              )}
+              <button
+                onClick={() => setModal('new')}
+                style={{
+                  padding: '5px 12px', fontSize: 11, fontWeight: 500,
+                  fontFamily: "'Outfit', sans-serif", border: '1px solid #0f172a',
+                  borderRadius: 8, background: '#0f172a', color: '#fff', cursor: 'pointer',
+                }}
+              >
+                + Scheduled Task
+              </button>
+            </div>
           )}
         </div>
 
@@ -830,7 +844,11 @@ export default function WorkPlannerModule() {
           staffList={staffList}
           entityList={entityList}
           onSave={async (id, patch) => {
-            await updateQuickTask(id, patch);
+            if (id) {
+              await updateQuickTask(id, patch);
+            } else {
+              await addQuickTask({ ...patch, sort_order: 0, created_by: profile.id });
+            }
             setQuickModal(null);
           }}
           onDelete={async (id) => {

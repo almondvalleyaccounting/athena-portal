@@ -270,11 +270,13 @@ export default function QuickTasksView({ compact, onAction }) {
                         <button
                           onClick={() => { setProgressInput(task.id); setProgressText(''); }}
                           style={{
-                            border: 'none', background: 'none', color: '#94a3b8',
-                            fontSize: 9, cursor: 'pointer', padding: '2px 0', marginTop: notes.length > 0 ? 1 : 0,
+                            border: '1px solid #e5e7eb', background: '#f8fafc', color: '#64748b',
+                            fontSize: 10, fontWeight: 500, cursor: 'pointer',
+                            padding: '2px 8px', marginTop: notes.length > 0 ? 2 : 3, borderRadius: 5,
+                            fontFamily: "'Outfit', sans-serif",
                           }}
                         >
-                          +note
+                          + Add note
                         </button>
                       )}
                     </>
