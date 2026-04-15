@@ -34,8 +34,10 @@ export default function FilterBar({
   view,
   calendarView, setCalendarView,
   calTitle, onCalNav, onCalToday,
-  // Kanban-specific
+  // Kanban + MyTasks
   dueFilter, setDueFilter,
+  // MyTasks-specific
+  sourceFilter, setSourceFilter,
   // Quick-specific
   compact, setCompact,
   // Scheduled-specific
@@ -167,6 +169,28 @@ export default function FilterBar({
             <option value="service">Service</option>
             <option value="owner">Owner</option>
             <option value="next">Next Due</option>
+          </select>
+        </>
+      )}
+
+      {/* My Tasks filters */}
+      {view === 'mytasks' && (
+        <>
+          <div style={sepStyle} />
+          <span style={labelStyle}>Due</span>
+          <select style={selectStyle} value={dueFilter} onChange={(e) => setDueFilter(e.target.value)}>
+            <option value="today">Today</option>
+            <option value="week">This week</option>
+            <option value="month">This month</option>
+            <option value="3">3 months</option>
+            <option value="all">All</option>
+          </select>
+          <div style={sepStyle} />
+          <span style={labelStyle}>Source</span>
+          <select style={selectStyle} value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+            <option value="">All</option>
+            <option value="quick">Quick tasks</option>
+            <option value="scheduled">Scheduled</option>
           </select>
         </>
       )}

@@ -31,6 +31,7 @@ import ScheduledView from './views/ScheduledView';
 import CalendarView from './views/CalendarView';
 import KanbanView from './views/KanbanView';
 import CompletedView from './views/CompletedView';
+import MyTasksView from './views/MyTasksView';
 
 // ── Context ──
 const WorkPlannerContext = createContext(null);
@@ -38,6 +39,7 @@ export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 
 // ── Tab config ──
 const TABS = [
+  { id: 'mytasks', label: 'My Tasks', path: '/planner/mytasks' },
   { id: 'quick', label: 'Quick Tasks', path: '/planner' },
   { id: 'sched', label: 'Scheduled', path: '/planner/scheduled' },
   { id: 'calendar', label: 'Calendar', path: '/planner/calendar' },
@@ -69,6 +71,7 @@ export default function WorkPlannerModule() {
   const [calendarView, setCalendarView] = useState('workweek');
   const [anchor, setAnchor] = useState(new Date(today()));
   const [dueFilter, setDueFilter] = useState('month');
+  const [sourceFilter, setSourceFilter] = useState('');
   const [compact, setCompact] = useState(false);
   const [sort, setSort] = useState('next');
   const [colourMode, setColourMode] = useState('staff'); // 'staff' | 'status'
@@ -617,6 +620,13 @@ export default function WorkPlannerModule() {
     return `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} \u2014 ${end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
   }
 
+  // Auto-set team filter to current user on My Tasks tab
+  useEffect(() => {
+    if (activeTab === 'mytasks' && !teamFilter && profile?.id) {
+      setTeamFilter(profile.id);
+    }
+  }, [activeTab, profile]);
+
   // Clear highlight when popover closes
   useEffect(() => {
     if (!popover) setHighlightId(null);
@@ -654,7 +664,7 @@ export default function WorkPlannerModule() {
     overridesMap, completedKeys,
     staffList, entityList, staffMap, entityMap,
     profile,
-    filters: { teamFilter, clientFilter, serviceFilter, statusFilter },
+    filters: { teamFilter, clientFilter, serviceFilter, statusFilter, sourceFilter },
     highlightId,
     progressNotes, notesMap, addProgressNote,
     addQuickTask, updateQuickTask, reorderQuickTasks,
@@ -667,7 +677,7 @@ export default function WorkPlannerModule() {
     overridesMap, completedKeys,
     staffList, entityList, staffMap, entityMap,
     profile,
-    teamFilter, clientFilter, serviceFilter, statusFilter,
+    teamFilter, clientFilter, serviceFilter, statusFilter, sourceFilter,
     highlightId,
     progressNotes, notesMap, addProgressNote,
     addQuickTask, updateQuickTask, reorderQuickTasks,
@@ -701,7 +711,7 @@ export default function WorkPlannerModule() {
   }
 
   // ── Render ──
-  const showNewBtn = activeTab === 'sched' || activeTab === 'calendar' || activeTab === 'kanban';
+  const showNewBtn = activeTab === 'sched' || activeTab === 'calendar' || activeTab === 'kanban' || activeTab === 'mytasks';
 
   return (
     <WorkPlannerContext.Provider value={contextValue}>
@@ -757,6 +767,7 @@ export default function WorkPlannerModule() {
           calendarView={calendarView} setCalendarView={setCalendarView}
           calTitle={calTitle()} onCalNav={calNav} onCalToday={() => setAnchor(new Date(today()))}
           dueFilter={dueFilter} setDueFilter={setDueFilter}
+          sourceFilter={sourceFilter} setSourceFilter={setSourceFilter}
           compact={compact} setCompact={setCompact}
           sort={sort} setSort={setSort}
           colourMode={colourMode} setColourMode={setColourMode}
@@ -765,6 +776,9 @@ export default function WorkPlannerModule() {
 
         {/* Active view */}
         <div style={{ flex: 1, overflow: 'auto' }}>
+          {activeTab === 'mytasks' && (
+            <MyTasksView dueFilter={dueFilter} onAction={handleAction} />
+          )}
           {activeTab === 'quick' && (
             <QuickTasksView compact={compact} onAction={handleAction} />
           )}

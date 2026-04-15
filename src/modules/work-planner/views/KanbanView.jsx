@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { STATUSES } from '../lib/constants';
 import { durFmt, formatDateShort, clientName, addDays, addMonths, today, dueBadge } from '../lib/helpers';
 import { generateInstances } from '../lib/instanceEngine';
@@ -9,8 +9,11 @@ import { useWorkPlanner } from '../WorkPlannerModule';
 export default function KanbanView({ dueFilter, onAction }) {
   const {
     scheduledTasks, overridesMap, completedKeys, staffMap, entityMap,
-    quickTasks, filters, highlightId, saveOverride, notesMap,
+    quickTasks, filters, highlightId, saveOverride, notesMap, addProgressNote,
   } = useWorkPlanner();
+
+  const [noteInput, setNoteInput] = useState(null); // task key with open input
+  const [noteText, setNoteText] = useState('');
 
   const [dragCol, setDragCol] = useState(null);
   const dragRef = useRef(null);
@@ -215,6 +218,53 @@ export default function KanbanView({ dueFilter, onAction }) {
                         </span>
                       )}
                     </div>
+                    {noteInput === inst._key ? (
+                      <div style={{ display: 'flex', gap: 3, marginTop: 3 }} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          autoFocus
+                          value={noteText}
+                          onChange={(e) => setNoteText(e.target.value)}
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter' && noteText.trim()) {
+                              await addProgressNote('scheduled', inst._masterId, noteText.trim());
+                              setNoteText(''); setNoteInput(null);
+                            }
+                            if (e.key === 'Escape') { setNoteInput(null); setNoteText(''); }
+                          }}
+                          placeholder="Note..."
+                          style={{
+                            flex: 1, padding: '2px 5px', fontSize: 10,
+                            fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
+                            borderRadius: 3, outline: 'none', minWidth: 0,
+                          }}
+                        />
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (noteText.trim()) await addProgressNote('scheduled', inst._masterId, noteText.trim());
+                            setNoteText(''); setNoteInput(null);
+                          }}
+                          style={{
+                            border: 'none', background: '#0e7fe0', color: '#fff',
+                            fontSize: 9, fontWeight: 600, padding: '2px 6px',
+                            borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
+                          }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setNoteInput(inst._key); setNoteText(''); }}
+                        style={{
+                          border: 'none', background: 'none', color: '#94a3b8',
+                          fontSize: 9, cursor: 'pointer', padding: '2px 0', marginTop: 2,
+                          fontFamily: "'Outfit', sans-serif",
+                        }}
+                      >
+                        +note
+                      </button>
+                    )}
                   </div>
                 );
               })}
