@@ -85,6 +85,15 @@ export default function IdeasPage() {
     }
   };
 
+  // ── Delete idea ──
+  const handleDelete = async (idea) => {
+    if (!window.confirm(`Delete idea "${idea.text.slice(0, 50)}..."?`)) return;
+    try {
+      const { error } = await supabase.from('ideas').delete().eq('id', idea.id);
+      if (!error) setIdeas((prev) => prev.filter((i) => i.id !== idea.id));
+    } catch { /* silent */ }
+  };
+
   // ── Edit idea ──
   const handleEdit = async (idea) => {
     if (!editText.trim() || editText.trim() === idea.text) { setEditingId(null); return; }
@@ -329,6 +338,22 @@ export default function IdeasPage() {
                   })}
                 </p>
               </div>
+
+              {/* Delete button */}
+              <button
+                onClick={() => handleDelete(idea)}
+                title="Delete idea"
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: 4, opacity: 0.3, transition: 'opacity 0.15s', flexShrink: 0, alignSelf: 'center',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.3'; }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M11 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
             </div>
           ))}
         </div>

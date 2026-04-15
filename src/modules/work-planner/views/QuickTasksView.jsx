@@ -310,13 +310,21 @@ export default function QuickTasksView({ compact, onAction }) {
                 />
                 <button
                   style={miniBtn}
-                  onClick={() => updateQuickTask(task.id, { due_date: new Date().toISOString() })}
+                  onClick={() => {
+                    const d = new Date();
+                    d.setHours(0, 0, 0, 0);
+                    updateQuickTask(task.id, { due_date: d.toISOString(), planned_date: d.toISOString() });
+                  }}
                 >
                   Today
                 </button>
                 <button
                   style={miniBtn}
-                  onClick={() => updateQuickTask(task.id, { due_date: addDays(new Date(), 1).toISOString() })}
+                  onClick={() => {
+                    const d = addDays(new Date(), 1);
+                    d.setHours(0, 0, 0, 0);
+                    updateQuickTask(task.id, { due_date: d.toISOString(), planned_date: d.toISOString() });
+                  }}
                 >
                   Tmrw
                 </button>
