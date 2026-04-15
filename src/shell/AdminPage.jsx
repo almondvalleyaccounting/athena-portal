@@ -13,7 +13,7 @@ const PERMISSION_COLS = [
   { key: 'can_edit_fee_schedule', label: 'Edit pricing' },
   { key: 'can_view_client_fees', label: 'Client fees' },
   { key: 'can_view_reports', label: 'Reports' },
-  { key: 'can_view_work_planner', label: 'Work planner' },
+  { key: 'work_planner', label: 'Work planner' },
   { key: 'can_view_timesheets', label: 'Timesheets' },
   { key: 'can_view_billing', label: 'Billing' },
   { key: 'can_approve_billing', label: 'Approve billing' },
