@@ -9,7 +9,7 @@ import DueBadge from '../components/DueBadge';
 import StatusIcon from '../components/StatusIcon';
 import { useWorkPlanner } from '../WorkPlannerModule';
 
-export default function MyTasksView({ dueFilter, onAction }) {
+export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }) {
   const {
     quickTasks, scheduledTasks, overridesMap, completedKeys,
     staffMap, entityMap, profile,
@@ -84,6 +84,19 @@ export default function MyTasksView({ dueFilter, onAction }) {
     });
   }
 
+  // Search filter — matches task title, client name, staff name, service
+  if (searchTerm && searchTerm.trim()) {
+    const q = searchTerm.trim().toLowerCase();
+    items = items.filter((t) => {
+      const title = (t.title || '').toLowerCase();
+      const client = (t.entity_id ? (entityMap[t.entity_id]?.name || '') : '').toLowerCase();
+      const staff = (t.assignee_id ? (staffMap[t.assignee_id]?.name || '') : '').toLowerCase();
+      const service = (t.service || '').toLowerCase();
+      const notes = (t.notes || '').toLowerCase();
+      return title.includes(q) || client.includes(q) || staff.includes(q) || service.includes(q) || notes.includes(q);
+    });
+  }
+
   // Sort by date ascending
   items.sort((a, b) => a._sortDate.getTime() - b._sortDate.getTime());
 
@@ -108,23 +121,23 @@ export default function MyTasksView({ dueFilter, onAction }) {
             <div
               key={task.id}
               style={{
-                display: 'flex', alignItems: 'flex-start', gap: 8,
-                padding: '8px 11px',
+                display: 'flex', alignItems: compact ? 'center' : 'flex-start', gap: compact ? 6 : 8,
+                padding: compact ? '4px 10px' : '8px 11px',
                 background: isHl ? '#eff6ff' : '#fff',
                 border: `1px solid ${isHl ? '#0e7fe0' : '#e5e7eb'}`,
                 borderLeft: `3px solid ${accentColour}`,
-                borderRadius: 8,
+                borderRadius: compact ? 6 : 8,
                 transition: 'all 0.12s',
                 boxShadow: isHl ? '0 0 0 2px #dbeafe' : 'none',
                 fontFamily: "'Outfit', sans-serif",
               }}
             >
-              {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={22} customColour={staffColours?.[task.assignee_id]} />}
+              {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={compact ? 18 : 22} customColour={staffColours?.[task.assignee_id]} />}
 
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0, display: compact ? 'flex' : 'block', alignItems: 'center', gap: compact ? 8 : 0 }}>
                 <div
                   onClick={(e) => onAction(e, task)}
-                  style={{ fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                  style={{ fontSize: compact ? 12 : 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                 >
                   {task.title}
                   {task._source === 'quick' && (
@@ -142,7 +155,7 @@ export default function MyTasksView({ dueFilter, onAction }) {
                   )}
                 </div>
 
-                <div style={{ fontSize: 11, color: '#64748b', marginTop: 1, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: compact ? 10 : 11, color: '#64748b', marginTop: compact ? 0 : 1, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                   {task.entity_id && <span>{clientName(task.entity_id, entityMap)}</span>}
                   {task.service && <span style={{ color: '#94a3b8' }}>{task.service}</span>}
                   {st && (
@@ -167,8 +180,8 @@ export default function MyTasksView({ dueFilter, onAction }) {
                   )}
                 </div>
 
-                {/* Progress notes thread */}
-                {(() => {
+                {/* Progress notes + add note — hidden in compact mode */}
+                {!compact && (() => {
                   const notes = notesMap[task._noteKey] || [];
                   return notes.length > 0 ? (
                     <div style={{ marginTop: 4, borderLeft: '2px solid #e5e7eb', paddingLeft: 6 }}>
@@ -184,8 +197,7 @@ export default function MyTasksView({ dueFilter, onAction }) {
                   ) : null;
                 })()}
 
-                {/* Add note */}
-                {noteInput === task.id ? (
+                {!compact && (noteInput === task.id ? (
                   <div style={{ display: 'flex', gap: 4, marginTop: 4, alignItems: 'flex-start' }}>
                     <input
                       autoFocus
@@ -234,22 +246,22 @@ export default function MyTasksView({ dueFilter, onAction }) {
                   >
                     + Add note
                   </button>
-                )}
+                ))}
               </div>
 
               {/* Action button */}
-              <div style={{ flexShrink: 0, marginTop: 1 }}>
+              <div style={{ flexShrink: 0, marginTop: compact ? 0 : 1 }}>
                 <button
                   onClick={(e) => onAction(e, task)}
                   title="Actions"
                   style={{
-                    padding: '3px 8px', fontSize: 10, fontWeight: 500,
-                    border: '1px solid #0e7fe0', borderRadius: 4,
+                    padding: compact ? '2px 6px' : '3px 8px', fontSize: compact ? 9 : 10, fontWeight: 500,
+                    border: '1px solid #0e7fe0', borderRadius: compact ? 3 : 4,
                     background: '#dbeafe', color: '#0e7fe0', cursor: 'pointer',
                     fontFamily: "'Outfit', sans-serif",
                   }}
                 >
-                  &#9889;
+                  &#9654;
                 </button>
               </div>
             </div>

@@ -73,6 +73,7 @@ export default function WorkPlannerModule() {
   const [dueFilter, setDueFilter] = useState('month');
   const [sourceFilter, setSourceFilter] = useState('');
   const [compact, setCompact] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [sort, setSort] = useState('next');
   const [colourMode, setColourMode] = useState('staff'); // 'staff' | 'status'
   const [statusColours] = useState({}); // future: stored in portal_settings table
@@ -799,6 +800,7 @@ export default function WorkPlannerModule() {
           dueFilter={dueFilter} setDueFilter={setDueFilter}
           sourceFilter={sourceFilter} setSourceFilter={setSourceFilter}
           compact={compact} setCompact={setCompact}
+          searchTerm={searchTerm} setSearchTerm={setSearchTerm}
           sort={sort} setSort={setSort}
           colourMode={colourMode} setColourMode={setColourMode}
           staffColours={staffColours}
@@ -807,7 +809,7 @@ export default function WorkPlannerModule() {
         {/* Active view */}
         <div style={{ flex: 1, overflow: 'auto' }}>
           {activeTab === 'mytasks' && (
-            <MyTasksView dueFilter={dueFilter} onAction={handleAction} />
+            <MyTasksView dueFilter={dueFilter} compact={compact} searchTerm={searchTerm} onAction={handleAction} />
           )}
           {activeTab === 'quick' && (
             <QuickTasksView compact={compact} onAction={handleAction} />

@@ -38,8 +38,9 @@ export default function FilterBar({
   dueFilter, setDueFilter,
   // MyTasks-specific
   sourceFilter, setSourceFilter,
-  // Quick-specific
+  // Quick + MyTasks
   compact, setCompact,
+  searchTerm, setSearchTerm,
   // Scheduled-specific
   sort, setSort,
   // Colour mode
@@ -145,8 +146,8 @@ export default function FilterBar({
         </>
       )}
 
-      {/* Quick tasks compact toggle */}
-      {view === 'quick' && (
+      {/* Compact toggle — quick tasks + my tasks */}
+      {(view === 'quick' || view === 'mytasks') && (
         <>
           <div style={sepStyle} />
           <span
@@ -192,6 +193,19 @@ export default function FilterBar({
             <option value="quick">Quick tasks</option>
             <option value="scheduled">Scheduled</option>
           </select>
+          <div style={sepStyle} />
+          <input
+            value={searchTerm || ''}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search tasks..."
+            style={{
+              padding: '4px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+              border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none',
+              width: 160, transition: 'border-color 0.15s',
+            }}
+            onFocus={(e) => (e.target.style.borderColor = '#0e7fe0')}
+            onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+          />
         </>
       )}
     </div>
