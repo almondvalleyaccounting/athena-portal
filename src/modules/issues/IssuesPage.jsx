@@ -66,15 +66,15 @@ export default function IssuesPage() {
     try {
       const [{ data: iss }, { data: staff }, { data: ents }] = await Promise.all([
         supabase.from('issues_log').select('*').order('created_at', { ascending: false }),
-        supabase.from('staff_profiles').select('id, full_name, name, email').eq('is_active', true).order('full_name'),
+        supabase.from('staff_profiles').select('id, name, email').eq('is_active', true).order('name'),
         supabase.from('entities').select('id, name').order('name'),
       ]);
       setIssues(iss || []);
-      setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email })));
+      setStaffList((staff || []).map((s) => ({ ...s, name: s.name || s.email })));
       setEntities(ents || []);
     } catch (e) {
       console.error('[Issues] load error:', e);
-      try { const { data: staff } = await supabase.from('staff_profiles').select('id, full_name, name, email').eq('is_active', true); setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email }))); } catch {}
+      try { const { data: staff } = await supabase.from('staff_profiles').select('id, name, email').eq('is_active', true); setStaffList((staff || []).map((s) => ({ ...s, name: s.name || s.email }))); } catch {}
     }
     setLoading(false);
   };

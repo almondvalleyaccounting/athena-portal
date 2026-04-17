@@ -52,9 +52,9 @@ export default function ClientDetailView() {
           supabase.from('completed_tasks').select('*').eq('entity_id', id).order('completed_at', { ascending: false }),
           supabase.from('issues_log').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
           supabase.from('billing_items').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
-          supabase.from('staff_profiles').select('id, full_name, name, email').order('name'),
+          supabase.from('staff_profiles').select('id, name, email').order('name'),
         ]);
-        const get = (i) => results[i]?.status === 'fulfilled' ? results[i].value?.data : null;
+        const get = (i) => results[i]?.value?.data;
         const ent = get(0);
         setEntity(ent);
         setBilling(get(1) || []);
@@ -64,11 +64,7 @@ export default function ClientDetailView() {
         setCompletedTasks(get(5) || []);
         setIssues(get(6) || []);
         setBillingItems(get(7) || []);
-        // Debug: log staff query result
-        console.log('[ClientDetail] staff query result:', results[8]);
-        const staffRaw = get(8) || [];
-        const staff = staffRaw.map((s) => ({ ...s, name: s.full_name || s.name || s.email }));
-        console.log('[ClientDetail] staff list:', staff.length, 'entries', staff);
+        const staff = (get(8) || []).map((s) => ({ ...s, name: s.name || s.email }));
         setStaffList(staff);
         // Default action assignee to client manager
         if (ent?.manager) {
