@@ -249,7 +249,7 @@ export default function MyTasksView({ dueFilter, onAction }) {
                     fontFamily: "'Outfit', sans-serif",
                   }}
                 >
-                  &#10003;
+                  &#9889;
                 </button>
               </div>
             </div>

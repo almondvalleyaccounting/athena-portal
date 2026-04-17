@@ -39,8 +39,8 @@ export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 
 // ── Tab config ──
 const TABS = [
-  { id: 'mytasks', label: 'My Tasks', path: '/planner/mytasks' },
-  { id: 'quick', label: 'Quick Tasks', path: '/planner' },
+  { id: 'mytasks', label: 'My Tasks', path: '/planner' },
+  { id: 'quick', label: 'Quick Tasks', path: '/planner/quick' },
   { id: 'sched', label: 'Scheduled', path: '/planner/scheduled' },
   { id: 'calendar', label: 'Calendar', path: '/planner/calendar' },
   { id: 'kanban', label: 'Kanban', path: '/planner/kanban' },
@@ -88,7 +88,7 @@ export default function WorkPlannerModule() {
   const activeTab = useMemo(() => {
     const path = location.pathname;
     const tab = TABS.find((t) => t.path === path);
-    return tab ? tab.id : 'quick';
+    return tab ? tab.id : 'mytasks';
   }, [location.pathname]);
 
   // ── Derived: overridesMap and completedKeys ──

@@ -299,7 +299,7 @@ export default function QuickTasksView({ compact, onAction }) {
                     fontFamily: "'Outfit', sans-serif",
                   }}
                 >
-                  &#10003;
+                  &#9889;
                 </button>
                 <input
                   type="date"
