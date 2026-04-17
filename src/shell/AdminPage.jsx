@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Palette } from 'lucide-react';
+import { Palette, UserPlus, Pencil, Check, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 /*
@@ -25,6 +25,8 @@ const PERMISSION_COLS = [
 // renders whatever columns exist and toggles create them on first use
 const SELECT_COLS = '*';
 
+const font = "'Outfit', sans-serif";
+
 const COLOUR_SWATCHES = [
   '#0e7fe0', '#2563eb', '#3b82f6', '#60a5fa', '#38bdf8',
   '#059669', '#10b981', '#15803d', '#65a30d',
@@ -37,6 +39,7 @@ const COLOUR_SWATCHES = [
 
 export default function AdminPage() {
   const [users, setUsers] = useState([]);
+  const [authUsers, setAuthUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
   const [deleting, setDeleting] = useState(null); // user id while deleting
@@ -50,6 +53,14 @@ export default function AdminPage() {
   const [inviteError, setInviteError] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState('');
 
+  // Create-profile form for unlinked auth accounts
+  const [showCreateFor, setShowCreateFor] = useState(null);
+  const [createForm, setCreateForm] = useState({ full_name: '' });
+
+  // Inline edit state
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ name: '', email: '' });
+
   const fetchUsers = async () => {
     setLoading(true);
     const { data } = await supabase
@@ -57,6 +68,15 @@ export default function AdminPage() {
       .select(SELECT_COLS)
       .order('name', { ascending: true });
     setUsers(data || []);
+
+    // Try to fetch auth users (requires list_auth_users function)
+    try {
+      const { data: auths, error: authErr } = await supabase.rpc('list_auth_users');
+      if (!authErr) setAuthUsers(auths || []);
+    } catch {
+      // Function may not exist yet — silently skip
+    }
+
     setLoading(false);
   };
 
@@ -173,6 +193,76 @@ export default function AdminPage() {
     }
     setDeleting(null);
   };
+
+  // ── Create profile for unlinked auth user ──
+  const handleCreateProfile = async (authUser) => {
+    setSaving('create');
+    try {
+      const newProfile = {
+        id: authUser.id,
+        name: createForm.full_name.trim() || authUser.email.split('@')[0],
+        email: authUser.email,
+        is_active: true,
+        must_change_password: false,
+      };
+      const { error: insertErr } = await supabase.from('staff_profiles').insert(newProfile);
+      if (insertErr) throw insertErr;
+      setShowCreateFor(null);
+      setCreateForm({ full_name: '' });
+      fetchUsers();
+    } catch (err) {
+      alert(String(err.message || err));
+    }
+    setSaving(null);
+  };
+
+  // ── Start inline edit ──
+  const startEdit = (user) => {
+    setEditingId(user.id);
+    setEditForm({ name: user.name || '', email: user.email || '' });
+  };
+
+  // ── Save inline edit ──
+  const saveEdit = async (userId) => {
+    setSaving(`${userId}:edit`);
+    const user = users.find((u) => u.id === userId);
+    try {
+      // Update name
+      if (editForm.name !== user.name) {
+        const { error } = await supabase
+          .from('staff_profiles')
+          .update({ name: editForm.name })
+          .eq('id', userId);
+        if (error) throw error;
+      }
+      // Update email (via RPC if available, otherwise just staff_profiles)
+      if (editForm.email !== user.email) {
+        const { error: rpcErr } = await supabase.rpc('admin_update_user_email', {
+          p_user_id: userId,
+          p_new_email: editForm.email,
+        });
+        if (rpcErr) {
+          // Fallback: update just staff_profiles if RPC doesn't exist
+          const { error } = await supabase
+            .from('staff_profiles')
+            .update({ email: editForm.email })
+            .eq('id', userId);
+          if (error) throw error;
+        }
+      }
+      setUsers((prev) =>
+        prev.map((u) => u.id === userId ? { ...u, name: editForm.name, email: editForm.email } : u)
+      );
+      setEditingId(null);
+    } catch (err) {
+      alert(String(err.message || err));
+    }
+    setSaving(null);
+  };
+
+  // Find auth users without a staff profile
+  const profileIds = new Set(users.map((u) => u.id));
+  const unlinkedUsers = authUsers.filter((u) => !profileIds.has(u.id));
 
   const displayName = (u) => u.name || u.email || 'Unknown';
 
@@ -331,6 +421,102 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Unlinked auth accounts */}
+      {unlinkedUsers.length > 0 && (
+        <div style={{ marginBottom: '24px' }}>
+          <div
+            style={{
+              backgroundColor: '#fffbeb',
+              border: '1px solid #fde68a',
+              borderRadius: '12px',
+              padding: '16px 20px',
+            }}
+          >
+            <h3 style={{ fontFamily: font, fontSize: '14px', fontWeight: 600, color: '#92400e', marginBottom: '8px' }}>
+              Accounts without profiles ({unlinkedUsers.length})
+            </h3>
+            <p style={{ fontFamily: font, fontSize: '13px', color: '#a16207', marginBottom: '12px' }}>
+              These users have login accounts but no staff profile. They see "Access pending" when they sign in.
+            </p>
+            {unlinkedUsers.map((authUser) => (
+              <div
+                key={authUser.id}
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '10px',
+                  padding: '12px 16px',
+                  marginBottom: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                }}
+              >
+                <div>
+                  <span style={{ fontFamily: font, fontSize: '14px', fontWeight: 500, color: '#0f172a' }}>
+                    {authUser.email}
+                  </span>
+                  <span style={{ fontFamily: font, fontSize: '12px', color: '#94a3b8', marginLeft: '8px' }}>
+                    Created {new Date(authUser.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
+                </div>
+                {showCreateFor === authUser.id ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <input
+                      value={createForm.full_name}
+                      onChange={(e) => setCreateForm({ full_name: e.target.value })}
+                      placeholder="Full name"
+                      style={{
+                        fontFamily: font, fontSize: '13px', padding: '8px 12px',
+                        border: '1px solid #e5e7eb', borderRadius: '8px', outline: 'none', width: '180px',
+                      }}
+                      onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+                      onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+                    />
+                    <button
+                      onClick={() => handleCreateProfile(authUser)}
+                      disabled={!createForm.full_name.trim() || saving === 'create'}
+                      style={{
+                        fontFamily: font, fontSize: '12px', fontWeight: 600, color: '#fff',
+                        backgroundColor: !createForm.full_name.trim() ? '#94a3b8' : '#0f172a',
+                        border: 'none', borderRadius: '8px', padding: '8px 14px',
+                        cursor: !createForm.full_name.trim() ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {saving === 'create' ? 'Creating...' : 'Create'}
+                    </button>
+                    <button
+                      onClick={() => { setShowCreateFor(null); setCreateForm({ full_name: '' }); }}
+                      style={{
+                        fontFamily: font, fontSize: '12px', color: '#64748b',
+                        background: 'none', border: '1px solid #e5e7eb', borderRadius: '8px',
+                        padding: '8px 12px', cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowCreateFor(authUser.id)}
+                    style={{
+                      fontFamily: font, fontSize: '12px', fontWeight: 600, color: '#fff',
+                      backgroundColor: '#38bdf8', border: 'none', borderRadius: '8px',
+                      padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                    }}
+                  >
+                    <UserPlus size={14} />
+                    Create profile
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Permissions grid */}
       {loading ? (
         <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '14px', color: '#94a3b8' }}>
@@ -429,14 +615,81 @@ export default function AdminPage() {
                       left: 0,
                       backgroundColor: '#fafafa',
                       zIndex: 1,
+                      minWidth: '200px',
                     }}
                   >
-                    <div style={{ fontWeight: 500, color: '#0f172a' }}>
-                      {displayName(user)}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                      {user.email}
-                    </div>
+                    {editingId === user.id ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <input
+                          value={editForm.name}
+                          onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                          placeholder="Name"
+                          style={{
+                            fontFamily: font, fontSize: '13px', padding: '4px 8px',
+                            border: '1px solid #e5e7eb', borderRadius: '6px', outline: 'none', width: '100%',
+                          }}
+                          onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+                          onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+                        />
+                        <input
+                          value={editForm.email}
+                          onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                          placeholder="Email"
+                          style={{
+                            fontFamily: font, fontSize: '11px', padding: '4px 8px',
+                            border: '1px solid #e5e7eb', borderRadius: '6px', outline: 'none', width: '100%',
+                          }}
+                          onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+                          onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+                        />
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button
+                            onClick={() => saveEdit(user.id)}
+                            disabled={saving === `${user.id}:edit`}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
+                              color: '#22c55e', display: 'flex', alignItems: 'center',
+                            }}
+                            title="Save"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            onClick={() => setEditingId(null)}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
+                              color: '#94a3b8', display: 'flex', alignItems: 'center',
+                            }}
+                            title="Cancel"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div>
+                          <div style={{ fontWeight: 500, color: '#0f172a' }}>
+                            {displayName(user)}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            {user.email}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => startEdit(user)}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
+                            opacity: 0.3, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.3')}
+                          title="Edit name and email"
+                        >
+                          <Pencil size={12} style={{ color: '#64748b' }} />
+                        </button>
+                      </div>
+                    )}
                   </td>
                   <td
                     style={{
