@@ -235,7 +235,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
             <span></span><span></span>
             <span className="text-right flex items-center justify-end gap-1">
               <Inp value={o.amount} onChange={(v) => { const os = [...f.suOthers]; os[i] = { ...os[i], amount: v }; f.setSuOthers(os); }} prefix="£" className="w-14" />
-              <button onClick={() => f.setSuOthers(f.suOthers.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600">\u2715</button>
+              <button onClick={() => f.setSuOthers(f.suOthers.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600">&#x2715;</button>
             </span>
           </div>
         ))}
