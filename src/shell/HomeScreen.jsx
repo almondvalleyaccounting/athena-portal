@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Clock, CheckCircle } from 'lucide-react';
+import { AlertTriangle, Clock, CheckCircle, CheckCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { MODULES } from '../modules.config';
 import { useAuth } from './AppShell';
@@ -47,7 +47,61 @@ function formatCurrency(n) {
   }).format(n);
 }
 
+function formatCurrency2dp(n) {
+  return new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
+}
+
 /* ─── Data hooks ───────────────────────────────────────────────── */
+function useAwaitingReview(enabled) {
+  // Accepted quotes that haven't been committed to Live yet. These are
+  // Bobby's post-client-accept review queue ahead of pushing to QBO.
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('quotes')
+          .select(
+            'id, quote_ref, relationship_group, accepted_at, monthly_gross, annual_total',
+          )
+          .eq('status', 'accepted')
+          .order('accepted_at', { ascending: false })
+          .limit(10);
+
+        setItems(
+          (data || []).map((q) => ({
+            id: q.id,
+            quote_ref: q.quote_ref,
+            client: q.relationship_group || q.quote_ref,
+            accepted_at: q.accepted_at,
+            monthly_gross: q.monthly_gross,
+            annual_total: q.annual_total,
+            onClick: () => navigate(`/manage/quotes/${q.id}`),
+          })),
+        );
+      } catch {
+        setItems([]);
+      }
+      setLoading(false);
+    })();
+  }, [enabled, navigate]);
+
+  return { items, loading };
+}
+
 function useAttentionItems(enabled) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -249,6 +303,74 @@ function AttentionCard({ accent, icon: Icon, title, subtitle, onClick }) {
   );
 }
 
+/* ─── Review card (accepted quotes awaiting review) ─────────────── */
+function ReviewCard({ quote_ref, client, accepted_at, monthly_gross, annual_total, onClick }) {
+  const acceptedLabel = accepted_at
+    ? new Date(accepted_at).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+      })
+    : '';
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '14px',
+        width: '100%',
+        backgroundColor: '#ffffff',
+        borderRadius: '12px',
+        border: '1px solid #e5e7eb',
+        borderLeft: '3px solid #22c55e',
+        padding: '14px 18px',
+        cursor: 'pointer',
+        textAlign: 'left',
+        marginBottom: '8px',
+        transition: 'all 0.2s ease',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = 'translateY(-1px)';
+        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'none';
+        e.currentTarget.style.boxShadow = 'none';
+      }}
+    >
+      <CheckCheck size={18} style={{ color: '#22c55e', flexShrink: 0 }} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p
+          style={{
+            fontFamily: "'Outfit', sans-serif",
+            fontSize: '14px',
+            fontWeight: 500,
+            color: '#0f172a',
+            marginBottom: '2px',
+          }}
+        >
+          {client} accepted {quote_ref}
+          {acceptedLabel && (
+            <span style={{ color: '#94a3b8', fontWeight: 400 }}>
+              {' — '}
+              {acceptedLabel}
+            </span>
+          )}
+        </p>
+        <p
+          style={{
+            fontFamily: "'Outfit', sans-serif",
+            fontSize: '12px',
+            color: '#94a3b8',
+          }}
+        >
+          {formatCurrency2dp(monthly_gross || 0)}/mo · {formatCurrency2dp(annual_total || 0)}/yr inc VAT · Push to QBO
+        </p>
+      </div>
+    </button>
+  );
+}
+
 /* ─── Stat card ────────────────────────────────────────────────── */
 function StatCard({ label, value, onClick }) {
   return (
@@ -339,6 +461,8 @@ export default function HomeScreen() {
   const canSeeStats = isOwner || isManager;
 
   // Live data
+  const { items: reviewItems, loading: reviewLoading } =
+    useAwaitingReview(canSeeAttention);
   const { items: attentionItems, loading: attentionLoading } =
     useAttentionItems(canSeeAttention);
   const stats = useWeeklyStats(canSeeStats);
@@ -393,6 +517,42 @@ export default function HomeScreen() {
           {formatDate()}
         </span>
       </div>
+
+      {/* ── Awaiting review (Bobby + Tracy only — accepted, not yet committed) ── */}
+      {canSeeAttention && !reviewLoading && reviewItems.length > 0 && (
+        <div style={{ marginBottom: '36px' }}>
+          <SectionLabel>Awaiting review</SectionLabel>
+          {reviewItems.slice(0, 5).map((item) => (
+            <ReviewCard
+              key={item.id}
+              quote_ref={item.quote_ref}
+              client={item.client}
+              accepted_at={item.accepted_at}
+              monthly_gross={item.monthly_gross}
+              annual_total={item.annual_total}
+              onClick={item.onClick}
+            />
+          ))}
+          {reviewItems.length > 5 && (
+            <button
+              onClick={() => navigate('/manage/quotes')}
+              style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: '13px',
+                fontWeight: 600,
+                color: '#38bdf8',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px 0',
+                marginTop: '4px',
+              }}
+            >
+              View all {reviewItems.length} accepted &rarr;
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Needs attention (Bobby + Tracy only) ── */}
       {canSeeAttention && (
