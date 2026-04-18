@@ -15,6 +15,7 @@ import IssuesPage from './modules/issues/IssuesPage';
 import ClientsPage from './modules/clients/ClientsPage';
 import ClientDetailView from './modules/clients/ClientDetailView';
 import FeeEngineLayout from './contexts/FeeEngineContext';
+import AcceptQuotePage from './pages/AcceptQuotePage';
 
 // Fee Engine pages (now render inside AppShell via FeeEngineLayout)
 import DashboardPage from './pages/DashboardPage';
@@ -35,8 +36,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
-        {/* Public route */}
+        {/* Public routes — rendered outside AppShell, no login required */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/accept-quote" element={<AcceptQuotePage />} />
 
         {/* Protected shell — all modules render inside AppShell */}
         <Route element={<AppShell />}>

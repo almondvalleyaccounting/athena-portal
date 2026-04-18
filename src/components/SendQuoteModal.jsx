@@ -30,34 +30,37 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
         pdfBase64 = await generateQuotePdfBase64(quote, lineItems);
       }
 
-      // Call Supabase Edge Function
+      // Call Supabase Edge Function — function now handles status update + audit log server-side
       const { data, error: fnErr } = await supabase.functions.invoke('send-quote-email', {
         body: {
+          quote_id: quote.id,
           to: recipientEmail,
           subject,
           message,
           pdfBase64,
           filename: `${quote.quote_ref}.pdf`,
-          quoteId: quote.id,
+          include_accept_link: true,
         },
       });
 
-      if (fnErr) throw fnErr;
+      if (fnErr) {
+        // Try to surface server-side error detail (supabase-js wraps non-2xx in FunctionsHttpError)
+        let detail = fnErr.message || 'Failed to send email';
+        try {
+          const respBody = await fnErr.context?.response?.clone().json();
+          if (respBody?.error) detail = respBody.error;
+        } catch { /* ignore — fall back to generic */ }
+        throw new Error(detail);
+      }
 
-      // Update quote status to sent
-      await supabase.from('quotes').update({
-        status: 'sent',
-        sent_at: new Date().toISOString(),
-      }).eq('id', quote.id);
+      if (data && data.success === false) {
+        throw new Error(data.error || 'Send failed');
+      }
 
-      // Audit log
-      await supabase.from('audit_log').insert({
-        user_id: profile.id,
-        action: 'sent_to_client',
-        entity_type: 'quote',
-        entity_id: quote.id,
-        detail: { recipient: recipientEmail },
-      });
+      // Partial-success path: email sent but post-send DB update failed. Log it — manual reconcile.
+      if (data?.warning) {
+        console.warn('[send-quote-email] partial success:', data.warning, data);
+      }
 
       setSent(true);
       if (onSent) onSent();
