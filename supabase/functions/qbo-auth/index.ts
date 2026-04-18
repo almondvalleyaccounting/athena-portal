@@ -67,18 +67,9 @@ async function handleCallback(url: URL) {
   const state = url.searchParams.get("state");
   const error = url.searchParams.get("error");
 
-  // Handle user denial
-  if (error) {
-    const redirectUrl = `${PORTAL_URL}${errorRedirectBase}?qbo=error&message=${encodeURIComponent(error)}`;
-    return new Response(null, { status: 302, headers: { Location: redirectUrl } });
-  }
-
-  if (!code || !realmId) {
-    const redirectUrl = `${PORTAL_URL}${errorRedirectBase}?qbo=error&message=Missing+code+or+realmId`;
-    return new Response(null, { status: 302, headers: { Location: redirectUrl } });
-  }
-
-  // Parse state to get user_id and purpose
+  // Parse state first — errorRedirectBase depends on purpose, and the
+  // early error paths below need a valid base URL. Previously this was
+  // read before declaration (TDZ ReferenceError on OAuth denial).
   let userId: string | null = null;
   let purpose = "billing";
   if (state) {
@@ -91,6 +82,17 @@ async function handleCallback(url: URL) {
 
   const isReports = purpose === "reports";
   const errorRedirectBase = isReports ? "/reports" : "/manage/billing";
+
+  // Handle user denial
+  if (error) {
+    const redirectUrl = `${PORTAL_URL}${errorRedirectBase}?qbo=error&message=${encodeURIComponent(error)}`;
+    return new Response(null, { status: 302, headers: { Location: redirectUrl } });
+  }
+
+  if (!code || !realmId) {
+    const redirectUrl = `${PORTAL_URL}${errorRedirectBase}?qbo=error&message=Missing+code+or+realmId`;
+    return new Response(null, { status: 302, headers: { Location: redirectUrl } });
+  }
 
   // Exchange authorization code for tokens
   const basicAuth = btoa(`${QBO_CLIENT_ID}:${QBO_CLIENT_SECRET}`);
