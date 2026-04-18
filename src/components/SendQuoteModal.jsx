@@ -75,7 +75,7 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-5">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-sm font-bold text-ocean-700">Send Quote to Client</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg">\u00D7</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
         </div>
 
         {sent ? (
