@@ -49,3 +49,134 @@ export function formatDateTimeGB(iso: string | null | undefined): string {
   });
   return `${date} at ${time}`;
 }
+
+// ---- Quote line-items breakdown -----------------------------------------
+// Used in:
+//   - send-quote-email  (quote email to client)
+//   - accept-quote       (internal notification to AVA on acceptance)
+
+export type LineItem = {
+  description: string | null;
+  annual_amount: number | string | null;
+  is_recurring: boolean | null;
+  service_id: string | null;
+  sort_order: number | null;
+};
+
+/**
+ * Render an HTML <tr> block containing a breakdown table of line items,
+ * grouped the same way the PDF does: recurring accountancy / software /
+ * one-off setup fees. Returns empty string if there are no items.
+ *
+ * Figures shown net of VAT.
+ */
+export function renderBreakdownHtml(lineItems: LineItem[]): string {
+  const recurring = lineItems.filter(
+    (l) => l.is_recurring && !(l.service_id ?? "").startsWith("software"),
+  );
+  const software = lineItems.filter((l) =>
+    (l.service_id ?? "").startsWith("software"),
+  );
+  const setup = lineItems.filter((l) => !l.is_recurring);
+
+  if (!recurring.length && !software.length && !setup.length) return "";
+
+  const row = (
+    label: string,
+    annual: number,
+    opts: { bold?: boolean } = {},
+  ) => {
+    const monthly = annual / 12;
+    const weight = opts.bold ? "600" : "400";
+    const labelColor = opts.bold ? "#0f172a" : "#1e293b";
+    return `
+      <tr>
+        <td style="padding:8px 14px;color:${labelColor};font-weight:${weight};border-top:1px solid #f1f5f9;">
+          ${escapeHtml(label)}
+        </td>
+        <td style="padding:8px 14px;color:#0f172a;text-align:right;border-top:1px solid #f1f5f9;font-weight:${weight};white-space:nowrap;">
+          ${formatGBP(annual)}
+        </td>
+        <td style="padding:8px 14px;color:#0f172a;text-align:right;border-top:1px solid #f1f5f9;font-weight:${weight};white-space:nowrap;">
+          ${formatGBP(monthly)}
+        </td>
+      </tr>`;
+  };
+
+  const sectionHeader = (label: string) => `
+    <tr style="background:#f8fafc;">
+      <td colspan="3" style="padding:10px 14px;font-weight:600;color:#0f172a;border-top:1px solid #e5e7eb;">
+        ${escapeHtml(label)}
+      </td>
+    </tr>
+    <tr style="background:#f8fafc;">
+      <td style="padding:6px 14px;font-size:11px;color:#94a3b8;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;">Service</td>
+      <td style="padding:6px 14px;font-size:11px;color:#94a3b8;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;text-align:right;">Annual (net)</td>
+      <td style="padding:6px 14px;font-size:11px;color:#94a3b8;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;text-align:right;">Monthly (net)</td>
+    </tr>`;
+
+  let rows = "";
+
+  if (recurring.length) {
+    rows += sectionHeader("Recurring services");
+    for (const l of recurring) {
+      const annual = Number(l.annual_amount) || 0;
+      if (annual <= 0) continue;
+      rows += row(l.description ?? "", annual);
+    }
+    const total = recurring.reduce(
+      (s, l) => s + (Number(l.annual_amount) || 0),
+      0,
+    );
+    rows += row("Total accountancy", total, { bold: true });
+  }
+
+  if (software.length) {
+    rows += sectionHeader("Software");
+    for (const l of software) {
+      const annual = Number(l.annual_amount) || 0;
+      if (annual <= 0) continue;
+      rows += row(l.description ?? "", annual);
+    }
+  }
+
+  if (setup.length) {
+    const setupTotal = setup.reduce(
+      (s, l) => s + (Number(l.annual_amount) || 0),
+      0,
+    );
+    rows += `
+      <tr style="background:#f8fafc;">
+        <td colspan="3" style="padding:10px 14px;font-weight:600;color:#0f172a;border-top:1px solid #e5e7eb;">
+          One-off setup fees
+        </td>
+      </tr>`;
+    for (const l of setup) {
+      const amt = Number(l.annual_amount) || 0;
+      if (amt <= 0) continue;
+      rows += `
+        <tr>
+          <td style="padding:8px 14px;color:#1e293b;border-top:1px solid #f1f5f9;">${escapeHtml(l.description ?? "")}</td>
+          <td colspan="2" style="padding:8px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;white-space:nowrap;">${formatGBP(amt)}</td>
+        </tr>`;
+    }
+    rows += `
+      <tr>
+        <td style="padding:8px 14px;color:#0f172a;font-weight:600;border-top:1px solid #f1f5f9;">Total setup fees</td>
+        <td colspan="2" style="padding:8px 14px;color:#0f172a;font-weight:600;border-top:1px solid #f1f5f9;text-align:right;white-space:nowrap;">${formatGBP(setupTotal)}</td>
+      </tr>`;
+  }
+
+  return `
+    <tr>
+      <td style="padding-top:16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;font-size:13px;">
+          ${rows}
+        </table>
+        <div style="font-size:11px;color:#94a3b8;margin-top:8px;">
+          Figures shown net of VAT. Monthly Direct Debit in the summary above is inclusive of VAT.
+        </div>
+      </td>
+    </tr>`;
+}

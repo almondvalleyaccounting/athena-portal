@@ -24,6 +24,8 @@ import {
   formatDateGB,
   formatDateTimeGB,
   formatGBP,
+  LineItem,
+  renderBreakdownHtml,
 } from "../_shared/email-format.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -155,6 +157,7 @@ function renderClientConfirmation(
 
 function renderInternalNotification(
   quote: QuoteSummary,
+  lineItems: LineItem[],
   ctx: {
     acceptedAtIso: string;
     clientEmail: string;
@@ -183,6 +186,7 @@ function renderInternalNotification(
           Next step is to review the acceptance and push the quote to QBO.
         </p>
         ${summaryTableHtml(quote)}
+        ${renderBreakdownHtml(lineItems)}
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
                style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-top:16px;">
           <tr style="background:#f8fafc;">
@@ -272,19 +276,34 @@ Deno.serve(async (req) => {
 
     const service = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Fetch quote — include the fields we need for email templates so we
-    // don't need a second round-trip post-update.
-    const { data: quote, error: fetchErr } = await service
-      .from("quotes")
-      .select(
-        "id, quote_ref, status, monthly_gross, annual_total, relationship_group, valid_until, accepted_at",
-      )
-      .eq("id", claims.quote_id)
-      .single();
+    // Fetch quote + line items in parallel. Line items drive the breakdown
+    // in the internal notification email (so Bobby can review the quote
+    // contents at a glance without opening the portal).
+    const [
+      { data: quote, error: fetchErr },
+      { data: lineItemsRaw, error: lineItemsErr },
+    ] = await Promise.all([
+      service
+        .from("quotes")
+        .select(
+          "id, quote_ref, status, monthly_gross, annual_total, relationship_group, valid_until, accepted_at",
+        )
+        .eq("id", claims.quote_id)
+        .single(),
+      service
+        .from("quote_line_items")
+        .select("description, annual_amount, is_recurring, service_id, sort_order")
+        .eq("quote_id", claims.quote_id)
+        .order("sort_order"),
+    ]);
 
     if (fetchErr || !quote) {
       return jsonResponse({ ok: false, error: "quote_not_found" }, 404);
     }
+    if (lineItemsErr) {
+      console.error("[accept-quote] line items fetch failed", lineItemsErr);
+    }
+    const lineItems = (lineItemsRaw ?? []) as unknown as LineItem[];
 
     // Idempotent — already accepted. Don't re-emit events or re-send emails.
     if (quote.status === "accepted" || quote.status === "committed") {
@@ -374,7 +393,7 @@ Deno.serve(async (req) => {
       to: INTERNAL_NOTIFICATION_RECIPIENTS,
       subject:
         `Quote ${quote.quote_ref ?? ""} accepted — ${quote.relationship_group ?? "client"}`.trim(),
-      html: renderInternalNotification(summary, {
+      html: renderInternalNotification(summary, lineItems, {
         acceptedAtIso: acceptedAt,
         clientEmail: claims.recipient_email,
         clientIp: ip,
