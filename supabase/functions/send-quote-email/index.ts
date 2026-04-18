@@ -58,18 +58,144 @@ function jsonResponse(data: unknown, status = 200) {
 // Accept-token signing lives in _shared/accept-token.ts so verify-accept-token
 // and accept-quote functions share the same HMAC key and payload schema.
 
+type LineItem = {
+  description: string | null;
+  annual_amount: number | string | null;
+  is_recurring: boolean | null;
+  service_id: string | null;
+  sort_order: number | null;
+};
+
+function renderBreakdownHtml(lineItems: LineItem[]): string {
+  // Split the line items the same way the PDF does: recurring accountancy,
+  // software (service_id starts with "software"), one-off setup fees.
+  const recurring = lineItems.filter(
+    (l) => l.is_recurring && !(l.service_id ?? "").startsWith("software"),
+  );
+  const software = lineItems.filter((l) =>
+    (l.service_id ?? "").startsWith("software"),
+  );
+  const setup = lineItems.filter((l) => !l.is_recurring);
+
+  if (!recurring.length && !software.length && !setup.length) return "";
+
+  const row = (
+    label: string,
+    annual: number,
+    opts: { bold?: boolean; muted?: boolean } = {},
+  ) => {
+    const monthly = annual / 12;
+    const weight = opts.bold ? "600" : "400";
+    const color = opts.muted ? "#64748b" : "#0f172a";
+    const labelColor = opts.bold ? "#0f172a" : opts.muted ? "#64748b" : "#1e293b";
+    return `
+      <tr>
+        <td style="padding:8px 14px;color:${labelColor};font-weight:${weight};border-top:1px solid #f1f5f9;">
+          ${escapeHtml(label)}
+        </td>
+        <td style="padding:8px 14px;color:${color};text-align:right;border-top:1px solid #f1f5f9;font-weight:${weight};white-space:nowrap;">
+          ${formatGBP(annual)}
+        </td>
+        <td style="padding:8px 14px;color:${color};text-align:right;border-top:1px solid #f1f5f9;font-weight:${weight};white-space:nowrap;">
+          ${formatGBP(monthly)}
+        </td>
+      </tr>`;
+  };
+
+  const sectionHeader = (label: string) => `
+    <tr style="background:#f8fafc;">
+      <td colspan="3" style="padding:10px 14px;font-weight:600;color:#0f172a;border-top:1px solid #e5e7eb;">
+        ${escapeHtml(label)}
+      </td>
+    </tr>
+    <tr style="background:#f8fafc;">
+      <td style="padding:6px 14px;font-size:11px;color:#94a3b8;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;">Service</td>
+      <td style="padding:6px 14px;font-size:11px;color:#94a3b8;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;text-align:right;">Annual (net)</td>
+      <td style="padding:6px 14px;font-size:11px;color:#94a3b8;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;text-align:right;">Monthly (net)</td>
+    </tr>`;
+
+  let rows = "";
+
+  if (recurring.length) {
+    rows += sectionHeader("Recurring services");
+    for (const l of recurring) {
+      const annual = Number(l.annual_amount) || 0;
+      if (annual <= 0) continue;
+      rows += row(l.description ?? "", annual);
+    }
+    const total = recurring.reduce(
+      (s, l) => s + (Number(l.annual_amount) || 0),
+      0,
+    );
+    rows += row("Total accountancy", total, { bold: true });
+  }
+
+  if (software.length) {
+    rows += sectionHeader("Software");
+    for (const l of software) {
+      const annual = Number(l.annual_amount) || 0;
+      if (annual <= 0) continue;
+      rows += row(l.description ?? "", annual);
+    }
+  }
+
+  if (setup.length) {
+    // Setup fees are one-offs — annual_amount is the full fee, monthly is
+    // meaningless. Show a single-column layout.
+    const setupTotal = setup.reduce(
+      (s, l) => s + (Number(l.annual_amount) || 0),
+      0,
+    );
+    rows += `
+      <tr style="background:#f8fafc;">
+        <td colspan="3" style="padding:10px 14px;font-weight:600;color:#0f172a;border-top:1px solid #e5e7eb;">
+          One-off setup fees
+        </td>
+      </tr>`;
+    for (const l of setup) {
+      const amt = Number(l.annual_amount) || 0;
+      if (amt <= 0) continue;
+      rows += `
+        <tr>
+          <td style="padding:8px 14px;color:#1e293b;border-top:1px solid #f1f5f9;">${escapeHtml(l.description ?? "")}</td>
+          <td colspan="2" style="padding:8px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;white-space:nowrap;">${formatGBP(amt)}</td>
+        </tr>`;
+    }
+    rows += `
+      <tr>
+        <td style="padding:8px 14px;color:#0f172a;font-weight:600;border-top:1px solid #f1f5f9;">Total setup fees</td>
+        <td colspan="2" style="padding:8px 14px;color:#0f172a;font-weight:600;border-top:1px solid #f1f5f9;text-align:right;white-space:nowrap;">${formatGBP(setupTotal)}</td>
+      </tr>`;
+  }
+
+  return `
+    <tr>
+      <td style="padding-top:16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;font-size:13px;">
+          ${rows}
+        </table>
+        <div style="font-size:11px;color:#94a3b8;margin-top:8px;">
+          Figures shown net of VAT. Monthly Direct Debit in the summary above is inclusive of VAT.
+        </div>
+      </td>
+    </tr>`;
+}
+
 function renderEmailHtml(opts: {
   messageHtml: string;
   quote: Record<string, unknown>;
+  lineItems: LineItem[];
   acceptUrl: string | null;
 }): string {
-  const { messageHtml, quote, acceptUrl } = opts;
+  const { messageHtml, quote, lineItems, acceptUrl } = opts;
 
   const ref = escapeHtml(String(quote.quote_ref ?? ""));
   const client = escapeHtml(String(quote.relationship_group ?? "Client"));
   const monthly = formatGBP(quote.monthly_gross as number);
   const annual = formatGBP(quote.annual_total as number);
   const validUntil = formatDateGB(quote.valid_until as string);
+  const breakdownBlock = renderBreakdownHtml(lineItems);
 
   const acceptBlock = acceptUrl
     ? `
@@ -135,6 +261,7 @@ function renderEmailHtml(opts: {
                 </table>
               </td>
             </tr>
+            ${breakdownBlock}
             <tr>
               <td style="padding-top:16px;font-size:12px;color:#64748b;">
                 Your full quote is attached as a PDF.
@@ -241,17 +368,37 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 4. Fetch quote
-    const { data: quote, error: quoteErr } = await serviceClient
-      .from("quotes")
-      .select(
-        "id, quote_ref, status, monthly_gross, annual_total, relationship_group, valid_until, entity_id",
-      )
-      .eq("id", quoteId)
-      .single();
+    // 4. Fetch quote + line items (line items drive the email breakdown
+    //    table — same data the PDF uses).
+    const [
+      { data: quote, error: quoteErr },
+      { data: lineItemsRaw, error: lineItemsErr },
+    ] = await Promise.all([
+      serviceClient
+        .from("quotes")
+        .select(
+          "id, quote_ref, status, monthly_gross, annual_total, relationship_group, valid_until, entity_id",
+        )
+        .eq("id", quoteId)
+        .single(),
+      serviceClient
+        .from("quote_line_items")
+        .select("description, annual_amount, is_recurring, service_id, sort_order")
+        .eq("quote_id", quoteId)
+        .order("sort_order"),
+    ]);
     if (quoteErr || !quote) {
       return jsonResponse({ success: false, error: "Quote not found" }, 404);
     }
+    // Line items are optional — if the fetch errored we still want to send
+    // the email (with headline summary only). Log but don't fail.
+    if (lineItemsErr) {
+      console.error(
+        "[send-quote-email] line items fetch failed",
+        lineItemsErr,
+      );
+    }
+    const lineItems = (lineItemsRaw ?? []) as unknown as LineItem[];
 
     // 5. Status guard
     if (!["approved", "sent"].includes(quote.status)) {
@@ -277,7 +424,7 @@ Deno.serve(async (req) => {
 
     // 7. Build HTML
     const messageHtml = escapeHtml(messageText).replace(/\n/g, "<br>");
-    const html = renderEmailHtml({ messageHtml, quote, acceptUrl });
+    const html = renderEmailHtml({ messageHtml, quote, lineItems, acceptUrl });
 
     // 8. Build Resend payload
     const filename = (explicitFilename || `${quote.quote_ref || "quote"}.pdf`)
