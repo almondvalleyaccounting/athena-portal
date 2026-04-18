@@ -10,6 +10,10 @@
 //   { ok: true, recipient_email, already_accepted, quote: { ... summary ... } }
 // Response (401): { ok: false, error: "invalid_or_expired" }
 // Response (404): { ok: false, error: "quote_not_found" }
+//
+// Side effect (best-effort): inserts a `clicked_review` row into quote_events
+// every time a valid token is verified. Failures are logged but do not
+// affect the response — the accept page must still render.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyAcceptToken } from "../_shared/accept-token.ts";
@@ -29,6 +33,15 @@ function jsonResponse(data: unknown, status = 200) {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
+}
+
+function clientIp(req: Request): string | null {
+  // Supabase runs behind Cloudflare. cf-connecting-ip is the real client IP.
+  const cf = req.headers.get("cf-connecting-ip");
+  if (cf) return cf;
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) return xff.split(",")[0].trim();
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -69,6 +82,21 @@ Deno.serve(async (req) => {
     // (status 'accepted' -> 'sent'). In that case the client can accept again.
     const alreadyAccepted =
       quote.status === "accepted" || quote.status === "committed";
+
+    // Log the review-click as a quote event. Best-effort: failure here must
+    // never block the page from rendering.
+    try {
+      await service.from("quote_events").insert({
+        quote_id: quote.id,
+        event_type: "clicked_review",
+        client_email: claims.recipient_email,
+        client_ip: clientIp(req),
+        user_agent: req.headers.get("user-agent"),
+        metadata: { already_accepted: alreadyAccepted },
+      });
+    } catch (logErr) {
+      console.error("[verify-accept-token] event log failed", logErr);
+    }
 
     return jsonResponse({
       ok: true,

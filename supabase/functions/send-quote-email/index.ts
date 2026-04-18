@@ -22,6 +22,11 @@ import {
   signAcceptToken,
   ACCEPT_TOKEN_TTL_DAYS,
 } from "../_shared/accept-token.ts";
+import {
+  escapeHtml,
+  formatDateGB,
+  formatGBP,
+} from "../_shared/email-format.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -48,38 +53,8 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
-function escapeHtml(s: string): string {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function formatGBP(n: number | string | null | undefined): string {
-  const v = Number(n);
-  if (!Number.isFinite(v)) return "\u00A30.00";
-  return (
-    "\u00A3" +
-    v.toLocaleString("en-GB", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
-}
-
-function formatDateGB(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
-
+// Helpers (escapeHtml, formatGBP, formatDateGB) live in _shared/email-format.ts
+// so send-quote-email and accept-quote share the same rendering primitives.
 // Accept-token signing lives in _shared/accept-token.ts so verify-accept-token
 // and accept-quote functions share the same HMAC key and payload schema.
 
