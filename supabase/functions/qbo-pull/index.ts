@@ -38,25 +38,28 @@ Deno.serve(async (req) => {
       if (e.display_name) entityMap.set(String(e.display_name).toLowerCase().trim(), e);
     }
 
-    const { data: existingMaps } = await sb.from("qbo_customer_mappings").select("qbo_customer_id, entity_id, role");
-    const mapByQboId = new Map<string, { entity_id: string | null; role: string }>();
+    const { data: existingMaps } = await sb.from("qbo_customer_mappings").select("qbo_customer_id, entity_id, role, qbo_customer_name");
+    const mapByQboId = new Map<string, { entity_id: string | null; role: string; qbo_customer_name: string | null }>();
     for (const m of existingMaps || []) {
       mapByQboId.set(m.qbo_customer_id as string, {
         entity_id: (m.entity_id as string) || null,
         role: (m.role as string) || 'primary',
+        qbo_customer_name: (m.qbo_customer_name as string) || null,
       });
     }
 
     // ──────────────────────────────────────────────────────────
     // 3. Upsert every QBO customer into qbo_customer_mappings.
-    //    - Existing rows: refresh name + last_seen only; leave the
-    //      staff-set entity_id / role / notes alone.
+    //    - Existing rows: refresh name + last_seen. If the row was
+    //      Ignored (role='not_a_client') and the name has *changed*,
+    //      record the previous name and raise needs_review so staff
+    //      re-evaluate (handles the pre-provisioned-licence case).
     //    - New rows: attempt a name-based auto-match to an entity;
     //      unmatched rows are stored with entity_id=null for later
     //      manual resolution in the Mapping UI.
     // ──────────────────────────────────────────────────────────
     const now = new Date().toISOString();
-    const mapStats = { seen: 0, new: 0, auto_matched: 0, refreshed: 0, errors: [] as string[] };
+    const mapStats = { seen: 0, new: 0, auto_matched: 0, refreshed: 0, flagged_needs_review: 0, errors: [] as string[] };
 
     for (const cust of qboCustomers) {
       try {
@@ -67,8 +70,19 @@ Deno.serve(async (req) => {
 
         const existing = mapByQboId.get(qboId);
         if (existing) {
+          const nameChanged = !!existing.qbo_customer_name && !!name && existing.qbo_customer_name !== name;
+          const flagForReview = nameChanged && existing.role === 'not_a_client';
+          const updateFields: Record<string, unknown> = {
+            qbo_customer_name: name,
+            last_seen: now,
+          };
+          if (flagForReview) {
+            updateFields.needs_review = true;
+            updateFields.previous_qbo_customer_name = existing.qbo_customer_name;
+            mapStats.flagged_needs_review++;
+          }
           await sb.from("qbo_customer_mappings")
-            .update({ qbo_customer_name: name, last_seen: now })
+            .update(updateFields)
             .eq("qbo_customer_id", qboId);
           mapStats.refreshed++;
         } else {
@@ -85,9 +99,9 @@ Deno.serve(async (req) => {
           mapStats.new++;
           if (matchedEntity) {
             mapStats.auto_matched++;
-            mapByQboId.set(qboId, { entity_id: matchedEntity.id as string, role: 'primary' });
+            mapByQboId.set(qboId, { entity_id: matchedEntity.id as string, role: 'primary', qbo_customer_name: name });
           } else {
-            mapByQboId.set(qboId, { entity_id: null, role: 'primary' });
+            mapByQboId.set(qboId, { entity_id: null, role: 'primary', qbo_customer_name: name });
           }
         }
       } catch (err) {
@@ -358,6 +372,7 @@ Deno.serve(async (req) => {
         qbo_customers_new: mapStats.new,
         qbo_customers_auto_matched: mapStats.auto_matched,
         qbo_customers_refreshed: mapStats.refreshed,
+        qbo_customers_flagged_review: mapStats.flagged_needs_review,
         qbo_customers_unmapped: (mapStats.seen - [...mapByQboId.values()].filter(m => m.entity_id).length),
         recurring_found: recurringTxns.length,
         invoices_found: invoices.length,

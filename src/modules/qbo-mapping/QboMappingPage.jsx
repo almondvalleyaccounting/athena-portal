@@ -83,6 +83,7 @@ export default function QboMappingPage() {
         return top && top.score >= AUTO_ACCEPT_THRESHOLD;
       });
     }
+    else if (filter === 'review') out = out.filter((r) => r.needs_review);
     if (search.trim()) {
       const q = search.toLowerCase();
       out = out.filter((r) =>
@@ -109,6 +110,7 @@ export default function QboMappingPage() {
     unmapped: rows.filter((r) => !r.entity_id && r.role !== 'not_a_client').length,
     mapped: rows.filter((r) => r.entity_id).length,
     ignored: rows.filter((r) => r.role === 'not_a_client').length,
+    review: rows.filter((r) => r.needs_review).length,
   }), [rows]);
 
   // How many unmapped rows have a high-confidence top suggestion?
@@ -130,7 +132,10 @@ export default function QboMappingPage() {
   const patchOptimistic = (qboId, fields) => {
     const prevRows = rows;
     const prevSuggestions = suggestions;
-    setRows((r) => r.map((row) => row.qbo_customer_id === qboId ? { ...row, ...fields } : row));
+    // Any staff action on a row clears the needs_review flag and the
+    // stored previous name — the review has happened.
+    const effective = { ...fields, needs_review: false, previous_qbo_customer_name: null };
+    setRows((r) => r.map((row) => row.qbo_customer_id === qboId ? { ...row, ...effective } : row));
 
     // Mapping or ignoring a row removes it from the suggestions map —
     // the "auto-acceptable" count and the suggestions column should
@@ -144,7 +149,7 @@ export default function QboMappingPage() {
     }
 
     setSaving(qboId);
-    supabase.from('qbo_customer_mappings').update(fields).eq('qbo_customer_id', qboId)
+    supabase.from('qbo_customer_mappings').update(effective).eq('qbo_customer_id', qboId)
       .then(({ error }) => {
         if (error) {
           console.error('[QBO mapping] save failed, rolling back:', error);
@@ -178,7 +183,7 @@ export default function QboMappingPage() {
     setBulkRunning(true);
     const { error } = await supabase
       .from('qbo_customer_mappings')
-      .update({ role: 'not_a_client', entity_id: null })
+      .update({ role: 'not_a_client', entity_id: null, needs_review: false, previous_qbo_customer_name: null })
       .in('qbo_customer_id', ids);
     if (error) alert('Bulk ignore failed: ' + error.message);
     await load();
@@ -211,7 +216,7 @@ export default function QboMappingPage() {
     for (const [entityId, qboIds] of Object.entries(byEntity)) {
       await supabase
         .from('qbo_customer_mappings')
-        .update({ entity_id: entityId, role: 'primary' })
+        .update({ entity_id: entityId, role: 'primary', needs_review: false, previous_qbo_customer_name: null })
         .in('qbo_customer_id', qboIds);
     }
     await load();
@@ -297,6 +302,15 @@ export default function QboMappingPage() {
 
       {/* Filter pills + sort + search */}
       <div style={{ display: 'flex', gap: 8, marginTop: 14, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        {counts.review > 0 && (
+          <FilterPill
+            label="Needs review"
+            count={counts.review}
+            active={filter === 'review'}
+            tone="purple"
+            onClick={() => setFilter('review')}
+          />
+        )}
         <FilterPill label="Unmapped" count={counts.unmapped} active={filter === 'unmapped'} tone="amber" onClick={() => setFilter('unmapped')} />
         {autoAcceptable.length > 0 && (
           <FilterPill
@@ -393,8 +407,12 @@ export default function QboMappingPage() {
                 return (
                   <tr key={r.qbo_customer_id} style={{
                     borderTop: '1px solid #f1f5f9',
-                    background: isSel ? '#eff6ff' : isIgnored ? '#f8fafc' : isUnmapped ? '#fefce8' : 'transparent',
-                    opacity: isIgnored ? 0.65 : 1,
+                    background: isSel ? '#eff6ff'
+                      : r.needs_review ? '#faf5ff'
+                      : isIgnored ? '#f8fafc'
+                      : isUnmapped ? '#fefce8'
+                      : 'transparent',
+                    opacity: isIgnored && !r.needs_review ? 0.65 : 1,
                   }}>
                     <Td>
                       <input
@@ -408,6 +426,16 @@ export default function QboMappingPage() {
                            title={r.qbo_customer_name || ''}>
                         {r.qbo_customer_name || <span style={{ color: '#cbd5e1' }}>—</span>}
                       </div>
+                      {r.needs_review && r.previous_qbo_customer_name && (
+                        <div style={{
+                          fontSize: 10, color: '#6b21a8', marginTop: 2,
+                          display: 'inline-block', padding: '1px 6px', borderRadius: 4,
+                          background: '#f3e8ff', border: '1px solid #d8b4fe',
+                        }}
+                        title="This QBO customer was Ignored; its name changed in the last pull. Review and re-map if it's now a real client.">
+                          renamed — was: {r.previous_qbo_customer_name}
+                        </div>
+                      )}
                       <div style={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 10 }}>
                         QBO #{r.qbo_customer_id}
                       </div>
@@ -503,6 +531,7 @@ function FilterPill({ label, count, active, tone, onClick }) {
     green: { active: { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, idle: { bg: '#fff', fg: '#166534', border: '#86efac' } },
     slate: { active: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' }, idle: { bg: '#fff', fg: '#64748b', border: '#cbd5e1' } },
     blue: { active: { bg: '#dbeafe', fg: '#1e40af', border: '#93c5fd' }, idle: { bg: '#fff', fg: '#1e40af', border: '#93c5fd' } },
+    purple: { active: { bg: '#f3e8ff', fg: '#6b21a8', border: '#d8b4fe' }, idle: { bg: '#fff', fg: '#6b21a8', border: '#d8b4fe' } },
     default: { active: { bg: '#0f172a', fg: '#fff', border: '#0f172a' }, idle: { bg: '#fff', fg: '#475569', border: '#e5e7eb' } },
   };
   const t = tones[tone] || tones.default;
