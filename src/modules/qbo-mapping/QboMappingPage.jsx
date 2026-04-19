@@ -15,7 +15,7 @@ export default function QboMappingPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const cameFromBilling = location.pathname.startsWith('/billing/');
+  const cameFromBilling = location.pathname.startsWith('/manage/billing');
   const backLabel = cameFromBilling ? 'Back to Fee Billing' : 'Back to Clients';
   const backRoute = cameFromBilling ? '/manage/billing' : '/clients';
 

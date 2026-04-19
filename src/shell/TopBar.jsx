@@ -15,7 +15,7 @@ import ActivityBell from './ActivityBell';
  */
 const SUBPAGES = [
   { prefix: '/clients/qbo-mapping', label: 'QBO mapping' },
-  { prefix: '/billing/qbo-mapping', label: 'QBO mapping' },
+  { prefix: '/manage/billing/qbo-mapping', label: 'QBO mapping' },
   { prefix: '/admin/import/run', label: 'Import' },
   { prefix: '/admin/import/history', label: 'History' },
   { prefix: '/admin/import', label: 'Data Import' },
@@ -57,7 +57,7 @@ function useBreadcrumb() {
     }
   }
 
-  // Tail segment for known sub-pages (e.g. /billing/qbo-mapping)
+  // Tail segment for known sub-pages (e.g. /manage/billing/qbo-mapping)
   const sub = SUBPAGES.find((s) => pathname.startsWith(s.prefix));
   if (sub) {
     const lastSeg = segments[segments.length - 1];

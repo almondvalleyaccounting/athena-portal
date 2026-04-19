@@ -144,7 +144,7 @@ export default function QboConnectionPanel({ profile, onSyncComplete }) {
                 </div>
                 {mapStats.unmapped > 0 ? (
                   <button
-                    onClick={() => navigate('/billing/qbo-mapping')}
+                    onClick={() => navigate('/manage/billing/qbo-mapping')}
                     className="text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-0.5 hover:bg-amber-100"
                   >
                     <span className="font-semibold">{mapStats.unmapped} unmapped</span> · resolve →
@@ -188,7 +188,7 @@ export default function QboConnectionPanel({ profile, onSyncComplete }) {
                 )}
               </button>
               <button
-                onClick={() => navigate('/billing/qbo-mapping')}
+                onClick={() => navigate('/manage/billing/qbo-mapping')}
                 className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-ocean-600"
               >
                 Manage mapping →
@@ -231,7 +231,7 @@ export default function QboConnectionPanel({ profile, onSyncComplete }) {
                 {pullResult.unmatched_customers.map((name, i) => (<p key={i}>{name}</p>))}
               </div>
               <button
-                onClick={() => navigate('/billing/qbo-mapping')}
+                onClick={() => navigate('/manage/billing/qbo-mapping')}
                 className="mt-2 text-ocean-600 hover:underline"
               >
                 Resolve in mapping UI →
