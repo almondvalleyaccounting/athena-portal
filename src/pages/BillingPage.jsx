@@ -141,19 +141,44 @@ export default function BillingPage() {
   };
 
   // -- Summary calculations --
-  // Split revenue into recurring (monthly + annualised) and one-off
-  // (actual 12-month sum, no extrapolation). DM Beauty £110 used to
-  // show as £1,320/yr recurring — that was the invoice-fallback bug.
+  // Classification lives on the services jsonb (per-service cadence).
+  // Row-level billing_type is the dominant cadence and drives legacy
+  // filters, but £-for-£ KPIs are derived from services.cadence so a
+  // client with a mix (monthly bookkeeping + annual year-end) splits
+  // correctly.
   const activeBilling = billing.filter((b) => b.status === 'active');
-  const recurringRows = activeBilling.filter((b) => b.billing_type !== 'one_off');
-  const oneOffRows = activeBilling.filter((b) => b.billing_type === 'one_off');
 
-  // Dashboard KPIs expressed in *net* — the firm's management view of
-  // revenue, independent of whether VAT is being charged. Gross is still
-  // on each row for client-facing detail.
-  const recurringMonthlyNet = recurringRows.reduce((s, b) => s + (Number(b.monthly_net) || 0), 0);
-  const recurringAnnual = recurringRows.reduce((s, b) => s + (Number(b.annual_total) || 0), 0);
+  // Net for management view — VAT is pass-through, not revenue.
+  const recurringMonthlyNet = activeBilling.reduce((sum, b) => {
+    const services = Array.isArray(b.services) ? b.services : [];
+    for (const s of services) {
+      if (s.cadence === 'monthly') sum += Number(s.monthly_amount) || 0;
+    }
+    // Back-compat: rows written before per-service cadence existed.
+    if (services.length === 0 && b.billing_type === 'recurring') {
+      sum += Number(b.monthly_net) || 0;
+    }
+    return sum;
+  }, 0);
+
+  // Annual fees: sum of services.cadence='annual' annual_amount across
+  // all rows. Contributes to monthly equivalent as annual/12.
+  const annualFees = activeBilling.reduce((sum, b) => {
+    const services = Array.isArray(b.services) ? b.services : [];
+    for (const s of services) {
+      if (s.cadence === 'annual') sum += Number(s.annual_amount) || 0;
+    }
+    return sum;
+  }, 0);
+
+  // Recurring annual headline = monthly × 12 + annual fees (so both
+  // streams show up in one annualised £ number).
+  const recurringAnnual = recurringMonthlyNet * 12 + annualFees;
+
+  const oneOffRows = activeBilling.filter((b) => b.billing_type === 'one_off');
   const oneOffLast12mo = oneOffRows.reduce((s, b) => s + (Number(b.annual_total) || 0), 0);
+
+  const rowsNeedingReview = activeBilling.filter((b) => b.needs_review).length;
 
   // "Clients with billing" counts the *entities* that appear in any
   // live_billing row (recurring or one-off).
@@ -184,29 +209,41 @@ export default function BillingPage() {
     return !effectivelyBilled.has(e.id);
   }).length;
 
-  // -- Revenue by service type (recurring vs one-off) --
-  // Aggregates across every live_billing row's `services` jsonb. Each
-  // service line carries its own `billing_type` tag (new writer); for
-  // legacy rows without the tag, fall back to the parent row's type.
+  // -- Revenue by service type, split by cadence --
+  // Each service line now carries its own cadence ('monthly' | 'annual'
+  // | 'one_off'). Aggregate £ into three buckets per service so the
+  // dashboard can show the true mix.
   const serviceBreakdown = (() => {
-    const map = new Map(); // service_id → { service_id, recurring_annual, one_off_annual }
+    const map = new Map(); // service_id → { monthly_annualised, annual, one_off }
     for (const b of activeBilling) {
-      const rowType = b.billing_type === 'one_off' ? 'one_off' : 'recurring';
+      const rowCadence = b.billing_type === 'one_off' ? 'one_off'
+        : b.billing_type === 'annual' ? 'annual'
+        : 'monthly';
       const services = Array.isArray(b.services) ? b.services : [];
       for (const s of services) {
-        const kind = s.billing_type || rowType;
+        // New writer sets s.cadence; old rows fall back to s.billing_type
+        // or the parent row cadence.
+        const kind = s.cadence
+          || (s.billing_type === 'one_off' ? 'one_off' : s.billing_type === 'annual' ? 'annual' : rowCadence);
         const key = s.service_id || s.description || 'Unknown';
         if (!map.has(key)) {
-          map.set(key, { service_id: key, description: s.description || key, recurring_annual: 0, one_off_annual: 0 });
+          map.set(key, {
+            service_id: key,
+            description: s.description || key,
+            monthly_annualised: 0,
+            annual: 0,
+            one_off: 0,
+          });
         }
         const entry = map.get(key);
         const amt = Number(s.annual_amount) || 0;
-        if (kind === 'one_off') entry.one_off_annual += amt;
-        else entry.recurring_annual += amt;
+        if (kind === 'annual') entry.annual += amt;
+        else if (kind === 'one_off') entry.one_off += amt;
+        else entry.monthly_annualised += amt;
       }
     }
     return [...map.values()].sort((a, b) =>
-      (b.recurring_annual + b.one_off_annual) - (a.recurring_annual + a.one_off_annual)
+      (b.monthly_annualised + b.annual + b.one_off) - (a.monthly_annualised + a.annual + a.one_off)
     );
   })();
 
@@ -392,31 +429,45 @@ export default function BillingPage() {
       <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-5 gap-3 mb-4">
+      <div className="grid grid-cols-6 gap-3 mb-4">
         <SummaryCard label="Recurring Monthly (Net)" value={fmt(recurringMonthlyNet)} color="ocean" />
         <SummaryCard label="Recurring Annual" value={fmt(recurringAnnual)} color="ocean" />
+        <SummaryCard label="Annual Fees (12mo)" value={fmt(annualFees)} color="teal" />
         <SummaryCard label="One-off (last 12 mo)" value={fmt(oneOffLast12mo)} color="purple" />
         <SummaryCard label="Clients with Billing" value={clientsWithBilling} color="green" />
         <SummaryCard label="Clients Without Billing" value={clientsWithout < 0 ? 0 : clientsWithout} color="amber" />
       </div>
 
-      {/* Revenue by service type */}
+      {rowsNeedingReview > 0 && (
+        <div className="flex items-center gap-2 mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+          <span className="text-xs font-medium text-amber-800">
+            {rowsNeedingReview} client{rowsNeedingReview === 1 ? '' : 's'} need review — prior-month vs latest-month fees differ by more than 10%.
+          </span>
+          <span className="text-xs text-amber-600">
+            Filter the table below to see them (coming: cadence override picker).
+          </span>
+        </div>
+      )}
+
+      {/* Revenue by service type — split by cadence */}
       {serviceBreakdown.length > 0 && (
         <div className="mb-4">
-          <h3 className="text-sm font-bold text-ocean-700 mb-2">Revenue by service type (annual)</h3>
+          <h3 className="text-sm font-bold text-ocean-700 mb-2">Revenue by service type (annualised)</h3>
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
+            <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
               <span>Service</span>
-              <span className="text-right">Recurring</span>
+              <span className="text-right">Monthly × 12</span>
+              <span className="text-right">Annual fees</span>
               <span className="text-right">One-off (12mo)</span>
               <span className="text-right">Total</span>
             </div>
             {serviceBreakdown.map((s) => (
-              <div key={s.service_id} className="grid text-xs px-4 py-2 border-b border-gray-50" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
+              <div key={s.service_id} className="grid text-xs px-4 py-2 border-b border-gray-50" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
                 <span className="text-gray-700">{s.description}</span>
-                <span className="text-right font-mono text-ocean-700">{fmt(s.recurring_annual)}</span>
-                <span className="text-right font-mono text-purple-700">{fmt(s.one_off_annual)}</span>
-                <span className="text-right font-mono text-gray-700 font-semibold">{fmt(s.recurring_annual + s.one_off_annual)}</span>
+                <span className="text-right font-mono text-ocean-700">{fmt(s.monthly_annualised)}</span>
+                <span className="text-right font-mono text-teal-700">{fmt(s.annual)}</span>
+                <span className="text-right font-mono text-purple-700">{fmt(s.one_off)}</span>
+                <span className="text-right font-mono text-gray-700 font-semibold">{fmt(s.monthly_annualised + s.annual + s.one_off)}</span>
               </div>
             ))}
           </div>
@@ -732,6 +783,7 @@ function SummaryCard({ label, value, color }) {
     green: 'bg-green-50 text-green-700 border-green-200',
     amber: 'bg-amber-50 text-amber-700 border-amber-200',
     purple: 'bg-purple-50 text-purple-700 border-purple-200',
+    teal: 'bg-teal-50 text-teal-700 border-teal-200',
   };
   return (
     <div className={`rounded-lg border p-3 ${colors[color] || colors.ocean}`}>

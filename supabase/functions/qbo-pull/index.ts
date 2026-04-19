@@ -301,15 +301,23 @@ Deno.serve(async (req) => {
     }
 
     // ──────────────────────────────────────────────────────────
-    // 6. Process one-off invoices — aggregate last-12-months invoices
-    //    per customer into a single `billing_type='one_off'` row.
-    //    No monthly extrapolation; annual_total is the actual sum.
-    //    A customer with a RecurringTransaction gets BOTH rows: the
-    //    recurring template (above) *and* a one-off row for invoices
-    //    outside the recurring pattern (ad-hoc work, etc.) — but for
-    //    v1 we only emit one-off rows for customers with no recurring
-    //    template to keep the signal clean. Extending to "extras on
-    //    top of recurring" is a future refinement.
+    // 6. Process invoice history — classify each service LINE per
+    //    customer by its own cadence. A client with a monthly
+    //    bookkeeping line + an annual year-end line gets both
+    //    tagged correctly.
+    //
+    //    Rule (per service line):
+    //      - Bucket invoice lines by calendar month (sum within).
+    //      - Let L = latest month this service appears in, P = the
+    //        prior calendar month.
+    //      - If service appears in both L and P:
+    //          within ±10%  → cadence='monthly' (clean)
+    //          outside ±10% → cadence='monthly', needs_review=true
+    //      - If service appears in L only → cadence='annual'.
+    //
+    //    A customer with a QBO RecurringTransaction template (v1:
+    //    whole customer excluded) is still handled upstream. This
+    //    loop only runs for customers without a template.
     // ──────────────────────────────────────────────────────────
     const invoicesByCustomer = new Map<string, Array<Record<string, unknown>>>();
     for (const inv of invoices) {
@@ -320,14 +328,20 @@ Deno.serve(async (req) => {
       invoicesByCustomer.get(custId)!.push(inv);
     }
 
-    // Customers already covered by a recurring txn — skip for the
-    // one-off path.
     const customersWithRecurring = new Set<string>();
     for (const txn of recurringTxns) {
       const innerTxn = (txn.Invoice || txn.SalesReceipt || txn) as Record<string, unknown>;
       const customerRef = (innerTxn.CustomerRef || txn.CustomerRef) as Record<string, unknown> | undefined;
       if (customerRef) customersWithRecurring.add(String(customerRef.value));
     }
+
+    // "YYYY-MM" → prior-month "YYYY-MM" helper.
+    const priorMonth = (ym: string): string => {
+      const [y, m] = ym.split("-").map(Number);
+      const d = new Date(y, m - 1, 1);
+      d.setMonth(d.getMonth() - 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    };
 
     for (const [qboCustomerId, custInvoices] of invoicesByCustomer) {
       try {
@@ -350,86 +364,162 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Aggregate line-items across all 12-month invoices for this
-        // customer. Group by service (ItemRef name) so the dashboard
-        // can show "one-off revenue by service type".
-        const svcAgg = new Map<string, { service_id: string; description: string; amount: number; count: number }>();
-        let totalNet = 0;
-        let invoiceCount = 0;
+        // Per-service monthly buckets:
+        //   svcBuckets: service_id → { description, monthsSeen: Map<'YYYY-MM', amount> }
+        const svcBuckets = new Map<string, {
+          service_id: string;
+          description: string;
+          monthsSeen: Map<string, number>;
+        }>();
 
         for (const inv of custInvoices) {
+          const txnDate = String(inv.TxnDate || "");
+          if (!txnDate) continue;
+          const ym = txnDate.slice(0, 7); // YYYY-MM
           const lines = ((inv.Line || []) as Array<Record<string, unknown>>)
             .filter((l: Record<string, unknown>) => l.DetailType === "SalesItemLineDetail");
-          if (lines.length === 0) continue;
-          invoiceCount++;
+
           for (const l of lines) {
             const detail = l.SalesItemLineDetail as Record<string, unknown> | undefined;
             const svcId = detail?.ItemRef
               ? String((detail.ItemRef as Record<string, unknown>).name || "service")
               : "service";
             const amt = Number(l.Amount) || 0;
-            totalNet += amt;
-            const prev = svcAgg.get(svcId);
-            if (prev) {
-              prev.amount += amt;
-              prev.count += 1;
-            } else {
-              svcAgg.set(svcId, {
+            if (amt === 0) continue;
+            let bucket = svcBuckets.get(svcId);
+            if (!bucket) {
+              bucket = {
                 service_id: svcId,
                 description: String(l.Description || svcId),
-                amount: amt,
-                count: 1,
-              });
+                monthsSeen: new Map<string, number>(),
+              };
+              svcBuckets.set(svcId, bucket);
             }
+            bucket.monthsSeen.set(ym, (bucket.monthsSeen.get(ym) || 0) + amt);
           }
         }
 
-        if (invoiceCount === 0 || totalNet === 0) continue;
+        if (svcBuckets.size === 0) continue;
 
-        const annualTotal = Math.round(totalNet * 100) / 100;
-        const services = [...svcAgg.values()].map((s) => ({
-          service_id: s.service_id,
-          description: s.description,
-          monthly_amount: 0,
-          annual_amount: Math.round(s.amount * 100) / 100,
-          invoice_count: s.count,
-          billing_type: "one_off" as const,
-        }));
+        // Classify each service and build enriched services array.
+        let rowMonthlyNet = 0;
+        let rowAnnualTotal = 0;
+        let rowNeedsReview = false;
+        let firstReviewReason: string | null = null;
 
-        // Upsert: one one_off row per entity. If one exists from a
-        // prior pull, refresh it; otherwise insert new.
-        const { data: existingOneOff } = await sb
+        const services = [...svcBuckets.values()].map((bucket) => {
+          const months = [...bucket.monthsSeen.entries()].sort(([a], [b]) => a.localeCompare(b));
+          const [latestYm, latestAmt] = months[months.length - 1];
+          const priorYm = priorMonth(latestYm);
+          const priorAmt = bucket.monthsSeen.get(priorYm);
+
+          const annualSum = Math.round(
+            months.reduce((s, [, v]) => s + v, 0) * 100,
+          ) / 100;
+
+          let cadence: "monthly" | "annual";
+          let cadence_months: number;
+          let monthlyAmount: number;
+          let annualAmount: number;
+          let needs_review = false;
+          let review_reason: string | null = null;
+
+          if (priorAmt !== undefined) {
+            // Service appears in both latest and prior month.
+            const lo = priorAmt * 0.9;
+            const hi = priorAmt * 1.1;
+            const withinTolerance = latestAmt >= lo && latestAmt <= hi;
+
+            cadence = "monthly";
+            cadence_months = 1;
+            monthlyAmount = Math.round(latestAmt * 100) / 100;
+            annualAmount = Math.round(monthlyAmount * 12 * 100) / 100;
+
+            if (!withinTolerance) {
+              needs_review = true;
+              const diffPct = Math.round(
+                Math.abs(latestAmt - priorAmt) / priorAmt * 100,
+              );
+              review_reason = `Prior month ${priorYm} £${priorAmt.toFixed(2)} differs from latest ${latestYm} £${latestAmt.toFixed(2)} by ${diffPct}%`;
+            }
+          } else {
+            // Service appears in latest month only (across 12mo window).
+            cadence = "annual";
+            cadence_months = 12;
+            annualAmount = annualSum;
+            monthlyAmount = Math.round(annualAmount / 12 * 100) / 100;
+          }
+
+          rowMonthlyNet += monthlyAmount;
+          rowAnnualTotal += annualAmount;
+          if (needs_review) {
+            rowNeedsReview = true;
+            if (!firstReviewReason) {
+              firstReviewReason = `${bucket.description}: ${review_reason}`;
+            }
+          }
+
+          return {
+            service_id: bucket.service_id,
+            description: bucket.description,
+            cadence,
+            cadence_months,
+            monthly_amount: monthlyAmount,
+            annual_amount: annualAmount,
+            months_seen: months.map(([ym]) => ym),
+            latest_month: latestYm,
+            latest_amount: Math.round(latestAmt * 100) / 100,
+            prior_month: priorYm,
+            prior_amount: priorAmt !== undefined ? Math.round(priorAmt * 100) / 100 : null,
+            needs_review,
+            review_reason,
+            // billing_type retained for legacy readers; mirrors cadence.
+            billing_type: cadence === "monthly" ? "recurring" : "annual",
+          };
+        });
+
+        rowMonthlyNet = Math.round(rowMonthlyNet * 100) / 100;
+        rowAnnualTotal = Math.round(rowAnnualTotal * 100) / 100;
+        const rowMonthlyVat = Math.round(rowMonthlyNet * 0.2 * 100) / 100;
+        const rowMonthlyGross = Math.round((rowMonthlyNet + rowMonthlyVat) * 100) / 100;
+
+        // Row-level billing_type = the dominant cadence. If any service
+        // is monthly, the row is 'recurring'; otherwise 'annual'. This
+        // keeps the existing dashboard filters sane while services
+        // jsonb carries the true per-service cadence.
+        const anyMonthly = services.some((s) => s.cadence === "monthly");
+        const rowBillingType = anyMonthly ? "recurring" : "annual";
+
+        const { data: existingRow } = await sb
           .from("live_billing")
           .select("id")
           .eq("entity_id", entity.id)
-          .eq("billing_type", "one_off")
+          .in("billing_type", ["recurring", "annual", "one_off"])
+          .is("qbo_recurring_txn_id", null)
           .maybeSingle();
 
-        if (existingOneOff) {
-          await sb.from("live_billing").update({
-            monthly_net: 0,
-            monthly_vat: 0,
-            monthly_gross: 0,
-            annual_total: annualTotal,
-            services,
-            qbo_customer_id: qboCustomerId,
-            last_synced_qbo: now,
-            qbo_sync_status: "synced",
-          }).eq("id", existingOneOff.id);
+        const writeFields: Record<string, unknown> = {
+          billing_type: rowBillingType,
+          monthly_net: rowMonthlyNet,
+          monthly_vat: rowMonthlyVat,
+          monthly_gross: rowMonthlyGross,
+          annual_total: rowAnnualTotal,
+          services,
+          needs_review: rowNeedsReview,
+          review_reason: firstReviewReason,
+          qbo_customer_id: qboCustomerId,
+          last_synced_qbo: now,
+          qbo_sync_status: "synced",
+        };
+
+        if (existingRow) {
+          await sb.from("live_billing").update(writeFields).eq("id", existingRow.id);
           stats.updated++;
         } else {
           await sb.from("live_billing").insert({
             entity_id: entity.id,
-            billing_type: "one_off",
-            monthly_net: 0,
-            monthly_vat: 0,
-            monthly_gross: 0,
-            annual_total: annualTotal,
-            services,
             status: "active",
-            qbo_customer_id: qboCustomerId,
-            last_synced_qbo: now,
-            qbo_sync_status: "synced",
+            ...writeFields,
           });
           stats.one_off_created++;
           stats.created++;
@@ -447,13 +537,18 @@ Deno.serve(async (req) => {
           entity_id: entity.id as string,
           entity_name: entity.name as string,
           qbo_entity_type: "Invoice",
-          qbo_entity_id: `${invoiceCount}-invoices-12mo`,
-          status: "success",
-          detail: { annual_total: annualTotal, invoice_count: invoiceCount, services_count: services.length },
+          qbo_entity_id: `${custInvoices.length}-invoices-12mo`,
+          status: rowNeedsReview ? "pending" : "success",
+          detail: {
+            monthly_net: rowMonthlyNet,
+            annual_total: rowAnnualTotal,
+            services_count: services.length,
+            needs_review: rowNeedsReview,
+          },
           initiated_by: initiatedBy,
         });
       } catch (err) {
-        stats.errors.push(`Customer ${qboCustomerId} (one-off): ${(err as Error).message}`);
+        stats.errors.push(`Customer ${qboCustomerId} (classify): ${(err as Error).message}`);
       }
     }
 
