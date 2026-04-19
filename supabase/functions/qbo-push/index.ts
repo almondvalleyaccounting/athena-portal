@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
       qbo_invoice_id: qboInvoiceId,
       qbo_recurring_txn_id: qboRecurringTxnId,
       qbo_customer_id: qboCustomerId,
-      last_qbo_sync: new Date().toISOString(),
+      last_synced_qbo: new Date().toISOString(),
       qbo_sync_status: "synced",
     }).eq("id", billing_id);
 
