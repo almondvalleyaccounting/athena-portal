@@ -29,13 +29,18 @@ Deno.serve(async (req) => {
     // 2. Load entities (for name-based auto-matching on first-seen)
     //    and existing mappings.
     // ──────────────────────────────────────────────────────────
-    const { data: entities } = await sb.from("entities").select("id, name, display_name, qbo_customer_id");
+    // entities.display_name doesn't exist — select only real columns,
+    // or PostgREST errors and entities comes back null (silently killing
+    // every lookup). Bitten 2026-04-19.
+    const { data: entities, error: entitiesErr } = await sb.from("entities").select("id, name, qbo_customer_id");
+    if (entitiesErr) {
+      return jsonResponse({ success: false, error: `entities select failed: ${entitiesErr.message}` }, 500);
+    }
     const entityMap = new Map<string, Record<string, unknown>>();
 
     for (const e of entities || []) {
       const name = (e.name || "").toLowerCase().trim();
       if (name) entityMap.set(name, e);
-      if (e.display_name) entityMap.set(String(e.display_name).toLowerCase().trim(), e);
     }
 
     const { data: existingMaps } = await sb.from("qbo_customer_mappings").select("qbo_customer_id, entity_id, role, qbo_customer_name");
@@ -206,7 +211,7 @@ Deno.serve(async (req) => {
             annual_total: annualTotal,
             services,
             qbo_customer_id: qboCustomerId,
-            last_qbo_sync: now,
+            last_synced_qbo: now,
             qbo_sync_status: "synced",
           }).eq("id", existing.id);
           stats.updated++;
@@ -220,10 +225,9 @@ Deno.serve(async (req) => {
             annual_total: annualTotal,
             services,
             status: "active",
-            source: "qbo_pull",
             qbo_recurring_txn_id: txnId,
             qbo_customer_id: qboCustomerId,
-            last_qbo_sync: now,
+            last_synced_qbo: now,
             qbo_sync_status: "synced",
           });
           stats.created++;
@@ -284,21 +288,14 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Skip if we already have a billing record for this entity from recurring txns
-        const { data: existingBilling } = await sb
-          .from("live_billing")
-          .select("id")
-          .eq("entity_id", entity.id)
-          .eq("source", "qbo_pull")
-          .single();
-
-        if (existingBilling) continue;
-
+        // Skip if this entity already has any live_billing row.
+        // Recurring txns (processed earlier) take precedence over the
+        // most-recent invoice fallback path.
         const { data: anyBilling } = await sb
           .from("live_billing")
           .select("id")
           .eq("entity_id", entity.id)
-          .single();
+          .maybeSingle();
 
         if (anyBilling) continue;
 
@@ -335,10 +332,9 @@ Deno.serve(async (req) => {
           annual_total: annualTotal,
           services,
           status: "active",
-          source: "qbo_pull",
           qbo_invoice_id: String(inv.Id),
           qbo_customer_id: qboCustomerId,
-          last_qbo_sync: now,
+          last_synced_qbo: now,
           qbo_sync_status: "synced",
         });
         stats.created++;
