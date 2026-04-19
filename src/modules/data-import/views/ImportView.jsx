@@ -190,8 +190,10 @@ function RunPanel({ source, profile, onCompleted, onNavigateHistory }) {
         }
         setDecisions(preDecisions);
 
+        const rowByBmId = Object.fromEntries(parsed.rows.map((r) => [r.bm_client_id, r]));
         const conversionList = Object.entries(matchMap).map(([bmId, m]) => ({
           bm_client_id: bmId,
+          bm_name: rowByBmId[bmId]?.name || null,
           tier: m.tier,
           prospect_id: m.prospect_id,
           prospect_name: m.prospect_name,
@@ -225,12 +227,54 @@ function RunPanel({ source, profile, onCompleted, onNavigateHistory }) {
     }
   };
 
+  // Group conversions by prospect_id — a single Athena prospect may
+  // attract multiple BM rows (e.g. "Foursite Inc" vs "Foursite Inc Ltd"
+  // both fuzzy-matching "Four Site Inc."). Contested groups force a
+  // single-winner choice.
+  const conversionGroups = useMemo(() => {
+    const list = validation?.conversions || [];
+    const byProspect = {};
+    for (const c of list) {
+      (byProspect[c.prospect_id] ||= []).push(c);
+    }
+    return Object.values(byProspect).map((members) => ({
+      prospect_id: members[0].prospect_id,
+      prospect_name: members[0].prospect_name,
+      contested: members.length > 1,
+      members: [...members].sort((a, b) => (b.score || 1) - (a.score || 1)),
+    }));
+  }, [validation]);
+
   const tier3Pending = useMemo(() => {
     if (source.key !== 'bm_clients') return [];
     return (validation?.conversions || []).filter(
       (c) => c.tier === 3 && !(c.bm_client_id in decisions)
     );
   }, [validation, decisions, source.key]);
+
+  // Contested groups are "resolved" when the user has chosen exactly one
+  // winner (rest auto-rejected by the panel). Until that happens, Approve
+  // is blocked.
+  const contestedUnresolved = useMemo(() => {
+    return conversionGroups.filter((g) => {
+      if (!g.contested) return false;
+      const decisionsForGroup = g.members.map((m) => decisions[m.bm_client_id]);
+      const winners = decisionsForGroup.filter((d) => d && d !== 'reject');
+      return winners.length !== 1;
+    }).length;
+  }, [conversionGroups, decisions]);
+
+  const handleCancelRun = async () => {
+    if (!run) return;
+    try {
+      await markCancelled(run.id);
+    } catch (e) {
+      console.error('[DataImport] cancel error:', e);
+    }
+    setFile(null); setPreview(null); setValidation(null);
+    setParsedRows(null); setMatches({}); setDecisions({});
+    setRun(null); setStage('upload'); setError(null);
+  };
 
   const handleApprove = async () => {
     setConfirmVisible(false);
@@ -318,15 +362,17 @@ function RunPanel({ source, profile, onCompleted, onNavigateHistory }) {
           <ValidationReport validation={validation} />
           {validation.conversions?.length > 0 && (
             <ConversionPanel
-              conversions={validation.conversions}
+              groups={conversionGroups}
               decisions={decisions}
-              onDecision={(bmId, value) => setDecisions((d) => ({ ...d, [bmId]: value }))}
+              setDecisions={setDecisions}
             />
           )}
           <ApprovePanel
             validation={validation}
             tier3Pending={tier3Pending.length}
+            contestedUnresolved={contestedUnresolved}
             onApprove={() => setConfirmVisible(true)}
+            onCancel={handleCancelRun}
           />
           {confirmVisible && (
             <ConfirmPrompt
@@ -473,73 +519,157 @@ function ValidationReport({ validation }) {
   );
 }
 
-function ConversionPanel({ conversions, decisions, onDecision }) {
-  const tier12 = conversions.filter((c) => c.tier === 1 || c.tier === 2);
-  const tier3 = conversions.filter((c) => c.tier === 3);
+function ConversionPanel({ groups, decisions, setDecisions }) {
+  const totalMembers = groups.reduce((n, g) => n + g.members.length, 0);
+  const contestedGroups = groups.filter((g) => g.contested);
+  const simpleGroups = groups.filter((g) => !g.contested);
+
+  const setOne = (bmId, value) => {
+    setDecisions((d) => {
+      const next = { ...d };
+      if (value === undefined) delete next[bmId];
+      else next[bmId] = value;
+      return next;
+    });
+  };
+
+  // For contested groups: picking a winner auto-rejects siblings.
+  const pickWinner = (group, winnerBmId) => {
+    setDecisions((d) => {
+      const next = { ...d };
+      for (const m of group.members) {
+        next[m.bm_client_id] = (m.bm_client_id === winnerBmId) ? group.prospect_id : 'reject';
+      }
+      return next;
+    });
+  };
+  const clearGroup = (group) => {
+    setDecisions((d) => {
+      const next = { ...d };
+      for (const m of group.members) delete next[m.bm_client_id];
+      return next;
+    });
+  };
+  const rejectAllInGroup = (group) => {
+    setDecisions((d) => {
+      const next = { ...d };
+      for (const m of group.members) next[m.bm_client_id] = 'reject';
+      return next;
+    });
+  };
+
   return (
     <div style={{
       background: '#fef3c7', border: '1px solid #fcd34d',
       borderRadius: 10, padding: 16, marginBottom: 16,
     }}>
       <p style={{ fontSize: 13, fontWeight: 600, color: '#78350f', marginBottom: 4 }}>
-        ⚡ Prospect conversions — {conversions.length} matches found
+        ⚡ Prospect conversions — {totalMembers} BM row(s) matched to {groups.length} Athena prospect(s)
       </p>
       <p style={{ fontSize: 12, color: '#92400e', marginBottom: 12 }}>
         These Athena prospects match incoming BrightManager clients. BrightManager becomes the source of truth on conversion.
       </p>
-      {tier12.length > 0 && (
-        <div style={{ marginBottom: 10 }}>
+
+      {contestedGroups.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
           <p style={{ fontSize: 11, fontWeight: 600, color: '#78350f', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
-            Pre-confirmed (Tier 1 / 2) — click to reject
+            Contested — pick one winner per prospect
           </p>
-          {tier12.map((c) => {
-            const rejected = decisions[c.bm_client_id] === 'reject';
-            const confirmed = decisions[c.bm_client_id] === c.prospect_id;
+          {contestedGroups.map((g) => {
+            const chosen = g.members.find((m) => decisions[m.bm_client_id] && decisions[m.bm_client_id] !== 'reject');
             return (
-              <div key={c.bm_client_id} style={convRow}>
-                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#78350f', width: 90 }}>{c.bm_client_id}</span>
-                <span style={{ flex: 1, fontSize: 12, color: '#1e293b' }}>
-                  {c.prospect_name} <span style={{ color: '#94a3b8' }}>(tier {c.tier})</span>
-                </span>
-                {confirmed ? (
-                  <>
-                    <span style={{ fontSize: 11, color: '#15803d', marginRight: 6 }}>✓ Convert</span>
-                    <button onClick={() => onDecision(c.bm_client_id, 'reject')} style={{ ...btnGhost, fontSize: 11 }}>Reject</button>
-                  </>
-                ) : (
-                  <>
-                    <span style={{ fontSize: 11, color: '#991b1b', marginRight: 6 }}>✗ Rejected — will create new entity</span>
-                    <button onClick={() => onDecision(c.bm_client_id, c.prospect_id)} style={{ ...btnGhost, fontSize: 11 }}>Undo</button>
-                  </>
-                )}
+              <div key={g.prospect_id} style={{
+                padding: 10, borderRadius: 8, background: 'rgba(255,255,255,0.6)',
+                border: '1px solid #fcd34d', marginBottom: 8,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>
+                    Athena prospect: {g.prospect_name}
+                  </span>
+                  <span style={{ flex: 1 }} />
+                  {chosen ? (
+                    <button onClick={() => clearGroup(g)} style={{ ...btnGhost, fontSize: 11 }}>Clear</button>
+                  ) : (
+                    <button onClick={() => rejectAllInGroup(g)} style={{ ...btnGhost, fontSize: 11 }}>
+                      Skip all — keep as prospect
+                    </button>
+                  )}
+                </div>
+                {g.members.map((m) => {
+                  const isWinner = decisions[m.bm_client_id] && decisions[m.bm_client_id] !== 'reject';
+                  const isRejected = decisions[m.bm_client_id] === 'reject';
+                  return (
+                    <label key={m.bm_client_id} style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '6px 8px', borderRadius: 6, cursor: 'pointer',
+                      background: isWinner ? '#dcfce7' : isRejected ? '#fee2e2' : 'transparent',
+                    }}>
+                      <input
+                        type="radio"
+                        name={`prospect-${g.prospect_id}`}
+                        checked={!!isWinner}
+                        onChange={() => pickWinner(g, m.bm_client_id)}
+                      />
+                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#78350f', width: 90 }}>{m.bm_client_id}</span>
+                      <span style={{ flex: 1, fontSize: 12, color: '#1e293b' }}>
+                        {m.bm_name || '—'}
+                        <span style={{ color: '#94a3b8', marginLeft: 6 }}>
+                          ({m.tier === 3 ? `${Math.round((m.score || 0) * 100)}% name` : `tier ${m.tier}`})
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+                <p style={{ fontSize: 11, color: '#92400e', marginTop: 6 }}>
+                  Others in this group will create new entities (prospect not converted for them).
+                </p>
               </div>
             );
           })}
         </div>
       )}
-      {tier3.length > 0 && (
+
+      {simpleGroups.length > 0 && (
         <div>
           <p style={{ fontSize: 11, fontWeight: 600, color: '#78350f', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
-            Fuzzy matches (Tier 3) — action required
+            Matches — confirm or skip
           </p>
-          {tier3.map((c) => {
-            const decided = decisions[c.bm_client_id];
+          {simpleGroups.map((g) => {
+            const m = g.members[0];
+            const decided = decisions[m.bm_client_id];
+            const tier = m.tier;
+            const preConfirmed = (tier === 1 || tier === 2);
+            const confirmed = decided === m.prospect_id;
+            const rejected = decided === 'reject';
+
             return (
-              <div key={c.bm_client_id} style={convRow}>
-                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#78350f', width: 90 }}>{c.bm_client_id}</span>
-                <span style={{ flex: 1, fontSize: 12, color: '#1e293b' }}>
-                  {c.prospect_name} <span style={{ color: '#94a3b8' }}>({Math.round((c.score || 0) * 100)}% name match)</span>
-                </span>
-                {decided === c.prospect_id && <span style={{ fontSize: 11, color: '#15803d', marginRight: 6 }}>✓ Convert</span>}
-                {decided === 'reject' && <span style={{ fontSize: 11, color: '#991b1b', marginRight: 6 }}>Skip</span>}
-                {!decided && (
+              <div key={m.bm_client_id} style={convRow}>
+                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#78350f', width: 90 }}>{m.bm_client_id}</span>
+                <div style={{ flex: 1, fontSize: 12, color: '#1e293b', lineHeight: 1.4 }}>
+                  <div><b>BM:</b> {m.bm_name || '—'}</div>
+                  <div><b>Athena:</b> {m.prospect_name}
+                    <span style={{ color: '#94a3b8', marginLeft: 6 }}>
+                      ({tier === 3 ? `${Math.round((m.score || 0) * 100)}% name` : `tier ${tier}`})
+                    </span>
+                  </div>
+                </div>
+                {confirmed && <span style={{ fontSize: 11, color: '#15803d', marginRight: 6 }}>✓ Convert</span>}
+                {rejected && <span style={{ fontSize: 11, color: '#991b1b', marginRight: 6 }}>✗ Skip — new entity</span>}
+                {!decided && preConfirmed && <span style={{ fontSize: 11, color: '#15803d', marginRight: 6 }}>✓ Convert (pre-confirmed)</span>}
+                {!decided && !preConfirmed && (
                   <>
-                    <button onClick={() => onDecision(c.bm_client_id, c.prospect_id)} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>Confirm</button>
-                    <button onClick={() => onDecision(c.bm_client_id, 'reject')} style={{ ...btnGhost, fontSize: 11 }}>Skip</button>
+                    <button onClick={() => setOne(m.bm_client_id, m.prospect_id)} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>Confirm</button>
+                    <button onClick={() => setOne(m.bm_client_id, 'reject')} style={{ ...btnGhost, fontSize: 11 }}>Skip</button>
                   </>
                 )}
-                {decided && (
-                  <button onClick={() => onDecision(c.bm_client_id, undefined)} style={{ ...btnGhost, fontSize: 11 }}>Undo</button>
+                {(decided || preConfirmed) && (
+                  <button onClick={() => {
+                    if (confirmed) setOne(m.bm_client_id, 'reject');
+                    else if (rejected) setOne(m.bm_client_id, m.prospect_id);
+                    else if (preConfirmed && !decided) setOne(m.bm_client_id, 'reject');
+                  }} style={{ ...btnGhost, fontSize: 11 }}>
+                    {confirmed ? 'Reject' : rejected ? 'Undo' : 'Reject'}
+                  </button>
                 )}
               </div>
             );
@@ -550,8 +680,13 @@ function ConversionPanel({ conversions, decisions, onDecision }) {
   );
 }
 
-function ApprovePanel({ validation, tier3Pending, onApprove }) {
-  const blocked = tier3Pending > 0;
+function ApprovePanel({ validation, tier3Pending, contestedUnresolved, onApprove, onCancel }) {
+  const blocked = tier3Pending > 0 || contestedUnresolved > 0;
+  const blockReason = contestedUnresolved > 0
+    ? 'Resolve contested prospect groups before importing'
+    : tier3Pending > 0
+      ? 'Review all Tier 3 prospect matches before importing'
+      : undefined;
   return (
     <div style={{
       marginTop: 18, padding: 18, borderTop: '2px solid #e5e7eb',
@@ -571,22 +706,29 @@ function ApprovePanel({ validation, tier3Pending, onApprove }) {
           </div>
         ))}
         <div style={{ height: 8 }} />
-        <div style={{ display: 'flex', gap: 16, color: '#475569' }}>
+        <div style={{ display: 'flex', gap: 16, color: '#475569', flexWrap: 'wrap' }}>
           <span>Skipped: <b>{validation.skippedCount}</b></span>
           <span>Warnings: <b>{validation.warningCount}</b></span>
-          {validation.conversions?.length > 0 && (
-            <span>Conversions pending: <b>{tier3Pending}</b></span>
-          )}
+          {tier3Pending > 0 && <span>Tier 3 to action: <b>{tier3Pending}</b></span>}
+          {contestedUnresolved > 0 && <span style={{ color: '#991b1b' }}>Contested groups: <b>{contestedUnresolved}</b></span>}
         </div>
       </div>
-      <button
-        onClick={onApprove}
-        disabled={blocked}
-        title={blocked ? 'Review all Tier 3 prospect matches before importing' : undefined}
-        style={{ ...btnPrimary, width: '100%', justifyContent: 'center', padding: 14, fontSize: 14, opacity: blocked ? 0.5 : 1, cursor: blocked ? 'not-allowed' : 'pointer' }}
-      >
-        Approve and import to Supabase
-      </button>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button
+          onClick={onApprove}
+          disabled={blocked}
+          title={blockReason}
+          style={{ ...btnPrimary, flex: 1, justifyContent: 'center', padding: 14, fontSize: 14, opacity: blocked ? 0.5 : 1, cursor: blocked ? 'not-allowed' : 'pointer' }}
+        >
+          Approve and import to Supabase
+        </button>
+        <button
+          onClick={onCancel}
+          style={{ ...btnSecondary, padding: 14, fontSize: 14, color: '#991b1b', borderColor: '#fca5a5' }}
+        >
+          Cancel import
+        </button>
+      </div>
     </div>
   );
 }

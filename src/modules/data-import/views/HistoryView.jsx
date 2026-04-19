@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchImportHistory, fetchStaffNames } from '../lib/importQueries';
+import { fetchImportHistory, fetchStaffNames, markCancelled } from '../lib/importQueries';
 import { SOURCES, getSource, getSystemLabel } from '../lib/sources';
 
 const font = "'Outfit', sans-serif";
@@ -25,25 +25,39 @@ export default function HistoryView() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
   const [names, setNames] = useState({});
+  const [cancelling, setCancelling] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const data = await fetchImportHistory({ source, status, sinceDays });
-        setRows(data);
-        const ids = [
-          ...data.map((r) => r.triggered_by),
-          ...data.map((r) => r.approved_by),
-        ];
-        setNames(await fetchStaffNames(ids));
-      } catch (e) {
-        console.error('[DataImport] history error:', e);
-        setRows([]);
-      }
-      setLoading(false);
-    })();
-  }, [source, status, sinceDays]);
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchImportHistory({ source, status, sinceDays });
+      setRows(data);
+      const ids = [
+        ...data.map((r) => r.triggered_by),
+        ...data.map((r) => r.approved_by),
+      ];
+      setNames(await fetchStaffNames(ids));
+    } catch (e) {
+      console.error('[DataImport] history error:', e);
+      setRows([]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { reload(); }, [source, status, sinceDays]);
+
+  const handleCancel = async (r) => {
+    if (!window.confirm(`Cancel this ${r.status} import run?\n\nFile: ${r.file_name}`)) return;
+    setCancelling(r.id);
+    try {
+      await markCancelled(r.id);
+      await reload();
+    } catch (e) {
+      console.error('[DataImport] cancel run error:', e);
+      alert('Failed to cancel: ' + (e.message || String(e)));
+    }
+    setCancelling(null);
+  };
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: font, maxWidth: 1180 }}>
@@ -60,6 +74,8 @@ export default function HistoryView() {
             <option value="complete">Complete</option>
             <option value="failed">Failed</option>
             <option value="running">Running</option>
+            <option value="ready">Ready (awaiting approval)</option>
+            <option value="validating">Validating</option>
             <option value="cancelled">Cancelled</option>
           </select>
         </Filter>
@@ -150,6 +166,26 @@ export default function HistoryView() {
                           {r.notes && (
                             <DetailBlock label="Notes" wide>
                               <div>{r.notes}</div>
+                            </DetailBlock>
+                          )}
+                          {['validating', 'ready'].includes(r.status) && (
+                            <DetailBlock label="Actions" wide>
+                              <button
+                                disabled={cancelling === r.id}
+                                onClick={(e) => { e.stopPropagation(); handleCancel(r); }}
+                                style={{
+                                  fontSize: 12, fontWeight: 500, padding: '6px 12px',
+                                  background: '#fff', border: '1px solid #fca5a5', borderRadius: 6,
+                                  color: '#991b1b', cursor: 'pointer',
+                                  fontFamily: "'Outfit', sans-serif",
+                                  opacity: cancelling === r.id ? 0.5 : 1,
+                                }}
+                              >
+                                {cancelling === r.id ? 'Cancelling…' : 'Cancel this run'}
+                              </button>
+                              <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+                                This run never completed. Cancelling releases any source lock and hides it from the Status view.
+                              </p>
                             </DetailBlock>
                           )}
                         </div>
