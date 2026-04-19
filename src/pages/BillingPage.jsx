@@ -300,18 +300,8 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* QBO Connection Panel */}
+      {/* QBO Connection Panel (includes Pull from QBO + Manage mapping) */}
       <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
-
-      {/* QBO mapping quick link */}
-      <div className="mb-3 text-right">
-        <button
-          onClick={() => navigate('/billing/qbo-mapping')}
-          className="text-xs text-gray-500 hover:text-ocean-600"
-        >
-          Manage QBO ↔ Athena customer mapping →
-        </button>
-      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-4 gap-3 mb-4">
