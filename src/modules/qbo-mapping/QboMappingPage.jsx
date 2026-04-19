@@ -76,6 +76,13 @@ export default function QboMappingPage() {
     if (filter === 'unmapped') out = out.filter((r) => !r.entity_id && r.role !== 'not_a_client');
     else if (filter === 'mapped') out = out.filter((r) => r.entity_id);
     else if (filter === 'ignored') out = out.filter((r) => r.role === 'not_a_client');
+    else if (filter === 'auto') {
+      out = out.filter((r) => {
+        if (r.entity_id || r.role === 'not_a_client') return false;
+        const top = suggestions[r.qbo_customer_id]?.[0];
+        return top && top.score >= AUTO_ACCEPT_THRESHOLD;
+      });
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       out = out.filter((r) =>
@@ -117,22 +124,45 @@ export default function QboMappingPage() {
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
 
   // ─── Mutations ───────────────────────────────────────────
-  const patch = async (qboId, fields) => {
+  // Optimistic: apply the change to local state immediately, write to
+  // the DB in the background, revert on failure. No full reload — at
+  // 800+ rows each reload + suggestions RPC is a multi-second stall.
+  const patchOptimistic = (qboId, fields) => {
+    const prevRows = rows;
+    const prevSuggestions = suggestions;
+    setRows((r) => r.map((row) => row.qbo_customer_id === qboId ? { ...row, ...fields } : row));
+
+    // Mapping or ignoring a row removes it from the suggestions map —
+    // the "auto-acceptable" count and the suggestions column should
+    // reflect the new state instantly.
+    if (fields.entity_id !== undefined || fields.role === 'not_a_client') {
+      setSuggestions((s) => {
+        if (!s[qboId]) return s;
+        const { [qboId]: _, ...rest } = s;
+        return rest;
+      });
+    }
+
     setSaving(qboId);
-    const { error } = await supabase
-      .from('qbo_customer_mappings').update(fields).eq('qbo_customer_id', qboId);
-    if (error) alert('Save failed: ' + error.message);
-    await load();
-    setSaving(null);
+    supabase.from('qbo_customer_mappings').update(fields).eq('qbo_customer_id', qboId)
+      .then(({ error }) => {
+        if (error) {
+          console.error('[QBO mapping] save failed, rolling back:', error);
+          alert('Save failed: ' + error.message);
+          setRows(prevRows);
+          setSuggestions(prevSuggestions);
+        }
+        setSaving(null);
+      });
   };
 
-  const setEntity = (qboId, entityId) => patch(qboId, { entity_id: entityId || null });
+  const setEntity = (qboId, entityId) => patchOptimistic(qboId, { entity_id: entityId || null, role: 'primary' });
 
   const toggleIgnore = (row) => {
     const nextRole = row.role === 'not_a_client' ? 'primary' : 'not_a_client';
     const fields = { role: nextRole };
     if (nextRole === 'not_a_client') fields.entity_id = null;
-    patch(row.qbo_customer_id, fields);
+    patchOptimistic(row.qbo_customer_id, fields);
   };
 
   const acceptTopSuggestion = (row) => {
@@ -195,8 +225,13 @@ export default function QboMappingPage() {
 
   const remove = async (qboId) => {
     if (!window.confirm(`Delete this mapping row? It will reappear on next qbo-pull if the customer still exists in QBO.`)) return;
-    await supabase.from('qbo_customer_mappings').delete().eq('qbo_customer_id', qboId);
-    await load();
+    const prevRows = rows;
+    setRows((r) => r.filter((row) => row.qbo_customer_id !== qboId));
+    const { error } = await supabase.from('qbo_customer_mappings').delete().eq('qbo_customer_id', qboId);
+    if (error) {
+      alert('Delete failed: ' + error.message);
+      setRows(prevRows);
+    }
   };
 
   const addManual = async () => {
@@ -263,6 +298,15 @@ export default function QboMappingPage() {
       {/* Filter pills + sort + search */}
       <div style={{ display: 'flex', gap: 8, marginTop: 14, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <FilterPill label="Unmapped" count={counts.unmapped} active={filter === 'unmapped'} tone="amber" onClick={() => setFilter('unmapped')} />
+        {autoAcceptable.length > 0 && (
+          <FilterPill
+            label={`Auto-acceptable (${Math.round(AUTO_ACCEPT_THRESHOLD * 100)}%+)`}
+            count={autoAcceptable.length}
+            active={filter === 'auto'}
+            tone="blue"
+            onClick={() => setFilter('auto')}
+          />
+        )}
         <FilterPill label="Mapped" count={counts.mapped} active={filter === 'mapped'} tone="green" onClick={() => setFilter('mapped')} />
         <FilterPill label="Ignored" count={counts.ignored} active={filter === 'ignored'} tone="slate" onClick={() => setFilter('ignored')} />
         <FilterPill label={`All (${counts.total})`} count={null} active={filter === 'all'} tone="default" onClick={() => setFilter('all')} />
@@ -458,6 +502,7 @@ function FilterPill({ label, count, active, tone, onClick }) {
     amber: { active: { bg: '#fef3c7', fg: '#78350f', border: '#fcd34d' }, idle: { bg: '#fff', fg: '#78350f', border: '#fcd34d' } },
     green: { active: { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, idle: { bg: '#fff', fg: '#166534', border: '#86efac' } },
     slate: { active: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' }, idle: { bg: '#fff', fg: '#64748b', border: '#cbd5e1' } },
+    blue: { active: { bg: '#dbeafe', fg: '#1e40af', border: '#93c5fd' }, idle: { bg: '#fff', fg: '#1e40af', border: '#93c5fd' } },
     default: { active: { bg: '#0f172a', fg: '#fff', border: '#0f172a' }, idle: { bg: '#fff', fg: '#475569', border: '#e5e7eb' } },
   };
   const t = tones[tone] || tones.default;
