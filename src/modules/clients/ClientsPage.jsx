@@ -14,12 +14,18 @@ export default function ClientsPage() {
 
   const loadEntities = async () => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('entities')
-        .select('id, name, type, status, company_number, manager, prospect_email, source, created_at')
+        .select('id, name, type, entity_status, company_number, manager, prospect_email, source, created_at')
         .order('name', { ascending: true });
-      setEntities(data || []);
-    } catch {
+      if (error) {
+        console.error('[Clients] load error:', error.message);
+        setEntities([]);
+      } else {
+        setEntities(data || []);
+      }
+    } catch (e) {
+      console.error('[Clients] load threw:', e);
       setEntities([]);
     }
     setLoading(false);
@@ -178,7 +184,7 @@ export default function ClientsPage() {
                   {e.manager && ` · ${e.manager}`}
                 </div>
               </div>
-              {statusBadge(e.status)}
+              {statusBadge(e.entity_status)}
             </div>
           ))}
         </div>
