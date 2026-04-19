@@ -5,6 +5,7 @@ import Avatar from '../components/Avatar';
 import DueBadge from '../components/DueBadge';
 import ClientTypeAhead from '../components/ClientTypeAhead';
 import { useWorkPlanner } from '../WorkPlannerModule';
+import { firstCharBucket } from '../../../components/AlphabetFilter';
 
 export default function QuickTasksView({ compact, onAction }) {
   const {
@@ -50,6 +51,9 @@ export default function QuickTasksView({ compact, onAction }) {
   let list = [...quickTasks];
   if (filters.teamFilter) list = list.filter((t) => t.assignee_id === filters.teamFilter);
   if (filters.clientFilter) list = list.filter((t) => t.entity_id === filters.clientFilter);
+  if (filters.clientLetter) {
+    list = list.filter((t) => firstCharBucket(clientName(t.entity_id, entityMap)) === filters.clientLetter);
+  }
   if (filters.serviceFilter) list = list.filter((t) => t.service === filters.serviceFilter);
   list.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
@@ -163,7 +167,7 @@ export default function QuickTasksView({ compact, onAction }) {
               {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={compact ? 18 : 22} customColour={staffColours?.[task.assignee_id]} />}
 
               {/* Body */}
-              <div style={{ flex: 1, minWidth: 0, display: compact ? 'flex' : 'block', alignItems: 'center', gap: compact ? 8 : 0 }}>
+              <div style={{ flex: 1, minWidth: 0, display: compact ? 'flex' : 'block', alignItems: 'center', gap: compact ? 8 : 0, flexWrap: compact ? 'wrap' : 'nowrap' }}>
                 <div
                   onClick={(e) => onAction(e, task)}
                   style={{ fontSize: compact ? 12 : 14, fontWeight: 500, cursor: 'pointer' }}
@@ -213,12 +217,15 @@ export default function QuickTasksView({ compact, onAction }) {
                   />
                 )}
 
-                {/* Progress notes thread */}
-                {!compact && (() => {
+                {/* Progress notes thread — available in both compact
+                    and full modes (compact users still need to add notes).
+                    In compact the body is a flex row, so we wrap the
+                    block to force it onto the next line. */}
+                {(() => {
                   const notes = notesMap[`quick:${task.id}`] || [];
                   const isAddingNote = progressInput === task.id;
                   return (
-                    <>
+                    <div style={{ flexBasis: '100%', width: '100%' }}>
                       {notes.length > 0 && (
                         <div style={{ marginTop: 4, borderLeft: '2px solid #e5e7eb', paddingLeft: 6 }}>
                           {notes.map((n) => (
@@ -282,7 +289,7 @@ export default function QuickTasksView({ compact, onAction }) {
                           + Add note
                         </button>
                       )}
-                    </>
+                    </div>
                   );
                 })()}
               </div>

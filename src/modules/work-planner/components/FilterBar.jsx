@@ -1,6 +1,7 @@
 import React from 'react';
 import TypeAhead from './TypeAhead';
 import Avatar from './Avatar';
+import AlphabetFilter from '../../../components/AlphabetFilter';
 import { SERVICES, STATUSES, CALENDAR_VIEWS, KANBAN_DUE_FILTERS } from '../lib/constants';
 import { teamColour } from '../lib/helpers';
 
@@ -28,6 +29,7 @@ export default function FilterBar({
   entityList,
   teamFilter, setTeamFilter,
   clientFilter, setClientFilter,
+  clientLetter, setClientLetter,
   serviceFilter, setServiceFilter,
   statusFilter, setStatusFilter,
   // Calendar-specific
@@ -208,6 +210,19 @@ export default function FilterBar({
           />
         </>
       )}
+
+      {/* A–Z quick jumper for the client axis. Disabled letters are
+          those with no entries in entityList. Null = All; a chosen
+          letter filters lists by entity first-letter. Sits inline with
+          the filter bar — a full-width strip on its own row felt noisy
+          in tests, so it lives at the right side and wraps if needed. */}
+      <div style={{ flexBasis: '100%', marginTop: 4 }}>
+        <AlphabetFilter
+          items={entityList}
+          selected={clientLetter || null}
+          onChange={setClientLetter}
+        />
+      </div>
     </div>
   );
 }

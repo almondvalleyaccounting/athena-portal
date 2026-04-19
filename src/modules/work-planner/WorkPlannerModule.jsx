@@ -66,13 +66,16 @@ export default function WorkPlannerModule() {
   // ── UI state ──
   const [teamFilter, setTeamFilter] = useState('');
   const [clientFilter, setClientFilter] = useState('');
+  const [clientLetter, setClientLetter] = useState(null); // 'A'..'Z' | '#' | null
   const [serviceFilter, setServiceFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [calendarView, setCalendarView] = useState('workweek');
   const [anchor, setAnchor] = useState(new Date(today()));
   const [dueFilter, setDueFilter] = useState('month');
   const [sourceFilter, setSourceFilter] = useState('');
-  const [compact, setCompact] = useState(false);
+  // Default compact on — denser rows are more useful for the views that
+  // expose the toggle (Quick Tasks, My Tasks). Staff can expand when needed.
+  const [compact, setCompact] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [sort, setSort] = useState('next');
   const [colourMode, setColourMode] = useState('staff'); // 'staff' | 'status'
@@ -681,7 +684,7 @@ export default function WorkPlannerModule() {
     overridesMap, completedKeys,
     staffList, entityList, staffMap, entityMap,
     profile,
-    filters: { teamFilter, clientFilter, serviceFilter, statusFilter, sourceFilter },
+    filters: { teamFilter, clientFilter, clientLetter, serviceFilter, statusFilter, sourceFilter },
     highlightId,
     progressNotes, notesMap, addProgressNote,
     addQuickTask, updateQuickTask, reorderQuickTasks,
@@ -694,7 +697,7 @@ export default function WorkPlannerModule() {
     overridesMap, completedKeys,
     staffList, entityList, staffMap, entityMap,
     profile,
-    teamFilter, clientFilter, serviceFilter, statusFilter, sourceFilter,
+    teamFilter, clientFilter, clientLetter, serviceFilter, statusFilter, sourceFilter,
     highlightId,
     progressNotes, notesMap, addProgressNote,
     addQuickTask, updateQuickTask, reorderQuickTasks,
@@ -792,6 +795,7 @@ export default function WorkPlannerModule() {
           entityList={entityList}
           teamFilter={teamFilter} setTeamFilter={setTeamFilter}
           clientFilter={clientFilter} setClientFilter={setClientFilter}
+          clientLetter={clientLetter} setClientLetter={setClientLetter}
           serviceFilter={serviceFilter} setServiceFilter={setServiceFilter}
           statusFilter={statusFilter} setStatusFilter={setStatusFilter}
           view={activeTab}
