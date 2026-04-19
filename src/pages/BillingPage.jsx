@@ -148,7 +148,10 @@ export default function BillingPage() {
   const recurringRows = activeBilling.filter((b) => b.billing_type !== 'one_off');
   const oneOffRows = activeBilling.filter((b) => b.billing_type === 'one_off');
 
-  const recurringMonthlyGross = recurringRows.reduce((s, b) => s + (Number(b.monthly_gross) || 0), 0);
+  // Dashboard KPIs expressed in *net* — the firm's management view of
+  // revenue, independent of whether VAT is being charged. Gross is still
+  // on each row for client-facing detail.
+  const recurringMonthlyNet = recurringRows.reduce((s, b) => s + (Number(b.monthly_net) || 0), 0);
   const recurringAnnual = recurringRows.reduce((s, b) => s + (Number(b.annual_total) || 0), 0);
   const oneOffLast12mo = oneOffRows.reduce((s, b) => s + (Number(b.annual_total) || 0), 0);
 
@@ -390,7 +393,7 @@ export default function BillingPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-5 gap-3 mb-4">
-        <SummaryCard label="Recurring Monthly (Gross)" value={fmt(recurringMonthlyGross)} color="ocean" />
+        <SummaryCard label="Recurring Monthly (Net)" value={fmt(recurringMonthlyNet)} color="ocean" />
         <SummaryCard label="Recurring Annual" value={fmt(recurringAnnual)} color="ocean" />
         <SummaryCard label="One-off (last 12 mo)" value={fmt(oneOffLast12mo)} color="purple" />
         <SummaryCard label="Clients with Billing" value={clientsWithBilling} color="green" />
