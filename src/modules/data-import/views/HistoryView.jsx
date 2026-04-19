@@ -21,6 +21,7 @@ export default function HistoryView() {
   const [source, setSource] = useState('all');
   const [status, setStatus] = useState('all');
   const [sinceDays, setSinceDays] = useState(30);
+  const [hideCancelled, setHideCancelled] = useState(true);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
@@ -87,16 +88,41 @@ export default function HistoryView() {
             <option value="all">All time</option>
           </select>
         </Filter>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#475569', cursor: 'pointer', marginLeft: 'auto' }}>
+          <input
+            type="checkbox"
+            checked={hideCancelled}
+            onChange={(e) => setHideCancelled(e.target.checked)}
+          />
+          Hide cancelled
+        </label>
       </div>
 
-      {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading history…</p>
-      ) : rows.length === 0 ? (
-        <div style={{ padding: 60, textAlign: 'center' }}>
-          <p style={{ fontSize: 15, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>No imports yet</p>
-          <p style={{ fontSize: 13, color: '#cbd5e1' }}>Import records will appear here after your first run.</p>
-        </div>
-      ) : (
+      {(() => {
+        const visible = hideCancelled ? rows.filter((r) => r.status !== 'cancelled') : rows;
+        const hiddenCount = rows.length - visible.length;
+        if (loading) return <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading history…</p>;
+        if (visible.length === 0) return (
+          <div style={{ padding: 60, textAlign: 'center' }}>
+            <p style={{ fontSize: 15, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>
+              {rows.length === 0 ? 'No imports yet' : 'No imports to show'}
+            </p>
+            <p style={{ fontSize: 13, color: '#cbd5e1' }}>
+              {rows.length === 0
+                ? 'Import records will appear here after your first run.'
+                : hiddenCount > 0
+                  ? `Uncheck "Hide cancelled" to see ${hiddenCount} cancelled run(s).`
+                  : 'Adjust filters to see more.'}
+            </p>
+          </div>
+        );
+        return (
+        <>
+        {hiddenCount > 0 && (
+          <p style={{ fontSize: 12, color: '#94a3b8', padding: '0 4px 8px' }}>
+            {hiddenCount} cancelled run(s) hidden
+          </p>
+        )}
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
           <thead>
             <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
@@ -104,14 +130,24 @@ export default function HistoryView() {
               <Th>File</Th>
               <Th>Date / Time</Th>
               <Th>By</Th>
+              <Th>Source rows</Th>
               <Th>Written</Th>
               <Th>Status</Th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {visible.map((r) => {
               const src = getSource(r.source_key);
-              const total = Object.values(r.row_counts || {}).reduce((s, n) => s + Number(n || 0), 0);
+              const writtenTotal = Object.values(r.row_counts || {}).reduce((s, n) => s + Number(n || 0), 0);
+              // "Written" is meaningful only for runs that actually attempted a write.
+              // For validating/ready/cancelled, row_counts holds *validated* counts,
+              // not written counts — surfacing them as "Written" misleads.
+              const writtenDisplay = (() => {
+                if (r.status === 'complete') return writtenTotal.toLocaleString();
+                if (r.status === 'failed') return writtenTotal > 0 ? `${writtenTotal.toLocaleString()} (partial)` : '0';
+                if (r.status === 'running') return '…';
+                return '—';
+              })();
               const sc = statusColor(r.status);
               const isOpen = expanded === r.id;
               return (
@@ -121,7 +157,10 @@ export default function HistoryView() {
                     <Td style={{ color: '#64748b', fontFamily: 'monospace', fontSize: 11 }}>{r.file_name}</Td>
                     <Td>{formatDateTime(r.triggered_at)}</Td>
                     <Td>{names[r.triggered_by] || '—'}</Td>
-                    <Td style={{ fontFamily: 'monospace' }}>{total.toLocaleString()}</Td>
+                    <Td style={{ fontFamily: 'monospace', color: '#64748b' }}>
+                      {r.source_row_count != null ? r.source_row_count.toLocaleString() : '—'}
+                    </Td>
+                    <Td style={{ fontFamily: 'monospace' }}>{writtenDisplay}</Td>
                     <Td>
                       <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: sc.bg, color: sc.fg, textTransform: 'capitalize' }}>
                         {r.status}
@@ -130,7 +169,7 @@ export default function HistoryView() {
                   </tr>
                   {isOpen && (
                     <tr style={{ background: '#fafafa' }}>
-                      <td colSpan={6} style={{ padding: 16, borderTop: '1px solid #f1f5f9' }}>
+                      <td colSpan={7} style={{ padding: 16, borderTop: '1px solid #f1f5f9' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, fontSize: 12 }}>
                           <DetailBlock label="Row counts">
                             {Object.keys(r.row_counts || {}).length === 0 ? <span style={{ color: '#cbd5e1' }}>none</span> :
@@ -197,7 +236,9 @@ export default function HistoryView() {
             })}
           </tbody>
         </table>
-      )}
+        </>
+        );
+      })()}
     </div>
   );
 }
