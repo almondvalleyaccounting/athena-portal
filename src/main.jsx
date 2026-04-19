@@ -10,6 +10,7 @@ import ReportsPage from './modules/reports/ReportsPage';
 import AdminPage from './shell/AdminPage';
 import DataImportModule from './modules/data-import/DataImportModule';
 import QboMappingPage from './modules/qbo-mapping/QboMappingPage';
+import BillingReviewPage from './modules/billing/BillingReviewPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
 import BillingPage from './modules/billing/BillingPage';
@@ -54,6 +55,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/clients/qbo-mapping" element={<QboMappingPage />} />
           <Route path="/manage/billing/qbo-mapping" element={<QboMappingPage />} />
+          <Route path="/manage/billing/review" element={<BillingReviewPage />} />
           <Route path="/clients/:id" element={<ClientDetailView />} />
           <Route path="/planner/*" element={<WorkPlannerModule />} />
           <Route path="/timesheets/*" element={<TimesheetModule />} />

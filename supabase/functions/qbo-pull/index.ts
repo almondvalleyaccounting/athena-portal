@@ -223,6 +223,9 @@ Deno.serve(async (req) => {
         const monthlyGross = Math.round((monthlyNet + monthlyVat) * 100) / 100;
         const annualTotal = Math.round(monthlyNet * 12 * 100) / 100;
 
+        // Recurring-txn services are auto-approved — a QBO template is
+        // explicit staff intent, not an inference. Staff can still edit
+        // via the review queue.
         const services = lines.map((l: Record<string, unknown>) => {
           const detail = l.SalesItemLineDetail as Record<string, unknown> | undefined;
           const perOccurrence = Number(l.Amount) || 0;
@@ -230,8 +233,13 @@ Deno.serve(async (req) => {
           return {
             service_id: detail?.ItemRef ? String((detail.ItemRef as Record<string, unknown>).name || "service") : "service",
             description: String(l.Description || ""),
+            cadence: "monthly" as const,
+            cadence_months: 1,
             monthly_amount: monthly,
             annual_amount: Math.round(monthly * 12 * 100) / 100,
+            approval_status: "approved" as const,
+            approved_by: "system:qbo_template",
+            approved_at: now,
             billing_type: "recurring" as const,
           };
         });
@@ -401,6 +409,23 @@ Deno.serve(async (req) => {
 
         if (svcBuckets.size === 0) continue;
 
+        // Preserve prior approval state across re-pulls.
+        // Read the existing row's services once; for each newly-classified
+        // service, if a prior service with the same service_id was
+        // 'approved' AND its monthly_amount is still within ±10% of the
+        // new one, keep it approved — otherwise revert to 'suggested'
+        // with a review_reason noting the drift. 'rejected' is sticky.
+        const { data: existingForMerge } = await sb
+          .from("live_billing")
+          .select("id, services")
+          .eq("entity_id", entity.id)
+          .is("qbo_recurring_txn_id", null)
+          .maybeSingle();
+        const priorServicesById = new Map<string, Record<string, unknown>>();
+        for (const s of (existingForMerge?.services as Array<Record<string, unknown>> | null) || []) {
+          priorServicesById.set(String(s.service_id || ""), s);
+        }
+
         // Classify each service and build enriched services array.
         let rowMonthlyNet = 0;
         let rowAnnualTotal = 0;
@@ -459,6 +484,49 @@ Deno.serve(async (req) => {
             }
           }
 
+          // Approval-state merge with prior-pull data.
+          //   Invoice-inferred monthly  → default 'suggested' (user gate).
+          //   Invoice-inferred annual   → default 'approved' (mechanical).
+          //   Prior 'approved' within ±10% of new monthly → stays approved.
+          //   Prior 'rejected' → stays rejected.
+          //   Drift >10% → reverts to 'suggested' with review_reason.
+          const prior = priorServicesById.get(bucket.service_id);
+          let approval_status: "suggested" | "approved" | "rejected" =
+            cadence === "annual" ? "approved" : "suggested";
+          let approved_by: string | null = cadence === "annual" ? "system:annual_default" : null;
+          let approved_at: string | null = cadence === "annual" ? now : null;
+
+          if (prior) {
+            const priorStatus = String(prior.approval_status || "");
+            const priorMonthly = Number(prior.monthly_amount) || 0;
+            if (priorStatus === "rejected") {
+              approval_status = "rejected";
+              approved_by = (prior.approved_by as string) || null;
+              approved_at = (prior.approved_at as string) || null;
+            } else if (priorStatus === "approved") {
+              const within = priorMonthly === 0
+                ? monthlyAmount === 0
+                : Math.abs(monthlyAmount - priorMonthly) / priorMonthly <= 0.10;
+              if (within) {
+                approval_status = "approved";
+                approved_by = (prior.approved_by as string) || null;
+                approved_at = (prior.approved_at as string) || null;
+              } else {
+                approval_status = "suggested";
+                approved_by = null;
+                approved_at = null;
+                needs_review = true;
+                if (!review_reason) {
+                  review_reason = `Was approved at £${priorMonthly.toFixed(2)}/mo; latest £${monthlyAmount.toFixed(2)}/mo — re-review required`;
+                }
+                rowNeedsReview = true;
+                if (!firstReviewReason) {
+                  firstReviewReason = `${bucket.description}: ${review_reason}`;
+                }
+              }
+            }
+          }
+
           return {
             service_id: bucket.service_id,
             description: bucket.description,
@@ -473,7 +541,9 @@ Deno.serve(async (req) => {
             prior_amount: priorAmt !== undefined ? Math.round(priorAmt * 100) / 100 : null,
             needs_review,
             review_reason,
-            // billing_type retained for legacy readers; mirrors cadence.
+            approval_status,
+            approved_by,
+            approved_at,
             billing_type: cadence === "monthly" ? "recurring" : "annual",
           };
         });
@@ -490,13 +560,7 @@ Deno.serve(async (req) => {
         const anyMonthly = services.some((s) => s.cadence === "monthly");
         const rowBillingType = anyMonthly ? "recurring" : "annual";
 
-        const { data: existingRow } = await sb
-          .from("live_billing")
-          .select("id")
-          .eq("entity_id", entity.id)
-          .in("billing_type", ["recurring", "annual", "one_off"])
-          .is("qbo_recurring_txn_id", null)
-          .maybeSingle();
+        const existingRow = existingForMerge;
 
         const writeFields: Record<string, unknown> = {
           billing_type: rowBillingType,

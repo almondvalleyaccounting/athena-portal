@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, Btn, StatusBadge } from '../components/ui';
 import { exportQboCsv, downloadCsv, generateQboImportCsv } from '../lib/qboExport';
@@ -23,6 +23,7 @@ export default function BillingPage() {
   const [showSyncLog, setShowSyncLog] = useState(false);
   const fileRef = useRef(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // Manual entry form state
   const [newEntry, setNewEntry] = useState({
@@ -149,17 +150,29 @@ export default function BillingPage() {
   const activeBilling = billing.filter((b) => b.status === 'active');
 
   // Net for management view — VAT is pass-through, not revenue.
-  const recurringMonthlyNet = activeBilling.reduce((sum, b) => {
+  // Only *approved* monthly services count toward "Recurring Monthly" —
+  // everything else (suggested by the classifier, not yet reviewed) is
+  // surfaced separately in a pending bucket so the headline number is
+  // a curated truth, not a guess.
+  let recurringMonthlyNet = 0;
+  let pendingMonthlyNet = 0;
+  let pendingCount = 0;
+  for (const b of activeBilling) {
     const services = Array.isArray(b.services) ? b.services : [];
     for (const s of services) {
-      if (s.cadence === 'monthly') sum += Number(s.monthly_amount) || 0;
+      if (s.cadence !== 'monthly') continue;
+      const amt = Number(s.monthly_amount) || 0;
+      const status = s.approval_status || (b.qbo_recurring_txn_id ? 'approved' : 'suggested');
+      if (status === 'approved') recurringMonthlyNet += amt;
+      else if (status === 'suggested') { pendingMonthlyNet += amt; pendingCount += 1; }
+      // 'rejected' is excluded from both
     }
-    // Back-compat: rows written before per-service cadence existed.
+    // Back-compat: rows with no services jsonb fall back to the row's
+    // monthly_net (and are treated as approved — pre-approval era).
     if (services.length === 0 && b.billing_type === 'recurring') {
-      sum += Number(b.monthly_net) || 0;
+      recurringMonthlyNet += Number(b.monthly_net) || 0;
     }
-    return sum;
-  }, 0);
+  }
 
   // Annual fees: sum of services.cadence='annual' annual_amount across
   // all rows. Contributes to monthly equivalent as annual/12.
@@ -428,26 +441,22 @@ export default function BillingPage() {
       {/* QBO Connection Panel (includes Pull from QBO + Manage mapping) */}
       <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
 
-      {/* Summary Cards */}
+      {/* Summary Cards — Recurring Monthly (Approved) is the curated
+          headline. Pending is the queue that needs staff review. */}
       <div className="grid grid-cols-6 gap-3 mb-4">
-        <SummaryCard label="Recurring Monthly (Net)" value={fmt(recurringMonthlyNet)} color="ocean" />
-        <SummaryCard label="Recurring Annual" value={fmt(recurringAnnual)} color="ocean" />
+        <SummaryCard label="Recurring Monthly (Approved)" value={fmt(recurringMonthlyNet)} color="ocean" />
+        <SummaryCard
+          label={`Pending Approval${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
+          value={fmt(pendingMonthlyNet)}
+          color="amber"
+          hint={pendingCount > 0 ? 'Review →' : null}
+          onClick={pendingCount > 0 ? () => navigate('/manage/billing/review') : null}
+        />
         <SummaryCard label="Annual Fees (12mo)" value={fmt(annualFees)} color="teal" />
         <SummaryCard label="One-off (last 12 mo)" value={fmt(oneOffLast12mo)} color="purple" />
         <SummaryCard label="Clients with Billing" value={clientsWithBilling} color="green" />
         <SummaryCard label="Clients Without Billing" value={clientsWithout < 0 ? 0 : clientsWithout} color="amber" />
       </div>
-
-      {rowsNeedingReview > 0 && (
-        <div className="flex items-center gap-2 mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-          <span className="text-xs font-medium text-amber-800">
-            {rowsNeedingReview} client{rowsNeedingReview === 1 ? '' : 's'} need review — prior-month vs latest-month fees differ by more than 10%.
-          </span>
-          <span className="text-xs text-amber-600">
-            Filter the table below to see them (coming: cadence override picker).
-          </span>
-        </div>
-      )}
 
       {/* Revenue by service type — split by cadence */}
       {serviceBreakdown.length > 0 && (
@@ -777,7 +786,7 @@ export default function BillingPage() {
 
 // -- Helper Components --
 
-function SummaryCard({ label, value, color }) {
+function SummaryCard({ label, value, color, hint, onClick }) {
   const colors = {
     ocean: 'bg-ocean-50 text-ocean-700 border-ocean-200',
     green: 'bg-green-50 text-green-700 border-green-200',
@@ -785,10 +794,15 @@ function SummaryCard({ label, value, color }) {
     purple: 'bg-purple-50 text-purple-700 border-purple-200',
     teal: 'bg-teal-50 text-teal-700 border-teal-200',
   };
+  const clickable = typeof onClick === 'function';
   return (
-    <div className={`rounded-lg border p-3 ${colors[color] || colors.ocean}`}>
+    <div
+      className={`rounded-lg border p-3 ${colors[color] || colors.ocean} ${clickable ? 'cursor-pointer hover:opacity-80' : ''}`}
+      onClick={clickable ? onClick : undefined}
+    >
       <p className="text-xs opacity-70 mb-1">{label}</p>
       <p className="text-lg font-bold font-mono">{value}</p>
+      {hint && <p className="text-xs opacity-80 mt-1 underline">{hint}</p>}
     </div>
   );
 }
