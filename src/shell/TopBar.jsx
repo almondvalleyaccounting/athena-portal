@@ -7,12 +7,37 @@ import { useAuth } from './AppShell';
 import QuickSearch from './QuickSearch';
 import ActivityBell from './ActivityBell';
 
+/* ─── Known sub-page labels keyed by pathname prefix ──────────
+ * These are detail/feature routes accessed via in-page buttons rather
+ * than the sidebar, so they don't live in modules.config. Mapping
+ * them here gives the breadcrumb a trailing label like "QBO mapping"
+ * and — via useBreadcrumb below — keeps the parent segment clickable.
+ */
+const SUBPAGES = [
+  { prefix: '/clients/qbo-mapping', label: 'QBO mapping' },
+  { prefix: '/billing/qbo-mapping', label: 'QBO mapping' },
+  { prefix: '/admin/import/run', label: 'Import' },
+  { prefix: '/admin/import/history', label: 'History' },
+  { prefix: '/admin/import', label: 'Data Import' },
+  { prefix: '/admin/staff', label: 'Staff & Permissions' },
+];
+
 /* ─── Enhanced breadcrumb: returns array of segments ─────────── */
 function useBreadcrumb() {
   const { pathname } = useLocation();
 
   if (pathname === '/home') return [{ label: 'Home' }];
-  if (pathname.startsWith('/admin')) return [{ label: 'Admin' }];
+
+  // Admin routes: parent link to /admin/staff (or Data Import if that's
+  // the only one they have access to — both are accessible from the
+  // Admin group in the sidebar).
+  if (pathname.startsWith('/admin')) {
+    const segments = [{ label: 'Admin' }];
+    const sub = SUBPAGES.find((s) => pathname.startsWith(s.prefix));
+    if (sub && sub.prefix !== pathname) segments.push({ label: sub.label });
+    else if (sub) segments.push({ label: sub.label });
+    return segments;
+  }
 
   // Find matching module
   const mod = MODULES.find((m) => pathname.startsWith(m.route));
@@ -22,7 +47,6 @@ function useBreadcrumb() {
 
   // For modules with children, find the active child
   if (mod.children) {
-    // Match the most specific child route first
     const sorted = [...mod.children].sort((a, b) => b.route.length - a.route.length);
     const child = sorted.find((c) => {
       if (c.route === mod.route) return pathname === mod.route;
@@ -33,6 +57,15 @@ function useBreadcrumb() {
     }
   }
 
+  // Tail segment for known sub-pages (e.g. /billing/qbo-mapping)
+  const sub = SUBPAGES.find((s) => pathname.startsWith(s.prefix));
+  if (sub) {
+    const lastSeg = segments[segments.length - 1];
+    if (!lastSeg || lastSeg.label !== sub.label) {
+      segments.push({ label: sub.label, path: sub.prefix });
+    }
+  }
+
   return segments;
 }
 
@@ -40,6 +73,7 @@ function useBreadcrumb() {
 export default function TopBar() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const breadcrumbs = useBreadcrumb();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -75,30 +109,40 @@ export default function TopBar() {
     >
       {/* ── Left: Breadcrumb ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        {breadcrumbs.map((seg, i) => (
-          <React.Fragment key={i}>
-            {i > 0 && <span style={{ color: '#cbd5e1', fontSize: 13, userSelect: 'none' }}>/</span>}
-            {i < breadcrumbs.length - 1 ? (
-              <button
-                onClick={() => seg.path && navigate(seg.path)}
-                style={{
+        {breadcrumbs.map((seg, i) => {
+          // A segment is clickable iff it has a path AND that path is
+          // not the current pathname. This keeps "you are here"
+          // non-clickable while letting parent segments route back,
+          // even when they're the only segment in the list.
+          const isCurrent = !seg.path || seg.path === location.pathname;
+          return (
+            <React.Fragment key={i}>
+              {i > 0 && <span style={{ color: '#cbd5e1', fontSize: 13, userSelect: 'none' }}>/</span>}
+              {!isCurrent ? (
+                <button
+                  onClick={() => navigate(seg.path)}
+                  style={{
+                    fontFamily: "'Outfit', sans-serif", fontSize: 13,
+                    fontWeight: 500, color: '#64748b', background: 'none',
+                    border: 'none', cursor: 'pointer', padding: 0,
+                    transition: 'color 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = '#0e7fe0'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; }}
+                >
+                  {seg.label}
+                </button>
+              ) : (
+                <span style={{
                   fontFamily: "'Outfit', sans-serif", fontSize: 13,
-                  fontWeight: 500, color: '#64748b', background: 'none',
-                  border: 'none', cursor: 'pointer', padding: 0,
-                }}
-              >
-                {seg.label}
-              </button>
-            ) : (
-              <span style={{
-                fontFamily: "'Outfit', sans-serif", fontSize: 13,
-                fontWeight: 600, color: '#0f172a',
-              }}>
-                {seg.label}
-              </span>
-            )}
-          </React.Fragment>
-        ))}
+                  fontWeight: 600, color: '#0f172a',
+                }}>
+                  {seg.label}
+                </span>
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
 
       {/* ── Center: Quick Search ── */}
