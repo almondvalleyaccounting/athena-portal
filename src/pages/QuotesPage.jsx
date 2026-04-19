@@ -290,8 +290,27 @@ export default function QuotesPage() {
   };
 
   const gridCols = selectMode
-    ? '24px 2fr 1fr 1fr 1fr 1fr 1fr 1fr'
-    : '2fr 1fr 1fr 1fr 1fr 1fr 1fr';
+    ? '24px 2fr 1fr 1fr 1fr 1fr 1fr 1fr 36px'
+    : '2fr 1fr 1fr 1fr 1fr 1fr 1fr 36px';
+
+  const [menuQuoteId, setMenuQuoteId] = useState(null);
+  useEffect(() => {
+    const close = () => setMenuQuoteId(null);
+    if (menuQuoteId) {
+      document.addEventListener('click', close);
+      return () => document.removeEventListener('click', close);
+    }
+  }, [menuQuoteId]);
+
+  const handleSoftDelete = async (q) => {
+    if (!window.confirm(`Delete quote ${q.quote_ref}? It will be moved to the deleted state.`)) return;
+    const { error } = await supabase
+      .from('quotes')
+      .update({ status: 'deleted' })
+      .eq('id', q.id);
+    if (error) { alert('Delete failed: ' + error.message); return; }
+    await loadQuotes();
+  };
 
   return (
     <div className="p-6 max-w-5xl">
@@ -487,6 +506,7 @@ export default function QuotesPage() {
             <SortHeader col={netGross === 'net' ? 'monthly_net' : 'monthly_gross'} className="justify-end">{netGross === 'net' ? 'Monthly (Net)' : 'Monthly (Gross)'}</SortHeader>
             <SortHeader col="annual_total" className="justify-end">Annual (Net)</SortHeader>
             <SortHeader col="created_at" className="justify-end">Created</SortHeader>
+            <span />
           </div>
           {/* Rows */}
           {filtered.map(q => (
@@ -530,10 +550,56 @@ export default function QuotesPage() {
               <div className="text-right">
                 <span className="text-gray-500">{new Date(q.created_at).toLocaleDateString('en-GB')}</span>
               </div>
+              <div className="flex justify-end" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setMenuQuoteId(menuQuoteId === q.id ? null : q.id); }}
+                  title="Actions"
+                  style={{
+                    width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    border: 'none', background: 'none', borderRadius: 4, cursor: 'pointer', color: '#94a3b8',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#1e293b'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+                >
+                  &#8942;
+                </button>
+                {menuQuoteId === q.id && (
+                  <div style={{
+                    position: 'absolute', right: 0, top: '100%', marginTop: 4,
+                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 50, minWidth: 140,
+                    fontSize: 12, padding: 4,
+                  }}>
+                    <MenuItem onClick={() => { setMenuQuoteId(null); navigate('/manage/quotes/' + q.id); }}>Open</MenuItem>
+                    <MenuItem onClick={() => { setMenuQuoteId(null); navigate('/manage/quotes/' + q.id + '/edit'); }}>Edit</MenuItem>
+                    {q.status !== 'deleted' && (
+                      <MenuItem danger onClick={() => { setMenuQuoteId(null); handleSoftDelete(q); }}>Delete</MenuItem>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function MenuItem({ children, onClick, danger }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'block', width: '100%', textAlign: 'left',
+        padding: '6px 10px', border: 'none', borderRadius: 4,
+        background: 'none', cursor: 'pointer', fontSize: 12,
+        color: danger ? '#b91c1c' : '#1e293b',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = danger ? '#fee2e2' : '#f1f5f9'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+    >
+      {children}
+    </button>
   );
 }
