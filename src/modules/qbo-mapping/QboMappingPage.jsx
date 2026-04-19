@@ -503,7 +503,7 @@ export default function QboMappingPage() {
                             style={suggestionChip(top.score)}
                           >
                             <Check size={10} /> {top.entity_name}
-                            <span style={{ color: '#64748b', fontWeight: 400 }}> · {Math.round(top.score * 100)}%</span>
+                            <span style={{ opacity: 0.7, fontWeight: 400 }}> · {Math.round(top.score * 100)}%</span>
                           </button>
                           {rowSuggestions.length > 1 && (
                             <details style={{ display: 'inline', position: 'relative' }}>
@@ -523,7 +523,7 @@ export default function QboMappingPage() {
                                   <button key={s.entity_id} onClick={() => setEntity(r.qbo_customer_id, s.entity_id)}
                                     style={{ ...suggestionChip(s.score), justifyContent: 'flex-start' }}>
                                     <Check size={10} /> {s.entity_name}
-                                    <span style={{ color: '#64748b', fontWeight: 400 }}> · {Math.round(s.score * 100)}%</span>
+                                    <span style={{ opacity: 0.7, fontWeight: 400 }}> · {Math.round(s.score * 100)}%</span>
                                   </button>
                                 ))}
                               </div>
@@ -658,17 +658,29 @@ const bulkBarStyle = {
   position: 'sticky', top: 0, zIndex: 20,
 };
 
+// Graduated confidence styling — HSL lerp from near-white at the
+// min-score floor (0.3) to saturated ocean blue at 1.0. The eye reads
+// 95% vs 58% as obviously different intensities, not a binary chip.
 function suggestionChip(score) {
-  // Minimal theme: all chips on a neutral base. High-confidence (≥90%)
-  // get a brighter blue fill + sky ring so the eye catches them, but
-  // there's no green anywhere.
-  const strong = score >= AUTO_ACCEPT_THRESHOLD;
+  const floor = 0.30;
+  const ceiling = 1.00;
+  const t = Math.max(0, Math.min(1, (score - floor) / (ceiling - floor)));
+
+  // HSL hue 201 ≈ sky-500 / ocean. Saturation & lightness track t.
+  const bgSat   = Math.round(30 + 65 * t);   //  30% → 95%
+  const bgLight = Math.round(96 - 38 * t);   //  96% → 58%
+  const borderLight = Math.round(82 - 32 * t); // 82% → 50%
+  const textColor = t > 0.65 ? '#ffffff' : '#0c4a6e';
+  const borderWidth = score >= AUTO_ACCEPT_THRESHOLD ? 2 : 1;
+
   return {
     display: 'inline-flex', alignItems: 'center', gap: 3,
     fontSize: 11, padding: '3px 8px', borderRadius: 999,
-    background: strong ? '#e0f2fe' : '#f1f5f9',
-    border: '1px solid ' + (strong ? '#38bdf8' : '#e2e8f0'),
-    color: '#0c4a6e',
-    cursor: 'pointer', fontFamily: font, fontWeight: strong ? 600 : 500,
+    background: `hsl(201, ${bgSat}%, ${bgLight}%)`,
+    border: `${borderWidth}px solid hsl(201, 70%, ${borderLight}%)`,
+    color: textColor,
+    cursor: 'pointer', fontFamily: font,
+    fontWeight: t > 0.65 ? 600 : 500,
+    transition: 'all 0.15s',
   };
 }
