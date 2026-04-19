@@ -9,6 +9,7 @@ import BugReportPage from './modules/bugs/BugReportPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import AdminPage from './shell/AdminPage';
 import DataImportModule from './modules/data-import/DataImportModule';
+import QboMappingPage from './modules/qbo-mapping/QboMappingPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
 import BillingPage from './modules/billing/BillingPage';
@@ -51,6 +52,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/admin/staff" element={<AdminPage />} />
           <Route path="/admin/import/*" element={<DataImportModule />} />
           <Route path="/clients" element={<ClientsPage />} />
+          <Route path="/clients/qbo-mapping" element={<QboMappingPage />} />
+          <Route path="/billing/qbo-mapping" element={<QboMappingPage />} />
           <Route path="/clients/:id" element={<ClientDetailView />} />
           <Route path="/planner/*" element={<WorkPlannerModule />} />
           <Route path="/timesheets/*" element={<TimesheetModule />} />

@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Building2, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import NewClientModal from '../../components/NewClientModal';
+import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 
 /* ─── Clients list page ────────────────────────────────────── */
 export default function ClientsPage() {
   const navigate = useNavigate();
   const [entities, setEntities] = useState([]);
   const [search, setSearch] = useState('');
+  const [letter, setLetter] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showNewClient, setShowNewClient] = useState(false);
 
@@ -33,12 +35,16 @@ export default function ClientsPage() {
 
   useEffect(() => { loadEntities(); }, []);
 
-  const filtered = entities.filter((e) =>
-    !search ||
-    e.name?.toLowerCase().includes(search.toLowerCase()) ||
-    e.company_number?.toLowerCase().includes(search.toLowerCase()) ||
-    e.manager?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = entities.filter((e) => {
+    if (letter && firstCharBucket(e.name) !== letter) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      e.name?.toLowerCase().includes(q) ||
+      e.company_number?.toLowerCase().includes(q) ||
+      e.manager?.toLowerCase().includes(q)
+    );
+  });
 
   // Group by source
   const athenaClients = filtered.filter((e) => e.source === 'athena');
@@ -114,18 +120,32 @@ export default function ClientsPage() {
             {entities.length} clients{athenaClients.length > 0 && ` · ${athenaClients.length} created in Athena`}
           </p>
         </div>
-        <button
-          onClick={() => setShowNewClient(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            backgroundColor: '#0f172a', color: '#fff',
-            fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 10,
-            padding: '10px 18px', cursor: 'pointer', transition: 'all 0.2s ease',
-            fontFamily: "'Outfit', sans-serif",
-          }}
-        >
-          <Plus size={15} /> New Client
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => navigate('/clients/qbo-mapping')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              backgroundColor: '#fff', color: '#0f172a',
+              fontSize: 13, fontWeight: 500, border: '1px solid #e5e7eb', borderRadius: 10,
+              padding: '10px 14px', cursor: 'pointer',
+              fontFamily: "'Outfit', sans-serif",
+            }}
+          >
+            QBO mapping
+          </button>
+          <button
+            onClick={() => setShowNewClient(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              backgroundColor: '#0f172a', color: '#fff',
+              fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 10,
+              padding: '10px 18px', cursor: 'pointer', transition: 'all 0.2s ease',
+              fontFamily: "'Outfit', sans-serif",
+            }}
+          >
+            <Plus size={15} /> New Client
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -145,6 +165,8 @@ export default function ClientsPage() {
           onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
         />
       </div>
+
+      <AlphabetFilter items={entities} selected={letter} onChange={setLetter} />
 
       {loading ? (
         <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: 40 }}>Loading clients...</p>

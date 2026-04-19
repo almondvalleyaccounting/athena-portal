@@ -2,10 +2,12 @@
 // Adding a new source is a code change (per migration 021 D5 — source_key
 // is a text discriminator, no DB lookup table).
 
+// QBO retired from Data Import (2026-04-19). AVA's QBO sync lives on
+// Fee Engine → Fee Billing; client-QBO surfacing lives on the Clients
+// module. Data Import is file-upload only.
 export const SYSTEMS = [
   { id: 'bm', label: 'BrightManager' },
   { id: 'tc', label: 'TaxCalc' },
-  { id: 'qbo', label: 'QuickBooks Online' },
 ];
 
 export const SOURCES = [
@@ -86,17 +88,6 @@ export const SOURCES = [
       'Open TaxCalc',
       'Reports → Accounts → Export all',
       'Save as Excel (.xlsx)',
-    ],
-  },
-  {
-    key: 'qbo_fees',
-    system: 'qbo',
-    name: 'Fees',
-    accepts: '.csv',
-    tables: ['live_billing'],
-    comingSoon: true,
-    pullSteps: [
-      'QBO sync is managed by the existing qbo-pull edge function. Direct import from file is not yet available.',
     ],
   },
 ];

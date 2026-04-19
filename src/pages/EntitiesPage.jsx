@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Btn, fmt } from '../components/ui';
+import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 
 const PIPELINE_STATUSES = ['draft', 'pending_approval', 'approved', 'sent', 'accepted'];
 
@@ -9,6 +10,7 @@ export default function EntitiesPage() {
   const navigate = useNavigate();
   const [entities, setEntities] = useState([]);
   const [search, setSearch] = useState('');
+  const [letter, setLetter] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
@@ -71,9 +73,11 @@ export default function EntitiesPage() {
 
   useEffect(() => { loadEntities(); }, []);
 
-  const filtered = entities.filter(
-    (e) => !search || e.name?.toLowerCase().includes(search.toLowerCase()) || e.company_number?.includes(search)
-  );
+  const filtered = entities.filter((e) => {
+    if (letter && firstCharBucket(e.name) !== letter) return false;
+    if (!search) return true;
+    return e.name?.toLowerCase().includes(search.toLowerCase()) || e.company_number?.includes(search);
+  });
 
   // Split into pending (has pipeline quotes) and other
   const withPending = filtered.filter(e => e.hasPendingQuotes);
@@ -290,8 +294,12 @@ export default function EntitiesPage() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search by name or company number..."
-        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-4"
+        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-2"
       />
+
+      <div className="mb-3">
+        <AlphabetFilter items={entities} selected={letter} onChange={setLetter} />
+      </div>
 
       {loading ? (
         <p className="text-sm text-gray-400">Loading...</p>
