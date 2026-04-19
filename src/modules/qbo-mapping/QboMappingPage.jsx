@@ -48,7 +48,7 @@ export default function QboMappingPage() {
       const payload = unmapped.map((r) => ({ qbo_customer_id: r.qbo_customer_id, name: r.qbo_customer_name }));
       try {
         const { data, error } = await supabase.rpc('suggest_entities_for_qbo', {
-          customers: payload, min_score: 0.3, limit_n: 3,
+          customers: payload, min_score: 0.5, limit_n: 3,
         });
         if (!error && data) {
           const m = {};
