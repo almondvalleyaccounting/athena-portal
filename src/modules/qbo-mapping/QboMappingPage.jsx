@@ -83,6 +83,23 @@ export default function QboMappingPage() {
         return top && top.score >= AUTO_ACCEPT_THRESHOLD;
       });
     }
+    else if (filter === 'suggested') {
+      // Unmapped with at least one suggestion below the auto-accept
+      // threshold — i.e. "worth eyeballing, not a rubber stamp".
+      out = out.filter((r) => {
+        if (r.entity_id || r.role === 'not_a_client') return false;
+        const top = suggestions[r.qbo_customer_id]?.[0];
+        return top && top.score < AUTO_ACCEPT_THRESHOLD;
+      });
+    }
+    else if (filter === 'no_match') {
+      // Unmapped with zero suggestions. True unknowns — likely noise
+      // to Ignore, or genuinely new clients to add.
+      out = out.filter((r) => {
+        if (r.entity_id || r.role === 'not_a_client') return false;
+        return !(suggestions[r.qbo_customer_id]?.[0]);
+      });
+    }
     else if (filter === 'review') out = out.filter((r) => r.needs_review);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -105,13 +122,24 @@ export default function QboMappingPage() {
     return out;
   }, [rows, filter, search, entityMap, sort, suggestions]);
 
-  const counts = useMemo(() => ({
-    total: rows.length,
-    unmapped: rows.filter((r) => !r.entity_id && r.role !== 'not_a_client').length,
-    mapped: rows.filter((r) => r.entity_id).length,
-    ignored: rows.filter((r) => r.role === 'not_a_client').length,
-    review: rows.filter((r) => r.needs_review).length,
-  }), [rows]);
+  const counts = useMemo(() => {
+    let suggested = 0, noMatch = 0;
+    for (const r of rows) {
+      if (r.entity_id || r.role === 'not_a_client') continue;
+      const top = suggestions[r.qbo_customer_id]?.[0];
+      if (top && top.score < AUTO_ACCEPT_THRESHOLD) suggested++;
+      else if (!top) noMatch++;
+    }
+    return {
+      total: rows.length,
+      unmapped: rows.filter((r) => !r.entity_id && r.role !== 'not_a_client').length,
+      mapped: rows.filter((r) => r.entity_id).length,
+      ignored: rows.filter((r) => r.role === 'not_a_client').length,
+      review: rows.filter((r) => r.needs_review).length,
+      suggested,
+      no_match: noMatch,
+    };
+  }, [rows, suggestions]);
 
   // How many unmapped rows have a high-confidence top suggestion?
   const autoAcceptable = useMemo(() => {
@@ -319,6 +347,24 @@ export default function QboMappingPage() {
             active={filter === 'auto'}
             tone="blue"
             onClick={() => setFilter('auto')}
+          />
+        )}
+        {counts.suggested > 0 && (
+          <FilterPill
+            label="With suggestion"
+            count={counts.suggested}
+            active={filter === 'suggested'}
+            tone="blue"
+            onClick={() => setFilter('suggested')}
+          />
+        )}
+        {counts.no_match > 0 && (
+          <FilterPill
+            label="No match"
+            count={counts.no_match}
+            active={filter === 'no_match'}
+            tone="slate"
+            onClick={() => setFilter('no_match')}
           />
         )}
         <FilterPill label="Mapped" count={counts.mapped} active={filter === 'mapped'} tone="green" onClick={() => setFilter('mapped')} />
