@@ -85,7 +85,7 @@ export default function ClientDetailPage() {
           <p className="text-xs text-gray-400">
             {entity.type?.replace('_', ' ')}
             {entity.company_number ? ` \u00B7 ${entity.company_number}` : ''}
-            {entity.status ? ` \u00B7 ${entity.status}` : ''}
+            {entity.entity_status ? ` \u00B7 ${entity.entity_status}` : ''}
           </p>
         </div>
         <div className="flex gap-2">
@@ -106,7 +106,7 @@ export default function ClientDetailPage() {
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <p className="text-xs text-gray-400 mb-1">Status</p>
-          <p className="text-sm font-medium text-gray-700 capitalize">{entity.status || 'prospect'}</p>
+          <p className="text-sm font-medium text-gray-700 capitalize">{entity.entity_status || 'prospect'}</p>
         </div>
       </div>
 

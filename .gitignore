@@ -2,6 +2,24 @@ node_modules/
 dist/
 .env
 .env.local
+.env.*.local
 .DS_Store
+Thumbs.db
 
 .vercel
+
+# Claude Code / MCP — never commit
+.claude.json
+.claude.json.backup
+.claude/
+.mcp.json
+
+# Supabase local state
+.supabase/
+
+# Local-only: live client data, DB snapshots, session notes
+client_data/
+exports/
+scripts/gen-spec-v3.cjs
+Athena_Session_Summary_*.md
+Supabase Snippet *.csv

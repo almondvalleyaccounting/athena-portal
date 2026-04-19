@@ -55,7 +55,7 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
         name: name.trim(),
         prospect_email: email.trim() || null,
         type: entityType,
-        status: 'prospect',
+        entity_status: 'prospect',
       });
       if (result) {
         onClose();

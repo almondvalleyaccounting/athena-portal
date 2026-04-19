@@ -205,11 +205,11 @@ export async function fetchEntities() {
 export async function insertEntity(fields) {
   // Accepts either a string (legacy) or an object with { name, type, status, prospect_email }
   const row = typeof fields === 'string'
-    ? { name: fields, type: 'limited_company', status: 'prospect', source: 'athena' }
+    ? { name: fields, type: 'limited_company', entity_status: 'prospect', source: 'athena' }
     : {
         name: fields.name,
         type: fields.type || 'limited_company',
-        status: fields.status || 'prospect',
+        entity_status: fields.entity_status || fields.status || 'prospect',
         source: 'athena',
         prospect_email: fields.prospect_email || fields.email || null,
       };

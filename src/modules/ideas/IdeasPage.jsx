@@ -3,6 +3,15 @@ import { ThumbsUp, Plus, Lightbulb } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 
+const STATUS_OPTIONS = [
+  { key: 'new',         label: 'New',          bg: '#f1f5f9', fg: '#475569' },
+  { key: 'planned',     label: 'Planned',      bg: '#dbeafe', fg: '#1e40af' },
+  { key: 'in_progress', label: 'In progress',  bg: '#fef3c7', fg: '#78350f' },
+  { key: 'done',        label: 'Done',         bg: '#dcfce7', fg: '#166534' },
+  { key: 'wont_do',     label: "Won't do",     bg: '#fee2e2', fg: '#991b1b' },
+];
+const STATUS_MAP = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.key, s]));
+
 /* ─── Ideas module ─────────────────────────────────────────────── */
 export default function IdeasPage() {
   const { profile } = useAuth();
@@ -91,6 +100,20 @@ export default function IdeasPage() {
     try {
       const { error } = await supabase.from('ideas').delete().eq('id', idea.id);
       if (!error) setIdeas((prev) => prev.filter((i) => i.id !== idea.id));
+    } catch { /* silent */ }
+  };
+
+  // ── Change status ──
+  const canManageStatus = profile?.can_manage_portal === true || profile?.is_portal_admin === true;
+  const handleStatusChange = async (idea, newStatus) => {
+    try {
+      const { error } = await supabase
+        .from('ideas')
+        .update({ status: newStatus })
+        .eq('id', idea.id);
+      if (!error) {
+        setIdeas((prev) => prev.map((i) => i.id === idea.id ? { ...i, status: newStatus } : i));
+      }
     } catch { /* silent */ }
   };
 
@@ -324,19 +347,17 @@ export default function IdeasPage() {
                     {idea.text}
                   </p>
                 )}
-                <p
-                  style={{
-                    fontFamily: "'Outfit', sans-serif",
-                    fontSize: '12px',
-                    color: '#94a3b8',
-                  }}
-                >
-                  {idea.submitted_by_name || 'Unknown'} &middot;{' '}
-                  {new Date(idea.created_at).toLocaleDateString('en-GB', {
-                    day: 'numeric',
-                    month: 'short',
-                  })}
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 12, color: '#94a3b8' }}>
+                    {idea.submitted_by_name || 'Unknown'} &middot;{' '}
+                    {new Date(idea.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  </p>
+                  <StatusPill
+                    idea={idea}
+                    canEdit={canManageStatus}
+                    onChange={(next) => handleStatusChange(idea, next)}
+                  />
+                </div>
               </div>
 
               {/* Delete button */}
@@ -359,5 +380,36 @@ export default function IdeasPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function StatusPill({ idea, canEdit, onChange }) {
+  const current = STATUS_MAP[idea.status] || STATUS_MAP.new;
+  if (!canEdit) {
+    return (
+      <span style={{
+        fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+        background: current.bg, color: current.fg, textTransform: 'uppercase', letterSpacing: '0.04em',
+      }}>{current.label}</span>
+    );
+  }
+  return (
+    <select
+      value={idea.status || 'new'}
+      onChange={(e) => onChange(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        fontSize: 10, fontWeight: 600, padding: '2px 18px 2px 8px', borderRadius: 999,
+        background: current.bg, color: current.fg,
+        border: 'none', outline: 'none', cursor: 'pointer',
+        fontFamily: "'Outfit', sans-serif",
+        textTransform: 'uppercase', letterSpacing: '0.04em',
+        appearance: 'none', WebkitAppearance: 'none',
+      }}
+    >
+      {STATUS_OPTIONS.map((s) => (
+        <option key={s.key} value={s.key}>{s.label}</option>
+      ))}
+    </select>
   );
 }

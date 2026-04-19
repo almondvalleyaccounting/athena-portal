@@ -182,7 +182,7 @@ export default function EntitiesPage() {
           <p className={`text-sm font-medium text-gray-700 ${!selectMode ? 'hover:text-ocean-600 cursor-pointer' : ''}`}>{e.name}</p>
           <p className="text-xs text-gray-400">
             {e.type?.replace('_', ' ')}{e.company_number ? ` \u00B7 ${e.company_number}` : ''}
-            {e.status && e.status !== 'prospect' && ` \u00B7 ${e.status}`}
+            {e.entity_status && e.entity_status !== 'prospect' && ` \u00B7 ${e.entity_status}`}
           </p>
         </div>
       </div>

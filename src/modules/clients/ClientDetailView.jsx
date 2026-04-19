@@ -136,7 +136,7 @@ export default function ClientDetailView() {
             {entity.company_number && <span>· {entity.company_number}</span>}
             {entity.manager && <span>· Managed by {entity.manager}</span>}
             {entity.source === 'athena' && <Badge bg="#dbeafe" color="#0e7fe0">Athena</Badge>}
-            <Badge bg={entity.status === 'prospect' ? '#eff6ff' : entity.status === 'active' ? '#f0fdf4' : '#f1f5f9'} color={entity.status === 'prospect' ? '#0e7fe0' : entity.status === 'active' ? '#15803d' : '#64748b'}>{entity.status || 'active'}</Badge>
+            <Badge bg={entity.entity_status === 'prospect' ? '#eff6ff' : entity.entity_status === 'active' ? '#f0fdf4' : '#f1f5f9'} color={entity.entity_status === 'prospect' ? '#0e7fe0' : entity.entity_status === 'active' ? '#15803d' : '#64748b'}>{entity.entity_status || 'active'}</Badge>
           </div>
         </div>
         {/* Time period filter */}

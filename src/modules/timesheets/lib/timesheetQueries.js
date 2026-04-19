@@ -32,7 +32,7 @@ export async function fetchTimesheetEntries(staffId, weekStart, weekEnd) {
 }
 
 /* ─── Upsert a timesheet entry (create or update minutes for a cell) ── */
-export async function upsertTimesheetEntry({ staffId, entityId, service, workDate, minutes, notes }) {
+export async function upsertTimesheetEntry({ staffId, entityId, service, workDate, minutes, notes, source = 'manual' }) {
   // Skip the lookup — just insert directly. If it conflicts, update.
   // The old check-then-insert pattern was fragile with RLS.
   const { data, error } = await supabase
@@ -44,7 +44,7 @@ export async function upsertTimesheetEntry({ staffId, entityId, service, workDat
       work_date: workDate,
       minutes: minutes || 0,
       notes: notes || null,
-      source: 'manual',
+      source,
     })
     .select()
     .single();
@@ -54,6 +54,39 @@ export async function upsertTimesheetEntry({ staffId, entityId, service, workDat
     throw error;
   }
   return data;
+}
+
+/* ─── Override a completion-sourced cell (delete any prior override + insert new) ── */
+export async function upsertCompletionOverride({ staffId, entityId, service, workDate, minutes }) {
+  // Delete any existing override for this cell
+  let del = supabase
+    .from('timesheet_entries')
+    .delete()
+    .eq('staff_id', staffId)
+    .eq('work_date', workDate)
+    .eq('source', 'override');
+  if (entityId) del = del.eq('entity_id', entityId); else del = del.is('entity_id', null);
+  if (service) del = del.eq('service', service); else del = del.is('service', null);
+  await del;
+
+  // Insert the new override (minutes may be 0, which still overrides)
+  return upsertTimesheetEntry({
+    staffId, entityId, service, workDate, minutes, source: 'override',
+  });
+}
+
+/* ─── Clear a completion override (revert to the original completion minutes) ── */
+export async function clearCompletionOverride({ staffId, entityId, service, workDate }) {
+  let q = supabase
+    .from('timesheet_entries')
+    .delete()
+    .eq('staff_id', staffId)
+    .eq('work_date', workDate)
+    .eq('source', 'override');
+  if (entityId) q = q.eq('entity_id', entityId); else q = q.is('entity_id', null);
+  if (service) q = q.eq('service', service); else q = q.is('service', null);
+  const { error } = await q;
+  if (error) throw error;
 }
 
 /* ─── Delete all manual entries for a row (entity+service+staff) in a week ── */

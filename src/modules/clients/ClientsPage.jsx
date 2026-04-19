@@ -44,7 +44,7 @@ export default function ClientsPage() {
       .insert({
         name: fields.name,
         type: fields.type || 'limited_company',
-        status: fields.status || 'prospect',
+        entity_status: fields.entity_status || fields.status || 'prospect',
         prospect_email: fields.prospect_email || null,
         source: 'athena',
       })

@@ -8,6 +8,7 @@ import IdeasPage from './modules/ideas/IdeasPage';
 import BugReportPage from './modules/bugs/BugReportPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import AdminPage from './shell/AdminPage';
+import DataImportModule from './modules/data-import/DataImportModule';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
 import BillingPage from './modules/billing/BillingPage';
@@ -46,7 +47,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/ideas" element={<IdeasPage />} />
           <Route path="/bugs" element={<BugReportPage />} />
           <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />
+          <Route path="/admin/staff" element={<AdminPage />} />
+          <Route path="/admin/import/*" element={<DataImportModule />} />
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/clients/:id" element={<ClientDetailView />} />
           <Route path="/planner/*" element={<WorkPlannerModule />} />

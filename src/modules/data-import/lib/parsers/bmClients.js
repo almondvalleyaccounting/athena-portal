@@ -1,0 +1,145 @@
+// BrightManager Clients export → normalised per-row payload for the
+// import_bm_clients RPC. Column names verified against a 625-row export
+// (All Clients, 2026-04-15).
+
+import { parseCsv } from '../parseCsv';
+
+const CLIENT_TYPE_MAP = {
+  'Private Limited Company': 'limited_company',
+  'Limited Liability Partnership': 'partnership',
+  'Partnership': 'partnership',
+  'Self Assessment': 'sole_trader',
+};
+
+function normUtr(v) {
+  if (!v) return null;
+  const stripped = String(v).replace(/\D/g, '');
+  return stripped || null;
+}
+
+function normCompanyNumber(v) {
+  if (!v) return null;
+  const t = String(v).trim().toUpperCase().replace(/\s+/g, '');
+  return t || null;
+}
+
+function normEmail(v) {
+  if (!v) return null;
+  const t = String(v).trim().toLowerCase();
+  return t || null;
+}
+
+function normText(v) {
+  if (v == null) return null;
+  const t = String(v).trim();
+  return t || null;
+}
+
+function normNI(v) {
+  if (!v) return null;
+  const t = String(v).replace(/\s+/g, '').toUpperCase();
+  return t || null;
+}
+
+// Parse raw CSV text → structured per-row objects. No DB calls.
+// Returns { rows, warnings, skipped, headerOk }
+export function parseBmClientsCsv(text) {
+  const raw = parseCsv(text);
+  if (raw.length < 2) {
+    return { rows: [], warnings: [], skipped: [], headerOk: false };
+  }
+  const header = raw[0].map((h) => h.replace(/^\uFEFF/, '').trim());
+  const idxOf = (name) => header.indexOf(name);
+
+  // Required columns check
+  const required = ['Client', 'Client Type', 'Internal Reference'];
+  const missing = required.filter((c) => idxOf(c) < 0);
+  if (missing.length) {
+    return {
+      rows: [], warnings: [], skipped: [],
+      headerOk: false,
+      headerError: `Missing required columns: ${missing.join(', ')}`,
+    };
+  }
+
+  const get = (row, name) => {
+    const i = idxOf(name);
+    return i < 0 ? null : normText(row[i]);
+  };
+
+  const rows = [];
+  const warnings = [];
+  const skipped = [];
+
+  for (let i = 1; i < raw.length; i++) {
+    const row = raw[i];
+    if (row.length !== header.length) continue; // malformed
+    if (!row[0]) continue; // blank line
+
+    const name = get(row, 'Client');
+    const rawType = get(row, 'Client Type');
+    const bmId = get(row, 'Internal Reference');
+    const type = rawType ? CLIENT_TYPE_MAP[rawType] || null : null;
+
+    if (!name) {
+      skipped.push({ row: i + 1, bm_client_id: bmId, reason: 'missing Client name' });
+      continue;
+    }
+    if (!bmId) {
+      skipped.push({ row: i + 1, bm_client_id: null, name, reason: 'missing Internal Reference — cannot link across systems' });
+      continue;
+    }
+    if (!type) {
+      skipped.push({ row: i + 1, bm_client_id: bmId, name, reason: `unmapped Client Type "${rawType}"` });
+      continue;
+    }
+
+    // UTR resolution — company UTR for LTD/LLP, Partnership UTR for partnerships
+    let utr = null;
+    if (type === 'limited_company') {
+      utr = normUtr(get(row, 'Company UTR'));
+    } else if (type === 'partnership') {
+      utr = normUtr(get(row, 'Partnership/Trust UTR')) || normUtr(get(row, 'Company UTR'));
+    } else {
+      utr = normUtr(get(row, 'Personal UTR Number'));
+    }
+
+    if (utr && utr.length !== 10) {
+      warnings.push({ row: i + 1, bm_client_id: bmId, field: 'utr', message: `UTR "${utr}" is ${utr.length} digits (expected 10)` });
+    }
+
+    const companyNumber = normCompanyNumber(get(row, 'Company Number'));
+    if (type === 'limited_company' && !companyNumber) {
+      warnings.push({ row: i + 1, bm_client_id: bmId, field: 'company_number', message: 'limited company without Company Number' });
+    }
+
+    const primaryEmail = normEmail(get(row, 'Email'));
+    if (!primaryEmail) {
+      warnings.push({ row: i + 1, bm_client_id: bmId, field: 'email', message: 'no primary email — client portal user cannot be invited later' });
+    }
+
+    rows.push({
+      _source_row: i + 1,
+      bm_client_id: bmId,
+      name,
+      type,
+      company_number: companyNumber,
+      utr,
+      vat_number: normText(get(row, 'VAT Number'))?.replace(/\s+/g, '') || null,
+      paye_ref: normText(get(row, 'PAYE Employers Reference')),
+      accounts_office_ref: normText(get(row, 'PAYE Accounts Office Reference')),
+      ch_auth_code: normText(get(row, 'Companies House Authentication Code')),
+      manager: normText(get(row, 'Manager')),
+      grade: normText(get(row, 'Client Grade')),
+      // Primary person info carried for later use (not written in v1)
+      _primary_email: primaryEmail,
+      _primary_name: [get(row, 'First Name'), get(row, 'Last Name')].filter(Boolean).join(' ') || null,
+      _primary_phone: normText(get(row, 'Mobile Number')),
+      _primary_ni: normNI(get(row, 'NI Number')),
+    });
+  }
+
+  return {
+    rows, warnings, skipped, headerOk: true,
+  };
+}

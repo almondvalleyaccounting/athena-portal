@@ -97,6 +97,16 @@ export default function Sidebar() {
   const metaModules = visibleModules.filter((m) => m.group === 'meta');
 
   const isOwner = profile?.can_manage_portal === true;
+  const canImport = profile?.can_import_data === true || profile?.is_portal_admin === true;
+  const adminChildren = [
+    isOwner && { id: 'admin-staff', label: 'Staff & Permissions', route: '/admin/staff' },
+    canImport && { id: 'admin-import', label: 'Data Import', route: '/admin/import' },
+  ].filter(Boolean);
+  const showAdminGroup = adminChildren.length > 0;
+  const [adminExpanded, setAdminExpanded] = useState(false);
+  useEffect(() => {
+    if (location.pathname.startsWith('/admin')) setAdminExpanded(true);
+  }, [location.pathname]);
   const initials = profile?.name
     ? profile.name.trim().charAt(0).toUpperCase()
     : profile?.name
@@ -334,8 +344,8 @@ export default function Sidebar() {
           );
         })}
 
-        {/* Admin link — Bobby only */}
-        {isOwner && (
+        {/* Admin group — children depend on user permissions */}
+        {showAdminGroup && (
           <>
             <div
               style={{
@@ -350,8 +360,44 @@ export default function Sidebar() {
               active={isActive('/admin')}
               collapsed={collapsed}
               clickable
-              onClick={() => navigate('/admin')}
+              hasChevron={!collapsed && adminChildren.length > 0}
+              chevronOpen={adminExpanded}
+              onClick={() => {
+                if (collapsed) {
+                  // Collapsed sidebar: clicking Admin navigates to first available child
+                  navigate(adminChildren[0].route);
+                } else {
+                  setAdminExpanded((v) => !v);
+                }
+              }}
             />
+            {adminExpanded && !collapsed && adminChildren.map((child) => {
+              const active = location.pathname.startsWith(child.route);
+              return (
+                <button
+                  key={child.id}
+                  onClick={() => navigate(child.route)}
+                  style={{
+                    display: 'flex', alignItems: 'center', width: '100%',
+                    padding: '6px 12px 6px 44px', borderRadius: 6, border: 'none',
+                    background: active ? 'rgba(56,189,248,0.08)' : 'transparent',
+                    cursor: 'pointer', marginBottom: 1, position: 'relative',
+                  }}
+                >
+                  {active && (
+                    <div style={{
+                      position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
+                      width: 2, height: 14, backgroundColor: '#38bdf8', borderRadius: '0 2px 2px 0',
+                    }} />
+                  )}
+                  <span style={{
+                    fontFamily: "'Outfit', sans-serif", fontSize: 13,
+                    fontWeight: active ? 600 : 400,
+                    color: active ? '#0f172a' : '#64748b',
+                  }}>{child.label}</span>
+                </button>
+              );
+            })}
           </>
         )}
       </nav>
