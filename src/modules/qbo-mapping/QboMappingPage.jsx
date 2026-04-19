@@ -409,12 +409,17 @@ export default function QboMappingPage() {
                 return (
                   <tr key={r.qbo_customer_id} style={{
                     borderTop: '1px solid #f1f5f9',
-                    background: isSel ? '#eff6ff'
-                      : r.needs_review ? '#faf5ff'
-                      : isIgnored ? '#f8fafc'
-                      : isUnmapped ? '#fefce8'
+                    // Minimal theme: rows stay white; state carried by a
+                    // 3px inset left accent bar. Review is the one state
+                    // that also tints the row, since it's the loudest call.
+                    background: isSel ? '#f0f9ff'
+                      : r.needs_review ? '#eef2ff'
                       : 'transparent',
-                    opacity: isIgnored && !r.needs_review ? 0.65 : 1,
+                    boxShadow: isSel ? 'inset 3px 0 0 #38bdf8'
+                      : r.needs_review ? 'inset 3px 0 0 #818cf8'
+                      : isUnmapped ? 'inset 3px 0 0 #fcd34d'
+                      : 'none',
+                    opacity: isIgnored && !r.needs_review ? 0.55 : 1,
                   }}>
                     <Td>
                       <input
@@ -430,9 +435,9 @@ export default function QboMappingPage() {
                       </div>
                       {r.needs_review && r.previous_qbo_customer_name && (
                         <div style={{
-                          fontSize: 10, color: '#6b21a8', marginTop: 2,
+                          fontSize: 10, color: '#3730a3', marginTop: 2,
                           display: 'inline-block', padding: '1px 6px', borderRadius: 4,
-                          background: '#f3e8ff', border: '1px solid #d8b4fe',
+                          background: '#eef2ff', border: '1px solid #c7d2fe',
                         }}
                         title="This QBO customer was Ignored; its name changed in the last pull. Review and re-map if it's now a real client.">
                           renamed — was: {r.previous_qbo_customer_name}
@@ -530,12 +535,15 @@ export default function QboMappingPage() {
 }
 
 function FilterPill({ label, count, active, tone, onClick }) {
+  // Minimal theme: mapped switches from green to blue, review stays as
+  // indigo (it's the loud callout). Amber preserved for unmapped since
+  // it's the colour of "needs your attention" in the rest of the portal.
   const tones = {
     amber: { active: { bg: '#fef3c7', fg: '#78350f', border: '#fcd34d' }, idle: { bg: '#fff', fg: '#78350f', border: '#fcd34d' } },
-    green: { active: { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, idle: { bg: '#fff', fg: '#166534', border: '#86efac' } },
+    green: { active: { bg: '#dbeafe', fg: '#1e40af', border: '#93c5fd' }, idle: { bg: '#fff', fg: '#1e40af', border: '#93c5fd' } },
     slate: { active: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' }, idle: { bg: '#fff', fg: '#64748b', border: '#cbd5e1' } },
     blue: { active: { bg: '#dbeafe', fg: '#1e40af', border: '#93c5fd' }, idle: { bg: '#fff', fg: '#1e40af', border: '#93c5fd' } },
-    purple: { active: { bg: '#f3e8ff', fg: '#6b21a8', border: '#d8b4fe' }, idle: { bg: '#fff', fg: '#6b21a8', border: '#d8b4fe' } },
+    purple: { active: { bg: '#eef2ff', fg: '#3730a3', border: '#c7d2fe' }, idle: { bg: '#fff', fg: '#3730a3', border: '#c7d2fe' } },
     default: { active: { bg: '#0f172a', fg: '#fff', border: '#0f172a' }, idle: { bg: '#fff', fg: '#475569', border: '#e5e7eb' } },
   };
   const t = tones[tone] || tones.default;
@@ -605,12 +613,16 @@ const bulkBarStyle = {
 };
 
 function suggestionChip(score) {
+  // Minimal theme: all chips on a neutral base. High-confidence (≥90%)
+  // get a brighter blue fill + sky ring so the eye catches them, but
+  // there's no green anywhere.
+  const strong = score >= AUTO_ACCEPT_THRESHOLD;
   return {
     display: 'inline-flex', alignItems: 'center', gap: 3,
     fontSize: 11, padding: '3px 8px', borderRadius: 999,
-    background: score >= AUTO_ACCEPT_THRESHOLD ? '#dcfce7' : '#f0f9ff',
-    border: '1px solid ' + (score >= AUTO_ACCEPT_THRESHOLD ? '#86efac' : '#bae6fd'),
-    color: score >= AUTO_ACCEPT_THRESHOLD ? '#166534' : '#0c4a6e',
-    cursor: 'pointer', fontFamily: font, fontWeight: 500,
+    background: strong ? '#e0f2fe' : '#f1f5f9',
+    border: '1px solid ' + (strong ? '#38bdf8' : '#e2e8f0'),
+    color: '#0c4a6e',
+    cursor: 'pointer', fontFamily: font, fontWeight: strong ? 600 : 500,
   };
 }
