@@ -94,7 +94,10 @@ export default function ImportView() {
             source={source}
             profile={profile}
             onCompleted={() => setSessionDone((prev) => ({ ...prev, [source.key]: true }))}
-            onNavigateHistory={() => navigate('/admin/import/history')}
+            onPickAnother={() => setParams({})}
+            onGoStatus={() => navigate('/admin/import')}
+            onGoHistory={() => navigate('/admin/import/history')}
+            onViewClients={() => navigate('/clients')}
           />
         )}
       </div>
@@ -103,7 +106,7 @@ export default function ImportView() {
 }
 
 /* ─── RunPanel ──────────────────────────────────────────────── */
-function RunPanel({ source, profile, onCompleted, onNavigateHistory }) {
+function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onGoHistory, onViewClients }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [stage, setStage] = useState('upload'); // upload | validated | running | done
@@ -388,11 +391,15 @@ function RunPanel({ source, profile, onCompleted, onNavigateHistory }) {
       )}
 
       {stage === 'done' && (
+
         <ResultView
+          source={source}
           validation={validation}
           run={run}
-          onAnother={() => { clearFile(); }}
-          onViewHistory={onNavigateHistory}
+          onPickAnother={onPickAnother}
+          onGoStatus={onGoStatus}
+          onGoHistory={onGoHistory}
+          onViewClients={onViewClients}
         />
       )}
     </div>
@@ -798,9 +805,11 @@ function ProgressView({ validation }) {
   );
 }
 
-function ResultView({ validation, run, onAnother, onViewHistory }) {
+function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHistory, onViewClients }) {
   const wr = validation.writeResult;
   const hasRealWrite = !!wr;
+  // Does this source populate entities? (controls whether "View clients" shortcut shows)
+  const touchesEntities = source?.tables?.includes('entities');
   return (
     <div style={{
       padding: 20, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10,
@@ -837,9 +846,13 @@ function ResultView({ validation, run, onAnother, onViewHistory }) {
           </div>
         ))
       )}
-      <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-        <button onClick={onAnother} style={btnPrimary}>Import another source</button>
-        <button onClick={onViewHistory} style={btnSecondary}>View in History</button>
+      <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+        <button onClick={onGoStatus} style={btnPrimary}>Back to Status</button>
+        <button onClick={onPickAnother} style={btnSecondary}>Pick another source</button>
+        {touchesEntities && hasRealWrite && wr.entities_written > 0 && (
+          <button onClick={onViewClients} style={btnSecondary}>View clients</button>
+        )}
+        <button onClick={onGoHistory} style={btnSecondary}>View in History</button>
       </div>
     </div>
   );
