@@ -378,9 +378,10 @@ export default function QboMappingPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 32 }} />
-              <col />
-              <col style={{ width: 340 }} />
-              <col style={{ width: 120 }} />
+              <col style={{ width: '30%' }} />
+              <col style={{ width: '35%' }} />
+              <col style={{ width: '27%' }} />
+              <col style={{ width: 110 }} />
             </colgroup>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
@@ -393,6 +394,7 @@ export default function QboMappingPage() {
                   />
                 </Th>
                 <Th>QBO customer</Th>
+                <Th>Suggested match</Th>
                 <Th>Athena entity</Th>
                 <Th></Th>
               </tr>
@@ -441,36 +443,30 @@ export default function QboMappingPage() {
                       </div>
                     </Td>
                     <Td>
-                      <ClientTypeAhead
-                        entityList={entities}
-                        value={r.entity_id || ''}
-                        onChange={(id) => setEntity(r.qbo_customer_id, id)}
-                        onAddNew={() => null}
-                        size="small"
-                      />
-                      {isUnmapped && top && (
-                        <div style={{ marginTop: 4, display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                      {isUnmapped && top ? (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                           <button
                             onClick={() => acceptTopSuggestion(r)}
                             disabled={saving === r.qbo_customer_id}
-                            title={`${Math.round(top.score * 100)}% match`}
+                            title={`Accept — ${Math.round(top.score * 100)}% match`}
                             style={suggestionChip(top.score)}
                           >
                             <Check size={10} /> {top.entity_name}
                             <span style={{ color: '#64748b', fontWeight: 400 }}> · {Math.round(top.score * 100)}%</span>
                           </button>
                           {rowSuggestions.length > 1 && (
-                            <details style={{ display: 'inline' }}>
+                            <details style={{ display: 'inline', position: 'relative' }}>
                               <summary style={{
                                 fontSize: 10, color: '#64748b', cursor: 'pointer',
-                                listStyle: 'none',
-                              }}>+{rowSuggestions.length - 1} more</summary>
+                                listStyle: 'none', padding: '2px 4px',
+                              }}>+{rowSuggestions.length - 1}</summary>
                               <div style={{
                                 position: 'absolute', background: '#fff',
                                 border: '1px solid #e5e7eb', borderRadius: 6,
-                                padding: 4, marginTop: 4, zIndex: 10,
+                                padding: 4, marginTop: 2, zIndex: 10,
                                 boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                                 display: 'flex', flexDirection: 'column', gap: 3,
+                                minWidth: 220,
                               }}>
                                 {rowSuggestions.slice(1).map((s) => (
                                   <button key={s.entity_id} onClick={() => setEntity(r.qbo_customer_id, s.entity_id)}
@@ -483,12 +479,20 @@ export default function QboMappingPage() {
                             </details>
                           )}
                         </div>
+                      ) : isUnmapped ? (
+                        <span style={{ fontSize: 10, color: '#94a3b8' }}>No close match</span>
+                      ) : (
+                        <span style={{ fontSize: 11, color: '#cbd5e1' }}>—</span>
                       )}
-                      {isUnmapped && !top && (
-                        <div style={{ marginTop: 4, fontSize: 10, color: '#94a3b8' }}>
-                          No close match — pick manually or Ignore.
-                        </div>
-                      )}
+                    </Td>
+                    <Td>
+                      <ClientTypeAhead
+                        entityList={entities}
+                        value={r.entity_id || ''}
+                        onChange={(id) => setEntity(r.qbo_customer_id, id)}
+                        onAddNew={() => null}
+                        size="small"
+                      />
                     </Td>
                     <Td>
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
