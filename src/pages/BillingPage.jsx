@@ -56,6 +56,9 @@ export default function BillingPage() {
     }
   }, []);
 
+  const [groupMembers, setGroupMembers] = useState([]); // [{entity_id, group_id}]
+  const [ignoredEntityIds, setIgnoredEntityIds] = useState(new Set());
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -72,11 +75,33 @@ export default function BillingPage() {
         .in('status', ['accepted', 'committed'])
         .order('accepted_at', { ascending: false });
 
-      // Load entities for manual entry
+      // Load entities (full set — we need status + source to compute
+      // "clients without billing" correctly, excluding prospects and
+      // entities whose only QBO link is an ignored customer).
       const { data: ents } = await supabase
         .from('entities')
-        .select('id, name')
+        .select('id, name, entity_status, source')
         .order('name');
+
+      // Billing-group membership — if any member of a group has a
+      // live_billing row, every member counts as billed (relationship
+      // billing: sole trader billed via the connected company).
+      const { data: groupMemberRows } = await supabase
+        .from('billing_group_members')
+        .select('entity_id, group_id');
+
+      // QBO customer mappings: entities whose mapping is flagged
+      // role='not_a_client' are explicitly ignored — exclude them from
+      // the "without billing" count.
+      const { data: mappingRows } = await supabase
+        .from('qbo_customer_mappings')
+        .select('entity_id, role')
+        .eq('role', 'not_a_client');
+
+      const ignored = new Set();
+      for (const m of (mappingRows || [])) {
+        if (m.entity_id) ignored.add(m.entity_id);
+      }
 
       // Load QBO sync log
       const { data: logData } = await supabase
@@ -88,6 +113,8 @@ export default function BillingPage() {
       setBilling(billingData || []);
       setQuotes(acceptedQuotes || []);
       setEntities(ents || []);
+      setGroupMembers(groupMemberRows || []);
+      setIgnoredEntityIds(ignored);
       setSyncLog(logData || []);
     } catch (e) {
       console.error('Failed to load billing data:', e);
@@ -114,13 +141,71 @@ export default function BillingPage() {
   };
 
   // -- Summary calculations --
+  // Split revenue into recurring (monthly + annualised) and one-off
+  // (actual 12-month sum, no extrapolation). DM Beauty £110 used to
+  // show as £1,320/yr recurring — that was the invoice-fallback bug.
   const activeBilling = billing.filter((b) => b.status === 'active');
-  const totalMonthlyGross = activeBilling.reduce((s, b) => s + (Number(b.monthly_gross) || 0), 0);
-  const totalAnnual = activeBilling.reduce((s, b) => s + (Number(b.annual_total) || 0), 0);
-  const clientsWithBilling = new Set(activeBilling.map((b) => b.entity_id)).size;
-  const allEntityIds = new Set(entities.map((e) => e.id));
+  const recurringRows = activeBilling.filter((b) => b.billing_type !== 'one_off');
+  const oneOffRows = activeBilling.filter((b) => b.billing_type === 'one_off');
+
+  const recurringMonthlyGross = recurringRows.reduce((s, b) => s + (Number(b.monthly_gross) || 0), 0);
+  const recurringAnnual = recurringRows.reduce((s, b) => s + (Number(b.annual_total) || 0), 0);
+  const oneOffLast12mo = oneOffRows.reduce((s, b) => s + (Number(b.annual_total) || 0), 0);
+
+  // "Clients with billing" counts the *entities* that appear in any
+  // live_billing row (recurring or one-off).
   const billedEntityIds = new Set(activeBilling.map((b) => b.entity_id));
-  const clientsWithout = allEntityIds.size - billedEntityIds.size;
+  const clientsWithBilling = billedEntityIds.size;
+
+  // "Clients without billing" — BM-sourced, active, not billed, not
+  // ignored-via-QBO, and not billed through a relationship-group mate.
+  // Build: group_id → member entity_ids
+  const membersByGroup = {};
+  for (const m of groupMembers) {
+    (membersByGroup[m.group_id] ||= []).push(m.entity_id);
+  }
+  // For each group, if any member is billed, every member is "billed
+  // through the group" (relationship billing — company paid, sole
+  // trader owner attached).
+  const groupBilledEntityIds = new Set();
+  for (const [, memberIds] of Object.entries(membersByGroup)) {
+    const anyBilled = memberIds.some((id) => billedEntityIds.has(id));
+    if (anyBilled) memberIds.forEach((id) => groupBilledEntityIds.add(id));
+  }
+  const effectivelyBilled = new Set([...billedEntityIds, ...groupBilledEntityIds]);
+
+  const clientsWithout = entities.filter((e) => {
+    if (e.entity_status !== 'active') return false;
+    if (e.source && e.source !== 'brightmanager' && e.source !== 'athena') return false;
+    if (ignoredEntityIds.has(e.id)) return false;
+    return !effectivelyBilled.has(e.id);
+  }).length;
+
+  // -- Revenue by service type (recurring vs one-off) --
+  // Aggregates across every live_billing row's `services` jsonb. Each
+  // service line carries its own `billing_type` tag (new writer); for
+  // legacy rows without the tag, fall back to the parent row's type.
+  const serviceBreakdown = (() => {
+    const map = new Map(); // service_id → { service_id, recurring_annual, one_off_annual }
+    for (const b of activeBilling) {
+      const rowType = b.billing_type === 'one_off' ? 'one_off' : 'recurring';
+      const services = Array.isArray(b.services) ? b.services : [];
+      for (const s of services) {
+        const kind = s.billing_type || rowType;
+        const key = s.service_id || s.description || 'Unknown';
+        if (!map.has(key)) {
+          map.set(key, { service_id: key, description: s.description || key, recurring_annual: 0, one_off_annual: 0 });
+        }
+        const entry = map.get(key);
+        const amt = Number(s.annual_amount) || 0;
+        if (kind === 'one_off') entry.one_off_annual += amt;
+        else entry.recurring_annual += amt;
+      }
+    }
+    return [...map.values()].sort((a, b) =>
+      (b.recurring_annual + b.one_off_annual) - (a.recurring_annual + a.one_off_annual)
+    );
+  })();
 
   // -- Filtered billing --
   const filtered = billing.filter((b) => {
@@ -304,12 +389,36 @@ export default function BillingPage() {
       <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
-        <SummaryCard label="Total Monthly (Gross)" value={fmt(totalMonthlyGross)} color="ocean" />
-        <SummaryCard label="Total Annual" value={fmt(totalAnnual)} color="ocean" />
+      <div className="grid grid-cols-5 gap-3 mb-4">
+        <SummaryCard label="Recurring Monthly (Gross)" value={fmt(recurringMonthlyGross)} color="ocean" />
+        <SummaryCard label="Recurring Annual" value={fmt(recurringAnnual)} color="ocean" />
+        <SummaryCard label="One-off (last 12 mo)" value={fmt(oneOffLast12mo)} color="purple" />
         <SummaryCard label="Clients with Billing" value={clientsWithBilling} color="green" />
         <SummaryCard label="Clients Without Billing" value={clientsWithout < 0 ? 0 : clientsWithout} color="amber" />
       </div>
+
+      {/* Revenue by service type */}
+      {serviceBreakdown.length > 0 && (
+        <div className="mb-4">
+          <h3 className="text-sm font-bold text-ocean-700 mb-2">Revenue by service type (annual)</h3>
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
+              <span>Service</span>
+              <span className="text-right">Recurring</span>
+              <span className="text-right">One-off (12mo)</span>
+              <span className="text-right">Total</span>
+            </div>
+            {serviceBreakdown.map((s) => (
+              <div key={s.service_id} className="grid text-xs px-4 py-2 border-b border-gray-50" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
+                <span className="text-gray-700">{s.description}</span>
+                <span className="text-right font-mono text-ocean-700">{fmt(s.recurring_annual)}</span>
+                <span className="text-right font-mono text-purple-700">{fmt(s.one_off_annual)}</span>
+                <span className="text-right font-mono text-gray-700 font-semibold">{fmt(s.recurring_annual + s.one_off_annual)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search + Actions */}
       <div className="flex items-center gap-3 mb-4">
@@ -619,6 +728,7 @@ function SummaryCard({ label, value, color }) {
     ocean: 'bg-ocean-50 text-ocean-700 border-ocean-200',
     green: 'bg-green-50 text-green-700 border-green-200',
     amber: 'bg-amber-50 text-amber-700 border-amber-200',
+    purple: 'bg-purple-50 text-purple-700 border-purple-200',
   };
   return (
     <div className={`rounded-lg border p-3 ${colors[color] || colors.ocean}`}>

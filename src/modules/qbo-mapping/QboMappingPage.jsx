@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Check, Zap } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
+import NewClientModal from '../../components/NewClientModal';
+import { insertEntity } from '../work-planner/lib/supabaseQueries';
 
 const font = "'Outfit', sans-serif";
 
@@ -32,6 +34,7 @@ export default function QboMappingPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [newId, setNewId] = useState('');
   const [newName, setNewName] = useState('');
+  const [newClientModal, setNewClientModal] = useState({ open: false, initialName: '', qboId: null, resolve: null });
 
   const load = async () => {
     setLoading(true);
@@ -265,6 +268,34 @@ export default function QboMappingPage() {
       alert('Delete failed: ' + error.message);
       setRows(prevRows);
     }
+  };
+
+  // Open the NewClientModal from the typeahead's "+ Add" action. Returns
+  // a Promise that resolves with the new entity (or null on cancel) so
+  // ClientTypeAhead can select it. The qboId lets us map the row after save.
+  const openNewClientModal = (name, qboId) => {
+    return new Promise((resolve) => {
+      setNewClientModal({ open: true, initialName: name, qboId, resolve });
+    });
+  };
+
+  const handleNewClientSave = async (fields) => {
+    try {
+      const data = await insertEntity(fields);
+      setEntities((prev) => [...prev, { id: data.id, name: data.name }].sort((a, b) => a.name.localeCompare(b.name)));
+      if (newClientModal.qboId) setEntity(newClientModal.qboId, data.id);
+      if (newClientModal.resolve) newClientModal.resolve(data);
+      setNewClientModal({ open: false, initialName: '', qboId: null, resolve: null });
+      return data;
+    } catch (err) {
+      // Let the modal surface the error; don't close it.
+      throw err;
+    }
+  };
+
+  const handleNewClientClose = () => {
+    if (newClientModal.resolve) newClientModal.resolve(null);
+    setNewClientModal({ open: false, initialName: '', qboId: null, resolve: null });
   };
 
   const addManual = async () => {
@@ -541,7 +572,7 @@ export default function QboMappingPage() {
                         entityList={entities}
                         value={r.entity_id || ''}
                         onChange={(id) => setEntity(r.qbo_customer_id, id)}
-                        onAddNew={() => null}
+                        onAddNew={(name) => openNewClientModal(name, r.qbo_customer_id)}
                         size="small"
                       />
                     </Td>
@@ -576,6 +607,13 @@ export default function QboMappingPage() {
           </table>
         </div>
       )}
+
+      <NewClientModal
+        open={newClientModal.open}
+        initialName={newClientModal.initialName}
+        onSave={handleNewClientSave}
+        onClose={handleNewClientClose}
+      />
     </div>
   );
 }

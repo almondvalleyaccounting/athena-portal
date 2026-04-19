@@ -126,7 +126,8 @@ Deno.serve(async (req) => {
     for (const e of entities || []) entityById.set(e.id as string, e);
 
     // ──────────────────────────────────────────────────────────
-    // 4. Fetch recurring txns and invoices.
+    // 4. Fetch recurring txns and invoices (last 12 months only —
+    //    one-off revenue is scored over a rolling 12-month window).
     // ──────────────────────────────────────────────────────────
     let recurringTxns: Array<Record<string, unknown>> = [];
     try {
@@ -137,11 +138,44 @@ Deno.serve(async (req) => {
       console.log("RecurringTransaction query failed (may not be available):", (e as Error).message);
     }
 
-    const invoiceResult = await qboQuery("SELECT * FROM Invoice MAXRESULTS 500") as Record<string, unknown>;
+    // Rolling 12-month window for invoice aggregation.
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    const twelveMonthsAgoIso = twelveMonthsAgo.toISOString().slice(0, 10);
+
+    const invoiceResult = await qboQuery(
+      `SELECT * FROM Invoice WHERE TxnDate >= '${twelveMonthsAgoIso}' MAXRESULTS 1000`,
+    ) as Record<string, unknown>;
     const invoiceResponse = invoiceResult?.QueryResponse as Record<string, unknown>;
     const invoices = (invoiceResponse?.Invoice || []) as Array<Record<string, unknown>>;
 
-    const stats = { created: 0, updated: 0, skipped: 0, matched: 0, errors: [] as string[], unmatched_customers: [] as string[] };
+    const stats = {
+      created: 0, updated: 0, skipped: 0, matched: 0,
+      errors: [] as string[], unmatched_customers: [] as string[],
+      one_off_created: 0, one_off_skipped: 0,
+    };
+
+    // ScheduleInfo → monthly factor. Any QBO recurring template stores
+    // an amount *per-occurrence*; to normalise to a monthly figure we
+    // divide by "occurrences per month" (inverted: multiply by months
+    // per occurrence, then invert when summing).
+    //   Monthly,  N=1  → monthly = total / 1
+    //   Monthly,  N=3  → quarterly: monthly = total / 3
+    //   Yearly,   N=1  → annual:    monthly = total / 12
+    //   Weekly,   N=1  → monthly = total * 52/12
+    //   Daily,    N=1  → monthly = total * 365/12
+    const monthlyFactor = (schedule: Record<string, unknown> | undefined): number => {
+      if (!schedule) return 1;
+      const type = String(schedule.IntervalType || "Monthly");
+      const n = Math.max(1, Number(schedule.NumInterval || 1));
+      switch (type) {
+        case "Daily":   return (365 / 12) / n;
+        case "Weekly":  return (52 / 12) / n;
+        case "Yearly":  return 1 / (12 * n);
+        case "Monthly":
+        default:        return 1 / n;
+      }
+    };
 
     // ──────────────────────────────────────────────────────────
     // 5. Process recurring transactions. Entity resolution now
@@ -180,18 +214,25 @@ Deno.serve(async (req) => {
           return sum + (Number(line.Amount) || 0);
         }, 0);
 
-        const monthlyNet = totalAmount;
+        // Normalise per-occurrence amount to a monthly equivalent using
+        // the template's ScheduleInfo. Defaults to monthly if absent.
+        const schedule = (innerTxn.ScheduleInfo || txn.ScheduleInfo) as Record<string, unknown> | undefined;
+        const factor = monthlyFactor(schedule);
+        const monthlyNet = Math.round(totalAmount * factor * 100) / 100;
         const monthlyVat = Math.round(monthlyNet * 0.2 * 100) / 100;
         const monthlyGross = Math.round((monthlyNet + monthlyVat) * 100) / 100;
         const annualTotal = Math.round(monthlyNet * 12 * 100) / 100;
 
         const services = lines.map((l: Record<string, unknown>) => {
           const detail = l.SalesItemLineDetail as Record<string, unknown> | undefined;
+          const perOccurrence = Number(l.Amount) || 0;
+          const monthly = Math.round(perOccurrence * factor * 100) / 100;
           return {
             service_id: detail?.ItemRef ? String((detail.ItemRef as Record<string, unknown>).name || "service") : "service",
             description: String(l.Description || ""),
-            monthly_amount: Number(l.Amount) || 0,
-            annual_amount: (Number(l.Amount) || 0) * 12,
+            monthly_amount: monthly,
+            annual_amount: Math.round(monthly * 12 * 100) / 100,
+            billing_type: "recurring" as const,
           };
         });
 
@@ -260,23 +301,44 @@ Deno.serve(async (req) => {
     }
 
     // ──────────────────────────────────────────────────────────
-    // 6. Process invoices (one per customer — the latest).
+    // 6. Process one-off invoices — aggregate last-12-months invoices
+    //    per customer into a single `billing_type='one_off'` row.
+    //    No monthly extrapolation; annual_total is the actual sum.
+    //    A customer with a RecurringTransaction gets BOTH rows: the
+    //    recurring template (above) *and* a one-off row for invoices
+    //    outside the recurring pattern (ad-hoc work, etc.) — but for
+    //    v1 we only emit one-off rows for customers with no recurring
+    //    template to keep the signal clean. Extending to "extras on
+    //    top of recurring" is a future refinement.
     // ──────────────────────────────────────────────────────────
-    const customerInvoices = new Map<string, Record<string, unknown>>();
+    const invoicesByCustomer = new Map<string, Array<Record<string, unknown>>>();
     for (const inv of invoices) {
       const customerRef = inv.CustomerRef as Record<string, unknown> | undefined;
       if (!customerRef) continue;
       const custId = String(customerRef.value);
-      const existing = customerInvoices.get(custId);
-      if (!existing || String(inv.TxnDate || "") > String(existing.TxnDate || "")) {
-        customerInvoices.set(custId, inv);
-      }
+      if (!invoicesByCustomer.has(custId)) invoicesByCustomer.set(custId, []);
+      invoicesByCustomer.get(custId)!.push(inv);
     }
 
-    for (const [qboCustomerId, inv] of customerInvoices) {
+    // Customers already covered by a recurring txn — skip for the
+    // one-off path.
+    const customersWithRecurring = new Set<string>();
+    for (const txn of recurringTxns) {
+      const innerTxn = (txn.Invoice || txn.SalesReceipt || txn) as Record<string, unknown>;
+      const customerRef = (innerTxn.CustomerRef || txn.CustomerRef) as Record<string, unknown> | undefined;
+      if (customerRef) customersWithRecurring.add(String(customerRef.value));
+    }
+
+    for (const [qboCustomerId, custInvoices] of invoicesByCustomer) {
       try {
-        const customerRef = inv.CustomerRef as Record<string, unknown>;
-        const customerName = String(customerRef.name || "Unknown");
+        if (customersWithRecurring.has(qboCustomerId)) {
+          stats.one_off_skipped++;
+          continue;
+        }
+
+        const customerName = String(
+          (custInvoices[0].CustomerRef as Record<string, unknown>).name || "Unknown",
+        );
 
         const entityId = entityIdByQboId.get(qboCustomerId);
         const entity = entityId ? entityById.get(entityId) : null;
@@ -288,56 +350,90 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Skip if this entity already has any live_billing row.
-        // Recurring txns (processed earlier) take precedence over the
-        // most-recent invoice fallback path.
-        const { data: anyBilling } = await sb
+        // Aggregate line-items across all 12-month invoices for this
+        // customer. Group by service (ItemRef name) so the dashboard
+        // can show "one-off revenue by service type".
+        const svcAgg = new Map<string, { service_id: string; description: string; amount: number; count: number }>();
+        let totalNet = 0;
+        let invoiceCount = 0;
+
+        for (const inv of custInvoices) {
+          const lines = ((inv.Line || []) as Array<Record<string, unknown>>)
+            .filter((l: Record<string, unknown>) => l.DetailType === "SalesItemLineDetail");
+          if (lines.length === 0) continue;
+          invoiceCount++;
+          for (const l of lines) {
+            const detail = l.SalesItemLineDetail as Record<string, unknown> | undefined;
+            const svcId = detail?.ItemRef
+              ? String((detail.ItemRef as Record<string, unknown>).name || "service")
+              : "service";
+            const amt = Number(l.Amount) || 0;
+            totalNet += amt;
+            const prev = svcAgg.get(svcId);
+            if (prev) {
+              prev.amount += amt;
+              prev.count += 1;
+            } else {
+              svcAgg.set(svcId, {
+                service_id: svcId,
+                description: String(l.Description || svcId),
+                amount: amt,
+                count: 1,
+              });
+            }
+          }
+        }
+
+        if (invoiceCount === 0 || totalNet === 0) continue;
+
+        const annualTotal = Math.round(totalNet * 100) / 100;
+        const services = [...svcAgg.values()].map((s) => ({
+          service_id: s.service_id,
+          description: s.description,
+          monthly_amount: 0,
+          annual_amount: Math.round(s.amount * 100) / 100,
+          invoice_count: s.count,
+          billing_type: "one_off" as const,
+        }));
+
+        // Upsert: one one_off row per entity. If one exists from a
+        // prior pull, refresh it; otherwise insert new.
+        const { data: existingOneOff } = await sb
           .from("live_billing")
           .select("id")
           .eq("entity_id", entity.id)
+          .eq("billing_type", "one_off")
           .maybeSingle();
 
-        if (anyBilling) continue;
-
-        const lines = ((inv.Line || []) as Array<Record<string, unknown>>)
-          .filter((l: Record<string, unknown>) => l.DetailType === "SalesItemLineDetail");
-
-        if (lines.length === 0) continue;
-
-        const totalAmount = lines.reduce((sum: number, line: Record<string, unknown>) => {
-          return sum + (Number(line.Amount) || 0);
-        }, 0);
-
-        const monthlyNet = totalAmount;
-        const monthlyVat = Math.round(monthlyNet * 0.2 * 100) / 100;
-        const monthlyGross = Math.round((monthlyNet + monthlyVat) * 100) / 100;
-        const annualTotal = Math.round(monthlyNet * 12 * 100) / 100;
-
-        const services = lines.map((l: Record<string, unknown>) => {
-          const detail = l.SalesItemLineDetail as Record<string, unknown> | undefined;
-          return {
-            service_id: detail?.ItemRef ? String((detail.ItemRef as Record<string, unknown>).name || "service") : "service",
-            description: String(l.Description || ""),
-            monthly_amount: Number(l.Amount) || 0,
-            annual_amount: (Number(l.Amount) || 0) * 12,
-          };
-        });
-
-        await sb.from("live_billing").insert({
-          entity_id: entity.id,
-          billing_type: "recurring",
-          monthly_net: monthlyNet,
-          monthly_vat: monthlyVat,
-          monthly_gross: monthlyGross,
-          annual_total: annualTotal,
-          services,
-          status: "active",
-          qbo_invoice_id: String(inv.Id),
-          qbo_customer_id: qboCustomerId,
-          last_synced_qbo: now,
-          qbo_sync_status: "synced",
-        });
-        stats.created++;
+        if (existingOneOff) {
+          await sb.from("live_billing").update({
+            monthly_net: 0,
+            monthly_vat: 0,
+            monthly_gross: 0,
+            annual_total: annualTotal,
+            services,
+            qbo_customer_id: qboCustomerId,
+            last_synced_qbo: now,
+            qbo_sync_status: "synced",
+          }).eq("id", existingOneOff.id);
+          stats.updated++;
+        } else {
+          await sb.from("live_billing").insert({
+            entity_id: entity.id,
+            billing_type: "one_off",
+            monthly_net: 0,
+            monthly_vat: 0,
+            monthly_gross: 0,
+            annual_total: annualTotal,
+            services,
+            status: "active",
+            qbo_customer_id: qboCustomerId,
+            last_synced_qbo: now,
+            qbo_sync_status: "synced",
+          });
+          stats.one_off_created++;
+          stats.created++;
+        }
 
         if (!entity.qbo_customer_id) {
           await sb.from("entities").update({
@@ -351,13 +447,13 @@ Deno.serve(async (req) => {
           entity_id: entity.id as string,
           entity_name: entity.name as string,
           qbo_entity_type: "Invoice",
-          qbo_entity_id: String(inv.Id),
+          qbo_entity_id: `${invoiceCount}-invoices-12mo`,
           status: "success",
-          detail: { monthly_net: monthlyNet, services_count: services.length },
+          detail: { annual_total: annualTotal, invoice_count: invoiceCount, services_count: services.length },
           initiated_by: initiatedBy,
         });
       } catch (err) {
-        stats.errors.push(`Invoice ${inv.Id}: ${(err as Error).message}`);
+        stats.errors.push(`Customer ${qboCustomerId} (one-off): ${(err as Error).message}`);
       }
     }
 
@@ -372,7 +468,7 @@ Deno.serve(async (req) => {
         qbo_customers_unmapped: (mapStats.seen - [...mapByQboId.values()].filter(m => m.entity_id).length),
         recurring_found: recurringTxns.length,
         invoices_found: invoices.length,
-        unique_customers: customerInvoices.size,
+        unique_customers: invoicesByCustomer.size,
         ...stats,
       },
     });
