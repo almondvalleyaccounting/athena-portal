@@ -494,26 +494,58 @@ function ValidationReport({ validation }) {
       )}
 
       {warnings.length > 0 && (
-        <details style={{ marginBottom: 8 }}>
+        <details style={{ marginBottom: 8 }} open={warnings.length <= 10}>
           <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#1e293b', padding: 6 }}>
             Warnings ({warnings.length})
           </summary>
-          <div style={{ fontSize: 12, color: '#475569', paddingLeft: 16 }}>
-            {warnings.slice(0, 20).map((w, i) => <div key={i}>• {w.message || JSON.stringify(w)}</div>)}
-            {warnings.length > 20 && <div style={{ color: '#94a3b8' }}>… {warnings.length - 20} more</div>}
-          </div>
+          <IssueTable issues={warnings} kind="warning" />
         </details>
       )}
 
       {skippedRows.length > 0 && (
-        <details>
+        <details open={skippedRows.length <= 10}>
           <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#1e293b', padding: 6 }}>
             Skipped — will not be imported ({skippedRows.length})
           </summary>
-          <div style={{ fontSize: 12, color: '#475569', paddingLeft: 16 }}>
-            {skippedRows.slice(0, 20).map((s, i) => <div key={i}>• {s.message || JSON.stringify(s)}</div>)}
-          </div>
+          <IssueTable issues={skippedRows} kind="skipped" />
         </details>
+      )}
+    </div>
+  );
+}
+
+function IssueTable({ issues, kind }) {
+  const [limit, setLimit] = useState(50);
+  const shown = issues.slice(0, limit);
+  const fieldColor = kind === 'skipped' ? '#991b1b' : '#b45309';
+  return (
+    <div style={{ paddingLeft: 8, paddingRight: 8 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: font }}>
+        <thead>
+          <tr style={{ background: '#f8fafc' }}>
+            <th style={ithRow}>Row</th>
+            <th style={ithRow}>BM ID</th>
+            <th style={{ ...ithRow, minWidth: 160 }}>Client</th>
+            <th style={ithRow}>Field</th>
+            <th style={{ ...ithRow, width: '100%' }}>{kind === 'skipped' ? 'Reason' : 'Message'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((it, i) => (
+            <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
+              <td style={itdRow}>{it.row ?? '—'}</td>
+              <td style={{ ...itdRow, fontFamily: 'monospace', color: '#64748b' }}>{it.bm_client_id || '—'}</td>
+              <td style={{ ...itdRow, color: '#0f172a' }}>{it.name || '—'}</td>
+              <td style={{ ...itdRow, color: fieldColor, fontWeight: 500 }}>{it.field || '—'}</td>
+              <td style={{ ...itdRow, color: '#475569' }}>{it.message || it.reason || JSON.stringify(it)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {issues.length > limit && (
+        <button onClick={() => setLimit(limit + 100)} style={{ ...btnGhost, fontSize: 11, marginTop: 6 }}>
+          Show {Math.min(100, issues.length - limit)} more of {issues.length - limit}
+        </button>
       )}
     </div>
   );
@@ -894,3 +926,5 @@ const convRow = {
 };
 const resultRow = { display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, padding: '3px 0' };
 const resultNum = { color: '#065f46', fontFamily: 'monospace' };
+const ithRow = { textAlign: 'left', padding: '6px 8px', fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' };
+const itdRow = { padding: '6px 8px', fontSize: 12, verticalAlign: 'top' };

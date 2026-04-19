@@ -82,15 +82,15 @@ export function parseBmClientsCsv(text) {
     const type = rawType ? CLIENT_TYPE_MAP[rawType] || null : null;
 
     if (!name) {
-      skipped.push({ row: i + 1, bm_client_id: bmId, reason: 'missing Client name' });
+      skipped.push({ row: i + 1, bm_client_id: bmId, name: null, field: 'name', reason: 'missing Client name' });
       continue;
     }
     if (!bmId) {
-      skipped.push({ row: i + 1, bm_client_id: null, name, reason: 'missing Internal Reference — cannot link across systems' });
+      skipped.push({ row: i + 1, bm_client_id: null, name, field: 'bm_client_id', reason: 'missing Internal Reference — cannot link across systems' });
       continue;
     }
     if (!type) {
-      skipped.push({ row: i + 1, bm_client_id: bmId, name, reason: `unmapped Client Type "${rawType}"` });
+      skipped.push({ row: i + 1, bm_client_id: bmId, name, field: 'type', reason: `unmapped Client Type "${rawType}"` });
       continue;
     }
 
@@ -105,17 +105,17 @@ export function parseBmClientsCsv(text) {
     }
 
     if (utr && utr.length !== 10) {
-      warnings.push({ row: i + 1, bm_client_id: bmId, field: 'utr', message: `UTR "${utr}" is ${utr.length} digits (expected 10)` });
+      warnings.push({ row: i + 1, bm_client_id: bmId, name, field: 'utr', message: `UTR "${utr}" is ${utr.length} digits (expected 10)` });
     }
 
     const companyNumber = normCompanyNumber(get(row, 'Company Number'));
     if (type === 'limited_company' && !companyNumber) {
-      warnings.push({ row: i + 1, bm_client_id: bmId, field: 'company_number', message: 'limited company without Company Number' });
+      warnings.push({ row: i + 1, bm_client_id: bmId, name, field: 'company_number', message: 'limited company without Company Number' });
     }
 
     const primaryEmail = normEmail(get(row, 'Email'));
     if (!primaryEmail) {
-      warnings.push({ row: i + 1, bm_client_id: bmId, field: 'email', message: 'no primary email — client portal user cannot be invited later' });
+      warnings.push({ row: i + 1, bm_client_id: bmId, name, field: 'email', message: 'no primary email — client portal user cannot be invited later' });
     }
 
     rows.push({
