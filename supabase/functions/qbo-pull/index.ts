@@ -15,40 +15,122 @@ Deno.serve(async (req) => {
 
     const sb = getServiceClient();
 
-    // 1. Query QBO for invoices (recurring transactions may not be available on all plans)
+    // ──────────────────────────────────────────────────────────
+    // 1. Fetch every QBO customer (not just those with invoices).
+    //    Populates qbo_customer_mappings so legacy / billing-initiator /
+    //    dormant customers appear in the Mapping UI even when they have
+    //    no current recurring txn or invoice.
+    // ──────────────────────────────────────────────────────────
+    const custResult = await qboQuery("SELECT * FROM Customer MAXRESULTS 1000") as Record<string, unknown>;
+    const customerResponse = custResult?.QueryResponse as Record<string, unknown>;
+    const qboCustomers = (customerResponse?.Customer || []) as Array<Record<string, unknown>>;
+
+    // ──────────────────────────────────────────────────────────
+    // 2. Load entities (for name-based auto-matching on first-seen)
+    //    and existing mappings.
+    // ──────────────────────────────────────────────────────────
+    const { data: entities } = await sb.from("entities").select("id, name, display_name, qbo_customer_id");
+    const entityMap = new Map<string, Record<string, unknown>>();
+
+    for (const e of entities || []) {
+      const name = (e.name || "").toLowerCase().trim();
+      if (name) entityMap.set(name, e);
+      if (e.display_name) entityMap.set(String(e.display_name).toLowerCase().trim(), e);
+    }
+
+    const { data: existingMaps } = await sb.from("qbo_customer_mappings").select("qbo_customer_id, entity_id, role");
+    const mapByQboId = new Map<string, { entity_id: string | null; role: string }>();
+    for (const m of existingMaps || []) {
+      mapByQboId.set(m.qbo_customer_id as string, {
+        entity_id: (m.entity_id as string) || null,
+        role: (m.role as string) || 'primary',
+      });
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // 3. Upsert every QBO customer into qbo_customer_mappings.
+    //    - Existing rows: refresh name + last_seen only; leave the
+    //      staff-set entity_id / role / notes alone.
+    //    - New rows: attempt a name-based auto-match to an entity;
+    //      unmatched rows are stored with entity_id=null for later
+    //      manual resolution in the Mapping UI.
+    // ──────────────────────────────────────────────────────────
+    const now = new Date().toISOString();
+    const mapStats = { seen: 0, new: 0, auto_matched: 0, refreshed: 0, errors: [] as string[] };
+
+    for (const cust of qboCustomers) {
+      try {
+        const qboId = String(cust.Id || "");
+        if (!qboId) continue;
+        const name = String(cust.DisplayName || cust.CompanyName || cust.FullyQualifiedName || "").trim();
+        mapStats.seen++;
+
+        const existing = mapByQboId.get(qboId);
+        if (existing) {
+          await sb.from("qbo_customer_mappings")
+            .update({ qbo_customer_name: name, last_seen: now })
+            .eq("qbo_customer_id", qboId);
+          mapStats.refreshed++;
+        } else {
+          // First time we've seen this QBO customer — try to auto-link
+          const matchedEntity = entityMap.get(name.toLowerCase());
+          await sb.from("qbo_customer_mappings").insert({
+            qbo_customer_id: qboId,
+            qbo_customer_name: name,
+            entity_id: matchedEntity ? (matchedEntity.id as string) : null,
+            role: 'primary',
+            first_seen: now,
+            last_seen: now,
+          });
+          mapStats.new++;
+          if (matchedEntity) {
+            mapStats.auto_matched++;
+            mapByQboId.set(qboId, { entity_id: matchedEntity.id as string, role: 'primary' });
+          } else {
+            mapByQboId.set(qboId, { entity_id: null, role: 'primary' });
+          }
+        }
+      } catch (err) {
+        mapStats.errors.push(`Customer ${cust.Id}: ${(err as Error).message}`);
+      }
+    }
+
+    // Build resolver: qbo_customer_id → entity_id (via mappings table,
+    // now fully populated). Primary source of truth for billing processing.
+    const entityIdByQboId = new Map<string, string>();
+    for (const [qboId, m] of mapByQboId) {
+      if (m.entity_id && m.role !== 'not_a_client') {
+        entityIdByQboId.set(qboId, m.entity_id);
+      }
+    }
+    const entityById = new Map<string, Record<string, unknown>>();
+    for (const e of entities || []) entityById.set(e.id as string, e);
+
+    // ──────────────────────────────────────────────────────────
+    // 4. Fetch recurring txns and invoices.
+    // ──────────────────────────────────────────────────────────
     let recurringTxns: Array<Record<string, unknown>> = [];
     try {
       const result = await qboQuery("SELECT * FROM RecurringTransaction") as Record<string, unknown>;
       const queryResponse = result?.QueryResponse as Record<string, unknown>;
       recurringTxns = (queryResponse?.RecurringTransaction || []) as Array<Record<string, unknown>>;
     } catch (e) {
-      // RecurringTransaction endpoint may not be available — continue with invoices
       console.log("RecurringTransaction query failed (may not be available):", (e as Error).message);
     }
 
-    // Get recent invoices
     const invoiceResult = await qboQuery("SELECT * FROM Invoice MAXRESULTS 500") as Record<string, unknown>;
     const invoiceResponse = invoiceResult?.QueryResponse as Record<string, unknown>;
     const invoices = (invoiceResponse?.Invoice || []) as Array<Record<string, unknown>>;
 
-    // 2. Load all entities for matching
-    const { data: entities } = await sb.from("entities").select("id, name, display_name, qbo_customer_id");
-    const entityMap = new Map<string, Record<string, unknown>>();
-    const entityByQboId = new Map<string, Record<string, unknown>>();
-
-    for (const e of entities || []) {
-      const name = (e.name || "").toLowerCase().trim();
-      if (name) entityMap.set(name, e);
-      if (e.display_name) entityMap.set(e.display_name.toLowerCase().trim(), e);
-      if (e.qbo_customer_id) entityByQboId.set(e.qbo_customer_id, e);
-    }
-
     const stats = { created: 0, updated: 0, skipped: 0, matched: 0, errors: [] as string[], unmatched_customers: [] as string[] };
 
-    // 3. Process recurring transactions (if available)
+    // ──────────────────────────────────────────────────────────
+    // 5. Process recurring transactions. Entity resolution now
+    //    goes through qbo_customer_mappings — so a legacy QBO
+    //    customer correctly rolls into its consolidated entity.
+    // ──────────────────────────────────────────────────────────
     for (const txn of recurringTxns) {
       try {
-        // RecurringTransaction wraps the inner transaction
         const innerTxn = (txn.Invoice || txn.SalesReceipt || txn) as Record<string, unknown>;
         const customerRef = (innerTxn.CustomerRef || txn.CustomerRef) as Record<string, unknown> | undefined;
 
@@ -60,8 +142,8 @@ Deno.serve(async (req) => {
         const qboCustomerId = String(customerRef.value);
         const customerName = String(customerRef.name || "Unknown");
 
-        const entity = entityByQboId.get(qboCustomerId)
-          || entityMap.get(customerName.toLowerCase().trim());
+        const entityId = entityIdByQboId.get(qboCustomerId);
+        const entity = entityId ? entityById.get(entityId) : null;
 
         if (!entity) {
           stats.skipped++;
@@ -110,7 +192,7 @@ Deno.serve(async (req) => {
             annual_total: annualTotal,
             services,
             qbo_customer_id: qboCustomerId,
-            last_qbo_sync: new Date().toISOString(),
+            last_qbo_sync: now,
             qbo_sync_status: "synced",
           }).eq("id", existing.id);
           stats.updated++;
@@ -127,12 +209,16 @@ Deno.serve(async (req) => {
             source: "qbo_pull",
             qbo_recurring_txn_id: txnId,
             qbo_customer_id: qboCustomerId,
-            last_qbo_sync: new Date().toISOString(),
+            last_qbo_sync: now,
             qbo_sync_status: "synced",
           });
           stats.created++;
         }
 
+        // Legacy: keep entities.qbo_customer_id in sync with the primary
+        // QBO id for the matched entity. qbo_customer_mappings is the
+        // real source of truth; this column is deprecated but still read
+        // by a few places.
         if (!entity.qbo_customer_id) {
           await sb.from("entities").update({
             qbo_customer_id: qboCustomerId,
@@ -143,7 +229,7 @@ Deno.serve(async (req) => {
         await logSync({
           direction: "pull",
           entity_id: entity.id as string,
-          entity_name: entity.name as string || entity.display_name as string,
+          entity_name: (entity.name as string) || (entity.display_name as string),
           qbo_entity_type: "RecurringTransaction",
           qbo_entity_id: txnId,
           status: "success",
@@ -155,7 +241,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4. Process invoices — group by customer, take the latest
+    // ──────────────────────────────────────────────────────────
+    // 6. Process invoices (one per customer — the latest).
+    // ──────────────────────────────────────────────────────────
     const customerInvoices = new Map<string, Record<string, unknown>>();
     for (const inv of invoices) {
       const customerRef = inv.CustomerRef as Record<string, unknown> | undefined;
@@ -172,8 +260,8 @@ Deno.serve(async (req) => {
         const customerRef = inv.CustomerRef as Record<string, unknown>;
         const customerName = String(customerRef.name || "Unknown");
 
-        const entity = entityByQboId.get(qboCustomerId)
-          || entityMap.get(customerName.toLowerCase().trim());
+        const entityId = entityIdByQboId.get(qboCustomerId);
+        const entity = entityId ? entityById.get(entityId) : null;
 
         if (!entity) {
           if (!stats.unmatched_customers.includes(customerName)) {
@@ -190,9 +278,8 @@ Deno.serve(async (req) => {
           .eq("source", "qbo_pull")
           .single();
 
-        if (existingBilling) continue; // Already handled
+        if (existingBilling) continue;
 
-        // Also skip if entity already has a billing record from any source
         const { data: anyBilling } = await sb
           .from("live_billing")
           .select("id")
@@ -237,7 +324,7 @@ Deno.serve(async (req) => {
           source: "qbo_pull",
           qbo_invoice_id: String(inv.Id),
           qbo_customer_id: qboCustomerId,
-          last_qbo_sync: new Date().toISOString(),
+          last_qbo_sync: now,
           qbo_sync_status: "synced",
         });
         stats.created++;
@@ -267,6 +354,11 @@ Deno.serve(async (req) => {
     return jsonResponse({
       success: true,
       data: {
+        qbo_customers_seen: mapStats.seen,
+        qbo_customers_new: mapStats.new,
+        qbo_customers_auto_matched: mapStats.auto_matched,
+        qbo_customers_refreshed: mapStats.refreshed,
+        qbo_customers_unmapped: (mapStats.seen - [...mapByQboId.values()].filter(m => m.entity_id).length),
         recurring_found: recurringTxns.length,
         invoices_found: invoices.length,
         unique_customers: customerInvoices.size,
