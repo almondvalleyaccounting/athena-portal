@@ -29,11 +29,14 @@
 -- via the GIN trigram index, then re-ranks.
 --
 -- Verified against real pairs 2026-04-19:
---   Chris Parkins ↔ Paton, Chris              → 0.033  (correctly killed)
---   Chris Parkins ↔ Parkins, Christopher      → 0.972  (right match)
---   Grant MacFarlane ↔ Grant McFarlane        → 1.000
+--   Chris Parkins ↔ Paton, Chris              → 0.033  (surname kill)
+--   Chris Parkins ↔ Parkins, Christopher      → 0.963  (prefix boost)
+--   Chris Parkins ↔ Parkins, Chris            → 1.000
+--   Grant MacFarlane ↔ Grant McFarlane        → 1.000  (Mac/Mc canonical)
 --   John O'Donnell ↔ ODonnell, John           → 1.000
 --   Ben Agnew ↔ Agnew, Ben                    → 1.000
+--   Barry McKenzie ↔ McKenzie, Gordon         → 0.260  (forename dampener)
+--   John Smith ↔ Jon Smith                    → 0.569
 --   101 Business Solutions Ltd ↔ … Limited    → 0.706
 --   Chris Parkins ↔ ACME Parkins Ltd          → 0.174
 -- ══════════════════════════════════════════════════════════════
@@ -120,9 +123,13 @@ BEGIN
        (cp[2] LIKE qp[2] || '%' OR qp[2] LIKE cp[2] || '%') THEN
       prefix_boost := 0.92;
     END IF;
-    forename_sim := GREATEST(forename_sim, prefix_boost);
+    forename_sim := GREATEST(forename_sim, prefix_boost, 0.05::numeric);
 
-    RETURN ROUND(surname_sim * 0.65 + forename_sim * 0.35, 3);
+    -- Weighted geometric mean — both components must contribute.
+    -- Barry vs Gordon McKenzie: POWER(1.0, 0.55) * POWER(0.1, 0.45) ≈ 0.26
+    -- (weighted-sum 0.65/0.35 previously gave 0.685, which surfaced
+    -- completely different people as strong matches).
+    RETURN ROUND(POWER(surname_sim, 0.55) * POWER(forename_sim, 0.45), 3);
   END IF;
 
   IF (qp IS NULL) != (cp IS NULL) THEN
