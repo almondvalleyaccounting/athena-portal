@@ -1,114 +1,254 @@
-// Pure projection math for the planning module.
-// Produces a month-by-month forecast for N months given the scenario settings,
-// staff lines, overhead lines, and starting recurring billing base.
+// Projection engine — practice financial model.
 //
-// Revenue model: starts from the current live recurring billing monthly_net.
-// On the fee_uplift month (of the scenario's start year + forward), apply the uplift %.
-// Staff model: each staff line accrues monthly (annual_salary * (1 + on_costs) / 12)
-//   between start_month and end_month. The pay rise % applies on the pay_rise month each year.
-// Overheads: sum of plan_overhead_lines.monthly_amount (flat — could be indexed later).
+// Revenue model (per month):
+//   For each billing line from live_billing, check:
+//     - not ended (scenario override end_month < projection month)
+//     - apply fee_override_monthly if set, otherwise monthly_net
+//     - apply compounding fee uplift on anniversary month (unless excluded)
+//     - apply pro-rata "passive" churn to unflagged clients (churn_pct/12 of that line's £)
+//   + new-MRR ramp: new_mrr_per_month × months_elapsed (cumulative)
+//   + ad-hoc: ad_hoc_pct × current recurring
+//
+// Cost model:
+//   Staff:   sum of plan_staff_lines × on-costs × pay multiplier (annual rise)
+//   Owner comp: sum of plan_owner_comp_lines:
+//     - salary  → monthly × on-costs × pay multiplier (if apply_pay_rise)
+//     - dividend → amount_annual / 12 spread evenly (or amount_monthly if set)
+//     - home_office / mileage / pension / other → amount_monthly flat
+//   Overheads: sum of plan_overhead_lines × overhead_inflator (annual on uplift month)
+//
+// Outputs:
+//   months[]: { year, month, label, revenue, recurringRevenue, adHocRevenue, newMrrRevenue,
+//               staffCost, overheads, ownerComp, ebitda, profit, margin }
+//   totals: { revenue, staffCost, overheads, ownerComp, ebitda, profit }
+//   y1, y2: same shape
+//   waterfall: Y1 profit → drivers → Y2 profit
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+function monthKey(year, month) { return year * 12 + (month - 1); }
+
+function dateToKey(d) {
+  if (!d) return null;
+  const dt = typeof d === 'string' ? new Date(d) : d;
+  return monthKey(dt.getFullYear(), dt.getMonth() + 1);
+}
+
 export function buildProjection({
   scenario,
-  staffLines,
-  overheadLines,
-  baseMonthlyRevenue,
+  staffLines = [],
+  overheadLines = [],
+  ownerCompLines = [],
+  clientBillings = [],          // [{ id, entity_id, monthly_net }]
+  clientOverrides = [],         // [{ live_billing_id, status, end_month, fee_override_monthly, exclude_from_uplift }]
   horizonMonths = 24,
 }) {
-  if (!scenario) return { months: [], totals: {} };
+  if (!scenario) return emptyProjection();
 
   const startDate = scenario.start_month ? new Date(scenario.start_month) : new Date();
   const startY = startDate.getFullYear();
-  const startM = startDate.getMonth() + 1; // 1-12
+  const startM = startDate.getMonth() + 1;
 
   const feeUpliftM = Number(scenario.fee_uplift_month) || 4;
   const feeUpliftPct = Number(scenario.fee_uplift_pct) || 0;
   const payRiseM = Number(scenario.pay_rise_month) || 4;
   const payRisePct = Number(scenario.pay_rise_pct) || 0;
+  const ohInflator = Number(scenario.overhead_inflator_pct) || 0;
   const defaultOnCosts = Number(scenario.default_on_costs_pct) || 15.05;
+  const churnPct = Number(scenario.churn_pct_annual) || 0;
+  const newMrr = Number(scenario.new_mrr_per_month) || 0;
+  const adHocPct = Number(scenario.ad_hoc_pct_of_recurring) || 0;
 
-  const totalOverheads = (overheadLines || []).reduce((s, o) => s + (Number(o.monthly_amount) || 0), 0);
+  // Index overrides by live_billing_id for quick lookup
+  const overrideByBilling = new Map();
+  for (const o of clientOverrides) {
+    if (o.live_billing_id) overrideByBilling.set(o.live_billing_id, o);
+  }
+
+  const baseOverheads = overheadLines.reduce((s, o) => s + (Number(o.monthly_amount) || 0), 0);
 
   const months = [];
-  let revenueMultiplier = 1;
-  let payMultiplier = 1;
-  let feeUpliftsApplied = 0;
-  let payRisesApplied = 0;
+  let revenueMultiplier = 1;           // compounds on fee uplift anniversary
+  let payMultiplier = 1;               // compounds on pay rise anniversary
+  let overheadMultiplier = 1;          // compounds overhead inflator
+  const monthlyChurnFactor = 1 - (churnPct / 100) / 12; // tiny erosion each month
+
+  // Cumulative passive-churn erosion applied to unflagged clients
+  let churnErosion = 1;
 
   for (let i = 0; i < horizonMonths; i++) {
     const year = startY + Math.floor((startM - 1 + i) / 12);
-    const month = ((startM - 1 + i) % 12) + 1; // 1-12
+    const month = ((startM - 1 + i) % 12) + 1;
     const label = `${MONTHS_SHORT[month - 1]} ${String(year).slice(2)}`;
 
-    // Fee uplift applies once each year on feeUpliftM (starting from this year going forward)
-    if (i > 0 && month === feeUpliftM) {
-      revenueMultiplier *= 1 + feeUpliftPct / 100;
-      feeUpliftsApplied++;
-    } else if (i === 0 && month === feeUpliftM && feeUpliftPct !== 0) {
-      // If we *start* on uplift month, assume it's already baked in — don't double count
+    // Apply anniversary multipliers (skip i=0 — they're assumed baked into the starting point)
+    if (i > 0 && month === feeUpliftM) revenueMultiplier *= 1 + feeUpliftPct / 100;
+    if (i > 0 && month === payRiseM) payMultiplier *= 1 + payRisePct / 100;
+    if (i > 0 && month === feeUpliftM) overheadMultiplier *= 1 + ohInflator / 100;
+
+    // Passive churn accrues every month
+    if (i > 0) churnErosion *= monthlyChurnFactor;
+
+    const monthKeyI = monthKey(year, month);
+
+    // ── Recurring revenue — client by client
+    let recurring = 0;
+    for (const b of clientBillings) {
+      const override = overrideByBilling.get(b.id);
+      const endKey = override?.end_month ? dateToKey(override.end_month) : null;
+      if (endKey != null && monthKeyI > endKey) continue; // client has ended
+
+      const base = override?.fee_override_monthly != null
+        ? Number(override.fee_override_monthly)
+        : Number(b.monthly_net) || 0;
+
+      const uplift = override?.exclude_from_uplift ? 1 : revenueMultiplier;
+      // Flagged 'at_risk' or 'ending' clients are not subject to passive churn
+      // (their fate is already modelled explicitly via end_month / status)
+      const churnFactor = (override?.status && override.status !== 'active') ? 1 : churnErosion;
+
+      recurring += base * uplift * churnFactor;
     }
 
-    // Pay rise each year on payRiseM
-    if (i > 0 && month === payRiseM) {
-      payMultiplier *= 1 + payRisePct / 100;
-      payRisesApplied++;
-    }
+    // ── New MRR — cumulative ramp of new clients acquired
+    //   months 0..N: new_mrr × i (clients added linearly)
+    //   Apply uplift multiplier from point of acquisition (approx — treat as scaling with current multiplier)
+    const newMrrThisMonth = newMrr * i * revenueMultiplier;
 
-    const revenue = baseMonthlyRevenue * revenueMultiplier;
+    // ── Ad-hoc / one-off
+    const adHoc = (recurring + newMrrThisMonth) * (adHocPct / 100);
 
-    // Staff cost for this month
+    const revenue = recurring + newMrrThisMonth + adHoc;
+
+    // ── Staff cost
     const monthDate = new Date(year, month - 1, 1);
     let staffCost = 0;
-    for (const s of staffLines || []) {
-      const sStart = s.start_month ? new Date(s.start_month) : null;
-      const sEnd = s.end_month ? new Date(s.end_month) : null;
-      if (sStart && monthDate < new Date(sStart.getFullYear(), sStart.getMonth(), 1)) continue;
-      if (sEnd && monthDate > new Date(sEnd.getFullYear(), sEnd.getMonth(), 1)) continue;
+    for (const s of staffLines) {
+      const sStartKey = s.start_month ? dateToKey(s.start_month) : null;
+      const sEndKey = s.end_month ? dateToKey(s.end_month) : null;
+      if (sStartKey != null && monthKeyI < sStartKey) continue;
+      if (sEndKey != null && monthKeyI > sEndKey) continue;
       const onCosts = s.on_costs_pct == null ? defaultOnCosts : Number(s.on_costs_pct);
       const annual = Number(s.annual_salary) || 0;
       const mult = s.exclude_from_pay_rise ? 1 : payMultiplier;
       staffCost += (annual * mult * (1 + onCosts / 100)) / 12;
     }
 
-    const overheads = totalOverheads;
-    const profit = revenue - staffCost - overheads;
+    // ── Owner comp
+    let ownerComp = 0;
+    for (const o of ownerCompLines) {
+      const oStartKey = o.start_month ? dateToKey(o.start_month) : null;
+      const oEndKey = o.end_month ? dateToKey(o.end_month) : null;
+      if (oStartKey != null && monthKeyI < oStartKey) continue;
+      if (oEndKey != null && monthKeyI > oEndKey) continue;
+      const mult = o.apply_pay_rise ? payMultiplier : 1;
+      if (o.comp_type === 'salary') {
+        const on = o.on_costs_pct == null ? defaultOnCosts : Number(o.on_costs_pct);
+        ownerComp += (Number(o.amount_monthly) || 0) * mult * (1 + on / 100);
+      } else if (o.comp_type === 'dividend') {
+        // If amount_annual is set, spread evenly; else use amount_monthly
+        const monthly = o.amount_annual != null
+          ? Number(o.amount_annual) / 12
+          : (Number(o.amount_monthly) || 0);
+        ownerComp += monthly * mult;
+      } else {
+        ownerComp += (Number(o.amount_monthly) || 0) * mult;
+      }
+    }
+
+    // ── Overheads (apply annual inflator)
+    const overheads = baseOverheads * overheadMultiplier;
+
+    const ebitda = revenue - staffCost - overheads;
+    const profit = ebitda - ownerComp;
 
     months.push({
-      index: i,
-      year,
-      month,
-      label,
-      revenue,
-      staffCost,
-      overheads,
-      profit,
-      margin: revenue > 0 ? profit / revenue : 0,
+      index: i, year, month, label,
+      revenue, recurringRevenue: recurring, adHocRevenue: adHoc, newMrrRevenue: newMrrThisMonth,
+      staffCost, overheads, ownerComp,
+      ebitda, profit,
+      margin: revenue > 0 ? ebitda / revenue : 0,
+      profitMargin: revenue > 0 ? profit / revenue : 0,
     });
   }
 
-  const totals = months.reduce(
-    (acc, m) => {
-      acc.revenue += m.revenue;
-      acc.staffCost += m.staffCost;
-      acc.overheads += m.overheads;
-      acc.profit += m.profit;
-      return acc;
-    },
-    { revenue: 0, staffCost: 0, overheads: 0, profit: 0 },
-  );
-  totals.margin = totals.revenue > 0 ? totals.profit / totals.revenue : 0;
-  totals.feeUpliftsApplied = feeUpliftsApplied;
-  totals.payRisesApplied = payRisesApplied;
+  const sumAcross = (arr) => arr.reduce((a, m) => ({
+    revenue: a.revenue + m.revenue,
+    recurringRevenue: a.recurringRevenue + m.recurringRevenue,
+    adHocRevenue: a.adHocRevenue + m.adHocRevenue,
+    newMrrRevenue: a.newMrrRevenue + m.newMrrRevenue,
+    staffCost: a.staffCost + m.staffCost,
+    overheads: a.overheads + m.overheads,
+    ownerComp: a.ownerComp + m.ownerComp,
+    ebitda: a.ebitda + m.ebitda,
+    profit: a.profit + m.profit,
+  }), { revenue: 0, recurringRevenue: 0, adHocRevenue: 0, newMrrRevenue: 0, staffCost: 0, overheads: 0, ownerComp: 0, ebitda: 0, profit: 0 });
 
-  return { months, totals };
+  const y1 = sumAcross(months.slice(0, 12));
+  const y2 = sumAcross(months.slice(12, 24));
+  const totals = sumAcross(months);
+  y1.margin = y1.revenue > 0 ? y1.ebitda / y1.revenue : 0;
+  y2.margin = y2.revenue > 0 ? y2.ebitda / y2.revenue : 0;
+  totals.margin = totals.revenue > 0 ? totals.ebitda / totals.revenue : 0;
+
+  // ── Waterfall Y1 → Y2 (explains the delta)
+  const waterfall = buildWaterfall({ y1, y2, months, scenario });
+
+  return { months, totals, y1, y2, waterfall };
+}
+
+function buildWaterfall({ y1, y2, months }) {
+  const y1Profit = y1.profit;
+  const y2Profit = y2.profit;
+  const delta = y2Profit - y1Profit;
+
+  const revDelta = y2.revenue - y1.revenue;
+  const staffDelta = -(y2.staffCost - y1.staffCost);
+  const ohDelta = -(y2.overheads - y1.overheads);
+  const ownerDelta = -(y2.ownerComp - y1.ownerComp);
+
+  // Split revenue delta into recurring-uplift, new-mrr, ad-hoc (rough attribution by category)
+  const recDelta = y2.recurringRevenue - y1.recurringRevenue;
+  const newDelta = y2.newMrrRevenue - y1.newMrrRevenue;
+  const adHocDelta = y2.adHocRevenue - y1.adHocRevenue;
+
+  return {
+    y1Profit,
+    y2Profit,
+    delta,
+    steps: [
+      { label: 'Recurring uplift / churn net', value: recDelta },
+      { label: 'New-MRR ramp', value: newDelta },
+      { label: 'Ad-hoc / one-off', value: adHocDelta },
+      { label: 'Staff cost change', value: staffDelta },
+      { label: 'Owner comp change', value: ownerDelta },
+      { label: 'Overhead change', value: ohDelta },
+    ],
+  };
+}
+
+function emptyProjection() {
+  return {
+    months: [],
+    totals: { revenue: 0, staffCost: 0, overheads: 0, ownerComp: 0, ebitda: 0, profit: 0, margin: 0 },
+    y1: { revenue: 0, staffCost: 0, overheads: 0, ownerComp: 0, ebitda: 0, profit: 0, margin: 0 },
+    y2: { revenue: 0, staffCost: 0, overheads: 0, ownerComp: 0, ebitda: 0, profit: 0, margin: 0 },
+    waterfall: { y1Profit: 0, y2Profit: 0, delta: 0, steps: [] },
+  };
 }
 
 export const fmtGBP = (n) =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n || 0);
 
-export const fmtGBPDecimals = (n) =>
+export const fmtGBPSigned = (n) => {
+  const v = n || 0;
+  const formatted = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(Math.abs(v));
+  return v >= 0 ? `+${formatted}` : `-${formatted}`;
+};
+
+export const fmtGBP2 = (n) =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
 export const fmtPct = (n) => `${(n * 100).toFixed(1)}%`;
+
+export const fmtPctSimple = (n) => `${((n || 0) * 100).toFixed(0)}%`;

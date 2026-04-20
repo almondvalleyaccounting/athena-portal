@@ -1,0 +1,235 @@
+import React, { useState, useMemo } from 'react';
+import { AlertTriangle, CalendarX, Search, TrendingUp } from 'lucide-react';
+import { usePlanning } from '../PlanningModule';
+import { fmtGBP, fmtPct } from '../lib/projection';
+
+const STATUS_META = {
+  active:  { label: 'Active',   colour: '#059669', bg: '#f0fdf4' },
+  at_risk: { label: 'At risk',  colour: '#dc2626', bg: '#fef2f2' },
+  ending:  { label: 'Ending',   colour: '#f59e0b', bg: '#fffbeb' },
+};
+
+export default function RevenueView() {
+  const { clientBillings, clientOverrides, upsertClientOverride, scenario, updateScenario } = usePlanning();
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
+
+  // Merge billings + overrides
+  const book = useMemo(() => {
+    const byId = new Map(clientOverrides.map((o) => [o.live_billing_id, o]));
+    return clientBillings.map((b) => {
+      const ov = byId.get(b.id);
+      return {
+        ...b,
+        override: ov || null,
+        status: ov?.status || 'active',
+        endMonth: ov?.end_month || null,
+        fee: ov?.fee_override_monthly != null ? Number(ov.fee_override_monthly) : b.monthly_net,
+        notes: ov?.risk_notes || '',
+        excludeUplift: !!ov?.exclude_from_uplift,
+      };
+    }).sort((a, b) => b.fee - a.fee);
+  }, [clientBillings, clientOverrides]);
+
+  const filtered = useMemo(() => {
+    let list = book;
+    if (filter !== 'all') list = list.filter((c) => c.status === filter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((c) => (c.entity_name || '').toLowerCase().includes(q));
+    }
+    return list;
+  }, [book, filter, search]);
+
+  const totals = useMemo(() => {
+    const t = { all: 0, active: 0, at_risk: 0, ending: 0 };
+    for (const c of book) { t.all += c.fee; t[c.status] = (t[c.status] || 0) + c.fee; }
+    return t;
+  }, [book]);
+
+  const count = useMemo(() => {
+    const c = { all: book.length, active: 0, at_risk: 0, ending: 0 };
+    for (const b of book) c[b.status] = (c[b.status] || 0) + 1;
+    return c;
+  }, [book]);
+
+  const applyOverride = async (client, patch) => {
+    await upsertClientOverride({
+      id: client.override?.id,
+      live_billing_id: client.id,
+      entity_id: client.entity_id,
+      status: client.status,
+      end_month: client.endMonth,
+      fee_override_monthly: client.override?.fee_override_monthly ?? null,
+      exclude_from_uplift: client.excludeUplift,
+      risk_notes: client.notes,
+      ...patch,
+    });
+  };
+
+  return (
+    <div>
+      {/* Scenario-level revenue assumptions */}
+      <div style={card}>
+        <h3 style={h3}>Revenue assumptions</h3>
+        <p style={help}>These apply practice-wide. Client-level overrides below take precedence.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+          <SliderField label="Fee uplift %" min={0} max={25} step={0.5} suffix="%"
+            value={scenario?.fee_uplift_pct || 0} onChange={(v) => updateScenario({ fee_uplift_pct: v })} />
+          <SliderField label="Annual churn %" min={0} max={25} step={0.25} suffix="%"
+            value={scenario?.churn_pct_annual || 0} onChange={(v) => updateScenario({ churn_pct_annual: v })} />
+          <Field label="New MRR / month (£)">
+            <input type="number" value={scenario?.new_mrr_per_month || 0}
+              onChange={(e) => updateScenario({ new_mrr_per_month: parseFloat(e.target.value) || 0 })}
+              style={inputStyle} />
+          </Field>
+          <SliderField label="Ad-hoc / one-off %" min={0} max={30} step={0.5} suffix="%"
+            value={scenario?.ad_hoc_pct_of_recurring || 0} onChange={(v) => updateScenario({ ad_hoc_pct_of_recurring: v })} />
+        </div>
+      </div>
+
+      {/* Summary strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, margin: '16px 0' }}>
+        <Summary label="Active book" colour="#059669" mo={totals.active} count={count.active} />
+        <Summary label="At risk"      colour="#dc2626" mo={totals.at_risk} count={count.at_risk} />
+        <Summary label="Ending"       colour="#f59e0b" mo={totals.ending} count={count.ending} />
+        <Summary label="Total MRR"    colour="#0e7fe0" mo={totals.all} count={count.all} bold />
+      </div>
+
+      {/* Controls */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#cbd5e1' }} />
+          <input placeholder="Search clients…" value={search} onChange={(e) => setSearch(e.target.value)}
+            style={{ ...inputStyle, paddingLeft: 32 }} />
+        </div>
+        <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb' }}>
+          {['all','active','at_risk','ending'].map((f) => (
+            <button key={f} onClick={() => setFilter(f)} style={{
+              padding: '6px 12px', fontSize: 12, fontWeight: filter === f ? 600 : 400,
+              color: filter === f ? '#0f172a' : '#94a3b8',
+              background: 'none', border: 'none', borderBottom: filter === f ? '2px solid #0e7fe0' : '2px solid transparent',
+              cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
+            }}>
+              {f === 'all' ? 'All' : STATUS_META[f].label} ({count[f]})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Client table */}
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+              <th style={th}>Client</th>
+              <th style={{ ...th, textAlign: 'right' }}>Monthly £</th>
+              <th style={{ ...th, textAlign: 'right' }}>Annual £</th>
+              <th style={th}>Status</th>
+              <th style={th}>End month</th>
+              <th style={th}>No uplift</th>
+              <th style={th}>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && (
+              <tr><td colSpan={7} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>No clients match.</td></tr>
+            )}
+            {filtered.map((c) => {
+              const sm = STATUS_META[c.status];
+              return (
+                <tr key={c.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td style={td}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {c.status === 'at_risk' && <AlertTriangle size={12} style={{ color: '#dc2626' }} />}
+                      {c.status === 'ending' && <CalendarX size={12} style={{ color: '#f59e0b' }} />}
+                      <span style={{ color: '#0f172a', fontWeight: 500 }}>{c.entity_name}</span>
+                    </div>
+                  </td>
+                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtGBP(c.fee)}</td>
+                  <td style={{ ...td, textAlign: 'right', color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>{fmtGBP(c.fee * 12)}</td>
+                  <td style={td}>
+                    <select value={c.status} onChange={(e) => applyOverride(c, { status: e.target.value })}
+                      style={{ ...inputStyle, color: sm.colour, fontWeight: 500, background: sm.bg, border: `1px solid ${sm.colour}33` }}>
+                      <option value="active">Active</option>
+                      <option value="at_risk">At risk</option>
+                      <option value="ending">Ending</option>
+                    </select>
+                  </td>
+                  <td style={td}>
+                    <input type="month" value={c.endMonth ? String(c.endMonth).slice(0, 7) : ''}
+                      onChange={(e) => applyOverride(c, { end_month: e.target.value ? e.target.value + '-01' : null })}
+                      style={inputStyle} />
+                  </td>
+                  <td style={{ ...td, textAlign: 'center' }}>
+                    <input type="checkbox" checked={c.excludeUplift}
+                      onChange={(e) => applyOverride(c, { exclude_from_uplift: e.target.checked })}
+                      style={{ cursor: 'pointer' }} />
+                  </td>
+                  <td style={{ ...td, minWidth: 180 }}>
+                    <BlurInput value={c.notes} onChange={(v) => applyOverride(c, { risk_notes: v })} placeholder="Notes…" />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function BlurInput({ value, onChange, placeholder }) {
+  const [v, setV] = useState(value || '');
+  React.useEffect(() => setV(value || ''), [value]);
+  return (
+    <input value={v} placeholder={placeholder}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => { if (v !== (value || '')) onChange(v); }}
+      style={inputStyle} />
+  );
+}
+
+function Summary({ label, colour, mo, count, bold }) {
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 14px', borderLeft: `3px solid ${colour}` }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: bold ? 20 : 18, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{fmtGBP(mo * 12)}/yr</div>
+      <div style={{ fontSize: 11, color: '#64748b' }}>{fmtGBP(mo)}/mo · {count} client{count !== 1 ? 's' : ''}</div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div>
+      <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function SliderField({ label, min, max, step, suffix, value, onChange }) {
+  return (
+    <Field label={label}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input type="range" min={min} max={max} step={step} value={value || 0}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          style={{ flex: 1, accentColor: '#0e7fe0' }} />
+        <div style={{ minWidth: 60, display: 'flex', gap: 3, alignItems: 'center' }}>
+          <input type="number" step={step} value={value || 0}
+            onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+            style={{ ...inputStyle, width: 50, textAlign: 'right', padding: '6px 4px' }} />
+          <span style={{ fontSize: 12, color: '#64748b' }}>{suffix}</span>
+        </div>
+      </div>
+    </Field>
+  );
+}
+
+const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
+const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: '0 0 4px' };
+const help = { fontSize: 12, color: '#94a3b8', marginBottom: 14 };
+const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600 };
+const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
+const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };

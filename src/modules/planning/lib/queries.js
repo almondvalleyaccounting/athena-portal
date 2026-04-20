@@ -1,15 +1,6 @@
 import { supabase } from '../../../lib/supabase';
 
-export async function loadActiveScenario() {
-  const { data, error } = await supabase
-    .from('plan_scenarios')
-    .select('*')
-    .order('is_active', { ascending: false })
-    .order('updated_at', { ascending: false })
-    .limit(1);
-  if (error) throw error;
-  return data?.[0] || null;
-}
+// ── Scenarios ─────────────────────────────────────────────
 
 export async function listScenarios() {
   const { data, error } = await supabase
@@ -28,9 +19,37 @@ export async function createScenario(name) {
     .select()
     .single();
   if (error) throw error;
-  // Deactivate others
   await supabase.from('plan_scenarios').update({ is_active: false }).neq('id', data.id);
   return data;
+}
+
+export async function duplicateScenario(sourceId, newName) {
+  const { data: source, error: srcErr } = await supabase
+    .from('plan_scenarios').select('*').eq('id', sourceId).single();
+  if (srcErr) throw srcErr;
+
+  const { id, created_at, updated_at, is_active, ...copy } = source;
+  const { data: newScen, error: insErr } = await supabase
+    .from('plan_scenarios')
+    .insert({ ...copy, name: newName, is_active: false })
+    .select().single();
+  if (insErr) throw insErr;
+
+  const [staffRes, ohRes, cliRes, ownRes] = await Promise.all([
+    supabase.from('plan_staff_lines').select('*').eq('scenario_id', sourceId),
+    supabase.from('plan_overhead_lines').select('*').eq('scenario_id', sourceId),
+    supabase.from('plan_client_overrides').select('*').eq('scenario_id', sourceId),
+    supabase.from('plan_owner_comp_lines').select('*').eq('scenario_id', sourceId),
+  ]);
+
+  const stripMeta = (r) => { const { id, created_at, updated_at, ...rest } = r; return { ...rest, scenario_id: newScen.id }; };
+
+  if (staffRes.data?.length) await supabase.from('plan_staff_lines').insert(staffRes.data.map(stripMeta));
+  if (ohRes.data?.length) await supabase.from('plan_overhead_lines').insert(ohRes.data.map(stripMeta));
+  if (cliRes.data?.length) await supabase.from('plan_client_overrides').insert(cliRes.data.map(stripMeta));
+  if (ownRes.data?.length) await supabase.from('plan_owner_comp_lines').insert(ownRes.data.map(stripMeta));
+
+  return newScen;
 }
 
 export async function updateScenario(id, patch) {
@@ -42,8 +61,8 @@ export async function updateScenario(id, patch) {
 }
 
 export async function setActiveScenario(id) {
-  await supabase.from('plan_scenarios').update({ is_active: false }).neq('id', id);
   await supabase.from('plan_scenarios').update({ is_active: true }).eq('id', id);
+  await supabase.from('plan_scenarios').update({ is_active: false }).neq('id', id);
 }
 
 export async function deleteScenario(id) {
@@ -51,13 +70,13 @@ export async function deleteScenario(id) {
   if (error) throw error;
 }
 
+// ── Staff lines ──────────────────────────────────────────
+
 export async function loadStaffLines(scenarioId) {
   const { data, error } = await supabase
-    .from('plan_staff_lines')
-    .select('*')
+    .from('plan_staff_lines').select('*')
     .eq('scenario_id', scenarioId)
-    .order('sort_order', { ascending: true })
-    .order('created_at', { ascending: true });
+    .order('sort_order').order('created_at');
   if (error) throw error;
   return data || [];
 }
@@ -65,21 +84,14 @@ export async function loadStaffLines(scenarioId) {
 export async function upsertStaffLine(line) {
   if (line.id) {
     const { id, created_at, ...rest } = line;
-    const { error } = await supabase
-      .from('plan_staff_lines')
-      .update({ ...rest, updated_at: new Date().toISOString() })
-      .eq('id', id);
+    const { error } = await supabase.from('plan_staff_lines')
+      .update({ ...rest, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) throw error;
     return id;
-  } else {
-    const { data, error } = await supabase
-      .from('plan_staff_lines')
-      .insert(line)
-      .select()
-      .single();
-    if (error) throw error;
-    return data.id;
   }
+  const { data, error } = await supabase.from('plan_staff_lines').insert(line).select().single();
+  if (error) throw error;
+  return data.id;
 }
 
 export async function deleteStaffLine(id) {
@@ -87,13 +99,13 @@ export async function deleteStaffLine(id) {
   if (error) throw error;
 }
 
+// ── Overhead lines ────────────────────────────────────────
+
 export async function loadOverheadLines(scenarioId) {
   const { data, error } = await supabase
-    .from('plan_overhead_lines')
-    .select('*')
+    .from('plan_overhead_lines').select('*')
     .eq('scenario_id', scenarioId)
-    .order('sort_order', { ascending: true })
-    .order('created_at', { ascending: true });
+    .order('sort_order').order('created_at');
   if (error) throw error;
   return data || [];
 }
@@ -101,21 +113,14 @@ export async function loadOverheadLines(scenarioId) {
 export async function upsertOverheadLine(line) {
   if (line.id) {
     const { id, created_at, ...rest } = line;
-    const { error } = await supabase
-      .from('plan_overhead_lines')
-      .update({ ...rest, updated_at: new Date().toISOString() })
-      .eq('id', id);
+    const { error } = await supabase.from('plan_overhead_lines')
+      .update({ ...rest, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) throw error;
     return id;
-  } else {
-    const { data, error } = await supabase
-      .from('plan_overhead_lines')
-      .insert(line)
-      .select()
-      .single();
-    if (error) throw error;
-    return data.id;
   }
+  const { data, error } = await supabase.from('plan_overhead_lines').insert(line).select().single();
+  if (error) throw error;
+  return data.id;
 }
 
 export async function deleteOverheadLine(id) {
@@ -123,16 +128,83 @@ export async function deleteOverheadLine(id) {
   if (error) throw error;
 }
 
-// --- Data sources ---
+// ── Owner comp lines ──────────────────────────────────────
 
-export async function loadBaseMonthlyRevenue() {
+export async function loadOwnerCompLines(scenarioId) {
+  const { data, error } = await supabase
+    .from('plan_owner_comp_lines').select('*')
+    .eq('scenario_id', scenarioId)
+    .order('sort_order').order('created_at');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertOwnerCompLine(line) {
+  if (line.id) {
+    const { id, created_at, ...rest } = line;
+    const { error } = await supabase.from('plan_owner_comp_lines')
+      .update({ ...rest, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
+    return id;
+  }
+  const { data, error } = await supabase.from('plan_owner_comp_lines').insert(line).select().single();
+  if (error) throw error;
+  return data.id;
+}
+
+export async function deleteOwnerCompLine(id) {
+  const { error } = await supabase.from('plan_owner_comp_lines').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── Client overrides (risk flags, end dates, fee overrides) ───
+
+export async function loadClientOverrides(scenarioId) {
+  const { data, error } = await supabase
+    .from('plan_client_overrides').select('*')
+    .eq('scenario_id', scenarioId);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertClientOverride(row) {
+  // Use conflict on (scenario_id, live_billing_id) when available
+  if (row.id) {
+    const { id, created_at, ...rest } = row;
+    const { error } = await supabase.from('plan_client_overrides')
+      .update({ ...rest, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
+    return id;
+  }
+  const { data, error } = await supabase
+    .from('plan_client_overrides')
+    .upsert(row, { onConflict: 'scenario_id,live_billing_id' })
+    .select().single();
+  if (error) throw error;
+  return data.id;
+}
+
+export async function deleteClientOverride(id) {
+  const { error } = await supabase.from('plan_client_overrides').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── Source data ───────────────────────────────────────────
+
+export async function loadClientBillings() {
   const { data, error } = await supabase
     .from('live_billing')
-    .select('monthly_net, status')
+    .select('id, entity_id, monthly_net, annual_total, services, status, entities:entity_id (name)')
     .eq('status', 'active');
   if (error) throw error;
-  const total = (data || []).reduce((s, b) => s + (Number(b.monthly_net) || 0), 0);
-  return { monthly: total, count: (data || []).length };
+  return (data || []).map((r) => ({
+    id: r.id,
+    entity_id: r.entity_id,
+    entity_name: r.entities?.name || 'Unknown',
+    monthly_net: Number(r.monthly_net) || 0,
+    annual_total: Number(r.annual_total) || 0,
+    services: r.services,
+  }));
 }
 
 export async function loadStaffProfiles() {
@@ -147,9 +219,7 @@ export async function loadStaffProfiles() {
 
 export async function loadCachedPL() {
   const { data, error } = await supabase
-    .from('plan_qbo_pl_cache')
-    .select('*')
-    .order('period_end', { ascending: false });
+    .from('plan_qbo_pl_cache').select('*').order('period_end', { ascending: false });
   if (error) throw error;
   return data || [];
 }
@@ -167,47 +237,33 @@ export async function pullQboPL() {
     },
     body: JSON.stringify({}),
   });
-  if (!resp.ok) {
-    const body = await resp.text();
-    throw new Error(`QBO pull failed: ${resp.status} ${body}`);
-  }
+  if (!resp.ok) throw new Error(`QBO pull failed: ${resp.status} ${await resp.text()}`);
   return resp.json();
 }
 
-// Seed a new scenario from current staff + (optional) QBO cache
+// ── Seeding ───────────────────────────────────────────────
+
 export async function seedScenarioFromCurrent(scenarioId) {
-  // Seed staff lines from active staff profiles
   const staff = await loadStaffProfiles();
-  const existing = await loadStaffLines(scenarioId);
-  if (existing.length === 0 && staff.length > 0) {
+  const existingStaff = await loadStaffLines(scenarioId);
+  if (existingStaff.length === 0 && staff.length > 0) {
     const rows = staff.map((s, i) => ({
-      scenario_id: scenarioId,
-      staff_id: s.id,
-      name: s.name,
-      role: null,
-      annual_salary: 0,
-      on_costs_pct: null,
-      sort_order: i,
+      scenario_id: scenarioId, staff_id: s.id, name: s.name, role: null,
+      annual_salary: 0, on_costs_pct: null, sort_order: i,
     }));
     await supabase.from('plan_staff_lines').insert(rows);
   }
 
-  // Seed overhead lines from most recent QBO cache
   const cached = await loadCachedPL();
   const existingOverheads = await loadOverheadLines(scenarioId);
   if (existingOverheads.length === 0 && cached.length > 0) {
     const latestPeriod = cached[0].period_end;
     const expenseRows = cached.filter((r) => r.period_end === latestPeriod && r.account_type !== 'Income');
     const rows = expenseRows.map((r, i) => ({
-      scenario_id: scenarioId,
-      category: r.account_name,
-      qbo_account: r.account_name,
+      scenario_id: scenarioId, category: r.account_name, qbo_account: r.account_name,
       monthly_amount: Math.round((Number(r.amount) / 12) * 100) / 100,
-      qbo_actual_ltm: r.amount,
-      sort_order: i,
+      qbo_actual_ltm: r.amount, sort_order: i,
     }));
-    if (rows.length > 0) {
-      await supabase.from('plan_overhead_lines').insert(rows);
-    }
+    if (rows.length) await supabase.from('plan_overhead_lines').insert(rows);
   }
 }
