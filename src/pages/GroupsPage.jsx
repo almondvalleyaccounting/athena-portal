@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { useAuth } from '../shell/AppShell';
+import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 
 const STATUS_ORDER = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
 
@@ -35,6 +36,11 @@ export default function GroupsPage() {
   const [newClientType, setNewClientType] = useState('limited_company');
   const [showNewClient, setShowNewClient] = useState(false);
   const [addingNew, setAddingNew] = useState(false);
+  const [letter, setLetter] = useState(null);
+
+  const filteredGroups = letter
+    ? groups.filter((g) => firstCharBucket(g.name) === letter)
+    : groups;
 
   useEffect(() => { loadData(); }, []);
 
@@ -253,6 +259,10 @@ export default function GroupsPage() {
         </div>
       )}
 
+      <div className="mb-3">
+        <AlphabetFilter items={groups} selected={letter} onChange={setLetter} />
+      </div>
+
       {/* Groups List */}
       {groups.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
@@ -271,7 +281,7 @@ export default function GroupsPage() {
             <span className="text-xs text-gray-400 font-medium text-right">Status</span>
           </div>
           {/* Rows */}
-          {groups.map(g => {
+          {filteredGroups.map(g => {
             const gMembers = membersByGroup[g.id] || [];
             const gQuotes = quotesByGroup[g.id] || [];
             const totalMonthlyGross = gQuotes.reduce((s, q) => s + (Number(q.monthly_gross) || 0), 0);

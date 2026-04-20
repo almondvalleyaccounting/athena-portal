@@ -6,6 +6,7 @@ import { exportQboCsv, downloadCsv, generateQboImportCsv } from '../lib/qboExpor
 import { pushToQbo } from '../lib/qboApi';
 import QboConnectionPanel from '../components/QboConnectionPanel';
 import { useAuth } from '../shell/AppShell';
+import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 
 export default function BillingPage() {
   const { profile } = useAuth();
@@ -13,6 +14,7 @@ export default function BillingPage() {
   const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [letter, setLetter] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -262,8 +264,9 @@ export default function BillingPage() {
 
   // -- Filtered billing --
   const filtered = billing.filter((b) => {
-    if (!search) return true;
     const name = b.entity?.name || '';
+    if (letter && firstCharBucket(name) !== letter) return false;
+    if (!search) return true;
     return name.toLowerCase().includes(search.toLowerCase());
   });
 
@@ -482,6 +485,14 @@ export default function BillingPage() {
           </div>
         </div>
       )}
+
+      <div className="mb-3">
+        <AlphabetFilter
+          items={billing.map(b => ({ name: b.entity?.name || '' }))}
+          selected={letter}
+          onChange={setLetter}
+        />
+      </div>
 
       {/* Search + Actions */}
       <div className="flex items-center gap-3 mb-4">

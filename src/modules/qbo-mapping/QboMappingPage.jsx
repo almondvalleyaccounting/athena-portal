@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import NewClientModal from '../../components/NewClientModal';
 import { insertEntity } from '../work-planner/lib/supabaseQueries';
+import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 
 const font = "'Outfit', sans-serif";
 
@@ -29,6 +30,7 @@ export default function QboMappingPage() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [filter, setFilter] = useState('unmapped');
   const [search, setSearch] = useState('');
+  const [letter, setLetter] = useState(null);
   const [selected, setSelected] = useState(new Set()); // qbo_customer_ids
   const [sort, setSort] = useState('name'); // name | score | qbo_id
   const [showAdd, setShowAdd] = useState(false);
@@ -104,6 +106,9 @@ export default function QboMappingPage() {
       });
     }
     else if (filter === 'review') out = out.filter((r) => r.needs_review);
+    if (letter) {
+      out = out.filter((r) => firstCharBucket(r.qbo_customer_name || '') === letter);
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       out = out.filter((r) =>
@@ -123,7 +128,7 @@ export default function QboMappingPage() {
       out = [...out].sort((a, b) => (a.qbo_customer_id || '').localeCompare(b.qbo_customer_id || ''));
     }
     return out;
-  }, [rows, filter, search, entityMap, sort, suggestions]);
+  }, [rows, filter, search, entityMap, sort, suggestions, letter]);
 
   const counts = useMemo(() => {
     let suggested = 0, noMatch = 0;
@@ -411,6 +416,14 @@ export default function QboMappingPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search QBO name, QBO id, or Athena entity..."
           style={{ ...selectStyle, flex: 1, minWidth: 240, marginLeft: 'auto' }}
+        />
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <AlphabetFilter
+          items={rows.map(r => ({ name: r.qbo_customer_name || '' }))}
+          selected={letter}
+          onChange={setLetter}
         />
       </div>
 

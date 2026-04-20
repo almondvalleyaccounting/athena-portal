@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, X, Edit2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
+import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 
 const font = "'Outfit', sans-serif";
 
@@ -20,6 +21,7 @@ export default function BillingReviewPage() {
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('suggested'); // suggested | approved | rejected | all
   const [search, setSearch] = useState('');
+  const [letter, setLetter] = useState(null);
   const [selected, setSelected] = useState(new Set()); // "rowId::serviceId"
   const [editing, setEditing] = useState(null); // { rowId, serviceIdx }
 
@@ -62,6 +64,7 @@ export default function BillingReviewPage() {
   const filtered = useMemo(() => {
     let out = items;
     if (filter !== 'all') out = out.filter((i) => i.status === filter);
+    if (letter) out = out.filter((i) => firstCharBucket(i.entityName) === letter);
     if (search.trim()) {
       const q = search.toLowerCase();
       out = out.filter((i) =>
@@ -71,7 +74,7 @@ export default function BillingReviewPage() {
       );
     }
     return out;
-  }, [items, filter, search]);
+  }, [items, filter, search, letter]);
 
   const counts = useMemo(() => {
     const c = { suggested: 0, approved: 0, rejected: 0, all: items.length };
@@ -250,6 +253,14 @@ export default function BillingReviewPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search client or service..."
           style={{ ...selectStyle, flex: 1, minWidth: 240, marginLeft: 'auto' }}
+        />
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <AlphabetFilter
+          items={items.map(i => ({ name: i.entityName || '' }))}
+          selected={letter}
+          onChange={setLetter}
         />
       </div>
 

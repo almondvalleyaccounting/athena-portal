@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { downloadCSV } from '../lib/exportUtils';
+import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 
 const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', declined: 'Rejected', expired: 'Expired' };
 const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
@@ -33,6 +34,7 @@ export default function QuotesPage() {
   const [groups, setGroups] = useState([]);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
   const [netGross, setNetGross] = useState('net');
+  const [letter, setLetter] = useState(null);
 
   // ── Filter chips (client/group only — status is handled by cards) ──
   const [chipFilters, setChipFilters] = useState([]);
@@ -200,6 +202,10 @@ export default function QuotesPage() {
     });
     if (chipGroupFilter) list = list.filter(q => q.group_id === chipGroupFilter);
 
+    if (letter) {
+      list = list.filter(q => firstCharBucket(q.relationship_group || '') === letter);
+    }
+
     if (search) {
       const s = search.toLowerCase();
       list = list.filter(q =>
@@ -217,7 +223,7 @@ export default function QuotesPage() {
       return 0;
     });
     return list;
-  }, [quotes, activeCard, search, sortCol, sortAsc, chipClientFilters, chipGroupFilter]);
+  }, [quotes, activeCard, search, sortCol, sortAsc, chipClientFilters, chipGroupFilter, letter]);
 
   const toggleSort = (col) => {
     if (sortCol === col) setSortAsc(!sortAsc);
@@ -412,8 +418,15 @@ export default function QuotesPage() {
         value={search}
         onChange={e => setSearch(e.target.value)}
         placeholder="Search by quote ref or client name..."
-        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3"
+        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-2"
       />
+      <div className="mb-3">
+        <AlphabetFilter
+          items={quotes.map(q => ({ name: q.relationship_group || '' }))}
+          selected={letter}
+          onChange={setLetter}
+        />
+      </div>
 
       {/* Filter chips bar (client/group only) */}
       <div className="flex items-center gap-1.5 mb-3 flex-wrap">
