@@ -11,6 +11,7 @@ import {
   Table,
   FileText,
   AlertTriangle,
+  TrendingUp,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -32,6 +33,7 @@ const ICON_MAP = {
   table: Table,
   'file-text': FileText,
   'alert-triangle': AlertTriangle,
+  'trending-up': TrendingUp,
 };
 
 /* ─── Visibility rules ─────────────────────────────────────────── */

@@ -36,6 +36,15 @@ export const MODULES = [
     group: 'data',
   },
   {
+    id: 'planning',
+    label: 'Planning',
+    route: '/planning',
+    icon: 'trending-up',
+    permissions: ['can_manage_portal'],
+    status: 'live',
+    group: 'data',
+  },
+  {
     id: 'work-planner',
     label: 'Work Planner',
     route: '/planner',
