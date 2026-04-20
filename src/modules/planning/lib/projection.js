@@ -26,6 +26,36 @@
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+// Heuristic — flag billing lines whose service descriptions suggest wind-down.
+// Catches things like RHBAR where billing_type='recurring' but the services say
+// "6 months towards…", "final…", "review for cancellation". We do NOT auto-end
+// these — we surface them to the user to review and set an explicit end_month.
+const WIND_DOWN_PATTERNS = [
+  /\bfinal\b/i,
+  /\breview\s+for\s+cancellation\b/i,
+  /\bcease(d)?\b/i,
+  /\bwind[- ]?down\b/i,
+  /\bceasing\b/i,
+  /\bclosing\b/i,
+  /\btowards\b/i,      // "6 months towards..." style — paying off a fixed amount
+  /\b\d+\s*months?\s+(un)?paid\b/i,
+  /\b\d+\s*months?\s+(final|towards|to go)\b/i,
+  /\bon\s+account\b/i,
+];
+
+export function detectWindDown(services) {
+  if (!services) return null;
+  const arr = Array.isArray(services) ? services : (services.services || []);
+  const hits = [];
+  for (const s of arr) {
+    const text = `${s.description || ''} ${s.detail || ''}`;
+    for (const rx of WIND_DOWN_PATTERNS) {
+      if (rx.test(text)) { hits.push({ service: s.service_id || '', text: text.trim(), pattern: rx.source }); break; }
+    }
+  }
+  return hits.length > 0 ? hits : null;
+}
+
 function monthKey(year, month) { return year * 12 + (month - 1); }
 
 function dateToKey(d) {
@@ -58,6 +88,16 @@ export function buildProjection({
   const churnPct = Number(scenario.churn_pct_annual) || 0;
   const newMrr = Number(scenario.new_mrr_per_month) || 0;
   const adHocPct = Number(scenario.ad_hoc_pct_of_recurring) || 0;
+
+  const seasonalityRaw = scenario.seasonality_monthly_mult;
+  let seasonality = Array.isArray(seasonalityRaw) ? seasonalityRaw.map(Number) : null;
+  if (!seasonality || seasonality.length !== 12) seasonality = Array(12).fill(1);
+  const seasonalityApplies = scenario.seasonality_applies_to || 'adhoc';
+  // Normalise so seasonality multipliers average 1 across the year — otherwise
+  // changing seasonality inadvertently shifts total annual revenue.
+  const seasonalitySum = seasonality.reduce((a, b) => a + b, 0);
+  const seasonalityMean = seasonalitySum > 0 ? seasonalitySum / 12 : 1;
+  const seasonalityNormalised = seasonality.map((m) => (seasonalityMean > 0 ? m / seasonalityMean : 1));
 
   // Index overrides by live_billing_id for quick lookup
   const overrideByBilling = new Map();
@@ -115,10 +155,19 @@ export function buildProjection({
     //   Apply uplift multiplier from point of acquisition (approx — treat as scaling with current multiplier)
     const newMrrThisMonth = newMrr * i * revenueMultiplier;
 
-    // ── Ad-hoc / one-off
-    const adHoc = (recurring + newMrrThisMonth) * (adHocPct / 100);
+    // ── Seasonality multiplier for this calendar month
+    const seasMult = seasonalityNormalised[month - 1] || 1;
 
-    const revenue = recurring + newMrrThisMonth + adHoc;
+    // ── Ad-hoc / one-off
+    // Seasonality applies at minimum to ad-hoc (SA rush, year-end surge). Optionally all.
+    const adHocBase = (recurring + newMrrThisMonth) * (adHocPct / 100);
+    const adHoc = adHocBase * seasMult; // always seasonal — ad-hoc is the cyclical part
+
+    // If seasonalityApplies === 'all', also modulate recurring + new MRR
+    const recurringApplied = seasonalityApplies === 'all' ? recurring * seasMult : recurring;
+    const newMrrApplied = seasonalityApplies === 'all' ? newMrrThisMonth * seasMult : newMrrThisMonth;
+
+    const revenue = recurringApplied + newMrrApplied + adHoc;
 
     // ── Staff cost
     const monthDate = new Date(year, month - 1, 1);
@@ -164,11 +213,12 @@ export function buildProjection({
 
     months.push({
       index: i, year, month, label,
-      revenue, recurringRevenue: recurring, adHocRevenue: adHoc, newMrrRevenue: newMrrThisMonth,
+      revenue, recurringRevenue: recurringApplied, adHocRevenue: adHoc, newMrrRevenue: newMrrApplied,
       staffCost, overheads, ownerComp,
       ebitda, profit,
       margin: revenue > 0 ? ebitda / revenue : 0,
       profitMargin: revenue > 0 ? profit / revenue : 0,
+      seasonalityMult: seasMult,
     });
   }
 

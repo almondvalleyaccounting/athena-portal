@@ -17,11 +17,14 @@ export default function OverheadsView() {
     setPulling(true); setPullMsg(null);
     try {
       const r = await pullQboPL();
-      if (r.success) setPullMsg(`Pulled ${r.expenses.length} expense accounts (${r.period.start} to ${r.period.end})`);
-      else setPullMsg(`Error: ${r.error}`);
-    } catch (e) { setPullMsg(`Error: ${e.message}`); }
+      if (r.success) {
+        setPullMsg({ kind: 'ok', text: `Pulled ${r.expenses.length} expense accounts (${r.period.start} to ${r.period.end}). Your existing lines aren't overwritten — only the LTM-actual column updates.` });
+      } else {
+        setPullMsg({ kind: 'err', text: r.error || 'QBO pull failed', raw: r.raw });
+      }
+    } catch (e) { setPullMsg({ kind: 'err', text: e.message }); }
     setPulling(false);
-    setTimeout(() => setPullMsg(null), 6000);
+    if (pullMsg?.kind === 'ok') setTimeout(() => setPullMsg(null), 8000);
   };
 
   const addBlank = async () => {
@@ -54,7 +57,22 @@ export default function OverheadsView() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 0 10px', gap: 8, flexWrap: 'wrap' }}>
-        {pullMsg && <div style={{ background: '#eff6ff', color: '#0e7fe0', fontSize: 12, padding: '8px 12px', borderRadius: 8 }}>{pullMsg}</div>}
+        {pullMsg && (
+          <div style={{
+            background: pullMsg.kind === 'ok' ? '#eff6ff' : '#fef2f2',
+            color: pullMsg.kind === 'ok' ? '#0e7fe0' : '#dc2626',
+            fontSize: 12, padding: '10px 14px', borderRadius: 8, flex: 1, minWidth: 200,
+            border: `1px solid ${pullMsg.kind === 'ok' ? '#bfdbfe' : '#fecaca'}`,
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: pullMsg.raw ? 4 : 0 }}>{pullMsg.text}</div>
+            {pullMsg.raw && (
+              <details style={{ marginTop: 4 }}>
+                <summary style={{ cursor: 'pointer', fontSize: 11, color: '#94a3b8' }}>Raw QBO response</summary>
+                <pre style={{ fontSize: 10, marginTop: 4, padding: 6, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'auto', maxHeight: 120 }}>{pullMsg.raw}</pre>
+              </details>
+            )}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
           <button onClick={handlePull} disabled={pulling} style={{ ...btnOutline, opacity: pulling ? 0.5 : 1 }}>
             <RefreshCw size={14} /> {pulling ? 'Pulling…' : 'Refresh from QBO'}

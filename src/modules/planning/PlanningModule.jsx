@@ -16,6 +16,7 @@ import StaffView from './views/StaffView';
 import OwnerCompView from './views/OwnerCompView';
 import OverheadsView from './views/OverheadsView';
 import ScenariosView from './views/ScenariosView';
+import UnbilledView from './views/UnbilledView';
 
 const PlanningCtx = createContext(null);
 export const usePlanning = () => useContext(PlanningCtx);
@@ -48,10 +49,33 @@ export default function PlanningModule() {
       let list = scs;
       let active = list.find((s) => s.is_active) || list[0];
       if (!active) {
-        active = await createScenario('Baseline');
-        await seedScenarioFromCurrent(active.id);
+        // First-time setup: seed three scenarios so the CFO has comparison baked in.
+        const base = await createScenario('Base case');
+        await seedScenarioFromCurrent(base.id);
+        await updateScenario(base.id, {
+          fee_uplift_pct: 5, pay_rise_pct: 4, churn_pct_annual: 5, new_mrr_per_month: 1500, ad_hoc_pct_of_recurring: 10,
+        });
+        const upside = await duplicateScenario(base.id, 'Upside');
+        await updateScenario(upside.id, {
+          fee_uplift_pct: 10, pay_rise_pct: 4, churn_pct_annual: 3, new_mrr_per_month: 3000, ad_hoc_pct_of_recurring: 15,
+        });
+        const downside = await duplicateScenario(base.id, 'Downside');
+        await updateScenario(downside.id, {
+          fee_uplift_pct: 2, pay_rise_pct: 5, churn_pct_annual: 10, new_mrr_per_month: 500, ad_hoc_pct_of_recurring: 7,
+        });
         list = await listScenarios();
+        active = list.find((s) => s.name === 'Base case') || list[0];
       }
+
+      // Rolling forecast: if active scenario's start_month is in the past, roll it forward
+      // to the current month so the forecast always looks 24 months out from today.
+      const thisMonth = new Date().toISOString().slice(0, 7) + '-01';
+      if (active?.start_month && active.start_month < thisMonth) {
+        await updateScenario(active.id, { start_month: thisMonth });
+        list = await listScenarios();
+        active = list.find((s) => s.id === active.id) || active;
+      }
+
       setScenarios(list);
       setScenarioId(active.id);
     } catch (e) {
@@ -167,6 +191,7 @@ export default function PlanningModule() {
           <Route path="staff" element={<StaffView />} />
           <Route path="owner" element={<OwnerCompView />} />
           <Route path="overheads" element={<OverheadsView />} />
+          <Route path="unbilled" element={<UnbilledView />} />
           <Route path="scenarios" element={<ScenariosView />} />
           <Route path="*" element={<Navigate to="." replace />} />
         </Routes>
@@ -252,13 +277,15 @@ function Header() {
 }
 
 function Tabs() {
+  // Absolute paths — relative paths stack on top of the current URL in v6.
   const tabs = [
-    { to: '.', label: 'Overview', end: true },
-    { to: 'revenue', label: 'Revenue & clients' },
-    { to: 'staff', label: 'Staff' },
-    { to: 'owner', label: 'Owner comp' },
-    { to: 'overheads', label: 'Overheads' },
-    { to: 'scenarios', label: 'Scenarios' },
+    { to: '/planning', label: 'Overview', end: true },
+    { to: '/planning/revenue', label: 'Revenue & clients' },
+    { to: '/planning/staff', label: 'Staff' },
+    { to: '/planning/owner', label: 'Owner comp' },
+    { to: '/planning/overheads', label: 'Overheads' },
+    { to: '/planning/unbilled', label: 'Unbilled QBO' },
+    { to: '/planning/scenarios', label: 'Scenarios' },
   ];
   return (
     <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e5e7eb', marginBottom: 20, overflowX: 'auto' }}>

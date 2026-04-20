@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { AlertTriangle, CalendarX, Search, TrendingUp } from 'lucide-react';
+import { AlertTriangle, CalendarX, Search, Flag } from 'lucide-react';
 import { usePlanning } from '../PlanningModule';
-import { fmtGBP, fmtPct } from '../lib/projection';
+import { fmtGBP, fmtPct, detectWindDown } from '../lib/projection';
+
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 const STATUS_META = {
   active:  { label: 'Active',   colour: '#059669', bg: '#f0fdf4' },
@@ -14,11 +16,12 @@ export default function RevenueView() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
 
-  // Merge billings + overrides
+  // Merge billings + overrides, and detect wind-down signals from services JSONB.
   const book = useMemo(() => {
     const byId = new Map(clientOverrides.map((o) => [o.live_billing_id, o]));
     return clientBillings.map((b) => {
       const ov = byId.get(b.id);
+      const windDown = detectWindDown(b.services);
       return {
         ...b,
         override: ov || null,
@@ -27,9 +30,15 @@ export default function RevenueView() {
         fee: ov?.fee_override_monthly != null ? Number(ov.fee_override_monthly) : b.monthly_net,
         notes: ov?.risk_notes || '',
         excludeUplift: !!ov?.exclude_from_uplift,
+        windDown,
       };
     }).sort((a, b) => b.fee - a.fee);
   }, [clientBillings, clientOverrides]);
+
+  const needsReview = useMemo(
+    () => book.filter((c) => c.windDown && c.status === 'active' && !c.endMonth),
+    [book]
+  );
 
   const filtered = useMemo(() => {
     let list = book;
@@ -87,6 +96,57 @@ export default function RevenueView() {
             value={scenario?.ad_hoc_pct_of_recurring || 0} onChange={(v) => updateScenario({ ad_hoc_pct_of_recurring: v })} />
         </div>
       </div>
+
+      {/* Seasonality */}
+      <div style={{ ...card, marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={h3}>Monthly seasonality</h3>
+          <select value={scenario?.seasonality_applies_to || 'adhoc'}
+            onChange={(e) => updateScenario({ seasonality_applies_to: e.target.value })}
+            style={{ ...inputStyle, width: 'auto' }}>
+            <option value="adhoc">Apply to ad-hoc only</option>
+            <option value="all">Apply to all revenue</option>
+          </select>
+        </div>
+        <p style={help}>
+          Multipliers are normalised so they average 1 across the year — changing shape doesn't change total. Set {'>'}1 for peak months (SA rush, year-end) and {'<'}1 for lull months.
+        </p>
+        <SeasonalityEditor
+          values={scenario?.seasonality_monthly_mult || [1,1,1,1,1,1,1,1,1,1,1,1]}
+          onChange={(arr) => updateScenario({ seasonality_monthly_mult: arr })}
+        />
+      </div>
+
+      {/* Wind-down signals — clients that look like they're winding down */}
+      {needsReview.length > 0 && (
+        <div style={{ ...card, marginTop: 16, borderColor: '#fde68a', background: '#fffbeb' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Flag size={16} style={{ color: '#d97706' }} />
+            <h3 style={{ ...h3, margin: 0 }}>Wind-down signals ({needsReview.length})</h3>
+          </div>
+          <p style={{ ...help, marginBottom: 10 }}>
+            Detected from service descriptions — these clients may be one-offs tagged as recurring, or clients genuinely winding down (e.g. "6 months final payroll", "review for cancellation", "towards final accounts"). Set a status or end-month so the forecast doesn't assume they'll keep paying forever.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {needsReview.slice(0, 8).map((c) => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#fff', borderRadius: 8, border: '1px solid #fde68a' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{c.entity_name}</div>
+                  <div style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}>
+                    {c.windDown.slice(0, 2).map((w, i) => <span key={i}>"{w.text.slice(0, 80)}{w.text.length > 80 ? '…' : ''}"{i < Math.min(1, c.windDown.length - 1) ? ' · ' : ''}</span>)}
+                  </div>
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', minWidth: 80, textAlign: 'right' }}>
+                  {fmtGBP(c.fee)}/mo
+                </div>
+                <button onClick={() => applyOverride(c, { status: 'at_risk' })} style={btnMini}>Flag at risk</button>
+                <button onClick={() => applyOverride(c, { status: 'ending', end_month: defaultEndMonth() })} style={btnMiniDark}>Ending in 6mo</button>
+              </div>
+            ))}
+            {needsReview.length > 8 && <div style={{ fontSize: 11, color: '#92400e' }}>…and {needsReview.length - 8} more — work through them below.</div>}
+          </div>
+        </div>
+      )}
 
       {/* Summary strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, margin: '16px 0' }}>
@@ -190,6 +250,50 @@ function BlurInput({ value, onChange, placeholder }) {
   );
 }
 
+function defaultEndMonth() {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 6);
+  return d.toISOString().slice(0, 7) + '-01';
+}
+
+function SeasonalityEditor({ values, onChange }) {
+  const arr = Array.isArray(values) && values.length === 12 ? values.map(Number) : Array(12).fill(1);
+  const setAt = (i, v) => {
+    const next = arr.slice();
+    next[i] = Math.max(0, Math.min(3, v));
+    onChange(next);
+  };
+  const presets = [
+    { label: 'Flat', values: Array(12).fill(1) },
+    { label: 'UK practice (SA + year-end)', values: [1.4, 1.1, 1.1, 1.3, 1.0, 0.85, 0.75, 0.8, 1.0, 1.05, 1.05, 1.0] },
+    { label: 'Year-end heavy (Apr)', values: [0.9, 0.9, 1.2, 1.4, 1.2, 0.9, 0.85, 0.85, 0.95, 1.0, 1.0, 0.85] },
+    { label: 'SA-heavy (Jan)', values: [1.6, 1.1, 0.95, 1.0, 0.95, 0.9, 0.85, 0.85, 0.95, 1.0, 1.0, 0.95] },
+  ];
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, color: '#64748b', alignSelf: 'center' }}>Presets:</span>
+        {presets.map((p) => (
+          <button key={p.label} onClick={() => onChange(p.values)} style={btnMini}>{p.label}</button>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 6, alignItems: 'end' }}>
+        {arr.map((v, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div style={{ position: 'relative', height: 60, width: '100%', background: '#f8fafc', borderRadius: 4, display: 'flex', alignItems: 'flex-end' }}>
+              <div style={{ width: '100%', height: `${Math.min(100, v * 50)}%`, background: v >= 1 ? '#0e7fe0' : '#cbd5e1', borderRadius: '4px 4px 0 0' }} />
+            </div>
+            <input type="number" min={0} max={3} step={0.05} value={v}
+              onChange={(e) => setAt(i, parseFloat(e.target.value) || 0)}
+              style={{ ...inputStyle, fontSize: 11, padding: '4px 6px', textAlign: 'center' }} />
+            <div style={{ fontSize: 10, color: '#94a3b8' }}>{MONTHS_SHORT[i]}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Summary({ label, colour, mo, count, bold }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 14px', borderLeft: `3px solid ${colour}` }}>
@@ -233,3 +337,5 @@ const help = { fontSize: 12, color: '#94a3b8', marginBottom: 14 };
 const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600 };
 const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
 const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
+const btnMini = { padding: '4px 10px', fontSize: 11, fontWeight: 500, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const btnMiniDark = { padding: '4px 10px', fontSize: 11, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };

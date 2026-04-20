@@ -237,8 +237,17 @@ export async function pullQboPL() {
     },
     body: JSON.stringify({}),
   });
-  if (!resp.ok) throw new Error(`QBO pull failed: ${resp.status} ${await resp.text()}`);
-  return resp.json();
+  // The edge function now returns structured errors as 200 with { success: false, error, raw }.
+  // Only throw for non-200s, which indicate function-level failures.
+  const text = await resp.text();
+  try {
+    const body = JSON.parse(text);
+    if (!resp.ok && !body.error) throw new Error(`QBO pull failed: ${resp.status}`);
+    return body;
+  } catch (e) {
+    if (!resp.ok) throw new Error(`QBO pull failed: ${resp.status} ${text.slice(0, 200)}`);
+    throw e;
+  }
 }
 
 // ── Seeding ───────────────────────────────────────────────
