@@ -3,8 +3,12 @@ import { usePlanning } from '../PlanningModule';
 import { fmtGBP, fmtGBPSigned, fmtPct } from '../lib/projection';
 
 export default function OverviewView() {
-  const { projection, clientBillings, clientOverrides, staffLines, scenario } = usePlanning();
+  const { projection, clientBillings, clientOverrides, staffLines, scenario, monthlyActuals } = usePlanning();
   const { months, y1, y2, waterfall } = projection;
+
+  const actualMonths = months.filter((m) => m.isActual);
+  const varianceRevY1 = actualMonths.reduce((s, m) => s + (m.varianceRevenue || 0), 0);
+  const varianceProfitY1 = actualMonths.reduce((s, m) => s + (m.varianceProfit || 0), 0);
 
   if (!months.length) {
     return <div style={{ color: '#94a3b8', fontSize: 13 }}>No projection yet — add a scenario.</div>;
@@ -32,6 +36,17 @@ export default function OverviewView() {
 
   return (
     <div>
+      {/* Rolling-forecast banner — shows when actuals are available */}
+      {actualMonths.length > 0 && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', fontSize: 12, marginBottom: 14, display: 'flex', gap: 18, alignItems: 'center' }}>
+          <div>
+            <b style={{ color: '#0e7fe0' }}>Rolling forecast:</b> {actualMonths.length} actual month{actualMonths.length !== 1 ? 's' : ''} overlaid ({actualMonths[0].label} → {actualMonths[actualMonths.length - 1].label}).
+          </div>
+          <div style={{ color: '#64748b' }}>Revenue variance: <b style={{ color: varianceRevY1 >= 0 ? '#059669' : '#dc2626' }}>{varianceRevY1 >= 0 ? '+' : ''}{fmtGBP(varianceRevY1)}</b></div>
+          <div style={{ color: '#64748b' }}>Profit variance: <b style={{ color: varianceProfitY1 >= 0 ? '#059669' : '#dc2626' }}>{varianceProfitY1 >= 0 ? '+' : ''}{fmtGBP(varianceProfitY1)}</b></div>
+        </div>
+      )}
+
       {/* Hero KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
         <Kpi
@@ -113,8 +128,11 @@ export default function OverviewView() {
             </thead>
             <tbody>
               {months.map((m) => (
-                <tr key={m.index} style={{ borderTop: '1px solid #f1f5f9' }}>
-                  <td style={{ ...td, textAlign: 'left', color: '#64748b' }}>{m.label}</td>
+                <tr key={m.index} style={{ borderTop: '1px solid #f1f5f9', background: m.isActual ? '#f0fdf4' : undefined }}>
+                  <td style={{ ...td, textAlign: 'left', color: '#64748b' }}>
+                    {m.label}
+                    {m.isActual && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: '#059669', background: '#dcfce7', padding: '1px 5px', borderRadius: 3 }}>ACTUAL</span>}
+                  </td>
                   <td style={{ ...td, color: '#0e7fe0' }}>{fmtGBP(m.revenue)}</td>
                   <td style={td}>{fmtGBP(m.staffCost)}</td>
                   <td style={td}>{fmtGBP(m.overheads)}</td>

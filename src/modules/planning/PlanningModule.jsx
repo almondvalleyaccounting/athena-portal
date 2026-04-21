@@ -6,9 +6,10 @@ import {
   loadOverheadLines, upsertOverheadLine, deleteOverheadLine,
   loadOwnerCompLines, upsertOwnerCompLine, deleteOwnerCompLine,
   loadClientOverrides, upsertClientOverride, deleteClientOverride,
-  loadClientBillings, loadStaffProfiles, pullQboPL, seedScenarioFromCurrent,
+  loadClientBillings, loadStaffProfiles, pullQboPL, pullQboMonthly, seedScenarioFromCurrent,
+  loadTimesheetLTM, loadQuotePipeline, loadMonthlyActuals,
 } from './lib/queries';
-import { buildProjection, fmtGBP, fmtPct } from './lib/projection';
+import { buildProjection, computePipelineContribution, fmtGBP, fmtPct } from './lib/projection';
 
 import OverviewView from './views/OverviewView';
 import RevenueView from './views/RevenueView';
@@ -17,6 +18,7 @@ import OwnerCompView from './views/OwnerCompView';
 import OverheadsView from './views/OverheadsView';
 import ScenariosView from './views/ScenariosView';
 import UnbilledView from './views/UnbilledView';
+import ProfitabilityView from './views/ProfitabilityView';
 
 const PlanningCtx = createContext(null);
 export const usePlanning = () => useContext(PlanningCtx);
@@ -30,6 +32,9 @@ export default function PlanningModule() {
   const [clientOverrides, setClientOverrides] = useState([]);
   const [clientBillings, setClientBillings] = useState([]);
   const [staffProfiles, setStaffProfiles] = useState([]);
+  const [timesheetEntries, setTimesheetEntries] = useState([]);
+  const [quotePipeline, setQuotePipeline] = useState([]);
+  const [monthlyActuals, setMonthlyActuals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
 
@@ -40,11 +45,17 @@ export default function PlanningModule() {
   async function bootstrap() {
     setLoading(true);
     try {
-      const [scs, billings, staff] = await Promise.all([
+      const [scs, billings, staff, ts, pipeline, actuals] = await Promise.all([
         listScenarios(), loadClientBillings(), loadStaffProfiles(),
+        loadTimesheetLTM().catch(() => []),
+        loadQuotePipeline().catch(() => []),
+        loadMonthlyActuals().catch(() => []),
       ]);
       setClientBillings(billings);
       setStaffProfiles(staff);
+      setTimesheetEntries(ts);
+      setQuotePipeline(pipeline);
+      setMonthlyActuals(actuals);
 
       let list = scs;
       let active = list.find((s) => s.is_active) || list[0];
@@ -106,6 +117,22 @@ export default function PlanningModule() {
     return () => { cancelled = true; };
   }, [scenarioId]);
 
+  // Base projection without pipeline — used to compute pipeline month alignment
+  const monthsScaffold = useMemo(() => buildProjection({
+    scenario, staffLines: [], overheadLines: [], ownerCompLines: [], clientBillings: [], clientOverrides: [], horizonMonths: 24,
+  }).months, [scenario]);
+
+  const pipelineResult = useMemo(
+    () => computePipelineContribution({ quotes: quotePipeline, scenario, months: monthsScaffold }),
+    [quotePipeline, scenario, monthsScaffold]
+  );
+  const pipelineMrrByMonth = useMemo(() => {
+    if (!scenario?.pipeline_mrr_override_enabled) return null;
+    const m = new Map();
+    for (const r of pipelineResult.perMonth) m.set(r.index, r.pipeline_mrr);
+    return m;
+  }, [pipelineResult, scenario?.pipeline_mrr_override_enabled]);
+
   const projection = useMemo(() => buildProjection({
     scenario,
     staffLines,
@@ -113,8 +140,10 @@ export default function PlanningModule() {
     ownerCompLines,
     clientBillings,
     clientOverrides,
+    monthlyActuals,
+    pipelineMrrByMonth,
     horizonMonths: 24,
-  }), [scenario, staffLines, overheadLines, ownerCompLines, clientBillings, clientOverrides]);
+  }), [scenario, staffLines, overheadLines, ownerCompLines, clientBillings, clientOverrides, monthlyActuals, pipelineMrrByMonth]);
 
   // Derived: all scenarios' projections (for scenario comparison)
   const allProjections = useMemo(() => {
@@ -133,10 +162,16 @@ export default function PlanningModule() {
   };
   const refreshScenarios = async () => setScenarios(await listScenarios());
 
+  const refreshActuals = async () => {
+    try { setMonthlyActuals(await loadMonthlyActuals()); } catch (e) { console.error(e); }
+  };
+
   const ctxValue = {
     scenarios, scenario, scenarioId, setScenarioId,
     staffLines, overheadLines, ownerCompLines, clientOverrides, clientBillings,
-    staffProfiles, projection, allProjections,
+    staffProfiles, timesheetEntries, quotePipeline, monthlyActuals,
+    projection, pipelineResult, allProjections,
+    pullQboMonthly: async (n = 12) => { const r = await pullQboMonthly(n); await refreshActuals(); return r; },
 
     // Scenario actions
     createScenario: async (name) => {
@@ -191,6 +226,7 @@ export default function PlanningModule() {
           <Route path="staff" element={<StaffView />} />
           <Route path="owner" element={<OwnerCompView />} />
           <Route path="overheads" element={<OverheadsView />} />
+          <Route path="profitability" element={<ProfitabilityView />} />
           <Route path="unbilled" element={<UnbilledView />} />
           <Route path="scenarios" element={<ScenariosView />} />
           <Route path="*" element={<Navigate to="." replace />} />
@@ -284,6 +320,7 @@ function Tabs() {
     { to: '/planning/staff', label: 'Staff' },
     { to: '/planning/owner', label: 'Owner comp' },
     { to: '/planning/overheads', label: 'Overheads' },
+    { to: '/planning/profitability', label: 'Profitability' },
     { to: '/planning/unbilled', label: 'Unbilled QBO' },
     { to: '/planning/scenarios', label: 'Scenarios' },
   ];

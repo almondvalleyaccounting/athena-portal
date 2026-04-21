@@ -4,9 +4,22 @@ import { usePlanning } from '../PlanningModule';
 import { fmtGBP } from '../lib/projection';
 
 export default function OverheadsView() {
-  const { overheadLines, upsertOverhead, removeOverhead, pullQboPL, scenario, updateScenario } = usePlanning();
+  const { overheadLines, upsertOverhead, removeOverhead, pullQboPL, pullQboMonthly, monthlyActuals, scenario, updateScenario } = usePlanning();
   const [pulling, setPulling] = useState(false);
   const [pullMsg, setPullMsg] = useState(null);
+
+  const actualMonthCount = new Set((monthlyActuals || []).map((r) => String(r.period_start).slice(0, 7))).size;
+
+  const handleMonthlyPull = async () => {
+    setPulling(true); setPullMsg(null);
+    try {
+      const r = await pullQboMonthly(12);
+      if (r.success) setPullMsg({ kind: 'ok', text: `Pulled ${r.cells_written} month×account rows covering ${r.months} months (${r.period.start} → ${r.period.end}). Overview now shows actual vs plan variance.` });
+      else setPullMsg({ kind: 'err', text: r.error, raw: r.raw });
+    } catch (e) { setPullMsg({ kind: 'err', text: e.message }); }
+    setPulling(false);
+    if (pullMsg?.kind === 'ok') setTimeout(() => setPullMsg(null), 10000);
+  };
 
   const totalMonthly = overheadLines.reduce((s, o) => s + (Number(o.monthly_amount) || 0), 0);
   const totalAnnual = totalMonthly * 12;
@@ -75,7 +88,11 @@ export default function OverheadsView() {
         )}
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
           <button onClick={handlePull} disabled={pulling} style={{ ...btnOutline, opacity: pulling ? 0.5 : 1 }}>
-            <RefreshCw size={14} /> {pulling ? 'Pulling…' : 'Refresh from QBO'}
+            <RefreshCw size={14} /> {pulling ? 'Pulling…' : 'Refresh LTM totals'}
+          </button>
+          <button onClick={handleMonthlyPull} disabled={pulling} style={{ ...btnDark, opacity: pulling ? 0.5 : 1 }}
+            title="Pulls QBO P&L month-by-month so the Overview can show actual-vs-plan variance for closed months.">
+            <RefreshCw size={14} /> {pulling ? 'Pulling…' : `Pull monthly actuals (${actualMonthCount} loaded)`}
           </button>
           <button onClick={addBlank} style={btnDark}><Plus size={14} /> Add line</button>
         </div>

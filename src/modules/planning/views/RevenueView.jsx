@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { AlertTriangle, CalendarX, Search, Flag } from 'lucide-react';
+import { AlertTriangle, CalendarX, Search, Flag, Zap, ShieldAlert } from 'lucide-react';
 import { usePlanning } from '../PlanningModule';
-import { fmtGBP, fmtPct, detectWindDown } from '../lib/projection';
+import { fmtGBP, fmtPct, detectWindDown, computeChurnScores } from '../lib/projection';
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -12,9 +12,20 @@ const STATUS_META = {
 };
 
 export default function RevenueView() {
-  const { clientBillings, clientOverrides, upsertClientOverride, scenario, updateScenario } = usePlanning();
+  const { clientBillings, clientOverrides, upsertClientOverride, scenario, updateScenario, pipelineResult, timesheetEntries } = usePlanning();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+
+  const churnScores = useMemo(
+    () => computeChurnScores({ clientBillings, clientOverrides, timesheetEntries }),
+    [clientBillings, clientOverrides, timesheetEntries]
+  );
+  const churnBuckets = useMemo(() => {
+    const b = { high: [], medium: [], low: [] };
+    for (const c of churnScores) b[c.bucket].push(c);
+    return b;
+  }, [churnScores]);
+  const highRiskAnnualRevenue = churnBuckets.high.reduce((s, c) => s + (c.monthly_fee || 0) * 12, 0);
 
   // Merge billings + overrides, and detect wind-down signals from services JSONB.
   const book = useMemo(() => {
@@ -95,6 +106,107 @@ export default function RevenueView() {
           <SliderField label="Ad-hoc / one-off %" min={0} max={30} step={0.5} suffix="%"
             value={scenario?.ad_hoc_pct_of_recurring || 0} onChange={(v) => updateScenario({ ad_hoc_pct_of_recurring: v })} />
         </div>
+      </div>
+
+      {/* Pipeline → weighted new MRR */}
+      <div style={{ ...card, marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Zap size={16} style={{ color: '#0e7fe0' }} />
+            <h3 style={h3}>Quote pipeline → weighted new MRR</h3>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#0f172a', cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!scenario?.pipeline_mrr_override_enabled}
+              onChange={(e) => updateScenario({ pipeline_mrr_override_enabled: e.target.checked })} />
+            Use pipeline instead of manual new-MRR assumption
+          </label>
+        </div>
+        <p style={help}>
+          Open quotes × win-probability × expected go-live month → monthly £ contribution. When toggled on, the
+          projection uses this instead of your manual "New MRR / month" setting. Win rates are configurable per scenario.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+          <SliderField label="Draft win %" min={0} max={50} step={1} suffix="%"
+            value={scenario?.pipeline_win_rate_draft_pct || 10}
+            onChange={(v) => updateScenario({ pipeline_win_rate_draft_pct: v })} />
+          <SliderField label="Sent win %" min={0} max={100} step={1} suffix="%"
+            value={scenario?.pipeline_win_rate_sent_pct || 50}
+            onChange={(v) => updateScenario({ pipeline_win_rate_sent_pct: v })} />
+          <SliderField label="Accepted win %" min={0} max={100} step={1} suffix="%"
+            value={scenario?.pipeline_win_rate_accepted_pct || 90}
+            onChange={(v) => updateScenario({ pipeline_win_rate_accepted_pct: v })} />
+        </div>
+        {pipelineResult.breakdown.length === 0 ? (
+          <div style={{ color: '#94a3b8', fontSize: 12, padding: '12px 0' }}>No open quotes in pipeline.</div>
+        ) : (
+          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>
+                <th style={{ ...th, padding: '6px 8px' }}>Client</th>
+                <th style={{ ...th, padding: '6px 8px' }}>Status</th>
+                <th style={{ ...th, padding: '6px 8px', textAlign: 'right' }}>Quote £/mo</th>
+                <th style={{ ...th, padding: '6px 8px', textAlign: 'right' }}>Win %</th>
+                <th style={{ ...th, padding: '6px 8px', textAlign: 'right' }}>Weighted £/mo</th>
+                <th style={{ ...th, padding: '6px 8px' }}>Expected live</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pipelineResult.breakdown.map((q) => (
+                <tr key={q.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '6px 8px' }}>{q.entity_name}</td>
+                  <td style={{ padding: '6px 8px', textTransform: 'capitalize', fontSize: 11, color: '#64748b' }}>{q.status}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmtGBP(q.monthly_net)}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right' }}>{Math.round(q.probability * 100)}%</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#0e7fe0' }}>{fmtGBP(q.weighted_monthly)}</td>
+                  <td style={{ padding: '6px 8px', fontSize: 11, color: '#64748b' }}>{q.expected_live}</td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: '2px solid #e5e7eb', fontWeight: 700 }}>
+                <td style={{ padding: '6px 8px' }} colSpan={4}>Weighted avg across Y1</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: '#0e7fe0' }}>{fmtGBP(pipelineResult.avgY1Run)} / mo</td>
+                <td />
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Churn risk scoring */}
+      <div style={{ ...card, marginTop: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <ShieldAlert size={16} style={{ color: '#dc2626' }} />
+          <h3 style={h3}>Churn risk scoring</h3>
+        </div>
+        <p style={help}>
+          Every client scored 0–100 from multiple signals: at-risk flag, wind-down phrases, engagement (time logged),
+          fee override pressure, explicit end-month. High-risk clients show up here — and their combined annual £
+          tells you how exposed the book is.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
+          <Summary label="High risk" colour="#dc2626" mo={highRiskAnnualRevenue / 12} count={churnBuckets.high.length} bold />
+          <Summary label="Medium risk" colour="#f59e0b" mo={churnBuckets.medium.reduce((s, c) => s + (c.monthly_fee || 0), 0)} count={churnBuckets.medium.length} />
+          <Summary label="Low risk" colour="#059669" mo={churnBuckets.low.reduce((s, c) => s + (c.monthly_fee || 0), 0)} count={churnBuckets.low.length} />
+          <Summary label="Exposure (high £/yr)" colour="#7c3aed" mo={highRiskAnnualRevenue / 12} count={0} />
+        </div>
+        {churnBuckets.high.slice(0, 5).length > 0 && (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>Top-5 highest-risk</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {churnBuckets.high.slice(0, 5).map((c) => (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{c.entity_name}</div>
+                    <div style={{ fontSize: 11, color: '#991b1b', marginTop: 2 }}>
+                      {c.signals.map((s) => s.label).join(' · ')}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#dc2626' }}>Score {c.score}</div>
+                  <div style={{ fontSize: 12, color: '#64748b', minWidth: 70, textAlign: 'right' }}>{fmtGBP(c.monthly_fee)}/mo</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Seasonality */}

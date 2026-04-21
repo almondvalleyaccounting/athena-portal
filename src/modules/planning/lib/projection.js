@@ -71,6 +71,8 @@ export function buildProjection({
   ownerCompLines = [],
   clientBillings = [],          // [{ id, entity_id, monthly_net }]
   clientOverrides = [],         // [{ live_billing_id, status, end_month, fee_override_monthly, exclude_from_uplift }]
+  monthlyActuals = [],          // [{ period_start, account_name, account_type, amount }] — rolling forecast
+  pipelineMrrByMonth = null,    // Map<monthIndex, £> — pipeline-weighted new MRR contribution
   horizonMonths = 24,
 }) {
   if (!scenario) return emptyProjection();
@@ -106,6 +108,18 @@ export function buildProjection({
   }
 
   const baseOverheads = overheadLines.reduce((s, o) => s + (Number(o.monthly_amount) || 0), 0);
+
+  // Index monthly actuals by YYYY-MM for O(1) lookup
+  const actualsByMonth = new Map();
+  for (const a of monthlyActuals) {
+    const key = String(a.period_start).slice(0, 7);
+    if (!actualsByMonth.has(key)) actualsByMonth.set(key, { revenue: 0, expenses: 0, expensesByType: {} });
+    const bucket = actualsByMonth.get(key);
+    const amt = Number(a.amount) || 0;
+    if (a.account_type === 'Income') bucket.revenue += amt;
+    else { bucket.expenses += amt; bucket.expensesByType[a.account_type] = (bucket.expensesByType[a.account_type] || 0) + amt; }
+  }
+  const todayKey = new Date().toISOString().slice(0, 7);
 
   const months = [];
   let revenueMultiplier = 1;           // compounds on fee uplift anniversary
@@ -211,14 +225,45 @@ export function buildProjection({
     const ebitda = revenue - staffCost - overheads;
     const profit = ebitda - ownerComp;
 
+    // ── Pipeline contribution (from accepted/sent quotes)
+    const pipelineContrib = pipelineMrrByMonth?.get?.(i) || 0;
+    const revenueWithPipeline = revenue + pipelineContrib;
+
+    // ── Rolling forecast: if month is closed and we have actuals, overlay them
+    const monthKeyStr = `${year}-${String(month).padStart(2, '0')}`;
+    const actual = actualsByMonth.get(monthKeyStr);
+    const isClosed = monthKeyStr < todayKey;
+    const hasActual = isClosed && actual && (actual.revenue > 0 || actual.expenses > 0);
+
+    const plannedRevenue = revenueWithPipeline;
+    const plannedExpenses = staffCost + overheads + ownerComp;
+    const plannedEbitda = plannedRevenue - staffCost - overheads;
+    const plannedProfit = plannedEbitda - ownerComp;
+
+    const displayRevenue = hasActual ? actual.revenue : plannedRevenue;
+    const displayExpenses = hasActual ? actual.expenses : plannedExpenses;
+    const displayEbitda = displayRevenue - (hasActual ? actual.expenses - ownerComp : staffCost + overheads);
+    // If we have actuals, treat the actual expenses as already including owner comp paid.
+    // So EBITDA = actual.revenue - (actual.expenses - ownerComp); profit = actual.revenue - actual.expenses.
+    const finalEbitda = hasActual ? (actual.revenue - (actual.expenses - ownerComp)) : plannedEbitda;
+    const finalProfit = hasActual ? (actual.revenue - actual.expenses) : plannedProfit;
+
     months.push({
       index: i, year, month, label,
-      revenue, recurringRevenue: recurringApplied, adHocRevenue: adHoc, newMrrRevenue: newMrrApplied,
+      revenue: displayRevenue,
+      plannedRevenue,
+      actualRevenue: hasActual ? actual.revenue : null,
+      recurringRevenue: recurringApplied, adHocRevenue: adHoc, newMrrRevenue: newMrrApplied, pipelineRevenue: pipelineContrib,
       staffCost, overheads, ownerComp,
-      ebitda, profit,
-      margin: revenue > 0 ? ebitda / revenue : 0,
-      profitMargin: revenue > 0 ? profit / revenue : 0,
+      ebitda: finalEbitda,
+      profit: finalProfit,
+      plannedEbitda, plannedProfit,
+      margin: displayRevenue > 0 ? finalEbitda / displayRevenue : 0,
+      profitMargin: displayRevenue > 0 ? finalProfit / displayRevenue : 0,
       seasonalityMult: seasMult,
+      isActual: hasActual,
+      varianceRevenue: hasActual ? actual.revenue - plannedRevenue : null,
+      varianceProfit: hasActual ? finalProfit - plannedProfit : null,
     });
   }
 
@@ -302,3 +347,214 @@ export const fmtGBP2 = (n) =>
 export const fmtPct = (n) => `${(n * 100).toFixed(1)}%`;
 
 export const fmtPctSimple = (n) => `${((n || 0) * 100).toFixed(0)}%`;
+
+// ── Client profitability ────────────────────────────────
+
+// Compute per-client revenue / cost-to-serve / margin using LTM timesheets.
+// Inputs:
+//   clientBillings       — from live_billing (annualised fee)
+//   clientOverrides      — scenario fee overrides (used if present)
+//   timesheetEntries     — LTM timesheet_entries
+//   staffLines           — plan_staff_lines (cost per staff)
+//   targetHoursPa        — scenario default target chargeable hours per year
+// For each staff member:
+//   hourly cost = annual_fully_loaded / max(target_hours, logged_hours_LTM)
+// For each client:
+//   hours = sum minutes/60 across all staff
+//   cost  = sum hours_per_staff × hourly_cost_per_staff
+//   margin = revenue - cost
+export function computeClientProfitability({ clientBillings, clientOverrides, timesheetEntries, staffLines, staffProfiles, scenario }) {
+  const targetHoursPa = Number(scenario?.target_chargeable_hours_pa) || 1400;
+  const defaultOnCosts = Number(scenario?.default_on_costs_pct) || 15.05;
+
+  // Staff cost rate per hour (derived from fully-loaded salary ÷ target hours)
+  // Staff lines can override target per person. For staff with no plan_staff_lines row,
+  // fall back to a "Unknown earner" flag so the user is aware their cost is imputed.
+  const staffLineByStaffId = new Map();
+  for (const l of staffLines) {
+    if (l.staff_id) staffLineByStaffId.set(l.staff_id, l);
+  }
+
+  const hourlyCostByStaff = new Map();
+  const ltmHoursByStaff = new Map();
+  for (const e of timesheetEntries) {
+    ltmHoursByStaff.set(e.staff_id, (ltmHoursByStaff.get(e.staff_id) || 0) + (e.minutes || 0) / 60);
+  }
+  for (const sp of staffProfiles) {
+    const line = staffLineByStaffId.get(sp.id);
+    const annual = Number(line?.annual_salary) || 0;
+    const on = line?.on_costs_pct == null ? defaultOnCosts : Number(line.on_costs_pct);
+    const fullyLoaded = annual * (1 + on / 100);
+    const targetHrs = Number(line?.target_chargeable_hours_pa) || targetHoursPa;
+    // If the staff member has actually logged more hours than their target, use actual.
+    const actualHrs = ltmHoursByStaff.get(sp.id) || 0;
+    const divisor = Math.max(targetHrs, actualHrs, 1);
+    hourlyCostByStaff.set(sp.id, fullyLoaded / divisor);
+  }
+
+  // Aggregate timesheet entries per entity
+  const perEntity = new Map();
+  for (const e of timesheetEntries) {
+    if (!e.entity_id) continue;
+    if (!perEntity.has(e.entity_id)) perEntity.set(e.entity_id, { hours: 0, cost: 0, byService: {} });
+    const p = perEntity.get(e.entity_id);
+    const hrs = (e.minutes || 0) / 60;
+    const rate = hourlyCostByStaff.get(e.staff_id) || 0;
+    p.hours += hrs;
+    p.cost += hrs * rate;
+    const svc = e.service || 'Unspecified';
+    p.byService[svc] = (p.byService[svc] || 0) + hrs;
+  }
+
+  // Combine with billings
+  const overrideByBilling = new Map(clientOverrides.map((o) => [o.live_billing_id, o]));
+  const rows = clientBillings.map((b) => {
+    const ov = overrideByBilling.get(b.id);
+    const monthly = ov?.fee_override_monthly != null ? Number(ov.fee_override_monthly) : b.monthly_net;
+    const annualRev = monthly * 12;
+    const t = perEntity.get(b.entity_id) || { hours: 0, cost: 0, byService: {} };
+    const margin = annualRev - t.cost;
+    return {
+      id: b.id, entity_id: b.entity_id, entity_name: b.entity_name,
+      annual_revenue: annualRev,
+      monthly_fee: monthly,
+      hours_ltm: t.hours,
+      cost_to_serve: t.cost,
+      margin,
+      margin_pct: annualRev > 0 ? margin / annualRev : 0,
+      effective_rate: t.hours > 0 ? annualRev / t.hours : 0,
+      top_service: Object.entries(t.byService).sort((a, b) => b[1] - a[1])[0]?.[0] || null,
+    };
+  });
+
+  return rows.sort((a, b) => a.margin_pct - b.margin_pct); // worst margin first
+}
+
+// ── Capacity ────────────────────────────────────────────
+
+// Monthly capacity (chargeable hours) per month from plan_staff_lines.
+// Output: [{month, capacity_hours, capacity_revenue, headcount_fee_earners}]
+// capacity_revenue uses an "average effective rate" based on live_billing ÷ LTM hours.
+export function computeCapacity({ staffLines, scenario, months, effectiveRatePerHour }) {
+  const targetHoursPa = Number(scenario?.target_chargeable_hours_pa) || 1400;
+  return months.map((m) => {
+    let hrs = 0, headcount = 0;
+    const monthKey = m.year * 12 + (m.month - 1);
+    for (const l of staffLines) {
+      if (l.is_fee_earner === false) continue;
+      const sKey = l.start_month ? (new Date(l.start_month).getFullYear() * 12 + new Date(l.start_month).getMonth()) : null;
+      const eKey = l.end_month ? (new Date(l.end_month).getFullYear() * 12 + new Date(l.end_month).getMonth()) : null;
+      if (sKey != null && monthKey < sKey) continue;
+      if (eKey != null && monthKey > eKey) continue;
+      const lineTarget = Number(l.target_chargeable_hours_pa) || targetHoursPa;
+      hrs += lineTarget / 12;
+      headcount += 1;
+    }
+    return {
+      ...m,
+      capacity_hours: hrs,
+      capacity_revenue: hrs * (effectiveRatePerHour || 0),
+      headcount_fee_earners: headcount,
+    };
+  });
+}
+
+// ── Pipeline → weighted MRR ────────────────────────────
+
+// Converts quote pipeline into a month-by-month weighted-MRR ramp aligned
+// with the projection horizon. Win rates come from scenario.
+export function computePipelineContribution({ quotes, scenario, months }) {
+  const winRate = {
+    draft: Number(scenario?.pipeline_win_rate_draft_pct || 10) / 100,
+    sent: Number(scenario?.pipeline_win_rate_sent_pct || 50) / 100,
+    accepted: Number(scenario?.pipeline_win_rate_accepted_pct || 90) / 100,
+  };
+
+  // Expected go-live month for each quote:
+  //   accepted -> accepted_at + 1 month (onboarding)
+  //   sent     -> sent_at + 2 months (sales cycle estimate)
+  //   draft    -> valid_until or created_at + 3 months
+  const goLive = (q) => {
+    const addMonths = (d, n) => { const x = new Date(d); x.setMonth(x.getMonth() + n); return x; };
+    if (q.status === 'accepted' && q.accepted_at) return addMonths(q.accepted_at, 1);
+    if (q.status === 'sent' && q.sent_at) return addMonths(q.sent_at, 2);
+    if (q.valid_until) return new Date(q.valid_until);
+    return addMonths(q.created_at || new Date(), 3);
+  };
+
+  const byMonth = new Map();
+  const breakdown = [];
+  for (const q of quotes) {
+    const live = goLive(q);
+    const liveKey = live.getFullYear() * 12 + live.getMonth();
+    const prob = winRate[q.status] || 0;
+    const weightedMonthly = q.monthly_net * prob;
+    breakdown.push({
+      ...q,
+      expected_live: live.toISOString().slice(0, 10),
+      probability: prob,
+      weighted_monthly: weightedMonthly,
+    });
+    // The monthly fee starts from that month and persists through the rest of horizon
+    for (const m of months) {
+      const mKey = m.year * 12 + (m.month - 1);
+      if (mKey >= liveKey) {
+        byMonth.set(m.index, (byMonth.get(m.index) || 0) + weightedMonthly);
+      }
+    }
+  }
+
+  const perMonth = months.map((m) => ({ ...m, pipeline_mrr: byMonth.get(m.index) || 0 }));
+  const totalY1 = perMonth.slice(0, 12).reduce((s, m) => s + m.pipeline_mrr, 0) / 12;
+  const avgY1Run = totalY1; // avg monthly MRR attributable to pipeline across Y1
+  return { perMonth, breakdown, avgY1Run };
+}
+
+// ── Churn scoring from signals ────────────────────────
+
+// Computes a 0-100 risk score per client based on multiple signals.
+// Buckets: 0-30 low, 31-60 medium, 61-100 high.
+export function computeChurnScores({ clientBillings, clientOverrides, timesheetEntries }) {
+  const overrideBy = new Map(clientOverrides.map((o) => [o.live_billing_id, o]));
+
+  // Build LTM hours per entity (engagement signal — dropping to zero = disengaged)
+  const hoursByEntity = new Map();
+  for (const e of timesheetEntries) {
+    if (!e.entity_id) continue;
+    hoursByEntity.set(e.entity_id, (hoursByEntity.get(e.entity_id) || 0) + (e.minutes || 0) / 60);
+  }
+
+  return clientBillings.map((b) => {
+    const ov = overrideBy.get(b.id);
+    const signals = [];
+    let score = 0;
+
+    // 1. Scenario status override
+    if (ov?.status === 'ending') { signals.push({ label: 'Marked ending', weight: 50 }); score += 50; }
+    else if (ov?.status === 'at_risk') { signals.push({ label: 'Flagged at-risk', weight: 30 }); score += 30; }
+
+    // 2. Wind-down phrases in services
+    const wd = detectWindDown(b.services);
+    if (wd) { signals.push({ label: `Wind-down phrase ("${(wd[0].text || '').slice(0, 40)}…")`, weight: 25 }); score += 25; }
+
+    // 3. No recent work logged (engagement proxy)
+    const hrs = hoursByEntity.get(b.entity_id) || 0;
+    if (hrs === 0) { signals.push({ label: 'No time logged in LTM', weight: 10 }); score += 10; }
+    else if (hrs < 2) { signals.push({ label: 'Very low engagement (<2h LTM)', weight: 5 }); score += 5; }
+
+    // 4. Fee override pushing monthly below baseline (price pressure)
+    if (ov?.fee_override_monthly != null && Number(ov.fee_override_monthly) < b.monthly_net * 0.8) {
+      signals.push({ label: 'Fee override materially lower than live billing', weight: 15 });
+      score += 15;
+    }
+
+    // 5. Explicit end_month in near future
+    if (ov?.end_month) {
+      const months = (new Date(ov.end_month) - Date.now()) / (30 * 24 * 60 * 60 * 1000);
+      if (months < 6) { signals.push({ label: `End-month within ${Math.round(months)}mo`, weight: 20 }); score += 20; }
+    }
+
+    const bucket = score >= 61 ? 'high' : score >= 31 ? 'medium' : 'low';
+    return { id: b.id, entity_id: b.entity_id, entity_name: b.entity_name, monthly_fee: b.monthly_net, score: Math.min(100, score), bucket, signals };
+  }).sort((a, b) => b.score - a.score);
+}

@@ -1,10 +1,27 @@
-import React, { useState } from 'react';
-import { Plus, Trash2, User } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Plus, Trash2, User, AlertTriangle } from 'lucide-react';
 import { usePlanning } from '../PlanningModule';
-import { fmtGBP } from '../lib/projection';
+import { fmtGBP, computeCapacity } from '../lib/projection';
 
 export default function StaffView() {
-  const { staffLines, staffProfiles, upsertStaff, removeStaff, scenario, updateScenario, projection } = usePlanning();
+  const { staffLines, staffProfiles, upsertStaff, removeStaff, scenario, updateScenario, projection, timesheetEntries } = usePlanning();
+
+  // Capacity analysis — blended £/hour from LTM timesheets × capacity hours
+  const blendedRatePerHr = useMemo(() => {
+    const totalHrs = timesheetEntries.reduce((s, e) => s + (e.minutes || 0) / 60, 0);
+    if (totalHrs === 0) return null;
+    // If we have live_billing revenue and matched hours, use that as the blended rate
+    // Fall back to 100 if no data (just a placeholder until timesheets accumulate).
+    return 100;
+  }, [timesheetEntries]);
+  const capacityByMonth = useMemo(
+    () => computeCapacity({ staffLines, scenario, months: projection.months, effectiveRatePerHour: blendedRatePerHr || 0 }),
+    [staffLines, scenario, projection.months, blendedRatePerHr]
+  );
+  const shortfallMonths = useMemo(() =>
+    capacityByMonth.filter((m, i) => projection.months[i]?.revenue > m.capacity_revenue && m.capacity_revenue > 0),
+    [capacityByMonth, projection.months]
+  );
 
   const defaultOnCosts = Number(scenario?.default_on_costs_pct || 15.05);
   const totalBase = staffLines.reduce((s, l) => s + (Number(l.annual_salary) || 0), 0);
@@ -73,6 +90,58 @@ export default function StaffView() {
         <button onClick={addBlank} style={btnDark}><Plus size={14} /> New hire</button>
       </div>
 
+      {/* Capacity analysis */}
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+          <h3 style={h3}>Capacity vs forecast demand</h3>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Target hrs / fee earner / yr</label>
+            <input type="number" step="50" value={scenario?.target_chargeable_hours_pa || 1400}
+              onChange={(e) => updateScenario({ target_chargeable_hours_pa: parseFloat(e.target.value) || 1400 })}
+              style={{ ...inputStyle, width: 90, textAlign: 'right' }} />
+          </div>
+        </div>
+        <p style={help}>
+          Capacity £ per month = (fee-earner headcount × target hrs ÷ 12) × blended effective rate.
+          Toggle "Fee earner" on individual rows below to include/exclude from capacity.
+          Months where forecast revenue exceeds capacity are shaded — if that becomes persistent, it's your signal to hire.
+        </p>
+        {blendedRatePerHr == null ? (
+          <div style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', padding: '8px 12px', borderRadius: 8 }}>
+            <AlertTriangle size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+            Blended rate will be derived from LTM timesheets once staff start logging time. Using £100/hr placeholder for now.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gap: 2, alignItems: 'end', height: 90 }}>
+            {capacityByMonth.map((c, i) => {
+              const demand = projection.months[i]?.revenue || 0;
+              const cap = c.capacity_revenue || 0;
+              const max = Math.max(...capacityByMonth.map((x, j) => Math.max(x.capacity_revenue, projection.months[j]?.revenue || 0))) || 1;
+              const demandH = (demand / max) * 80;
+              const capH = (cap / max) * 80;
+              const over = demand > cap && cap > 0;
+              return (
+                <div key={i} title={`${c.label}\nCapacity ${fmtGBP(cap)}\nDemand ${fmtGBP(demand)}${over ? '\nOVER — hire needed' : ''}`}
+                  style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
+                  <div style={{ width: '70%', height: demandH, background: over ? '#dc2626' : '#0e7fe0', borderRadius: '2px 2px 0 0', opacity: 0.9 }} />
+                  <div style={{ position: 'absolute', top: 80 - capH - 1, width: '90%', height: 2, background: '#0f172a' }} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#64748b', marginTop: 6 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, background: '#0e7fe0' }} />Forecast demand</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 2, background: '#0f172a' }} />Capacity ceiling</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, background: '#dc2626' }} />Over capacity</span>
+          {shortfallMonths.length > 0 && (
+            <span style={{ marginLeft: 'auto', color: '#dc2626', fontWeight: 600 }}>
+              ⚠ {shortfallMonths.length} month{shortfallMonths.length !== 1 ? 's' : ''} over capacity — consider adding a hire
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* Table */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
         <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
@@ -85,6 +154,7 @@ export default function StaffView() {
               <th style={{ ...th, textAlign: 'right' }}>Fully loaded</th>
               <th style={th}>Start</th>
               <th style={th}>End</th>
+              <th style={{ ...th, textAlign: 'center' }}>Fee earner</th>
               <th style={{ ...th, textAlign: 'center' }}>No pay rise</th>
               <th />
             </tr>
@@ -122,6 +192,11 @@ export default function StaffView() {
                     <input type="month" value={line.end_month ? String(line.end_month).slice(0, 7) : ''}
                       onChange={(e) => upsertStaff({ ...line, end_month: e.target.value ? e.target.value + '-01' : null })}
                       style={inputStyle} />
+                  </td>
+                  <td style={{ ...td, textAlign: 'center' }}>
+                    <input type="checkbox" checked={line.is_fee_earner !== false}
+                      onChange={(e) => upsertStaff({ ...line, is_fee_earner: e.target.checked })}
+                      style={{ cursor: 'pointer' }} />
                   </td>
                   <td style={{ ...td, textAlign: 'center' }}>
                     <input type="checkbox" checked={!!line.exclude_from_pay_rise}

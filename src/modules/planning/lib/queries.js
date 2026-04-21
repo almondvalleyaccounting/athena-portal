@@ -250,6 +250,101 @@ export async function pullQboPL() {
   }
 }
 
+// ── Timesheet-derived cost-to-serve and capacity ─────────
+
+// Pulls LTM timesheet entries grouped by (entity_id, staff_id, service).
+// Returns minutes — caller multiplies by staff hourly cost to get cost-to-serve.
+export async function loadTimesheetLTM() {
+  const now = new Date();
+  const start = new Date(now.getFullYear() - 1, now.getMonth(), 1);
+  const { data, error } = await supabase
+    .from('timesheet_entries')
+    .select('staff_id, entity_id, service, work_date, minutes')
+    .gte('work_date', start.toISOString().slice(0, 10))
+    .gt('minutes', 0);
+  if (error) throw error;
+  return data || [];
+}
+
+// Aggregate LTM hours per staff (for utilisation calc)
+export async function loadTimesheetByStaffLTM() {
+  const entries = await loadTimesheetLTM();
+  const byStaff = new Map();
+  for (const e of entries) {
+    if (!byStaff.has(e.staff_id)) byStaff.set(e.staff_id, { minutes: 0, clients: new Set() });
+    const s = byStaff.get(e.staff_id);
+    s.minutes += e.minutes || 0;
+    if (e.entity_id) s.clients.add(e.entity_id);
+  }
+  return Array.from(byStaff.entries()).map(([staffId, v]) => ({
+    staff_id: staffId,
+    hours_ltm: v.minutes / 60,
+    clients_worked: v.clients.size,
+  }));
+}
+
+// ── Quote pipeline ────────────────────────────────────────
+
+// Unconverted quotes — pipeline contribution to future MRR.
+// Status meaning:
+//   draft     -> probability lowest (often still being drawn up)
+//   sent      -> awaiting client decision
+//   accepted  -> signed but not yet billed (very high probability)
+//   committed -> already flowing into live_billing — EXCLUDED (no double count)
+//   rejected  -> EXCLUDED
+export async function loadQuotePipeline() {
+  const { data, error } = await supabase
+    .from('quotes')
+    .select('id, quote_ref, entity_id, status, annual_total, monthly_net, one_off_total, valid_until, created_at, updated_at, accepted_at, sent_at, entities:entity_id (name)')
+    .in('status', ['draft', 'sent', 'accepted'])
+    .order('updated_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((q) => ({
+    id: q.id, quote_ref: q.quote_ref, entity_id: q.entity_id,
+    entity_name: q.entities?.name || 'Unknown',
+    status: q.status,
+    annual_total: Number(q.annual_total) || 0,
+    monthly_net: Number(q.monthly_net) || 0,
+    one_off_total: Number(q.one_off_total) || 0,
+    valid_until: q.valid_until,
+    created_at: q.created_at,
+    updated_at: q.updated_at,
+    accepted_at: q.accepted_at,
+    sent_at: q.sent_at,
+  }));
+}
+
+// ── Monthly QBO P&L actuals (for rolling forecast + variance) ─
+
+// Returns one row per (month, account_name) from plan_qbo_pl_cache.
+// period_start is always the 1st of the month.
+export async function loadMonthlyActuals() {
+  const { data, error } = await supabase
+    .from('plan_qbo_pl_cache')
+    .select('period_start, period_end, account_name, account_type, amount')
+    .order('period_start', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+// Triggers the monthly-granularity QBO pull (overwrites the month-by-month cache).
+export async function pullQboMonthly(monthsBack = 12) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/planning-qbo-pull`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ granularity: 'monthly', months_back: monthsBack }),
+  });
+  const text = await resp.text();
+  try { return JSON.parse(text); } catch { throw new Error(`QBO monthly pull: ${resp.status} ${text.slice(0, 200)}`); }
+}
+
 // ── Seeding ───────────────────────────────────────────────
 
 export async function seedScenarioFromCurrent(scenarioId) {
