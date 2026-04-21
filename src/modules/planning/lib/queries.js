@@ -328,6 +328,18 @@ export async function loadMonthlyActuals() {
 }
 
 // Triggers the monthly-granularity QBO pull (overwrites the month-by-month cache).
+// ── Nightly cron status ──
+
+export async function loadQboSyncRuns(limit = 10) {
+  const { data, error } = await supabase
+    .from('plan_qbo_sync_runs')
+    .select('*')
+    .order('run_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
 export async function pullQboMonthly(monthsBack = 12) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;

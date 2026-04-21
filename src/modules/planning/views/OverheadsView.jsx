@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Plus, Trash2, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, RefreshCw, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { usePlanning } from '../PlanningModule';
 import { fmtGBP } from '../lib/projection';
+import { loadQboSyncRuns } from '../lib/queries';
 
 export default function OverheadsView() {
   const { overheadLines, upsertOverhead, removeOverhead, pullQboPL, pullQboMonthly, monthlyActuals, scenario, updateScenario } = usePlanning();
@@ -9,6 +10,12 @@ export default function OverheadsView() {
   const [pullMsg, setPullMsg] = useState(null);
 
   const actualMonthCount = new Set((monthlyActuals || []).map((r) => String(r.period_start).slice(0, 7))).size;
+
+  // Cron run history
+  const [syncRuns, setSyncRuns] = useState([]);
+  useEffect(() => { loadQboSyncRuns(5).then(setSyncRuns).catch(() => {}); }, [pulling]);
+  const lastSuccess = syncRuns.find((r) => r.status === 'success');
+  const lastError = syncRuns.find((r) => r.status === 'error');
 
   const handleMonthlyPull = async () => {
     setPulling(true); setPullMsg(null);
@@ -46,6 +53,35 @@ export default function OverheadsView() {
 
   return (
     <div>
+      {/* Nightly sync status */}
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Clock size={14} style={{ color: '#64748b' }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>Nightly sync</span>
+        </div>
+        {syncRuns.length === 0 ? (
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>
+            Scheduled 03:00 UTC daily. Never run yet — needs vault secret <code>planning_service_role_key</code> set via Supabase SQL editor (see migration).
+          </span>
+        ) : (
+          <>
+            {lastSuccess && (
+              <span style={{ fontSize: 12, color: '#059669', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <CheckCircle2 size={12} /> Last success: {new Date(lastSuccess.completed_at || lastSuccess.run_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+            )}
+            {lastError && (!lastSuccess || new Date(lastError.run_at) > new Date(lastSuccess.run_at)) && (
+              <span style={{ fontSize: 12, color: '#dc2626', display: 'inline-flex', alignItems: 'center', gap: 4 }} title={lastError.error_message}>
+                <XCircle size={12} /> Last error: {new Date(lastError.run_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} — {(lastError.error_message || '').slice(0, 80)}
+              </span>
+            )}
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+              {syncRuns.length} recent run{syncRuns.length !== 1 ? 's' : ''}
+            </span>
+          </>
+        )}
+      </div>
+
       <div style={card}>
         <h3 style={h3}>Overhead assumptions</h3>
         <p style={help}>Monthly forecasts are held flat across the year and then inflated annually on the fee-uplift month. Seeded from QBO P&L last 12 months — refresh any time.</p>

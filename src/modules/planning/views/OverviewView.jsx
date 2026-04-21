@@ -1,10 +1,36 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { AlertTriangle, CheckCircle2, Info, TrendingDown, Sparkles } from 'lucide-react';
 import { usePlanning } from '../PlanningModule';
-import { fmtGBP, fmtGBPSigned, fmtPct } from '../lib/projection';
+import {
+  fmtGBP, fmtGBPSigned, fmtPct,
+  buildNarrative, computeCapacity, computeClientProfitability, computeChurnScores,
+  UK_PRACTICE_BENCHMARKS, scoreAgainstBenchmark,
+} from '../lib/projection';
 
 export default function OverviewView() {
-  const { projection, clientBillings, clientOverrides, staffLines, scenario, monthlyActuals } = usePlanning();
+  const { projection, clientBillings, clientOverrides, staffLines, staffProfiles, scenario, monthlyActuals, timesheetEntries, pipelineResult } = usePlanning();
   const { months, y1, y2, waterfall } = projection;
+
+  // Derive auxiliary data so the narrator sees the whole picture
+  const churnScores = useMemo(
+    () => computeChurnScores({ clientBillings, clientOverrides, timesheetEntries }),
+    [clientBillings, clientOverrides, timesheetEntries]
+  );
+  const profitability = useMemo(
+    () => computeClientProfitability({ clientBillings, clientOverrides, timesheetEntries, staffLines, staffProfiles, scenario }),
+    [clientBillings, clientOverrides, timesheetEntries, staffLines, staffProfiles, scenario]
+  );
+  const capacityByMonth = useMemo(
+    () => computeCapacity({ staffLines, scenario, months, effectiveRatePerHour: 100 }),
+    [staffLines, scenario, months]
+  );
+  const findings = useMemo(
+    () => buildNarrative({
+      projection, clientBillings, clientOverrides, staffLines,
+      churnScores, profitability, capacityByMonth, pipelineResult, scenario,
+    }),
+    [projection, clientBillings, clientOverrides, staffLines, churnScores, profitability, capacityByMonth, pipelineResult, scenario]
+  );
 
   const actualMonths = months.filter((m) => m.isActual);
   const varianceRevY1 = actualMonths.reduce((s, m) => s + (m.varianceRevenue || 0), 0);
@@ -36,6 +62,46 @@ export default function OverviewView() {
 
   return (
     <div>
+      {/* AI narrator — plain-English read of the plan */}
+      {findings.length > 0 && (
+        <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: '#f8fafc', borderRadius: 12, padding: '18px 22px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <Sparkles size={16} style={{ color: '#fbbf24' }} />
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 500, margin: 0, color: '#f8fafc' }}>
+              The plan at a glance
+            </h3>
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              {findings.length} finding{findings.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {findings.slice(0, 8).map((f, i) => {
+              const meta = {
+                critical: { icon: AlertTriangle, colour: '#f87171' },
+                warning:  { icon: AlertTriangle, colour: '#fbbf24' },
+                info:     { icon: Info,          colour: '#93c5fd' },
+                positive: { icon: CheckCircle2,  colour: '#4ade80' },
+              }[f.severity] || { icon: Info, colour: '#cbd5e1' };
+              const Icon = meta.icon;
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, lineHeight: 1.55 }}>
+                  <Icon size={14} style={{ color: meta.colour, flexShrink: 0, marginTop: 2 }} />
+                  <span style={{ color: '#e2e8f0' }}>{f.text}</span>
+                </div>
+              );
+            })}
+            {findings.length > 8 && (
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                …and {findings.length - 8} more. Lower-priority findings hidden.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* UK practice benchmarks */}
+      <BenchmarkCard projection={projection} staffLines={staffLines} />
+
       {/* Rolling-forecast banner — shows when actuals are available */}
       {actualMonths.length > 0 && (
         <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', fontSize: 12, marginBottom: 14, display: 'flex', gap: 18, alignItems: 'center' }}>
@@ -155,6 +221,101 @@ function deltaPct(a, b) {
   const d = (b - a) / a;
   const sign = d >= 0 ? '+' : '';
   return `${sign}${(d * 100).toFixed(1)}%`;
+}
+
+function BenchmarkCard({ projection, staffLines }) {
+  const { y1 } = projection;
+  const feeEarners = staffLines.filter((s) => s.is_fee_earner !== false).length;
+
+  const metrics = [
+    {
+      key: 'ebitda_margin',
+      bench: UK_PRACTICE_BENCHMARKS.ebitda_margin,
+      value: y1.margin,
+      format: (v) => fmtPct(v),
+    },
+    {
+      key: 'staff_to_revenue',
+      bench: UK_PRACTICE_BENCHMARKS.staff_to_revenue,
+      value: y1.revenue > 0 ? y1.staffCost / y1.revenue : 0,
+      format: (v) => fmtPct(v),
+    },
+    {
+      key: 'revenue_per_fee_earner',
+      bench: UK_PRACTICE_BENCHMARKS.revenue_per_fee_earner,
+      value: feeEarners > 0 ? y1.revenue / feeEarners : 0,
+      format: (v) => fmtGBP(v),
+    },
+    {
+      key: 'overhead_ratio',
+      bench: UK_PRACTICE_BENCHMARKS.overhead_ratio,
+      value: y1.revenue > 0 ? y1.overheads / y1.revenue : 0,
+      format: (v) => fmtPct(v),
+    },
+    {
+      key: 'gross_margin',
+      bench: UK_PRACTICE_BENCHMARKS.gross_margin,
+      value: y1.revenue > 0 ? (y1.revenue - y1.staffCost) / y1.revenue : 0,
+      format: (v) => fmtPct(v),
+    },
+  ];
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+        <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: 0 }}>
+          UK practice benchmarks
+        </h3>
+        <span style={{ fontSize: 10, color: '#94a3b8' }}>
+          Sources: ICAEW Benchmarking · Practice Track · Xero Accounting Industry Report
+        </span>
+      </div>
+      <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
+        Your Y1 plan plotted against typical ranges for UK accountancy practices. Top-quartile boundary shown; "typical" is the median.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+        {metrics.map((m) => (
+          <BenchmarkRow key={m.key} {...m} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BenchmarkRow({ bench, value, format }) {
+  const score = scoreAgainstBenchmark(value, bench);
+  const scoreLabel = { topQ: 'Top quartile', typical: 'Typical', low: 'Below average', below: 'Below benchmark', unknown: '—' }[score];
+  const scoreColour = { topQ: '#059669', typical: '#0e7fe0', low: '#f59e0b', below: '#dc2626', unknown: '#94a3b8' }[score];
+
+  // Build a horizontal track showing low / typical / topQ marks and where value sits
+  const { low, typical, topQ, lowerIsBetter } = bench;
+  // Pick a range min..max that contains everything sensibly
+  const vals = [low, typical, topQ, value].filter((x) => x != null);
+  const min = lowerIsBetter ? Math.min(...vals, 0) : 0;
+  const max = Math.max(...vals) * 1.1;
+  const span = max - min || 1;
+  const pct = (x) => Math.max(0, Math.min(100, ((x - min) / span) * 100));
+
+  return (
+    <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.3 }}>{bench.label}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: scoreColour }}>{scoreLabel}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{format(value || 0)}</span>
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>
+          Typical {format(typical)} · Top-Q {format(topQ)}
+        </span>
+      </div>
+      <div style={{ position: 'relative', height: 6, background: '#e2e8f0', borderRadius: 3 }}>
+        {/* Typical zone shaded */}
+        <div style={{ position: 'absolute', left: `${pct(lowerIsBetter ? topQ : low)}%`, width: `${pct(lowerIsBetter ? low : topQ) - pct(lowerIsBetter ? topQ : low)}%`, height: '100%', background: '#bfdbfe', borderRadius: 3 }} />
+        {/* Marker for our value */}
+        <div style={{ position: 'absolute', left: `calc(${pct(value)}% - 5px)`, top: -3, width: 10, height: 12, background: scoreColour, borderRadius: 2, border: '2px solid #fff' }} />
+      </div>
+    </div>
+  );
 }
 
 function Kpi({ label, value, sub, colour }) {

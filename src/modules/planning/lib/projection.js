@@ -348,6 +348,171 @@ export const fmtPct = (n) => `${(n * 100).toFixed(1)}%`;
 
 export const fmtPctSimple = (n) => `${((n || 0) * 100).toFixed(0)}%`;
 
+// ── Narrator — rule-based plain-English summary of the plan ──
+//
+// Reads projection + ancillary derived data, emits ordered findings.
+// Each finding has a severity (info/warning/critical/positive) and 1-sentence narrative.
+// Caller renders these in priority order.
+export function buildNarrative({
+  projection,
+  clientBillings = [],
+  clientOverrides = [],
+  staffLines = [],
+  churnScores = [],
+  profitability = [],
+  capacityByMonth = [],
+  pipelineResult = null,
+  scenario,
+}) {
+  const findings = [];
+  const { y1, y2, months, waterfall } = projection;
+
+  // ── Overall profit trajectory
+  const profitDeltaPct = y1.profit === 0 ? 0 : (y2.profit - y1.profit) / Math.abs(y1.profit);
+  if (y2.profit > 0 && y1.profit > 0) {
+    if (profitDeltaPct > 0.2) {
+      findings.push({ severity: 'positive', priority: 30, text: `Profit grows ${fmtPct(profitDeltaPct)} from Y1 to Y2 (${fmtGBP(y1.profit)} → ${fmtGBP(y2.profit)}) — healthy trajectory.` });
+    } else if (profitDeltaPct < -0.05) {
+      findings.push({ severity: 'warning', priority: 80, text: `Profit falls ${fmtPct(profitDeltaPct)} from Y1 to Y2. Dig into the drivers waterfall — usually staff cost outrunning fee uplift.` });
+    } else {
+      findings.push({ severity: 'info', priority: 40, text: `Profit is roughly flat Y1→Y2 (${fmtGBP(y2.profit - y1.profit)} change). Plan is defensive rather than growth-oriented.` });
+    }
+  } else if (y2.profit <= 0) {
+    findings.push({ severity: 'critical', priority: 95, text: `Y2 shows a loss of ${fmtGBP(Math.abs(y2.profit))}. Something fundamental needs re-working — start with the sensitivity tornado.` });
+  }
+
+  // ── EBITDA margin vs benchmark
+  const margin = y1.margin;
+  if (margin < 0.15 && y1.revenue > 0) {
+    findings.push({ severity: 'warning', priority: 70, text: `Y1 EBITDA margin is ${fmtPct(margin)} — well below the 20-30% UK practice benchmark. Check overheads and staff cost ratios.` });
+  } else if (margin > 0.35) {
+    findings.push({ severity: 'positive', priority: 20, text: `Y1 EBITDA margin is ${fmtPct(margin)} — above top-quartile UK benchmark (~32%). Strong.` });
+  }
+
+  // ── Revenue per fee-earner vs benchmark
+  const feeEarners = staffLines.filter((s) => s.is_fee_earner !== false).length;
+  const revPerEarner = feeEarners > 0 ? y1.revenue / feeEarners : 0;
+  if (feeEarners > 0) {
+    if (revPerEarner < 90000) {
+      findings.push({ severity: 'warning', priority: 60, text: `Revenue per fee-earner is ${fmtGBP(revPerEarner)} — below the £90-120k UK practice norm. Either under-priced or under-utilised.` });
+    } else if (revPerEarner > 150000) {
+      findings.push({ severity: 'positive', priority: 15, text: `Revenue per fee-earner is ${fmtGBP(revPerEarner)} — top-quartile territory (£150k+).` });
+    }
+  }
+
+  // ── Concentration
+  const activeBook = clientBillings.map((b) => {
+    const ov = clientOverrides.find((o) => o.live_billing_id === b.id);
+    return { ...b, fee: ov?.fee_override_monthly != null ? Number(ov.fee_override_monthly) : b.monthly_net };
+  });
+  const totalMonthly = activeBook.reduce((s, c) => s + c.fee, 0);
+  const sorted = [...activeBook].sort((a, b) => b.fee - a.fee);
+  const top10Pct = totalMonthly > 0 ? sorted.slice(0, 10).reduce((s, c) => s + c.fee, 0) / totalMonthly : 0;
+  if (top10Pct > 0.40) {
+    findings.push({ severity: 'critical', priority: 85, text: `Top-10 clients = ${fmtPct(top10Pct)} of revenue — concentration risk. Losing one hurts disproportionately.` });
+  } else if (top10Pct > 0.30) {
+    findings.push({ severity: 'warning', priority: 55, text: `Top-10 clients are ${fmtPct(top10Pct)} of revenue. Watch for creep above 40%.` });
+  }
+
+  // ── At-risk exposure
+  const atRiskMonthly = activeBook
+    .map((c) => ({ c, ov: clientOverrides.find((o) => o.live_billing_id === c.id) }))
+    .filter(({ ov }) => ov && (ov.status === 'at_risk' || ov.status === 'ending'))
+    .reduce((s, { c }) => s + c.fee, 0);
+  if (atRiskMonthly > 0) {
+    const annualExposure = atRiskMonthly * 12;
+    const pctOfRevenue = y1.revenue > 0 ? annualExposure / y1.revenue : 0;
+    findings.push({ severity: pctOfRevenue > 0.08 ? 'critical' : 'warning', priority: pctOfRevenue > 0.08 ? 88 : 65,
+      text: `${fmtGBP(annualExposure)}/yr (${fmtPct(pctOfRevenue)}) flagged at-risk or ending. If they all go, that's ${fmtGBP(annualExposure)} of revenue to replace.` });
+  }
+
+  // ── Churn high-risk count
+  const highChurn = churnScores.filter((c) => c.bucket === 'high');
+  if (highChurn.length > 0) {
+    const exposed = highChurn.reduce((s, c) => s + (c.monthly_fee || 0) * 12, 0);
+    findings.push({ severity: 'warning', priority: 75, text: `${highChurn.length} client${highChurn.length !== 1 ? 's' : ''} scored high-risk for churn — combined exposure ${fmtGBP(exposed)}/yr. See Revenue → Churn risk.` });
+  }
+
+  // ── Capacity — any months over
+  const overCapacityMonths = capacityByMonth.filter((c, i) => months[i]?.revenue > c.capacity_revenue && c.capacity_revenue > 0);
+  if (overCapacityMonths.length > 3) {
+    findings.push({ severity: 'warning', priority: 72, text: `${overCapacityMonths.length} forecast months exceed capacity — staff will be stretched without a hire. First over-capacity month: ${overCapacityMonths[0].label}.` });
+  }
+
+  // ── Profitability — unprofitable client count
+  const atLoss = profitability.filter((r) => r.margin < 0);
+  const lowMargin = profitability.filter((r) => r.margin_pct >= 0 && r.margin_pct < 0.3);
+  if (atLoss.length > 0) {
+    const lossSum = atLoss.reduce((s, r) => s + Math.abs(r.margin), 0);
+    findings.push({ severity: 'warning', priority: 68, text: `${atLoss.length} client${atLoss.length !== 1 ? 's' : ''} currently loss-making (combined ${fmtGBP(lossSum)}/yr). Renegotiate, reassign to junior staff, or exit.` });
+  } else if (lowMargin.length > profitability.length * 0.25 && profitability.length > 4) {
+    findings.push({ severity: 'info', priority: 45, text: `${lowMargin.length} clients on <30% margin — a repricing round would add meaningful profit.` });
+  }
+
+  // ── Pipeline signal
+  if (pipelineResult && pipelineResult.breakdown.length > 0 && scenario) {
+    const weighted = pipelineResult.avgY1Run;
+    const manual = Number(scenario.new_mrr_per_month) || 0;
+    if (!scenario.pipeline_mrr_override_enabled && weighted > manual * 1.5 && weighted > 500) {
+      findings.push({ severity: 'info', priority: 50, text: `Quote pipeline weighted-MRR is ${fmtGBP(weighted)}/mo vs your manual assumption of ${fmtGBP(manual)}/mo. Pipeline says the plan is conservative.` });
+    } else if (!scenario.pipeline_mrr_override_enabled && weighted < manual * 0.5 && manual > 500) {
+      findings.push({ severity: 'warning', priority: 66, text: `Quote pipeline weighted-MRR is only ${fmtGBP(weighted)}/mo vs your manual assumption of ${fmtGBP(manual)}/mo. Pipeline doesn't support the plan — either push sales or temper the assumption.` });
+    }
+  }
+
+  // ── Actuals variance (rolling forecast)
+  const actualMonths = months.filter((m) => m.isActual);
+  if (actualMonths.length > 0) {
+    const revVar = actualMonths.reduce((s, m) => s + (m.varianceRevenue || 0), 0);
+    const profitVar = actualMonths.reduce((s, m) => s + (m.varianceProfit || 0), 0);
+    const revVarPct = actualMonths.reduce((s, m) => s + (m.plannedRevenue || 0), 0) > 0
+      ? revVar / actualMonths.reduce((s, m) => s + m.plannedRevenue, 0) : 0;
+    if (Math.abs(revVarPct) > 0.05) {
+      findings.push({
+        severity: revVarPct >= 0 ? 'positive' : 'warning',
+        priority: revVarPct >= 0 ? 25 : 62,
+        text: `Actual-vs-plan: revenue ${revVarPct >= 0 ? 'ahead' : 'behind'} by ${fmtGBP(Math.abs(revVar))} (${fmtPct(Math.abs(revVarPct))}) across ${actualMonths.length} closed month${actualMonths.length !== 1 ? 's' : ''}.`,
+      });
+    }
+  }
+
+  // ── Fee uplift vs pay rise sanity check
+  const feeUp = Number(scenario?.fee_uplift_pct || 0);
+  const payUp = Number(scenario?.pay_rise_pct || 0);
+  if (payUp > feeUp + 2 && y1.revenue > 0) {
+    findings.push({ severity: 'warning', priority: 58, text: `Pay rise (${payUp}%) is ${(payUp - feeUp).toFixed(1)}pp above fee uplift (${feeUp}%). Margins compress every year this is true.` });
+  }
+
+  return findings.sort((a, b) => b.priority - a.priority);
+}
+
+// ── UK accounting-practice benchmarks (baked reference values) ──
+// Sources: ICAEW Benchmarking, Practice Track, Xero Accounting Industry Report
+// surveys of UK accountancy firms (blended across sole practitioner → small firm).
+export const UK_PRACTICE_BENCHMARKS = {
+  ebitda_margin: { low: 0.15, typical: 0.22, topQ: 0.32, label: 'EBITDA margin' },
+  staff_to_revenue: { low: 0.45, typical: 0.55, topQ: 0.45, label: 'Staff cost ÷ revenue', lowerIsBetter: true },
+  revenue_per_fee_earner: { low: 75000, typical: 105000, topQ: 160000, label: 'Revenue / fee-earner', currency: true },
+  overhead_ratio: { low: 0.15, typical: 0.20, topQ: 0.15, label: 'Overheads ÷ revenue', lowerIsBetter: true },
+  gross_margin: { low: 0.40, typical: 0.50, topQ: 0.60, label: 'Gross margin (revenue − staff)' },
+};
+
+export function scoreAgainstBenchmark(value, bench) {
+  if (value == null || bench == null) return 'unknown';
+  const { low, typical, topQ, lowerIsBetter } = bench;
+  if (lowerIsBetter) {
+    if (value <= topQ) return 'topQ';
+    if (value <= typical) return 'typical';
+    if (value <= low) return 'low';
+    return 'below';
+  } else {
+    if (value >= topQ) return 'topQ';
+    if (value >= typical) return 'typical';
+    if (value >= low) return 'low';
+    return 'below';
+  }
+}
+
 // ── Client profitability ────────────────────────────────
 
 // Compute per-client revenue / cost-to-serve / margin using LTM timesheets.
