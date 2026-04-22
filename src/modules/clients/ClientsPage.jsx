@@ -81,6 +81,8 @@ export default function ClientsPage() {
       active: { bg: '#f0fdf4', color: '#15803d' },
       prospect: { bg: '#eff6ff', color: '#0e7fe0' },
       inactive: { bg: '#f1f5f9', color: '#64748b' },
+      archived: { bg: '#f1f5f9', color: '#64748b' },
+      third_party: { bg: '#f5f3ff', color: '#6d28d9' },
     };
     const st = styles[s] || styles.active;
     return (
@@ -89,7 +91,7 @@ export default function ClientsPage() {
         background: st.bg, color: st.color, fontFamily: "'Outfit', sans-serif",
         textTransform: 'capitalize',
       }}>
-        {s}
+        {s.replace('_', ' ')}
       </span>
     );
   };

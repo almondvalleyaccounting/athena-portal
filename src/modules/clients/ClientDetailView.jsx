@@ -136,7 +136,18 @@ export default function ClientDetailView() {
             {entity.company_number && <span>· {entity.company_number}</span>}
             {entity.manager && <span>· Managed by {entity.manager}</span>}
             {entity.source === 'athena' && <Badge bg="#dbeafe" color="#0e7fe0">Athena</Badge>}
-            <Badge bg={entity.entity_status === 'prospect' ? '#eff6ff' : entity.entity_status === 'active' ? '#f0fdf4' : '#f1f5f9'} color={entity.entity_status === 'prospect' ? '#0e7fe0' : entity.entity_status === 'active' ? '#15803d' : '#64748b'}>{entity.entity_status || 'active'}</Badge>
+            <StatusEditor
+              value={entity.entity_status || 'active'}
+              onChange={async (next) => {
+                const prev = entity.entity_status;
+                setEntity({ ...entity, entity_status: next });
+                const { error } = await supabase.from('entities').update({ entity_status: next }).eq('id', entity.id);
+                if (error) {
+                  alert('Could not update status: ' + error.message);
+                  setEntity({ ...entity, entity_status: prev });
+                }
+              }}
+            />
           </div>
         </div>
         {/* Time period filter */}
@@ -306,6 +317,46 @@ function DetailRow({ label, value }) {
 
 function Badge({ bg, color, children }) {
   return <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: bg, color, textTransform: 'capitalize', fontFamily: "'Outfit', sans-serif" }}>{children}</span>;
+}
+
+// Editable status pill. `third_party` covers non-client invoicees —
+// finance partners, insurance co's, asset buyers — so they stay
+// invoiceable but drop out of client KPIs. `archived` is a former
+// client, `prospect` is pre-billing, `active` is a billable client.
+const STATUS_OPTIONS = [
+  { value: 'active',      label: 'Active',      bg: '#f0fdf4', color: '#15803d' },
+  { value: 'prospect',    label: 'Prospect',    bg: '#eff6ff', color: '#0e7fe0' },
+  { value: 'third_party', label: 'Third party', bg: '#f5f3ff', color: '#6d28d9' },
+  { value: 'archived',    label: 'Archived',    bg: '#f1f5f9', color: '#64748b' },
+];
+function StatusEditor({ value, onChange }) {
+  const current = STATUS_OPTIONS.find((o) => o.value === value) || STATUS_OPTIONS[0];
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        title="Change entity status"
+        style={{
+          appearance: 'none', WebkitAppearance: 'none',
+          fontSize: 10, fontWeight: 600,
+          padding: '2px 22px 2px 8px', borderRadius: 6,
+          background: current.bg, color: current.color,
+          border: '1px solid transparent',
+          fontFamily: "'Outfit', sans-serif",
+          textTransform: 'capitalize', cursor: 'pointer',
+        }}
+      >
+        {STATUS_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      <span style={{
+        position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+        pointerEvents: 'none', color: current.color, fontSize: 9,
+      }}>▾</span>
+    </div>
+  );
 }
 
 function SummaryCard({ icon: Icon, label, value, accent, onClick, active }) {

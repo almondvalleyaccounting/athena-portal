@@ -333,19 +333,11 @@ export default function BillingReviewPage() {
                       )}
                     </Td>
                     <Td>
-                      {isEdit ? (
-                        <select
-                          defaultValue={s.cadence || 'monthly'}
-                          onChange={(e) => patchService(i.rowId, i.serviceIdx, { cadence: e.target.value })}
-                          style={selectStyle}
-                        >
-                          <option value="monthly">Monthly</option>
-                          <option value="annual">Annual</option>
-                          <option value="one_off">One-off</option>
-                        </select>
-                      ) : (
-                        <span style={{ textTransform: 'capitalize', color: '#64748b' }}>{s.cadence || 'monthly'}</span>
-                      )}
+                      <CadenceSegmented
+                        value={s.cadence || 'monthly'}
+                        onChange={(next) => patchService(i.rowId, i.serviceIdx, { cadence: next })}
+                        disabled={saving}
+                      />
                     </Td>
                     <Td>
                       {isEdit ? (
@@ -416,6 +408,46 @@ function StatusChip({ status }) {
       fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
       background: t.bg, color: t.fg,
     }}>{t.label}</span>
+  );
+}
+
+// Three-option segmented control — one click to set cadence, no
+// edit-mode detour. Selected option is filled with its tone colour so
+// the current classification is legible at a glance across the row.
+const CADENCE_OPTIONS = [
+  { value: 'monthly', label: 'Monthly', fg: '#0e7fe0', bg: '#dbeafe' },
+  { value: 'annual',  label: 'Annual',  fg: '#0f766e', bg: '#ccfbf1' },
+  { value: 'one_off', label: 'One-off', fg: '#6d28d9', bg: '#ede9fe' },
+];
+function CadenceSegmented({ value, onChange, disabled }) {
+  return (
+    <div style={{ display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+      {CADENCE_OPTIONS.map((o, idx) => {
+        const active = value === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => { if (!active) onChange(o.value); }}
+            disabled={disabled}
+            title={`Classify as ${o.label}`}
+            style={{
+              fontSize: 11, fontWeight: active ? 600 : 500,
+              padding: '4px 10px',
+              background: active ? o.bg : '#fff',
+              color: active ? o.fg : '#64748b',
+              border: 'none',
+              borderLeft: idx > 0 ? '1px solid #e5e7eb' : 'none',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              fontFamily: font,
+              transition: 'background 0.1s',
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

@@ -16,6 +16,8 @@ export default function BillingPage() {
   const [search, setSearch] = useState('');
   const [letter, setLetter] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [cardFilter, setCardFilter] = useState(null); // 'recurring' | 'annual' | 'one_off' | 'billed' | null
+  const [showMissingPanel, setShowMissingPanel] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
@@ -217,12 +219,15 @@ export default function BillingPage() {
   }
   const effectivelyBilled = new Set([...billedEntityIds, ...groupBilledEntityIds]);
 
-  const clientsWithout = entities.filter((e) => {
+  // Only `active` clients are chase-worthy — `prospect`, `archived`,
+  // and `third_party` entities are deliberately off the list.
+  const clientsWithoutList = entities.filter((e) => {
     if (e.entity_status !== 'active') return false;
     if (e.source && e.source !== 'brightmanager' && e.source !== 'athena') return false;
     if (ignoredEntityIds.has(e.id)) return false;
     return !effectivelyBilled.has(e.id);
-  }).length;
+  });
+  const clientsWithout = clientsWithoutList.length;
 
   // -- Revenue by service type, split by cadence --
   // Each service line now carries its own cadence ('monthly' | 'annual'
@@ -263,7 +268,22 @@ export default function BillingPage() {
   })();
 
   // -- Filtered billing --
+  // Card filter narrows the table by cadence. A row matches 'recurring'
+  // if it has any monthly service (approved + suggested both surface —
+  // drilling into the headline), 'annual' if any annual-cadence service,
+  // and 'one_off' for the legacy one-off billing_type.
+  const rowMatchesCardFilter = (b) => {
+    if (!cardFilter) return true;
+    const services = Array.isArray(b.services) ? b.services : [];
+    if (cardFilter === 'one_off') return b.billing_type === 'one_off';
+    if (cardFilter === 'annual')  return services.some((s) => s.cadence === 'annual')  || b.billing_type === 'annual';
+    if (cardFilter === 'recurring') return services.some((s) => s.cadence === 'monthly') || (services.length === 0 && b.billing_type === 'recurring');
+    if (cardFilter === 'billed') return b.status === 'active';
+    return true;
+  };
+
   const filtered = billing.filter((b) => {
+    if (!rowMatchesCardFilter(b)) return false;
     const name = b.entity?.name || '';
     if (letter && firstCharBucket(name) !== letter) return false;
     if (!search) return true;
@@ -444,22 +464,101 @@ export default function BillingPage() {
       {/* QBO Connection Panel (includes Pull from QBO + Manage mapping) */}
       <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
 
-      {/* Summary Cards — Recurring Monthly (Approved) is the curated
-          headline. Pending is the queue that needs staff review. */}
+      {/* Summary Cards — each one lands you on the work it implies.
+          Action labels (verb first) over vanity labels. */}
       <div className="grid grid-cols-6 gap-3 mb-4">
-        <SummaryCard label="Recurring Monthly (Approved)" value={fmt(recurringMonthlyNet)} color="ocean" />
+        <SummaryCard
+          label="Recurring Monthly (Approved)"
+          value={fmt(recurringMonthlyNet)}
+          color="ocean"
+          hint={cardFilter === 'recurring' ? 'Showing ↓ (clear)' : 'Show recurring →'}
+          onClick={() => { setCardFilter(cardFilter === 'recurring' ? null : 'recurring'); setShowMissingPanel(false); }}
+          active={cardFilter === 'recurring'}
+        />
         <SummaryCard
           label={`Pending Approval${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
           value={fmt(pendingMonthlyNet)}
           color="amber"
-          hint={pendingCount > 0 ? 'Review →' : null}
+          hint={pendingCount > 0 ? 'Approve pending →' : null}
           onClick={pendingCount > 0 ? () => navigate('/manage/billing/review') : null}
         />
-        <SummaryCard label="Annual Fees (12mo)" value={fmt(annualFees)} color="teal" />
-        <SummaryCard label="One-off (last 12 mo)" value={fmt(oneOffLast12mo)} color="purple" />
-        <SummaryCard label="Clients with Billing" value={clientsWithBilling} color="green" />
-        <SummaryCard label="Clients Without Billing" value={clientsWithout < 0 ? 0 : clientsWithout} color="amber" />
+        <SummaryCard
+          label="Annual Fees (12mo)"
+          value={fmt(annualFees)}
+          color="teal"
+          hint={cardFilter === 'annual' ? 'Showing ↓ (clear)' : 'Show annual fees →'}
+          onClick={() => { setCardFilter(cardFilter === 'annual' ? null : 'annual'); setShowMissingPanel(false); }}
+          active={cardFilter === 'annual'}
+        />
+        <SummaryCard
+          label="One-off (last 12 mo)"
+          value={fmt(oneOffLast12mo)}
+          color="purple"
+          hint={cardFilter === 'one_off' ? 'Showing ↓ (clear)' : 'Show one-offs →'}
+          onClick={() => { setCardFilter(cardFilter === 'one_off' ? null : 'one_off'); setShowMissingPanel(false); }}
+          active={cardFilter === 'one_off'}
+        />
+        <SummaryCard
+          label="Clients with Billing"
+          value={clientsWithBilling}
+          color="green"
+          hint={cardFilter === 'billed' ? 'Showing ↓ (clear)' : 'Show billed clients →'}
+          onClick={() => { setCardFilter(cardFilter === 'billed' ? null : 'billed'); setShowMissingPanel(false); }}
+          active={cardFilter === 'billed'}
+        />
+        <SummaryCard
+          label="Clients Without Billing"
+          value={clientsWithout < 0 ? 0 : clientsWithout}
+          color="amber"
+          hint={clientsWithout > 0 ? (showMissingPanel ? 'Hide list' : 'Chase missing billing →') : null}
+          onClick={clientsWithout > 0 ? () => { setShowMissingPanel((v) => !v); setCardFilter(null); } : null}
+          active={showMissingPanel}
+        />
       </div>
+
+      {/* Missing-billing list — revealed from the orange "Clients Without
+          Billing" card. Third-party / prospect / archived entities are
+          intentionally excluded from this count. */}
+      {showMissingPanel && (
+        <div className="mb-4 bg-white rounded-lg border border-amber-200 overflow-hidden">
+          <div className="px-4 py-2 border-b border-amber-100 bg-amber-50 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-amber-800">Clients without billing ({clientsWithout})</h3>
+              <p className="text-xs text-amber-700/80">Active clients with no live billing and no billing-group relation. Reclassify as <b>third-party</b>, <b>prospect</b>, or <b>archived</b> to remove from this list.</p>
+            </div>
+            <button
+              onClick={() => setShowMissingPanel(false)}
+              className="text-xs text-amber-700 hover:text-amber-900"
+            >Close</button>
+          </div>
+          <div className="max-h-80 overflow-y-auto">
+            {clientsWithoutList.length === 0 ? (
+              <div className="px-4 py-6 text-center text-xs text-gray-400">None — every active client is billed.</div>
+            ) : (
+              clientsWithoutList.map((e) => (
+                <div key={e.id} className="flex items-center justify-between px-4 py-2 text-xs border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                  <button
+                    onClick={() => navigate(`/clients/${e.id}`)}
+                    className="text-left text-gray-700 hover:text-ocean-700 hover:underline font-medium"
+                  >
+                    {e.name}
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => navigate(`/manage/quotes/new?entity=${e.id}`)}
+                      className="text-xs text-ocean-700 hover:underline"
+                    >Create quote</button>
+                    <button
+                      onClick={() => navigate(`/clients/${e.id}`)}
+                      className="text-xs text-gray-500 hover:underline"
+                    >Reclassify</button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Revenue by service type — split by cadence */}
       {serviceBreakdown.length > 0 && (
@@ -493,6 +592,14 @@ export default function BillingPage() {
           onChange={setLetter}
         />
       </div>
+
+      {/* Active card filter chip */}
+      {cardFilter && (
+        <div className="mb-3 inline-flex items-center gap-2 bg-ocean-50 border border-ocean-200 rounded-full px-3 py-1 text-xs text-ocean-700">
+          <span>Filtered: {cardFilter === 'one_off' ? 'One-off' : cardFilter === 'annual' ? 'Annual fees' : cardFilter === 'billed' ? 'All billed' : 'Recurring'}</span>
+          <button onClick={() => setCardFilter(null)} className="hover:underline font-medium">Clear</button>
+        </div>
+      )}
 
       {/* Search + Actions */}
       <div className="flex items-center gap-3 mb-4">
@@ -797,7 +904,7 @@ export default function BillingPage() {
 
 // -- Helper Components --
 
-function SummaryCard({ label, value, color, hint, onClick }) {
+function SummaryCard({ label, value, color, hint, onClick, active }) {
   const colors = {
     ocean: 'bg-ocean-50 text-ocean-700 border-ocean-200',
     green: 'bg-green-50 text-green-700 border-green-200',
@@ -806,10 +913,14 @@ function SummaryCard({ label, value, color, hint, onClick }) {
     teal: 'bg-teal-50 text-teal-700 border-teal-200',
   };
   const clickable = typeof onClick === 'function';
+  const activeRing = active ? 'ring-2 ring-offset-1 ring-current' : '';
   return (
     <div
-      className={`rounded-lg border p-3 ${colors[color] || colors.ocean} ${clickable ? 'cursor-pointer hover:opacity-80' : ''}`}
+      className={`rounded-lg border p-3 transition-all ${colors[color] || colors.ocean} ${clickable ? 'cursor-pointer hover:shadow-sm hover:-translate-y-px' : ''} ${activeRing}`}
       onClick={clickable ? onClick : undefined}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
     >
       <p className="text-xs opacity-70 mb-1">{label}</p>
       <p className="text-lg font-bold font-mono">{value}</p>
