@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Upload, X, Check, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { Upload, X, Check, ArrowLeft, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
+import { supabase } from '../../../lib/supabase';
 import { SOURCES, SYSTEMS, getSource, getSystemLabel } from '../lib/sources';
 import { previewFile } from '../lib/parseCsv';
 import {
@@ -121,6 +122,38 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   const [error, setError] = useState(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [runningLock, setRunningLock] = useState(null);
+  const [staff, setStaff] = useState([]);
+  const [rechecking, setRechecking] = useState(false);
+  const [previewInfo, setPreviewInfo] = useState(null); // keep preview for re-checks
+
+  // Load staff profiles once (cheap, one list) — used by the rollup
+  // panels to map BM assignees without leaving this screen.
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('staff_profiles').select('id, name, email, is_active').order('name');
+      setStaff((data || []).map((s) => ({ ...s, name: s.name || s.email })));
+    })();
+  }, []);
+
+  const handleRecheck = async () => {
+    if (!parsedRows || source.key !== 'bm_tasks' || !previewInfo) return;
+    setRechecking(true);
+    try {
+      const matchMap = await classifyBmTasks(parsedRows);
+      setMatches(matchMap);
+      const parsedLike = { rows: parsedRows, warnings: [], skipped: validation?.skippedRows || [], seenTaskIds };
+      const v = buildTasksValidation(previewInfo, parsedLike, matchMap);
+      // Persist the refreshed validation to the run row.
+      if (run?.id) {
+        try { await markValidated(run.id, v); } catch {}
+      }
+      setValidation(v);
+    } catch (e) {
+      console.error('[DataImport] recheck error:', e);
+      setError(e.message || 'Re-check failed');
+    }
+    setRechecking(false);
+  };
 
   // Reset when source changes (parent remounts key, but safety)
   useEffect(() => {
@@ -178,6 +211,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
         triggeredBy: profile.id,
       });
       setRun(created);
+      setPreviewInfo(preview);
 
       let v;
       if (source.key === 'bm_clients') {
@@ -230,55 +264,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
         setMatches(matchMap);
         setSeenTaskIds(parsed.seenTaskIds);
 
-        // Synthesize extra warnings from the matcher so the team can see
-        // unresolved entities/rules/assignees before approving.
-        const extraWarnings = [];
-        let entityMissing = 0, ruleMissing = 0, assigneeUnmapped = 0;
-        for (const r of parsed.rows) {
-          const m = matchMap[r.bm_task_id];
-          if (!m) continue;
-          if (m.entity_match === 'missing') {
-            entityMissing++;
-            extraWarnings.push({
-              row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name,
-              field: 'entity', message: `Unknown Client Reference "${r.client_reference}" — row will raise entity_not_found flag`,
-            });
-          }
-          if (m.rule_match === 'missing') {
-            ruleMissing++;
-            extraWarnings.push({
-              row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name,
-              field: 'rule', message: `No scheduling rule matches this task name — will raise no_rule_match flag`,
-            });
-          }
-          if (m.assignee_match === 'new_alias' || m.assignee_match === 'alias_only') {
-            assigneeUnmapped++;
-            extraWarnings.push({
-              row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name,
-              field: 'assignee', message: `BM assignee "${r.assignee_name}" is not mapped to a staff_profile — task will be unassigned until mapped`,
-            });
-          }
-        }
-
-        const allWarnings = [...parsed.warnings, ...extraWarnings];
-        const schedulable = parsed.rows.length - entityMissing - ruleMissing;
-
-        const notes = [];
-        if (entityMissing > 0) notes.push(`${entityMissing} tasks reference unknown clients — consider running a BM Clients import first.`);
-        if (ruleMissing > 0) notes.push(`${ruleMissing} tasks have no scheduling rule — add rules in Settings (after import these will surface in the reconciliation inbox).`);
-        if (assigneeUnmapped > 0) notes.push(`${assigneeUnmapped} tasks reference BM-only staff not yet mapped to Athena staff profiles.`);
-
-        v = {
-          sourceRows: preview.rowCount,
-          valid: schedulable,
-          warningCount: allWarnings.length,
-          skippedCount: parsed.skipped.length,
-          rowCounts: { bm_task_schedule: schedulable },
-          warnings: allWarnings,
-          skippedRows: parsed.skipped,
-          conversions: [],
-          notes,
-        };
+        v = buildTasksValidation(preview, parsed, matchMap);
       } else {
         // Stubbed for other sources pending their writers
         v = buildStubValidation(source, preview);
@@ -437,7 +423,12 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           <button onClick={clearFile} style={{ ...btnGhost, marginBottom: 16 }}>
             <ArrowLeft size={12} /> Change file
           </button>
-          <ValidationReport validation={validation} />
+          <ValidationReport
+            validation={validation}
+            staff={staff}
+            onRecheck={source.key === 'bm_tasks' ? handleRecheck : null}
+            rechecking={rechecking}
+          />
           {validation.conversions?.length > 0 && (
             <ConversionPanel
               groups={conversionGroups}
@@ -545,9 +536,88 @@ function UploadZone({ source, file, preview, onFilePicked, onClear, onValidate, 
   );
 }
 
+/* ─── BM Tasks validation builder + rollups ──────────────────
+   Rolls the per-row warnings up by *cause* so staff can remediate
+   at the root (one alias, one rule) rather than scrolling 1,000s of
+   near-identical rows. Raw per-row list is preserved on
+   `validation.warnings` for audit but tucked behind a collapse. */
+function buildTasksValidation(preview, parsed, matchMap) {
+  // Per-row extras for audit (kept short — no jargon).
+  const extraWarnings = [];
+
+  // Rollup maps keyed by cause.
+  const byAssignee  = new Map(); // bm_assignee_name → { count, sampleTaskIds }
+  const byTaskName  = new Map(); // bm_task_name     → { count, sampleTaskIds, sampleServices }
+  const byClientRef = new Map(); // client_reference → { count, sampleTaskIds }
+
+  let entityMissing = 0, ruleMissing = 0, assigneeUnmapped = 0;
+
+  for (const r of parsed.rows) {
+    const m = matchMap[r.bm_task_id];
+    if (!m) continue;
+    if (m.entity_match === 'missing') {
+      entityMissing++;
+      const key = r.client_reference || '(blank)';
+      const e = byClientRef.get(key) || { key, count: 0, samples: [] };
+      e.count += 1;
+      if (e.samples.length < 3) e.samples.push({ row: r._source_row, bm_task_name: r.bm_task_name });
+      byClientRef.set(key, e);
+      extraWarnings.push({ row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name, field: 'client', message: `Client reference "${r.client_reference}" not found — task won't attach to a client` });
+    }
+    if (m.rule_match === 'missing') {
+      ruleMissing++;
+      const key = r.bm_task_name || '(blank)';
+      const e = byTaskName.get(key) || { key, count: 0, samples: [] };
+      e.count += 1;
+      if (e.samples.length < 3) e.samples.push({ row: r._source_row, client_reference: r.client_reference });
+      byTaskName.set(key, e);
+      extraWarnings.push({ row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name, field: 'rule', message: `No scheduling rule — task won't auto-schedule` });
+    }
+    if (m.assignee_match === 'new_alias' || m.assignee_match === 'alias_only') {
+      assigneeUnmapped++;
+      const key = r.assignee_name || '(unassigned)';
+      const e = byAssignee.get(key) || { key, count: 0, samples: [] };
+      e.count += 1;
+      if (e.samples.length < 3) e.samples.push({ row: r._source_row, bm_task_name: r.bm_task_name });
+      byAssignee.set(key, e);
+      extraWarnings.push({ row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name, field: 'assignee', message: `Assignee "${r.assignee_name}" isn't linked to an Athena staff profile — task will be unassigned` });
+    }
+  }
+
+  const allWarnings = [...parsed.warnings, ...extraWarnings];
+  const schedulable = parsed.rows.length - entityMissing - ruleMissing;
+
+  const rollups = {
+    unmappedAssignees: [...byAssignee.values()].sort((a, b) => b.count - a.count),
+    missingRules:      [...byTaskName.values()].sort((a, b) => b.count - a.count),
+    unknownClients:    [...byClientRef.values()].sort((a, b) => b.count - a.count),
+    totals: { entityMissing, ruleMissing, assigneeUnmapped },
+  };
+
+  return {
+    sourceRows: preview.rowCount,
+    valid: schedulable,
+    warningCount: allWarnings.length,
+    skippedCount: parsed.skipped.length,
+    rowCounts: { bm_task_schedule: schedulable },
+    warnings: allWarnings,
+    skippedRows: parsed.skipped,
+    conversions: [],
+    notes: [],
+    rollups,
+  };
+}
+
 /* ─── Validation report ─────────────────────────────────────── */
-function ValidationReport({ validation }) {
-  const { sourceRows, valid, warningCount, skippedCount, rowCounts, warnings, skippedRows, notes } = validation;
+function ValidationReport({ validation, staff, onRecheck, rechecking }) {
+  const { sourceRows, valid, warningCount, skippedCount, rowCounts, warnings, skippedRows, notes, rollups } = validation;
+
+  // Rolled-up "needs attention" count — rows that have at least one
+  // unresolved cause. Falls back to warnings when rollups aren't built.
+  const needsAttention = rollups
+    ? (rollups.totals.entityMissing + rollups.totals.ruleMissing + rollups.totals.assigneeUnmapped)
+    : warningCount;
+
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{
@@ -555,9 +625,9 @@ function ValidationReport({ validation }) {
         background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
         overflow: 'hidden', marginBottom: 12,
       }}>
-        <StatCell label="Source rows" value={sourceRows ?? '—'} />
-        <StatCell label="Valid" value={valid ?? '—'} />
-        <StatCell label="Warnings" value={warningCount} />
+        <StatCell label="Source rows" value={(sourceRows ?? '—').toLocaleString?.() ?? sourceRows ?? '—'} />
+        <StatCell label="Will import" value={(valid ?? '—').toLocaleString?.() ?? valid ?? '—'} />
+        <StatCell label="Need attention" value={needsAttention.toLocaleString()} />
         <StatCell label="Skipped (errors)" value={skippedCount} />
       </div>
 
@@ -575,10 +645,53 @@ function ValidationReport({ validation }) {
         </div>
       )}
 
+      {/* Grouped remediation panels — fix once, many warnings vanish. */}
+      {rollups && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+              Needs attention · grouped by cause
+            </p>
+            {onRecheck && (
+              <button onClick={onRecheck} disabled={rechecking} style={{ ...btnGhost, fontSize: 12 }}>
+                <RefreshCw size={12} style={{ marginRight: 4 }} />
+                {rechecking ? 'Re-checking…' : 'Re-check after fixes'}
+              </button>
+            )}
+          </div>
+
+          {rollups.unmappedAssignees.length > 0 && (
+            <AssigneeRollupPanel
+              groups={rollups.unmappedAssignees}
+              staff={staff}
+              onChanged={onRecheck}
+            />
+          )}
+          {rollups.missingRules.length > 0 && (
+            <RuleRollupPanel
+              groups={rollups.missingRules}
+              staff={staff}
+              onChanged={onRecheck}
+            />
+          )}
+          {rollups.unknownClients.length > 0 && (
+            <UnknownClientsPanel groups={rollups.unknownClients} />
+          )}
+
+          {rollups.unmappedAssignees.length === 0
+            && rollups.missingRules.length === 0
+            && rollups.unknownClients.length === 0 && (
+              <div style={{ padding: 14, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, fontSize: 13, color: '#065f46' }}>
+                ✓ Nothing to fix — every task will import cleanly.
+              </div>
+            )}
+        </div>
+      )}
+
       {warnings.length > 0 && (
-        <details style={{ marginBottom: 8 }} open={warnings.length <= 10}>
-          <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#1e293b', padding: 6 }}>
-            Warnings ({warnings.length})
+        <details style={{ marginBottom: 8 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 12, color: '#64748b', padding: 6 }}>
+            Show all {warnings.length.toLocaleString()} per-row messages (audit log)
           </summary>
           <IssueTable issues={warnings} kind="warning" />
         </details>
@@ -595,6 +708,211 @@ function ValidationReport({ validation }) {
     </div>
   );
 }
+
+/* ─── Rollup panels ─────────────────────────────────────────── */
+// Shared frame. Each row expands to reveal the one-click remediation.
+function RollupFrame({ title, tone, summary, children }) {
+  const tones = {
+    red:    { border: '#fca5a5', bg: '#fef2f2', head: '#991b1b' },
+    amber:  { border: '#fcd34d', bg: '#fffbeb', head: '#78350f' },
+    slate:  { border: '#cbd5e1', bg: '#f8fafc', head: '#334155' },
+  };
+  const t = tones[tone] || tones.amber;
+  return (
+    <div style={{ border: `1px solid ${t.border}`, background: t.bg, borderRadius: 8, marginBottom: 10 }}>
+      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${t.border}` }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: t.head }}>{title}</p>
+        {summary && <p style={{ fontSize: 11, color: t.head, opacity: 0.75, marginTop: 2 }}>{summary}</p>}
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function AssigneeRollupPanel({ groups, staff, onChanged }) {
+  const totalTasks = groups.reduce((n, g) => n + g.count, 0);
+  return (
+    <RollupFrame
+      tone="amber"
+      title={`Unmapped assignees · ${groups.length} people, ${totalTasks} tasks`}
+      summary="These BM staff names aren't linked to an Athena staff profile. Map each one once — every task they're on becomes assigned."
+    >
+      {groups.map((g) => (
+        <AssigneeRow key={g.key} group={g} staff={staff} onChanged={onChanged} />
+      ))}
+    </RollupFrame>
+  );
+}
+
+function AssigneeRow({ group, staff, onChanged }) {
+  const [open, setOpen] = useState(false);
+  const [pick, setPick] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const save = async () => {
+    if (!pick) return;
+    setSaving(true);
+    try {
+      await supabase.from('bm_staff_aliases').upsert({
+        bm_assignee_name: group.key,
+        staff_profile_id: pick,
+        last_seen_at: new Date().toISOString(),
+      }, { onConflict: 'bm_assignee_name' });
+      setDone(true);
+      setOpen(false);
+    } catch (e) {
+      alert('Save failed: ' + e.message);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div style={rollupRowStyle(done)}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px' }}>
+        <span style={{ flex: 1, fontSize: 13, color: done ? '#15803d' : '#0f172a', fontWeight: 500 }}>
+          {done && <Check size={12} style={{ display: 'inline', marginRight: 4, color: '#15803d' }} />}
+          {group.key}
+        </span>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{group.count} tasks</span>
+        {!done && (
+          <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
+            {open ? 'Cancel' : 'Map to Athena staff →'}
+          </button>
+        )}
+      </div>
+      {open && !done && (
+        <div style={{ padding: '6px 14px 10px 14px', display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px dashed #e5e7eb' }}>
+          <select value={pick} onChange={(e) => setPick(e.target.value)} style={selectStyle}>
+            <option value="">— pick staff profile —</option>
+            {staff.filter((s) => s.is_active !== false).map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <button onClick={save} disabled={!pick || saving} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+            {saving ? 'Saving…' : 'Save mapping'}
+          </button>
+          <span style={{ fontSize: 11, color: '#64748b' }}>Then hit <b>Re-check after fixes</b> above.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RuleRollupPanel({ groups, staff, onChanged }) {
+  const totalTasks = groups.reduce((n, g) => n + g.count, 0);
+  return (
+    <RollupFrame
+      tone="amber"
+      title={`Task names without a scheduling rule · ${groups.length} names, ${totalTasks} tasks`}
+      summary="Add a scheduling rule per task-name prefix (matches by first-word). These tasks will auto-schedule on future imports."
+    >
+      {groups.map((g) => (
+        <RuleRow key={g.key} group={g} staff={staff} onChanged={onChanged} />
+      ))}
+    </RollupFrame>
+  );
+}
+
+const SERVICE_SUGGESTIONS = ['Accounts', 'Bookkeeping', 'VAT', 'Payroll', 'Personal Tax', 'Corporation Tax', 'Admin', 'CIS', 'Other'];
+
+function RuleRow({ group, staff, onChanged }) {
+  const [open, setOpen] = useState(false);
+  const [service, setService] = useState('Admin');
+  const [leadDays, setLeadDays] = useState(14);
+  const [hours, setHours] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      // Prefix = first two words of the task name, or full name if shorter.
+      // Team can refine later from Workflow settings.
+      const words = group.key.split(/\s+/).filter(Boolean);
+      const prefix = (words.slice(0, 2).join(' ') || group.key).trim();
+      await supabase.from('bm_scheduling_rules').insert({
+        name: group.key.slice(0, 80),
+        task_name_prefix: prefix,
+        service,
+        lead_time_days: Number(leadDays) || 14,
+        standard_hours: Number(hours) || 1,
+        assignee_source: 'bm_assignee',
+        active: true,
+      });
+      setDone(true);
+      setOpen(false);
+    } catch (e) {
+      alert('Save failed: ' + e.message);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div style={rollupRowStyle(done)}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px' }}>
+        <span style={{ flex: 1, fontSize: 13, color: done ? '#15803d' : '#0f172a', fontWeight: 500 }}>
+          {done && <Check size={12} style={{ display: 'inline', marginRight: 4, color: '#15803d' }} />}
+          {group.key}
+        </span>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{group.count} tasks</span>
+        {!done && (
+          <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
+            {open ? 'Cancel' : 'Add scheduling rule →'}
+          </button>
+        )}
+      </div>
+      {open && !done && (
+        <div style={{ padding: '6px 14px 10px 14px', display: 'grid', gridTemplateColumns: '1.2fr 90px 90px auto auto', gap: 8, alignItems: 'center', borderTop: '1px dashed #e5e7eb' }}>
+          <select value={service} onChange={(e) => setService(e.target.value)} style={selectStyle} title="Service">
+            {SERVICE_SUGGESTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <input type="number" min={1} value={leadDays} onChange={(e) => setLeadDays(e.target.value)} style={selectStyle} title="Lead time (days)" />
+          <input type="number" min={0} step={0.25} value={hours} onChange={(e) => setHours(e.target.value)} style={selectStyle} title="Standard hours" />
+          <button onClick={save} disabled={saving} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+            {saving ? 'Saving…' : 'Save rule'}
+          </button>
+          <span style={{ fontSize: 11, color: '#64748b' }}>days / hrs · default assignee = BM</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UnknownClientsPanel({ groups }) {
+  const totalTasks = groups.reduce((n, g) => n + g.count, 0);
+  return (
+    <RollupFrame
+      tone="red"
+      title={`Unknown client references · ${groups.length} references, ${totalTasks} tasks`}
+      summary="These BM client references don't match an Athena entity. Run the BM Clients import first — or the tasks will import but won't attach to a client."
+    >
+      {groups.map((g) => (
+        <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid rgba(252,165,165,0.3)' }}>
+          <span style={{ flex: 1, fontSize: 13, color: '#0f172a', fontFamily: 'monospace' }}>{g.key}</span>
+          <span style={{ fontSize: 11, color: '#64748b' }}>{g.count} tasks</span>
+          {g.samples[0]?.bm_task_name && (
+            <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              e.g. {g.samples[0].bm_task_name}
+            </span>
+          )}
+        </div>
+      ))}
+    </RollupFrame>
+  );
+}
+
+function rollupRowStyle(done) {
+  return {
+    borderBottom: '1px solid rgba(252,211,77,0.4)',
+    background: done ? 'rgba(220,252,231,0.4)' : 'transparent',
+  };
+}
+
+const selectStyle = {
+  fontSize: 12, padding: '5px 8px', border: '1px solid #e5e7eb', borderRadius: 6,
+  background: '#fff', color: '#1e293b', outline: 'none', fontFamily: font,
+};
 
 function IssueTable({ issues, kind }) {
   const [limit, setLimit] = useState(50);
