@@ -670,7 +670,6 @@ function ValidationReport({ validation, staff, onRecheck, rechecking }) {
           {rollups.missingRules.length > 0 && (
             <RuleRollupPanel
               groups={rollups.missingRules}
-              staff={staff}
               onChanged={onRecheck}
             />
           )}
@@ -710,8 +709,9 @@ function ValidationReport({ validation, staff, onRecheck, rechecking }) {
 }
 
 /* ─── Rollup panels ─────────────────────────────────────────── */
-// Shared frame. Each row expands to reveal the one-click remediation.
-function RollupFrame({ title, tone, summary, children }) {
+// Shared frame with optional search filter and scroll-contained body.
+// Each row expands to reveal the one-click remediation.
+function RollupFrame({ title, tone, summary, search, onSearchChange, searchPlaceholder, children }) {
   const tones = {
     red:    { border: '#fca5a5', bg: '#fef2f2', head: '#991b1b' },
     amber:  { border: '#fcd34d', bg: '#fffbeb', head: '#78350f' },
@@ -721,45 +721,93 @@ function RollupFrame({ title, tone, summary, children }) {
   return (
     <div style={{ border: `1px solid ${t.border}`, background: t.bg, borderRadius: 8, marginBottom: 10 }}>
       <div style={{ padding: '10px 14px', borderBottom: `1px solid ${t.border}` }}>
-        <p style={{ fontSize: 13, fontWeight: 600, color: t.head }}>{title}</p>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: t.head, flex: 1 }}>{title}</p>
+          {search !== undefined && (
+            <input
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder={searchPlaceholder || 'Filter…'}
+              style={{ ...selectStyle, width: 200, background: '#fff' }}
+            />
+          )}
+        </div>
         {summary && <p style={{ fontSize: 11, color: t.head, opacity: 0.75, marginTop: 2 }}>{summary}</p>}
       </div>
-      <div>{children}</div>
+      {/* Cap body height so tall rollups don't dominate — the list
+          scrolls inside the panel, but the panel stays compact. */}
+      <div style={{ maxHeight: 520, overflowY: 'auto' }}>{children}</div>
     </div>
   );
 }
 
+// Resolved groups sort to the bottom + dim, so the eye goes to what's
+// left to do. They stay visible for undo/continuity, not hidden.
+function partitionAndSort(groups, resolvedKeys) {
+  const unresolved = [], resolved = [];
+  for (const g of groups) (resolvedKeys.has(g.key) ? resolved : unresolved).push(g);
+  return [...unresolved, ...resolved];
+}
+
+function useFilteredGroups(groups, search) {
+  return useMemo(() => {
+    if (!search.trim()) return groups;
+    const q = search.toLowerCase();
+    return groups.filter((g) => g.key.toLowerCase().includes(q));
+  }, [groups, search]);
+}
+
 function AssigneeRollupPanel({ groups, staff, onChanged }) {
+  const [search, setSearch] = useState('');
+  const [resolved, setResolved] = useState(new Set());
   const totalTasks = groups.reduce((n, g) => n + g.count, 0);
+  const sorted = useMemo(() => partitionAndSort(groups, resolved), [groups, resolved]);
+  const filtered = useFilteredGroups(sorted, search);
   return (
     <RollupFrame
       tone="amber"
-      title={`Unmapped assignees · ${groups.length} people, ${totalTasks} tasks`}
-      summary="These BM staff names aren't linked to an Athena staff profile. Map each one once — every task they're on becomes assigned."
+      title={`Unmapped assignees · ${groups.length} people, ${totalTasks.toLocaleString()} tasks`}
+      summary="These BM staff names aren't linked to an Athena staff profile. Map once — every task they're on becomes assigned."
+      search={groups.length > 8 ? search : undefined}
+      onSearchChange={setSearch}
+      searchPlaceholder="Filter assignees…"
     >
-      {groups.map((g) => (
-        <AssigneeRow key={g.key} group={g} staff={staff} onChanged={onChanged} />
+      {filtered.map((g) => (
+        <AssigneeRow
+          key={g.key}
+          group={g}
+          staff={staff}
+          isResolved={resolved.has(g.key)}
+          onResolved={() => setResolved((s) => new Set(s).add(g.key))}
+          onChanged={onChanged}
+        />
       ))}
+      {filtered.length === 0 && (
+        <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>No matches.</div>
+      )}
     </RollupFrame>
   );
 }
 
-function AssigneeRow({ group, staff, onChanged }) {
+function AssigneeRow({ group, staff, isResolved, onResolved }) {
   const [open, setOpen] = useState(false);
   const [pick, setPick] = useState('');
   const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
 
   const save = async () => {
     if (!pick) return;
     setSaving(true);
     try {
+      // `pick === 'alias-only'` records the BM name without linking to
+      // an Athena staff profile — useful for former staff or people
+      // we haven't invited yet. Future tasks stop showing as "unmapped"
+      // but remain unassigned until a profile is attached later.
       await supabase.from('bm_staff_aliases').upsert({
         bm_assignee_name: group.key,
-        staff_profile_id: pick,
+        staff_profile_id: pick === 'alias-only' ? null : pick,
         last_seen_at: new Date().toISOString(),
       }, { onConflict: 'bm_assignee_name' });
-      setDone(true);
+      onResolved();
       setOpen(false);
     } catch (e) {
       alert('Save failed: ' + e.message);
@@ -767,80 +815,134 @@ function AssigneeRow({ group, staff, onChanged }) {
     setSaving(false);
   };
 
+  const sampleTask = group.samples?.[0]?.bm_task_name;
+
   return (
-    <div style={rollupRowStyle(done)}>
+    <div style={rollupRowStyle(isResolved)}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px' }}>
-        <span style={{ flex: 1, fontSize: 13, color: done ? '#15803d' : '#0f172a', fontWeight: 500 }}>
-          {done && <Check size={12} style={{ display: 'inline', marginRight: 4, color: '#15803d' }} />}
-          {group.key}
-        </span>
-        <span style={{ fontSize: 11, color: '#64748b' }}>{group.count} tasks</span>
-        {!done && (
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, color: isResolved ? '#15803d' : '#0f172a', fontWeight: 500 }}>
+            {isResolved && <Check size={12} style={{ display: 'inline', marginRight: 4, color: '#15803d' }} />}
+            {group.key}
+          </div>
+          {sampleTask && !isResolved && (
+            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>
+              e.g. {sampleTask}
+            </div>
+          )}
+        </div>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
+        {!isResolved && (
           <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
             {open ? 'Cancel' : 'Map to Athena staff →'}
           </button>
         )}
       </div>
-      {open && !done && (
-        <div style={{ padding: '6px 14px 10px 14px', display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px dashed #e5e7eb' }}>
-          <select value={pick} onChange={(e) => setPick(e.target.value)} style={selectStyle}>
-            <option value="">— pick staff profile —</option>
+      {open && !isResolved && (
+        <div style={{ padding: '6px 14px 10px 14px', display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px dashed #e5e7eb', flexWrap: 'wrap' }}>
+          <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ ...selectStyle, minWidth: 200 }}>
+            <option value="">— choose Athena staff —</option>
             {staff.filter((s) => s.is_active !== false).map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
+            <option disabled>──────────</option>
+            <option value="alias-only">Record alias only (not yet in Athena)</option>
           </select>
           <button onClick={save} disabled={!pick || saving} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
             {saving ? 'Saving…' : 'Save mapping'}
           </button>
-          <span style={{ fontSize: 11, color: '#64748b' }}>Then hit <b>Re-check after fixes</b> above.</span>
+          <span style={{ fontSize: 11, color: '#64748b' }}>Then hit <b>Re-check after fixes</b>.</span>
         </div>
       )}
     </div>
   );
 }
 
-function RuleRollupPanel({ groups, staff, onChanged }) {
+function RuleRollupPanel({ groups, onChanged }) {
+  const [search, setSearch] = useState('');
+  const [resolved, setResolved] = useState(new Set());
   const totalTasks = groups.reduce((n, g) => n + g.count, 0);
+  const sorted = useMemo(() => partitionAndSort(groups, resolved), [groups, resolved]);
+  const filtered = useFilteredGroups(sorted, search);
   return (
     <RollupFrame
       tone="amber"
-      title={`Task names without a scheduling rule · ${groups.length} names, ${totalTasks} tasks`}
-      summary="Add a scheduling rule per task-name prefix (matches by first-word). These tasks will auto-schedule on future imports."
+      title={`Task names without a scheduling rule · ${groups.length} names, ${totalTasks.toLocaleString()} tasks`}
+      summary="Add one rule per task-name prefix. Service, lead time, hours are pre-filled from the task name — tweak as needed."
+      search={groups.length > 8 ? search : undefined}
+      onSearchChange={setSearch}
+      searchPlaceholder="Filter task names…"
     >
-      {groups.map((g) => (
-        <RuleRow key={g.key} group={g} staff={staff} onChanged={onChanged} />
+      {filtered.map((g) => (
+        <RuleRow
+          key={g.key}
+          group={g}
+          isResolved={resolved.has(g.key)}
+          onResolved={() => setResolved((s) => new Set(s).add(g.key))}
+          onChanged={onChanged}
+        />
       ))}
+      {filtered.length === 0 && (
+        <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>No matches.</div>
+      )}
     </RollupFrame>
   );
 }
 
-const SERVICE_SUGGESTIONS = ['Accounts', 'Bookkeeping', 'VAT', 'Payroll', 'Personal Tax', 'Corporation Tax', 'Admin', 'CIS', 'Other'];
+const SERVICE_SUGGESTIONS = ['Accounts', 'Bookkeeping', 'VAT', 'Payroll', 'Personal Tax', 'Corporation Tax', 'Admin', 'CIS', 'Company Secretarial', 'Other'];
 
-function RuleRow({ group, staff, onChanged }) {
+// Heuristic service inference from the task name — saves the team
+// re-picking "Admin" out of the dropdown for 62 obvious cases.
+function inferService(name) {
+  const n = (name || '').toLowerCase();
+  if (/\bvat\b/.test(n)) return 'VAT';
+  if (/payroll|p11d|rti|paye|p60|p45/.test(n)) return 'Payroll';
+  if (/bookkeeping|reconcil|bank\s*rec/.test(n)) return 'Bookkeeping';
+  if (/self[\s-]*assessment|personal\s*tax|\bsa\b|tax\s*return\s*preparation\s*tax\s*year/.test(n)) return 'Personal Tax';
+  if (/corporation\s*tax|\bct600\b|\bct\b\s|ct\s*return/.test(n)) return 'Corporation Tax';
+  if (/\bcis\b/.test(n)) return 'CIS';
+  if (/company\s*sec|confirmation\s*statement|\bps01\b/.test(n)) return 'Company Secretarial';
+  if (/accounts|year[\s-]*end|year\s*end|balance\s*sheet|p\s*\&\s*l/.test(n)) return 'Accounts';
+  if (/onboard|new\s*client|setup|registration|engagement/.test(n)) return 'Admin';
+  return 'Admin';
+}
+
+// Default lead time: annual-looking tasks get 30 days, the rest 14.
+function inferLeadDays(name) {
+  const n = (name || '').toLowerCase();
+  if (/annual|year[\s-]*end|confirmation\s*statement/.test(n)) return 30;
+  return 14;
+}
+
+// First two words of the task name is a pragmatic default prefix —
+// enough to match "VAT Preparation Quarterly End 31/08/2024" against
+// "VAT Preparation" without matching "VAT Submission".
+function defaultPrefix(name) {
+  const words = (name || '').split(/\s+/).filter(Boolean);
+  return (words.slice(0, 2).join(' ') || name || '').trim();
+}
+
+function RuleRow({ group, isResolved, onResolved }) {
   const [open, setOpen] = useState(false);
-  const [service, setService] = useState('Admin');
-  const [leadDays, setLeadDays] = useState(14);
+  const [prefix, setPrefix] = useState(() => defaultPrefix(group.key));
+  const [service, setService] = useState(() => inferService(group.key));
+  const [leadDays, setLeadDays] = useState(() => inferLeadDays(group.key));
   const [hours, setHours] = useState(1);
   const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
 
   const save = async () => {
     setSaving(true);
     try {
-      // Prefix = first two words of the task name, or full name if shorter.
-      // Team can refine later from Workflow settings.
-      const words = group.key.split(/\s+/).filter(Boolean);
-      const prefix = (words.slice(0, 2).join(' ') || group.key).trim();
       await supabase.from('bm_scheduling_rules').insert({
         name: group.key.slice(0, 80),
-        task_name_prefix: prefix,
+        task_name_prefix: prefix.trim() || group.key,
         service,
         lead_time_days: Number(leadDays) || 14,
         standard_hours: Number(hours) || 1,
         assignee_source: 'bm_assignee',
         active: true,
       });
-      setDone(true);
+      onResolved();
       setOpen(false);
     } catch (e) {
       alert('Save failed: ' + e.message);
@@ -849,30 +951,49 @@ function RuleRow({ group, staff, onChanged }) {
   };
 
   return (
-    <div style={rollupRowStyle(done)}>
+    <div style={rollupRowStyle(isResolved)}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px' }}>
-        <span style={{ flex: 1, fontSize: 13, color: done ? '#15803d' : '#0f172a', fontWeight: 500 }}>
-          {done && <Check size={12} style={{ display: 'inline', marginRight: 4, color: '#15803d' }} />}
+        <span style={{ flex: 1, fontSize: 13, color: isResolved ? '#15803d' : '#0f172a', fontWeight: 500 }}>
+          {isResolved && <Check size={12} style={{ display: 'inline', marginRight: 4, color: '#15803d' }} />}
           {group.key}
         </span>
-        <span style={{ fontSize: 11, color: '#64748b' }}>{group.count} tasks</span>
-        {!done && (
+        <span style={{ fontSize: 11, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
+        {!isResolved && (
           <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
             {open ? 'Cancel' : 'Add scheduling rule →'}
           </button>
         )}
       </div>
-      {open && !done && (
-        <div style={{ padding: '6px 14px 10px 14px', display: 'grid', gridTemplateColumns: '1.2fr 90px 90px auto auto', gap: 8, alignItems: 'center', borderTop: '1px dashed #e5e7eb' }}>
-          <select value={service} onChange={(e) => setService(e.target.value)} style={selectStyle} title="Service">
-            {SERVICE_SUGGESTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <input type="number" min={1} value={leadDays} onChange={(e) => setLeadDays(e.target.value)} style={selectStyle} title="Lead time (days)" />
-          <input type="number" min={0} step={0.25} value={hours} onChange={(e) => setHours(e.target.value)} style={selectStyle} title="Standard hours" />
-          <button onClick={save} disabled={saving} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
-            {saving ? 'Saving…' : 'Save rule'}
-          </button>
-          <span style={{ fontSize: 11, color: '#64748b' }}>days / hrs · default assignee = BM</span>
+      {open && !isResolved && (
+        <div style={{ padding: '10px 14px', borderTop: '1px dashed #e5e7eb' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 90px 90px', gap: 8, alignItems: 'end' }}>
+            <label style={miniLabel}>
+              <span>Matches task names starting with</span>
+              <input value={prefix} onChange={(e) => setPrefix(e.target.value)} style={selectStyle} />
+            </label>
+            <label style={miniLabel}>
+              <span>Service</span>
+              <select value={service} onChange={(e) => setService(e.target.value)} style={selectStyle}>
+                {SERVICE_SUGGESTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+            <label style={miniLabel}>
+              <span>Lead (days)</span>
+              <input type="number" min={1} value={leadDays} onChange={(e) => setLeadDays(e.target.value)} style={selectStyle} />
+            </label>
+            <label style={miniLabel}>
+              <span>Std hours</span>
+              <input type="number" min={0} step={0.25} value={hours} onChange={(e) => setHours(e.target.value)} style={selectStyle} />
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+            <button onClick={save} disabled={saving || !prefix.trim()} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+              {saving ? 'Saving…' : 'Save rule'}
+            </button>
+            <span style={{ fontSize: 11, color: '#64748b' }}>
+              Default assignee inherited from BM. Edit later in Workflow → Rules.
+            </span>
+          </div>
         </div>
       )}
     </div>
@@ -880,17 +1001,22 @@ function RuleRow({ group, staff, onChanged }) {
 }
 
 function UnknownClientsPanel({ groups }) {
+  const [search, setSearch] = useState('');
   const totalTasks = groups.reduce((n, g) => n + g.count, 0);
+  const filtered = useFilteredGroups(groups, search);
   return (
     <RollupFrame
       tone="red"
-      title={`Unknown client references · ${groups.length} references, ${totalTasks} tasks`}
-      summary="These BM client references don't match an Athena entity. Run the BM Clients import first — or the tasks will import but won't attach to a client."
+      title={`Unknown client references · ${groups.length} references, ${totalTasks.toLocaleString()} tasks`}
+      summary="These BM client references don't match an Athena entity. Run the BM Clients import first — or tasks will import but won't attach to a client."
+      search={groups.length > 8 ? search : undefined}
+      onSearchChange={setSearch}
+      searchPlaceholder="Filter references…"
     >
-      {groups.map((g) => (
+      {filtered.map((g) => (
         <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid rgba(252,165,165,0.3)' }}>
           <span style={{ flex: 1, fontSize: 13, color: '#0f172a', fontFamily: 'monospace' }}>{g.key}</span>
-          <span style={{ fontSize: 11, color: '#64748b' }}>{g.count} tasks</span>
+          <span style={{ fontSize: 11, color: '#64748b' }}>{g.count.toLocaleString()} tasks</span>
           {g.samples[0]?.bm_task_name && (
             <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               e.g. {g.samples[0].bm_task_name}
@@ -898,9 +1024,18 @@ function UnknownClientsPanel({ groups }) {
           )}
         </div>
       ))}
+      {filtered.length === 0 && (
+        <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>No matches.</div>
+      )}
     </RollupFrame>
   );
 }
+
+const miniLabel = {
+  display: 'flex', flexDirection: 'column', gap: 3,
+  fontSize: 10, fontWeight: 600, color: '#94a3b8',
+  textTransform: 'uppercase', letterSpacing: '0.04em',
+};
 
 function rollupRowStyle(done) {
   return {
