@@ -54,6 +54,15 @@ export const MODULES = [
     group: 'team',
   },
   {
+    id: 'workflow',
+    label: 'Workflow',
+    route: '/workflow',
+    icon: 'calendar-check',
+    permissions: [],
+    status: 'live',
+    group: 'team',
+  },
+  {
     id: 'timesheets',
     label: 'Timesheets',
     route: '/timesheets',

@@ -9,6 +9,8 @@ import BugReportPage from './modules/bugs/BugReportPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import AdminPage from './shell/AdminPage';
 import DataImportModule from './modules/data-import/DataImportModule';
+import WorkflowModule from './modules/workflow/WorkflowModule';
+import StaffWorkflowModule from './modules/workflow/StaffWorkflowModule';
 import QboMappingPage from './modules/qbo-mapping/QboMappingPage';
 import BillingReviewPage from './modules/billing/BillingReviewPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
@@ -53,6 +55,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />
           <Route path="/admin/staff" element={<AdminPage />} />
           <Route path="/admin/import/*" element={<DataImportModule />} />
+          <Route path="/admin/workflow/*" element={<WorkflowModule />} />
+          <Route path="/workflow/*" element={<StaffWorkflowModule />} />
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/clients/qbo-mapping" element={<QboMappingPage />} />
           <Route path="/manage/billing/qbo-mapping" element={<QboMappingPage />} />
