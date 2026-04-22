@@ -565,12 +565,22 @@ function buildTasksValidation(preview, parsed, matchMap) {
       extraWarnings.push({ row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name, field: 'client', message: `Client reference "${r.client_reference}" not found — task won't attach to a client` });
     }
     if (m.rule_match === 'missing') {
+      // NST: tasks are BrightManager's equivalent of Athena Quick Tasks
+      // — one-off, ad-hoc, disappear with BM. Don't surface them in the
+      // rule-missing rollup, and don't count them as "needs attention" —
+      // they're expected to import without rules.
+      if (r.bm_task_name && /^\s*NST\s*[:\-]/i.test(r.bm_task_name)) {
+        continue;
+      }
+      // Roll up by *task type* (period end stripped) so one rule
+      // covers every "Self Assessment Accounts Preparation" variant,
+      // not one per period.
+      const type = stripPeriodSuffix(r.bm_task_name) || r.bm_task_name || '(blank)';
       ruleMissing++;
-      const key = r.bm_task_name || '(blank)';
-      const e = byTaskName.get(key) || { key, count: 0, samples: [] };
+      const e = byTaskName.get(type) || { key: type, count: 0, samples: [] };
       e.count += 1;
-      if (e.samples.length < 3) e.samples.push({ row: r._source_row, client_reference: r.client_reference });
-      byTaskName.set(key, e);
+      if (e.samples.length < 3) e.samples.push({ row: r._source_row, client_reference: r.client_reference, raw_name: r.bm_task_name });
+      byTaskName.set(type, e);
       extraWarnings.push({ row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name, field: 'rule', message: `No scheduling rule — task won't auto-schedule` });
     }
     if (m.assignee_match === 'new_alias' || m.assignee_match === 'alias_only') {
@@ -868,7 +878,7 @@ function RuleRollupPanel({ groups, onChanged }) {
     <RollupFrame
       tone="amber"
       title={`Task names without a scheduling rule · ${groups.length} names, ${totalTasks.toLocaleString()} tasks`}
-      summary="Add one rule per task-name prefix. Service, lead time, hours are pre-filled from the task name — tweak as needed."
+      summary="Add one rule per task type (period-end dates stripped). Service, lead time and duration are pre-filled from the task type — tweak as needed. NST: tasks are excluded — they're BM's quick-task equivalents and will disappear with BrightManager."
       search={groups.length > 8 ? search : undefined}
       onSearchChange={setSearch}
       searchPlaceholder="Filter task names…"
@@ -891,33 +901,80 @@ function RuleRollupPanel({ groups, onChanged }) {
 
 const SERVICE_SUGGESTIONS = ['Accounts', 'Bookkeeping', 'VAT', 'Payroll', 'Personal Tax', 'Corporation Tax', 'Admin', 'CIS', 'Company Secretarial', 'Other'];
 
-// Heuristic service inference from the task name — saves the team
-// re-picking "Admin" out of the dropdown for 62 obvious cases.
+// Strip the period-end suffix so defaults are driven by *task type*
+// alone, not by the specific quarter / year that happens to be in
+// the name. "VAT Preparation Quarterly End 31/08/2024" becomes
+// "VAT Preparation"; "Accounts Bookkeeping Period End 30/11/2025"
+// becomes "Accounts Bookkeeping". Scheduling concerns (cadence, lead
+// time) are the rule's job, not the individual task instance's.
+function stripPeriodSuffix(name) {
+  if (!name) return '';
+  let s = String(name);
+  // Trailing dd/mm/yyyy
+  s = s.replace(/\s+\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/i, '');
+  // Tax year tags: "Tax Year 2025/26", "Tax Year 25/26"
+  s = s.replace(/\s+tax\s*year\s*\d{2,4}\s*\/\s*\d{2,4}\s*$/i, '');
+  // "Year End ...", "Quarterly End ...", "Period End ...", "Month End ..."
+  s = s.replace(/\s+(?:year|quarter(?:ly)?|period|month)[\s-]*end\b.*$/i, '');
+  // Lone trailing "End"
+  s = s.replace(/\s+\bend\s*$/i, '');
+  // Trailing "Quarterly" / "Annual" period words with no remaining context
+  s = s.replace(/\s+\b(?:quarterly|annually)\s*$/i, '');
+  return s.trim();
+}
+
+// Heuristic service inference from the task *type* (period stripped).
 function inferService(name) {
-  const n = (name || '').toLowerCase();
+  const n = stripPeriodSuffix(name).toLowerCase();
   if (/\bvat\b/.test(n)) return 'VAT';
   if (/payroll|p11d|rti|paye|p60|p45/.test(n)) return 'Payroll';
   if (/bookkeeping|reconcil|bank\s*rec/.test(n)) return 'Bookkeeping';
-  if (/self[\s-]*assessment|personal\s*tax|\bsa\b|tax\s*return\s*preparation\s*tax\s*year/.test(n)) return 'Personal Tax';
-  if (/corporation\s*tax|\bct600\b|\bct\b\s|ct\s*return/.test(n)) return 'Corporation Tax';
+  if (/self[\s-]*assessment|personal\s*tax|\bsa\b/.test(n)) return 'Personal Tax';
+  if (/corporation\s*tax|\bct600\b|\bct\s*return\b/.test(n)) return 'Corporation Tax';
   if (/\bcis\b/.test(n)) return 'CIS';
   if (/company\s*sec|confirmation\s*statement|\bps01\b/.test(n)) return 'Company Secretarial';
-  if (/accounts|year[\s-]*end|year\s*end|balance\s*sheet|p\s*\&\s*l/.test(n)) return 'Accounts';
+  if (/accounts|balance\s*sheet|p\s*\&\s*l/.test(n)) return 'Accounts';
   if (/onboard|new\s*client|setup|registration|engagement/.test(n)) return 'Admin';
   return 'Admin';
 }
 
-// Default lead time: annual-looking tasks get 30 days, the rest 14.
+// Default lead time in days — driven by task type, not the date in
+// the name. Annual-cycle tasks get a longer runway.
 function inferLeadDays(name) {
-  const n = (name || '').toLowerCase();
-  if (/annual|year[\s-]*end|confirmation\s*statement/.test(n)) return 30;
+  const n = stripPeriodSuffix(name).toLowerCase();
+  if (/accounts|corporation\s*tax|self[\s-]*assessment|confirmation\s*statement|p11d/.test(n)) return 30;
+  if (/\bvat\b|bookkeeping|payroll/.test(n)) return 14;
   return 14;
 }
 
-// First two words of the task name is a pragmatic default prefix —
-// enough to match "VAT Preparation Quarterly End 31/08/2024" against
-// "VAT Preparation" without matching "VAT Submission".
+// Default standard duration in minutes — driven by task type.
+// Numbers are conservative defaults; the team will tweak per rule.
+function inferStandardMinutes(name) {
+  const n = stripPeriodSuffix(name).toLowerCase();
+  if (/\bvat\b.*prep/.test(n))          return 90;
+  if (/\bvat\b.*submission/.test(n))    return 15;
+  if (/\bvat\b/.test(n))                return 60;
+  if (/p11d/.test(n))                   return 30;
+  if (/payroll/.test(n))                return 30;
+  if (/bookkeeping/.test(n))            return 60;
+  if (/self[\s-]*assessment.*prep/.test(n))       return 120;
+  if (/self[\s-]*assessment.*submission/.test(n)) return 15;
+  if (/self[\s-]*assessment/.test(n))   return 90;
+  if (/accounts.*prep/.test(n))         return 240;
+  if (/year[\s-]*end/.test(n))          return 240;
+  if (/accounts/.test(n))               return 180;
+  if (/ct600|corporation\s*tax/.test(n))return 90;
+  if (/onboard|new\s*client|setup/.test(n)) return 60;
+  if (/confirmation\s*statement/.test(n))   return 15;
+  return 60;
+}
+
+// Prefix default = the stripped task type itself (first-word match on
+// server side, but the stripped name is the human-readable display and
+// covers the common case). Team can override in the inline input.
 function defaultPrefix(name) {
+  const stripped = stripPeriodSuffix(name);
+  if (stripped) return stripped;
   const words = (name || '').split(/\s+/).filter(Boolean);
   return (words.slice(0, 2).join(' ') || name || '').trim();
 }
@@ -927,7 +984,9 @@ function RuleRow({ group, isResolved, onResolved }) {
   const [prefix, setPrefix] = useState(() => defaultPrefix(group.key));
   const [service, setService] = useState(() => inferService(group.key));
   const [leadDays, setLeadDays] = useState(() => inferLeadDays(group.key));
-  const [hours, setHours] = useState(1);
+  // Duration is stored in minutes in the UI. The DB column is
+  // `standard_hours` (numeric) so we divide by 60 on save.
+  const [minutes, setMinutes] = useState(() => inferStandardMinutes(group.key));
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
@@ -938,7 +997,7 @@ function RuleRow({ group, isResolved, onResolved }) {
         task_name_prefix: prefix.trim() || group.key,
         service,
         lead_time_days: Number(leadDays) || 14,
-        standard_hours: Number(hours) || 1,
+        standard_hours: (Number(minutes) || 60) / 60,
         assignee_source: 'bm_assignee',
         active: true,
       });
@@ -982,8 +1041,8 @@ function RuleRow({ group, isResolved, onResolved }) {
               <input type="number" min={1} value={leadDays} onChange={(e) => setLeadDays(e.target.value)} style={selectStyle} />
             </label>
             <label style={miniLabel}>
-              <span>Std hours</span>
-              <input type="number" min={0} step={0.25} value={hours} onChange={(e) => setHours(e.target.value)} style={selectStyle} />
+              <span>Std minutes</span>
+              <input type="number" min={0} step={5} value={minutes} onChange={(e) => setMinutes(e.target.value)} style={selectStyle} />
             </label>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>

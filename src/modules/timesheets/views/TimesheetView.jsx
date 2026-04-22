@@ -30,12 +30,9 @@ function formatWeekTitle(start) {
 }
 function minutesToDisplay(mins) {
   if (!mins) return '';
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h === 0) return `${m}m`;
-  return m ? `${h}h ${m}m` : `${h}h`;
+  return `${Math.round(Number(mins) || 0)}m`;
 }
-function hoursDecimal(mins) { return mins ? (mins / 60).toFixed(2) : '0.00'; }
+function minutesValue(mins) { return mins ? String(Math.round(Number(mins) || 0)) : '0'; }
 function sameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -266,8 +263,8 @@ export default function TimesheetView() {
     const headers = ['Client', 'Service', ...weekDays.map((d) => formatISO(d)), 'Total (hrs)'];
     const csvRows = rows.map((r) => {
       const client = r.entityId ? (entityMap[r.entityId]?.name || '') : '';
-      const daily = r.days.map((d) => hoursDecimal(effMins(d)));
-      const total = hoursDecimal(r.days.reduce((s, d) => s + effMins(d), 0));
+      const daily = r.days.map((d) => minutesValue(effMins(d)));
+      const total = minutesValue(r.days.reduce((s, d) => s + effMins(d), 0));
       return [
         `"${client.replace(/"/g, '""')}"`,
         `"${(r.service || '').replace(/"/g, '""')}"`,
@@ -276,7 +273,7 @@ export default function TimesheetView() {
       ].join(',');
     });
     // Totals row
-    csvRows.push(['"TOTAL"', '""', ...dayTotals.map((t) => hoursDecimal(t)), hoursDecimal(weekTotal)].join(','));
+    csvRows.push(['"TOTAL"', '""', ...dayTotals.map((t) => minutesValue(t)), minutesValue(weekTotal)].join(','));
 
     const csv = [headers.join(','), ...csvRows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

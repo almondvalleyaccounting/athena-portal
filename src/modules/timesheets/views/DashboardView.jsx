@@ -16,11 +16,10 @@ function formatISO(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function minutesToDisplay(mins) {
-  if (!mins) return '0h';
-  const h = Math.floor(mins / 60); const m = mins % 60;
-  return m ? `${h}h ${m}m` : `${h}h`;
+  if (!mins) return '0m';
+  return `${Math.round(Number(mins) || 0)}m`;
 }
-function hoursDecimal(mins) { return mins ? (mins / 60).toFixed(2) : '0.00'; }
+function minutesValue(mins) { return mins ? String(Math.round(Number(mins) || 0)) : '0'; }
 const fmt = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n || 0);
 
 const PERIODS = [
@@ -149,7 +148,7 @@ export default function DashboardView() {
 
   // Export
   const handleExport = () => {
-    const headers = ['Staff', 'Client', 'Service', 'Hours', 'Date Range'];
+    const headers = ['Staff', 'Client', 'Service', 'Minutes', 'Date Range'];
     const grouped = {};
     allEntries.forEach((e) => {
       const sn = staffMap[e._staff]?.name || 'Unknown';
@@ -160,7 +159,7 @@ export default function DashboardView() {
     });
     const rows = Object.entries(grouped).sort().map(([key, mins]) => {
       const [staff, client, service] = key.split('|');
-      return [`"${staff}"`,`"${client}"`,`"${service}"`,hoursDecimal(mins),`"${rangeLabel}"`].join(',');
+      return [`"${staff}"`,`"${client}"`,`"${service}"`,minutesValue(mins),`"${rangeLabel}"`].join(',');
     });
     const csv = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -199,7 +198,7 @@ export default function DashboardView() {
       {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading dashboard...</div> : (<>
         {/* Summary cards */}
         <div style={{ display: 'flex', gap: 16, marginBottom: 28 }}>
-          <StatCard label="Total Hours" value={minutesToDisplay(allMinutes)} accent="#0e7fe0" />
+          <StatCard label="Total Time" value={minutesToDisplay(allMinutes)} accent="#0e7fe0" />
           <StatCard label="Staff Active" value={byStaff.length} accent="#059669" />
           <StatCard label="Services" value={byService.length} accent="#d97706" />
           <StatCard label="Clients" value={byClient.length} accent="#7c3aed" />
@@ -208,7 +207,7 @@ export default function DashboardView() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
           {/* Staff hours — clickable */}
           <div style={cardStyle}>
-            <h3 style={sectionTitle}>Hours by Staff</h3>
+            <h3 style={sectionTitle}>Time by Staff</h3>
             {byStaff.length === 0 ? <div style={emptyStyle}>No data</div> : byStaff.map((s) => {
               const key = `staff:${s.id}`;
               const isOpen = expandedSection === key;
@@ -224,7 +223,7 @@ export default function DashboardView() {
 
           {/* Service breakdown — clickable */}
           <div style={cardStyle}>
-            <h3 style={sectionTitle}>Hours by Service</h3>
+            <h3 style={sectionTitle}>Time by Service</h3>
             {byService.length === 0 ? <div style={emptyStyle}>No data</div> : byService.map((s) => {
               const key = `service:${s.service}`;
               const isOpen = expandedSection === key;
@@ -240,13 +239,13 @@ export default function DashboardView() {
 
           {/* Top 20 clients — clickable + billing comparison */}
           <div style={{ ...cardStyle, gridColumn: '1 / -1' }}>
-            <h3 style={sectionTitle}>Top 20 Clients — Hours vs Billing</h3>
+            <h3 style={sectionTitle}>Top 20 Clients — Time vs Billing</h3>
             {byClient.length === 0 ? <div style={emptyStyle}>No data</div> : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
                     <th style={thStyle}>Client</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Hours Logged</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Time Logged</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Monthly Billing</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Annual Billing</th>
                     <th style={{ ...thStyle, width: 30 }}></th>

@@ -120,7 +120,7 @@ export default function ClientDetailView() {
   const totalCompleted = filteredCompleted.reduce((s, t) => s + (t.completion_mins || 0), 0);
   const pendingBilling = billingItems.filter((b) => b.status === 'draft' || b.status === 'pending_approval');
   const fmt = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n || 0);
-  const durFmt = (mins) => { if (!mins) return '0h'; const h = Math.floor(mins / 60); const m = mins % 60; return m ? `${h}h ${m}m` : `${h}h`; };
+  const durFmt = (mins) => (mins == null ? '0m' : `${Math.round(Number(mins) || 0)}m`);
 
   const toggleSection = (s) => setActiveSection(activeSection === s ? null : s);
 

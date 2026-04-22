@@ -56,13 +56,14 @@ export function initials(name) {
 }
 
 // ── Duration formatting ──
-// 15 → "15m", 60 → "1h", 90 → "1h 30m", 180 → "3h"
+// Practice-wide convention: always render in minutes. 15 → "15m",
+// 90 → "90m", 180 → "180m". Hours were ambiguous ("1h 15m" vs "1.25h")
+// and made quick arithmetic harder across timesheets and task lists.
 export function durFmt(mins) {
-  if (!mins && mins !== 0) return '';
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m ? `${h}h ${m}m` : `${h}h`;
+  if (mins == null || mins === '') return '';
+  const n = Math.round(Number(mins));
+  if (Number.isNaN(n)) return '';
+  return `${n}m`;
 }
 
 // ── Date formatting ──

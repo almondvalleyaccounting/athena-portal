@@ -160,7 +160,7 @@ export default function RulesView() {
                 <th style={th}>Prefix</th>
                 <th style={th}>Service</th>
                 <th style={{ ...th, textAlign: 'right' }}>Lead (d)</th>
-                <th style={{ ...th, textAlign: 'right' }}>Hrs</th>
+                <th style={{ ...th, textAlign: 'right' }}>Mins</th>
                 <th style={th}>DOW</th>
                 <th style={th}>Wk</th>
                 <th style={th}>Assignee</th>
@@ -217,7 +217,7 @@ function RuleRow({ rule, onEdit, onDelete, disabled }) {
       <td style={{ ...td, fontFamily: 'monospace', color: '#475569' }}>{rule.task_name_prefix}</td>
       <td style={td}>{rule.service}</td>
       <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{rule.lead_time_days}</td>
-      <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{Number(rule.standard_hours).toFixed(2)}</td>
+      <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{Math.round(Number(rule.standard_hours) * 60)}m</td>
       <td style={td}>{rule.preferred_dow ? rule.preferred_dow.toUpperCase() : '—'}</td>
       <td style={td}>{rule.preferred_week_of_month || '—'}</td>
       <td style={td}>{rule.assignee_source === 'rule_assignee' ? 'Rule-pinned' : 'BM'}</td>
@@ -257,7 +257,15 @@ function RuleEditRow({ draft, setDraft, staff, saving, onSave, onCancel }) {
         <input type="number" value={draft.lead_time_days ?? 0} onChange={(e) => set('lead_time_days', e.target.value)} style={{ ...inp, textAlign: 'right', width: 60 }} />
       </td>
       <td style={td}>
-        <input type="number" step="0.25" value={draft.standard_hours ?? 0} onChange={(e) => set('standard_hours', e.target.value)} style={{ ...inp, textAlign: 'right', width: 60 }} />
+        <input
+          type="number"
+          step="5"
+          min={0}
+          value={Math.round((Number(draft.standard_hours) || 0) * 60)}
+          onChange={(e) => set('standard_hours', (parseInt(e.target.value, 10) || 0) / 60)}
+          style={{ ...inp, textAlign: 'right', width: 70 }}
+          title="Standard minutes"
+        />
       </td>
       <td style={td}>
         <select value={draft.preferred_dow || ''} onChange={(e) => set('preferred_dow', e.target.value || null)} style={inp}>

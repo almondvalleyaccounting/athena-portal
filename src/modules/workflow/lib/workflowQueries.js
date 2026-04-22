@@ -209,7 +209,7 @@ export async function logHoursAndResolveFlag({ bmTaskId, staffId, workDate, minu
     .single();
   if (tsErr) throw tsErr;
 
-  const flag = await resolveFlag(flagId, `Logged ${(minutes / 60).toFixed(2)}h retroactively${notes ? ' — ' + notes : ''}`);
+  const flag = await resolveFlag(flagId, `Logged ${Math.round(Number(minutes) || 0)}m retroactively${notes ? ' — ' + notes : ''}`);
   return { timesheet_id: tsEntry.id, flag_id: flag.id };
 }
 
