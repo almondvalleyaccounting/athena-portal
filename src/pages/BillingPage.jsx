@@ -459,6 +459,11 @@ export default function BillingPage() {
           <h2 className="text-lg font-bold text-ocean-700">Live Billing</h2>
           <p className="text-xs text-gray-400">Manage live billing records and compare against quotes</p>
         </div>
+        <div className="flex gap-2">
+          <Btn onClick={() => navigate('/manage/billing/fee-earners')} variant="secondary">
+            Fee earner book
+          </Btn>
+        </div>
       </div>
 
       {/* QBO Connection Panel (includes Pull from QBO + Manage mapping) */}
@@ -565,16 +570,18 @@ export default function BillingPage() {
         <div className="mb-4">
           <h3 className="text-sm font-bold text-ocean-700 mb-2">Revenue by service type (annualised)</h3>
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
+            <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr' }}>
               <span>Service</span>
+              <span className="text-right">Monthly</span>
               <span className="text-right">Monthly × 12</span>
               <span className="text-right">Annual fees</span>
               <span className="text-right">One-off (12mo)</span>
               <span className="text-right">Total</span>
             </div>
             {serviceBreakdown.map((s) => (
-              <div key={s.service_id} className="grid text-xs px-4 py-2 border-b border-gray-50" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
-                <span className="text-gray-700">{s.description}</span>
+              <div key={s.service_id} className="grid text-xs px-4 py-2 border-b border-gray-50" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr' }}>
+                <span className="text-gray-700 font-medium" title={s.description}>{s.service_id}</span>
+                <span className="text-right font-mono text-ocean-700">{fmt(s.monthly_annualised / 12)}</span>
                 <span className="text-right font-mono text-ocean-700">{fmt(s.monthly_annualised)}</span>
                 <span className="text-right font-mono text-teal-700">{fmt(s.annual)}</span>
                 <span className="text-right font-mono text-purple-700">{fmt(s.one_off)}</span>

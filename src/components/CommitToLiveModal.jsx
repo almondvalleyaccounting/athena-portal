@@ -10,21 +10,69 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   const [qboAction, setQboAction] = useState('none'); // 'none' | 'push' | 'csv'
   const [qboConnected, setQboConnected] = useState(false);
   const [pushStatus, setPushStatus] = useState(''); // '' | 'pushing' | 'pushed' | 'push_error'
+  const [staff, setStaff] = useState([]);
+  // Per-line allocations — keyed by line index, { fee_earner_id, fee_earner_manager_id }.
+  const [allocations, setAllocations] = useState({});
 
-  // Check QBO connection on mount
+  const recurring = (lineItems || []).filter((l) => l.is_recurring);
+  const clientName = quote?.relationship_group || 'Unnamed Client';
+  const entityId = quote?.entity_id || quote?.primary_entity_id;
+
+  // Check QBO connection + load staff + prefill any existing allocations for this entity.
   useEffect(() => {
     getQboStatus()
       .then((data) => {
         if (data?.connected) {
           setQboConnected(true);
-          setQboAction('push'); // Default to push when connected
+          setQboAction('push');
         }
       })
-      .catch(() => { /* not connected */ });
+      .catch(() => {});
+
+    (async () => {
+      const { data: staffRows } = await supabase
+        .from('staff_profiles')
+        .select('id, name, email')
+        .order('name');
+      const clean = (staffRows || []).map((s) => ({ ...s, name: s.name || s.email }));
+      setStaff(clean);
+
+      // Prefill existing allocations so re-commits don't wipe prior work.
+      if (entityId && recurring.length > 0) {
+        const { data: existing } = await supabase
+          .from('client_service_allocations')
+          .select('service_id, fee_earner_id, fee_earner_manager_id')
+          .eq('entity_id', entityId)
+          .in('service_id', recurring.map((l) => l.service_id).filter(Boolean));
+        if (existing?.length) {
+          const next = {};
+          recurring.forEach((l, idx) => {
+            const hit = existing.find((e) => e.service_id === l.service_id);
+            if (hit) next[idx] = {
+              fee_earner_id: hit.fee_earner_id || '',
+              fee_earner_manager_id: hit.fee_earner_manager_id || '',
+            };
+          });
+          setAllocations(next);
+        }
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const recurring = (lineItems || []).filter((l) => l.is_recurring);
-  const clientName = quote?.relationship_group || 'Unnamed Client';
+  const setAlloc = (idx, patch) => {
+    setAllocations((prev) => {
+      const cur = prev[idx] || { fee_earner_id: '', fee_earner_manager_id: '' };
+      const next = { ...cur, ...patch };
+      // Auto-mirror manager to match fee earner on first set, if manager empty.
+      if (patch.fee_earner_id && !cur.fee_earner_manager_id) {
+        next.fee_earner_manager_id = patch.fee_earner_id;
+      }
+      return { ...prev, [idx]: next };
+    });
+  };
+
+  const unallocatedCount = recurring.filter((_, idx) => !allocations[idx]?.fee_earner_id).length;
 
   const handleCommit = async () => {
     setCommitting(true);
@@ -76,6 +124,24 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
           onConflict: 'entity_id,service_id',
         });
         if (feesErr) throw feesErr;
+      }
+
+      // 3b. Upsert fee earner allocations for any line the user chose.
+      //     Lines left blank are skipped — they can be set later from the
+      //     client detail page.
+      const allocRows = recurring
+        .map((l, idx) => ({
+          entity_id: entityId,
+          service_id: l.service_id,
+          fee_earner_id: allocations[idx]?.fee_earner_id || null,
+          fee_earner_manager_id: allocations[idx]?.fee_earner_manager_id || null,
+        }))
+        .filter((r) => r.service_id && (r.fee_earner_id || r.fee_earner_manager_id));
+      if (allocRows.length > 0) {
+        const { error: allocErr } = await supabase
+          .from('client_service_allocations')
+          .upsert(allocRows, { onConflict: 'entity_id,service_id' });
+        if (allocErr) throw allocErr;
       }
 
       // 4. Update quote: committed_at, committed_by, status
@@ -172,19 +238,61 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
             </div>
           </div>
 
-          {/* Service Line Items */}
+          {/* Service Line Items + per-service fee earner allocation.
+              Allocation is the point of commit — this is how practice-wide
+              fee attribution reports get populated. Unallocated rows are
+              allowed (non-blocking) but counted in the footer so it's
+              visible they need follow-up from the client detail page. */}
           <div className="bg-gray-50 rounded-lg p-3">
             <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
-              Services Being Committed ({recurring.length})
+              Services & fee earner allocation ({recurring.length})
             </h3>
-            <div className="space-y-1 max-h-48 overflow-auto">
-              {recurring.map((l, i) => (
-                <div key={i} className="flex justify-between text-xs py-1 border-b border-gray-100 last:border-0">
-                  <span className="text-gray-600">{l.description}</span>
-                  <span className="font-mono text-gray-700">{fmt(l.monthly_amount)}/mo</span>
-                </div>
-              ))}
+            <div className="space-y-2 max-h-72 overflow-auto">
+              {recurring.map((l, i) => {
+                const a = allocations[i] || {};
+                return (
+                  <div key={i} className="bg-white rounded border border-gray-100 p-2">
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <span className="text-gray-700 font-medium">{l.service_id || l.description}</span>
+                      <span className="font-mono text-gray-700">{fmt(l.monthly_amount)}/mo</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-0.5">Fee earner</label>
+                        <select
+                          value={a.fee_earner_id || ''}
+                          onChange={(e) => setAlloc(i, { fee_earner_id: e.target.value })}
+                          className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                        >
+                          <option value="">— select —</option>
+                          {staff.map((s) => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-0.5">Manager</label>
+                        <select
+                          value={a.fee_earner_manager_id || ''}
+                          onChange={(e) => setAlloc(i, { fee_earner_manager_id: e.target.value })}
+                          className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                        >
+                          <option value="">— select —</option>
+                          {staff.map((s) => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+            {unallocatedCount > 0 && (
+              <p className="text-xs text-amber-700 mt-2">
+                {unallocatedCount} service{unallocatedCount === 1 ? '' : 's'} unallocated — you can set these later from the client page.
+              </p>
+            )}
           </div>
 
           {/* QBO Options */}

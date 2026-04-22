@@ -13,6 +13,7 @@ import WorkflowModule from './modules/workflow/WorkflowModule';
 import StaffWorkflowModule from './modules/workflow/StaffWorkflowModule';
 import QboMappingPage from './modules/qbo-mapping/QboMappingPage';
 import BillingReviewPage from './modules/billing/BillingReviewPage';
+import FeeEarnerBookPage from './modules/billing/FeeEarnerBookPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
 import BillingPage from './modules/billing/BillingPage';
@@ -61,6 +62,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/clients/qbo-mapping" element={<QboMappingPage />} />
           <Route path="/manage/billing/qbo-mapping" element={<QboMappingPage />} />
           <Route path="/manage/billing/review" element={<BillingReviewPage />} />
+          <Route path="/manage/billing/fee-earners" element={<FeeEarnerBookPage />} />
           <Route path="/clients/:id" element={<ClientDetailView />} />
           <Route path="/planner/*" element={<WorkPlannerModule />} />
           <Route path="/timesheets/*" element={<TimesheetModule />} />

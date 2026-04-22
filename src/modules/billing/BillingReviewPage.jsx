@@ -286,12 +286,12 @@ export default function BillingReviewPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 32 }} />
-              <col style={{ width: '22%' }} />
-              <col style={{ width: '30%' }} />
-              <col style={{ width: 90 }} />
-              <col style={{ width: 110 }} />
-              <col style={{ width: 110 }} />
-              <col style={{ width: 170 }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '26%' }} />
+              <col style={{ width: 230 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 150 }} />
             </colgroup>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
@@ -421,7 +421,7 @@ const CADENCE_OPTIONS = [
 ];
 function CadenceSegmented({ value, onChange, disabled }) {
   return (
-    <div style={{ display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+    <div style={{ display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden', whiteSpace: 'nowrap' }}>
       {CADENCE_OPTIONS.map((o, idx) => {
         const active = value === o.value;
         return (

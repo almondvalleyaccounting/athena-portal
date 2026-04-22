@@ -32,6 +32,7 @@ export default function ClientDetailView() {
   const [issues, setIssues] = useState([]);
   const [billingItems, setBillingItems] = useState([]);
   const [staffList, setStaffList] = useState([]);
+  const [allocations, setAllocations] = useState([]); // rows from client_service_allocations
   const [loading, setLoading] = useState(true);
   const [timePeriod, setTimePeriod] = useState('12');
   const [changeTaskText, setChangeTaskText] = useState('');
@@ -53,6 +54,7 @@ export default function ClientDetailView() {
           supabase.from('issues_log').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
           supabase.from('billing_items').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
           supabase.from('staff_profiles').select('id, name, email').order('name'),
+          supabase.from('client_service_allocations').select('*').eq('entity_id', id),
         ]);
         const get = (i) => results[i]?.value?.data;
         const ent = get(0);
@@ -66,6 +68,7 @@ export default function ClientDetailView() {
         setBillingItems(get(7) || []);
         const staff = (get(8) || []).map((s) => ({ ...s, name: s.name || s.email }));
         setStaffList(staff);
+        setAllocations(get(9) || []);
         // Default action assignee to client manager
         if (ent?.manager) {
           const mgr = staff.find((s) => s.name?.toLowerCase().includes(ent.manager.toLowerCase()));
@@ -184,6 +187,17 @@ export default function ClientDetailView() {
                   <span style={{ fontWeight: 500 }}>{fmt(b.monthly_fee)}/mo</span>
                 </div>
               ))}
+
+              {/* Fee earner allocation — per service_id, drives practice-wide
+                  attribution reports. Source of service_ids: live_billing.services
+                  jsonb (union across all billing rows) ∪ existing allocations. */}
+              <AllocationEditor
+                entityId={entity.id}
+                billing={billing}
+                allocations={allocations}
+                staff={staffList}
+                onChange={setAllocations}
+              />
             </>
           ) : <p style={{ fontSize: 13, color: '#cbd5e1' }}>No active billing.</p>}
         </div>
@@ -318,6 +332,105 @@ function DetailRow({ label, value }) {
 function Badge({ bg, color, children }) {
   return <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: bg, color, textTransform: 'capitalize', fontFamily: "'Outfit', sans-serif" }}>{children}</span>;
 }
+
+// Per client × service fee earner & manager editor. Lists every
+// distinct service_id that appears on this client's live_billing rows,
+// plus any that already have an allocation. Changes persist immediately
+// via upsert; empty fee_earner_id + empty manager_id = no allocation.
+function AllocationEditor({ entityId, billing, allocations, staff, onChange }) {
+  const serviceIds = React.useMemo(() => {
+    const set = new Set();
+    for (const b of billing || []) {
+      const services = Array.isArray(b.services) ? b.services : [];
+      for (const s of services) {
+        if (s.service_id) set.add(s.service_id);
+        else if (s.description) set.add(s.description);
+      }
+    }
+    for (const a of allocations || []) {
+      if (a.service_id) set.add(a.service_id);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [billing, allocations]);
+
+  const byService = React.useMemo(() => {
+    const m = {};
+    for (const a of allocations || []) m[a.service_id] = a;
+    return m;
+  }, [allocations]);
+
+  const persist = async (serviceId, patch) => {
+    const existing = byService[serviceId] || { entity_id: entityId, service_id: serviceId };
+    const next = {
+      entity_id: entityId,
+      service_id: serviceId,
+      fee_earner_id: existing.fee_earner_id || null,
+      fee_earner_manager_id: existing.fee_earner_manager_id || null,
+      ...patch,
+    };
+    // Auto-mirror manager to match fee earner on first set.
+    if (patch.fee_earner_id && !existing.fee_earner_manager_id && !patch.fee_earner_manager_id) {
+      next.fee_earner_manager_id = patch.fee_earner_id;
+    }
+    // Optimistic update.
+    const nextAllocations = [
+      ...(allocations || []).filter((a) => a.service_id !== serviceId),
+      next,
+    ];
+    onChange(nextAllocations);
+
+    const { error } = await supabase
+      .from('client_service_allocations')
+      .upsert(next, { onConflict: 'entity_id,service_id' });
+    if (error) alert('Failed to save allocation: ' + error.message);
+  };
+
+  if (serviceIds.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <h4 style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+        Fee earner allocation
+      </h4>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 8, fontSize: 11, color: '#94a3b8', paddingBottom: 4, borderBottom: '1px solid #f1f5f9' }}>
+        <span>Service</span>
+        <span>Fee earner</span>
+        <span>Fee earner manager</span>
+      </div>
+      {serviceIds.map((sid) => {
+        const a = byService[sid] || {};
+        return (
+          <div key={sid} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f8fafc' }}>
+            <span style={{ fontSize: 12, color: '#1e293b', fontWeight: 500 }}>{sid}</span>
+            <select
+              value={a.fee_earner_id || ''}
+              onChange={(e) => persist(sid, { fee_earner_id: e.target.value || null })}
+              style={allocSelectStyle}
+            >
+              <option value="">— unassigned —</option>
+              {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <select
+              value={a.fee_earner_manager_id || ''}
+              onChange={(e) => persist(sid, { fee_earner_manager_id: e.target.value || null })}
+              style={allocSelectStyle}
+            >
+              <option value="">— unassigned —</option>
+              {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const allocSelectStyle = {
+  fontSize: 12, padding: '4px 6px',
+  border: '1px solid #e5e7eb', borderRadius: 6,
+  background: '#fff', color: '#1e293b',
+  fontFamily: "'Outfit', sans-serif", outline: 'none',
+};
 
 // Editable status pill. `third_party` covers non-client invoicees —
 // finance partners, insurance co's, asset buyers — so they stay
