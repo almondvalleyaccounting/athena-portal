@@ -31,11 +31,12 @@ export const SOURCES = [
     system: 'bm',
     name: 'Tasks export',
     accepts: '.csv',
-    tables: ['scheduled_tasks'],
+    tables: ['bm_task_schedule'],
     comingSoon: false,
     pullSteps: [
       'Log into BrightManager',
       'Go to Tasks → All Tasks',
+      'Filter to open tasks (exclude completed)',
       'Export the current view as CSV',
     ],
   },

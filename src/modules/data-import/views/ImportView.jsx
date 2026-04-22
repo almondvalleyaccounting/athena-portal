@@ -10,6 +10,8 @@ import {
 } from '../lib/importQueries';
 import { parseBmClientsCsv } from '../lib/parsers/bmClients';
 import { classifyBmProspects, writeBmClients } from '../lib/writers/bmClients';
+import { parseBmTasksCsv } from '../lib/parsers/bmTasks';
+import { classifyBmTasks, writeBmTasks } from '../lib/writers/bmTasks';
 
 const font = "'Outfit', sans-serif";
 
@@ -112,8 +114,9 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   const [stage, setStage] = useState('upload'); // upload | validated | running | done
   const [validation, setValidation] = useState(null);
   const [parsedRows, setParsedRows] = useState(null);
-  const [matches, setMatches] = useState({});          // bm_client_id -> match info
+  const [matches, setMatches] = useState({});          // bm_client_id/bm_task_id -> match info
   const [decisions, setDecisions] = useState({});      // bm_client_id -> confirmed prospect_id (or 'reject')
+  const [seenTaskIds, setSeenTaskIds] = useState([]);  // bm_tasks: every task_id in the CSV (drives disappearance sweep)
   const [run, setRun] = useState(null);
   const [error, setError] = useState(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -123,6 +126,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   useEffect(() => {
     setFile(null); setPreview(null); setStage('upload');
     setValidation(null); setParsedRows(null); setMatches({}); setDecisions({});
+    setSeenTaskIds([]);
     setRun(null); setError(null);
     (async () => {
       const existing = await findRunningRun(source.key);
@@ -214,6 +218,67 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           conversions: conversionList,
           notes: [],
         };
+      } else if (source.key === 'bm_tasks') {
+        const text = await file.text();
+        const parsed = parseBmTasksCsv(text);
+        if (!parsed.headerOk) {
+          throw new Error(parsed.headerError || 'Invalid BM Tasks header');
+        }
+
+        const matchMap = await classifyBmTasks(parsed.rows);
+        setParsedRows(parsed.rows);
+        setMatches(matchMap);
+        setSeenTaskIds(parsed.seenTaskIds);
+
+        // Synthesize extra warnings from the matcher so the team can see
+        // unresolved entities/rules/assignees before approving.
+        const extraWarnings = [];
+        let entityMissing = 0, ruleMissing = 0, assigneeUnmapped = 0;
+        for (const r of parsed.rows) {
+          const m = matchMap[r.bm_task_id];
+          if (!m) continue;
+          if (m.entity_match === 'missing') {
+            entityMissing++;
+            extraWarnings.push({
+              row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name,
+              field: 'entity', message: `Unknown Client Reference "${r.client_reference}" — row will raise entity_not_found flag`,
+            });
+          }
+          if (m.rule_match === 'missing') {
+            ruleMissing++;
+            extraWarnings.push({
+              row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name,
+              field: 'rule', message: `No scheduling rule matches this task name — will raise no_rule_match flag`,
+            });
+          }
+          if (m.assignee_match === 'new_alias' || m.assignee_match === 'alias_only') {
+            assigneeUnmapped++;
+            extraWarnings.push({
+              row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name,
+              field: 'assignee', message: `BM assignee "${r.assignee_name}" is not mapped to a staff_profile — task will be unassigned until mapped`,
+            });
+          }
+        }
+
+        const allWarnings = [...parsed.warnings, ...extraWarnings];
+        const schedulable = parsed.rows.length - entityMissing - ruleMissing;
+
+        const notes = [];
+        if (entityMissing > 0) notes.push(`${entityMissing} tasks reference unknown clients — consider running a BM Clients import first.`);
+        if (ruleMissing > 0) notes.push(`${ruleMissing} tasks have no scheduling rule — add rules in Settings (after import these will surface in the reconciliation inbox).`);
+        if (assigneeUnmapped > 0) notes.push(`${assigneeUnmapped} tasks reference BM-only staff not yet mapped to Athena staff profiles.`);
+
+        v = {
+          sourceRows: preview.rowCount,
+          valid: schedulable,
+          warningCount: allWarnings.length,
+          skippedCount: parsed.skipped.length,
+          rowCounts: { bm_task_schedule: schedulable },
+          warnings: allWarnings,
+          skippedRows: parsed.skipped,
+          conversions: [],
+          notes,
+        };
       } else {
         // Stubbed for other sources pending their writers
         v = buildStubValidation(source, preview);
@@ -302,6 +367,16 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           ...v,
           writeResult: result,
         }));
+      } else if (source.key === 'bm_tasks') {
+        const result = await writeBmTasks(run.id, parsedRows, seenTaskIds);
+        const done = await markComplete(run.id, {
+          rowCounts: {
+            bm_task_schedule: (result.scheduled || 0) + (result.updated || 0),
+          },
+          errors: result.errors || [],
+        });
+        setRun(done);
+        setValidation((v) => ({ ...v, writeResult: result }));
       } else {
         // Stubbed
         await new Promise((r) => setTimeout(r, 600));
@@ -820,7 +895,7 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
       <p style={{ fontSize: 12, color: '#047857', marginBottom: 14 }}>
         Run ID: <code style={{ fontSize: 11 }}>{run.id}</code>
       </p>
-      {hasRealWrite ? (
+      {hasRealWrite && source.key === 'bm_clients' ? (
         <>
           <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>entities written</span><span style={resultNum}>{wr.entities_written.toLocaleString()}</span></div>
           <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>prospects converted</span><span style={resultNum}>{wr.prospects_converted.toLocaleString()}</span></div>
@@ -837,6 +912,51 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
             </details>
           )}
         </>
+      ) : hasRealWrite && source.key === 'bm_tasks' ? (
+        <>
+          <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>new tasks scheduled</span><span style={resultNum}>{(wr.scheduled || 0).toLocaleString()}</span></div>
+          <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>tasks updated</span><span style={resultNum}>{(wr.updated || 0).toLocaleString()}</span></div>
+          {wr.overridden_skipped > 0 && (
+            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>tasks with manual override (date untouched)</span><span style={resultNum}>{wr.overridden_skipped.toLocaleString()}</span></div>
+          )}
+          {wr.tasks_completed > 0 && (
+            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>tasks completed (disappeared)</span><span style={resultNum}>{wr.tasks_completed.toLocaleString()}</span></div>
+          )}
+          {wr.flags && (
+            <div style={{ marginTop: 10, padding: 10, background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#78350f', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                Reconciliation flags raised
+              </p>
+              {Object.entries(wr.flags).filter(([, n]) => n > 0).length === 0 ? (
+                <p style={{ fontSize: 12, color: '#92400e' }}>None — clean import.</p>
+              ) : Object.entries(wr.flags).filter(([, n]) => n > 0).map(([k, n]) => (
+                <div key={k} style={{ fontSize: 12, color: '#78350f', padding: '2px 0' }}>
+                  • <code style={{ fontSize: 11 }}>{k}</code>: <b>{n}</b>
+                </div>
+              ))}
+            </div>
+          )}
+          {wr.errors?.length > 0 && (
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#991b1b' }}>
+                Row-level errors ({wr.errors.length})
+              </summary>
+              <div style={{ fontSize: 11, color: '#991b1b', paddingLeft: 14, paddingTop: 6 }}>
+                {wr.errors.slice(0, 20).map((e, i) => (
+                  <div key={i}>• {e.bm_task_id || '—'}: {e.message}</div>
+                ))}
+              </div>
+            </details>
+          )}
+        </>
+      ) : hasRealWrite ? (
+        Object.entries(validation.rowCounts).map(([t, n]) => (
+          <div key={t} style={resultRow}>
+            <Check size={12} style={{ color: '#15803d' }} />
+            <span style={{ width: 180, color: '#065f46' }}>{t}</span>
+            <span style={resultNum}>{Number(n).toLocaleString()} rows written</span>
+          </div>
+        ))
       ) : (
         Object.entries(validation.rowCounts).map(([t, n]) => (
           <div key={t} style={resultRow}>
