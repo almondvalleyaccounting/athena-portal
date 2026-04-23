@@ -151,6 +151,18 @@ export default function ClientDetailView() {
                 }
               }}
             />
+            <CadenceEditor
+              value={entity.cadence_preference || 'normal'}
+              onChange={async (next) => {
+                const prev = entity.cadence_preference;
+                setEntity({ ...entity, cadence_preference: next });
+                const { error } = await supabase.from('entities').update({ cadence_preference: next }).eq('id', entity.id);
+                if (error) {
+                  alert('Could not update cadence: ' + error.message);
+                  setEntity({ ...entity, cadence_preference: prev });
+                }
+              }}
+            />
           </div>
         </div>
         {/* Time period filter */}
@@ -462,6 +474,41 @@ function StatusEditor({ value, onChange }) {
       >
         {STATUS_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      <span style={{
+        position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+        pointerEvents: 'none', color: current.color, fontSize: 9,
+      }}>▾</span>
+    </div>
+  );
+}
+
+const CADENCE_OPTIONS = [
+  { value: 'early',  label: 'Early',  bg: '#ecfdf5', color: '#15803d', hint: 'Shift scheduled work one week earlier than the task-type default' },
+  { value: 'normal', label: 'Normal', bg: '#f1f5f9', color: '#475569', hint: 'Use the task-type default slot as-is' },
+  { value: 'late',   label: 'Late',   bg: '#fffbeb', color: '#b45309', hint: 'Shift scheduled work one week later than the task-type default' },
+];
+
+function CadenceEditor({ value, onChange }) {
+  const current = CADENCE_OPTIONS.find((o) => o.value === value) || CADENCE_OPTIONS[1];
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }} title={`Scheduling cadence — ${current.hint}`}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          appearance: 'none', WebkitAppearance: 'none',
+          fontSize: 10, fontWeight: 600,
+          padding: '2px 22px 2px 8px', borderRadius: 6,
+          background: current.bg, color: current.color,
+          border: '1px solid transparent',
+          fontFamily: "'Outfit', sans-serif",
+          cursor: 'pointer',
+        }}
+      >
+        {CADENCE_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>{`Cadence: ${o.label}`}</option>
         ))}
       </select>
       <span style={{

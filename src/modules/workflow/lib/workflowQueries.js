@@ -213,6 +213,50 @@ export async function logHoursAndResolveFlag({ bmTaskId, staffId, workDate, minu
   return { timesheet_id: tsEntry.id, flag_id: flag.id };
 }
 
+// ─── Task-type schedule defaults ───────────────────────────────
+// Prefix-match on bm_task_name, first-match-wins by priority DESC
+// then name ASC. Yields a calendar slot (month anchor, week-of-month,
+// target hours) that the planner uses when placing draft rows.
+
+export async function listDefaults() {
+  const { data, error } = await supabase
+    .from('task_type_schedule_defaults')
+    .select('*')
+    .order('match_priority', { ascending: false })
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createDefault(patch) {
+  const { data, error } = await supabase
+    .from('task_type_schedule_defaults')
+    .insert(patch)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateDefault(id, patch) {
+  const { data, error } = await supabase
+    .from('task_type_schedule_defaults')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteDefault(id) {
+  const { error } = await supabase
+    .from('task_type_schedule_defaults')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+}
+
 // ─── Schedule reset (Danger zone) ──────────────────────────────
 // Deletes rows from bm_task_schedule. Logged time lives on
 // timesheet_entries and is untouched — schedule rows are plans only.

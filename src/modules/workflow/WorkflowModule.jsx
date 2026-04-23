@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import RulesView from './views/RulesView';
+import DefaultsView from './views/DefaultsView';
 import AliasesView from './views/AliasesView';
 import FlagsView from './views/FlagsView';
 import CalendarView from './views/CalendarView';
@@ -10,11 +11,12 @@ import { useAuth } from '../../shell/AppShell';
 const font = "'Outfit', sans-serif";
 
 const TABS = [
-  { id: 'calendar', label: 'Workload preview', path: '/admin/workflow/calendar' },
-  { id: 'flags',    label: 'Reconciliation',   path: '/admin/workflow/flags' },
-  { id: 'rules',    label: 'Scheduling rules', path: '/admin/workflow/rules' },
-  { id: 'aliases',  label: 'Staff aliases',    path: '/admin/workflow/aliases' },
-  { id: 'settings', label: 'Feature flag',     path: '/admin/workflow/settings' },
+  { id: 'calendar', label: 'Workload preview',  path: '/admin/workflow/calendar' },
+  { id: 'flags',    label: 'Reconciliation',    path: '/admin/workflow/flags' },
+  { id: 'defaults', label: 'Schedule defaults', path: '/admin/workflow/defaults' },
+  { id: 'rules',    label: 'Scheduling rules',  path: '/admin/workflow/rules' },
+  { id: 'aliases',  label: 'Staff aliases',     path: '/admin/workflow/aliases' },
+  { id: 'settings', label: 'Feature flag',      path: '/admin/workflow/settings' },
 ];
 
 export default function WorkflowModule() {
@@ -40,6 +42,7 @@ export default function WorkflowModule() {
   const activeTab = (() => {
     if (location.pathname.startsWith('/admin/workflow/aliases')) return 'aliases';
     if (location.pathname.startsWith('/admin/workflow/flags')) return 'flags';
+    if (location.pathname.startsWith('/admin/workflow/defaults')) return 'defaults';
     if (location.pathname.startsWith('/admin/workflow/rules')) return 'rules';
     if (location.pathname.startsWith('/admin/workflow/settings')) return 'settings';
     return 'calendar';
@@ -81,6 +84,7 @@ export default function WorkflowModule() {
         <Routes>
           <Route index element={<Navigate to="/admin/workflow/calendar" replace />} />
           <Route path="calendar" element={<CalendarView />} />
+          <Route path="defaults" element={<DefaultsView />} />
           <Route path="rules" element={<RulesView />} />
           <Route path="aliases" element={<AliasesView />} />
           <Route path="flags" element={<FlagsView />} />
