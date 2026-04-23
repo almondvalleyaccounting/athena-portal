@@ -812,8 +812,14 @@ function AssigneeRow({ group, staff, isResolved, onResolved }) {
       // an Athena staff profile — useful for former staff or people
       // we haven't invited yet. Future tasks stop showing as "unmapped"
       // but remain unassigned until a profile is attached later.
+      // Key must be LOWER(TRIM(...)) to match the import-side lookup
+      // in ingest_bm_tasks(). group.key carries the title-case display
+      // form — preserve it as display_name.
+      const rawName = (group.key || '').trim();
+      const lowerKey = rawName.toLowerCase();
       await supabase.from('bm_staff_aliases').upsert({
-        bm_assignee_name: group.key,
+        bm_assignee_name: lowerKey,
+        display_name: rawName,
         staff_profile_id: pick === 'alias-only' ? null : pick,
         last_seen_at: new Date().toISOString(),
       }, { onConflict: 'bm_assignee_name' });

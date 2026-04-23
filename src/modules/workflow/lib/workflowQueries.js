@@ -262,36 +262,64 @@ export async function deleteDefault(id) {
 // timesheet_entries and is untouched — schedule rows are plans only.
 // A re-import will rebuild rows for any BM tasks that still exist.
 
-function applyScheduleFilters(q, { taskName, entityId }) {
-  if (taskName) q = q.eq('bm_task_name', taskName);
+function applyScheduleFilters(q, { taskPrefix, entityId }) {
+  if (taskPrefix) q = q.ilike('bm_task_name', `${taskPrefix}%`);
   if (entityId) q = q.eq('entity_id', entityId);
   return q;
 }
 
-export async function countScheduleRows({ taskName = null, entityId = null } = {}) {
+export async function countScheduleRows({ taskPrefix = null, entityId = null } = {}) {
   let q = supabase.from('bm_task_schedule').select('id', { count: 'exact', head: true });
-  q = applyScheduleFilters(q, { taskName, entityId });
+  q = applyScheduleFilters(q, { taskPrefix, entityId });
   const { count, error } = await q;
   if (error) throw error;
   return count || 0;
 }
 
-export async function clearScheduleRows({ taskName = null, entityId = null } = {}) {
+export async function clearScheduleRows({ taskPrefix = null, entityId = null } = {}) {
   let q = supabase.from('bm_task_schedule').delete().not('id', 'is', null);
-  q = applyScheduleFilters(q, { taskName, entityId });
+  q = applyScheduleFilters(q, { taskPrefix, entityId });
   const { error, count } = await q;
   if (error) throw error;
   return count ?? null;
 }
 
-export async function listScheduleTaskNames() {
-  const { data, error } = await supabase
-    .from('bm_task_schedule')
-    .select('bm_task_name')
-    .not('bm_task_name', 'is', null);
-  if (error) throw error;
-  const set = new Set((data || []).map((r) => r.bm_task_name).filter(Boolean));
-  return [...set].sort((a, b) => a.localeCompare(b));
+// Groups the scheduled tasks into "task types" using the configured
+// prefixes from bm_scheduling_rules and task_type_schedule_defaults.
+// Clearing by type then runs an ILIKE prefix% so e.g. "Confirmation
+// Statement" wipes every month's instance in one action.
+//
+// Returns [{ label, prefix, source, count }] sorted by label.
+// `count` is how many current bm_task_schedule rows match the prefix.
+export async function listScheduleTaskGroups() {
+  const [rulesRes, defaultsRes, scheduleRes] = await Promise.all([
+    supabase.from('bm_scheduling_rules').select('name, task_name_prefix, active').eq('active', true),
+    supabase.from('task_type_schedule_defaults').select('name, task_name_prefix, is_active').eq('is_active', true),
+    supabase.from('bm_task_schedule').select('bm_task_name').not('bm_task_name', 'is', null),
+  ]);
+  if (rulesRes.error) throw rulesRes.error;
+  if (defaultsRes.error) throw defaultsRes.error;
+  if (scheduleRes.error) throw scheduleRes.error;
+
+  // Dedupe by prefix; prefer defaults label if both tables know about it.
+  const byPrefix = new Map();
+  for (const r of rulesRes.data || []) {
+    if (!r.task_name_prefix) continue;
+    byPrefix.set(r.task_name_prefix, { label: r.name || r.task_name_prefix, prefix: r.task_name_prefix, source: 'rule' });
+  }
+  for (const d of defaultsRes.data || []) {
+    if (!d.task_name_prefix) continue;
+    byPrefix.set(d.task_name_prefix, { label: d.name || d.task_name_prefix, prefix: d.task_name_prefix, source: 'default' });
+  }
+
+  // Count matches per prefix from the scheduled rows.
+  const names = (scheduleRes.data || []).map((r) => r.bm_task_name).filter(Boolean);
+  const groups = [];
+  for (const g of byPrefix.values()) {
+    const count = names.filter((n) => n.toLowerCase().startsWith(g.prefix.toLowerCase())).length;
+    groups.push({ ...g, count });
+  }
+  return groups.sort((a, b) => a.label.localeCompare(b.label));
 }
 
 export async function listScheduleEntities() {

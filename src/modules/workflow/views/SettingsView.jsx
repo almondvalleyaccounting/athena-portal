@@ -5,7 +5,7 @@ import {
   updateSetting,
   countScheduleRows,
   clearScheduleRows,
-  listScheduleTaskNames,
+  listScheduleTaskGroups,
   listScheduleEntities,
 } from '../lib/workflowQueries';
 import { useAuth } from '../../../shell/AppShell';
@@ -137,9 +137,9 @@ export default function SettingsView() {
 }
 
 function DangerZone({ canEdit }) {
-  const [taskNames, setTaskNames] = useState([]);
+  const [taskGroups, setTaskGroups] = useState([]);
   const [entities, setEntities] = useState([]);
-  const [selectedTaskName, setSelectedTaskName] = useState('');
+  const [selectedTaskPrefix, setSelectedTaskPrefix] = useState('');
   const [selectedEntityId, setSelectedEntityId] = useState('');
   const [pending, setPending] = useState(null); // { scope, filters, count }
   const [confirmText, setConfirmText] = useState('');
@@ -149,8 +149,8 @@ function DangerZone({ canEdit }) {
 
   const reloadOptions = async () => {
     try {
-      const [names, ents] = await Promise.all([listScheduleTaskNames(), listScheduleEntities()]);
-      setTaskNames(names);
+      const [groups, ents] = await Promise.all([listScheduleTaskGroups(), listScheduleEntities()]);
+      setTaskGroups(groups);
       setEntities(ents);
     } catch (e) {
       setError(e.message || String(e));
@@ -181,7 +181,7 @@ function DangerZone({ canEdit }) {
       await clearScheduleRows(pending.filters);
       setNotice(`Cleared ${pending.count} row${pending.count === 1 ? '' : 's'} (${pending.label}).`);
       setPending(null);
-      setSelectedTaskName('');
+      setSelectedTaskPrefix('');
       setSelectedEntityId('');
       await reloadOptions();
     } catch (e) {
@@ -243,29 +243,34 @@ function DangerZone({ canEdit }) {
 
         <ClearRow
           label="Clear by task type"
-          description="Removes all scheduled rows matching a given BM task name."
+          description="Removes every scheduled row matching a task-type prefix (e.g. all Confirmation Statements across all months, in one click)."
           disabled={!canEdit || busy}
           action={
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <select
-                value={selectedTaskName}
-                onChange={(e) => setSelectedTaskName(e.target.value)}
+                value={selectedTaskPrefix}
+                onChange={(e) => setSelectedTaskPrefix(e.target.value)}
                 disabled={!canEdit || busy}
                 style={selectStyle}
               >
                 <option value="">Select task type…</option>
-                {taskNames.map((n) => (
-                  <option key={n} value={n}>{n}</option>
+                {taskGroups.map((g) => (
+                  <option key={g.prefix} value={g.prefix}>
+                    {g.label} — {g.count} row{g.count === 1 ? '' : 's'}
+                  </option>
                 ))}
               </select>
               <button
-                onClick={() => openConfirm(
-                  'taskType',
-                  { taskName: selectedTaskName },
-                  `task type "${selectedTaskName}"`,
-                )}
-                disabled={!canEdit || busy || !selectedTaskName}
-                style={dangerBtn(!canEdit || busy || !selectedTaskName)}
+                onClick={() => {
+                  const g = taskGroups.find((x) => x.prefix === selectedTaskPrefix);
+                  openConfirm(
+                    'taskType',
+                    { taskPrefix: selectedTaskPrefix },
+                    `task type "${g?.label || selectedTaskPrefix}"`,
+                  );
+                }}
+                disabled={!canEdit || busy || !selectedTaskPrefix}
+                style={dangerBtn(!canEdit || busy || !selectedTaskPrefix)}
               >
                 <Trash2 size={12} /> Clear
               </button>
