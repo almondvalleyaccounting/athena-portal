@@ -8,7 +8,9 @@ import { previewFile } from '../lib/parseCsv';
 import {
   computeFileHash, createImportRun, markValidated, approveAndStart,
   markComplete, markFailed, markCancelled, findRunningRun,
+  fetchExcludedTaskPrefixes, saveExcludedTaskPrefixes,
 } from '../lib/importQueries';
+import { isNstTask } from '../lib/writers/bmTasks';
 import { parseBmClientsCsv } from '../lib/parsers/bmClients';
 import { classifyBmProspects, writeBmClients } from '../lib/writers/bmClients';
 import { parseBmTasksCsv } from '../lib/parsers/bmTasks';
@@ -125,6 +127,8 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   const [staff, setStaff] = useState([]);
   const [rechecking, setRechecking] = useState(false);
   const [previewInfo, setPreviewInfo] = useState(null); // keep preview for re-checks
+  const [excludedPrefixes, setExcludedPrefixes] = useState([]);
+  const [prefixCatalogue, setPrefixCatalogue] = useState([]);
 
   // Load staff profiles once (cheap, one list) — used by the rollup
   // panels to map BM assignees without leaving this screen.
@@ -134,6 +138,47 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
       setStaff((data || []).map((s) => ({ ...s, name: s.name || s.email })));
     })();
   }, []);
+
+  // Load saved exclusions + prefix catalogue for the bm_tasks source.
+  useEffect(() => {
+    if (source.key !== 'bm_tasks') return;
+    (async () => {
+      try {
+        const [excluded, rules, defaults] = await Promise.all([
+          fetchExcludedTaskPrefixes(),
+          supabase.from('bm_scheduling_rules').select('name, task_name_prefix, active').eq('active', true),
+          supabase.from('task_type_schedule_defaults').select('name, task_name_prefix, is_active').eq('is_active', true),
+        ]);
+        const byPrefix = new Map();
+        for (const r of (rules.data || [])) {
+          if (!r.task_name_prefix) continue;
+          byPrefix.set(r.task_name_prefix, { label: r.name || r.task_name_prefix, prefix: r.task_name_prefix });
+        }
+        for (const d of (defaults.data || [])) {
+          if (!d.task_name_prefix) continue;
+          byPrefix.set(d.task_name_prefix, { label: d.name || d.task_name_prefix, prefix: d.task_name_prefix });
+        }
+        setPrefixCatalogue([...byPrefix.values()].sort((a, b) => a.label.localeCompare(b.label)));
+        setExcludedPrefixes(excluded);
+      } catch (e) {
+        console.warn('[DataImport] failed to load exclusion catalogue:', e);
+      }
+    })();
+  }, [source.key]);
+
+  const toggleExclusion = async (prefix) => {
+    const next = excludedPrefixes.includes(prefix)
+      ? excludedPrefixes.filter((p) => p !== prefix)
+      : [...excludedPrefixes, prefix];
+    setExcludedPrefixes(next);
+    try {
+      await saveExcludedTaskPrefixes(next);
+    } catch (e) {
+      alert('Could not save exclusion: ' + e.message);
+      // Revert optimistic update
+      setExcludedPrefixes(excludedPrefixes);
+    }
+  };
 
   const handleRecheck = async () => {
     if (!parsedRows || source.key !== 'bm_tasks' || !previewInfo) return;
@@ -354,7 +399,20 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           writeResult: result,
         }));
       } else if (source.key === 'bm_tasks') {
-        const result = await writeBmTasks(run.id, parsedRows, seenTaskIds);
+        // Apply persisted task-type exclusions before writing. Any row
+        // whose bm_task_name matches an excluded prefix is dropped from
+        // both parsedRows and seenTaskIds — effectively treating it as
+        // "not present in this CSV", so the disappearance sweep will
+        // delete any pre-existing schedule rows for those types.
+        const isExcluded = (name) =>
+          !!name && excludedPrefixes.some((p) => name.startsWith(p));
+        const effectiveRows = parsedRows.filter((r) => !isExcluded(r.bm_task_name));
+        const droppedIds = new Set(
+          parsedRows.filter((r) => isExcluded(r.bm_task_name)).map((r) => r.bm_task_id).filter(Boolean)
+        );
+        const effectiveSeen = seenTaskIds.filter((id) => !droppedIds.has(id));
+
+        const result = await writeBmTasks(run.id, effectiveRows, effectiveSeen);
         const done = await markComplete(run.id, {
           rowCounts: {
             bm_task_schedule: (result.scheduled || 0) + (result.updated || 0),
@@ -434,6 +492,14 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
               groups={conversionGroups}
               decisions={decisions}
               setDecisions={setDecisions}
+            />
+          )}
+          {source.key === 'bm_tasks' && parsedRows && (
+            <TaskTypeExclusionsPanel
+              parsedRows={parsedRows}
+              catalogue={prefixCatalogue}
+              excluded={excludedPrefixes}
+              onToggle={toggleExclusion}
             />
           )}
           <ApprovePanel
@@ -1312,6 +1378,95 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
   );
 }
 
+/* ─── Task-type exclusions ────────────────────────────────────
+   Lets the user toggle off task-type prefixes they never want to
+   import (e.g. Payroll, Confirmation Statement). Checkboxes persist
+   to app_settings so the same prefixes stay excluded on future
+   imports. Unchecked = excluded.
+   ─────────────────────────────────────────────────────────── */
+function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) {
+  // Bucket parsed rows by catalogue prefix (first match). Skip NST
+  // rows — they're routed to quick_tasks separately, not controllable here.
+  const buckets = React.useMemo(() => {
+    const counts = new Map();
+    let other = 0;
+    let nst = 0;
+    for (const r of parsedRows) {
+      const name = r.bm_task_name || '';
+      if (isNstTask(name)) { nst++; continue; }
+      const hit = catalogue.find((c) => name.startsWith(c.prefix));
+      if (hit) counts.set(hit.prefix, (counts.get(hit.prefix) || 0) + 1);
+      else other++;
+    }
+    const out = catalogue
+      .map((c) => ({ ...c, count: counts.get(c.prefix) || 0 }))
+      .filter((c) => c.count > 0)
+      .sort((a, b) => a.label.localeCompare(b.label));
+    return { rows: out, other, nst };
+  }, [parsedRows, catalogue]);
+
+  if (buckets.rows.length === 0 && buckets.other === 0) return null;
+
+  const totalExcluded = buckets.rows.filter((b) => excluded.includes(b.prefix)).reduce((s, b) => s + b.count, 0);
+
+  return (
+    <div style={{
+      marginTop: 18, padding: 18,
+      background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>Task types to import</h3>
+          <p style={{ fontSize: 12, color: '#64748b' }}>
+            Uncheck any type you never want in Athena. Your choices are remembered and pre-applied next time.
+          </p>
+        </div>
+        {totalExcluded > 0 && (
+          <span style={{ fontSize: 12, color: '#b45309', fontWeight: 600 }}>
+            {totalExcluded} row{totalExcluded === 1 ? '' : 's'} will be excluded
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 }}>
+        {buckets.rows.map((b) => {
+          const isExcluded = excluded.includes(b.prefix);
+          return (
+            <label key={b.prefix} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+              background: isExcluded ? '#fef2f2' : '#f8fafc',
+              border: `1px solid ${isExcluded ? '#fecaca' : '#e5e7eb'}`,
+              opacity: isExcluded ? 0.8 : 1,
+            }}>
+              <input
+                type="checkbox"
+                checked={!isExcluded}
+                onChange={() => onToggle(b.prefix)}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: isExcluded ? '#991b1b' : '#0f172a', textDecoration: isExcluded ? 'line-through' : 'none' }}>
+                  {b.label}
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>
+                  {b.prefix} — {b.count} row{b.count === 1 ? '' : 's'}
+                </div>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+
+      {(buckets.other > 0 || buckets.nst > 0) && (
+        <div style={{ marginTop: 10, fontSize: 11, color: '#94a3b8' }}>
+          {buckets.other > 0 && <span>{buckets.other} row{buckets.other === 1 ? '' : 's'} don't match any rule — always imported. </span>}
+          {buckets.nst > 0 && <span>{buckets.nst} NST row{buckets.nst === 1 ? '' : 's'} routed to quick tasks.</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ApprovePanel({ validation, tier3Pending, contestedUnresolved, onApprove, onCancel }) {
   const blocked = tier3Pending > 0 || contestedUnresolved > 0;
   const blockReason = contestedUnresolved > 0
@@ -1439,6 +1594,16 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
           )}
           {wr.tasks_completed > 0 && (
             <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>tasks completed (disappeared)</span><span style={resultNum}>{wr.tasks_completed.toLocaleString()}</span></div>
+          )}
+          {(wr.nst_upserted > 0 || wr.nst_removed > 0) && (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #a7f3d0' }}>
+              {wr.nst_upserted > 0 && (
+                <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>NST tasks → quick tasks</span><span style={resultNum}>{wr.nst_upserted.toLocaleString()}</span></div>
+              )}
+              {wr.nst_removed > 0 && (
+                <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>NST quick tasks removed</span><span style={resultNum}>{wr.nst_removed.toLocaleString()}</span></div>
+              )}
+            </div>
           )}
           {wr.flags && (
             <div style={{ marginTop: 10, padding: 10, background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8 }}>

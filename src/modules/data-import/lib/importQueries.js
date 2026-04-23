@@ -67,6 +67,39 @@ export async function fetchImportHistory({ source, status, sinceDays = 30 } = {}
   return data || [];
 }
 
+// ─── Task-type exclusions ──────────────────────────────────────
+// Persisted setting — users flag certain task-type prefixes as
+// "never import" (e.g. Payroll, Confirmation Statement). Stored as
+// an array of prefix strings inside app_settings.
+const EXCLUSIONS_KEY = 'import.excluded_task_prefixes';
+
+export async function fetchExcludedTaskPrefixes() {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('setting_value')
+    .eq('setting_key', EXCLUSIONS_KEY)
+    .maybeSingle();
+  if (error) throw error;
+  const v = data?.setting_value;
+  if (Array.isArray(v)) return v;
+  if (Array.isArray(v?.prefixes)) return v.prefixes;
+  return [];
+}
+
+export async function saveExcludedTaskPrefixes(prefixes) {
+  const value = { prefixes: [...new Set(prefixes.filter(Boolean))].sort() };
+  // Upsert so first-time save creates the row.
+  const { error } = await supabase
+    .from('app_settings')
+    .upsert({
+      setting_key: EXCLUSIONS_KEY,
+      setting_value: value,
+      description: 'BM task-type prefixes to skip on import (e.g. Payroll, Confirmation Statement). Matched via startsWith on bm_task_name.',
+    }, { onConflict: 'setting_key' });
+  if (error) throw error;
+  return value.prefixes;
+}
+
 export async function fetchStaffNames(ids) {
   const unique = [...new Set(ids.filter(Boolean))];
   if (!unique.length) return {};
