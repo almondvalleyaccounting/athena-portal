@@ -1,7 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Check } from 'lucide-react';
-import { getSetting, updateSetting } from '../lib/workflowQueries';
+import { AlertTriangle, Check, Trash2 } from 'lucide-react';
+import {
+  getSetting,
+  updateSetting,
+  countScheduleRows,
+  clearScheduleRows,
+  listScheduleTaskNames,
+  listScheduleEntities,
+} from '../lib/workflowQueries';
 import { useAuth } from '../../../shell/AppShell';
+import ClientTypeAhead from '../../work-planner/components/ClientTypeAhead';
 
 const font = "'Outfit', sans-serif";
 
@@ -122,8 +130,290 @@ export default function SettingsView() {
           )}
         </div>
       )}
+
+      <DangerZone canEdit={canEdit} />
     </div>
   );
+}
+
+function DangerZone({ canEdit }) {
+  const [taskNames, setTaskNames] = useState([]);
+  const [entities, setEntities] = useState([]);
+  const [selectedTaskName, setSelectedTaskName] = useState('');
+  const [selectedEntityId, setSelectedEntityId] = useState('');
+  const [pending, setPending] = useState(null); // { scope, filters, count }
+  const [confirmText, setConfirmText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+
+  const reloadOptions = async () => {
+    try {
+      const [names, ents] = await Promise.all([listScheduleTaskNames(), listScheduleEntities()]);
+      setTaskNames(names);
+      setEntities(ents);
+    } catch (e) {
+      setError(e.message || String(e));
+    }
+  };
+
+  useEffect(() => {
+    reloadOptions();
+  }, []);
+
+  const openConfirm = async (scope, filters, label) => {
+    setError(null);
+    setNotice(null);
+    setConfirmText('');
+    try {
+      const count = await countScheduleRows(filters);
+      setPending({ scope, filters, count, label });
+    } catch (e) {
+      setError(e.message || String(e));
+    }
+  };
+
+  const runClear = async () => {
+    if (!pending) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await clearScheduleRows(pending.filters);
+      setNotice(`Cleared ${pending.count} row${pending.count === 1 ? '' : 's'} (${pending.label}).`);
+      setPending(null);
+      setSelectedTaskName('');
+      setSelectedEntityId('');
+      await reloadOptions();
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selectedEntityName = entities.find((e) => e.id === selectedEntityId)?.name;
+
+  return (
+    <div style={{
+      marginTop: 28,
+      background: '#fff',
+      border: '1px solid #fecaca',
+      borderRadius: 10,
+      padding: 20,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <AlertTriangle size={16} style={{ color: '#b91c1c' }} />
+        <h3 style={{
+          fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 500,
+          color: '#991b1b', margin: 0,
+        }}>
+          Danger zone — clear scheduled tasks
+        </h3>
+      </div>
+      <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>
+        Delete rows from <code>bm_task_schedule</code>. Logged time is kept (stored separately on timesheet entries). A re-import will rebuild rows for any BM tasks that still exist upstream.
+      </p>
+
+      {notice && (
+        <div style={banner('green')}>
+          <Check size={14} /> {notice}
+        </div>
+      )}
+      {error && (
+        <div style={banner('red')}>
+          <AlertTriangle size={14} /> {error}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <ClearRow
+          label="Clear all scheduled tasks"
+          description="Removes every row from the schedule."
+          disabled={!canEdit || busy}
+          action={
+            <button
+              onClick={() => openConfirm('all', {}, 'all scheduled tasks')}
+              disabled={!canEdit || busy}
+              style={dangerBtn(!canEdit || busy)}
+            >
+              <Trash2 size={12} /> Clear all
+            </button>
+          }
+        />
+
+        <ClearRow
+          label="Clear by task type"
+          description="Removes all scheduled rows matching a given BM task name."
+          disabled={!canEdit || busy}
+          action={
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select
+                value={selectedTaskName}
+                onChange={(e) => setSelectedTaskName(e.target.value)}
+                disabled={!canEdit || busy}
+                style={selectStyle}
+              >
+                <option value="">Select task type…</option>
+                {taskNames.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => openConfirm(
+                  'taskType',
+                  { taskName: selectedTaskName },
+                  `task type "${selectedTaskName}"`,
+                )}
+                disabled={!canEdit || busy || !selectedTaskName}
+                style={dangerBtn(!canEdit || busy || !selectedTaskName)}
+              >
+                <Trash2 size={12} /> Clear
+              </button>
+            </div>
+          }
+        />
+
+        <ClearRow
+          label="Clear by client"
+          description="Removes all scheduled rows for a given client."
+          disabled={!canEdit || busy}
+          action={
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ minWidth: 220 }}>
+                <ClientTypeAhead
+                  entityList={entities}
+                  value={selectedEntityId}
+                  onChange={setSelectedEntityId}
+                  onAddNew={() => Promise.resolve(null)}
+                />
+              </div>
+              <button
+                onClick={() => openConfirm(
+                  'client',
+                  { entityId: selectedEntityId },
+                  `client "${selectedEntityName || selectedEntityId}"`,
+                )}
+                disabled={!canEdit || busy || !selectedEntityId}
+                style={dangerBtn(!canEdit || busy || !selectedEntityId)}
+              >
+                <Trash2 size={12} /> Clear
+              </button>
+            </div>
+          }
+        />
+      </div>
+
+      {pending && (
+        <ConfirmModal
+          pending={pending}
+          confirmText={confirmText}
+          onConfirmTextChange={setConfirmText}
+          onCancel={() => { setPending(null); setConfirmText(''); }}
+          onConfirm={runClear}
+          busy={busy}
+        />
+      )}
+    </div>
+  );
+}
+
+function ClearRow({ label, description, action }) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16,
+      padding: '12px 14px', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: 8,
+    }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{label}</div>
+        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{description}</div>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function ConfirmModal({ pending, confirmText, onConfirmTextChange, onCancel, onConfirm, busy }) {
+  const required = pending.scope === 'all' ? 'CLEAR' : null;
+  const canConfirm = !busy && pending.count > 0 && (required ? confirmText === required : true);
+
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#fff', borderRadius: 10, padding: 22, width: 440,
+          fontFamily: font, boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <AlertTriangle size={18} style={{ color: '#b91c1c' }} />
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: '#991b1b', margin: 0 }}>Confirm delete</h3>
+        </div>
+        <p style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.5, marginBottom: 12 }}>
+          This will permanently delete <strong>{pending.count}</strong> schedule row{pending.count === 1 ? '' : 's'} for <strong>{pending.label}</strong>. Logged time is not affected.
+        </p>
+        {pending.count === 0 && (
+          <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+            Nothing matches — nothing to delete.
+          </p>
+        )}
+        {required && pending.count > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>
+              Type <code>{required}</code> to confirm:
+            </label>
+            <input
+              value={confirmText}
+              onChange={(e) => onConfirmTextChange(e.target.value)}
+              autoFocus
+              style={{
+                width: '100%', padding: '7px 10px', fontSize: 13, fontFamily: font,
+                border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none',
+              }}
+            />
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onCancel} disabled={busy} style={neutralBtn(busy)}>Cancel</button>
+          <button onClick={onConfirm} disabled={!canConfirm} style={dangerBtn(!canConfirm)}>
+            {busy ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const selectStyle = {
+  padding: '6px 10px', fontSize: 12, fontFamily: font,
+  border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
+  color: '#0f172a', outline: 'none', minWidth: 220,
+};
+
+function dangerBtn(disabled) {
+  return {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '6px 12px', fontSize: 12, fontWeight: 600,
+    fontFamily: font, border: 'none', borderRadius: 6,
+    background: disabled ? '#fca5a5' : '#dc2626', color: '#fff',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.7 : 1, transition: 'background 0.1s',
+  };
+}
+
+function neutralBtn(disabled) {
+  return {
+    padding: '6px 12px', fontSize: 12, fontWeight: 500,
+    fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6,
+    background: '#fff', color: '#0f172a',
+    cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1,
+  };
 }
 
 function ModeCard({ label, description, active, tone, disabled, onClick }) {
@@ -160,7 +450,10 @@ function ModeCard({ label, description, active, tone, disabled, onClick }) {
 }
 
 function banner(tone) {
-  const tones = { red: { bg: '#fee2e2', border: '#fca5a5', color: '#991b1b' } };
+  const tones = {
+    red:   { bg: '#fee2e2', border: '#fca5a5', color: '#991b1b' },
+    green: { bg: '#dcfce7', border: '#86efac', color: '#15803d' },
+  };
   const t = tones[tone] || tones.red;
   return { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: t.bg, border: `1px solid ${t.border}`, color: t.color, fontSize: 13, marginBottom: 14 };
 }

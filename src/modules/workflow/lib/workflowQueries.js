@@ -213,6 +213,59 @@ export async function logHoursAndResolveFlag({ bmTaskId, staffId, workDate, minu
   return { timesheet_id: tsEntry.id, flag_id: flag.id };
 }
 
+// ─── Schedule reset (Danger zone) ──────────────────────────────
+// Deletes rows from bm_task_schedule. Logged time lives on
+// timesheet_entries and is untouched — schedule rows are plans only.
+// A re-import will rebuild rows for any BM tasks that still exist.
+
+function applyScheduleFilters(q, { taskName, entityId }) {
+  if (taskName) q = q.eq('bm_task_name', taskName);
+  if (entityId) q = q.eq('entity_id', entityId);
+  return q;
+}
+
+export async function countScheduleRows({ taskName = null, entityId = null } = {}) {
+  let q = supabase.from('bm_task_schedule').select('id', { count: 'exact', head: true });
+  q = applyScheduleFilters(q, { taskName, entityId });
+  const { count, error } = await q;
+  if (error) throw error;
+  return count || 0;
+}
+
+export async function clearScheduleRows({ taskName = null, entityId = null } = {}) {
+  let q = supabase.from('bm_task_schedule').delete().not('id', 'is', null);
+  q = applyScheduleFilters(q, { taskName, entityId });
+  const { error, count } = await q;
+  if (error) throw error;
+  return count ?? null;
+}
+
+export async function listScheduleTaskNames() {
+  const { data, error } = await supabase
+    .from('bm_task_schedule')
+    .select('bm_task_name')
+    .not('bm_task_name', 'is', null);
+  if (error) throw error;
+  const set = new Set((data || []).map((r) => r.bm_task_name).filter(Boolean));
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+export async function listScheduleEntities() {
+  const { data, error } = await supabase
+    .from('bm_task_schedule')
+    .select('entity_id')
+    .not('entity_id', 'is', null);
+  if (error) throw error;
+  const ids = [...new Set((data || []).map((r) => r.entity_id))];
+  if (!ids.length) return [];
+  const { data: ents, error: eErr } = await supabase
+    .from('entities')
+    .select('id, name')
+    .in('id', ids);
+  if (eErr) throw eErr;
+  return (ents || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+}
+
 export async function resolveFlag(id, notes) {
   const { data: userResp } = await supabase.auth.getUser();
   const uid = userResp?.user?.id || null;
