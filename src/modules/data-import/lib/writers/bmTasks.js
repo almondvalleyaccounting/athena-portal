@@ -4,6 +4,24 @@ export function isNstTask(name) {
   return typeof name === 'string' && name.startsWith('NST');
 }
 
+// BM CSV exports dates as DD/MM/YYYY. JS Date can't parse that — it
+// returns Invalid Date and a subsequent toISOString() throws. Accepts
+// DD/MM/YYYY and YYYY-MM-DD, returns ISO timestamp at UTC noon (noon
+// avoids timezone drift that can shift a date by ±1 day).
+function bmDateToISO(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  let y, m, d;
+  const dmy = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dmy) { d = +dmy[1]; m = +dmy[2]; y = +dmy[3]; }
+  else if (ymd) { y = +ymd[1]; m = +ymd[2]; d = +ymd[3]; }
+  else return null;
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
+}
+
 // Classify each parsed BM task row against existing state:
 //   • entity (via client_reference → entities.bm_client_id)
 //   • assignee (via bm_staff_aliases → staff_profiles)
@@ -48,8 +66,8 @@ async function writeNstQuickTasks(nstRows, matchMap) {
       entity_id:     match.entity_id || null,
       assignee_id:   match.assignee_id || null,
       service:       null, // BM services don't map to quick_tasks enum cleanly
-      due_date:      r.deadline ? new Date(r.deadline).toISOString() : null,
-      planned_date:  r.target_date ? new Date(r.target_date).toISOString() : null,
+      due_date:      bmDateToISO(r.deadline),
+      planned_date:  bmDateToISO(r.target_date),
       duration:      minutesFromDefault,
       notes:         'Imported from BM (NST prefix)',
       sort_order:    0,
