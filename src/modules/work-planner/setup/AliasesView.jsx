@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { listAliases, updateAlias, listStaffProfiles } from '../lib/workflowQueries';
+import { listAliases, updateAlias, listStaffProfiles } from './queries';
 
 const font = "'Outfit', sans-serif";
 

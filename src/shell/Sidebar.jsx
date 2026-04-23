@@ -103,7 +103,8 @@ export default function Sidebar() {
   const adminChildren = [
     isOwner && { id: 'admin-staff', label: 'Staff & Permissions', route: '/admin/staff' },
     canImport && { id: 'admin-import', label: 'Data Import', route: '/admin/import' },
-    canImport && { id: 'admin-workflow', label: 'Workflow', route: '/admin/workflow' },
+    // Workflow consolidated into the Work Planner module's Setup area
+    // (/planner/setup). Admins reach it from inside Work Planner now.
   ].filter(Boolean);
   const showAdminGroup = adminChildren.length > 0;
   const [adminExpanded, setAdminExpanded] = useState(false);

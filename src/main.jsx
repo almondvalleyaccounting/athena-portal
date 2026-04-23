@@ -9,8 +9,7 @@ import BugReportPage from './modules/bugs/BugReportPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import AdminPage from './shell/AdminPage';
 import DataImportModule from './modules/data-import/DataImportModule';
-import WorkflowModule from './modules/workflow/WorkflowModule';
-import StaffWorkflowModule from './modules/workflow/StaffWorkflowModule';
+import SetupModule from './modules/work-planner/setup/SetupModule';
 import QboMappingPage from './modules/qbo-mapping/QboMappingPage';
 import BillingReviewPage from './modules/billing/BillingReviewPage';
 import FeeEarnerBookPage from './modules/billing/FeeEarnerBookPage';
@@ -56,14 +55,19 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />
           <Route path="/admin/staff" element={<AdminPage />} />
           <Route path="/admin/import/*" element={<DataImportModule />} />
-          <Route path="/admin/workflow/*" element={<WorkflowModule />} />
-          <Route path="/workflow/*" element={<StaffWorkflowModule />} />
+          {/* Legacy Workflow routes redirect into the new Setup area under Work Planner. */}
+          <Route path="/admin/workflow" element={<Navigate to="/planner/setup/preview" replace />} />
+          <Route path="/admin/workflow/*" element={<Navigate to="/planner/setup/preview" replace />} />
+          <Route path="/workflow" element={<Navigate to="/planner" replace />} />
+          <Route path="/workflow/*" element={<Navigate to="/planner" replace />} />
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/clients/qbo-mapping" element={<QboMappingPage />} />
           <Route path="/manage/billing/qbo-mapping" element={<QboMappingPage />} />
           <Route path="/manage/billing/review" element={<BillingReviewPage />} />
           <Route path="/manage/billing/fee-earners" element={<FeeEarnerBookPage />} />
           <Route path="/clients/:id" element={<ClientDetailView />} />
+          {/* Setup must come before /planner/* wildcard so it matches first. */}
+          <Route path="/planner/setup/*" element={<SetupModule />} />
           <Route path="/planner/*" element={<WorkPlannerModule />} />
           <Route path="/timesheets/*" element={<TimesheetModule />} />
           <Route path="/billing" element={<BillingPage />} />

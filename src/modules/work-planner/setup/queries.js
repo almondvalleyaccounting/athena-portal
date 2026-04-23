@@ -22,7 +22,7 @@ export async function updateSetting(key, value) {
   return data;
 }
 
-// ─── Scheduling rules ──────────────────────────────────────────
+// ─── Scheduling rules (unified rules + defaults) ───────────────
 export async function listRules() {
   const { data, error } = await supabase
     .from('bm_scheduling_rules')
@@ -33,10 +33,30 @@ export async function listRules() {
   return data || [];
 }
 
+// Mirror new canonical fields onto the legacy columns that the
+// import RPC (ingest_bm_tasks) still reads. Avoids drift between
+// the two representations while the legacy columns are kept for
+// backward compat.
+function mirrorLegacyFields(patch) {
+  const out = { ...patch };
+  if ('bm_deadline_offset_months' in patch) {
+    // negative offset = before deadline. lead_time_days is positive days.
+    const months = Number(patch.bm_deadline_offset_months) || 0;
+    out.lead_time_days = Math.max(0, Math.round(-months * 30.437));
+  }
+  if ('week_of_month' in patch) {
+    out.preferred_week_of_month = patch.week_of_month;
+  }
+  if ('target_hours' in patch) {
+    out.standard_hours = patch.target_hours;
+  }
+  return out;
+}
+
 export async function createRule(patch) {
   const { data, error } = await supabase
     .from('bm_scheduling_rules')
-    .insert(patch)
+    .insert(mirrorLegacyFields(patch))
     .select()
     .single();
   if (error) throw error;
@@ -46,7 +66,7 @@ export async function createRule(patch) {
 export async function updateRule(id, patch) {
   const { data, error } = await supabase
     .from('bm_scheduling_rules')
-    .update(patch)
+    .update(mirrorLegacyFields(patch))
     .eq('id', id)
     .select()
     .single();
@@ -60,6 +80,48 @@ export async function deleteRule(id) {
     .delete()
     .eq('id', id);
   if (error) throw error;
+}
+
+// ─── Client overrides (per-client exception to a rule) ─────────
+export async function listClientOverrides(ruleId = null) {
+  let q = supabase
+    .from('client_task_overrides')
+    .select('rule_id, entity_id, bm_deadline_offset_months, week_of_month, target_hours, notes, updated_at, entities(id, name)');
+  if (ruleId) q = q.eq('rule_id', ruleId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertClientOverride(patch) {
+  const { data, error } = await supabase
+    .from('client_task_overrides')
+    .upsert(
+      { ...patch, updated_at: new Date().toISOString() },
+      { onConflict: 'rule_id,entity_id' },
+    )
+    .select('rule_id, entity_id, bm_deadline_offset_months, week_of_month, target_hours, notes, updated_at, entities(id, name)')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteClientOverride(ruleId, entityId) {
+  const { error } = await supabase
+    .from('client_task_overrides')
+    .delete()
+    .eq('rule_id', ruleId)
+    .eq('entity_id', entityId);
+  if (error) throw error;
+}
+
+export async function listEntitiesAll() {
+  const { data, error } = await supabase
+    .from('entities')
+    .select('id, name')
+    .order('name');
+  if (error) throw error;
+  return data || [];
 }
 
 // ─── Staff aliases ─────────────────────────────────────────────
@@ -86,13 +148,15 @@ export async function updateAlias(name, patch) {
 export async function listStaffProfiles() {
   const { data, error } = await supabase
     .from('staff_profiles')
-    .select('id, name, is_active')
+    .select('id, name, is_active, working_days, colour')
     .order('name');
   if (error) throw error;
   return data || [];
 }
 
-// ─── Reconciliation flags ──────────────────────────────────────
+// ─── Reconciliation flags (archive; tab removed) ───────────────
+// Kept here only because resolveFlag / logHoursAndResolveFlag are
+// still referenced from import paths. Flag UI was retired.
 export async function listFlags({ resolved = false } = {}) {
   let q = supabase
     .from('bm_reconciliation_flags')
@@ -106,9 +170,52 @@ export async function listFlags({ resolved = false } = {}) {
   return data || [];
 }
 
-// Reschedule a planned task to a new date. Marks manually_overridden_*.
-// Scheduler will then leave this task's date/hours alone on future
-// imports until the override is cleared.
+export async function resolveFlag(id, notes) {
+  const { data: userResp } = await supabase.auth.getUser();
+  const uid = userResp?.user?.id || null;
+  const { data, error } = await supabase
+    .from('bm_reconciliation_flags')
+    .update({
+      resolved_at: new Date().toISOString(),
+      resolved_by: uid,
+      resolution_notes: notes || null,
+    })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function logHoursAndResolveFlag({ bmTaskId, staffId, workDate, minutes, service, entityId, notes, flagId }) {
+  const { data: sched, error: schedErr } = await supabase
+    .from('bm_task_schedule')
+    .select('id, entity_id, service')
+    .eq('bm_task_id', bmTaskId)
+    .single();
+  if (schedErr) throw schedErr;
+
+  const { data: tsEntry, error: tsErr } = await supabase
+    .from('timesheet_entries')
+    .insert({
+      staff_id: staffId,
+      entity_id: entityId || sched.entity_id,
+      service: service || sched.service,
+      work_date: workDate,
+      minutes,
+      notes: notes || `Retroactive log for BM task ${bmTaskId}`,
+      source: 'bm_reconciliation',
+      source_task_id: sched.id,
+    })
+    .select('id')
+    .single();
+  if (tsErr) throw tsErr;
+
+  const flag = await resolveFlag(flagId, `Logged ${Math.round(Number(minutes) || 0)}m retroactively${notes ? ' — ' + notes : ''}`);
+  return { timesheet_id: tsEntry.id, flag_id: flag.id };
+}
+
+// ─── Manual reschedule + clear override ────────────────────────
 export async function rescheduleTask(taskId, newDateISO) {
   const { data: userResp } = await supabase.auth.getUser();
   const uid = userResp?.user?.id || null;
@@ -140,30 +247,62 @@ export async function clearManualOverride(taskId) {
   return data;
 }
 
-// ─── Workload calendar ─────────────────────────────────────────
-export async function listWorkloadInWeek(weekStartISO, weekEndISO) {
-  // weekStartISO/weekEndISO are YYYY-MM-DD (inclusive)
-  const { data, error } = await supabase
+// ─── Preview / Workload data ───────────────────────────────────
+// Used by the Preview calendar. Filters: staffIds, entityIds, services,
+// statuses. Dates are ISO YYYY-MM-DD (inclusive).
+export async function listScheduleInRange({ startISO, endISO, staffIds, entityIds, services, statuses } = {}) {
+  let q = supabase
     .from('bm_task_schedule_with_progress')
-    .select('id, bm_task_id, bm_task_name, service, entity_id, assignee_id, bm_assignee_name, scheduled_for_date, scheduled_hours, logged_hours, remaining_hours, state, manually_overridden_at, bm_deadline')
-    .gte('scheduled_for_date', weekStartISO)
-    .lte('scheduled_for_date', weekEndISO)
-    .eq('state', 'planned')
-    .order('assignee_id')
-    .order('scheduled_for_date');
+    .select('id, bm_task_id, bm_task_name, service, entity_id, assignee_id, bm_assignee_name, scheduled_for_date, scheduled_hours, logged_hours, remaining_hours, state, status, draft_cycle_id, manually_overridden_at, bm_deadline, rule_id')
+    .not('scheduled_for_date', 'is', null)
+    .order('scheduled_for_date', { ascending: true });
+  if (startISO) q = q.gte('scheduled_for_date', startISO);
+  if (endISO)   q = q.lte('scheduled_for_date', endISO);
+  if (staffIds && staffIds.length)  q = q.in('assignee_id', staffIds);
+  if (entityIds && entityIds.length) q = q.in('entity_id', entityIds);
+  if (services && services.length)   q = q.in('service', services);
+  if (statuses && statuses.length)   q = q.in('status', statuses);
+  const { data, error } = await q;
   if (error) throw error;
   return data || [];
 }
 
-export async function listWorkloadUnscheduled() {
-  const { data, error } = await supabase
-    .from('bm_task_schedule_with_progress')
-    .select('id, bm_task_id, bm_task_name, service, entity_id, assignee_id, bm_assignee_name, scheduled_for_date, scheduled_hours, logged_hours, remaining_hours, state, bm_deadline')
-    .is('scheduled_for_date', null)
-    .eq('state', 'planned')
-    .limit(200);
-  if (error) throw error;
-  return data || [];
+// Approve every draft row assigned to a given staff member in the
+// current draft cycle. Flips status to 'approved'. When all drafts
+// in the cycle are approved, auto-commits (sets status='committed' +
+// committed_at for those rows).
+export async function approveMyDrafts(assigneeId, draftCycleId) {
+  const { data: userResp } = await supabase.auth.getUser();
+  const uid = userResp?.user?.id || null;
+  const now = new Date().toISOString();
+
+  // 1. Flip assignee's drafts to approved
+  const { error: upErr } = await supabase
+    .from('bm_task_schedule')
+    .update({ status: 'approved', approved_at: now, approved_by: uid })
+    .eq('assignee_id', assigneeId)
+    .eq('draft_cycle_id', draftCycleId)
+    .eq('status', 'draft');
+  if (upErr) throw upErr;
+
+  // 2. If no drafts remain in the cycle, auto-commit approved rows.
+  const { count: remainingDrafts, error: cErr } = await supabase
+    .from('bm_task_schedule')
+    .select('id', { count: 'exact', head: true })
+    .eq('draft_cycle_id', draftCycleId)
+    .eq('status', 'draft');
+  if (cErr) throw cErr;
+
+  if ((remainingDrafts || 0) === 0) {
+    const { error: commitErr } = await supabase
+      .from('bm_task_schedule')
+      .update({ status: 'committed', committed_at: now })
+      .eq('draft_cycle_id', draftCycleId)
+      .eq('status', 'approved');
+    if (commitErr) throw commitErr;
+    return { approved: true, committed: true };
+  }
+  return { approved: true, committed: false };
 }
 
 export async function listEntities(ids) {
@@ -179,88 +318,6 @@ export async function listEntities(ids) {
   return map;
 }
 
-// ─── Retro-log hours against a completed task ──────────────────
-// Used by the Reconciliation inbox when dismissing completed_no_time
-// or completed_under_expected flags. Inserts a timesheet entry linked
-// back to the bm_task_schedule row via source_task_id, then resolves
-// the flag. Returns { timesheet_id, flag_id }.
-export async function logHoursAndResolveFlag({ bmTaskId, staffId, workDate, minutes, service, entityId, notes, flagId }) {
-  // Look up the schedule row to link the timesheet entry
-  const { data: sched, error: schedErr } = await supabase
-    .from('bm_task_schedule')
-    .select('id, entity_id, service')
-    .eq('bm_task_id', bmTaskId)
-    .single();
-  if (schedErr) throw schedErr;
-
-  const { data: tsEntry, error: tsErr } = await supabase
-    .from('timesheet_entries')
-    .insert({
-      staff_id: staffId,
-      entity_id: entityId || sched.entity_id,
-      service: service || sched.service,
-      work_date: workDate,
-      minutes,
-      notes: notes || `Retroactive log for BM task ${bmTaskId}`,
-      source: 'bm_reconciliation',
-      source_task_id: sched.id,
-    })
-    .select('id')
-    .single();
-  if (tsErr) throw tsErr;
-
-  const flag = await resolveFlag(flagId, `Logged ${Math.round(Number(minutes) || 0)}m retroactively${notes ? ' — ' + notes : ''}`);
-  return { timesheet_id: tsEntry.id, flag_id: flag.id };
-}
-
-// ─── Task-type schedule defaults ───────────────────────────────
-// Prefix-match on bm_task_name, first-match-wins by priority DESC
-// then name ASC. Yields a calendar slot (month anchor, week-of-month,
-// target hours) that the planner uses when placing draft rows.
-
-export async function listDefaults() {
-  const { data, error } = await supabase
-    .from('task_type_schedule_defaults')
-    .select('*')
-    .order('match_priority', { ascending: false })
-    .order('name', { ascending: true });
-  if (error) throw error;
-  return data || [];
-}
-
-export async function createDefault(patch) {
-  const { data, error } = await supabase
-    .from('task_type_schedule_defaults')
-    .insert(patch)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function updateDefault(id, patch) {
-  const { data, error } = await supabase
-    .from('task_type_schedule_defaults')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function deleteDefault(id) {
-  const { error } = await supabase
-    .from('task_type_schedule_defaults')
-    .delete()
-    .eq('id', id);
-  if (error) throw error;
-}
-
-// Distinct bm_task_name values currently present in the schedule.
-// Used to power the prefix typeahead when creating/editing defaults —
-// the user is choosing a prefix that should match real incoming task
-// names, so offering the actual task names as suggestions is high-signal.
 export async function listDistinctBmTaskNames() {
   const { data, error } = await supabase
     .from('bm_task_schedule')
@@ -272,9 +329,6 @@ export async function listDistinctBmTaskNames() {
 }
 
 // ─── Schedule reset (Danger zone) ──────────────────────────────
-// Deletes rows from bm_task_schedule. Logged time lives on
-// timesheet_entries and is untouched — schedule rows are plans only.
-// A re-import will rebuild rows for any BM tasks that still exist.
 
 function applyScheduleFilters(q, { taskPrefix, entityId }) {
   if (taskPrefix) q = q.ilike('bm_task_name', `${taskPrefix}%`);
@@ -298,35 +352,22 @@ export async function clearScheduleRows({ taskPrefix = null, entityId = null } =
   return count ?? null;
 }
 
-// Groups the scheduled tasks into "task types" using the configured
-// prefixes from bm_scheduling_rules and task_type_schedule_defaults.
-// Clearing by type then runs an ILIKE prefix% so e.g. "Confirmation
-// Statement" wipes every month's instance in one action.
-//
-// Returns [{ label, prefix, source, count }] sorted by label.
-// `count` is how many current bm_task_schedule rows match the prefix.
+// Groups currently-scheduled tasks into "types" using active rule prefixes.
+// Used by the danger-zone "Clear by task type" control.
 export async function listScheduleTaskGroups() {
-  const [rulesRes, defaultsRes, scheduleRes] = await Promise.all([
+  const [rulesRes, scheduleRes] = await Promise.all([
     supabase.from('bm_scheduling_rules').select('name, task_name_prefix, active').eq('active', true),
-    supabase.from('task_type_schedule_defaults').select('name, task_name_prefix, is_active').eq('is_active', true),
     supabase.from('bm_task_schedule').select('bm_task_name').not('bm_task_name', 'is', null),
   ]);
   if (rulesRes.error) throw rulesRes.error;
-  if (defaultsRes.error) throw defaultsRes.error;
   if (scheduleRes.error) throw scheduleRes.error;
 
-  // Dedupe by prefix; prefer defaults label if both tables know about it.
   const byPrefix = new Map();
   for (const r of rulesRes.data || []) {
     if (!r.task_name_prefix) continue;
-    byPrefix.set(r.task_name_prefix, { label: r.name || r.task_name_prefix, prefix: r.task_name_prefix, source: 'rule' });
-  }
-  for (const d of defaultsRes.data || []) {
-    if (!d.task_name_prefix) continue;
-    byPrefix.set(d.task_name_prefix, { label: d.name || d.task_name_prefix, prefix: d.task_name_prefix, source: 'default' });
+    byPrefix.set(r.task_name_prefix, { label: r.name || r.task_name_prefix, prefix: r.task_name_prefix });
   }
 
-  // Count matches per prefix from the scheduled rows.
   const names = (scheduleRes.data || []).map((r) => r.bm_task_name).filter(Boolean);
   const groups = [];
   for (const g of byPrefix.values()) {
@@ -350,21 +391,4 @@ export async function listScheduleEntities() {
     .in('id', ids);
   if (eErr) throw eErr;
   return (ents || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-}
-
-export async function resolveFlag(id, notes) {
-  const { data: userResp } = await supabase.auth.getUser();
-  const uid = userResp?.user?.id || null;
-  const { data, error } = await supabase
-    .from('bm_reconciliation_flags')
-    .update({
-      resolved_at: new Date().toISOString(),
-      resolved_by: uid,
-      resolution_notes: notes || null,
-    })
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
 }

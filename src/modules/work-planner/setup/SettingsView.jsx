@@ -7,9 +7,9 @@ import {
   clearScheduleRows,
   listScheduleTaskGroups,
   listScheduleEntities,
-} from '../lib/workflowQueries';
+} from './queries';
 import { useAuth } from '../../../shell/AppShell';
-import ClientTypeAhead from '../../work-planner/components/ClientTypeAhead';
+import ClientTypeAhead from '../components/ClientTypeAhead';
 
 const font = "'Outfit', sans-serif";
 

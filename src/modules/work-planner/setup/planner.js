@@ -1,12 +1,18 @@
 // Scheduling planner — turns BM tasks into draft schedule rows.
 //
-// Invoked manually from the Workflow UI. For each bm_task_schedule
-// row with a bm_deadline, find the first matching default (prefix
-// on bm_task_name), compute the target month as
-// deadline + bm_deadline_offset_months, pick the Nth Mon–Fri block
-// of that month for the start date, shift ±1 week for client
-// cadence, and write the row back as status='draft' with a shared
-// draft_cycle_id.
+// Invoked manually from the Work Planner Setup UI. For each
+// bm_task_schedule row with a bm_deadline:
+//   1. Find the first matching rule by prefix on bm_task_name
+//      (bm_scheduling_rules, ordered by match_priority DESC).
+//   2. Look up a per-client override (client_task_overrides) — if
+//      present, its non-null fields override the rule's. An override
+//      bypasses the client-cadence shift entirely (it's an explicit
+//      exception).
+//   3. If no override, apply the client's cadence_preference (±1
+//      week) to the rule's default week.
+//   4. Compute the target month = deadline + bm_deadline_offset_months,
+//      pick the Nth Mon–Fri block, write row back with status='draft'
+//      and a shared draft_cycle_id.
 //
 // Rows are then reviewed per assignee and approved; auto-commit
 // happens when the last assignee in a cycle signs off (future step).
@@ -89,12 +95,12 @@ export function shouldSkipAutomatedScheduling(taskName) {
   return SKIP_PREFIXES.some((p) => taskName.startsWith(p));
 }
 
-export function matchDefault(taskName, defaults) {
+export function matchRule(taskName, rules) {
   if (!taskName) return null;
   if (shouldSkipAutomatedScheduling(taskName)) return null;
-  for (const def of defaults) {
-    if (!def.is_active) continue;
-    if (taskName.startsWith(def.task_name_prefix)) return def;
+  for (const rule of rules) {
+    if (!rule.active) continue;
+    if (taskName.startsWith(rule.task_name_prefix)) return rule;
   }
   return null;
 }
@@ -102,22 +108,33 @@ export function matchDefault(taskName, defaults) {
 // ── Planner entry point ──────────────────────────────────────────
 
 export async function runPlanner({ horizonMonths = 9 } = {}) {
-  const [defaultsRes, tasksRes] = await Promise.all([
+  const [rulesRes, tasksRes, overridesRes] = await Promise.all([
     supabase
-      .from('task_type_schedule_defaults')
+      .from('bm_scheduling_rules')
       .select('*')
-      .eq('is_active', true)
+      .eq('active', true)
       .order('match_priority', { ascending: false })
       .order('name', { ascending: true }),
     supabase
       .from('bm_task_schedule')
       .select('id, bm_task_id, bm_task_name, entity_id, assignee_id, bm_deadline, status'),
+    supabase
+      .from('client_task_overrides')
+      .select('rule_id, entity_id, bm_deadline_offset_months, week_of_month, target_hours'),
   ]);
-  if (defaultsRes.error) throw defaultsRes.error;
+  if (rulesRes.error) throw rulesRes.error;
   if (tasksRes.error) throw tasksRes.error;
+  if (overridesRes.error) throw overridesRes.error;
 
-  const defaults = defaultsRes.data || [];
+  const rules = rulesRes.data || [];
   const tasks = tasksRes.data || [];
+  const overrides = overridesRes.data || [];
+
+  // Index overrides by `${rule_id}:${entity_id}` for O(1) lookup.
+  const overrideMap = new Map();
+  for (const o of overrides) {
+    overrideMap.set(`${o.rule_id}:${o.entity_id}`, o);
+  }
 
   // Pre-fetch cadence preferences for the entities we're about to plan.
   const entityIds = [...new Set(tasks.map((t) => t.entity_id).filter(Boolean))];
@@ -142,20 +159,31 @@ export async function runPlanner({ horizonMonths = 9 } = {}) {
     noDeadline: 0,
     outOfHorizon: 0,
     skippedNST: 0,
+    overridden: 0, // how many placements used a client override
     total: tasks.length,
   };
 
   for (const task of tasks) {
     if (shouldSkipAutomatedScheduling(task.bm_task_name)) { summary.skippedNST++; continue; }
     if (!task.bm_deadline) { summary.noDeadline++; continue; }
-    const def = matchDefault(task.bm_task_name, defaults);
-    if (!def) { summary.noMatch++; continue; }
+    const rule = matchRule(task.bm_task_name, rules);
+    if (!rule) { summary.noMatch++; continue; }
 
-    const cadence = cadenceMap[task.entity_id] || 'normal';
+    // Cascade: override (if present) wins on any non-null field;
+    // otherwise rule defaults + cadence shift.
+    const override = task.entity_id ? overrideMap.get(`${rule.id}:${task.entity_id}`) : null;
+    const effectiveOffset = (override?.bm_deadline_offset_months ?? rule.bm_deadline_offset_months);
+    const effectiveWeek   = (override?.week_of_month            ?? rule.week_of_month);
+    const effectiveHours  = (override?.target_hours             ?? rule.target_hours);
+
+    // Cadence shift only applies when there's no override — overrides
+    // are explicit exceptions and shouldn't be double-adjusted.
+    const cadence = override ? 'normal' : (cadenceMap[task.entity_id] || 'normal');
+
     const scheduledISO = computeScheduledDate({
       deadlineISO: task.bm_deadline,
-      offsetMonths: def.bm_deadline_offset_months,
-      weekOfMonth: def.week_of_month,
+      offsetMonths: effectiveOffset,
+      weekOfMonth: effectiveWeek,
       clientCadence: cadence,
     });
     if (!scheduledISO) { summary.noDeadline++; continue; }
@@ -168,8 +196,9 @@ export async function runPlanner({ horizonMonths = 9 } = {}) {
       .update({
         status: 'draft',
         draft_cycle_id: cycleId,
+        rule_id: rule.id,
         scheduled_for_date: scheduledISO,
-        scheduled_hours: def.target_hours,
+        scheduled_hours: effectiveHours,
         approved_at: null,
         approved_by: null,
         committed_at: null,
@@ -177,6 +206,7 @@ export async function runPlanner({ horizonMonths = 9 } = {}) {
       .eq('id', task.id);
     if (uErr) throw uErr;
     summary.planned++;
+    if (override) summary.overridden++;
   }
 
   return summary;

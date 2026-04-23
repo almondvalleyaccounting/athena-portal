@@ -19,7 +19,7 @@ const SUBPAGES = [
   { prefix: '/admin/import/run', label: 'Import' },
   { prefix: '/admin/import/history', label: 'History' },
   { prefix: '/admin/import', label: 'Data Import' },
-  { prefix: '/admin/workflow', label: 'Workflow' },
+  { prefix: '/planner/setup', label: 'Setup' },
   { prefix: '/admin/staff', label: 'Staff & Permissions' },
 ];
 
