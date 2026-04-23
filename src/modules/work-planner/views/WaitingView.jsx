@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Check, AlertCircle, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, AlertCircle, RefreshCw, Play } from 'lucide-react';
 import {
   listScheduleInRange, listStaffProfiles, listEntitiesAll,
   approveMyDrafts, rescheduleTask, listRules,
 } from '../setup/queries';
+import { runPlanner } from '../setup/planner';
 import ClientTypeAhead from '../components/ClientTypeAhead';
 import { useAuth } from '../../../shell/AppShell';
 
@@ -66,14 +67,18 @@ export default function WaitingView() {
   const [staffFilter, setStaffFilter] = useState([]);   // [] = all
   const [entityFilter, setEntityFilter] = useState(''); // '' = all
   const [serviceFilter, setServiceFilter] = useState('');
-  // Default: show only 'waiting' rows = draft + approved (not yet
-  // committed). Toggle exposes everything.
-  const [statusFilter, setStatusFilter] = useState('waiting');
+  // Default: show everything so the committed schedule is visible on
+  // first load. Staff can flip to 'waiting' to zero in on pre-commit work.
+  const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [approving, setApproving] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { assigneeId, colIndex }
+  const [planning, setPlanning] = useState(false);
+  const [plannerResult, setPlannerResult] = useState(null);
+
+  const canPlan = profile?.is_portal_admin === true || profile?.can_import_data === true;
 
   const zoomCfg = ZOOMS.find((z) => z.id === zoom);
   const rangeStart = useMemo(() => anchor, [anchor]);
@@ -173,6 +178,17 @@ export default function WaitingView() {
     setAnchor((prev) => addDays(prev, dir * step));
   };
 
+  const runPlan = async () => {
+    if (!confirm('Run planner over the next 9 months? Every BM task that matches a rule will be re-placed as a draft. Existing scheduling is superseded.')) return;
+    setPlanning(true); setError(null); setPlannerResult(null);
+    try {
+      const res = await runPlanner({ horizonMonths: 9 });
+      setPlannerResult(res);
+      await reload();
+    } catch (e) { setError(e.message || String(e)); }
+    finally { setPlanning(false); }
+  };
+
   // ── Drag-drop rescheduling ───────────────────────────────────
   // Dropping a task on a cell pins it to the first day of that cell
   // and stamps manually_overridden_at — so future planner runs leave
@@ -243,7 +259,37 @@ export default function WaitingView() {
           <option value="all">All</option>
         </select>
         <button onClick={reload} style={navBtn} title="Refresh"><RefreshCw size={13} /></button>
+        {canPlan && (
+          <button
+            onClick={runPlan}
+            disabled={planning}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '6px 12px', fontSize: 12, fontWeight: 600,
+              border: 'none', borderRadius: 6,
+              background: '#0f172a', color: '#fff',
+              cursor: planning ? 'wait' : 'pointer', fontFamily: font,
+              opacity: planning ? 0.6 : 1,
+            }}
+            title="Re-draft the next 9 months from BM tasks using current rules"
+          >
+            <Play size={12} /> {planning ? 'Planning…' : 'Plan 9 months'}
+          </button>
+        )}
       </div>
+
+      {plannerResult && (
+        <div style={{
+          padding: '8px 12px', borderRadius: 8, marginBottom: 10,
+          background: '#eff6ff', border: '1px solid #bfdbfe',
+          color: '#1e3a8a', fontSize: 12,
+        }}>
+          Planner cycle <code>{plannerResult.cycleId.slice(0, 8)}</code> — scanned {plannerResult.total},
+          drafted <b>{plannerResult.planned}</b>, skipped {plannerResult.noMatch} (no rule),
+          {plannerResult.noDeadline} (no deadline), {plannerResult.outOfHorizon} (beyond 9mo)
+          {plannerResult.skippedNST > 0 ? `, ${plannerResult.skippedNST} NST` : ''}.
+        </div>
+      )}
 
       {error && (
         <div style={{ ...banner, marginBottom: 10 }}>
@@ -267,7 +313,21 @@ export default function WaitingView() {
             </thead>
             <tbody>
               {assigneesShown.length === 0 ? (
-                <tr><td colSpan={columns.length + 1} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>No scheduled tasks in this range.</td></tr>
+                <tr>
+                  <td colSpan={columns.length + 1} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                      No {statusFilter === 'all' ? '' : statusFilter + ' '}tasks in this range.
+                    </div>
+                    <div style={{ fontSize: 12 }}>
+                      {statusFilter !== 'all' && (
+                        <>Try <button onClick={() => setStatusFilter('all')} style={{ ...btnLink }}>show all</button> · </>
+                      )}
+                      {canPlan && (
+                        <>Or <button onClick={runPlan} style={{ ...btnLink }}>plan the next 9 months</button> to generate drafts.</>
+                      )}
+                    </div>
+                  </td>
+                </tr>
               ) : assigneesShown.map((a) => {
                 const aKey = a.id || 'unassigned';
                 const rowTasks = grid[aKey] || columns.map(() => []);
@@ -536,6 +596,11 @@ const btnGhost = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
   padding: '4px 8px', background: 'none', border: 'none',
   color: '#64748b', cursor: 'pointer', fontFamily: font,
+};
+const btnLink = {
+  background: 'none', border: 'none', padding: 0,
+  color: '#0e7fe0', cursor: 'pointer', fontSize: 12,
+  fontFamily: font, textDecoration: 'underline',
 };
 const banner = {
   display: 'flex', alignItems: 'center', gap: 8,
