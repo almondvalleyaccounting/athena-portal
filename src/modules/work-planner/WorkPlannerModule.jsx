@@ -32,6 +32,7 @@ import CalendarView from './views/CalendarView';
 import KanbanView from './views/KanbanView';
 import CompletedView from './views/CompletedView';
 import MyTasksView from './views/MyTasksView';
+import WaitingView from './views/WaitingView';
 
 // ── Context ──
 const WorkPlannerContext = createContext(null);
@@ -39,12 +40,13 @@ export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 
 // ── Tab config ──
 const TABS = [
-  { id: 'mytasks', label: 'My Tasks', path: '/planner' },
-  { id: 'quick', label: 'Quick Tasks', path: '/planner/quick' },
-  { id: 'sched', label: 'Scheduled', path: '/planner/scheduled' },
-  { id: 'calendar', label: 'Calendar', path: '/planner/calendar' },
-  { id: 'kanban', label: 'Kanban', path: '/planner/kanban' },
-  { id: 'completed', label: 'Completed', path: '/planner/completed' },
+  { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting' },
+  { id: 'mytasks',  label: 'My Tasks',    path: '/planner' },
+  { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
+  { id: 'sched',    label: 'Scheduled',   path: '/planner/scheduled' },
+  { id: 'calendar', label: 'Calendar',    path: '/planner/calendar' },
+  { id: 'kanban',   label: 'Kanban',      path: '/planner/kanban' },
+  { id: 'completed', label: 'Completed',  path: '/planner/completed' },
 ];
 
 export default function WorkPlannerModule() {
@@ -845,6 +847,9 @@ export default function WorkPlannerModule() {
           )}
           {activeTab === 'completed' && (
             <CompletedView />
+          )}
+          {activeTab === 'waiting' && (
+            <WaitingView />
           )}
         </div>
       </div>

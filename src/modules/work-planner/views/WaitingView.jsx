@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Check, AlertCircle, RefreshCw } from 'lucide-react';
 import {
-  listScheduleInRange, listStaffProfiles, listEntitiesAll, approveMyDrafts,
-} from './queries';
+  listScheduleInRange, listStaffProfiles, listEntitiesAll,
+  approveMyDrafts, rescheduleTask,
+} from '../setup/queries';
 import ClientTypeAhead from '../components/ClientTypeAhead';
 import { useAuth } from '../../../shell/AppShell';
 
@@ -54,7 +55,7 @@ function countWorkingDays(startISO, endISO, workingSet) {
   return count;
 }
 
-export default function PreviewView() {
+export default function WaitingView() {
   const { profile } = useAuth();
   const [zoom, setZoom] = useState('month');
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date()));
@@ -64,10 +65,14 @@ export default function PreviewView() {
   const [staffFilter, setStaffFilter] = useState([]);   // [] = all
   const [entityFilter, setEntityFilter] = useState(''); // '' = all
   const [serviceFilter, setServiceFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // all | draft | committed
+  // Default: show only 'waiting' rows = draft + approved (not yet
+  // committed). Toggle exposes everything.
+  const [statusFilter, setStatusFilter] = useState('waiting');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [approving, setApproving] = useState(null);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null); // { assigneeId, colIndex }
 
   const zoomCfg = ZOOMS.find((z) => z.id === zoom);
   const rangeStart = useMemo(() => anchor, [anchor]);
@@ -83,7 +88,10 @@ export default function PreviewView() {
           staffIds: staffFilter.length ? staffFilter : null,
           entityIds: entityFilter ? [entityFilter] : null,
           services: serviceFilter ? [serviceFilter] : null,
-          statuses: statusFilter === 'all' ? null : [statusFilter],
+          statuses:
+            statusFilter === 'all'     ? null :
+            statusFilter === 'waiting' ? ['draft', 'approved'] :
+                                         [statusFilter],
         }),
         listStaffProfiles(),
         listEntitiesAll(),
@@ -160,6 +168,28 @@ export default function PreviewView() {
     setAnchor((prev) => addDays(prev, dir * step));
   };
 
+  // ── Drag-drop rescheduling ───────────────────────────────────
+  // Dropping a task on a cell pins it to the first day of that cell
+  // and stamps manually_overridden_at — so future planner runs leave
+  // it alone. Committed rows can still be dragged; the override stamp
+  // makes the change stick across re-imports.
+  const handleTaskDrop = async (taskId, targetColStart) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    if (task.scheduled_for_date === targetColStart) return; // no-op
+
+    // Optimistic update
+    setTasks((prev) => prev.map((t) => t.id === taskId
+      ? { ...t, scheduled_for_date: targetColStart, manually_overridden_at: new Date().toISOString() }
+      : t));
+    try {
+      await rescheduleTask(taskId, targetColStart);
+    } catch (e) {
+      setError(e.message || String(e));
+      await reload();
+    }
+  };
+
   return (
     <div style={{ padding: '16px 20px', fontFamily: font, height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Top bar */}
@@ -201,9 +231,11 @@ export default function PreviewView() {
           {services.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={selStyle}>
-          <option value="all">All status</option>
+          <option value="waiting">Waiting (draft + approved)</option>
           <option value="draft">Draft only</option>
-          <option value="committed">Committed only</option>
+          <option value="approved">Approved (pending commit)</option>
+          <option value="committed">Committed (live)</option>
+          <option value="all">All</option>
         </select>
         <button onClick={reload} style={navBtn} title="Refresh"><RefreshCw size={13} /></button>
       </div>
@@ -264,10 +296,42 @@ export default function PreviewView() {
                     </td>
                     {columns.map((c, i) => {
                       const cellTasks = rowTasks[i] || [];
+                      const isDropTarget = dropTarget && dropTarget.assigneeId === aKey && dropTarget.colIndex === i;
                       return (
-                        <td key={i} style={{ padding: 3, verticalAlign: 'top', borderLeft: '1px solid #f1f5f9', minWidth: zoom === 'week' ? 140 : 90 }}>
+                        <td
+                          key={i}
+                          onDragOver={(e) => {
+                            if (!draggingId) return;
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            if (!isDropTarget) setDropTarget({ assigneeId: aKey, colIndex: i });
+                          }}
+                          onDragLeave={() => { if (isDropTarget) setDropTarget(null); }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const id = e.dataTransfer.getData('text/plain') || draggingId;
+                            setDropTarget(null);
+                            setDraggingId(null);
+                            if (id) handleTaskDrop(id, c.start);
+                          }}
+                          style={{
+                            padding: 3, verticalAlign: 'top',
+                            borderLeft: '1px solid #f1f5f9',
+                            minWidth: zoom === 'week' ? 140 : 90,
+                            background: isDropTarget ? '#eff6ff' : undefined,
+                            outline: isDropTarget ? '2px dashed #0e7fe0' : undefined,
+                            outlineOffset: -2,
+                          }}>
                           {cellTasks.map((t) => (
-                            <TaskCard key={t.id} task={t} entityName={entityMap[t.entity_id]} compact={zoom !== 'week'} />
+                            <TaskCard
+                              key={t.id}
+                              task={t}
+                              entityName={entityMap[t.entity_id]}
+                              compact={zoom !== 'week'}
+                              onDragStart={(e) => { e.dataTransfer.setData('text/plain', t.id); e.dataTransfer.effectAllowed = 'move'; setDraggingId(t.id); }}
+                              onDragEnd={() => { setDraggingId(null); setDropTarget(null); }}
+                              dragging={draggingId === t.id}
+                            />
                           ))}
                         </td>
                       );
@@ -283,22 +347,30 @@ export default function PreviewView() {
   );
 }
 
-function TaskCard({ task, entityName, compact }) {
+function TaskCard({ task, entityName, compact, onDragStart, onDragEnd, dragging }) {
   const isDraft = task.status === 'draft';
+  const isApproved = task.status === 'approved';
   const isCommitted = task.status === 'committed';
   const hasOverride = !!task.manually_overridden_at;
+  const bg = isDraft ? '#fef9c3' : isApproved ? '#ecfdf5' : '#f8fafc';
   return (
-    <div title={`${task.bm_task_name}${entityName ? ' • ' + entityName : ''} • ${task.service || ''} • ${Math.round((Number(task.scheduled_hours) || 0) * 60)}m`}
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      title={`${task.bm_task_name}${entityName ? ' • ' + entityName : ''} • ${task.service || ''} • ${Math.round((Number(task.scheduled_hours) || 0) * 60)}m\nDrag to reschedule`}
       style={{
         padding: compact ? '2px 6px' : '4px 7px',
         marginBottom: 2,
         fontSize: 10,
         borderRadius: 4,
         borderLeft: `3px ${isDraft ? 'dashed' : 'solid'} ${colourForService(task.service)}`,
-        background: isDraft ? '#fef9c3' : '#f8fafc',
+        background: bg,
         color: '#0f172a',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        cursor: 'default',
+        cursor: 'grab',
+        opacity: dragging ? 0.5 : 1,
+        userSelect: 'none',
       }}>
       {hasOverride && <span title="Manually overridden" style={{ fontSize: 8, marginRight: 3 }}>📌</span>}
       <span style={{ fontWeight: isCommitted ? 500 : 600 }}>{entityName || task.bm_task_name}</span>

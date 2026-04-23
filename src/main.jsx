@@ -55,11 +55,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />
           <Route path="/admin/staff" element={<AdminPage />} />
           <Route path="/admin/import/*" element={<DataImportModule />} />
-          {/* Legacy Workflow routes redirect into the new Staging (Setup) area under Work Planner. */}
-          <Route path="/admin/workflow" element={<Navigate to="/planner/setup/preview" replace />} />
-          <Route path="/admin/workflow/*" element={<Navigate to="/planner/setup/preview" replace />} />
-          <Route path="/workflow" element={<Navigate to="/planner/setup/preview" replace />} />
-          <Route path="/workflow/*" element={<Navigate to="/planner/setup/preview" replace />} />
+          {/* Legacy Workflow / Staging routes redirect to the new Waiting area. */}
+          <Route path="/admin/workflow" element={<Navigate to="/planner/waiting" replace />} />
+          <Route path="/admin/workflow/*" element={<Navigate to="/planner/waiting" replace />} />
+          <Route path="/workflow" element={<Navigate to="/planner/waiting" replace />} />
+          <Route path="/workflow/*" element={<Navigate to="/planner/waiting" replace />} />
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/clients/qbo-mapping" element={<QboMappingPage />} />
           <Route path="/manage/billing/qbo-mapping" element={<QboMappingPage />} />

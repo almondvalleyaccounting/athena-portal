@@ -3,14 +3,14 @@ import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-
 import { useAuth } from '../../../shell/AppShell';
 
 import RulesView from './RulesView';
-import PreviewView from './PreviewView';
 import AliasesView from './AliasesView';
 import SettingsView from './SettingsView';
 
 const font = "'Outfit', sans-serif";
 
+// Preview moved to Work Planner > Waiting (it's an operational area
+// used daily, not admin config). Setup is now config-only.
 const TABS = [
-  { id: 'preview',  label: 'Preview',       path: '/planner/setup/preview' },
   { id: 'rules',    label: 'Rules',         path: '/planner/setup/rules' },
   { id: 'aliases',  label: 'Staff aliases', path: '/planner/setup/aliases' },
   { id: 'settings', label: 'Settings',      path: '/planner/setup/settings' },
@@ -37,10 +37,9 @@ export default function SetupModule() {
 
   const activeTab = (() => {
     const p = location.pathname;
-    if (p.startsWith('/planner/setup/rules')) return 'rules';
     if (p.startsWith('/planner/setup/aliases')) return 'aliases';
     if (p.startsWith('/planner/setup/settings')) return 'settings';
-    return 'preview';
+    return 'rules';
   })();
 
   return (
@@ -84,12 +83,13 @@ export default function SetupModule() {
 
       <div style={{ flex: 1, overflow: 'auto' }}>
         <Routes>
-          <Route index element={<Navigate to="/planner/setup/preview" replace />} />
-          <Route path="preview" element={<PreviewView />} />
+          <Route index element={<Navigate to="/planner/setup/rules" replace />} />
+          {/* Legacy Preview URL redirects to the new Waiting tab. */}
+          <Route path="preview" element={<Navigate to="/planner/waiting" replace />} />
           <Route path="rules" element={<RulesView />} />
           <Route path="aliases" element={<AliasesView />} />
           <Route path="settings" element={<SettingsView />} />
-          <Route path="*" element={<Navigate to="/planner/setup/preview" replace />} />
+          <Route path="*" element={<Navigate to="/planner/setup/rules" replace />} />
         </Routes>
       </div>
     </div>

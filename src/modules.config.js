@@ -53,14 +53,15 @@ export const MODULES = [
     status: 'live',
     group: 'team',
   },
-  // Staging = the pre-commit scheduling preview under Work Planner.
-  // Admins land here after an import to review & approve planned work
-  // before it lands in staff calendars. Visible to anyone with
-  // can_import_data or is_portal_admin.
+  // Waiting = the pre-commit staging area inside Work Planner. Shows
+  // tasks not yet committed to staff calendars (drafts + approved).
+  // Drag tasks to reschedule; each drag stamps a manual override so
+  // future planner runs don't trample the change. Visible to anyone
+  // who can import data (admins).
   {
-    id: 'staging',
-    label: 'Staging',
-    route: '/planner/setup/preview',
+    id: 'waiting',
+    label: 'Waiting',
+    route: '/planner/waiting',
     icon: 'calendar-check',
     permissions: ['can_import_data'],
     status: 'live',
