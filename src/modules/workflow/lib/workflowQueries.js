@@ -257,6 +257,20 @@ export async function deleteDefault(id) {
   if (error) throw error;
 }
 
+// Distinct bm_task_name values currently present in the schedule.
+// Used to power the prefix typeahead when creating/editing defaults —
+// the user is choosing a prefix that should match real incoming task
+// names, so offering the actual task names as suggestions is high-signal.
+export async function listDistinctBmTaskNames() {
+  const { data, error } = await supabase
+    .from('bm_task_schedule')
+    .select('bm_task_name')
+    .not('bm_task_name', 'is', null);
+  if (error) throw error;
+  const set = new Set((data || []).map((r) => r.bm_task_name).filter(Boolean));
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
 // ─── Schedule reset (Danger zone) ──────────────────────────────
 // Deletes rows from bm_task_schedule. Logged time lives on
 // timesheet_entries and is untouched — schedule rows are plans only.

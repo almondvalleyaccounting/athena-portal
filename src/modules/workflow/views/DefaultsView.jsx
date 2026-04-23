@@ -1,7 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Trash2, Save, X, AlertTriangle, Play } from 'lucide-react';
-import { listDefaults, createDefault, updateDefault, deleteDefault } from '../lib/workflowQueries';
+import { listDefaults, createDefault, updateDefault, deleteDefault, listDistinctBmTaskNames } from '../lib/workflowQueries';
 import { runPlanner } from '../lib/planner';
+
+// Map semantic priority levels to the int column used by the sort.
+// Higher = more likely to win a prefix match.
+const PRIORITY_LEVELS = [
+  { value: 200, label: 'High',   colour: '#dc2626', bg: '#fee2e2' },
+  { value: 100, label: 'Medium', colour: '#b45309', bg: '#fef3c7' },
+  { value: 50,  label: 'Low',    colour: '#475569', bg: '#f1f5f9' },
+];
+
+function priorityLabel(n) {
+  if (n == null) return PRIORITY_LEVELS[1];
+  // Bucket anything close to a preset: >=150 high, >=75 medium, else low.
+  if (n >= 150) return PRIORITY_LEVELS[0];
+  if (n >= 75)  return PRIORITY_LEVELS[1];
+  return PRIORITY_LEVELS[2];
+}
 
 const font = "'Outfit', sans-serif";
 
@@ -19,13 +35,30 @@ const EMPTY_DEFAULT = {
   bm_deadline_offset_months: 0,
   week_of_month: 2,
   target_hours: 1.0,
-  match_priority: 100,
+  match_priority: 100,  // Medium
   notes: '',
   is_active: true,
 };
 
+// Offsets beyond ±12 are unusual; a dropdown keeps the UX honest.
+// Free-typed offsets outside this set are preserved on save — the
+// menu just exposes the common choices.
+const OFFSET_OPTIONS = [
+  { value: -12, label: '−12 months (1 year before)' },
+  { value: -9,  label: '−9 months' },
+  { value: -6,  label: '−6 months' },
+  { value: -3,  label: '−3 months' },
+  { value: -2,  label: '−2 months' },
+  { value: -1,  label: '−1 month (month before)' },
+  { value: 0,   label: '0 — same month as deadline' },
+  { value: 1,   label: '+1 month (month after)' },
+  { value: 2,   label: '+2 months' },
+  { value: 3,   label: '+3 months' },
+];
+
 export default function DefaultsView() {
   const [defaults, setDefaults] = useState([]);
+  const [taskNameSuggestions, setTaskNameSuggestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -38,7 +71,9 @@ export default function DefaultsView() {
     setLoading(true);
     setError(null);
     try {
-      setDefaults(await listDefaults());
+      const [rows, names] = await Promise.all([listDefaults(), listDistinctBmTaskNames()]);
+      setDefaults(rows);
+      setTaskNameSuggestions(names);
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -133,7 +168,8 @@ export default function DefaultsView() {
         <div style={resultBanner}>
           Planner cycle <code>{plannerResult.cycleId.slice(0, 8)}</code> — scanned {plannerResult.total},
           drafted <b>{plannerResult.planned}</b>,
-          skipped {plannerResult.noMatch} (no rule), {plannerResult.noDeadline} (no deadline), {plannerResult.outOfHorizon} (beyond 9mo).
+          skipped {plannerResult.noMatch} (no rule), {plannerResult.noDeadline} (no deadline), {plannerResult.outOfHorizon} (beyond 9mo)
+          {plannerResult.skippedNST > 0 ? `, ${plannerResult.skippedNST} (NST — held as quick tasks)` : ''}.
         </div>
       )}
 
@@ -149,18 +185,18 @@ export default function DefaultsView() {
                 <th style={{ ...th, textAlign: 'right' }}>Offset (mo)</th>
                 <th style={{ ...th, textAlign: 'right' }}>Week</th>
                 <th style={{ ...th, textAlign: 'right' }}>Mins</th>
-                <th style={{ ...th, textAlign: 'right' }}>Prio</th>
+                <th style={{ ...th, textAlign: 'right' }}>Priority</th>
                 <th style={th}>Active</th>
                 <th style={{ ...th, width: 120 }}></th>
               </tr>
             </thead>
             <tbody>
               {editingId === 'new' && draft && (
-                <EditRow draft={draft} setDraft={setDraft} saving={saving} onSave={save} onCancel={cancelEdit} />
+                <EditRow draft={draft} setDraft={setDraft} saving={saving} onSave={save} onCancel={cancelEdit} taskNameSuggestions={taskNameSuggestions} />
               )}
               {defaults.map((d) => (
                 editingId === d.id && draft
-                  ? <EditRow key={d.id} draft={draft} setDraft={setDraft} saving={saving} onSave={save} onCancel={cancelEdit} />
+                  ? <EditRow key={d.id} draft={draft} setDraft={setDraft} saving={saving} onSave={save} onCancel={cancelEdit} taskNameSuggestions={taskNameSuggestions} />
                   : <Row key={d.id} row={d} onEdit={() => startEdit(d)} onDelete={() => remove(d)} disabled={!!editingId} />
               ))}
               {defaults.length === 0 && editingId !== 'new' && (
@@ -187,7 +223,17 @@ function Row({ row, onEdit, onDelete, disabled }) {
       </td>
       <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{row.week_of_month === 5 ? 'last' : row.week_of_month}</td>
       <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{Math.round(Number(row.target_hours) * 60)}m</td>
-      <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{row.match_priority}</td>
+      <td style={{ ...td, textAlign: 'right' }}>
+        {(() => {
+          const p = priorityLabel(row.match_priority);
+          return (
+            <span style={{
+              fontSize: 11, padding: '2px 8px', borderRadius: 999,
+              background: p.bg, color: p.colour, fontWeight: 600,
+            }}>{p.label}</span>
+          );
+        })()}
+      </td>
       <td style={td}>
         <span style={{
           fontSize: 11, padding: '2px 8px', borderRadius: 999,
@@ -205,8 +251,11 @@ function Row({ row, onEdit, onDelete, disabled }) {
   );
 }
 
-function EditRow({ draft, setDraft, saving, onSave, onCancel }) {
+function EditRow({ draft, setDraft, saving, onSave, onCancel, taskNameSuggestions }) {
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+
+  const offsetHasPreset = OFFSET_OPTIONS.some((o) => o.value === draft.bm_deadline_offset_months);
+  const priorityLevel = priorityLabel(draft.match_priority);
 
   return (
     <tr style={{ borderTop: '1px solid #f1f5f9', background: '#f0f9ff' }}>
@@ -215,17 +264,32 @@ function EditRow({ draft, setDraft, saving, onSave, onCancel }) {
         <input value={draft.notes || ''} onChange={(e) => set('notes', e.target.value)} placeholder="Notes (optional)" style={{ ...inp, marginTop: 4, fontSize: 11, color: '#94a3b8' }} />
       </td>
       <td style={td}>
-        <input value={draft.task_name_prefix || ''} onChange={(e) => set('task_name_prefix', e.target.value)} placeholder="VAT Preparation" style={{ ...inp, fontFamily: 'monospace' }} />
+        <input
+          list="bm-task-name-suggestions"
+          value={draft.task_name_prefix || ''}
+          onChange={(e) => set('task_name_prefix', e.target.value)}
+          placeholder="Start typing — suggestions from BM"
+          style={{ ...inp, fontFamily: 'monospace' }}
+        />
+        <datalist id="bm-task-name-suggestions">
+          {taskNameSuggestions.map((n) => <option key={n} value={n} />)}
+        </datalist>
       </td>
       <td style={td}>
-        <input
-          type="number"
-          step={1}
-          value={draft.bm_deadline_offset_months ?? 0}
-          onChange={(e) => set('bm_deadline_offset_months', e.target.value === '' ? 0 : parseInt(e.target.value, 10))}
-          style={{ ...inp, textAlign: 'right', width: 70 }}
-          title="Months from bm_deadline. Negative = before deadline (e.g. -6 for accounts = 6 months before filing deadline)."
-        />
+        <select
+          value={offsetHasPreset ? String(draft.bm_deadline_offset_months) : '__custom'}
+          onChange={(e) => {
+            if (e.target.value === '__custom') return;
+            set('bm_deadline_offset_months', parseInt(e.target.value, 10));
+          }}
+          style={inp}
+          title="When to schedule relative to bm_deadline. Negative = before deadline."
+        >
+          {OFFSET_OPTIONS.map((o) => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
+          {!offsetHasPreset && (
+            <option value="__custom">Custom: {draft.bm_deadline_offset_months} months</option>
+          )}
+        </select>
       </td>
       <td style={td}>
         <select value={draft.week_of_month || 2} onChange={(e) => set('week_of_month', parseInt(e.target.value, 10))} style={inp}>
@@ -244,7 +308,19 @@ function EditRow({ draft, setDraft, saving, onSave, onCancel }) {
         />
       </td>
       <td style={td}>
-        <input type="number" value={draft.match_priority ?? 100} onChange={(e) => set('match_priority', e.target.value)} style={{ ...inp, textAlign: 'right', width: 60 }} />
+        <select
+          value={priorityLevel.value}
+          onChange={(e) => set('match_priority', parseInt(e.target.value, 10))}
+          style={{
+            ...inp, fontWeight: 600,
+            color: priorityLevel.colour, background: priorityLevel.bg,
+          }}
+          title="Higher priority defaults match first when multiple prefixes overlap."
+        >
+          {PRIORITY_LEVELS.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+        </select>
       </td>
       <td style={td}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer' }}>

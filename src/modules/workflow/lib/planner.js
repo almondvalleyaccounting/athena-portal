@@ -79,8 +79,19 @@ export function computeScheduledDate({ deadlineISO, offsetMonths, weekOfMonth, c
   return isoDate(monday);
 }
 
+// Tasks whose name starts with these prefixes are never put through
+// the automated scheduler. NST = "not-standard task" — pre-arranged
+// quick tasks surfaced in the Athena work planner separately.
+const SKIP_PREFIXES = ['NST'];
+
+export function shouldSkipAutomatedScheduling(taskName) {
+  if (!taskName) return false;
+  return SKIP_PREFIXES.some((p) => taskName.startsWith(p));
+}
+
 export function matchDefault(taskName, defaults) {
   if (!taskName) return null;
+  if (shouldSkipAutomatedScheduling(taskName)) return null;
   for (const def of defaults) {
     if (!def.is_active) continue;
     if (taskName.startsWith(def.task_name_prefix)) return def;
@@ -130,10 +141,12 @@ export async function runPlanner({ horizonMonths = 9 } = {}) {
     noMatch: 0,
     noDeadline: 0,
     outOfHorizon: 0,
+    skippedNST: 0,
     total: tasks.length,
   };
 
   for (const task of tasks) {
+    if (shouldSkipAutomatedScheduling(task.bm_task_name)) { summary.skippedNST++; continue; }
     if (!task.bm_deadline) { summary.noDeadline++; continue; }
     const def = matchDefault(task.bm_task_name, defaults);
     if (!def) { summary.noMatch++; continue; }
