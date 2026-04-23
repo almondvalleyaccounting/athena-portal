@@ -1,15 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Trash2, Save, X, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Save, X, AlertTriangle, Play } from 'lucide-react';
 import { listDefaults, createDefault, updateDefault, deleteDefault } from '../lib/workflowQueries';
+import { runPlanner } from '../lib/planner';
 
 const font = "'Outfit', sans-serif";
-
-const CADENCE_OPTIONS = [
-  { value: 'monthly',          label: 'Monthly',          hint: 'Repeats every month' },
-  { value: 'quarterly',        label: 'Quarterly',        hint: 'Once per quarter — pick which month of the quarter' },
-  { value: 'annually',         label: 'Annually',         hint: 'Once per year' },
-  { value: 'year_end_offset',  label: 'Year-end offset',  hint: 'N months after client\'s year-end (e.g. accounts = 3)' },
-];
 
 const WEEK_OPTIONS = [
   { value: 1, label: '1st week' },
@@ -19,17 +13,10 @@ const WEEK_OPTIONS = [
   { value: 5, label: 'Last week' },
 ];
 
-const QUARTER_MONTH_OPTIONS = [
-  { value: 0, label: '1st month of quarter' },
-  { value: 1, label: '2nd month of quarter' },
-  { value: 2, label: '3rd month of quarter' },
-];
-
 const EMPTY_DEFAULT = {
   name: '',
   task_name_prefix: '',
-  cadence: 'monthly',
-  month_offset: null,
+  bm_deadline_offset_months: 0,
   week_of_month: 2,
   target_hours: 1.0,
   match_priority: 100,
@@ -44,6 +31,8 @@ export default function DefaultsView() {
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [planning, setPlanning] = useState(false);
+  const [plannerResult, setPlannerResult] = useState(null);
 
   const reload = async () => {
     setLoading(true);
@@ -68,16 +57,10 @@ export default function DefaultsView() {
     setSaving(true);
     setError(null);
     try {
-      const needsMonthOffset = draft.cadence === 'quarterly' || draft.cadence === 'year_end_offset';
       const patch = {
         name: draft.name?.trim() || '',
         task_name_prefix: draft.task_name_prefix?.trim() || '',
-        cadence: draft.cadence || 'monthly',
-        month_offset: needsMonthOffset
-          ? (draft.month_offset === null || draft.month_offset === undefined || draft.month_offset === ''
-              ? null
-              : parseInt(draft.month_offset, 10))
-          : null,
+        bm_deadline_offset_months: parseInt(draft.bm_deadline_offset_months, 10) || 0,
         week_of_month: parseInt(draft.week_of_month, 10) || 2,
         target_hours: parseFloat(draft.target_hours) || 0,
         match_priority: parseInt(draft.match_priority, 10) || 100,
@@ -86,9 +69,6 @@ export default function DefaultsView() {
       };
       if (!patch.name) throw new Error('Name is required');
       if (!patch.task_name_prefix) throw new Error('Task name prefix is required');
-      if (needsMonthOffset && patch.month_offset === null) {
-        throw new Error('Pick a month offset for this cadence');
-      }
 
       if (editingId === 'new') await createDefault(patch);
       else await updateDefault(editingId, patch);
@@ -98,6 +78,21 @@ export default function DefaultsView() {
       setError(e.message || String(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const runPlan = async () => {
+    if (!confirm('Run planner over the next 9 months? Every BM task that matches a default will be re-placed as a draft. Existing scheduling is superseded.')) return;
+    setPlanning(true);
+    setError(null);
+    setPlannerResult(null);
+    try {
+      const res = await runPlanner({ horizonMonths: 9 });
+      setPlannerResult(res);
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setPlanning(false);
     }
   };
 
@@ -117,9 +112,12 @@ export default function DefaultsView() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
         <div style={{ flex: 1 }}>
           <p style={{ fontSize: 13, color: '#475569', maxWidth: 760 }}>
-            Prefix-match templates that tell the planner when work should happen. First match wins (higher <code>priority</code> beats lower). Week-of-month is the Mon–Fri block number within the calendar month. Client cadence preference shifts the slot ±1 week.
+            Prefix-match templates that tell the planner when to schedule work. First match wins (higher <code>priority</code> beats lower). <b>Deadline offset</b> is how far from <code>bm_deadline</code> the work should land — negative = before (e.g. accounts due 31/12 with offset <code>-6</code> schedules work in the 6th month before, i.e. June). <b>Week</b> picks the Mon–Fri block within that month. Client cadence preference shifts the slot ±1 week.
           </p>
         </div>
+        <button onClick={runPlan} disabled={planning || !!editingId} style={{ ...btnSecondary, opacity: (planning || !!editingId) ? 0.6 : 1 }}>
+          <Play size={13} /> {planning ? 'Planning…' : 'Plan 9 months'}
+        </button>
         <button onClick={startNew} disabled={!!editingId} style={btnPrimary}>
           <Plus size={14} /> New default
         </button>
@@ -128,6 +126,14 @@ export default function DefaultsView() {
       {error && (
         <div style={banner}>
           <AlertTriangle size={14} /> {error}
+        </div>
+      )}
+
+      {plannerResult && (
+        <div style={resultBanner}>
+          Planner cycle <code>{plannerResult.cycleId.slice(0, 8)}</code> — scanned {plannerResult.total},
+          drafted <b>{plannerResult.planned}</b>,
+          skipped {plannerResult.noMatch} (no rule), {plannerResult.noDeadline} (no deadline), {plannerResult.outOfHorizon} (beyond 9mo).
         </div>
       )}
 
@@ -140,8 +146,7 @@ export default function DefaultsView() {
               <tr style={{ background: '#f8fafc' }}>
                 <th style={th}>Name</th>
                 <th style={th}>Prefix</th>
-                <th style={th}>Cadence</th>
-                <th style={{ ...th, textAlign: 'right' }}>Mo offset</th>
+                <th style={{ ...th, textAlign: 'right' }}>Offset (mo)</th>
                 <th style={{ ...th, textAlign: 'right' }}>Week</th>
                 <th style={{ ...th, textAlign: 'right' }}>Mins</th>
                 <th style={{ ...th, textAlign: 'right' }}>Prio</th>
@@ -159,7 +164,7 @@ export default function DefaultsView() {
                   : <Row key={d.id} row={d} onEdit={() => startEdit(d)} onDelete={() => remove(d)} disabled={!!editingId} />
               ))}
               {defaults.length === 0 && editingId !== 'new' && (
-                <tr><td colSpan={9} style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>No defaults yet. Click New default to add one.</td></tr>
+                <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>No defaults yet. Click New default to add one.</td></tr>
               )}
             </tbody>
           </table>
@@ -170,7 +175,6 @@ export default function DefaultsView() {
 }
 
 function Row({ row, onEdit, onDelete, disabled }) {
-  const cadence = CADENCE_OPTIONS.find((o) => o.value === row.cadence);
   return (
     <tr style={{ borderTop: '1px solid #f1f5f9' }}>
       <td style={td}>
@@ -178,8 +182,9 @@ function Row({ row, onEdit, onDelete, disabled }) {
         {row.notes && <div style={{ color: '#94a3b8', fontSize: 11 }}>{row.notes}</div>}
       </td>
       <td style={{ ...td, fontFamily: 'monospace', color: '#475569' }}>{row.task_name_prefix}</td>
-      <td style={td}>{cadence?.label || row.cadence}</td>
-      <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{row.month_offset ?? '—'}</td>
+      <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }} title="Months from bm_deadline. Negative = before deadline.">
+        {row.bm_deadline_offset_months > 0 ? `+${row.bm_deadline_offset_months}` : row.bm_deadline_offset_months}
+      </td>
       <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{row.week_of_month === 5 ? 'last' : row.week_of_month}</td>
       <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{Math.round(Number(row.target_hours) * 60)}m</td>
       <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{row.match_priority}</td>
@@ -202,8 +207,6 @@ function Row({ row, onEdit, onDelete, disabled }) {
 
 function EditRow({ draft, setDraft, saving, onSave, onCancel }) {
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
-  const needsMonthOffset = draft.cadence === 'quarterly' || draft.cadence === 'year_end_offset';
-  const monthOptions = draft.cadence === 'quarterly' ? QUARTER_MONTH_OPTIONS : null;
 
   return (
     <tr style={{ borderTop: '1px solid #f1f5f9', background: '#f0f9ff' }}>
@@ -215,37 +218,14 @@ function EditRow({ draft, setDraft, saving, onSave, onCancel }) {
         <input value={draft.task_name_prefix || ''} onChange={(e) => set('task_name_prefix', e.target.value)} placeholder="VAT Preparation" style={{ ...inp, fontFamily: 'monospace' }} />
       </td>
       <td style={td}>
-        <select value={draft.cadence || 'monthly'} onChange={(e) => {
-          const next = e.target.value;
-          setDraft((d) => ({
-            ...d,
-            cadence: next,
-            month_offset: (next === 'quarterly' || next === 'year_end_offset') ? (d.month_offset ?? 0) : null,
-          }));
-        }} style={inp} title={CADENCE_OPTIONS.find((o) => o.value === draft.cadence)?.hint}>
-          {CADENCE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </td>
-      <td style={td}>
-        {needsMonthOffset ? (
-          monthOptions ? (
-            <select value={draft.month_offset ?? 0} onChange={(e) => set('month_offset', parseInt(e.target.value, 10))} style={inp}>
-              {monthOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          ) : (
-            <input
-              type="number"
-              min={0}
-              value={draft.month_offset ?? 0}
-              onChange={(e) => set('month_offset', e.target.value === '' ? null : parseInt(e.target.value, 10))}
-              placeholder="e.g. 3"
-              style={{ ...inp, textAlign: 'right', width: 70 }}
-              title="Months after year-end"
-            />
-          )
-        ) : (
-          <span style={{ fontSize: 11, color: '#cbd5e1' }}>—</span>
-        )}
+        <input
+          type="number"
+          step={1}
+          value={draft.bm_deadline_offset_months ?? 0}
+          onChange={(e) => set('bm_deadline_offset_months', e.target.value === '' ? 0 : parseInt(e.target.value, 10))}
+          style={{ ...inp, textAlign: 'right', width: 70 }}
+          title="Months from bm_deadline. Negative = before deadline (e.g. -6 for accounts = 6 months before filing deadline)."
+        />
       </td>
       <td style={td}>
         <select value={draft.week_of_month || 2} onChange={(e) => set('week_of_month', parseInt(e.target.value, 10))} style={inp}>
@@ -293,6 +273,17 @@ const btnPrimary = {
   fontSize: 13, fontWeight: 600, padding: '8px 14px',
   background: '#0f172a', border: 'none', borderRadius: 8,
   color: '#fff', cursor: 'pointer', fontFamily: font,
+};
+const btnSecondary = {
+  display: 'inline-flex', alignItems: 'center', gap: 4,
+  fontSize: 13, fontWeight: 600, padding: '8px 14px',
+  background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8,
+  color: '#0f172a', cursor: 'pointer', fontFamily: font, marginRight: 8,
+};
+const resultBanner = {
+  padding: '10px 14px', borderRadius: 8,
+  background: '#eff6ff', border: '1px solid #bfdbfe',
+  color: '#1e3a8a', fontSize: 13, marginBottom: 14,
 };
 const btnGhost = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
