@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Check, AlertCircle, RefreshCw } from 'lucide-react';
 import {
   listScheduleInRange, listStaffProfiles, listEntitiesAll,
-  approveMyDrafts, rescheduleTask,
+  approveMyDrafts, rescheduleTask, listRules,
 } from '../setup/queries';
 import ClientTypeAhead from '../components/ClientTypeAhead';
 import { useAuth } from '../../../shell/AppShell';
@@ -62,6 +62,7 @@ export default function WaitingView() {
   const [tasks, setTasks] = useState([]);
   const [staff, setStaff] = useState([]);
   const [entities, setEntities] = useState([]);
+  const [ruleMap, setRuleMap] = useState({}); // { rule_id -> rule row }
   const [staffFilter, setStaffFilter] = useState([]);   // [] = all
   const [entityFilter, setEntityFilter] = useState(''); // '' = all
   const [serviceFilter, setServiceFilter] = useState('');
@@ -81,7 +82,7 @@ export default function WaitingView() {
   const reload = async () => {
     setLoading(true); setError(null);
     try {
-      const [ts, s, ents] = await Promise.all([
+      const [ts, s, ents, rs] = await Promise.all([
         listScheduleInRange({
           startISO: isoDate(rangeStart),
           endISO: isoDate(rangeEnd),
@@ -95,10 +96,14 @@ export default function WaitingView() {
         }),
         listStaffProfiles(),
         listEntitiesAll(),
+        listRules(),
       ]);
       setTasks(ts);
       setStaff(s.filter((x) => x.is_active));
       setEntities(ents);
+      const rmap = {};
+      for (const r of rs || []) rmap[r.id] = r;
+      setRuleMap(rmap);
     } catch (e) { setError(e.message || String(e)); }
     finally { setLoading(false); }
   };
@@ -327,6 +332,7 @@ export default function WaitingView() {
                               key={t.id}
                               task={t}
                               entityName={entityMap[t.entity_id]}
+                              ruleColour={t.rule_id ? ruleMap[t.rule_id]?.colour : null}
                               compact={zoom !== 'week'}
                               onDragStart={(e) => { e.dataTransfer.setData('text/plain', t.id); e.dataTransfer.effectAllowed = 'move'; setDraggingId(t.id); }}
                               onDragEnd={() => { setDraggingId(null); setDropTarget(null); }}
@@ -347,26 +353,42 @@ export default function WaitingView() {
   );
 }
 
-function TaskCard({ task, entityName, compact, onDragStart, onDragEnd, dragging }) {
+function TaskCard({ task, entityName, ruleColour, compact, onDragStart, onDragEnd, dragging }) {
   const isDraft = task.status === 'draft';
   const isApproved = task.status === 'approved';
   const isCommitted = task.status === 'committed';
   const hasOverride = !!task.manually_overridden_at;
-  const bg = isDraft ? '#fef9c3' : isApproved ? '#ecfdf5' : '#f8fafc';
+
+  // Whole-bar bg = task type colour (from rule). Fallback neutral grey.
+  const rawBg = ruleColour || '#e5e7eb';
+  // Drafts dim slightly, approved brighten a touch — keeps lifecycle cue.
+  const bg = isDraft ? tintColour(rawBg, 0.15) : rawBg;
+  const textColour = contrastText(bg);
+
+  // Left 3px border = effort heatmap. 0h blue → 14h+ fire-engine red.
+  const scheduledH = Number(task.scheduled_hours) || 0;
+  const effortColour = effortGradient(scheduledH);
+
+  // Remaining = scheduled − logged (both in hours on the view row).
+  // Fall back to scheduled if view didn't provide remaining_hours.
+  const remaining = task.remaining_hours != null ? Number(task.remaining_hours) : scheduledH;
+  const remainingMins = Math.max(0, Math.round(remaining * 60));
+  const scheduledMins = Math.round(scheduledH * 60);
+
   return (
     <div
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      title={`${task.bm_task_name}${entityName ? ' • ' + entityName : ''} • ${task.service || ''} • ${Math.round((Number(task.scheduled_hours) || 0) * 60)}m\nDrag to reschedule`}
+      title={`${task.bm_task_name}${entityName ? ' • ' + entityName : ''} • ${task.service || ''}\nScheduled ${scheduledMins}m · Remaining ${remainingMins}m\nDrag to reschedule`}
       style={{
         padding: compact ? '2px 6px' : '4px 7px',
         marginBottom: 2,
         fontSize: 10,
         borderRadius: 4,
-        borderLeft: `3px ${isDraft ? 'dashed' : 'solid'} ${colourForService(task.service)}`,
+        borderLeft: `3px ${isDraft ? 'dashed' : 'solid'} ${effortColour}`,
         background: bg,
-        color: '#0f172a',
+        color: textColour,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         cursor: 'grab',
         opacity: dragging ? 0.5 : 1,
@@ -374,9 +396,62 @@ function TaskCard({ task, entityName, compact, onDragStart, onDragEnd, dragging 
       }}>
       {hasOverride && <span title="Manually overridden" style={{ fontSize: 8, marginRight: 3 }}>📌</span>}
       <span style={{ fontWeight: isCommitted ? 500 : 600 }}>{entityName || task.bm_task_name}</span>
-      {!compact && entityName && <span style={{ color: '#64748b', marginLeft: 4 }}>· {Math.round((Number(task.scheduled_hours) || 0) * 60)}m</span>}
+      <span style={{ opacity: 0.75, marginLeft: 4 }}>· {formatMins(remainingMins)}</span>
     </div>
   );
+}
+
+// ── Colour helpers ───────────────────────────────────────────────
+function hexToRgb(hex) {
+  if (!hex) return null;
+  const m = hex.replace('#', '').match(/^([a-f0-9]{6}|[a-f0-9]{3})$/i);
+  if (!m) return null;
+  let h = m[1];
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+}
+function rgbToHex(r, g, b) {
+  const to = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+// Relative luminance per WCAG — used to pick black vs white text.
+function luminance({ r, g, b }) {
+  const ch = (c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
+}
+function contrastText(hex) {
+  const rgb = hexToRgb(hex) || { r: 200, g: 200, b: 200 };
+  return luminance(rgb) > 0.55 ? '#0f172a' : '#f8fafc';
+}
+// Mix hex toward white by `amount` ∈ [0,1].
+function tintColour(hex, amount) {
+  const rgb = hexToRgb(hex) || { r: 229, g: 231, b: 235 };
+  return rgbToHex(
+    rgb.r + (255 - rgb.r) * amount,
+    rgb.g + (255 - rgb.g) * amount,
+    rgb.b + (255 - rgb.b) * amount,
+  );
+}
+// Effort gradient: 0h = blue (#3b82f6), 14+ = fire-engine red (#dc2626).
+// Linear RGB interpolation — simple and visually monotonic for this pair.
+function effortGradient(hours) {
+  const t = Math.max(0, Math.min(1, (Number(hours) || 0) / 14));
+  const a = { r: 59, g: 130, b: 246 };   // #3b82f6
+  const b = { r: 220, g: 38, b: 38 };    // #dc2626
+  return rgbToHex(
+    a.r + (b.r - a.r) * t,
+    a.g + (b.g - a.g) * t,
+    a.b + (b.b - a.b) * t,
+  );
+}
+function formatMins(m) {
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem === 0 ? `${h}h` : `${h}h ${rem}m`;
 }
 
 function StaffFilter({ staff, value, onChange, profileId }) {
@@ -438,15 +513,6 @@ function findColumn(dateISO, columns) {
     if (dateISO >= columns[i].start && dateISO <= columns[i].end) return i;
   }
   return -1;
-}
-
-// Deterministic colour per service (hash of the string)
-function colourForService(s) {
-  const palette = ['#0e7fe0', '#15803d', '#b45309', '#7c3aed', '#be185d', '#0891b2', '#ca8a04', '#065f46', '#c2410c'];
-  if (!s) return '#94a3b8';
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % palette.length;
-  return palette[h];
 }
 
 const gridTh = { padding: '8px 6px', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #e5e7eb' };

@@ -55,6 +55,7 @@ const EMPTY_RULE = {
   match_priority: 100,
   active: true,
   notes: '',
+  colour: null,
 };
 
 export default function RulesView() {
@@ -113,6 +114,7 @@ export default function RulesView() {
         match_priority: parseInt(draft.match_priority, 10) || 100,
         active: !!draft.active,
         notes: draft.notes?.trim() || null,
+        colour: draft.colour || null,
       };
       if (!patch.name) throw new Error('Name is required');
       if (!patch.task_name_prefix) throw new Error('Task name prefix is required');
@@ -186,6 +188,7 @@ export default function RulesView() {
               <tr style={{ background: '#f8fafc' }}>
                 <th style={{ ...th, width: 26 }}></th>
                 <th style={th}>Name</th>
+                <th style={{ ...th, width: 50 }}>Colour</th>
                 <th style={th}>Service</th>
                 <th style={th}>Prefix</th>
                 <th style={{ ...th, textAlign: 'right' }}>Offset</th>
@@ -221,7 +224,7 @@ export default function RulesView() {
                 );
               })}
               {rules.length === 0 && editingId !== 'new' && (
-                <tr><td colSpan={11} style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>No rules yet.</td></tr>
+                <tr><td colSpan={12} style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>No rules yet.</td></tr>
               )}
             </tbody>
           </table>
@@ -247,6 +250,13 @@ function Row({ rule, overrideCount, expanded, onToggle, onEdit, onDelete, disabl
           </span>
         )}
         {rule.notes && <div style={{ color: '#94a3b8', fontSize: 11 }}>{rule.notes}</div>}
+      </td>
+      <td style={{ ...td, textAlign: 'center' }}>
+        <div style={{
+          display: 'inline-block', width: 22, height: 22, borderRadius: 6,
+          background: rule.colour || '#e5e7eb',
+          border: rule.colour ? 'none' : '1px dashed #cbd5e1',
+        }} title={rule.colour || 'No colour set'} />
       </td>
       <td style={td}>{rule.service}</td>
       <td style={{ ...td, fontFamily: 'monospace', color: '#475569' }}>{rule.task_name_prefix}</td>
@@ -284,6 +294,25 @@ function EditRow({ draft, setDraft, saving, onSave, onCancel, staff, taskNameSug
       <td style={td}>
         <input value={draft.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="VAT return" style={inp} />
         <input value={draft.notes || ''} onChange={(e) => set('notes', e.target.value)} placeholder="Notes (optional)" style={{ ...inp, marginTop: 4, fontSize: 11, color: '#94a3b8' }} />
+      </td>
+      <td style={{ ...td, textAlign: 'center' }}>
+        <input
+          type="color"
+          value={draft.colour || '#e5e7eb'}
+          onChange={(e) => set('colour', e.target.value)}
+          style={{ width: 28, height: 28, border: '1px solid #cbd5e1', borderRadius: 6, padding: 0, cursor: 'pointer', background: 'none' }}
+          title="Task type colour for Waiting bars"
+        />
+        {draft.colour && (
+          <div>
+            <button
+              type="button"
+              onClick={() => set('colour', null)}
+              style={{ ...btnGhost, fontSize: 9, padding: '1px 4px' }}
+              title="Clear colour"
+            >clear</button>
+          </div>
+        )}
       </td>
       <td style={td}>
         <input value={draft.service || ''} onChange={(e) => set('service', e.target.value)} placeholder="VAT" style={inp} />
@@ -366,7 +395,7 @@ function OverridesPanel({ rule, overrides, entities, onSave, onDelete }) {
   return (
     <tr style={{ background: '#fafafa' }}>
       <td></td>
-      <td colSpan={10} style={{ padding: '10px 14px', borderTop: '1px dashed #e5e7eb' }}>
+      <td colSpan={11} style={{ padding: '10px 14px', borderTop: '1px dashed #e5e7eb' }}>
         <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
           Client exceptions — override the rule for specific clients. Blank fields inherit from the rule.
         </div>
