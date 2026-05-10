@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
         can_edit_fee_schedule: false,
         can_view_client_fees: false,
         can_view_reports: false,
-        can_view_work_planner: false,
+        work_planner: false,
         can_view_pd_tracker: false,
         can_manage_portal: false,
       });
