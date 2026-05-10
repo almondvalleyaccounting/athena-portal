@@ -33,6 +33,9 @@ import KanbanView from './views/KanbanView';
 import CompletedView from './views/CompletedView';
 import MyTasksView from './views/MyTasksView';
 import WaitingView from './views/WaitingView';
+import AllocationsView from './views/AllocationsView';
+import EstimatesView from './views/EstimatesView';
+import CapacityView from './views/CapacityView';
 
 // ── Context ──
 const WorkPlannerContext = createContext(null);
@@ -47,6 +50,9 @@ const TABS = [
   { id: 'calendar', label: 'Calendar',    path: '/planner/calendar' },
   { id: 'kanban',   label: 'Kanban',      path: '/planner/kanban' },
   { id: 'completed', label: 'Completed',  path: '/planner/completed' },
+  { id: 'allocations', label: 'Allocations', path: '/planner/allocations' },
+  { id: 'estimates', label: 'Estimates',  path: '/planner/estimates' },
+  { id: 'capacity',  label: 'Capacity',    path: '/planner/capacity' },
 ];
 
 export default function WorkPlannerModule() {
@@ -850,6 +856,15 @@ export default function WorkPlannerModule() {
           )}
           {activeTab === 'waiting' && (
             <WaitingView />
+          )}
+          {activeTab === 'allocations' && (
+            <AllocationsView />
+          )}
+          {activeTab === 'estimates' && (
+            <EstimatesView />
+          )}
+          {activeTab === 'capacity' && (
+            <CapacityView />
           )}
         </div>
       </div>

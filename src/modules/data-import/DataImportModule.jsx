@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-
 import StatusView from './views/StatusView';
 import ImportView from './views/ImportView';
 import HistoryView from './views/HistoryView';
+import CompaniesHouseView from './views/CompaniesHouseView';
 import { useAuth } from '../../shell/AppShell';
 
 const font = "'Outfit', sans-serif";
@@ -11,6 +12,7 @@ const TABS = [
   { id: 'status', label: 'Status', path: '/admin/import' },
   { id: 'run', label: 'Import', path: '/admin/import/run' },
   { id: 'history', label: 'History', path: '/admin/import/history' },
+  { id: 'ch', label: 'Companies House', path: '/admin/import/companies-house' },
 ];
 
 export default function DataImportModule() {
@@ -36,6 +38,7 @@ export default function DataImportModule() {
   const activeTab = (() => {
     if (location.pathname.startsWith('/admin/import/history')) return 'history';
     if (location.pathname.startsWith('/admin/import/run')) return 'run';
+    if (location.pathname.startsWith('/admin/import/companies-house')) return 'ch';
     return 'status';
   })();
 
@@ -78,6 +81,7 @@ export default function DataImportModule() {
           <Route index element={<StatusView />} />
           <Route path="run" element={<ImportView />} />
           <Route path="history" element={<HistoryView />} />
+          <Route path="companies-house" element={<CompaniesHouseView />} />
           <Route path="*" element={<Navigate to="/admin/import" replace />} />
         </Routes>
       </div>

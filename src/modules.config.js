@@ -45,6 +45,15 @@ export const MODULES = [
     group: 'data',
   },
   {
+    id: 'forecast',
+    label: 'Forecast',
+    route: '/forecast',
+    icon: 'line-chart',
+    permissions: ['can_manage_portal'],
+    status: 'live',
+    group: 'data',
+  },
+  {
     id: 'work-planner',
     label: 'Work Planner',
     route: '/planner',

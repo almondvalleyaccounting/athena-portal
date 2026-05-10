@@ -1,0 +1,251 @@
+// UI-side statement aggregator.
+//
+// The engine (financial_core) emits group-level P&L/BS/CF lines by
+// summing across all entities. To support location filtering at view
+// time we need to RE-DERIVE those lines for an arbitrary subset of
+// entities. This module does that by walking upstream module rows
+// (revenue, staff_cost, overhead, depreciation, debt_interest, tax,
+// capex, debt_principal, debt_balance, working_capital_movement,
+// wc_balance.*) and rebuilding the totals on the fly.
+//
+// Inputs:
+//   outputs       — fc_output rows (already loaded)
+//   periods       — array of period indices to compute
+//   entityIds     — Set of entity ids to include; null = all entities
+//                   (group-level rows always included regardless)
+//   inflationPct  — { income, cost } in pct (e.g. 3 = 3%)
+//
+// Returns: a Map keyed by `${nominal_type}::${period}` -> amount_p.
+//
+// What's filterable:
+//   - All P&L lines (recomputed)
+//   - All CF lines except cf.opening_cash / cf.closing_cash, which
+//     require running cash state; we re-derive them from a per-period
+//     running sum applied to the filtered net movement.
+//
+// What's NOT filterable (always group-level):
+//   - BS lines other than fixed_assets_net (per-entity stocks need
+//     opening allocations we don't track per-entity yet).
+//   - Exit valuation (group-level by definition).
+//
+// For un-filtered ("all") view, the caller can skip this module and
+// read financial_core's pre-aggregated rows directly. This gives the
+// same numbers but is faster and includes inflation+dividends.
+
+const REVENUE_NTS = ['revenue'];
+const COST_NTS = ['staff_cost', 'overhead', 'cost_of_sales'];
+const DEP_NTS = ['depreciation'];
+const INT_NTS = ['debt_interest'];
+const TAX_NTS = ['tax'];
+const CAPEX_NTS = ['capex'];
+const DEBT_PRIN_NTS = ['debt_principal'];
+const DEBT_BAL_NTS = ['debt_balance'];
+const WC_MVT_NTS = ['working_capital_movement'];
+
+export function scopedAggregate({ outputs, periods, entityIds, inflationPct, openingCash, openingEquity, taxLagMonths, payoutRatioPct }) {
+  const result = new Map();
+  const set = (nt, t, v) => result.set(`${nt}::${t}`, Math.round(v));
+
+  const incomeFactor = (t) => Math.pow(1 + (inflationPct?.income || 0) / 100, Math.floor(t / 12));
+  const costFactor   = (t) => Math.pow(1 + (inflationPct?.cost   || 0) / 100, Math.floor(t / 12));
+
+  const inScope = (o) => {
+    if (!entityIds) return true;
+    if (o.entity_id == null) return true;   // group-level rows always count
+    return entityIds.has(o.entity_id);
+  };
+
+  // Pre-bucket upstream rows by period.
+  const byPeriod = new Map();
+  for (const o of outputs) {
+    const t = o.period;
+    if (t == null) continue;
+    if (!byPeriod.has(t)) byPeriod.set(t, []);
+    byPeriod.get(t).push(o);
+  }
+
+  const sumOf = (rows, predicate) => {
+    let s = 0;
+    for (const r of rows) if (predicate(r)) s += r.amount_p;
+    return s;
+  };
+
+  // Cost categorisation matching financial_core
+  const isPremises  = (lbl) => lbl === 'Rent' || lbl === 'Service charge' || lbl === 'NDR' || lbl === 'Maintenance';
+  const isUtilities = (lbl) => /utilit/i.test(lbl);
+  const isPreOpening = (mod, lbl) => mod === 'pre_opening' || /^Pre-opening/i.test(lbl);
+
+  // Running BS state for cash + equity + tax_payable (only meaningful when no filter)
+  let cash = openingCash || 0;
+  let equity = openingEquity || 0;
+  let taxPayable = 0;
+  let prevDebtBalance = 0;
+  let npatYtd = 0;
+  let fixedAssetsGross = 0;
+  let accumulatedDep = 0;
+
+  const taxLag = taxLagMonths ?? 9;
+  const payout = (payoutRatioPct || 0) / 100;
+
+  // We'll need per-period derived values
+  const pnlByT = [];
+
+  for (const t of periods) {
+    const rows = (byPeriod.get(t) || []).filter(inScope);
+    const fInc = incomeFactor(t);
+    const fCost = costFactor(t);
+
+    const revenuePrivBase = sumOf(rows, r => r.nominal_type === 'revenue' && r.tags?.revenue_kind !== 'funded');
+    const revenueFundBase = sumOf(rows, r => r.nominal_type === 'revenue' && r.tags?.revenue_kind === 'funded');
+    const revenueBase = revenuePrivBase + revenueFundBase;
+    const revenueUplift = revenueBase * (fInc - 1);
+    const revenue = revenueBase + revenueUplift;
+
+    const staffBase = sumOf(rows, r => r.nominal_type === 'staff_cost' && r.module_key !== 'pre_opening');
+    const preOpenStaffBase = sumOf(rows, r => r.nominal_type === 'staff_cost' && r.module_key === 'pre_opening');
+    const premisesBase = sumOf(rows, r => r.nominal_type === 'overhead' && isPremises(r.line_label || ''));
+    const utilitiesBase = sumOf(rows, r => r.nominal_type === 'overhead' && isUtilities(r.line_label || ''));
+    const preOpenOverheadBase = sumOf(rows, r => r.nominal_type === 'overhead' && isPreOpening(r.module_key, r.line_label || ''));
+    const otherOverheadBase = sumOf(rows, r =>
+      (r.nominal_type === 'overhead' && !isPremises(r.line_label || '') && !isUtilities(r.line_label || '') && !isPreOpening(r.module_key, r.line_label || ''))
+      || r.nominal_type === 'cost_of_sales'
+    );
+    const preOpenBase = preOpenStaffBase + preOpenOverheadBase;
+    const costsBase = staffBase + premisesBase + utilitiesBase + otherOverheadBase + preOpenBase;
+    const costsUplift = costsBase * (fCost - 1);
+    const costs = costsBase + costsUplift;
+
+    const dep = sumOf(rows, r => DEP_NTS.includes(r.nominal_type));
+    const interest = sumOf(rows, r => INT_NTS.includes(r.nominal_type));
+    const tax = sumOf(rows, r => TAX_NTS.includes(r.nominal_type));
+    const capex = sumOf(rows, r => CAPEX_NTS.includes(r.nominal_type));
+    const debtPrincipal = sumOf(rows, r => DEBT_PRIN_NTS.includes(r.nominal_type));
+    const debtBalance = sumOf(rows, r => DEBT_BAL_NTS.includes(r.nominal_type));
+    const wcMovement = sumOf(rows, r => WC_MVT_NTS.includes(r.nominal_type));
+
+    const ebitda = revenue - costs;
+    const ebit = ebitda - dep;
+    const pbt = ebit - interest;
+    const npat = pbt - tax;
+
+    // Year-end dividends (group-level concept, but applied to filtered NPAT YTD if filtered)
+    if (t % 12 === 0) npatYtd = 0;
+    npatYtd += npat;
+    const isYearEnd = (t % 12) === 11;
+    const dividend = (isYearEnd && payout > 0 && npatYtd > 0) ? Math.round(npatYtd * payout) : 0;
+
+    // CF buckets — INFLATED for revenue/costs (matching financial_core)
+    const cashIn_priv = revenuePrivBase * fInc;
+    const cashIn_funded = revenueFundBase * fInc;
+
+    const debtDelta = debtBalance - prevDebtBalance;
+    prevDebtBalance = debtBalance;
+    const debtDrawdown = Math.max(0, debtDelta + debtPrincipal);
+    const debtRepay = debtPrincipal;
+
+    const cashOut_staff     = staffBase * fCost;
+    const cashOut_premises  = premisesBase * fCost;
+    const cashOut_utilities = utilitiesBase * fCost;
+    const cashOut_otherOH   = otherOverheadBase * fCost;
+    const cashOut_preOpen   = preOpenBase * fCost;
+    const cashOut_capex     = capex;
+    const cashOut_interest  = interest;
+    const cashOut_principal = debtRepay;
+
+    const taxPaidThisPeriod = (t - taxLag >= 0 && pnlByT[t - taxLag]) ? pnlByT[t - taxLag].tax : 0;
+    const cashOut_tax = taxPaidThisPeriod;
+    const cashOut_dividends = dividend;
+
+    const totalIn = cashIn_priv + cashIn_funded + debtDrawdown;
+    const totalOut = cashOut_staff + cashOut_premises + cashOut_utilities + cashOut_otherOH
+      + cashOut_preOpen + cashOut_capex + cashOut_interest + cashOut_principal + cashOut_tax + cashOut_dividends;
+    const netMovement = totalIn - totalOut - wcMovement;
+    const openingCashThisPeriod = cash;
+    cash += netMovement;
+
+    fixedAssetsGross += capex;
+    accumulatedDep += dep;
+    const fixedAssetsNet = fixedAssetsGross - accumulatedDep;
+
+    taxPayable += tax - taxPaidThisPeriod;
+    equity += npat - dividend;
+
+    pnlByT[t] = { tax, npat, ebitda };
+
+    // Emit P&L
+    set('pnl.revenue_total', t, revenue);
+    set('pnl.income_inflation_uplift', t, revenueUplift);
+    set('pnl.cost_total', t, -costs);
+    set('pnl.cost_inflation_uplift', t, -costsUplift);
+    set('pnl.ebitda', t, ebitda);
+    set('pnl.depreciation_total', t, -dep);
+    set('pnl.ebit', t, ebit);
+    set('pnl.interest_total', t, -interest);
+    set('pnl.pbt', t, pbt);
+    set('pnl.tax_total', t, -tax);
+    set('pnl.npat', t, npat);
+    set('pnl.dividends', t, -dividend);
+
+    // CF
+    set('cf.opening_cash', t, openingCashThisPeriod);
+    set('cf.in.private', t, cashIn_priv);
+    set('cf.in.la_funded', t, cashIn_funded);
+    set('cf.in.debt_drawdown', t, debtDrawdown);
+    set('cf.in_total', t, totalIn);
+    set('cf.out.staff', t, -cashOut_staff);
+    set('cf.out.premises', t, -cashOut_premises);
+    set('cf.out.utilities', t, -cashOut_utilities);
+    set('cf.out.other_overhead', t, -cashOut_otherOH);
+    set('cf.out.pre_opening', t, -cashOut_preOpen);
+    set('cf.out.capex', t, -cashOut_capex);
+    set('cf.out.interest', t, -cashOut_interest);
+    set('cf.out.principal', t, -cashOut_principal);
+    set('cf.out.tax', t, -cashOut_tax);
+    set('cf.out.dividends', t, -cashOut_dividends);
+    set('cf.out_total', t, -totalOut);
+    set('cf.wc_movement', t, -wcMovement);
+    set('cf.net_movement', t, netMovement);
+    set('cf.closing_cash', t, cash);
+
+    // BS — partial. Cash and FA are roll-forward; debt is upstream stock; equity is roll-forward.
+    set('bs.fixed_assets_gross', t, fixedAssetsGross);
+    set('bs.accumulated_depreciation', t, -accumulatedDep);
+    set('bs.fixed_assets_net', t, fixedAssetsNet);
+    set('bs.cash', t, cash);
+    set('bs.debt', t, debtBalance);
+    set('bs.equity', t, equity);
+    set('bs.tax_payable', t, taxPayable);
+    // Net WC: re-derived from upstream balance rows
+    let netWc = 0;
+    for (const r of rows) {
+      if (r.nominal_type === 'wc_balance.debtors_private') netWc += r.amount_p;
+      else if (r.nominal_type === 'wc_balance.debtors_la') netWc += r.amount_p;
+      else if (r.nominal_type === 'wc_balance.creditors')   netWc -= r.amount_p;
+      else if (r.nominal_type === 'wc_balance.deposits_held') netWc -= r.amount_p;
+      else if (r.nominal_type === 'wc_balance.advance_billing') netWc -= r.amount_p;
+    }
+    set('bs.net_wc', t, netWc);
+  }
+
+  return result;
+}
+
+/**
+ * Convenience: returns a function compatible with StatementView's
+ * `outputs` shape (array of {nominal_type, period, amount_p}) so we can
+ * pass scoped aggregates into the existing view code.
+ */
+export function aggregatedAsOutputRows(map) {
+  const rows = [];
+  for (const [key, amount_p] of map) {
+    const idx = key.indexOf('::');
+    rows.push({
+      nominal_type: key.slice(0, idx),
+      period: Number(key.slice(idx + 2)),
+      amount_p,
+      module_key: 'scoped',
+      line_label: '',
+    });
+  }
+  return rows;
+}
