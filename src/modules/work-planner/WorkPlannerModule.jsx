@@ -42,7 +42,7 @@ const WorkPlannerContext = createContext(null);
 export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 
 // ── Tab config ──
-const TABS = [
+const TASK_PLANNER_TABS = [
   { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting' },
   { id: 'mytasks',  label: 'My Tasks',    path: '/planner' },
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
@@ -50,10 +50,17 @@ const TABS = [
   { id: 'calendar', label: 'Calendar',    path: '/planner/calendar' },
   { id: 'kanban',   label: 'Kanban',      path: '/planner/kanban' },
   { id: 'completed', label: 'Completed',  path: '/planner/completed' },
+];
+const CAPACITY_PLANNER_TABS = [
   { id: 'allocations', label: 'Allocations', path: '/planner/allocations' },
   { id: 'estimates', label: 'Estimates',  path: '/planner/estimates' },
   { id: 'capacity',  label: 'Capacity',    path: '/planner/capacity' },
 ];
+const SUB_MODULES = [
+  { id: 'task', label: 'Task Planner', tabs: TASK_PLANNER_TABS },
+  { id: 'capacity', label: 'Capacity Planner', tabs: CAPACITY_PLANNER_TABS },
+];
+const TABS = [...TASK_PLANNER_TABS, ...CAPACITY_PLANNER_TABS];
 
 export default function WorkPlannerModule() {
   const { profile } = useAuth();
@@ -102,6 +109,13 @@ export default function WorkPlannerModule() {
     const tab = TABS.find((t) => t.path === path);
     return tab ? tab.id : 'mytasks';
   }, [location.pathname]);
+
+  // ── Determine active sub-module from active tab ──
+  const activeSubModule = useMemo(() => {
+    if (CAPACITY_PLANNER_TABS.some((t) => t.id === activeTab)) return 'capacity';
+    return 'task';
+  }, [activeTab]);
+  const visibleTabs = activeSubModule === 'capacity' ? CAPACITY_PLANNER_TABS : TASK_PLANNER_TABS;
 
   // ── Derived: overridesMap and completedKeys ──
   const overridesMap = useMemo(() => {
@@ -747,12 +761,39 @@ export default function WorkPlannerModule() {
         display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden',
         fontFamily: "'Outfit', sans-serif",
       }}>
+        {/* Sub-module switcher */}
+        <div style={{
+          display: 'flex', background: '#f8fafc', borderBottom: '1px solid #e5e7eb',
+          padding: '6px 20px', alignItems: 'center', gap: 6,
+        }}>
+          {SUB_MODULES.map((sm) => {
+            const isActive = activeSubModule === sm.id;
+            return (
+              <button
+                key={sm.id}
+                onClick={() => navigate(sm.tabs[0].path)}
+                style={{
+                  padding: '6px 14px', fontSize: 12, fontWeight: 600,
+                  fontFamily: "'Outfit', sans-serif",
+                  border: '1px solid ' + (isActive ? '#0f172a' : '#cbd5e1'),
+                  borderRadius: 8,
+                  background: isActive ? '#0f172a' : '#fff',
+                  color: isActive ? '#fff' : '#475569',
+                  cursor: 'pointer',
+                }}
+              >
+                {sm.label}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Tab bar */}
         <div style={{
           display: 'flex', background: '#fff', borderBottom: '1px solid #e5e7eb',
           padding: '0 20px', alignItems: 'center',
         }}>
-          {TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => navigate(tab.path)}
