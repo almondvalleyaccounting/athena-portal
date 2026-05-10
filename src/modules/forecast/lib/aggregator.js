@@ -106,6 +106,12 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     const premisesBase = sumOf(rows, r => r.nominal_type === 'overhead' && isPremises(r.line_label || ''));
     const utilitiesBase = sumOf(rows, r => r.nominal_type === 'overhead' && isUtilities(r.line_label || ''));
     const preOpenOverheadBase = sumOf(rows, r => r.nominal_type === 'overhead' && isPreOpening(r.module_key, r.line_label || ''));
+    // Pre-opening line-item split (overhead is the registration period catch-all,
+    // marketing is the spike, staffing is the staff_cost rows)
+    const preOpenMarketingBase = sumOf(rows, r =>
+      r.nominal_type === 'overhead' && isPreOpening(r.module_key, r.line_label || '') && /marketing/i.test(r.line_label || '')
+    );
+    const preOpenOhRecurringBase = preOpenOverheadBase - preOpenMarketingBase;
     const otherOverheadBase = sumOf(rows, r =>
       (r.nominal_type === 'overhead' && !isPremises(r.line_label || '') && !isUtilities(r.line_label || '') && !isPreOpening(r.module_key, r.line_label || ''))
       || r.nominal_type === 'cost_of_sales'
@@ -147,7 +153,10 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     const cashOut_premises  = premisesBase * fCost;
     const cashOut_utilities = utilitiesBase * fCost;
     const cashOut_otherOH   = otherOverheadBase * fCost;
-    const cashOut_preOpen   = preOpenBase * fCost;
+    const cashOut_preOpenOh        = preOpenOhRecurringBase * fCost;
+    const cashOut_preOpenMarketing = preOpenMarketingBase   * fCost;
+    const cashOut_preOpenStaffing  = preOpenStaffBase       * fCost;
+    const cashOut_preOpen   = cashOut_preOpenOh + cashOut_preOpenMarketing + cashOut_preOpenStaffing;
     const cashOut_capex     = capex;
     const cashOut_interest  = interest;
     const cashOut_principal = debtRepay;
@@ -174,6 +183,8 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
 
     // Emit P&L
     set('pnl.revenue_total', t, revenue);
+    set('pnl.revenue_private',   t, revenuePrivBase * fInc);
+    set('pnl.revenue_la_funded', t, revenueFundBase * fInc);
     set('pnl.income_inflation_uplift', t, revenueUplift);
     set('pnl.cost_total', t, -costs);
     set('pnl.cost_inflation_uplift', t, -costsUplift);
@@ -192,16 +203,26 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     set('cf.in.la_funded', t, cashIn_funded);
     set('cf.in.debt_drawdown', t, debtDrawdown);
     set('cf.in_total', t, totalIn);
+    // One-off section
+    set('cf.out.capex', t, -cashOut_capex);
+    set('cf.out.pre_opening_overhead',  t, -cashOut_preOpenOh);
+    set('cf.out.pre_opening_marketing', t, -cashOut_preOpenMarketing);
+    set('cf.out.pre_opening_staffing',  t, -cashOut_preOpenStaffing);
+    set('cf.out.one_off_total', t, -(cashOut_capex + cashOut_preOpen));
+    // Recurring section
     set('cf.out.staff', t, -cashOut_staff);
     set('cf.out.premises', t, -cashOut_premises);
     set('cf.out.utilities', t, -cashOut_utilities);
     set('cf.out.other_overhead', t, -cashOut_otherOH);
-    set('cf.out.pre_opening', t, -cashOut_preOpen);
-    set('cf.out.capex', t, -cashOut_capex);
+    set('cf.out.recurring_total', t, -(cashOut_staff + cashOut_premises + cashOut_utilities + cashOut_otherOH));
+    // Financing & tax
     set('cf.out.interest', t, -cashOut_interest);
     set('cf.out.principal', t, -cashOut_principal);
     set('cf.out.tax', t, -cashOut_tax);
     set('cf.out.dividends', t, -cashOut_dividends);
+    set('cf.out.fin_tax_total', t, -(cashOut_interest + cashOut_principal + cashOut_tax + cashOut_dividends));
+    // Aggregates / back-compat
+    set('cf.out.pre_opening', t, -cashOut_preOpen);
     set('cf.out_total', t, -totalOut);
     set('cf.wc_movement', t, -wcMovement);
     set('cf.net_movement', t, netMovement);

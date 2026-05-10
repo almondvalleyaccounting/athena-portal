@@ -34,6 +34,8 @@ export const financialCoreModule = {
   outputs: [
     // P&L summary lines
     { nominal_type: 'pnl.revenue_total', label: 'Revenue', by_entity: false },
+    { nominal_type: 'pnl.revenue_private', label: 'Revenue — private', by_entity: false },
+    { nominal_type: 'pnl.revenue_la_funded', label: 'Revenue — LA funded', by_entity: false },
     { nominal_type: 'pnl.income_inflation_uplift', label: 'Income inflation uplift', by_entity: false },
     { nominal_type: 'pnl.cost_total', label: 'Operating costs', by_entity: false },
     { nominal_type: 'pnl.cost_inflation_uplift', label: 'Cost inflation uplift', by_entity: false },
@@ -108,7 +110,13 @@ export const financialCoreModule = {
     { nominal_type: 'cf.out.premises', label: 'Cash out — premises', by_entity: false },
     { nominal_type: 'cf.out.utilities', label: 'Cash out — utilities', by_entity: false },
     { nominal_type: 'cf.out.other_overhead', label: 'Cash out — other overheads', by_entity: false },
-    { nominal_type: 'cf.out.pre_opening', label: 'Cash out — pre-opening', by_entity: false },
+    { nominal_type: 'cf.out.pre_opening', label: 'Cash out — pre-opening (all)', by_entity: false },
+    { nominal_type: 'cf.out.pre_opening_overhead',  label: 'Cash out — pre-opening overhead',  by_entity: false },
+    { nominal_type: 'cf.out.pre_opening_marketing', label: 'Cash out — pre-opening marketing', by_entity: false },
+    { nominal_type: 'cf.out.pre_opening_staffing',  label: 'Cash out — pre-opening staffing',  by_entity: false },
+    { nominal_type: 'cf.out.one_off_total',   label: 'Total one-off cash out',           by_entity: false },
+    { nominal_type: 'cf.out.recurring_total', label: 'Total recurring cash out',         by_entity: false },
+    { nominal_type: 'cf.out.fin_tax_total',   label: 'Total financing & tax cash out',   by_entity: false },
     { nominal_type: 'cf.out.capex', label: 'Cash out — capex', by_entity: false },
     { nominal_type: 'cf.out.interest', label: 'Cash out — interest', by_entity: false },
     { nominal_type: 'cf.out.principal', label: 'Cash out — mortgage principal', by_entity: false },
@@ -169,7 +177,10 @@ export const financialCoreModule = {
       cost_utilities_base: 0,       // utilities
       cost_admin_base: 0,           // central admin overhead line
       cost_other_overhead_base: 0,  // insurance / software / marketing / professional fees
-      cost_pre_opening_base: 0,     // ALL pre-opening (staff + overhead)
+      cost_pre_opening_base: 0,     // ALL pre-opening (staff + overhead) — kept for P&L line
+      cost_pre_opening_overhead_base: 0,    // pre-opening monthly overhead (registration period)
+      cost_pre_opening_marketing_base: 0,   // pre-opening marketing spike
+      cost_pre_opening_staffing_base: 0,    // pre-opening staff hires
       // staff headcount (sum across role/band tags)
       headcount_total: 0, headcount_practitioners: 0, headcount_managers: 0,
       // Dividend tracking
@@ -198,6 +209,7 @@ export const financialCoreModule = {
             || role === 'practitioner';
           if (r.module_key === 'pre_opening') {
             p.cost_pre_opening_base += r.amount_p;
+            p.cost_pre_opening_staffing_base += r.amount_p;
           } else if (isDirectStaff) {
             p.cost_staff_direct_base += r.amount_p;
           } else {
@@ -218,6 +230,12 @@ export const financialCoreModule = {
           const lbl = r.line_label || '';
           if (r.module_key === 'pre_opening' || /^Pre-opening/i.test(lbl)) {
             p.cost_pre_opening_base += r.amount_p;
+            if (/marketing/i.test(lbl)) {
+              p.cost_pre_opening_marketing_base += r.amount_p;
+            } else {
+              // "Pre-opening overhead" (registration / monthly overhead) — fallback
+              p.cost_pre_opening_overhead_base += r.amount_p;
+            }
           } else if (lbl === 'Rent' || lbl === 'Service charge' || lbl === 'NDR' || lbl === 'Maintenance') {
             p.cost_premises_base += r.amount_p;
           } else if (/utilit/i.test(lbl)) {
@@ -317,18 +335,27 @@ export const financialCoreModule = {
         premises:        p.cost_premises_base * fCost,
         utilities:       p.cost_utilities_base * fCost,
         other_overhead:  (p.cost_other_overhead_base + p.cost_admin_base + p.cost_direct_costs_base) * fCost,
-        pre_opening:     p.cost_pre_opening_base * fCost,
+        // Pre-opening split into its three line items so the cashflow
+        // statement can show one-off setup spend at line-item granularity.
+        pre_opening_overhead:  p.cost_pre_opening_overhead_base  * fCost,
+        pre_opening_marketing: p.cost_pre_opening_marketing_base * fCost,
+        pre_opening_staffing:  p.cost_pre_opening_staffing_base  * fCost,
         capex:           p.capex,
         interest:        p.interest,
         principal:       debtRepay,
         tax:             taxPaidThisPeriod,
         dividends:       dividend,
       };
+      const cashOutPreOpening = cashOut.pre_opening_overhead + cashOut.pre_opening_marketing + cashOut.pre_opening_staffing;
       const totalIn = cashIn.private + cashIn.funded + cashIn.debtDrawdown;
       const totalOut = cashOut.staff + cashOut.premises + cashOut.utilities
-        + cashOut.other_overhead + cashOut.pre_opening + cashOut.capex
+        + cashOut.other_overhead + cashOutPreOpening + cashOut.capex
         + cashOut.interest + cashOut.principal + cashOut.tax
         + cashOut.dividends;
+      // Subtotals for the restructured CF statement
+      const totalOneOff    = cashOutPreOpening + cashOut.capex;
+      const totalRecurring = cashOut.staff + cashOut.premises + cashOut.utilities + cashOut.other_overhead;
+      const totalFinTax    = cashOut.interest + cashOut.principal + cashOut.tax + cashOut.dividends;
 
       // WC movement (signed) reconciles accrual to cash. +ve = cash drag.
       const netMovement = totalIn - totalOut - p.wc_movement;
@@ -385,6 +412,8 @@ export const financialCoreModule = {
 
       out.push(...[
         ['pnl.revenue_total', 'Revenue', p.revenue],
+        ['pnl.revenue_private',   'Private fees', p.revenue_private_base * fInc],
+        ['pnl.revenue_la_funded', 'LA funded',    p.revenue_funded_base  * fInc],
         ['pnl.income_inflation_uplift', 'Income inflation uplift', p.revenue_uplift],
         // Direct costs (site-level)
         ['pnl.cost_staff_direct',     'Direct staff (site managers + practitioners)', -costStaffDirect],
@@ -491,18 +520,28 @@ export const financialCoreModule = {
         ['cf.in.la_funded',     'LA funded',            cashIn.funded],
         ['cf.in.debt_drawdown', 'Debt drawdown',        cashIn.debtDrawdown],
         ['cf.in_total',         'Total cash in',        totalIn],
-        ['cf.out.staff',        'Staff costs',          -cashOut.staff],
-        ['cf.out.premises',     'Premises (rent / NDR / maintenance)', -cashOut.premises],
-        ['cf.out.utilities',    'Utilities',            -cashOut.utilities],
-        ['cf.out.other_overhead','Other overheads',     -cashOut.other_overhead],
-        ['cf.out.pre_opening',  'Pre-opening',          -cashOut.pre_opening],
-        ['cf.out.capex',        'Capex',                -cashOut.capex],
+        // ── One-off cash out: capex + pre-opening line items ──────
+        ['cf.out.capex',                 'Capex',                            -cashOut.capex],
+        ['cf.out.pre_opening_overhead',  'Pre-opening — overhead',           -cashOut.pre_opening_overhead],
+        ['cf.out.pre_opening_marketing', 'Pre-opening — marketing',          -cashOut.pre_opening_marketing],
+        ['cf.out.pre_opening_staffing',  'Pre-opening — staffing',           -cashOut.pre_opening_staffing],
+        ['cf.out.one_off_total',         'Total one-off',                    -totalOneOff],
+        // ── Recurring operating cash out ───────────────────────────
+        ['cf.out.staff',         'Staff costs',                              -cashOut.staff],
+        ['cf.out.premises',      'Premises (rent / NDR / maintenance)',      -cashOut.premises],
+        ['cf.out.utilities',     'Utilities',                                -cashOut.utilities],
+        ['cf.out.other_overhead','Other overheads',                          -cashOut.other_overhead],
+        ['cf.out.recurring_total','Total recurring',                          -totalRecurring],
+        // ── Financing & tax ────────────────────────────────────────
         ['cf.out.interest',     'Interest',             -cashOut.interest],
-        ['cf.out.principal',    'Mortgage principal',   -cashOut.principal],
+        ['cf.out.principal',    'Mortgage / loan principal', -cashOut.principal],
         ['cf.out.tax',          'Tax paid',             -cashOut.tax],
         ['cf.out.dividends',    'Dividends paid',       -cashOut.dividends],
+        ['cf.out.fin_tax_total','Total financing & tax',-totalFinTax],
         ['cf.out_total',        'Total cash out',       -totalOut],
         ['cf.wc_movement',      'Working capital movement', -p.wc_movement],
+        // Aggregate pre-opening row kept for back-compat (other views still read it)
+        ['cf.out.pre_opening',  'Pre-opening (all)',    -cashOutPreOpening],
         // Indirect aggregates retained for validation + back-compat
         ['cf.operating',        'Operating',            operating],
         ['cf.investing',        'Investing',            investing],

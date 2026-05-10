@@ -2,13 +2,32 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import {
   listEntities, upsertEntity, deleteEntity, listLaCouncils,
-  loadScenarioDrivers, upsertDriver, setDriverValue,
+  loadScenarioDrivers, upsertDriver, setDriverValue, deleteDriver, updateDriver,
+  copyEntity,
   seedPackDefaults,
   createGroup, deleteGroup, assignEntityToGroup,
+  saveNurseryDefaults, loadNurseryDefaults, clearNurseryDefaults,
 } from '../lib/queries';
 import { modulesFor } from '../lib/packs';
 import { btnDark, btnGhost, btnOutline, colors, fontStack, H2, inputStyle, Pill, Section, selectStyle, serifStack } from '../components/ui';
 import LoansPanel from './LoansPanel';
+
+// Display label override for module-driver tabs. The module's `key` is used
+// internally; this map keeps the UI human-readable.
+const MODULE_LABELS = {
+  locations: 'Pipeline',
+  services_childcare: 'Services',
+  staff: 'Staff',
+  premises: 'Premises',
+  overheads: 'Overheads',
+  pre_opening: 'Pre-opening',
+  fixed_assets: 'Fixed assets',
+  loans: 'Loans',
+  working_capital: 'Working capital',
+  tax_simple: 'Tax',
+  financial_core: 'Financials core',
+  exit_valuation: 'Exit valuation',
+};
 
 // Per-tab semantic filters. Each spec: { label, options: [{ value, label }], match(value) -> driver-predicate }
 const TAB_FILTERS = {
@@ -27,16 +46,22 @@ const TAB_FILTERS = {
     label: 'Driver group',
     options: [
       { value: 'all', label: 'All' },
-      { value: 'ratios', label: 'Ratios' },
+      { value: 'ratios', label: 'Statutory ratios' },
+      { value: 'mix', label: 'Direct mix + age-band split' },
       { value: 'salaries', label: 'Salaries' },
+      { value: 'headcount', label: 'Headcount' },
       { value: 'on_costs', label: 'On-costs (NI / pension)' },
       { value: 'workforce', label: 'Workforce / cover' },
+      { value: 'inclusion', label: 'Ratio inclusion flags' },
     ],
     match: (g) => (d) => {
-      if (g === 'ratios') return d.driver_key.startsWith('ratio.');
-      if (g === 'salaries') return d.driver_key.startsWith('base_salary_p.') || d.driver_key === 'real_living_wage_hourly_p';
-      if (g === 'on_costs') return d.driver_key === 'employer_ni_pct' || d.driver_key === 'employer_pension_pct';
-      if (g === 'workforce') return d.driver_key === 'vacancy_rate_pct' || d.driver_key === 'agency_premium_pct' || d.driver_key === 'manager_per_n_practitioners';
+      if (g === 'ratios')    return d.driver_key.startsWith('ratio.') && !d.driver_key.startsWith('ratio_inclusion.');
+      if (g === 'mix')       return d.driver_key.startsWith('direct_mix.') || d.driver_key.startsWith('nmw_mix.');
+      if (g === 'salaries')  return d.driver_key.startsWith('base_salary_p.') || d.driver_key === 'real_living_wage_hourly_p';
+      if (g === 'headcount') return d.driver_key.startsWith('headcount.');
+      if (g === 'on_costs')  return d.driver_key === 'employer_ni_pct' || d.driver_key === 'employer_pension_pct' || d.driver_key === 'employment_allowance_p';
+      if (g === 'workforce') return d.driver_key === 'vacancy_rate_pct' || d.driver_key === 'agency_premium_pct' || d.driver_key === 'standard_hours_per_year';
+      if (g === 'inclusion') return d.driver_key.startsWith('ratio_inclusion.');
       return true;
     },
   },
@@ -115,7 +140,7 @@ export default function InputsView({
   const onSeedDefaults = async () => {
     setBusy(true);
     try {
-      const r = await seedPackDefaults({ scenario_id: scenario.id, modules, entities });
+      const r = await seedPackDefaults({ scenario_id: scenario.id, modules, entities, vertical_pack: forecast.vertical_pack });
       await reload();
       onChanged?.();
       if (r.valued === 0 && r.skipped > 0) {
@@ -127,11 +152,37 @@ export default function InputsView({
     setBusy(false);
   };
 
+  const onSaveNurseryDefaults = async () => {
+    if (entities.length === 0) {
+      alert('Add at least one location first; the first location\'s settings are saved as the new-nursery template.');
+      return;
+    }
+    if (!confirm('Save the current scenario\'s assumptions as the default for new nurseries?\n\nGroup-level driver values + the first location\'s config will be remembered (in this browser) and applied when seeding new scenarios or new locations.')) return;
+    setBusy(true);
+    try {
+      await saveNurseryDefaults({
+        scenario_id: scenario.id,
+        vertical_pack: forecast.vertical_pack,
+        sample_entity_id: entities[0].id,
+      });
+      alert('Saved. Future "Fill missing defaults" runs and new locations will use these values.');
+    } catch (e) { alert(e.message); }
+    setBusy(false);
+  };
+
+  const onClearNurseryDefaults = () => {
+    if (!confirm('Clear saved nursery defaults? Future seeds will fall back to the built-in pack defaults.')) return;
+    clearNurseryDefaults(forecast.vertical_pack);
+    alert('Cleared.');
+  };
+
+  const hasNurseryDefaults = !!loadNurseryDefaults(forecast.vertical_pack);
+
   const onResetDefaults = async () => {
     if (!confirm('Reset ALL drivers in this scenario to their pack defaults? Your existing assumptions will be overwritten.')) return;
     setBusy(true);
     try {
-      const r = await seedPackDefaults({ scenario_id: scenario.id, modules, entities, overwrite: true });
+      const r = await seedPackDefaults({ scenario_id: scenario.id, modules, entities, overwrite: true, vertical_pack: forecast.vertical_pack });
       await reload();
       onChanged?.();
       alert(`Reset ${r.valued} value${r.valued !== 1 ? 's' : ''} to defaults.`);
@@ -200,28 +251,59 @@ export default function InputsView({
   const [filterEntity, setFilterEntity] = useState('all');         // 'all' | 'group' | entity_id
   const [filterUnit, setFilterUnit] = useState('all');
   const [filterSearch, setFilterSearch] = useState('');
-  const [locationsExpanded, setLocationsExpanded] = useState(false);
+  // Locations section starts expanded and stays that way unless the user
+  // hits "Hide" — no auto-collapse / auto-expand.
+  const [locationsExpanded, setLocationsExpanded] = useState(true);
   const [addingDriver, setAddingDriver] = useState(false);
   const [compact, setCompact] = useState(true);
   const [tabFilter, setTabFilter] = useState({});                   // per-module: { module_key: 'value' }
   const driversAnchorRef = useRef(null);
+  const initialModuleSetRef = useRef(false);
 
-  // Smooth-scroll the Drivers section into view on tab change to stop the page
-  // from snapping when switching between modules with very different row counts.
+  // Smooth-scroll the Drivers section into view ONLY when the user actively
+  // switches between driver tabs — not on initial mount. Landing on Inputs
+  // should leave the user at the top of the page (Locations section).
   useEffect(() => {
     if (!activeModuleKey) return;
+    if (!initialModuleSetRef.current) {
+      // First module assignment after load — skip the scroll.
+      initialModuleSetRef.current = true;
+      return;
+    }
     if (driversAnchorRef.current) {
       driversAnchorRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [activeModuleKey]);
 
-  // Auto-expand only when there are no locations yet (initial setup state).
-  useEffect(() => {
-    if (entities.length === 0) setLocationsExpanded(true);
-  }, [entities.length]);
-
   const tabFilterSpec = TAB_FILTERS[activeModuleKey] || null;
   const tabFilterValue = tabFilter[activeModuleKey] || 'all';
+
+  // Set of driver keys declared by the active module, so we can tell
+  // user-added custom drivers apart and offer rename / delete on them.
+  const declaredKeys = useMemo(() => {
+    const m = modules.find(x => x.key === activeModuleKey);
+    return new Set((m?.drivers || []).map(d => d.key));
+  }, [modules, activeModuleKey]);
+
+  const onDeleteDriver = async (driver) => {
+    if (!confirm(`Delete driver "${driver.label}"?\n\nThis removes the driver row and any value(s) you've set. Re-add it via "+ Add driver" if you change your mind.`)) return;
+    try {
+      await deleteDriver(driver.id);
+      await reload();
+      onChanged?.();
+    } catch (e) { alert(e.message); }
+  };
+
+  const onRenameDriver = async (driver) => {
+    const next = prompt('Rename driver', driver.label || '');
+    if (next == null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === driver.label) return;
+    try {
+      await updateDriver(driver.id, { label: trimmed });
+      await reload();
+    } catch (e) { alert(e.message); }
+  };
 
   const moduleDrivers = useMemo(() => {
     if (!activeModuleKey) return [];
@@ -230,16 +312,40 @@ export default function InputsView({
     const tabFilterFn = spec && tabFilterValue !== 'all'
       ? spec.match(tabFilterValue)
       : () => true;
+
+    // Use the active module's `drivers` declaration order so the user's
+    // requested role-grouped layout (exec → … → apprentice <19) is honoured.
+    const activeMod = modules.find(m => m.key === activeModuleKey);
+    const orderByKey = new Map();
+    (activeMod?.drivers || []).forEach((d, i) => orderByKey.set(d.key, i));
+
     return drivers.filter(d => {
       if (d.module_key !== activeModuleKey) return false;
+      // Hide orphan drivers (DB rows for keys no longer declared by the module).
+      // Custom user-added drivers won't have a declared key, but they live in
+      // their own module declarations or are intentional one-offs — to allow
+      // them, only hide orphans that are *not* in the declared list AND share
+      // a prefix with retired keys we know about. Simpler: show all declared
+      // keys; for non-declared keys keep them visible too so custom drivers work.
+      // (To explicitly retire: call out in the deprecated set below.)
+      const RETIRED_KEYS = new Set([
+        'launch.greenfield_influx_pct', 'launch.ramp_months',
+      ]);
+      if (RETIRED_KEYS.has(d.driver_key)) return false;
       if (filterEntity === 'group' && d.entity_id) return false;
       if (filterEntity !== 'all' && filterEntity !== 'group' && d.entity_id !== filterEntity) return false;
       if (filterUnit !== 'all' && d.unit !== filterUnit) return false;
       if (q && !(d.label?.toLowerCase().includes(q) || d.driver_key.toLowerCase().includes(q))) return false;
       if (!tabFilterFn(d)) return false;
       return true;
-    }).sort((a, b) => (a.entity_id || '').localeCompare(b.entity_id || '') || a.driver_key.localeCompare(b.driver_key));
-  }, [drivers, activeModuleKey, filterEntity, filterUnit, filterSearch, tabFilterValue]);
+    }).sort((a, b) => {
+      const oa = orderByKey.has(a.driver_key) ? orderByKey.get(a.driver_key) : 9999;
+      const ob = orderByKey.has(b.driver_key) ? orderByKey.get(b.driver_key) : 9999;
+      if (oa !== ob) return oa - ob;
+      // Within same driver key, group entities together
+      return (a.entity_id || '').localeCompare(b.entity_id || '');
+    });
+  }, [drivers, activeModuleKey, filterEntity, filterUnit, filterSearch, tabFilterValue, modules]);
 
   // Distinct units present in the active module
   const unitOptions = useMemo(() => {
@@ -277,6 +383,26 @@ export default function InputsView({
                 <button onClick={onSeedDefaults} disabled={busy} style={btnOutline} title="Adds drivers for new locations and fills any missing defaults; preserves your existing values.">
                   {busy ? '…' : 'Fill missing defaults'}
                 </button>
+                {entities.length > 0 && (
+                  <button
+                    onClick={onSaveNurseryDefaults}
+                    disabled={busy}
+                    style={btnOutline}
+                    title="Save the current scenario's group assumptions + the first location's config as the template for new nurseries."
+                  >
+                    {hasNurseryDefaults ? 'Save as defaults ✓' : 'Save as defaults'}
+                  </button>
+                )}
+                {hasNurseryDefaults && (
+                  <button
+                    onClick={onClearNurseryDefaults}
+                    disabled={busy}
+                    style={{ ...btnGhost, color: colors.muted }}
+                    title="Forget the saved nursery defaults."
+                  >
+                    Clear defaults
+                  </button>
+                )}
                 {entities.length > 0 && (
                   <button onClick={onResetDefaults} disabled={busy} style={{ ...btnOutline, color: colors.red, borderColor: '#fecaca' }} title="Destructive: overwrites every driver value with the pack default.">
                     Reset all
@@ -325,6 +451,18 @@ export default function InputsView({
                     <td style={td}>{e.config?.acquisition_type || '—'}</td>
                     <td style={td}>
                       <button onClick={() => setEditingEntity(e)} style={btnGhost}>Edit</button>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Copy "${e.label}" as a new location? All assumptions and per-site driver values will be duplicated as a starting point.`)) return;
+                          try {
+                            await copyEntity(e.id);
+                            onEntitiesChanged?.();
+                            onChanged?.();
+                          } catch (err) { alert(err.message); }
+                        }}
+                        title="Duplicate this location and all its assumptions"
+                        style={{ ...btnGhost, marginLeft: 6 }}
+                      >Copy</button>
                       <button onClick={async () => { if (confirm('Delete location?')) { await deleteEntity(e.id); onEntitiesChanged?.(); } }} style={{ ...btnGhost, marginLeft: 6, color: colors.red }}>×</button>
                     </td>
                   </tr>
@@ -369,7 +507,7 @@ export default function InputsView({
                 cursor: 'pointer', fontFamily: fontStack, whiteSpace: 'nowrap',
               }}
             >
-              {m.key}
+              {MODULE_LABELS[m.key] || m.key}
             </button>
           ))}
         </div>
@@ -396,14 +534,18 @@ export default function InputsView({
                 {!compact && <th style={th}>Unit</th>}
                 {!compact && <th style={th}>Kind</th>}
                 <th style={{ ...(compact ? thCompact : th), textAlign: 'right' }}>Value</th>
+                <th style={{ ...(compact ? thCompact : th), textAlign: 'right', width: 70 }}></th>
               </tr>
             </thead>
             <tbody>
-              {moduleDrivers.map(d => {
+              {moduleDrivers.map((d, idx) => {
                 const ent = entities.find(e => e.id === d.entity_id);
                 const cellTd = compact ? tdCompact : td;
+                // Light leader lines: alternate row background so the eye can
+                // run from the assumption label (left) to the entry box (right).
+                const zebra = idx % 2 === 1 ? '#fafbfc' : '#ffffff';
                 return (
-                  <tr key={d.id} style={{ borderBottom: `1px solid ${colors.borderSoft}` }}>
+                  <tr key={d.id} style={{ borderBottom: `1px dotted ${colors.borderSoft}`, background: zebra }}>
                     <td style={cellTd}>
                       <strong>{d.label}</strong>
                       {compact && (
@@ -432,6 +574,24 @@ export default function InputsView({
                         <span style={{ fontSize: 11, color: colors.muted }}>(timeseries)</span>
                       ) : (
                         <code style={{ fontSize: 10 }}>{d.expression || '—'}</code>
+                      )}
+                    </td>
+                    <td style={{ ...cellTd, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {!declaredKeys.has(d.driver_key) ? (
+                        <span style={{ display: 'inline-flex', gap: 2 }}>
+                          <button
+                            onClick={() => onRenameDriver(d)}
+                            title="Rename custom driver"
+                            style={iconBtn}
+                          >✎</button>
+                          <button
+                            onClick={() => onDeleteDriver(d)}
+                            title="Delete custom driver"
+                            style={{ ...iconBtn, color: colors.red }}
+                          >×</button>
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 9, color: colors.muted, fontStyle: 'italic' }}>built-in</span>
                       )}
                     </td>
                   </tr>
@@ -630,23 +790,37 @@ function CustomDriverModal({ scenarioId, moduleKey, entities, onClose, onSaved }
 }
 
 function EntityModal({ forecast, entity, councils, onClose, onSaved }) {
+  // For NEW locations, fall back to saved nursery defaults (first location's
+  // config, captured via "Save as defaults"). For edits, only use the row's
+  // own config so we don't silently drift other locations' settings.
+  const isNew = !entity.id;
+  const nurseryDefaults = isNew ? loadNurseryDefaults(forecast.vertical_pack) : null;
+  const tplCfg = nurseryDefaults?.entity_config || {};
+  const cfg = entity.config || {};
+  const pick = (k, fallback) => cfg[k] ?? tplCfg[k] ?? fallback;
+  const tplCap = tplCfg.capacity_by_age_band || {};
+  const cap = cfg.capacity_by_age_band || {};
+
   const [form, setForm] = useState(() => ({
     id: entity.id,
     key: entity.key || `site_${Date.now().toString(36).slice(-5)}`,
     label: entity.label || '',
-    la_council_id: entity.config?.la_council_id || (councils[0]?.id || ''),
-    sq_ft: entity.config?.sq_ft ?? 4000,
-    opening_month_offset: entity.config?.opening_month_offset ?? 6,
-    acquisition_type: entity.config?.acquisition_type || 'greenfield',
-    lease_or_buy: entity.config?.lease_or_buy || 'lease',
-    ramp_to_target_months: entity.config?.ramp_to_target_months ?? 18,
-    target_occupancy_pct: entity.config?.target_occupancy_pct ?? 85,
-    starting_occupancy_pct: entity.config?.starting_occupancy_pct ?? 0,
-    cap_babies: entity.config?.capacity_by_age_band?.babies ?? 12,
-    cap_twos: entity.config?.capacity_by_age_band?.twos ?? 16,
-    cap_three_to_five: entity.config?.capacity_by_age_band?.three_to_five ?? 32,
-    cap_after_school: entity.config?.capacity_by_age_band?.after_school ?? 0,
-    concession_stages: entity.config?.premises_concession_stages || [],
+    la_council_id: pick('la_council_id', councils[0]?.id || ''),
+    sq_ft: pick('sq_ft', 4000),
+    opening_month_offset: pick('opening_month_offset', 6),
+    acquisition_type: pick('acquisition_type', 'greenfield'),
+    lease_or_buy: pick('lease_or_buy', 'lease'),
+    ramp_to_target_months: pick('ramp_to_target_months', 6),
+    target_occupancy_pct: pick('target_occupancy_pct', 85),
+    // Default 40% reflects pre-launch marketing influx for a greenfield;
+    // going-concern acquisitions usually inherit ~70%.
+    starting_occupancy_pct: cfg.starting_occupancy_pct ?? tplCfg.starting_occupancy_pct ??
+      ((cfg.acquisition_type ?? tplCfg.acquisition_type) === 'acquired_going_concern' ? 70 : 40),
+    cap_babies: cap.babies ?? tplCap.babies ?? 12,
+    cap_twos: cap.twos ?? tplCap.twos ?? 16,
+    cap_three_to_five: cap.three_to_five ?? tplCap.three_to_five ?? 32,
+    cap_after_school: cap.after_school ?? tplCap.after_school ?? 0,
+    concession_stages: cfg.premises_concession_stages || tplCfg.premises_concession_stages || [],
   }));
   const [busy, setBusy] = useState(false);
 
@@ -690,6 +864,11 @@ function EntityModal({ forecast, entity, councils, onClose, onSaved }) {
       <div onClick={(e) => e.stopPropagation()} style={modalCard}>
         <h2 style={{ fontFamily: serifStack, fontSize: 22, fontWeight: 500, color: colors.ink, margin: '0 0 16px' }}>
           {form.id ? 'Edit location' : 'New location'}
+          {isNew && nurseryDefaults && (
+            <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 400, color: colors.muted, fontFamily: fontStack }}>
+              · prefilled from saved nursery defaults
+            </span>
+          )}
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <Field label="Label"><input value={form.label} onChange={set('label')} style={inputStyle} /></Field>
@@ -716,7 +895,7 @@ function EntityModal({ forecast, entity, councils, onClose, onSaved }) {
           <Field label="Opens (months from start)"><input type="number" value={form.opening_month_offset} onChange={setNum('opening_month_offset')} style={inputStyle} /></Field>
           <Field label="Ramp to target (months)"><input type="number" value={form.ramp_to_target_months} onChange={setNum('ramp_to_target_months')} style={inputStyle} /></Field>
           <Field label="Target occupancy %"><input type="number" value={form.target_occupancy_pct} onChange={setNum('target_occupancy_pct')} style={inputStyle} /></Field>
-          <Field label="Starting occupancy %"><input type="number" value={form.starting_occupancy_pct} onChange={setNum('starting_occupancy_pct')} style={inputStyle} /></Field>
+          <Field label="Launch occupancy % (day-1 marketing influx)"><input type="number" value={form.starting_occupancy_pct} onChange={setNum('starting_occupancy_pct')} style={inputStyle} /></Field>
         </div>
 
         <h3 style={{ fontFamily: serifStack, fontSize: 16, color: colors.ink, margin: '20px 0 10px' }}>Capacity by age band</h3>
@@ -890,6 +1069,11 @@ function prettyUnit(u) {
   }
 }
 
+const iconBtn = {
+  background: 'transparent', border: `1px solid ${colors.border}`, borderRadius: 5,
+  padding: '2px 7px', fontSize: 12, lineHeight: 1, cursor: 'pointer',
+  color: colors.muted, fontFamily: fontStack,
+};
 const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack };
 const th = { padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, background: colors.bgSoft };
 const td = { padding: '8px 10px', color: colors.ink, verticalAlign: 'top' };

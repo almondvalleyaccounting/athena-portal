@@ -31,10 +31,32 @@ export const locationsModule = {
   pack: ['childcare_scotland'],
   dependsOn: [],
   drivers: [
-    // Cohort flow shares — % of each band's children who age up at end of
-    // each Scottish school year (August).
-    { key: 'cohort.moveup_babies_pct',         label: 'Aug move-up — 0-2 → 2-3 %',                unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 50 },
-    { key: 'cohort.moveup_twos_pct',           label: 'Aug move-up — 2-3 → 3-5 %',                unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 50 },
+    // ── Per-band capacity ramp ────────────────────────────────────
+    // Each age band has its own opening %, target %, and phase-up
+    // window. These define the steady-state utilisation curve at any
+    // entity (going-concern entities can override via entity.config).
+    ...AGE_BANDS.flatMap(b => ([
+      { key: `capacity.opening_pct.${b}`,      label: `Capacity at opening — ${AGE_BAND_LABELS[b]}`,    unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: defaultOpeningPct(b) },
+      { key: `capacity.target_pct.${b}`,       label: `Capacity target — ${AGE_BAND_LABELS[b]}`,         unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: defaultTargetPct(b) },
+      { key: `capacity.phase_up_months.${b}`,  label: `Phase-up to target — ${AGE_BAND_LABELS[b]} (months)`, unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 6 },
+    ])),
+
+    // ── Cohort flow shares ────────────────────────────────────────
+    // Annual % of each band's children who age up to the next room.
+    //
+    // For 0-2 → 2-3 and 2-3 → 3-5 these are CONTINUOUS turnover events
+    // — children move room when they turn 2 or 3, throughout the year,
+    // and are continuously backfilled by rolling intake. The engine
+    // models them as a steady flow (no occupancy dip) so the band
+    // stays at its base ramp curve. The drivers are informational —
+    // they represent reality but don't drive a step-change.
+    //
+    // The 3-5 → primary school transition IS a real August event in
+    // Scotland (children all start P1 at the same time). It triggers
+    // an occupancy dip on the 3-5 band that refills over the
+    // configurable refill window.
+    { key: 'cohort.moveup_babies_pct',         label: 'Annual age-up — 0-2 → 2-3 % (continuous)', unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 50 },
+    { key: 'cohort.moveup_twos_pct',           label: 'Annual age-up — 2-3 → 3-5 % (continuous)', unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 50 },
     // 3-5: share leaving for school (those starting P1)
     { key: 'cohort.school_leaver_three_to_five_pct', label: 'Aug school leavers — 3-5 % (start P1)',  unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 33 },
     // Of school leavers, share that continues at after-school care at the same setting
@@ -60,26 +82,51 @@ export const locationsModule = {
     };
     const schoolToAsShare = (ctx.resolve('cohort.school_to_as_pct', {}) || 0) / 100;
 
+    // Per-band group ramp drivers
+    const groupCurve = {};
+    for (const band of AGE_BANDS) {
+      groupCurve[band] = {
+        opening: ctx.resolve(`capacity.opening_pct.${band}`, {}) ?? defaultOpeningPct(band),
+        target:  ctx.resolve(`capacity.target_pct.${band}`, {})  ?? defaultTargetPct(band),
+        phase:   ctx.resolve(`capacity.phase_up_months.${band}`, {}) ?? 6,
+      };
+    }
+
     const map = {};
 
     for (const e of ctx.entities) {
       const cfg = e.config || {};
       const opn = cfg.opening_month_offset ?? 0;
-      const ramp = cfg.ramp_to_target_months ?? 18;
-      const target = cfg.target_occupancy_pct ?? 85;
-      const start = cfg.starting_occupancy_pct ??
-        (cfg.acquisition_type === 'acquired_going_concern' ? 70 : 0);
+      const isGoingConcern = cfg.acquisition_type === 'acquired_going_concern';
       const cap = cfg.capacity_by_age_band || {};
 
-      // Base ramp curve (no cohort events) — same for every band
-      const baseAt = (t) => {
+      // Per-band ramp curves. Going-concern overrides via entity config.
+      const curveByBand = {};
+      for (const band of AGE_BANDS) {
+        const g = groupCurve[band];
+        curveByBand[band] = isGoingConcern
+          ? {
+              start:  cfg.starting_occupancy_pct ?? 70,
+              target: cfg.target_occupancy_pct   ?? g.target,
+              ramp:   Math.max(1, cfg.ramp_to_target_months ?? g.phase),
+            }
+          : {
+              start:  g.opening,
+              target: g.target,
+              ramp:   Math.max(1, g.phase),
+            };
+      }
+
+      // Base ramp curve per band — quadratic ease-out from start to target
+      const baseAt = (band, t) => {
         if (t < opn) return 0;
+        const c = curveByBand[band];
         const tIn = t - opn;
-        if (tIn === 0) return start;
-        if (tIn >= ramp) return target;
-        const frac = tIn / ramp;
+        if (tIn === 0) return c.start;
+        if (tIn >= c.ramp) return c.target;
+        const frac = tIn / c.ramp;
         const eased = 1 - Math.pow(1 - frac, 2);
-        return Math.max(0, Math.min(100, start + (target - start) * eased));
+        return Math.max(0, Math.min(100, c.start + (c.target - c.start) * eased));
       };
 
       // Per-band dip stack. Each dip = % shortfall from base curve at time t,
@@ -109,57 +156,55 @@ export const locationsModule = {
         const isAugust = calMonth === 7;
 
         if (isAugust) {
-          // Compute pre-event occupancy% per band
+          // Pre-event occupancy% per band (post-dip, on each band's own curve)
           const preOcc = {};
           for (const band of AGE_BANDS) {
-            preOcc[band] = Math.max(0, baseAt(t) - dipAt(band, t));
+            preOcc[band] = Math.max(0, baseAt(band, t) - dipAt(band, t));
           }
-
-          // Convert to children counts
           const preCount = {};
           for (const band of AGE_BANDS) {
             preCount[band] = (cap[band] || 0) * (preOcc[band] / 100);
           }
-
-          // Move-ups (these CHILDREN leave the source band)
+          // GENUINE August events:
+          //   - 3-5 → primary school (Scottish school-year transition)
+          //   - after-school → senior school (P7 → S1, ~1/7 each year)
+          // ROLLING transitions (modelled as continuous, no Aug shock):
+          //   - 0-2 → 2-3 (children turn 2 throughout the year)
+          //   - 2-3 → 3-5 (children turn 3 throughout the year)
+          // For the rolling transitions we still want to inflate the
+          // *receiving* band by the implied annual flow because intake
+          // is continuous — that's modelled via the base ramp curve
+          // already, so we don't book any movement here.
           const movedUp = {
-            babies:        preCount.babies        * moveup.babies,
-            twos:          preCount.twos          * moveup.twos,
-            three_to_five: preCount.three_to_five * moveup.three_to_five,  // leaving for school
-            after_school:  preCount.after_school  * moveup.after_school,
+            babies:        0,
+            twos:          0,
+            three_to_five: preCount.three_to_five * moveup.three_to_five,  // school leavers
+            after_school:  preCount.after_school  * moveup.after_school,    // P7 leavers
           };
-
-          // Arrivals: who lands in each room
-          //   2-3 receives all 0-2 move-ups
-          //   3-5 receives all 2-3 move-ups
-          //   AS receives a share of 3-5 school-leavers
+          // Arrivals from genuine Aug cohort moves only:
+          //   - after_school receives the share of school leavers continuing here
+          // 2-3 and 3-5 don't receive a step inflow because the corresponding
+          // departures from the band below are continuous, not annual.
           const arrived = {
             babies: 0,
-            twos: movedUp.babies,
-            three_to_five: movedUp.twos,
+            twos: 0,
+            three_to_five: 0,
             after_school: movedUp.three_to_five * schoolToAsShare,
           };
-
-          // Post-event children counts (clamp to capacity if arrivals exceed)
           const postCount = {};
           for (const band of AGE_BANDS) {
             const c = preCount[band] - movedUp[band] + arrived[band];
             postCount[band] = Math.max(0, Math.min(c, cap[band] || 0));
           }
-
-          // New occupancy% per band, and dip vs base
-          const baseNow = baseAt(t);
           for (const band of AGE_BANDS) {
             const newOcc = (cap[band] || 0) > 0 ? (postCount[band] / cap[band]) * 100 : 0;
-            // Dip = base - newOcc (positive ⇒ shortfall)
-            const dip = baseNow - newOcc;
+            const dip = baseAt(band, t) - newOcc;
             if (Math.abs(dip) > 0.001) dips[band].push({ t, amount: dip });
           }
         }
 
-        // Compute current occupancy after applying dips
         for (const band of AGE_BANDS) {
-          const occ = Math.max(0, Math.min(100, baseAt(t) - dipAt(band, t)));
+          const occ = Math.max(0, Math.min(100, baseAt(band, t) - dipAt(band, t)));
           byBand[band][t] = occ;
         }
       }
@@ -171,5 +216,26 @@ export const locationsModule = {
     return [];
   },
 };
+
+function defaultOpeningPct(band) {
+  // Greenfield day-one capacity assumptions vary by band.
+  // Lower for 0-2 (parents commit later); high for 3-5 (1140-funded demand).
+  switch (band) {
+    case 'babies':        return 30;
+    case 'twos':          return 40;
+    case 'three_to_five': return 60;
+    case 'after_school':  return 30;
+    default: return 40;
+  }
+}
+function defaultTargetPct(band) {
+  switch (band) {
+    case 'babies':        return 85;
+    case 'twos':          return 90;
+    case 'three_to_five': return 95;
+    case 'after_school':  return 70;
+    default: return 85;
+  }
+}
 
 export const AGE_BANDS_LIST = AGE_BANDS;

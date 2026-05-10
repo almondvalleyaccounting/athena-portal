@@ -215,7 +215,7 @@ export default function StaffCostsView({
         </table>
       </div>
 
-      <RateAnalysisBox staffDrivers={staffDrivers} />
+      <RateAnalysisBox staffDrivers={staffDrivers} outputs={outputs} entityIds={entityIds} periods={periods} />
       <StaffCostsBreakdownBox
         staffDrivers={staffDrivers}
         outputs={outputs} grouped={grouped} entityIds={entityIds}
@@ -229,7 +229,7 @@ export default function StaffCostsView({
 // Per-role hourly rate vs Real Living Wage / National Minimum Wage,
 // plus employer NI, pension and total cost-to-employer per hour.
 
-function RateAnalysisBox({ staffDrivers }) {
+function RateAnalysisBox({ staffDrivers, outputs = [], entityIds = null, periods = [] }) {
   const lookup = (key) => {
     const d = staffDrivers.drivers.find(x => x.driver_key === key);
     if (!d) return null;
@@ -246,36 +246,78 @@ function RateAnalysisBox({ staffDrivers }) {
   const nmwUnder18   = lookup('nmw_under18_hourly_p') || 0;
   const nmwAppr      = lookup('nmw_apprentice_hourly_p') || 0;
 
+  // NMW age-band mix within direct staff roles. Engine doesn't tag rows
+  // with the staff age tier (only the child age band), so we apportion
+  // total qualified / apprentice FTE across NMW tiers using the mix %.
+  const mix = (role) => ({
+    u19: (lookup(`nmw_mix.${role}.under19_pct`) || 0) / 100,
+    u21: (lookup(`nmw_mix.${role}.under21_pct`) || 0) / 100,
+    p21: (lookup(`nmw_mix.${role}.21plus_pct`)  || 0) / 100,
+  });
+  const qualMix = mix('qualified');
+  const apprMix = mix('apprentice');
+
   const blend = (key) => {
     const u19 = lookup(`base_salary_p.${key}_under19`) || 0;
     const u21 = lookup(`base_salary_p.${key}_under21`) || 0;
     const p21 = lookup(`base_salary_p.${key}_21plus`)  || 0;
-    const m19 = (lookup(`nmw_mix.${key}.under19_pct`) || 0) / 100;
-    const m21 = (lookup(`nmw_mix.${key}.under21_pct`) || 0) / 100;
-    const mp  = (lookup(`nmw_mix.${key}.21plus_pct`)  || 0) / 100;
-    return u19 * m19 + u21 * m21 + p21 * mp;
+    const m = key === 'qualified' ? qualMix : apprMix;
+    return u19 * m.u19 + u21 * m.u21 + p21 * m.p21;
   };
 
-  // Each row: [role label, annual salary (pence), nmw applicable hourly]
+  // ── FTE per role: average of period headcounts across the forecast,
+  // restricted to in-scope entities (group rows always count).
+  const inScope = (r) => !entityIds || r.entity_id == null || entityIds.has(r.entity_id);
+  const setP = new Set(periods);
+  const hcByRolePeriod = {};
+  for (const r of outputs) {
+    if (r.nominal_type !== 'staff_cost') continue;
+    if (r.module_key === 'pre_opening') continue;
+    if (!inScope(r)) continue;
+    if (setP.size && !setP.has(r.period)) continue;
+    const role = r.tags?.role; if (!role) continue;
+    const hc = Number(r.tags?.headcount) || 0;
+    (hcByRolePeriod[role] ||= {});
+    hcByRolePeriod[role][r.period] = (hcByRolePeriod[role][r.period] || 0) + hc;
+  }
+  const avgFte = (role) => {
+    const byT = hcByRolePeriod[role];
+    if (!byT) return 0;
+    const denom = periods.length || Object.keys(byT).length;
+    if (denom === 0) return 0;
+    let s = 0; for (const t of periods) s += (byT[t] || 0);
+    return s / denom;
+  };
+  const fteExec = avgFte('executive');
+  const fteSrMgr = avgFte('senior_manager');
+  const fteSetMgr = avgFte('setting_manager');
+  const fteAssist = avgFte('assistant_manager');
+  const fteAdmin = avgFte('admin');
+  const fteSenQual = avgFte('senior_qualified');
+  const fteQualBlended = avgFte('qualified');
+  const fteApprBlended = avgFte('apprentice');
+
+  // Each row: [label, annual salary (pence), nmw hourly, isBlended, fte]
   const ROWS = [
-    ['Executive',            lookup('base_salary_p.executive') || 0,         nmw21],
-    ['Senior manager',       lookup('base_salary_p.senior_manager') || 0,    nmw21],
-    ['Setting manager',      lookup('base_salary_p.setting_manager') || 0,   nmw21],
-    ['Assistant manager',    lookup('base_salary_p.assistant_manager') || 0, nmw21],
-    ['Admin',                lookup('base_salary_p.admin') || 0,             nmw21],
-    ['Senior qualified',     lookup('base_salary_p.senior_qualified') || 0,  nmw21],
-    // Direct staff broken down by NMW age band
-    ['Qualified — under 19', lookup('base_salary_p.qualified_under19') || 0, nmwUnder18],
-    ['Qualified — under 21', lookup('base_salary_p.qualified_under21') || 0, nmw18to20],
-    ['Qualified — 21 +',     lookup('base_salary_p.qualified_21plus') || 0,  nmw21],
-    ['Qualified — blended',  blend('qualified'),                              nmw21, true],
-    ['Apprentice — under 19',lookup('base_salary_p.apprentice_under19') || 0,nmwAppr],
-    ['Apprentice — under 21',lookup('base_salary_p.apprentice_under21') || 0,nmw18to20],
-    ['Apprentice — 21 +',    lookup('base_salary_p.apprentice_21plus') || 0, nmw21],
-    ['Apprentice — blended', blend('apprentice'),                              nmwAppr, true],
+    ['Executive',            lookup('base_salary_p.executive') || 0,         nmw21,      false, fteExec],
+    ['Senior manager',       lookup('base_salary_p.senior_manager') || 0,    nmw21,      false, fteSrMgr],
+    ['Setting manager',      lookup('base_salary_p.setting_manager') || 0,   nmw21,      false, fteSetMgr],
+    ['Assistant manager',    lookup('base_salary_p.assistant_manager') || 0, nmw21,      false, fteAssist],
+    ['Admin',                lookup('base_salary_p.admin') || 0,             nmw21,      false, fteAdmin],
+    ['Senior qualified',     lookup('base_salary_p.senior_qualified') || 0,  nmw21,      false, fteSenQual],
+    // Direct staff broken down by NMW age band — apportion total via the mix %
+    ['Qualified — under 19', lookup('base_salary_p.qualified_under19') || 0, nmwUnder18, false, fteQualBlended * qualMix.u19],
+    ['Qualified — under 21', lookup('base_salary_p.qualified_under21') || 0, nmw18to20,  false, fteQualBlended * qualMix.u21],
+    ['Qualified — 21 +',     lookup('base_salary_p.qualified_21plus') || 0,  nmw21,      false, fteQualBlended * qualMix.p21],
+    ['Qualified — blended',  blend('qualified'),                              nmw21,      true,  fteQualBlended],
+    ['Apprentice — under 19',lookup('base_salary_p.apprentice_under19') || 0,nmwAppr,    false, fteApprBlended * apprMix.u19],
+    ['Apprentice — under 21',lookup('base_salary_p.apprentice_under21') || 0,nmw18to20,  false, fteApprBlended * apprMix.u21],
+    ['Apprentice — 21 +',    lookup('base_salary_p.apprentice_21plus') || 0, nmw21,      false, fteApprBlended * apprMix.p21],
+    ['Apprentice — blended', blend('apprentice'),                              nmwAppr,    true,  fteApprBlended],
   ];
 
   const fmtRate = (p) => p > 0 ? '£' + (p / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+  const fmtFte = (n) => n == null ? '—' : Number(n).toFixed(1);
 
   return (
     <div style={analysisBox}>
@@ -284,10 +326,21 @@ function RateAnalysisBox({ staffDrivers }) {
         Hourly rate = annual salary ÷ {hoursPerYear} hours/year. RLW (Real Living Wage) and NMW (National Minimum Wage) shown for compliance.
         On-costs are the marginal cost on top of gross hourly rate.
       </p>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack, tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: '22%' }} />
+          <col style={{ width: '9%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '10%' }} />
+          <col style={{ width: '13%' }} />
+          <col style={{ width: '11%' }} />
+          <col style={{ width: '11%' }} />
+          <col style={{ width: '12%' }} />
+        </colgroup>
         <thead>
           <tr style={{ background: colors.bgSoft }}>
             <th style={th}>Role</th>
+            <th style={{ ...th, textAlign: 'right' }}># Staff (FTE)</th>
             <th style={{ ...th, textAlign: 'right' }}>Hourly rate</th>
             <th style={{ ...th, textAlign: 'right', color: colors.muted, fontWeight: 400 }}>RLW</th>
             <th style={{ ...th, textAlign: 'right', color: colors.muted, fontWeight: 400 }}>NMW (applicable)</th>
@@ -297,7 +350,7 @@ function RateAnalysisBox({ staffDrivers }) {
           </tr>
         </thead>
         <tbody>
-          {ROWS.map(([label, salary, nmw, isBlended]) => {
+          {ROWS.map(([label, salary, nmw, isBlended, fte]) => {
             const hourly = salary > 0 ? salary / hoursPerYear : 0;
             const niPerHr = hourly * niPct;
             const penPerHr = hourly * penPct;
@@ -311,6 +364,7 @@ function RateAnalysisBox({ staffDrivers }) {
                 fontWeight: isBlended ? 600 : 400,
               }}>
                 <td style={td}>{label}</td>
+                <td style={{ ...tdR, fontWeight: isBlended ? 700 : 500 }}>{fmtFte(fte)}</td>
                 <td style={{ ...tdR, color: belowNmw ? colors.red : (belowRlw ? colors.amber : colors.ink) }}>
                   {fmtRate(hourly)}
                   {belowNmw && <span style={{ display: 'block', fontSize: 9, color: colors.red }}>below NMW</span>}
@@ -358,24 +412,37 @@ function StaffCostsBreakdownBox({ staffDrivers, outputs, grouped, entityIds }) {
 
   const rows = grouped.map(g => {
     let totalCost = 0;
+    const hcByPeriod = {};
     const periodSet = new Set(g.periods);
     for (const r of outputs) {
       if (r.nominal_type !== 'staff_cost') continue;
       if (!periodSet.has(r.period)) continue;
       if (!inScope(r)) continue;
       totalCost += r.amount_p;
+      // Sum HC per period across roles (excluding pre_opening to match FTE
+      // intent: only operational staff, not pre-opening startup hires).
+      if (r.module_key !== 'pre_opening') {
+        hcByPeriod[r.period] = (hcByPeriod[r.period] || 0) + (Number(r.tags?.headcount) || 0);
+      }
     }
     const gross = loadFactor > 0 ? totalCost / loadFactor : 0;
     const ni   = gross * niPct;
     const pen  = gross * penPct;
     const agencyCover = (gross + ni + pen) * vacPct * agencyPct;
-    // Employment Allowance: capped at £eaAnnual per 12-month window, applied
-    // against employer NI. Pro-rate by period length.
     const monthsInGroup = g.periods.length;
     const eaForPeriod = Math.min(ni, eaAnnual * (monthsInGroup / 12));
     const totalCostCheck = gross + ni - eaForPeriod + pen + agencyCover;
+    // Average FTE across the periods in the group (a quarter is 3 monthly
+    // snapshots, an annual view is 12) — gives the steady-state headcount
+    // for that period range.
+    let fte = 0;
+    if (monthsInGroup > 0) {
+      let s = 0; for (const t of g.periods) s += (hcByPeriod[t] || 0);
+      fte = s / monthsInGroup;
+    }
     return {
       label: g.label,
+      fte,
       gross, ni, ea: eaForPeriod, pen, agencyCover, total: totalCost, totalNetEa: totalCost - eaForPeriod,
       tieDelta: totalCostCheck - (totalCost - eaForPeriod),
     };
@@ -390,10 +457,21 @@ function StaffCostsBreakdownBox({ staffDrivers, outputs, grouped, entityIds }) {
         agency / vacancy cover ({(vacPct * 100).toFixed(0)}% × {(agencyPct * 100).toFixed(0)}% premium) sits on top.
         Total to employer is what hits the P&L.
       </p>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack, tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '11%' }} />
+          <col style={{ width: '13%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '15%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '13%' }} />
+        </colgroup>
         <thead>
           <tr style={{ background: colors.bgSoft }}>
             <th style={th}>Period</th>
+            <th style={{ ...th, textAlign: 'right' }}># Staff (FTE)</th>
             <th style={{ ...th, textAlign: 'right' }}>Gross wages</th>
             <th style={{ ...th, textAlign: 'right' }}>Employer NI</th>
             <th style={{ ...th, textAlign: 'right' }}>Employment Allowance</th>
@@ -406,6 +484,7 @@ function StaffCostsBreakdownBox({ staffDrivers, outputs, grouped, entityIds }) {
           {rows.map((r, i) => (
             <tr key={i} style={{ borderBottom: `1px solid ${colors.borderSoft}` }}>
               <td style={td}><strong>{r.label}</strong></td>
+              <td style={tdR}>{r.fte.toFixed(1)}</td>
               <td style={tdR}>{fmtP(r.gross, { compact: true })}</td>
               <td style={tdR}>{fmtP(r.ni, { compact: true })}</td>
               <td style={{ ...tdR, color: colors.green }}>({fmtP(r.ea, { compact: true })})</td>

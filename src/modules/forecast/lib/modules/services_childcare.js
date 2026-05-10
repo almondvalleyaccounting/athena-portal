@@ -43,6 +43,7 @@ export const servicesChildcareModule = {
     // per-site variation; otherwise group-level)
     ...AGE_BANDS_LIST.flatMap(band => ([
       { key: `weekly_rate_p.${band}`, label: `Weekly rate (${bandLabel(band)})`, unit: 'gbp_p', kind: 'scalar', scope: 'entity', defaultValue: defaultWeeklyRateP(band) },
+      { key: `operating_hours_per_week.${band}`, label: `Operating hours per week (${bandLabel(band)})`, unit: 'hours', kind: 'scalar', scope: 'entity', defaultValue: defaultHoursPerWeek(band) },
       { key: `funded_hours_take_up_pct.${band}`, label: `Funded take-up % (${bandLabel(band)})`, unit: 'pct', kind: 'scalar', scope: 'entity', defaultValue: FUNDED_BANDS.includes(band) ? 80 : 0 },
       { key: `eligible_for_funded_pct.${band}`, label: `Eligible for funded % (${bandLabel(band)})`, unit: 'pct', kind: 'scalar', scope: 'entity', defaultValue: FUNDED_BANDS.includes(band) ? 100 : 0 },
       { key: `la_funded_rate_p.${band}`, label: `LA funded rate £/hr (${bandLabel(band)})`, unit: 'gbp_p', kind: 'scalar', scope: 'entity', defaultValue: 555 },   // ~£5.55/hr default
@@ -55,6 +56,22 @@ export const servicesChildcareModule = {
   ],
 
   compute(ctx) {
+    // ── New LA-first hours allocation ─────────────────────────────
+    //
+    // Per band, per child-week:
+    //   max_hours_per_child_per_week = operating_hours_per_week (driver)
+    //   LA hours allocation per eligible+take-up child per week:
+    //     = FUNDED_HOURS_PER_YEAR / weeks_per_year   (e.g. 1140/51 ≈ 22.35)
+    //     capped at max_hours_per_child_per_week
+    //   private hours per child per week = max - LA   (≥ 0)
+    //
+    // Per-period revenue (monthly = weeks_per_year / 12):
+    //   LA      = LA_eligible_children × LA_per_child_per_week × monthlyWeeks × LA_rate (£/hr)
+    //   Private = (private_per_child_per_week × non-funded_children
+    //              + private_remainder_per_funded_child × funded_children)
+    //              × monthlyWeeks × hourly_rate
+    // where hourly_rate = weekly_rate / max_hours_per_week.
+
     const out = [];
     const weeks = ctx.resolve('weeks_per_year', {}) || 51;
 
@@ -67,39 +84,46 @@ export const servicesChildcareModule = {
         const capacity = cap[band] || 0;
         if (capacity === 0) continue;
 
-        const weeklyRate = ctx.resolve(`weekly_rate_p.${band}`, { entity: e.key });
-        const eligiblePct = ctx.resolve(`eligible_for_funded_pct.${band}`, { entity: e.key });
-        const takeupPct = ctx.resolve(`funded_hours_take_up_pct.${band}`, { entity: e.key });
-        const laRate = ctx.resolve(`la_funded_rate_p.${band}`, { entity: e.key });
+        const weeklyRate     = ctx.resolve(`weekly_rate_p.${band}`, { entity: e.key });
+        const hpw            = ctx.resolve(`operating_hours_per_week.${band}`, { entity: e.key }) || 50;
+        const eligiblePct    = ctx.resolve(`eligible_for_funded_pct.${band}`, { entity: e.key });
+        const takeupPct      = ctx.resolve(`funded_hours_take_up_pct.${band}`, { entity: e.key });
+        const laRate         = ctx.resolve(`la_funded_rate_p.${band}`, { entity: e.key });
+
+        // £/hour for private fees (derived from the weekly rate).
+        const hourlyRate = hpw > 0 ? weeklyRate / hpw : 0;
+        // LA hours per eligible-take-up child per week, capped at the
+        // band's operating window. After-school (15hrs/wk) typically caps
+        // below the statutory 22.35 hrs/wk pro-rata.
+        const laHoursPerChildPerWeek = Math.min(hpw, FUNDED_HOURS_PER_YEAR / weeks);
+        const monthlyWeeks = weeks / 12;
 
         for (const t of ctx.periods) {
           const occ = (occByBand[band]?.[t] ?? 0) / 100;
           const children = capacity * occ;
-          if (children === 0) {
-            // skip empty rows for performance
-            continue;
-          }
+          if (children === 0) continue;
 
-          const fundedChildren = children * (eligiblePct / 100) * (takeupPct / 100);
-          const privateChildren = children - fundedChildren;
+          const fundedShare = (eligiblePct / 100) * (takeupPct / 100);
+          const fundedChildren = children * fundedShare;
+          const nonFundedChildren = children - fundedChildren;
 
-          // Months: divide annual figures by 12 directly (calendar months).
-          const monthlyWeeks = weeks / 12;
+          // Hours per child per week
+          const fundedChildPrivateHours = Math.max(0, hpw - laHoursPerChildPerWeek);
 
-          // Private fees: privateChildren * weeklyRate * monthlyWeeks
-          // For a funded child, they typically still pay private fees for hours
-          // beyond the 1140/year. Simplified for v1: assume funded child pays
-          // 50% of full private fee for non-funded hours.
-          const privateFeeRevenue = (privateChildren + fundedChildren * 0.5) * weeklyRate * monthlyWeeks;
+          // Per-period totals (per month)
+          const laHoursMonthly = fundedChildren * laHoursPerChildPerWeek * monthlyWeeks;
+          const privateHoursMonthly =
+              nonFundedChildren * hpw * monthlyWeeks
+            + fundedChildren * fundedChildPrivateHours * monthlyWeeks;
 
-          // Funded hours: 1140/12 hours per month * laRate per child
-          const fundedRevenue = fundedChildren * (FUNDED_HOURS_PER_YEAR / 12) * laRate;
+          const fundedRevenue   = laHoursMonthly      * laRate;
+          const privateRevenue  = privateHoursMonthly * hourlyRate;
 
-          if (privateFeeRevenue > 0) {
+          if (privateRevenue > 0) {
             out.push({
               module_key: 'services_childcare', entity_id: e.id, period: t,
               nominal_type: 'revenue', line_label: `Private fees — ${bandLabel(band)}`,
-              amount_p: Math.round(privateFeeRevenue),
+              amount_p: Math.round(privateRevenue),
               tags: { age_band: band, revenue_kind: 'private' },
             });
           }
@@ -134,6 +158,17 @@ export const servicesChildcareModule = {
     return out;
   },
 };
+
+function defaultHoursPerWeek(band) {
+  // Standard "full-week" hours used to convert weekly fee into £/hour.
+  switch (band) {
+    case 'babies':        return 50;
+    case 'twos':          return 50;
+    case 'three_to_five': return 50;
+    case 'after_school':  return 15;
+    default: return 50;
+  }
+}
 
 function defaultWeeklyRateP(band) {
   // Reasonable Scottish private nursery defaults, in pence

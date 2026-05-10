@@ -7,6 +7,7 @@ import { staffModule } from './modules/staff.js';
 import { overheadsModule } from './modules/overheads.js';
 import { premisesModule } from './modules/premises.js';
 import { preOpeningModule } from './modules/pre_opening.js';
+import { fixedAssetsModule } from './modules/fixed_assets.js';
 import { loansModule } from './modules/loans.js';
 import { workingCapitalModule } from './modules/working_capital.js';
 import { taxSimpleModule } from './modules/tax_simple.js';
@@ -20,6 +21,7 @@ const CHILDCARE_SCOTLAND_MODULES = [
   overheadsModule,
   premisesModule,
   preOpeningModule,
+  fixedAssetsModule,
   loansModule,
   workingCapitalModule,
   taxSimpleModule,

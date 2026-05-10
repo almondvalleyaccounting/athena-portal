@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   listForecasts, createForecast, updateForecast, listVersions, listScenarios,
   loadOutputs, loadFindings, listEntities, listGroups, listEntityGroupAssignments,
+  copyForecast,
 } from './lib/queries';
 import { recomputeScenario } from './lib/recompute';
 import { PACKS } from './lib/packs';
@@ -19,6 +20,8 @@ import StaffCostsView from './views/StaffCostsView';
 import PremisesOverheadsView from './views/PremisesOverheadsView';
 import KpisTrendView from './views/KpisTrendView';
 import CapacitiesView from './views/CapacitiesView';
+import IncomeView from './views/IncomeView';
+import ExportModal from './views/ExportModal';
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -26,6 +29,7 @@ const TABS = [
   { key: 'pnl',       label: 'P&L' },
   { key: 'bs',        label: 'Balance sheet' },
   { key: 'cf',        label: 'Cashflow' },
+  { key: 'income',    label: 'Income' },
   { key: 'staff',     label: 'Staff detail' },
   { key: 'premises',  label: 'Premises & overheads' },
   { key: 'capacities',label: 'Capacities' },
@@ -50,6 +54,7 @@ export default function ForecastModule() {
   const [tab, setTab] = useState('dashboard');
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   const [entities, setEntities] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -129,8 +134,11 @@ export default function ForecastModule() {
     if (!form?.name) return;
     setBusy(true);
     try {
+      // Modal supplies opening_period as YYYY-MM-01; fall back to current
+      // month if missing (defensive — modal validates).
       const today = new Date();
-      const opening = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+      const fallback = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+      const opening = form.opening_period || fallback;
       const { forecast: f } = await createForecast({
         name: form.name, client_name: form.client_name || null,
         vertical_pack: form.vertical_pack, horizon_months: form.horizon_months || 84,
@@ -141,6 +149,37 @@ export default function ForecastModule() {
       setForecastId(f.id);
       setShowCreate(false);
     } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+
+  const onCopyForecast = async () => {
+    if (!forecast) return;
+    const suggested = forecast.name?.match(/(.*?)( v\d+)?$/);
+    const stem = (suggested && suggested[1]) || forecast.name || 'Forecast';
+    const nextName = prompt(
+      'Name for the copy?\n\nThis duplicates the entire forecast (entities, assumptions, drivers, loans, groups). Outputs and findings are NOT copied — Recompute the new forecast after the copy completes.',
+      `${stem} v2`
+    );
+    if (nextName == null) return;
+    const trimmed = nextName.trim();
+    if (!trimmed) return;
+    setBusy(true); setErr(null);
+    try {
+      // We pass the desired name as a suffix relative to the source name.
+      // The helper appends as `<srcName><suffix>`, so derive suffix.
+      const suffix = trimmed.startsWith(forecast.name)
+        ? trimmed.slice(forecast.name.length)
+        : ` — ${trimmed}`;
+      const f = await copyForecast(forecast.id, { name_suffix: suffix });
+      // If the suffix substitution above didn't yield exactly the user's
+      // requested name, rename the new forecast directly.
+      if (f.name !== trimmed) {
+        await updateForecast(f.id, { name: trimmed });
+      }
+      const list = await listForecasts();
+      setForecasts(list);
+      setForecastId(f.id);
+    } catch (e) { setErr(`Copy failed: ${e.message}`); }
     setBusy(false);
   };
 
@@ -165,11 +204,12 @@ export default function ForecastModule() {
 
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto', padding: '24px 24px 60px', fontFamily: fontStack }}>
-      <Header
+      <Header onExport={forecast ? () => setShowExport(true) : null}
         forecast={forecast} forecasts={forecasts}
         forecastId={forecastId} onSelect={setForecastId}
         onCreate={() => setShowCreate(true)}
         onEdit={forecast ? () => setShowEdit(true) : null}
+        onCopy={forecast ? onCopyForecast : null}
         onRecompute={forecast ? onRecompute : null}
         busy={busy}
         integrity={integrity}
@@ -180,6 +220,15 @@ export default function ForecastModule() {
           onCreate={onCreate}
           existingClients={[...new Set(forecasts.map(f => f.client_name).filter(Boolean))]}
           busy={busy}
+        />
+      )}
+      {showExport && forecast && scenario && (
+        <ExportModal
+          forecast={forecast} scenario={scenario}
+          periods={periods} outputs={outputs}
+          entities={entities} groups={groups} assignments={assignments}
+          filter={filter}
+          onClose={() => setShowExport(false)}
         />
       )}
       {showEdit && forecast && (
@@ -222,6 +271,12 @@ export default function ForecastModule() {
                 entities={entities} groups={groups} assignments={assignments}
                 onEntitiesChanged={reloadEntities} onGroupsChanged={reloadGroups}
                 onChanged={onRecompute} />
+            )}
+            {tab === 'income' && (
+              <IncomeView outputs={outputs} forecast={forecast} periods={periods}
+                scenarioId={scenario.id}
+                entities={entities} groups={groups} assignments={assignments}
+                filter={filter} onFilterChange={setFilter} />
             )}
             {tab === 'pnl' && (
               <StatementView title="Profit & Loss" variant="pnl" lines={PNL_LINES} outputs={outputs}
@@ -275,7 +330,7 @@ export default function ForecastModule() {
               <InsightsView outputs={outputs} findings={findings} forecast={forecast} periods={periods} entities={entities} />
             )}
             {tab === 'findings' && (
-              <FindingsView findings={findings} />
+              <FindingsView findings={findings} outputs={outputs} forecast={forecast} periods={periods} entities={entities} />
             )}
           </div>
         </>
@@ -284,7 +339,7 @@ export default function ForecastModule() {
   );
 }
 
-function Header({ forecast, forecasts, forecastId, onSelect, onCreate, onEdit, integrity, onRecompute, busy }) {
+function Header({ forecast, forecasts, forecastId, onSelect, onCreate, onEdit, onCopy, onExport, integrity, onRecompute, busy }) {
   const byClient = {};
   for (const f of forecasts) {
     const c = f.client_name || '— no client —';
@@ -329,6 +384,12 @@ function Header({ forecast, forecasts, forecastId, onSelect, onCreate, onEdit, i
           <button onClick={onEdit} style={btnOutline} title="Edit client name, forecast name and horizon">Edit</button>
         )}
         <button onClick={onCreate} style={btnDark}>+ New</button>
+        {forecast && onCopy && (
+          <button onClick={onCopy} disabled={busy} style={btnOutline} title="Duplicate this forecast as a new version (e.g. v2)">Copy</button>
+        )}
+        {forecast && onExport && (
+          <button onClick={onExport} style={btnOutline} title="Export PDF / Excel pack">Export</button>
+        )}
         {forecast && onRecompute && (
           <button onClick={onRecompute} disabled={busy} style={btnDark} title="Recompute outputs from current drivers">
             {busy ? 'Computing…' : 'Recompute'}
@@ -340,16 +401,29 @@ function Header({ forecast, forecasts, forecastId, onSelect, onCreate, onEdit, i
 }
 
 function CreateForecastModal({ onClose, onCreate, existingClients, busy }) {
+  // Default the start month to the current month so a fresh forecast
+  // begins now; users override to backdate or push forward.
+  const today = new Date();
+  const ymThisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   const [form, setForm] = useState({
     name: '',
     client_name: '',
     vertical_pack: 'childcare_scotland',
     horizon_months: 84,
+    start_month: ymThisMonth,           // YYYY-MM
   });
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const submit = () => {
     if (!form.name.trim()) { alert('Forecast name required'); return; }
-    onCreate({ ...form, name: form.name.trim(), client_name: form.client_name.trim(), horizon_months: Number(form.horizon_months) });
+    if (!form.start_month || !/^\d{4}-\d{2}$/.test(form.start_month)) {
+      alert('Start month is required (YYYY-MM)'); return;
+    }
+    onCreate({
+      ...form,
+      name: form.name.trim(), client_name: form.client_name.trim(),
+      horizon_months: Number(form.horizon_months),
+      opening_period: `${form.start_month}-01`,    // first of month
+    });
   };
   return (
     <div onClick={onClose} style={modalBackdrop}>
@@ -389,8 +463,21 @@ function CreateForecastModal({ onClose, onCreate, existingClients, busy }) {
           <Field label="Horizon (months)">
             <input type="number" value={form.horizon_months} onChange={set('horizon_months')} style={inputStyle} />
           </Field>
+          <Field label="Start month">
+            <input
+              type="month"
+              value={form.start_month}
+              onChange={set('start_month')}
+              style={inputStyle}
+            />
+          </Field>
         </div>
         <p style={{ fontSize: 11, color: colors.muted, margin: '12px 0 0' }}>
+          Start month sets period 0 of the model — every "Opens (months from start)"
+          on a location is relative to this. Defaults to the current month; pick any
+          past or future month to anchor the forecast.
+        </p>
+        <p style={{ fontSize: 11, color: colors.muted, margin: '6px 0 0' }}>
           Client name groups forecasts in the picker and will support consolidation across multiple businesses for the same client.
         </p>
         <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
@@ -434,22 +521,31 @@ function IntegrityBadge({ state, label }) {
 }
 
 function EditForecastModal({ forecast, onClose, onSave, existingClients, busy }) {
+  // Pull the YYYY-MM portion out of the stored opening_period (which is
+  // a YYYY-MM-DD string) so the <input type="month"> binds cleanly.
+  const startMonthFromForecast = (forecast.opening_period || '').slice(0, 7);
   const [form, setForm] = useState({
     name: forecast.name || '',
     client_name: forecast.client_name || '',
     horizon_months: forecast.horizon_months || 60,
+    start_month: startMonthFromForecast,
   });
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const submit = () => {
     if (!form.name.trim()) { alert('Forecast name required'); return; }
     if (!form.horizon_months || form.horizon_months < 1) { alert('Horizon must be at least 1 month'); return; }
+    if (!form.start_month || !/^\d{4}-\d{2}$/.test(form.start_month)) {
+      alert('Start month is required (YYYY-MM)'); return;
+    }
     onSave({
       name: form.name.trim(),
       client_name: form.client_name.trim(),
       horizon_months: Number(form.horizon_months),
+      opening_period: `${form.start_month}-01`,
     });
   };
   const horizonShrinking = Number(form.horizon_months) < forecast.horizon_months;
+  const startMonthChanging = form.start_month !== startMonthFromForecast;
   return (
     <div onClick={onClose} style={modalBackdrop}>
       <div onClick={(e) => e.stopPropagation()} style={modalCard}>
@@ -476,6 +572,9 @@ function EditForecastModal({ forecast, onClose, onSave, existingClients, busy })
           <Field label="Horizon (months)">
             <input type="number" value={form.horizon_months} onChange={set('horizon_months')} style={inputStyle} />
           </Field>
+          <Field label="Start month">
+            <input type="month" value={form.start_month} onChange={set('start_month')} style={inputStyle} />
+          </Field>
           <Field label="Vertical pack">
             <input value={forecast.vertical_pack} disabled style={{ ...inputStyle, color: colors.muted }} />
           </Field>
@@ -483,6 +582,12 @@ function EditForecastModal({ forecast, onClose, onSave, existingClients, busy })
         {horizonShrinking && (
           <p style={{ fontSize: 11, color: colors.amber, margin: '12px 0 0', background: '#fef3c7', padding: 8, borderRadius: 6 }}>
             Shrinking horizon will drop output rows beyond month {form.horizon_months - 1}. Recompute after saving to refresh.
+          </p>
+        )}
+        {startMonthChanging && (
+          <p style={{ fontSize: 11, color: colors.amber, margin: '8px 0 0', background: '#fef3c7', padding: 8, borderRadius: 6 }}>
+            Changing the start month shifts every period in the forecast. "Opens (months from start)"
+            on each location stays in months — but the calendar dates will move. Recompute after saving.
           </p>
         )}
         <p style={{ fontSize: 11, color: colors.muted, margin: '12px 0 0' }}>

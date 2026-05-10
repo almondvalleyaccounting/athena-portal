@@ -32,7 +32,10 @@ export const workingCapitalModule = {
   drivers: [
     { key: 'wc.dso_private_days', label: 'DSO — private fees (days)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 0 },
     { key: 'wc.dso_la_days', label: 'DSO — LA funded (days)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 90 },
-    { key: 'wc.dpo_general_days', label: 'DPO — costs (days)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 30 },
+    // DPO defaults to 0 because childcare suppliers are typically paid
+    // promptly or in advance (rent, utilities by DD, food on delivery).
+    // Set higher only if you genuinely run a supplier-credit book.
+    { key: 'wc.dpo_general_days', label: 'DPO — costs (days)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 0 },
   ],
 
   outputs: [
@@ -59,8 +62,16 @@ export const workingCapitalModule = {
 
     const revPrivByPeriod = sumByPeriod(upstream, o => o.module_key === 'services_childcare' && o.tags?.revenue_kind === 'private');
     const revLaByPeriod = sumByPeriod(upstream, o => o.module_key === 'services_childcare' && o.tags?.revenue_kind === 'funded');
+    // Creditors base — overheads only:
+    //   - Staff is paid through payroll on a fixed cycle, NOT on supplier
+    //     credit terms. Including it would generate a fictitious payroll
+    //     creditor that offsets staff cost outflows in month 1.
+    //   - Pre-opening costs are paid cash up-front (fit-out, registration,
+    //     marketing, custom pre-opening lines), so they're excluded too.
+    //   - Capex / depreciation are not operating supplier costs.
     const costByPeriod = sumByPeriod(upstream, o =>
-      o.nominal_type === 'staff_cost' || o.nominal_type === 'overhead'
+      o.nominal_type === 'overhead' &&
+      o.module_key !== 'pre_opening'
     );
 
     // Children attending total (for deposits) — derived from ctx.childrenAttending

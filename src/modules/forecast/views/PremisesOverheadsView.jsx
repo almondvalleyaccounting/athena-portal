@@ -28,7 +28,7 @@ export default function PremisesOverheadsView({
   const entitiesById = useMemo(() => Object.fromEntries(entities.map(e => [e.id, e])), [entities]);
   const inScope = (r) => !entityIds || r.entity_id == null || entityIds.has(r.entity_id);
 
-  const sections = useMemo(() => buildSections(outputs, inScope), [outputs, entityIds]);
+  const sections = useMemo(() => buildSections(outputs, inScope, entitiesById), [outputs, entityIds, entitiesById]);
 
   const sumOver = (byPeriod, periods) => {
     if (!byPeriod) return 0;
@@ -38,7 +38,7 @@ export default function PremisesOverheadsView({
   };
 
   const renderSection = (title, byLabel, color, drillSpecBuilder) => {
-    const labels = Object.keys(byLabel).sort();
+    const labels = Object.keys(byLabel).filter(k => k !== '_meta').sort();
     if (labels.length === 0) return null;
 
     const groupTotals = grouped.map(g =>
@@ -95,11 +95,26 @@ export default function PremisesOverheadsView({
       upstream_nts: ['overhead'],
       filter: (r) => (r.line_label || '') === lbl,
     }),
-    preOpening: (lbl) => ({
-      kind: 'upstream',
-      upstream_nts: ['overhead', 'staff_cost'],
-      filter: (r) => r.module_key === 'pre_opening' && (r.line_label || '') === lbl,
-    }),
+    // Pre-opening labels are namespaced "Entity — Base label" so the drill
+    // filter unpacks them and matches both the entity and the base label.
+    preOpening: (lbl) => {
+      const meta = sections.preOpeningMeta?.[lbl];
+      if (!meta) {
+        return {
+          kind: 'upstream',
+          upstream_nts: ['overhead', 'staff_cost'],
+          filter: (r) => r.module_key === 'pre_opening' && (r.line_label || '') === lbl,
+        };
+      }
+      return {
+        kind: 'upstream',
+        upstream_nts: ['overhead', 'staff_cost'],
+        filter: (r) =>
+          r.module_key === 'pre_opening' &&
+          (r.line_label || '') === meta.baseLabel &&
+          (meta.entity_id == null || r.entity_id === meta.entity_id),
+      };
+    },
     financing: (lbl) => ({
       kind: 'upstream',
       upstream_nts: ['debt_interest'],
@@ -111,7 +126,10 @@ export default function PremisesOverheadsView({
   const grandTotals = grouped.map(g => {
     let s = 0;
     for (const sec of [sections.direct, sections.premises, sections.overheads, sections.preOpening, sections.financing]) {
-      for (const lbl of Object.keys(sec)) s += sumOver(sec[lbl], g.periods);
+      for (const lbl of Object.keys(sec)) {
+        if (lbl === '_meta') continue;   // skip metadata bag
+        s += sumOver(sec[lbl], g.periods);
+      }
     }
     return s;
   });
@@ -186,11 +204,9 @@ export default function PremisesOverheadsView({
   );
 }
 
-function buildSections(outputs, inScope) {
+function buildSections(outputs, inScope, entitiesById = {}) {
   const PREMISES_LBLS = ['Rent', 'Service charge', 'NDR', 'Maintenance'];
   const PREMISES_DEP_LBL = 'Property + fit-out';
-  const OVERHEAD_LBLS = ['Utilities', 'Insurance', 'Software / IT', 'Marketing', 'Professional fees', 'Central admin'];
-  const PREOPENING_LBLS = ['Pre-opening overhead', 'Pre-opening marketing', 'Pre-opening staffing'];
 
   const collect = (matchFn) => {
     const byLabel = {};
@@ -204,21 +220,47 @@ function buildSections(outputs, inScope) {
     return byLabel;
   };
 
+  // Helpers to keep the categorisation rules in one place — must match
+  // financial_core's bucketing so on-screen totals tie back to the P&L.
+  const isPremises = (r) =>
+    r.nominal_type === 'overhead' && r.module_key !== 'pre_opening' && PREMISES_LBLS.includes(r.line_label);
+  const isPremisesDep = (r) =>
+    r.nominal_type === 'depreciation' && r.module_key === 'premises' && (r.line_label || '') === PREMISES_DEP_LBL;
+  const isDirectCost = (r) =>
+    r.nominal_type === 'overhead' && r.module_key !== 'pre_opening' && /consumable|food/i.test(r.line_label || '');
+  const isPreOpening = (r) =>
+    r.module_key === 'pre_opening' || /^Pre-opening/i.test(r.line_label || '');
+
+  // Pre-opening: each location's overhead / marketing / staffing line item
+  // is shown separately so multi-site forecasts get a per-location break
+  // out. Single-site forecasts collapse to the bare line label.
+  const preOpening = {};
+  const preOpeningMeta = {};
+  for (const r of outputs) {
+    if (!inScope(r)) continue;
+    if (!isPreOpening(r)) continue;
+    if (r.nominal_type !== 'overhead' && r.nominal_type !== 'staff_cost') continue;
+    const baseLabel = r.line_label || '(unlabelled)';
+    const entLabel = r.entity_id ? entitiesById[r.entity_id]?.label : null;
+    const key = entLabel ? `${entLabel} — ${baseLabel}` : baseLabel;
+    preOpening[key] ||= {};
+    preOpening[key][r.period] = (preOpening[key][r.period] || 0) + r.amount_p;
+    if (!preOpeningMeta[key]) {
+      preOpeningMeta[key] = { baseLabel, entity_id: r.entity_id || null };
+    }
+  }
+
   return {
-    direct: collect((r) =>
-      r.nominal_type === 'overhead' && /consumable|food/i.test(r.line_label || '')
-    ),
-    premises: collect((r) =>
-      (r.nominal_type === 'overhead' && PREMISES_LBLS.includes(r.line_label)) ||
-      (r.nominal_type === 'depreciation' && r.module_key === 'premises' && (r.line_label || '') === PREMISES_DEP_LBL)
-    ),
+    direct: collect(isDirectCost),
+    premises: collect((r) => isPremises(r) || isPremisesDep(r)),
+    // Everything tagged as an overhead but NOT already shown elsewhere —
+    // catches bespoke codes (Cleaning, Telephone, etc.) automatically.
     overheads: collect((r) =>
-      r.nominal_type === 'overhead' && OVERHEAD_LBLS.includes(r.line_label)
+      r.nominal_type === 'overhead' &&
+      !isPremises(r) && !isDirectCost(r) && !isPreOpening(r)
     ),
-    preOpening: collect((r) =>
-      r.module_key === 'pre_opening' &&
-      (r.nominal_type === 'overhead' || r.nominal_type === 'staff_cost' || PREOPENING_LBLS.includes(r.line_label))
-    ),
+    preOpening,
+    preOpeningMeta,
     financing: collect((r) => r.nominal_type === 'debt_interest'),
   };
 }

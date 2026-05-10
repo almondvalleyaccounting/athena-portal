@@ -40,30 +40,73 @@ export const overheadsModule = {
   ],
 
   compute(ctx) {
+    // Discover ALL drivers in this module (declared + user-added custom),
+    // so adding a new line on the Inputs tab (e.g. "Cleaning") flows through
+    // automatically without needing a code change here.
+    //
+    // Convention: any group-scope driver becomes a group line; any entity-
+    // scope driver becomes a per-entity line emitted from the entity's
+    // opening month onward. The driver's `label` is used for the P&L /
+    // drilldown line label.
+    const moduleDrivers = (ctx.drivers || []).filter(d => d.module_key === 'overheads');
+    // Dedupe per (driver_key, entity_id) — defensive in case the merged
+    // driver list has duplicates from base+working scenario merge.
+    const seen = new Set();
+    const groupDrivers = [];
+    const entityDrivers = [];
+    for (const d of moduleDrivers) {
+      const k = `${d.entity_id || ''}::${d.driver_key}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (d.entity_id) entityDrivers.push(d);
+      else groupDrivers.push(d);
+    }
+
+    // Look up a driver's value directly via the engine's by-id map. This
+    // avoids the short-key resolver picking the wrong driver when the same
+    // key happens to exist on another module (or scope).
+    const valueOf = (driver, period) => {
+      const vs = ctx.driverValuesById?.get(driver.id) || [];
+      if (driver.kind === 'scalar') {
+        const hit = vs.find(v => v.period === -1) || vs[0];
+        return hit ? Number(hit.value) : 0;
+      }
+      if (driver.kind === 'timeseries') {
+        const hit = vs.find(v => v.period === period);
+        return hit ? Number(hit.value) : 0;
+      }
+      if (driver.kind === 'linked') {
+        // Fall back to resolver for expression evaluation
+        return ctx.resolve(driver.driver_key, { entity: driver.entity_key, period }) || 0;
+      }
+      return 0;
+    };
+
     const out = [];
     for (const t of ctx.periods) {
-      // Group-level overheads
-      for (const line of OVERHEAD_LINES) {
-        if (line.scope !== 'group') continue;
-        const v = ctx.resolve(`overhead.${line.key}`, {});
-        if (v === 0) continue;
+      // Group-scope lines — emit unconditionally each period.
+      for (const d of groupDrivers) {
+        const v = valueOf(d, t);
+        if (!v) continue;
         out.push({
           module_key: 'overheads', period: t,
-          nominal_type: 'overhead', line_label: line.label,
+          nominal_type: 'overhead',
+          line_label: labelFor(d),
           amount_p: Math.round(v),
         });
       }
-      // Entity-level overheads — only after entity has opened
+      // Entity-scope lines — only after the entity has opened.
       for (const e of ctx.entities) {
         const opening = e.config?.opening_month_offset ?? 0;
         if (t < opening) continue;
-        for (const line of OVERHEAD_LINES) {
-          if (line.scope !== 'entity') continue;
-          const v = ctx.resolve(`overhead.${line.key}`, { entity: e.key });
-          if (v === 0) continue;
+        for (const d of entityDrivers) {
+          if (d.entity_id !== e.id) continue;
+          const v = valueOf(d, t);
+          if (!v) continue;
           out.push({
             module_key: 'overheads', entity_id: e.id, period: t,
-            nominal_type: 'overhead', line_label: line.label,
+            nominal_type: 'overhead',
+            line_label: labelFor(d),
             amount_p: Math.round(v),
           });
         }
@@ -72,3 +115,10 @@ export const overheadsModule = {
     return out;
   },
 };
+
+function labelFor(driver) {
+  if (driver.label) return driver.label;
+  // Strip an `overhead.` prefix and titlecase the slug as a fallback.
+  const stem = String(driver.driver_key || '').replace(/^overhead\./, '').replace(/_/g, ' ');
+  return stem.replace(/\b\w/g, c => c.toUpperCase()) || driver.driver_key;
+}

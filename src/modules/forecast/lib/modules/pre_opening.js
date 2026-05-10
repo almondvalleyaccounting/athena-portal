@@ -35,6 +35,45 @@ export const preOpeningModule = {
 
   compute(ctx) {
     const out = [];
+
+    // Discover custom drivers added via the +Add driver UI (e.g.
+    // "Pre-opening cleaning", "Pre-opening decorating"). Anything in
+    // module_key='pre_opening' that isn't one of the five built-in keys
+    // is treated as an additional monthly pre-opening cost line.
+    const DECLARED_KEYS = new Set([
+      'pre_open.registration_lead_months',
+      'pre_open.monthly_overhead_p',
+      'pre_open.staffing_months',
+      'pre_open.staffing_monthly_p',
+      'pre_open.marketing_spike_p',
+    ]);
+    const customDrivers = (ctx.drivers || []).filter(d =>
+      d.module_key === 'pre_opening' && !DECLARED_KEYS.has(d.driver_key)
+    );
+
+    // Direct value lookup by driver id — avoids the short-key resolver
+    // picking the wrong driver when the same key exists on another module.
+    const valueOf = (driver, period) => {
+      const vs = ctx.driverValuesById?.get(driver.id) || [];
+      if (driver.kind === 'scalar') {
+        const hit = vs.find(v => v.period === -1) || vs[0];
+        return hit ? Number(hit.value) : 0;
+      }
+      if (driver.kind === 'timeseries') {
+        const hit = vs.find(v => v.period === period);
+        return hit ? Number(hit.value) : 0;
+      }
+      // Linked drivers fall back to the resolver
+      return ctx.resolve(driver.driver_key, { entity: driver.entity_key, period }) || 0;
+    };
+
+    const labelFor = (driver) => {
+      const base = driver.label || driver.driver_key;
+      // Make sure the row is recognisable as pre-opening across all views
+      // (financial_core / drillModal / PDF) which key off "Pre-opening".
+      return /^Pre-opening/i.test(base) ? base : `Pre-opening — ${base}`;
+    };
+
     for (const e of ctx.entities) {
       const cfg = e.config || {};
       const opening = cfg.opening_month_offset ?? 0;
@@ -79,6 +118,22 @@ export const preOpeningModule = {
           nominal_type: 'overhead', line_label: 'Pre-opening marketing',
           amount_p: Math.round(marketing),
         });
+      }
+
+      // Custom pre-opening cost lines — emit each as a monthly recurring
+      // cost during the registration-lead window. Group-scope drivers
+      // apply to every entity; entity-scope drivers only to their own.
+      for (const d of customDrivers) {
+        if (d.entity_id && d.entity_id !== e.id) continue;
+        for (let t = ohStart; t < opening; t++) {
+          const v = valueOf(d, t);
+          if (!v) continue;
+          out.push({
+            module_key: 'pre_opening', entity_id: e.id, period: t,
+            nominal_type: 'overhead', line_label: labelFor(d),
+            amount_p: Math.round(v),
+          });
+        }
       }
     }
     return out;

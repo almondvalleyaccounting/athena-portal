@@ -186,6 +186,8 @@ export function runForecast({ forecast, modules, entities, drivers, driverValues
   const ctx = {
     forecast,
     entities,
+    drivers,                    // full merged driver list (so modules can discover custom drivers)
+    driverValuesById: valuesByDriverId,    // direct value lookup for modules iterating drivers
     loans: loans || [],
     horizonMonths: forecast.horizon_months,
     periods: range(0, forecast.horizon_months),

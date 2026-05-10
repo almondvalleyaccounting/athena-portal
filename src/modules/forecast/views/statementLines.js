@@ -6,6 +6,8 @@
 //   group:     opaque tag used by the view to gate visibility (e.g. 'inflation')
 
 export const PNL_LINES = [
+  { nominal_type: 'pnl.revenue_private',       label: 'Private fees', indent: true },
+  { nominal_type: 'pnl.revenue_la_funded',     label: 'LA funded', indent: true },
   { nominal_type: 'pnl.revenue_total',         label: 'Revenue', kind: 'header' },
   { nominal_type: 'pnl.income_inflation_uplift', label: 'of which: inflation uplift', indent: true, kind: 'subtle', group: 'inflation' },
 
@@ -75,24 +77,36 @@ export const BS_LINES = [
 export const CF_LINES = [
   { nominal_type: 'cf.opening_cash',     label: 'Opening cash', aggregate: 'first', kind: 'header' },
 
+  // ─── Cash in ───────────────────────────────────────────────────
   { nominal_type: 'cf.in.private',       label: 'Private fees', indent: true },
   { nominal_type: 'cf.in.la_funded',     label: 'LA funded', indent: true },
   { nominal_type: 'cf.in.debt_drawdown', label: 'Debt drawdown', indent: true },
   { nominal_type: 'cf.in_total',         label: 'Total cash in', kind: 'header' },
 
-  { nominal_type: 'cf.out.staff',           label: 'Staff costs', indent: true },
-  { nominal_type: 'cf.out.premises',        label: 'Premises (rent / NDR / maintenance)', indent: true },
-  { nominal_type: 'cf.out.utilities',       label: 'Utilities', indent: true },
-  { nominal_type: 'cf.out.other_overhead',  label: 'Other overheads', indent: true },
-  { nominal_type: 'cf.out.pre_opening',     label: 'Pre-opening', indent: true },
-  { nominal_type: 'cf.out.capex',           label: 'Capex', indent: true },
-  { nominal_type: 'cf.out.interest',        label: 'Interest', indent: true },
-  { nominal_type: 'cf.out.principal',       label: 'Mortgage / loan principal', indent: true },
-  { nominal_type: 'cf.out.tax',             label: 'Tax paid', indent: true },
-  { nominal_type: 'cf.out.dividends',       label: 'Dividends paid', indent: true },
-  { nominal_type: 'cf.out_total',           label: 'Total cash out', kind: 'header' },
+  // ─── One-off cash out (capex + pre-opening line items) ─────────
+  { nominal_type: 'cf.out.capex',                 label: 'Capex',                       indent: true },
+  { nominal_type: 'cf.out.pre_opening_overhead',  label: 'Pre-opening — overhead',      indent: true },
+  { nominal_type: 'cf.out.pre_opening_marketing', label: 'Pre-opening — marketing',     indent: true },
+  { nominal_type: 'cf.out.pre_opening_staffing',  label: 'Pre-opening — staffing',      indent: true },
+  { nominal_type: 'cf.out.one_off_total',         label: 'Total one-off',               kind: 'header' },
 
-  { nominal_type: 'cf.wc_movement',     label: 'Working capital movement' },
-  { nominal_type: 'cf.net_movement',    label: 'Net cash movement', kind: 'header' },
-  { nominal_type: 'cf.closing_cash',    label: 'Closing cash', aggregate: 'last', kind: 'header' },
+  // ─── Recurring operating cash out ──────────────────────────────
+  { nominal_type: 'cf.out.staff',          label: 'Staff costs', indent: true },
+  { nominal_type: 'cf.out.premises',       label: 'Premises (rent / NDR / maintenance)', indent: true },
+  { nominal_type: 'cf.out.utilities',      label: 'Utilities', indent: true },
+  { nominal_type: 'cf.out.other_overhead', label: 'Other overheads', indent: true },
+  { nominal_type: 'cf.out.recurring_total',label: 'Total recurring', kind: 'header' },
+
+  // ─── Financing & tax ───────────────────────────────────────────
+  { nominal_type: 'cf.out.interest',     label: 'Interest', indent: true },
+  { nominal_type: 'cf.out.principal',    label: 'Mortgage / loan principal', indent: true },
+  { nominal_type: 'cf.out.tax',          label: 'Tax paid', indent: true },
+  { nominal_type: 'cf.out.dividends',    label: 'Dividends paid', indent: true },
+  { nominal_type: 'cf.out.fin_tax_total',label: 'Total financing & tax', kind: 'header' },
+
+  { nominal_type: 'cf.out_total',        label: 'Total cash out', kind: 'header' },
+
+  { nominal_type: 'cf.wc_movement',      label: 'Working capital movement' },
+  { nominal_type: 'cf.net_movement',     label: 'Net cash movement', kind: 'header' },
+  { nominal_type: 'cf.closing_cash',     label: 'Closing cash', aggregate: 'last', kind: 'header' },
 ];

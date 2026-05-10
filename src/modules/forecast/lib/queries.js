@@ -155,6 +155,34 @@ export async function setDriverValue(driver_id, period, value) {
   if (error) throw error;
 }
 
+/**
+ * Delete a driver (and any associated values). Used for custom drivers
+ * the user added via the +Add driver UI and now wants to remove.
+ *
+ * If the DB has ON DELETE CASCADE on fc_driver_value.driver_id, the
+ * values disappear with the driver row. We delete values explicitly
+ * first as a defensive measure in case the constraint isn't there.
+ */
+export async function deleteDriver(driver_id) {
+  await supabase.from('fc_driver_value').delete().eq('driver_id', driver_id);
+  const { error } = await supabase.from('fc_driver').delete().eq('id', driver_id);
+  if (error) throw error;
+}
+
+/**
+ * Update a driver's metadata (label / kind / unit). Doesn't touch values.
+ */
+export async function updateDriver(driver_id, patch) {
+  const allowed = {};
+  if (patch.label !== undefined) allowed.label = patch.label;
+  if (patch.unit !== undefined)  allowed.unit  = patch.unit;
+  if (patch.kind !== undefined)  allowed.kind  = patch.kind;
+  const { data, error } = await supabase
+    .from('fc_driver').update(allowed).eq('id', driver_id).select().single();
+  if (error) throw error;
+  return data;
+}
+
 /** Replace materialised outputs for a scenario. */
 export async function persistOutputs(scenario_id, outputs) {
   // Delete existing rows for this scenario, then insert fresh.
@@ -420,6 +448,354 @@ export async function deleteEntity(id) {
 }
 
 /**
+ * Duplicate a location (entity) and all its entity-scoped driver values.
+ * The new location gets a fresh key + label suffix, and any group-tag
+ * assignments are NOT carried over (cleaner default — caller can re-tag).
+ *
+ * Returns the new entity row.
+ */
+export async function copyEntity(source_entity_id, { label_suffix = ' (copy)' } = {}) {
+  // 1. Load source entity
+  const { data: src, error: e1 } = await supabase
+    .from('fc_entity').select('*').eq('id', source_entity_id).single();
+  if (e1) throw e1;
+
+  // 2. New unique key — append a short suffix; collision-safe under the
+  //    forecast_id+key unique constraint via `_<random>`.
+  const newKey = `${src.key}_copy_${Date.now().toString(36).slice(-4)}`;
+  const newLabel = `${src.label}${label_suffix}`;
+
+  const { data: newEnt, error: e2 } = await supabase
+    .from('fc_entity').insert({
+      forecast_id: src.forecast_id,
+      key: newKey,
+      label: newLabel,
+      type: src.type,
+      config: src.config,
+      sort_order: src.sort_order,
+    }).select().single();
+  if (e2) throw e2;
+
+  // 3. Pull every entity-scoped driver pointing at the source entity
+  //    across ALL scenarios in this forecast. Duplicate each one for
+  //    the new entity, keeping the same scenario_id / module_key /
+  //    driver_key / unit / kind / label / expression.
+  const { data: srcDrivers, error: e3 } = await supabase
+    .from('fc_driver').select('*').eq('entity_id', source_entity_id);
+  if (e3) throw e3;
+
+  if ((srcDrivers || []).length > 0) {
+    const insertRows = srcDrivers.map(d => ({
+      scenario_id: d.scenario_id,
+      entity_id: newEnt.id,
+      module_key: d.module_key,
+      driver_key: d.driver_key,
+      label: d.label,
+      unit: d.unit,
+      kind: d.kind,
+      expression: d.expression,
+    }));
+    const { data: newDrivers, error: e4 } = await supabase
+      .from('fc_driver').insert(insertRows).select();
+    if (e4) throw e4;
+
+    // 4. Map old driver id → new driver id by (scenario_id, module_key, driver_key)
+    const newByTriple = new Map();
+    for (const d of newDrivers || []) {
+      newByTriple.set(`${d.scenario_id}::${d.module_key}::${d.driver_key}`, d.id);
+    }
+    const idMap = new Map();
+    for (const d of srcDrivers) {
+      const k = `${d.scenario_id}::${d.module_key}::${d.driver_key}`;
+      const newId = newByTriple.get(k);
+      if (newId) idMap.set(d.id, newId);
+    }
+
+    // 5. Copy values — paginate to avoid the 1000-row IN limit
+    const oldIds = Array.from(idMap.keys());
+    const PAGE = 800;
+    for (let i = 0; i < oldIds.length; i += PAGE) {
+      const slice = oldIds.slice(i, i + PAGE);
+      const { data: oldVals, error: e5 } = await supabase
+        .from('fc_driver_value').select('driver_id, period, value').in('driver_id', slice);
+      if (e5) throw e5;
+      if ((oldVals || []).length === 0) continue;
+      const insertVals = oldVals.map(v => ({
+        driver_id: idMap.get(v.driver_id),
+        period: v.period, value: v.value,
+      })).filter(v => v.driver_id);
+      if (insertVals.length === 0) continue;
+      const { error: e6 } = await supabase.from('fc_driver_value').insert(insertVals);
+      if (e6) throw e6;
+    }
+  }
+
+  return newEnt;
+}
+
+/**
+ * Duplicate an entire forecast — versions, scenarios, entities, drivers,
+ * driver values, loans, group dimensions/values/tags. Outputs and findings
+ * are NOT copied (caller should Recompute to regenerate). The new forecast
+ * gets a name suffix so it sits next to the original in the picker.
+ *
+ * Returns the new forecast row.
+ */
+export async function copyForecast(source_forecast_id, { name_suffix = ' (copy)' } = {}) {
+  // 1. Source forecast
+  const { data: srcForecast, error: e1 } = await supabase
+    .from('fc_forecast').select('*').eq('id', source_forecast_id).single();
+  if (e1) throw e1;
+
+  const { data: newForecast, error: e2 } = await supabase
+    .from('fc_forecast').insert({
+      name: `${srcForecast.name}${name_suffix}`,
+      client_name: srcForecast.client_name,
+      vertical_pack: srcForecast.vertical_pack,
+      horizon_months: srcForecast.horizon_months,
+      opening_period: srcForecast.opening_period,
+    }).select().single();
+  if (e2) throw e2;
+
+  try {
+    // 2. Versions
+    const { data: srcVersions, error: e3 } = await supabase
+      .from('fc_version').select('*').eq('forecast_id', source_forecast_id);
+    if (e3) throw e3;
+    const versionIdMap = new Map();
+    for (const v of srcVersions || []) {
+      const { data: nv, error: ev } = await supabase
+        .from('fc_version').insert({
+          forecast_id: newForecast.id,
+          name: v.name, kind: v.kind,
+        }).select().single();
+      if (ev) throw ev;
+      versionIdMap.set(v.id, nv.id);
+    }
+
+    // 3. Scenarios
+    const oldVersionIds = Array.from(versionIdMap.keys());
+    const scenarioIdMap = new Map();
+    if (oldVersionIds.length > 0) {
+      const { data: srcScenarios, error: e4 } = await supabase
+        .from('fc_scenario').select('*').in('version_id', oldVersionIds);
+      if (e4) throw e4;
+      for (const s of srcScenarios || []) {
+        const { data: ns, error: es } = await supabase
+          .from('fc_scenario').insert({
+            version_id: versionIdMap.get(s.version_id),
+            name: s.name, kind: s.kind,
+          }).select().single();
+        if (es) throw es;
+        scenarioIdMap.set(s.id, ns.id);
+      }
+    }
+
+    // 4. Entities
+    const { data: srcEntities, error: e5 } = await supabase
+      .from('fc_entity').select('*').eq('forecast_id', source_forecast_id);
+    if (e5) throw e5;
+    const entityIdMap = new Map();
+    for (const e of srcEntities || []) {
+      // Same label / key — these are unique within the new forecast scope
+      const { data: ne, error: ee } = await supabase
+        .from('fc_entity').insert({
+          forecast_id: newForecast.id,
+          key: e.key, label: e.label, type: e.type,
+          config: e.config, sort_order: e.sort_order,
+        }).select().single();
+      if (ee) throw ee;
+      entityIdMap.set(e.id, ne.id);
+    }
+
+    // 5. Drivers — load all under the source's scenarios, remap.
+    const oldScenarioIds = Array.from(scenarioIdMap.keys());
+    const driverIdMap = new Map();
+    if (oldScenarioIds.length > 0) {
+      const { data: srcDrivers, error: e6 } = await supabase
+        .from('fc_driver').select('*').in('scenario_id', oldScenarioIds);
+      if (e6) throw e6;
+      if ((srcDrivers || []).length > 0) {
+        // Insert in chunks
+        const CHUNK = 400;
+        for (let i = 0; i < srcDrivers.length; i += CHUNK) {
+          const slice = srcDrivers.slice(i, i + CHUNK);
+          const rows = slice.map(d => ({
+            scenario_id: scenarioIdMap.get(d.scenario_id),
+            entity_id: d.entity_id ? entityIdMap.get(d.entity_id) : null,
+            module_key: d.module_key, driver_key: d.driver_key,
+            label: d.label, unit: d.unit, kind: d.kind,
+            expression: d.expression,
+          }));
+          const { data: ins, error: e7 } = await supabase
+            .from('fc_driver').insert(rows).select();
+          if (e7) throw e7;
+          // Map old → new by (new_scenario_id, entity_id, module_key, driver_key)
+          // We rely on insert order matching: ins[k] corresponds to slice[k]
+          for (let k = 0; k < slice.length; k++) {
+            if (ins[k]) driverIdMap.set(slice[k].id, ins[k].id);
+          }
+        }
+      }
+    }
+
+    // 6. Driver values — paginate IN()
+    const oldDriverIds = Array.from(driverIdMap.keys());
+    const PAGE = 800;
+    for (let i = 0; i < oldDriverIds.length; i += PAGE) {
+      const slice = oldDriverIds.slice(i, i + PAGE);
+      const { data: oldVals, error: e8 } = await supabase
+        .from('fc_driver_value').select('driver_id, period, value').in('driver_id', slice);
+      if (e8) throw e8;
+      if ((oldVals || []).length === 0) continue;
+      const insertVals = oldVals.map(v => ({
+        driver_id: driverIdMap.get(v.driver_id),
+        period: v.period, value: v.value,
+      })).filter(v => v.driver_id != null);
+      if (insertVals.length === 0) continue;
+      const VALCHUNK = 500;
+      for (let j = 0; j < insertVals.length; j += VALCHUNK) {
+        const { error: e9 } = await supabase.from('fc_driver_value').insert(insertVals.slice(j, j + VALCHUNK));
+        if (e9) throw e9;
+      }
+    }
+
+    // 7. Loans
+    if (oldScenarioIds.length > 0) {
+      const { data: srcLoans, error: e10 } = await supabase
+        .from('fc_loan').select('*').in('scenario_id', oldScenarioIds);
+      if (e10) throw e10;
+      if ((srcLoans || []).length > 0) {
+        const rows = srcLoans.map(l => {
+          const { id, created_at, updated_at, ...rest } = l;
+          return { ...rest, scenario_id: scenarioIdMap.get(l.scenario_id) };
+        });
+        const { error: e11 } = await supabase.from('fc_loan').insert(rows);
+        if (e11) throw e11;
+      }
+    }
+
+    // 8. Group dimensions / values / entity tags. Source forecast's "Group"
+    //    dimension(s) are duplicated, then each dimension_value is copied,
+    //    then entity_tag rows are recreated using the mapped entity/value ids.
+    const { data: srcDims, error: e12 } = await supabase
+      .from('fc_dimension').select('*').eq('forecast_id', source_forecast_id);
+    if (e12) throw e12;
+    const dimIdMap = new Map();
+    const dimValueIdMap = new Map();
+    for (const d of srcDims || []) {
+      const { data: nd, error: ed } = await supabase
+        .from('fc_dimension').insert({
+          forecast_id: newForecast.id,
+          key: d.key, label: d.label,
+        }).select().single();
+      if (ed) throw ed;
+      dimIdMap.set(d.id, nd.id);
+
+      const { data: srcDvs, error: e13 } = await supabase
+        .from('fc_dimension_value').select('*').eq('dimension_id', d.id);
+      if (e13) throw e13;
+      for (const dv of srcDvs || []) {
+        const { data: ndv, error: edv } = await supabase
+          .from('fc_dimension_value').insert({
+            dimension_id: nd.id,
+            key: dv.key, label: dv.label,
+          }).select().single();
+        if (edv) throw edv;
+        dimValueIdMap.set(dv.id, ndv.id);
+      }
+    }
+    if (dimValueIdMap.size > 0) {
+      const oldDvIds = Array.from(dimValueIdMap.keys());
+      const { data: srcTags, error: e14 } = await supabase
+        .from('fc_entity_tag').select('*').in('dimension_value_id', oldDvIds);
+      if (e14) throw e14;
+      const tagRows = (srcTags || [])
+        .map(t => ({
+          entity_id: entityIdMap.get(t.entity_id),
+          dimension_value_id: dimValueIdMap.get(t.dimension_value_id),
+        }))
+        .filter(t => t.entity_id && t.dimension_value_id);
+      if (tagRows.length > 0) {
+        const { error: e15 } = await supabase.from('fc_entity_tag').insert(tagRows);
+        if (e15) throw e15;
+      }
+    }
+
+    return newForecast;
+  } catch (err) {
+    // Best-effort rollback: delete the new forecast (cascade should clean
+    // up child rows under the standard FK constraints).
+    try { await supabase.from('fc_forecast').delete().eq('id', newForecast.id); } catch { /* ignore */ }
+    throw err;
+  }
+}
+
+// ── Nursery / pack defaults (localStorage) ─────────────────────
+//
+// Lets the user pin "what we typically use" as the seed values for
+// future scenarios + new locations. Stored client-side keyed by
+// vertical_pack so each industry pack has its own template.
+//
+// Shape:
+//   {
+//     drivers: { [module_key]: { [driver_key]: scalar_value } },
+//     entity_config: { ...partial entity.config used as new-location defaults }
+//   }
+
+const NURSERY_DEFAULTS_KEY = (pack) => `forecast_nursery_defaults__${pack || 'default'}`;
+
+export function loadNurseryDefaults(vertical_pack) {
+  try {
+    const raw = localStorage.getItem(NURSERY_DEFAULTS_KEY(vertical_pack));
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+export function clearNurseryDefaults(vertical_pack) {
+  try { localStorage.removeItem(NURSERY_DEFAULTS_KEY(vertical_pack)); } catch { /* noop */ }
+}
+
+/**
+ * Capture the current scenario's group-scope driver values + the first
+ * entity's config (as a template for new locations) and persist as the
+ * nursery defaults for this vertical pack.
+ */
+export async function saveNurseryDefaults({ scenario_id, vertical_pack, sample_entity_id = null }) {
+  const { drivers, values } = await loadScenarioDrivers(scenario_id);
+  const valueByDriverId = new Map();
+  for (const v of values) {
+    if (v.period === -1) valueByDriverId.set(v.driver_id, v.value);
+  }
+
+  // Capture group-scope drivers (entity_id IS NULL) keyed by module + driver_key.
+  // Entity-scoped drivers are also captured if a sample_entity_id is given,
+  // since some "per nursery" assumptions live there (eg pre-opening, fa.* per-site).
+  const driversOut = {};
+  for (const d of drivers) {
+    const isGroup = !d.entity_id;
+    const isSample = sample_entity_id && d.entity_id === sample_entity_id;
+    if (!isGroup && !isSample) continue;
+    if (!valueByDriverId.has(d.id)) continue;
+    driversOut[d.module_key] ||= {};
+    // Entity-sample values overwrite group only if both exist (rare)
+    driversOut[d.module_key][d.driver_key] = valueByDriverId.get(d.id);
+  }
+
+  // Capture entity_config from the sample entity if available
+  let entity_config = null;
+  if (sample_entity_id) {
+    const { data: e } = await supabase.from('fc_entity').select('config').eq('id', sample_entity_id).single();
+    entity_config = e?.config || null;
+  }
+
+  const blob = { drivers: driversOut, entity_config, saved_at: new Date().toISOString() };
+  localStorage.setItem(NURSERY_DEFAULTS_KEY(vertical_pack), JSON.stringify(blob));
+  return blob;
+}
+
+/**
  * Seed pack defaults — fill in MISSING drivers and missing values.
  *
  * Behaviour:
@@ -431,7 +807,10 @@ export async function deleteEntity(id) {
  *
  * Returns counts of {created drivers, valued, skipped (already had values)}.
  */
-export async function seedPackDefaults({ scenario_id, modules, entities, overwrite = false }) {
+export async function seedPackDefaults({ scenario_id, modules, entities, overwrite = false, vertical_pack = null }) {
+  // Pull saved nursery defaults if available; these override the
+  // hardcoded `defaultValue` from the module declarations.
+  const nurseryDefaults = vertical_pack ? loadNurseryDefaults(vertical_pack) : null;
   let created = 0, valued = 0, skipped = 0;
 
   // Pre-fetch all existing driver_value rows for this scenario so we can
@@ -468,10 +847,14 @@ export async function seedPackDefaults({ scenario_id, modules, entities, overwri
         const driver = await upsertDriver(row);
         created += 1;
 
-        if (def.kind === 'scalar' && def.defaultValue != null) {
+        // Resolve the effective default: nursery override > hardcoded.
+        const nurseryVal = nurseryDefaults?.drivers?.[mod.key]?.[def.key];
+        const effectiveDefault = nurseryVal != null ? nurseryVal : def.defaultValue;
+
+        if (def.kind === 'scalar' && effectiveDefault != null) {
           const k = `${driver.id}::-1`;
           if (!overwrite && existingValueKeys.has(k)) { skipped += 1; continue; }
-          await setDriverValue(driver.id, -1, def.defaultValue);
+          await setDriverValue(driver.id, -1, effectiveDefault);
           existingValueKeys.add(k);
           valued += 1;
         } else if (def.kind === 'timeseries' && Array.isArray(def.defaultValue)) {

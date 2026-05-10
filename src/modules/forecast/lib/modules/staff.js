@@ -50,60 +50,66 @@ export const staffModule = {
   dependsOn: ['locations', 'services_childcare'],
 
   drivers: [
-    // Statutory ratios per age band
+    // ── Statutory ratios per age band ───────────────────────────
     ...AGE_BANDS_LIST.map(band => ({
       key: `ratio.${band}`, label: `Ratio — ${bandLabel(band)} (children per adult)`,
       unit: 'ratio', kind: 'scalar', scope: 'group', defaultValue: DEFAULT_RATIOS[band] || 8,
     })),
 
-    // Direct staff role mix (must total 100)
+    // ── Direct staff role mix (must total 100) ──────────────────
     { key: 'direct_mix.senior_pct',     label: 'Direct mix — senior qualified %', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 20 },
     { key: 'direct_mix.qualified_pct',  label: 'Direct mix — qualified %',         unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 50 },
     { key: 'direct_mix.apprentice_pct', label: 'Direct mix — apprentices %',       unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 30 },
 
-    // NMW age-band mix within qualified
-    { key: 'nmw_mix.qualified.under19_pct',  label: 'Qualified mix — under 19 %',  unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 5 },
-    { key: 'nmw_mix.qualified.under21_pct',  label: 'Qualified mix — under 21 %',  unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 25 },
-    { key: 'nmw_mix.qualified.21plus_pct',   label: 'Qualified mix — 21 plus %',   unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 70 },
+    // ── Roles, in the order requested: exec → senior mgr → admin →
+    //    setting mgr → assistant mgr → qualified (21+/<21/<19) →
+    //    apprentice (21+/<21/<19). Each role groups its salary +
+    //    headcount together so the eye reads down the whole role.
+    // Executive
+    { key: 'base_salary_p.executive',              label: 'Executive — salary',              unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.executive },
+    { key: 'headcount.executives',                 label: 'Executive — group headcount',     unit: 'count', kind: 'scalar', scope: 'group',  defaultValue: 1 },
+    // Senior manager
+    { key: 'base_salary_p.senior_manager',         label: 'Senior manager — salary',         unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.senior_manager },
+    { key: 'headcount.senior_managers',            label: 'Senior manager — group headcount',unit: 'count', kind: 'scalar', scope: 'group',  defaultValue: 1 },
+    // Admin
+    { key: 'base_salary_p.admin',                  label: 'Admin — salary',                  unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.admin },
+    { key: 'headcount.admin',                      label: 'Admin — group headcount',         unit: 'count', kind: 'scalar', scope: 'group',  defaultValue: 1 },
+    // Setting manager
+    { key: 'base_salary_p.setting_manager',        label: 'Setting manager — salary',        unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.setting_manager },
+    { key: 'headcount.setting_managers_per_site',  label: 'Setting manager — per site',      unit: 'count', kind: 'scalar', scope: 'entity', defaultValue: 1 },
+    // Assistant manager
+    { key: 'base_salary_p.assistant_manager',      label: 'Assistant manager — salary',      unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.assistant_manager },
+    { key: 'headcount.assistant_managers_per_site',label: 'Assistant manager — per site',    unit: 'count', kind: 'scalar', scope: 'entity', defaultValue: 1 },
 
-    // NMW age-band mix within apprentice
-    { key: 'nmw_mix.apprentice.under19_pct', label: 'Apprentice mix — under 19 %', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 50 },
-    { key: 'nmw_mix.apprentice.under21_pct', label: 'Apprentice mix — under 21 %', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 35 },
-    { key: 'nmw_mix.apprentice.21plus_pct',  label: 'Apprentice mix — 21 plus %',  unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 15 },
+    // Senior qualified (kept for back-compat; sits between mgmt and qualified bands)
+    { key: 'base_salary_p.senior_qualified',       label: 'Senior qualified — salary',       unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.senior_qualified },
 
-    // Indirect role salaries
-    { key: 'base_salary_p.executive',         label: 'Executive salary',         unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.executive },
-    { key: 'base_salary_p.senior_manager',    label: 'Senior manager salary',    unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.senior_manager },
-    { key: 'base_salary_p.setting_manager',   label: 'Setting manager salary',   unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.setting_manager },
-    { key: 'base_salary_p.assistant_manager', label: 'Assistant manager salary', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.assistant_manager },
-    { key: 'base_salary_p.admin',             label: 'Admin salary',             unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.admin },
-    { key: 'base_salary_p.senior_qualified',  label: 'Senior qualified salary',  unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.senior_qualified },
+    // Qualified — 21+ → under 21 → under 19
+    { key: 'base_salary_p.qualified_21plus',       label: 'Qualified >21 — salary',          unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.qualified_21plus },
+    { key: 'nmw_mix.qualified.21plus_pct',         label: 'Qualified >21 — % of qualified',  unit: 'pct',   kind: 'scalar', scope: 'group',  defaultValue: 70 },
+    { key: 'base_salary_p.qualified_under21',      label: 'Qualified >19 — salary',          unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.qualified_under21 },
+    { key: 'nmw_mix.qualified.under21_pct',        label: 'Qualified >19 — % of qualified',  unit: 'pct',   kind: 'scalar', scope: 'group',  defaultValue: 25 },
+    { key: 'base_salary_p.qualified_under19',      label: 'Qualified <19 — salary',          unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.qualified_under19 },
+    { key: 'nmw_mix.qualified.under19_pct',        label: 'Qualified <19 — % of qualified',  unit: 'pct',   kind: 'scalar', scope: 'group',  defaultValue: 5 },
 
-    // NMW-banded direct staff salaries (qualified)
-    { key: 'base_salary_p.qualified_under19', label: 'Qualified salary — under 19',  unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.qualified_under19 },
-    { key: 'base_salary_p.qualified_under21', label: 'Qualified salary — under 21',  unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.qualified_under21 },
-    { key: 'base_salary_p.qualified_21plus',  label: 'Qualified salary — 21 plus',   unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.qualified_21plus },
+    // Apprentice — 21+ → under 21 → under 19
+    { key: 'base_salary_p.apprentice_21plus',      label: 'Apprentice >21 — salary',         unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.apprentice_21plus },
+    { key: 'nmw_mix.apprentice.21plus_pct',        label: 'Apprentice >21 — % of apprentice',unit: 'pct',   kind: 'scalar', scope: 'group',  defaultValue: 15 },
+    { key: 'base_salary_p.apprentice_under21',     label: 'Apprentice >19 — salary',         unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.apprentice_under21 },
+    { key: 'nmw_mix.apprentice.under21_pct',       label: 'Apprentice >19 — % of apprentice',unit: 'pct',   kind: 'scalar', scope: 'group',  defaultValue: 35 },
+    { key: 'base_salary_p.apprentice_under19',     label: 'Apprentice <19 — salary',         unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.apprentice_under19 },
+    { key: 'nmw_mix.apprentice.under19_pct',       label: 'Apprentice <19 — % of apprentice',unit: 'pct',   kind: 'scalar', scope: 'group',  defaultValue: 50 },
 
-    // NMW-banded direct staff salaries (apprentice)
-    { key: 'base_salary_p.apprentice_under19',label: 'Apprentice salary — under 19', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.apprentice_under19 },
-    { key: 'base_salary_p.apprentice_under21',label: 'Apprentice salary — under 21', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.apprentice_under21 },
-    { key: 'base_salary_p.apprentice_21plus', label: 'Apprentice salary — 21 plus',  unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: DEFAULTS.apprentice_21plus },
-
-    // Group-level headcounts
-    { key: 'headcount.executives',     label: 'Executives (group total)',      unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
-    { key: 'headcount.senior_managers',label: 'Senior managers (group total)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
-    { key: 'headcount.admin',          label: 'Admin staff (group total)',     unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
-
-    // Per-location headcounts
-    { key: 'headcount.setting_managers_per_site',  label: 'Setting managers per site',  unit: 'count', kind: 'scalar', scope: 'entity', defaultValue: 1 },
-    { key: 'headcount.assistant_managers_per_site',label: 'Assistant managers per site',unit: 'count', kind: 'scalar', scope: 'entity', defaultValue: 1 },
-
-    // On-costs and policy
+    // ── On-costs and policy ─────────────────────────────────────
     { key: 'employer_ni_pct',         label: 'Employer NI %',                    unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 15 },
     { key: 'employer_pension_pct',    label: 'Employer pension %',               unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 3 },
-    { key: 'employment_allowance_p',  label: 'Employment allowance (annual £)',  unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 500000 }, // £5,000
+    { key: 'employment_allowance_p',  label: 'Employment allowance (annual £)',  unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 500000 },
     { key: 'vacancy_rate_pct',        label: 'Vacancy / agency cover %',         unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 8 },
     { key: 'agency_premium_pct',      label: 'Agency premium %',                 unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 30 },
+    // Over-staffing buffer: lets you carry headcount above the statutory
+    // ratio (e.g. for break cover, peer support, quality of provision).
+    // 0% = manage to ratio. 10% = 10% more practitioners than required.
+    { key: 'overstaff_pct',           label: 'Over-staffing % (above statutory ratio)', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 0 },
     { key: 'real_living_wage_hourly_p', label: 'Real Living Wage (£/hr)',        unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 1290 },
     { key: 'nmw_21plus_hourly_p',     label: 'NMW — 21+ (NLW) £/hr',             unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 1221 },
     { key: 'nmw_18to20_hourly_p',     label: 'NMW — 18-20 £/hr',                 unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 1000 },
@@ -111,7 +117,7 @@ export const staffModule = {
     { key: 'nmw_apprentice_hourly_p', label: 'NMW — apprentice £/hr',            unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 755 },
     { key: 'standard_hours_per_year', label: 'Standard hours per year',          unit: 'hours', kind: 'scalar', scope: 'group', defaultValue: 1820 },
 
-    // Ratio inclusion flags (1 = counts toward statutory ratio)
+    // ── Ratio inclusion flags (1 = counts toward statutory ratio) ──
     { key: 'ratio_inclusion.senior_qualified',  label: 'Senior qualified counts toward ratio',  unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
     { key: 'ratio_inclusion.qualified',         label: 'Qualified counts toward ratio',         unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
     { key: 'ratio_inclusion.apprentice',        label: 'Apprentice counts toward ratio',        unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
@@ -140,6 +146,9 @@ export const staffModule = {
     const seniorPct    = ctx.resolve('direct_mix.senior_pct', {}) / 100;
     const qualifiedPct = ctx.resolve('direct_mix.qualified_pct', {}) / 100;
     const apprenticePct = ctx.resolve('direct_mix.apprentice_pct', {}) / 100;
+
+    // Over-staffing buffer above the statutory ratio
+    const overstaffPct = (ctx.resolve('overstaff_pct', {}) || 0) / 100;
 
     // Blended NMW-banded salaries
     const blend = (key) => {
@@ -230,10 +239,15 @@ export const staffModule = {
         practitionersByEntity[e.key] ||= [];
         practitionersByEntity[e.key][t] = totalReq;
 
+        // Apply over-staffing buffer (default 0% = manage strictly to ratio).
+        // The inflated total drives HC allocation; reqByBand still defines
+        // the band shape for distribution, so we keep the same age-mix.
+        const totalStaffed = Math.ceil(totalReq * (1 + overstaffPct));
+
         // Allocate at entity level, with proper rounding (round + residual)
-        const hcSeniorTotal = Math.round(totalReq * seniorPct);
-        const hcQualTotal   = Math.round(totalReq * qualifiedPct);
-        const hcAppTotal    = Math.max(0, totalReq - hcSeniorTotal - hcQualTotal);
+        const hcSeniorTotal = Math.round(totalStaffed * seniorPct);
+        const hcQualTotal   = Math.round(totalStaffed * qualifiedPct);
+        const hcAppTotal    = Math.max(0, totalStaffed - hcSeniorTotal - hcQualTotal);
 
         // Distribute back to bands proportional to band requirement.
         // Per-band emit retains the age_band tag for the dashboard split.

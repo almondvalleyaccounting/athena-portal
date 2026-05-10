@@ -22,9 +22,46 @@ import { trace as traceLine } from '../lib/explainers';
 export const DRILL_MAP = {
   // ─── P&L lines ─────────────────────────────────────────────
   'pnl.revenue_total':           { kind: 'upstream', upstream_nts: ['revenue'] },
+  'pnl.revenue_private':         { kind: 'upstream', upstream_nts: ['revenue'], filter: r => r.tags?.revenue_kind !== 'funded' },
+  'pnl.revenue_la_funded':       { kind: 'upstream', upstream_nts: ['revenue'], filter: r => r.tags?.revenue_kind === 'funded' },
   'pnl.income_inflation_uplift': { kind: 'formula', formula: 'Revenue × (income_inflation_factor − 1)' },
   'pnl.cost_total':              { kind: 'upstream', upstream_nts: ['staff_cost', 'overhead', 'cost_of_sales'] },
   'pnl.cost_inflation_uplift':   { kind: 'formula', formula: 'Operating costs × (cost_inflation_factor − 1)' },
+
+  // Direct (site-level) costs
+  'pnl.cost_staff_direct':       { kind: 'upstream', upstream_nts: ['staff_cost'], filter: r =>
+    r.module_key !== 'pre_opening' && ['setting_manager','assistant_manager','senior_qualified','qualified','apprentice','practitioner'].includes(r.tags?.role)
+  },
+  'pnl.cost_direct_costs':       { kind: 'upstream', upstream_nts: ['overhead', 'cost_of_sales'], filter: r =>
+    r.module_key !== 'pre_opening' && /consumable|food/i.test(r.line_label || '')
+  },
+
+  // Overheads
+  'pnl.cost_staff_overhead':     { kind: 'upstream', upstream_nts: ['staff_cost'], filter: r =>
+    r.module_key !== 'pre_opening' && !['setting_manager','assistant_manager','senior_qualified','qualified','apprentice','practitioner'].includes(r.tags?.role)
+  },
+  'pnl.cost_premises':           { kind: 'upstream', upstream_nts: ['overhead'], filter: r =>
+    r.module_key !== 'pre_opening' && ['Rent','Service charge','NDR','Maintenance'].includes(r.line_label || '')
+  },
+  'pnl.cost_utilities':          { kind: 'upstream', upstream_nts: ['overhead'], filter: r =>
+    r.module_key !== 'pre_opening' && /utilit/i.test(r.line_label || '')
+  },
+  'pnl.cost_other_overhead':     { kind: 'upstream', upstream_nts: ['overhead', 'cost_of_sales'], filter: r => {
+    const lbl = r.line_label || '';
+    if (r.module_key === 'pre_opening' || /^Pre-opening/i.test(lbl)) return false;
+    if (['Rent','Service charge','NDR','Maintenance'].includes(lbl)) return false;
+    if (/utilit/i.test(lbl)) return false;
+    if (/consumable|food/i.test(lbl)) return false;
+    if (lbl === 'Central admin') return false;
+    return true;
+  }},
+  'pnl.cost_admin':              { kind: 'upstream', upstream_nts: ['overhead'], filter: r =>
+    r.module_key !== 'pre_opening' && (r.line_label || '') === 'Central admin'
+  },
+  'pnl.cost_pre_opening':        { kind: 'upstream', upstream_nts: ['staff_cost', 'overhead'], filter: r =>
+    r.module_key === 'pre_opening' || /^Pre-opening/i.test(r.line_label || '')
+  },
+
   'pnl.depreciation_total':      { kind: 'upstream', upstream_nts: ['depreciation'] },
   'pnl.interest_total':          { kind: 'upstream', upstream_nts: ['debt_interest'] },
   'pnl.tax_total':               { kind: 'upstream', upstream_nts: ['tax'] },
@@ -62,6 +99,20 @@ export const DRILL_MAP = {
   'cf.out.pre_opening':  { kind: 'upstream', upstream_nts: ['staff_cost', 'overhead'], filter: r =>
     r.module_key === 'pre_opening' || /^Pre-opening/i.test(r.line_label || '')
   },
+  'cf.out.pre_opening_overhead': { kind: 'upstream', upstream_nts: ['overhead'], filter: r =>
+    (r.module_key === 'pre_opening' || /^Pre-opening/i.test(r.line_label || '')) &&
+    !/marketing/i.test(r.line_label || '')
+  },
+  'cf.out.pre_opening_marketing':{ kind: 'upstream', upstream_nts: ['overhead'], filter: r =>
+    (r.module_key === 'pre_opening' || /^Pre-opening/i.test(r.line_label || '')) &&
+    /marketing/i.test(r.line_label || '')
+  },
+  'cf.out.pre_opening_staffing': { kind: 'upstream', upstream_nts: ['staff_cost'], filter: r =>
+    r.module_key === 'pre_opening'
+  },
+  'cf.out.one_off_total':   { kind: 'formula', formula: 'Capex + Pre-opening (overhead + marketing + staffing)', components: ['cf.out.capex', 'cf.out.pre_opening_overhead', 'cf.out.pre_opening_marketing', 'cf.out.pre_opening_staffing'] },
+  'cf.out.recurring_total': { kind: 'formula', formula: 'Staff + Premises + Utilities + Other overheads', components: ['cf.out.staff', 'cf.out.premises', 'cf.out.utilities', 'cf.out.other_overhead'] },
+  'cf.out.fin_tax_total':   { kind: 'formula', formula: 'Interest + Principal + Tax + Dividends', components: ['cf.out.interest', 'cf.out.principal', 'cf.out.tax', 'cf.out.dividends'] },
   'cf.out.capex':        { kind: 'upstream', upstream_nts: ['capex'] },
   'cf.out.interest':     { kind: 'upstream', upstream_nts: ['debt_interest'] },
   'cf.out.principal':    { kind: 'upstream', upstream_nts: ['debt_principal'] },

@@ -117,7 +117,14 @@ export default function CapacitiesView({
       {/* Aggregate KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 18 }}>
         <KPI label="Locations in scope" value={`${scopedEntities.length}`} />
-        <KPI label="Total capacity" value={`${aggTotal} children`} hint={`${aggCap.babies} 0-2 · ${aggCap.twos} 2-3 · ${aggCap.three_to_five} 3-5 · ${aggCap.after_school} AS`} />
+        <KPI label="Total capacity" value={`${aggTotal} children`} hint={
+          <span style={{ display: 'inline-flex', gap: 10, flexWrap: 'wrap' }}>
+            <span><strong style={{ color: colors.inkSoft }}>{aggCap.babies}</strong> <span style={{ color: colors.muted }}>0-2</span></span>
+            <span><strong style={{ color: colors.inkSoft }}>{aggCap.twos}</strong> <span style={{ color: colors.muted }}>2-3</span></span>
+            <span><strong style={{ color: colors.inkSoft }}>{aggCap.three_to_five}</strong> <span style={{ color: colors.muted }}>3-5</span></span>
+            <span><strong style={{ color: colors.inkSoft }}>{aggCap.after_school}</strong> <span style={{ color: colors.muted }}>after-school</span></span>
+          </span>
+        } />
         <KPI label="Total square feet" value={aggSqft.toLocaleString('en-GB')} />
         <KPI label="Sq ft per child (avg)" value={aggTotal > 0 ? (aggSqft / aggTotal).toFixed(1) : '—'} hint="benchmark ≥ 25 sq ft" />
       </div>
