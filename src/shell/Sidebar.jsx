@@ -141,6 +141,10 @@ export default function Sidebar() {
   const isChildActive = (child, siblings) => {
     const p = location.pathname;
     if (child.route === '/manage') return p === '/manage';
+    // Explicit matchPaths win — child is active iff current path is one of these
+    if (Array.isArray(child.matchPaths) && child.matchPaths.length > 0) {
+      return child.matchPaths.includes(p);
+    }
     if (!p.startsWith(child.route)) return false;
     // Check no sibling has a longer, more specific match
     const dominated = (siblings || []).some(

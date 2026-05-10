@@ -56,10 +56,6 @@ const CAPACITY_PLANNER_TABS = [
   { id: 'estimates', label: 'Estimates',  path: '/planner/estimates' },
   { id: 'capacity',  label: 'Capacity',    path: '/planner/capacity' },
 ];
-const SUB_MODULES = [
-  { id: 'task', label: 'Task Planner', tabs: TASK_PLANNER_TABS },
-  { id: 'capacity', label: 'Capacity Planner', tabs: CAPACITY_PLANNER_TABS },
-];
 const TABS = [...TASK_PLANNER_TABS, ...CAPACITY_PLANNER_TABS];
 
 export default function WorkPlannerModule() {
@@ -761,33 +757,6 @@ export default function WorkPlannerModule() {
         display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden',
         fontFamily: "'Outfit', sans-serif",
       }}>
-        {/* Sub-module switcher */}
-        <div style={{
-          display: 'flex', background: '#f8fafc', borderBottom: '1px solid #e5e7eb',
-          padding: '6px 20px', alignItems: 'center', gap: 6,
-        }}>
-          {SUB_MODULES.map((sm) => {
-            const isActive = activeSubModule === sm.id;
-            return (
-              <button
-                key={sm.id}
-                onClick={() => navigate(sm.tabs[0].path)}
-                style={{
-                  padding: '6px 14px', fontSize: 12, fontWeight: 600,
-                  fontFamily: "'Outfit', sans-serif",
-                  border: '1px solid ' + (isActive ? '#0f172a' : '#cbd5e1'),
-                  borderRadius: 8,
-                  background: isActive ? '#0f172a' : '#fff',
-                  color: isActive ? '#fff' : '#475569',
-                  cursor: 'pointer',
-                }}
-              >
-                {sm.label}
-              </button>
-            );
-          })}
-        </div>
-
         {/* Tab bar */}
         <div style={{
           display: 'flex', background: '#fff', borderBottom: '1px solid #e5e7eb',

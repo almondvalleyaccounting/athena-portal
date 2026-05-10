@@ -61,6 +61,20 @@ export const MODULES = [
     permissions: ['work_planner'],
     status: 'live',
     group: 'team',
+    children: [
+      {
+        id: 'wp-task',
+        label: 'Task Planner',
+        route: '/planner',
+        matchPaths: ['/planner', '/planner/waiting', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed'],
+      },
+      {
+        id: 'wp-capacity',
+        label: 'Capacity Planner',
+        route: '/planner/allocations',
+        matchPaths: ['/planner/allocations', '/planner/estimates', '/planner/capacity'],
+      },
+    ],
   },
   // Waiting = the pre-commit staging area inside Work Planner. Shows
   // tasks not yet committed to staff calendars (drafts + approved).
