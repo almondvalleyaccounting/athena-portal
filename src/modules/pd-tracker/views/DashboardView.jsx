@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, Award, Plus, Send } from 'lucide-react';
+import { Sparkles, Award, Plus, Send, ExternalLink, GraduationCap } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import RadarChart from '../components/RadarChart';
 import { Card, SectionTitle, Stat, Pill, ProgressBar, Button, FONT, SERIF, EmptyState, Select, Textarea, Input } from '../components/ui';
 import {
   loadSkills, loadSkillLevels, loadObjectives, loadCpd, loadOneToOnes, loadActions,
-  loadKudosFeed, createKudos, loadStaff,
+  loadKudosFeed, createKudos, loadStaff, LEARNING_PARTNER,
 } from '../lib/api';
 
 const BADGES = {
@@ -49,19 +49,19 @@ export default function DashboardView() {
   }, [profile?.id]);
 
   const levelMap = useMemo(() => {
-    const m = { current: {}, target: {} };
-    levels.forEach((l) => { m.current[l.skill_id] = l.current_level; m.target[l.skill_id] = l.target_level; });
+    const m = { current: {}, target: {}, onRadar: {} };
+    levels.forEach((l) => {
+      m.current[l.skill_id] = l.current_level;
+      m.target[l.skill_id] = l.target_level;
+      m.onRadar[l.skill_id] = !!l.show_on_radar;
+    });
     return m;
   }, [levels]);
 
-  const radarSkills = useMemo(() => {
-    const enriched = skills.map((s) => ({
-      ...s,
-      _has: (levelMap.current[s.id] ?? 0) > 0 || (levelMap.target[s.id] ?? 0) > 0,
-    }));
-    const withData = enriched.filter((s) => s._has);
-    return (withData.length >= 5 ? withData : enriched).slice(0, 12);
-  }, [skills, levelMap]);
+  const radarSkills = useMemo(
+    () => skills.filter((s) => levelMap.onRadar[s.id]),
+    [skills, levelMap],
+  );
 
   const ytd = new Date().getFullYear();
   const ytdHours = cpd
@@ -158,7 +158,7 @@ export default function DashboardView() {
           {radarSkills.length >= 3 ? (
             <RadarChart skills={radarSkills} current={levelMap.current} target={levelMap.target} size={420} />
           ) : (
-            <EmptyState title="Add some skill levels to see your radar" hint="Head to Skills and rate yourself." />
+            <EmptyState title="Pick at least 3 skills to track" hint="In Skills, tap the star next to any skill to add it here." />
           )}
         </Card>
 
@@ -221,6 +221,46 @@ export default function DashboardView() {
           </Card>
         </div>
       </div>
+
+      {/* Learning partner banner */}
+      <a
+        href={LEARNING_PARTNER.url}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 18,
+          background: 'linear-gradient(120deg, #fef3c7 0%, #fde68a 100%)',
+          border: '1px solid #fde68a',
+          borderRadius: 14,
+          padding: '16px 22px',
+          marginTop: 24,
+          textDecoration: 'none',
+          color: 'inherit',
+        }}
+      >
+        <div style={{
+          width: 50, height: 50, borderRadius: 14, background: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          boxShadow: '0 2px 6px rgba(146, 64, 14, 0.15)',
+        }}>
+          <GraduationCap size={26} color="#92400e" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 500, color: '#78350f' }}>
+            Visit {LEARNING_PARTNER.name}
+          </div>
+          <div style={{ fontFamily: FONT, fontSize: 13, color: '#92400e', marginTop: 2 }}>
+            {LEARNING_PARTNER.blurb}
+          </div>
+        </div>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          fontFamily: FONT, fontSize: 13, fontWeight: 600, color: '#78350f',
+          flexShrink: 0,
+        }}>
+          Open <ExternalLink size={13} />
+        </div>
+      </a>
 
       {/* Bottom row: kudos + recent CPD */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 24, marginTop: 24 }}>

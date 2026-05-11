@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2, BookOpen, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { Card, SectionTitle, Button, Input, Textarea, Select, Pill, EmptyState, FONT, SERIF, Stat } from '../components/ui';
-import { loadCpd, createCpd, deleteCpd, loadSkills } from '../lib/api';
+import { loadCpd, createCpd, deleteCpd, loadSkills, LEARNING_PARTNER } from '../lib/api';
 
 const TYPE_META = {
   course:      { label: 'Course',      bg: '#dbeafe', fg: '#1e40af', emoji: '🎓' },
@@ -136,6 +136,27 @@ export default function CPDView() {
         <div style={{ fontFamily: SERIF, fontSize: 18, color: '#0f172a', marginBottom: 14 }}>Last 12 months</div>
         <BarChart months={last12Months} />
       </Card>
+
+      {/* Learning partner */}
+      <a href={LEARNING_PARTNER.url} target="_blank" rel="noreferrer" style={{
+        display: 'flex', alignItems: 'center', gap: 14,
+        background: '#fef3c7', border: '1px solid #fde68a',
+        borderRadius: 12, padding: '12px 18px', marginBottom: 24,
+        textDecoration: 'none', color: 'inherit',
+      }}>
+        <span style={{ fontSize: 22 }}>🎓</span>
+        <span style={{ flex: 1 }}>
+          <span style={{ display: 'block', fontFamily: FONT, fontSize: 14, fontWeight: 600, color: '#78350f' }}>
+            {LEARNING_PARTNER.name}
+          </span>
+          <span style={{ display: 'block', fontFamily: FONT, fontSize: 12, color: '#92400e' }}>
+            {LEARNING_PARTNER.blurb}
+          </span>
+        </span>
+        <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#78350f' }}>
+          Open ↗
+        </span>
+      </a>
 
       {showForm && (
         <Card style={{ marginBottom: 24 }}>

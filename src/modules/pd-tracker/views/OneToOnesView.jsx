@@ -214,6 +214,9 @@ export default function OneToOnesView() {
 
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={lblStyle}>Actions agreed</label>
+              <p style={{ fontFamily: FONT, fontSize: 11, color: '#94a3b8', margin: '-2px 0 8px' }}>
+                Each action is also added to the work planner as a Quick Task for the owner.
+              </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {draft.newActions.map((a, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: 8 }}>

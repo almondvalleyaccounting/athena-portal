@@ -1,14 +1,20 @@
 import { supabase } from '../../../lib/supabase';
 
-export const LEVEL_LABELS = ['—', 'Aware', 'Practising', 'Confident', 'Skilled', 'Expert'];
+export const LEVEL_LABELS = ['—', 'Aware', 'Basic', 'Good', 'Strong', 'Expert'];
 export const LEVEL_DESCS = [
-  'No exposure yet',
-  'Aware — knows the basics, needs help',
-  'Practising — does it with guidance',
-  'Confident — does it independently',
-  'Skilled — handles complex cases',
-  'Expert — coaches others, sets standard',
+  'No experience, knowledge or skills',
+  'Aware of the concept but very limited knowledge or skills',
+  'Basic skill level or outline level understanding',
+  'Good knowledge or skill level',
+  'Strong knowledge or skill level',
+  'Expert knowledge or skill level',
 ];
+
+export const LEARNING_PARTNER = {
+  name: 'Croner-i Learning',
+  url: 'https://goto.loginservice.co.uk/module.php/core/loginuserpass.php?AuthState=_bed45967f205fd21ec13bd548088ca80a3fc8ca31f%3Ahttps%3A%2F%2Fgoto.loginservice.co.uk%2Fsaml2%2Fidp%2FSSOService.php%3Fspentityid%3Dprod.ecpd.learning.croneri.com%26RelayState%3Dhttps%253A%252F%252Flearning.croneri.co.uk%252Flogin%252Findex.php%26cookieTime%3D1778488948',
+  blurb: 'Our learning partner — courses, technical updates, and the AVA CPD library.',
+};
 
 export async function loadStaff() {
   const { data, error } = await supabase
@@ -39,7 +45,7 @@ export async function loadSkillLevels(staffId) {
   return data || [];
 }
 
-export async function upsertSkillLevel({ staffId, skillId, current_level, target_level, notes }) {
+export async function upsertSkillLevel({ staffId, skillId, current_level, target_level, notes, show_on_radar }) {
   const payload = {
     staff_id: staffId,
     skill_id: skillId,
@@ -48,6 +54,7 @@ export async function upsertSkillLevel({ staffId, skillId, current_level, target
     notes: notes ?? null,
     updated_at: new Date().toISOString(),
   };
+  if (show_on_radar !== undefined) payload.show_on_radar = show_on_radar;
   const { data, error } = await supabase
     .from('pd_skill_levels')
     .upsert(payload, { onConflict: 'staff_id,skill_id' })
@@ -55,6 +62,17 @@ export async function upsertSkillLevel({ staffId, skillId, current_level, target
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function setShowOnRadar({ staffId, skillId, value, existing }) {
+  // Use upsert so we can toggle even for skills with no levels yet.
+  return upsertSkillLevel({
+    staffId, skillId,
+    current_level: existing?.current_level ?? 0,
+    target_level:  existing?.target_level  ?? 0,
+    notes: existing?.notes,
+    show_on_radar: value,
+  });
 }
 
 export async function loadObjectives(staffId) {
@@ -169,9 +187,32 @@ export async function loadActions(staffId) {
 }
 
 export async function createAction(row) {
+  // Also drop the action onto the work planner as a Quick Task so it
+  // surfaces in the owner's day-to-day list.
+  const ownerId = row.owner_id || row.staff_id;
+  let quickTaskId = null;
+  try {
+    const qt = {
+      title: row.action,
+      service: 'PD',
+      assignee_id: ownerId,
+      due_date: row.due_date ? new Date(row.due_date).toISOString() : null,
+      duration: 15,
+      notes: 'From 1-2-1 action',
+      created_by: ownerId,
+      source: 'pd_tracker',
+    };
+    const { data: qtRow, error: qtErr } = await supabase
+      .from('quick_tasks')
+      .insert(qt)
+      .select()
+      .single();
+    if (!qtErr && qtRow) quickTaskId = qtRow.id;
+  } catch { /* fall through - don't block action creation if QT insert fails */ }
+
   const { data, error } = await supabase
     .from('pd_one_to_one_actions')
-    .insert(row)
+    .insert({ ...row, quick_task_id: quickTaskId })
     .select()
     .single();
   if (error) throw error;
@@ -189,10 +230,23 @@ export async function updateAction(id, patch) {
     .select()
     .single();
   if (error) throw error;
+  // Mirror completion to the linked quick task (delete it when done so it
+  // disappears from the planner; recreate isn't supported on un-complete).
+  if (data?.quick_task_id && patch.status === 'done') {
+    try { await supabase.from('quick_tasks').delete().eq('id', data.quick_task_id); } catch { /* silent */ }
+  }
   return data;
 }
 
 export async function deleteAction(id) {
+  const { data: existing } = await supabase
+    .from('pd_one_to_one_actions')
+    .select('quick_task_id')
+    .eq('id', id)
+    .single();
+  if (existing?.quick_task_id) {
+    try { await supabase.from('quick_tasks').delete().eq('id', existing.quick_task_id); } catch { /* silent */ }
+  }
   const { error } = await supabase.from('pd_one_to_one_actions').delete().eq('id', id);
   if (error) throw error;
 }
