@@ -105,7 +105,7 @@ export const MODULES = [
     route: '/team/pd',
     icon: 'graduation-cap',
     permissions: ['can_view_pd_tracker'],
-    status: 'planned',
+    status: 'live',
     group: 'team',
   },
   {

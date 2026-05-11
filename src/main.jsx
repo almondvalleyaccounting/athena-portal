@@ -19,6 +19,7 @@ import BillingPage from './modules/billing/BillingPage';
 import IssuesPage from './modules/issues/IssuesPage';
 import PlanningModule from './modules/planning/PlanningModule';
 import ForecastModule from './modules/forecast/ForecastModule';
+import PDTrackerModule from './modules/pd-tracker/PDTrackerModule';
 import ClientsPage from './modules/clients/ClientsPage';
 import ClientDetailView from './modules/clients/ClientDetailView';
 import FeeEngineLayout from './contexts/FeeEngineContext';
@@ -75,6 +76,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/issues" element={<IssuesPage />} />
           <Route path="/planning/*" element={<PlanningModule />} />
           <Route path="/forecast/*" element={<ForecastModule />} />
+          <Route path="/team/pd/*" element={<PDTrackerModule />} />
 
           {/* Fee Engine — wrapped in FeeEngineLayout for defaults context */}
           <Route element={<FeeEngineLayout />}>
