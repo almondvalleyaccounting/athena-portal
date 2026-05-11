@@ -1,0 +1,362 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../../../lib/supabase';
+
+const font = "'Outfit', sans-serif";
+
+const STATUS_GROUPS = {
+  'Not started': ['No Latest Action', 'No Progress', 'Records Requested', 'Part Records Received'],
+  'In progress': ['Records Received', 'In Progress', 'Queries Requested'],
+  'To review':   ['To Review', 'Reviewed'],
+  'With client': ['To Send to Client to Approve', 'Awaiting Approval'],
+  'Other':       ['Other - See Note', 'Striking Off Application'],
+};
+const STATUS_TO_GROUP = (() => {
+  const m = {};
+  for (const [g, list] of Object.entries(STATUS_GROUPS)) list.forEach((s) => { m[s] = g; });
+  return m;
+})();
+const GROUP_COLOUR = {
+  'Not started': '#94a3b8',
+  'In progress': '#0ea5e9',
+  'To review':   '#a855f7',
+  'With client': '#f59e0b',
+  'Other':       '#64748b',
+};
+
+function todayUTC() {
+  const d = new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+function isoDate(d) { return d.toISOString().slice(0, 10); }
+function parseISO(s) { return new Date(s + 'T00:00:00Z'); }
+function addDays(d, n) { const o = new Date(d); o.setUTCDate(o.getUTCDate() + n); return o; }
+function subMonths(d, n) { const o = new Date(d); o.setUTCMonth(o.getUTCMonth() - n); return o; }
+function fmt(d) {
+  return new Date(d.getTime() + d.getTimezoneOffset() * 60000)
+    .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Period end derivation
+function derivePeriodEnd(service, bmDeadlineISO) {
+  if (!bmDeadlineISO) return null;
+  const d = parseISO(bmDeadlineISO);
+  if (service === 'Annual Accounts') return subMonths(d, 9);
+  if (service === 'Self Assessment') return new Date(Date.UTC(d.getUTCFullYear() - 1, 3, 5));
+  return null;
+}
+
+export default function ReadyNowView() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Filters
+  const [serviceFilter, setServiceFilter] = useState('all');  // all | SA | Acc
+  const [statusFilter, setStatusFilter] = useState('all');     // all | group name
+  const [assigneeFilter, setAssigneeFilter] = useState('all'); // all | id | unassigned
+  const [search, setSearch] = useState('');
+  const [daysBuffer, setDaysBuffer] = useState(90);
+  const [sortKey, setSortKey] = useState('period_end');
+  const [sortDir, setSortDir] = useState('asc');
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const { data, error } = await supabase
+          .from('bm_task_schedule')
+          .select('id, service, bm_status, bm_deadline, entity_id, assignee_id, entities(name), staff_profiles:assignee_id(id, name)')
+          .in('service', ['Self Assessment', 'Annual Accounts']);
+        if (error) throw error;
+        if (cancelled) return;
+        setRows(data || []);
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Failed to load');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Derive period_end, dedupe by entity+service+period_end (merge assignees)
+  const ready = useMemo(() => {
+    const today = todayUTC();
+    const cutoff = addDays(today, -daysBuffer);
+    const byKey = new Map();
+    for (const r of rows) {
+      const pe = derivePeriodEnd(r.service, r.bm_deadline);
+      if (!pe) continue;
+      if (pe > cutoff) continue;
+      const key = `${r.entity_id}|${r.service}|${isoDate(pe)}`;
+      const assigneeName = r.staff_profiles?.name || null;
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          key,
+          client: r.entities?.name || '(unknown)',
+          service: r.service,
+          period_end: pe,
+          bm_deadline: r.bm_deadline,
+          bm_status: r.bm_status,
+          status_group: STATUS_TO_GROUP[r.bm_status] || 'Other',
+          assignees: assigneeName ? [assigneeName] : [],
+          days_past: Math.floor((today - pe) / 86400000),
+        });
+      } else {
+        const e = byKey.get(key);
+        if (assigneeName && !e.assignees.includes(assigneeName)) e.assignees.push(assigneeName);
+      }
+    }
+    return Array.from(byKey.values());
+  }, [rows, daysBuffer]);
+
+  const assigneeOptions = useMemo(() => {
+    const set = new Set();
+    rows.forEach((r) => { if (r.staff_profiles?.name) set.add(r.staff_profiles.name); });
+    return Array.from(set).sort();
+  }, [rows]);
+
+  const filtered = useMemo(() => {
+    let out = ready;
+    if (serviceFilter === 'SA') out = out.filter((r) => r.service === 'Self Assessment');
+    else if (serviceFilter === 'Acc') out = out.filter((r) => r.service === 'Annual Accounts');
+    if (statusFilter !== 'all') out = out.filter((r) => r.status_group === statusFilter);
+    if (assigneeFilter === 'unassigned') out = out.filter((r) => r.assignees.length === 0);
+    else if (assigneeFilter !== 'all') out = out.filter((r) => r.assignees.includes(assigneeFilter));
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      out = out.filter((r) => r.client.toLowerCase().includes(q));
+    }
+    // Sort
+    const dir = sortDir === 'asc' ? 1 : -1;
+    out = [...out].sort((a, b) => {
+      let av, bv;
+      switch (sortKey) {
+        case 'client':     av = a.client.toLowerCase(); bv = b.client.toLowerCase(); break;
+        case 'service':    av = a.service; bv = b.service; break;
+        case 'status':     av = a.bm_status || ''; bv = b.bm_status || ''; break;
+        case 'assignee':   av = (a.assignees[0] || '~'); bv = (b.assignees[0] || '~'); break;
+        case 'days':       av = a.days_past; bv = b.days_past; break;
+        case 'period_end':
+        default:           av = a.period_end.getTime(); bv = b.period_end.getTime(); break;
+      }
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+    return out;
+  }, [ready, serviceFilter, statusFilter, assigneeFilter, search, sortKey, sortDir]);
+
+  // Summary by service x status_group
+  const summary = useMemo(() => {
+    const tally = { 'Self Assessment': {}, 'Annual Accounts': {} };
+    for (const r of filtered) {
+      if (!tally[r.service]) tally[r.service] = {};
+      tally[r.service][r.status_group] = (tally[r.service][r.status_group] || 0) + 1;
+    }
+    return tally;
+  }, [filtered]);
+
+  function toggleSort(key) {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setSortDir(key === 'days' ? 'desc' : 'asc'); }
+  }
+
+  function exportCsv() {
+    const header = ['Client', 'Service', 'Period end', 'Days past PE', 'BM deadline', 'BM status', 'Status group', 'Assignees'];
+    const lines = [header.join(',')];
+    for (const r of filtered) {
+      const row = [
+        '"' + r.client.replace(/"/g, '""') + '"',
+        r.service,
+        isoDate(r.period_end),
+        r.days_past,
+        r.bm_deadline || '',
+        r.bm_status || '',
+        r.status_group,
+        '"' + r.assignees.join('; ') + '"',
+      ];
+      lines.push(row.join(','));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ready-now-${isoDate(todayUTC())}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (loading) {
+    return <div style={{ padding: 20, fontFamily: font, color: '#64748b', fontSize: 13 }}>Loading…</div>;
+  }
+  if (error) {
+    return <div style={{ padding: 20, fontFamily: font, color: '#dc2626', fontSize: 13 }}>Error: {error}</div>;
+  }
+
+  return (
+    <div style={{ fontFamily: font, padding: '16px 20px 40px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 10 }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#0f172a' }}>Ready Now</h2>
+        <span style={{ fontSize: 12, color: '#64748b' }}>
+          Self Assessment & Annual Accounts where period end is ≥ {daysBuffer} days ago and the job hasn't been submitted.
+        </span>
+      </div>
+
+      {/* Summary */}
+      <div style={{
+        display: 'flex', gap: 12, marginBottom: 14, padding: 10, background: '#f8fafc',
+        border: '1px solid #e5e7eb', borderRadius: 8, flexWrap: 'wrap',
+      }}>
+        {['Self Assessment', 'Annual Accounts'].map((svc) => {
+          const total = Object.values(summary[svc] || {}).reduce((a, b) => a + b, 0);
+          return (
+            <div key={svc} style={{ minWidth: 280 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>
+                {svc} · <span style={{ color: '#0e7fe0' }}>{total}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {Object.keys(STATUS_GROUPS).map((g) => {
+                  const n = summary[svc]?.[g] || 0;
+                  if (!n) return null;
+                  return (
+                    <span key={g} style={{
+                      fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                      background: GROUP_COLOUR[g] + '22',
+                      color: GROUP_COLOUR[g],
+                      border: '1px solid ' + GROUP_COLOUR[g] + '55',
+                    }}>{g}: {n}</span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Select label="Service" value={serviceFilter} onChange={setServiceFilter}
+          options={[['all', 'All'], ['SA', 'Self Assessment'], ['Acc', 'Annual Accounts']]} />
+        <Select label="Status" value={statusFilter} onChange={setStatusFilter}
+          options={[['all', 'All'], ...Object.keys(STATUS_GROUPS).map((g) => [g, g])]} />
+        <Select label="Assignee" value={assigneeFilter} onChange={setAssigneeFilter}
+          options={[['all', 'All'], ['unassigned', '— Unassigned —'], ...assigneeOptions.map((n) => [n, n])]} />
+        <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+          Days past PE ≥
+          <input
+            type="number" min={0} value={daysBuffer}
+            onChange={(e) => setDaysBuffer(Math.max(0, parseInt(e.target.value || '0', 10)))}
+            style={{
+              width: 60, padding: '4px 6px', fontSize: 12, fontFamily: font,
+              border: '1px solid #cbd5e1', borderRadius: 6,
+            }}
+          />
+        </label>
+        <input
+          placeholder="Search client…"
+          value={search} onChange={(e) => setSearch(e.target.value)}
+          style={{
+            padding: '5px 10px', fontSize: 12, fontFamily: font,
+            border: '1px solid #cbd5e1', borderRadius: 6, minWidth: 200,
+          }}
+        />
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 12, color: '#64748b' }}>{filtered.length} jobs</span>
+        <button
+          onClick={exportCsv}
+          style={{
+            padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font,
+            border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer',
+          }}
+        >Export CSV</button>
+      </div>
+
+      {/* Table */}
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead style={{ background: '#f8fafc' }}>
+            <tr>
+              <Th onClick={() => toggleSort('client')} active={sortKey === 'client'} dir={sortDir}>Client</Th>
+              <Th onClick={() => toggleSort('service')} active={sortKey === 'service'} dir={sortDir}>Service</Th>
+              <Th onClick={() => toggleSort('period_end')} active={sortKey === 'period_end'} dir={sortDir}>Period end</Th>
+              <Th onClick={() => toggleSort('days')} active={sortKey === 'days'} dir={sortDir} align="right">Days past</Th>
+              <Th onClick={() => toggleSort('status')} active={sortKey === 'status'} dir={sortDir}>BM status</Th>
+              <Th onClick={() => toggleSort('assignee')} active={sortKey === 'assignee'} dir={sortDir}>Assignee(s)</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((r, i) => (
+              <tr key={r.key} style={{ background: i % 2 ? '#fff' : '#fafbfc', borderTop: '1px solid #f1f5f9' }}>
+                <td style={td}>{r.client}</td>
+                <td style={{ ...td, color: '#475569' }}>{r.service === 'Self Assessment' ? 'SA' : 'Annual Accs'}</td>
+                <td style={{ ...td, color: '#475569' }}>{fmt(r.period_end)}</td>
+                <td style={{ ...td, textAlign: 'right', color: r.days_past > 365 ? '#dc2626' : '#475569', fontVariantNumeric: 'tabular-nums' }}>
+                  {r.days_past}
+                </td>
+                <td style={td}>
+                  <span style={{
+                    fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                    background: GROUP_COLOUR[r.status_group] + '22',
+                    color: GROUP_COLOUR[r.status_group],
+                    border: '1px solid ' + GROUP_COLOUR[r.status_group] + '55',
+                  }}>{r.bm_status}</span>
+                </td>
+                <td style={{ ...td, color: r.assignees.length ? '#0f172a' : '#94a3b8' }}>
+                  {r.assignees.length ? r.assignees.join(', ') : 'Unassigned'}
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
+                No jobs match the current filters.
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 10, lineHeight: 1.5 }}>
+        Period end is derived: Annual Accounts = BM deadline − 9 months; Self Assessment = 5 April of the year before the BM deadline.
+        Non-standard accounting periods (first-year, struck-off, overseas) may differ — spot-check anomalies.
+        "Not yet submitted" is inferred from a row still existing in BrightManager.
+      </p>
+    </div>
+  );
+}
+
+const td = { padding: '7px 10px', verticalAlign: 'middle' };
+
+function Th({ children, onClick, active, dir, align }) {
+  return (
+    <th
+      onClick={onClick}
+      style={{
+        padding: '8px 10px', textAlign: align || 'left', fontWeight: 600, fontSize: 11,
+        color: active ? '#0f172a' : '#64748b', textTransform: 'uppercase', letterSpacing: 0.4,
+        cursor: 'pointer', userSelect: 'none', borderBottom: '1px solid #e5e7eb',
+      }}
+    >
+      {children}{active ? (dir === 'asc' ? ' ↑' : ' ↓') : ''}
+    </th>
+  );
+}
+
+function Select({ label, value, onChange, options }) {
+  return (
+    <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+      {label}
+      <select
+        value={value} onChange={(e) => onChange(e.target.value)}
+        style={{
+          padding: '4px 8px', fontSize: 12, fontFamily: font,
+          border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer',
+        }}
+      >
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </label>
+  );
+}

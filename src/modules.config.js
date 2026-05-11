@@ -66,7 +66,7 @@ export const MODULES = [
         id: 'wp-task',
         label: 'Task Planner',
         route: '/planner',
-        matchPaths: ['/planner', '/planner/waiting', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed'],
+        matchPaths: ['/planner', '/planner/ready', '/planner/waiting', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed'],
       },
       {
         id: 'wp-capacity',

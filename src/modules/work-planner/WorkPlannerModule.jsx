@@ -36,6 +36,7 @@ import WaitingView from './views/WaitingView';
 import AllocationsView from './views/AllocationsView';
 import EstimatesView from './views/EstimatesView';
 import CapacityView from './views/CapacityView';
+import ReadyNowView from './views/ReadyNowView';
 
 // ── Context ──
 const WorkPlannerContext = createContext(null);
@@ -43,6 +44,7 @@ export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 
 // ── Tab config ──
 const TASK_PLANNER_TABS = [
+  { id: 'ready',    label: 'Ready Now',   path: '/planner/ready' },
   { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting' },
   { id: 'mytasks',  label: 'My Tasks',    path: '/planner' },
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
@@ -863,6 +865,9 @@ export default function WorkPlannerModule() {
           )}
           {activeTab === 'completed' && (
             <CompletedView />
+          )}
+          {activeTab === 'ready' && (
+            <ReadyNowView />
           )}
           {activeTab === 'waiting' && (
             <WaitingView />
