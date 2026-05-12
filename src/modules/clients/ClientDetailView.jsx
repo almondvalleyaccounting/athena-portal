@@ -163,6 +163,25 @@ export default function ClientDetailView() {
                 }
               }}
             />
+            <ExpediteToggle
+              value={!!entity.expedite}
+              onChange={async (next) => {
+                const prev = !!entity.expedite;
+                setEntity({ ...entity, expedite: next });
+                const { error } = await supabase.from('entities').update({ expedite: next }).eq('id', entity.id);
+                if (error) {
+                  alert('Could not update expedite flag: ' + error.message);
+                  setEntity({ ...entity, expedite: prev });
+                }
+              }}
+            />
+            {entity.grade && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe',
+                fontFamily: "'Outfit', sans-serif",
+              }} title="Client grade (imported)">Grade {entity.grade}</span>
+            )}
           </div>
         </div>
         {/* Time period filter */}
@@ -295,6 +314,8 @@ export default function ClientDetailView() {
             {entity.vat_number && <DetailRow label="VAT Number" value={entity.vat_number} />}
             {entity.paye_ref && <DetailRow label="PAYE Ref" value={entity.paye_ref} />}
             {entity.manager && <DetailRow label="Manager" value={entity.manager} />}
+            {entity.grade && <DetailRow label="Grade" value={entity.grade} />}
+            <DetailRow label="Expedite" value={entity.expedite ? 'Yes — prioritise post-period-end' : 'No'} />
             {entity.prospect_email && <DetailRow label="Email" value={entity.prospect_email} />}
             <DetailRow label="Source" value={entity.source === 'athena' ? 'Athena (manual)' : 'BrightManager'} />
           </div>
@@ -516,6 +537,26 @@ function CadenceEditor({ value, onChange }) {
         pointerEvents: 'none', color: current.color, fontSize: 9,
       }}>▾</span>
     </div>
+  );
+}
+
+function ExpediteToggle({ value, onChange }) {
+  const on = !!value;
+  return (
+    <button
+      onClick={() => onChange(!on)}
+      title={on ? 'Expedite ON — work prioritised post-period-end. Click to turn off.' : 'Expedite OFF. Click to flag this client for fast turnaround.'}
+      style={{
+        fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+        background: on ? '#fef3c7' : '#f1f5f9',
+        color: on ? '#b45309' : '#64748b',
+        border: '1px solid ' + (on ? '#fcd34d' : '#cbd5e1'),
+        fontFamily: "'Outfit', sans-serif",
+        cursor: 'pointer', letterSpacing: 0.3, textTransform: 'uppercase',
+      }}
+    >
+      {on ? '⚡ Expedite' : 'Expedite off'}
+    </button>
   );
 }
 

@@ -54,6 +54,8 @@ export default function ReadyNowView() {
   const [serviceFilter, setServiceFilter] = useState('all');  // all | SA | Acc
   const [statusFilter, setStatusFilter] = useState('all');     // all | group name
   const [assigneeFilter, setAssigneeFilter] = useState('all'); // all | id | unassigned
+  const [gradeFilter, setGradeFilter] = useState('all');       // all | A | B | C | …
+  const [expediteOnly, setExpediteOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [daysBuffer, setDaysBuffer] = useState(90);
   const [sortKey, setSortKey] = useState('period_end');
@@ -65,7 +67,7 @@ export default function ReadyNowView() {
       try {
         const { data, error } = await supabase
           .from('bm_task_schedule')
-          .select('id, service, bm_status, bm_deadline, entity_id, assignee_id, entities(name), staff_profiles:assignee_id(id, name)')
+          .select('id, service, bm_status, bm_deadline, entity_id, assignee_id, entities(name, grade, expedite), staff_profiles:assignee_id(id, name)')
           .in('service', ['Self Assessment', 'Annual Accounts']);
         if (error) throw error;
         if (cancelled) return;
@@ -95,6 +97,8 @@ export default function ReadyNowView() {
         byKey.set(key, {
           key,
           client: r.entities?.name || '(unknown)',
+          grade: r.entities?.grade || null,
+          expedite: !!r.entities?.expedite,
           service: r.service,
           period_end: pe,
           bm_deadline: r.bm_deadline,
@@ -124,17 +128,21 @@ export default function ReadyNowView() {
     if (statusFilter !== 'all') out = out.filter((r) => r.status_group === statusFilter);
     if (assigneeFilter === 'unassigned') out = out.filter((r) => r.assignees.length === 0);
     else if (assigneeFilter !== 'all') out = out.filter((r) => r.assignees.includes(assigneeFilter));
+    if (gradeFilter !== 'all') out = out.filter((r) => (r.grade || '—') === gradeFilter);
+    if (expediteOnly) out = out.filter((r) => r.expedite);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       out = out.filter((r) => r.client.toLowerCase().includes(q));
     }
-    // Sort
+    // Sort — Expedite always wins first
     const dir = sortDir === 'asc' ? 1 : -1;
     out = [...out].sort((a, b) => {
+      if (a.expedite !== b.expedite) return a.expedite ? -1 : 1;
       let av, bv;
       switch (sortKey) {
         case 'client':     av = a.client.toLowerCase(); bv = b.client.toLowerCase(); break;
         case 'service':    av = a.service; bv = b.service; break;
+        case 'grade':      av = a.grade || 'Z'; bv = b.grade || 'Z'; break;
         case 'status':     av = a.bm_status || ''; bv = b.bm_status || ''; break;
         case 'assignee':   av = (a.assignees[0] || '~'); bv = (b.assignees[0] || '~'); break;
         case 'days':       av = a.days_past; bv = b.days_past; break;
@@ -146,7 +154,13 @@ export default function ReadyNowView() {
       return 0;
     });
     return out;
-  }, [ready, serviceFilter, statusFilter, assigneeFilter, search, sortKey, sortDir]);
+  }, [ready, serviceFilter, statusFilter, assigneeFilter, gradeFilter, expediteOnly, search, sortKey, sortDir]);
+
+  const gradeOptions = useMemo(() => {
+    const set = new Set();
+    ready.forEach((r) => { if (r.grade) set.add(r.grade); });
+    return Array.from(set).sort();
+  }, [ready]);
 
   // Summary by service x status_group
   const summary = useMemo(() => {
@@ -164,11 +178,13 @@ export default function ReadyNowView() {
   }
 
   function exportCsv() {
-    const header = ['Client', 'Service', 'Period end', 'Days past PE', 'BM deadline', 'BM status', 'Status group', 'Assignees'];
+    const header = ['Client', 'Grade', 'Expedite', 'Service', 'Period end', 'Days past PE', 'BM deadline', 'BM status', 'Status group', 'Assignees'];
     const lines = [header.join(',')];
     for (const r of filtered) {
       const row = [
         '"' + r.client.replace(/"/g, '""') + '"',
+        r.grade || '',
+        r.expedite ? 'Y' : '',
         r.service,
         isoDate(r.period_end),
         r.days_past,
@@ -244,6 +260,12 @@ export default function ReadyNowView() {
           options={[['all', 'All'], ...Object.keys(STATUS_GROUPS).map((g) => [g, g])]} />
         <Select label="Assignee" value={assigneeFilter} onChange={setAssigneeFilter}
           options={[['all', 'All'], ['unassigned', '— Unassigned —'], ...assigneeOptions.map((n) => [n, n])]} />
+        <Select label="Grade" value={gradeFilter} onChange={setGradeFilter}
+          options={[['all', 'All'], ...gradeOptions.map((g) => [g, g])]} />
+        <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <input type="checkbox" checked={expediteOnly} onChange={(e) => setExpediteOnly(e.target.checked)} />
+          <span>⚡ Expedite only</span>
+        </label>
         <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
           Days past PE ≥
           <input
@@ -280,6 +302,7 @@ export default function ReadyNowView() {
           <thead style={{ background: '#f8fafc' }}>
             <tr>
               <Th onClick={() => toggleSort('client')} active={sortKey === 'client'} dir={sortDir}>Client</Th>
+              <Th onClick={() => toggleSort('grade')} active={sortKey === 'grade'} dir={sortDir}>Grade</Th>
               <Th onClick={() => toggleSort('service')} active={sortKey === 'service'} dir={sortDir}>Service</Th>
               <Th onClick={() => toggleSort('period_end')} active={sortKey === 'period_end'} dir={sortDir}>Period end</Th>
               <Th onClick={() => toggleSort('days')} active={sortKey === 'days'} dir={sortDir} align="right">Days past</Th>
@@ -289,8 +312,29 @@ export default function ReadyNowView() {
           </thead>
           <tbody>
             {filtered.map((r, i) => (
-              <tr key={r.key} style={{ background: i % 2 ? '#fff' : '#fafbfc', borderTop: '1px solid #f1f5f9' }}>
-                <td style={td}>{r.client}</td>
+              <tr key={r.key} style={{
+                background: r.expedite ? '#fffbeb' : (i % 2 ? '#fff' : '#fafbfc'),
+                borderTop: '1px solid #f1f5f9',
+                borderLeft: r.expedite ? '3px solid #f59e0b' : '3px solid transparent',
+              }}>
+                <td style={td}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {r.expedite && (
+                      <span title="Expedite — prioritise this client" style={{
+                        fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+                        background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d',
+                        letterSpacing: 0.3, textTransform: 'uppercase',
+                      }}>⚡ Exp</span>
+                    )}
+                    <span>{r.client}</span>
+                  </div>
+                </td>
+                <td style={{ ...td, color: '#475569', fontWeight: 600 }}>
+                  {r.grade ? <span style={{
+                    fontSize: 10, padding: '1px 6px', borderRadius: 4,
+                    background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe',
+                  }}>{r.grade}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}
+                </td>
                 <td style={{ ...td, color: '#475569' }}>{r.service === 'Self Assessment' ? 'SA' : 'Annual Accs'}</td>
                 <td style={{ ...td, color: '#475569' }}>{fmt(r.period_end)}</td>
                 <td style={{ ...td, textAlign: 'right', color: r.days_past > 365 ? '#dc2626' : '#475569', fontVariantNumeric: 'tabular-nums' }}>
@@ -310,7 +354,7 @@ export default function ReadyNowView() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
+              <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
                 No jobs match the current filters.
               </td></tr>
             )}
