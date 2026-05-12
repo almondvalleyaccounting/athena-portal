@@ -131,6 +131,10 @@ export function parseBmClientsCsv(text) {
       ch_auth_code: normText(get(row, 'Companies House Authentication Code')),
       manager: normText(get(row, 'Manager')),
       grade: normText(get(row, 'Client Grade')),
+      // Reviewer roles in BM's "Monitor" columns. These go into
+      // service_reviewers via import_bm_reviewers — not entities.
+      vat_reviewer_name: normText(get(row, 'VAT Filer (Monitor)')),
+      accounts_reviewer_name: normText(get(row, 'Companies House Accounts Filer (Monitor)')),
       // Primary person info carried for later use (not written in v1)
       _primary_email: primaryEmail,
       _primary_name: [get(row, 'First Name'), get(row, 'Last Name')].filter(Boolean).join(' ') || null,

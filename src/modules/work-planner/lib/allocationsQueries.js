@@ -128,6 +128,52 @@ export async function discardAllocationDraft(id) {
   if (error) throw error;
 }
 
+// ── Service reviewers (independent of BM fee earners) ──
+// Two reviewer roles: vat_review, accounts_preparation. Sourced
+// from BM's "Monitor" columns at import time; users override in
+// the Allocations matrix (Capacity Planner). Manual overrides
+// survive subsequent BM imports.
+
+export const REVIEWER_SERVICES = [
+  { id: 'vat_review',           label: 'VAT Reviewer' },
+  { id: 'accounts_preparation', label: 'Accounts Reviewer' },
+];
+
+export async function fetchServiceReviewers() {
+  const { data, error } = await supabase
+    .from('service_reviewers')
+    .select('entity_id, canonical_service_id, reviewer_id, source');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertServiceReviewer({ entity_id, canonical_service_id, reviewer_id, updated_by }) {
+  const payload = {
+    entity_id,
+    canonical_service_id,
+    reviewer_id: reviewer_id ?? null,
+    source: 'manual',
+    updated_by: updated_by ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from('service_reviewers')
+    .upsert(payload, { onConflict: 'entity_id,canonical_service_id' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteServiceReviewer({ entity_id, canonical_service_id }) {
+  const { error } = await supabase
+    .from('service_reviewers')
+    .delete()
+    .eq('entity_id', entity_id)
+    .eq('canonical_service_id', canonical_service_id);
+  if (error) throw error;
+}
+
 // ── Effort defaults / overrides / cadence ──
 
 export async function fetchEffortDefaults() {

@@ -40,5 +40,31 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
     run_id: runId, payload,
   });
   if (error) throw error;
-  return data;
+
+  // Side-load: VAT + Accounts reviewers from the "Monitor" columns into
+  // service_reviewers. Runs AFTER entities have been upserted so the
+  // entity lookup by bm_client_id resolves. Manual overrides in the UI
+  // are preserved (the RPC won't touch rows where source='manual').
+  const reviewerRows = parsedRows
+    .filter((r) => r.vat_reviewer_name || r.accounts_reviewer_name)
+    .map((r) => ({
+      bm_client_id: r.bm_client_id,
+      vat_reviewer_name: r.vat_reviewer_name || null,
+      accounts_reviewer_name: r.accounts_reviewer_name || null,
+    }));
+  let reviewerResult = null;
+  if (reviewerRows.length) {
+    const { data: revData, error: revError } = await supabase.rpc('import_bm_reviewers', {
+      run_id: runId, payload: { rows: reviewerRows },
+    });
+    if (revError) {
+      // Non-fatal — clients are already in. Log so the user sees it.
+      console.warn('[writeBmClients] import_bm_reviewers failed:', revError.message);
+      reviewerResult = { error: revError.message };
+    } else {
+      reviewerResult = revData;
+    }
+  }
+
+  return { ...data, reviewers: reviewerResult };
 }

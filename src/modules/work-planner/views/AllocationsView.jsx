@@ -2,10 +2,11 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useWorkPlanner } from '../WorkPlannerModule';
 import { useAuth } from '../../../shell/AppShell';
 import {
-  ALLOCATION_SERVICES,
+  ALLOCATION_SERVICES, REVIEWER_SERVICES,
   fetchAllocationDrafts, fetchAllocationEntities,
   fetchInferredAllocations, fetchClientGroups,
   upsertAllocationDraft, discardAllocationDraft,
+  fetchServiceReviewers, upsertServiceReviewer, deleteServiceReviewer,
 } from '../lib/allocationsQueries';
 import { teamColour } from '../lib/helpers';
 import GroupReallocateModal from '../components/GroupReallocateModal';
@@ -23,6 +24,7 @@ export default function AllocationsView() {
   const [inferred, setInferred] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [reviewers, setReviewers] = useState([]);
   const [groupModalEntityId, setGroupModalEntityId] = useState(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [editing, setEditing] = useState(null); // { entityId, serviceId }
@@ -43,17 +45,19 @@ export default function AllocationsView() {
     let cancelled = false;
     async function load() {
       try {
-        const [e, inf, d, g] = await Promise.all([
+        const [e, inf, d, g, rv] = await Promise.all([
           fetchAllocationEntities(),
           fetchInferredAllocations(),
           fetchAllocationDrafts(),
           fetchClientGroups(),
+          fetchServiceReviewers(),
         ]);
         if (!cancelled) {
           setEntities(e);
           setInferred(inf);
           setDrafts(d);
           setGroups(g);
+          setReviewers(rv);
         }
       } catch (err) {
         console.error('[Allocations] load failed:', err);
@@ -69,6 +73,32 @@ export default function AllocationsView() {
     drafts.forEach((d) => m.set(`${d.entity_id}__${d.canonical_service_id}`, d));
     return m;
   }, [drafts]);
+
+  const reviewerMap = useMemo(() => {
+    const m = new Map();
+    reviewers.forEach((r) => m.set(`${r.entity_id}__${r.canonical_service_id}`, r));
+    return m;
+  }, [reviewers]);
+
+  const handleSaveReviewer = useCallback(async ({ entityId, serviceId, reviewerId }) => {
+    if (!reviewerId) {
+      // Clear → delete row entirely (next BM import may repopulate)
+      await deleteServiceReviewer({ entity_id: entityId, canonical_service_id: serviceId });
+      setReviewers((prev) => prev.filter((r) => !(r.entity_id === entityId && r.canonical_service_id === serviceId)));
+    } else {
+      const saved = await upsertServiceReviewer({
+        entity_id: entityId,
+        canonical_service_id: serviceId,
+        reviewer_id: reviewerId,
+        updated_by: profile?.id,
+      });
+      setReviewers((prev) => {
+        const others = prev.filter((r) => !(r.entity_id === entityId && r.canonical_service_id === serviceId));
+        return [...others, saved];
+      });
+    }
+    setEditing(null);
+  }, [profile]);
 
   const inferredMap = useMemo(() => {
     const m = new Map();
@@ -347,12 +377,14 @@ export default function AllocationsView() {
             entities={clientEntities}
             draftMap={draftMap}
             inferredMap={inferredMap}
+            reviewerMap={reviewerMap}
             staffList={staffList}
             staffMap={staffMap}
             editing={editing}
             setEditing={setEditing}
             onSaveDraft={handleSaveDraft}
             onDiscardDraft={handleDiscardDraft}
+            onSaveReviewer={handleSaveReviewer}
             sortStack={sortStack}
             onToggleSort={toggleSort}
             colFilter={colFilter}
@@ -391,7 +423,7 @@ export default function AllocationsView() {
 
 // ── Clients matrix ──
 
-function ClientsMatrix({ entities, draftMap, inferredMap, staffList, staffMap, editing, setEditing, onSaveDraft, onDiscardDraft, sortStack, onToggleSort, colFilter, onSetColFilter, groupMap, groupFragmentation, onOpenGroup }) {
+function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList, staffMap, editing, setEditing, onSaveDraft, onDiscardDraft, onSaveReviewer, sortStack, onToggleSort, colFilter, onSetColFilter, groupMap, groupFragmentation, onOpenGroup }) {
   if (!entities.length) {
     return <div style={{ color: '#94a3b8', fontSize: 13 }}>No clients match your filters.</div>;
   }
@@ -428,6 +460,18 @@ function ClientsMatrix({ entities, draftMap, inferredMap, staffList, staffMap, e
             onSetColFilter={onSetColFilter}
             staffList={sortedStaff}
           />
+        ))}
+        {REVIEWER_SERVICES.map((r) => (
+          <div key={`rev-${r.id}`} style={{
+            width: SERVICE_COL_W, minWidth: SERVICE_COL_W, padding: '0 10px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 11, fontWeight: 700, color: '#4338ca', textTransform: 'uppercase',
+            letterSpacing: 0.4, height: ROW_H,
+            background: '#eef2ff', borderRight: '1px solid #e0e7ff',
+            borderBottom: '1px solid #c7d2fe',
+          }} title="Reviewer (separate role from fee earner). Imported from BM Monitor columns; manual edits stick across re-imports.">
+            {r.label}
+          </div>
         ))}
       </div>
       {/* Rows */}
@@ -494,6 +538,25 @@ function ClientsMatrix({ entities, draftMap, inferredMap, staffList, staffMap, e
                 onCancelEdit={() => setEditing(null)}
                 onSaveDraft={onSaveDraft}
                 onDiscardDraft={onDiscardDraft}
+              />
+            );
+          })}
+          {REVIEWER_SERVICES.map((r) => {
+            const key = `${e.id}__${r.id}`;
+            const row = reviewerMap.get(key);
+            const isEditing = editing && editing.entityId === e.id && editing.serviceId === `rev:${r.id}`;
+            return (
+              <ReviewerCell
+                key={`rev-${r.id}`}
+                entityId={e.id}
+                serviceId={r.id}
+                reviewerRow={row}
+                staffList={staffList}
+                staffMap={staffMap}
+                isEditing={isEditing}
+                onStartEdit={() => setEditing({ entityId: e.id, serviceId: `rev:${r.id}` })}
+                onCancelEdit={() => setEditing(null)}
+                onSave={onSaveReviewer}
               />
             );
           })}
@@ -670,6 +733,101 @@ function CellEditor({ entityId, serviceId, initialFeeEarnerId, staffList, onCanc
       <button
         onClick={onCancel}
         style={{ border: '1px solid #cbd5e1', background: '#fff', color: '#64748b', borderRadius: 3, padding: '2px 5px', fontSize: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+      >×</button>
+    </div>
+  );
+}
+
+// ── Reviewer cell (separate from fee-earner cell; writes to service_reviewers) ──
+
+function ReviewerCell({ entityId, serviceId, reviewerRow, staffList, staffMap, isEditing, onStartEdit, onCancelEdit, onSave }) {
+  const reviewerId = reviewerRow?.reviewer_id || null;
+  const source = reviewerRow?.source || null; // 'manual' | 'brightmanager' | null
+  const reviewerName = reviewerId && staffMap[reviewerId]?.name;
+  const customColour = reviewerId && staffMap[reviewerId]?.colour;
+  const bg = reviewerId ? (customColour || teamColour(reviewerId)) : '#fff';
+
+  if (isEditing) {
+    return (
+      <ReviewerEditor
+        entityId={entityId}
+        serviceId={serviceId}
+        initialReviewerId={reviewerId}
+        staffList={staffList}
+        onCancel={onCancelEdit}
+        onSave={onSave}
+      />
+    );
+  }
+
+  return (
+    <div
+      onClick={onStartEdit}
+      title={
+        reviewerId
+          ? `${reviewerName} — ${source === 'manual' ? 'manual override' : 'from BM Monitor'} · click to edit`
+          : 'No reviewer set — click to assign'
+      }
+      style={{
+        width: SERVICE_COL_W, minWidth: SERVICE_COL_W, height: ROW_H,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 8px', fontSize: 12, fontWeight: 500,
+        background: bg, color: reviewerId ? '#0f172a' : '#cbd5e1',
+        cursor: 'pointer', borderRight: '1px solid #f1f5f9',
+        position: 'relative',
+      }}
+    >
+      {reviewerId ? (
+        <>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {reviewerName}
+          </span>
+          {source === 'manual' && (
+            <span title="Manual override (BM imports won't change this)" style={{
+              position: 'absolute', top: 2, right: 3, fontSize: 9, fontWeight: 700,
+              color: '#4338ca',
+            }}>✎</span>
+          )}
+        </>
+      ) : (
+        <span style={{ fontSize: 11, fontStyle: 'italic' }}>—</span>
+      )}
+    </div>
+  );
+}
+
+function ReviewerEditor({ entityId, serviceId, initialReviewerId, staffList, onCancel, onSave }) {
+  const [reviewerId, setReviewerId] = useState(initialReviewerId || '');
+
+  return (
+    <div style={{
+      width: SERVICE_COL_W, minWidth: SERVICE_COL_W, height: ROW_H,
+      display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px',
+      background: '#eef2ff', borderRight: '1px solid #f1f5f9',
+    }}>
+      <select
+        value={reviewerId}
+        autoFocus
+        onChange={(e) => setReviewerId(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onSave({ entityId, serviceId, reviewerId });
+          else if (e.key === 'Escape') onCancel();
+        }}
+        style={{ flex: 1, fontSize: 11, padding: '2px 4px', border: '1px solid #c7d2fe', borderRadius: 4, fontFamily: "'Outfit', sans-serif" }}
+      >
+        <option value="">— reviewer —</option>
+        {staffList.filter((s) => s.is_active !== false).map((s) => (
+          <option key={s.id} value={s.id}>{s.name}</option>
+        ))}
+      </select>
+      <button
+        onClick={() => onSave({ entityId, serviceId, reviewerId })}
+        title="Save reviewer"
+        style={{ border: 'none', background: '#4338ca', color: '#fff', borderRadius: 3, padding: '2px 6px', fontSize: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+      >✓</button>
+      <button
+        onClick={onCancel}
+        style={{ border: '1px solid #c7d2fe', background: '#fff', color: '#64748b', borderRadius: 3, padding: '2px 5px', fontSize: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
       >×</button>
     </div>
   );
