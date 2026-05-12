@@ -87,6 +87,33 @@ export default function ClientDetailPage() {
             {entity.company_number ? ` \u00B7 ${entity.company_number}` : ''}
             {entity.entity_status ? ` \u00B7 ${entity.entity_status}` : ''}
           </p>
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={async () => {
+                const next = !entity.expedite;
+                const prev = entity.expedite;
+                setEntity({ ...entity, expedite: next });
+                const { error } = await supabase.from('entities').update({ expedite: next }).eq('id', entity.id);
+                if (error) {
+                  alert('Could not update expedite flag: ' + error.message);
+                  setEntity({ ...entity, expedite: prev });
+                }
+              }}
+              title={entity.expedite ? 'Expedite ON \u2014 work prioritised post-period-end. Click to turn off.' : 'Expedite OFF. Click to flag this client for fast turnaround.'}
+              className={`text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded border ${
+                entity.expedite
+                  ? 'bg-amber-100 text-amber-700 border-amber-300'
+                  : 'bg-gray-100 text-gray-500 border-gray-300 hover:bg-gray-200'
+              }`}
+            >
+              {entity.expedite ? '\u26A1 Expedite' : 'Expedite off'}
+            </button>
+            {entity.grade && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200" title="Client grade (imported)">
+                Grade {entity.grade}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <Btn onClick={() => navigate('/manage/quotes/new?entity=' + entity.id)}>New Quote</Btn>
@@ -120,6 +147,8 @@ export default function ClientDetailPage() {
             {entity.vat_number && <><span className="text-gray-400">VAT Number</span><span className="text-gray-700">{entity.vat_number}</span></>}
             {entity.paye_ref && <><span className="text-gray-400">PAYE Ref</span><span className="text-gray-700">{entity.paye_ref}</span></>}
             {entity.manager && <><span className="text-gray-400">Manager</span><span className="text-gray-700">{entity.manager}</span></>}
+            {entity.grade && <><span className="text-gray-400">Grade</span><span className="text-gray-700">{entity.grade}</span></>}
+            <><span className="text-gray-400">Expedite</span><span className="text-gray-700">{entity.expedite ? 'Yes — prioritise post-period-end' : 'No'}</span></>
           </div>
         </div>
       )}
