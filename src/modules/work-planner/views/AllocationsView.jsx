@@ -28,6 +28,7 @@ export default function AllocationsView() {
   const [groupModalEntityId, setGroupModalEntityId] = useState(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [editing, setEditing] = useState(null); // { entityId, serviceId }
+  const [proposalsOpen, setProposalsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('clients'); // 'clients' | 'staff'
   const [search, setSearch] = useState('');
@@ -277,6 +278,25 @@ export default function AllocationsView() {
     setDrafts([]);
   }, [drafts]);
 
+  // A draft is "resolved" when BM's current inferred assignee already
+  // matches the proposed fee earner — the suggestion is no longer needed.
+  const resolvedDrafts = useMemo(() => {
+    return drafts.filter((d) => {
+      const inf = inferredMap.get(`${d.entity_id}__${d.canonical_service_id}`);
+      const bmAssignee = inf?.assignee_id || null;
+      const proposed = d.proposed_fee_earner_id || null;
+      return bmAssignee && proposed && bmAssignee === proposed;
+    });
+  }, [drafts, inferredMap]);
+
+  const handleClearResolved = useCallback(async () => {
+    if (!resolvedDrafts.length) return;
+    if (!confirm(`Clear ${resolvedDrafts.length} resolved proposal${resolvedDrafts.length === 1 ? '' : 's'}? These are suggestions that now match BM.`)) return;
+    const ids = resolvedDrafts.map((d) => d.id);
+    await Promise.all(ids.map((id) => discardAllocationDraft(id)));
+    setDrafts((prev) => prev.filter((d) => !ids.includes(d.id)));
+  }, [resolvedDrafts]);
+
   // Cycle a column through: not-sorted → asc (added at end of stack) → desc → removed.
   const toggleSort = useCallback((key) => {
     setSortStack((prev) => {
@@ -358,12 +378,30 @@ export default function AllocationsView() {
 
         {drafts.length > 0 && (
           <>
-            <span style={{
-              fontSize: 12, color: '#92400e', background: '#fef3c7',
-              border: '1px solid #fde68a', padding: '4px 10px', borderRadius: 12,
-            }}>
-              {drafts.length} reallocation proposal{drafts.length === 1 ? '' : 's'}
-            </span>
+            <button
+              onClick={() => setProposalsOpen(true)}
+              title="Click to review all proposed changes"
+              style={{
+                fontSize: 12, color: '#92400e', background: '#fef3c7',
+                border: '1px solid #fde68a', padding: '4px 10px', borderRadius: 12,
+                fontFamily: "'Outfit', sans-serif", cursor: 'pointer', fontWeight: 500,
+              }}
+            >
+              {drafts.length} reallocation proposal{drafts.length === 1 ? '' : 's'} →
+            </button>
+            {resolvedDrafts.length > 0 && (
+              <button
+                onClick={handleClearResolved}
+                title="Discard drafts where BM's current assignee already matches your proposal"
+                style={{
+                  fontSize: 12, fontWeight: 500, padding: '5px 12px', borderRadius: 6,
+                  border: '1px solid #16a34a', background: '#dcfce7', color: '#166534',
+                  cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
+                }}
+              >
+                ✓ Clear resolved ({resolvedDrafts.length})
+              </button>
+            )}
             <button onClick={handleDiscardAll} style={btnStyle('ghost')}>Discard all</button>
             <button onClick={handleExportReport} style={btnStyle('primary')}>Export report (CSV)</button>
           </>
@@ -402,6 +440,22 @@ export default function AllocationsView() {
           />
         )}
       </div>
+
+      {proposalsOpen && (
+        <ProposalsModal
+          drafts={drafts}
+          resolvedDrafts={resolvedDrafts}
+          entities={entities}
+          staffMap={staffMap}
+          inferredMap={inferredMap}
+          onDiscardDraft={async (id) => {
+            await discardAllocationDraft(id);
+            setDrafts((prev) => prev.filter((d) => d.id !== id));
+          }}
+          onClearResolved={handleClearResolved}
+          onClose={() => setProposalsOpen(false)}
+        />
+      )}
 
       {groupModalEntityId && (
         <GroupReallocateModal
@@ -737,6 +791,172 @@ function CellEditor({ entityId, serviceId, initialFeeEarnerId, staffList, onCanc
     </div>
   );
 }
+
+// ── Proposals review modal ──
+
+function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMap, onDiscardDraft, onClearResolved, onClose }) {
+  const [filter, setFilter] = useState('all'); // 'all' | 'active' | 'resolved'
+
+  const entityById = useMemo(() => {
+    const m = new Map();
+    entities.forEach((e) => m.set(e.id, e));
+    return m;
+  }, [entities]);
+
+  const serviceLabel = (id) => ALLOCATION_SERVICES.find((s) => s.id === id)?.label || id;
+  const resolvedIds = useMemo(() => new Set(resolvedDrafts.map((d) => d.id)), [resolvedDrafts]);
+
+  const rows = useMemo(() => {
+    const enriched = drafts.map((d) => {
+      const inf = inferredMap.get(`${d.entity_id}__${d.canonical_service_id}`);
+      const bmId = inf?.assignee_id || null;
+      const resolved = resolvedIds.has(d.id);
+      return {
+        id: d.id,
+        entity_id: d.entity_id,
+        client: entityById.get(d.entity_id)?.name || '(unknown)',
+        service: serviceLabel(d.canonical_service_id),
+        from: bmId ? (staffMap[bmId]?.name || '—') : 'unassigned',
+        to: d.proposed_fee_earner_id ? (staffMap[d.proposed_fee_earner_id]?.name || '—') : 'unassigned',
+        resolved,
+        note: d.note,
+        source: inf ? (inf.via_fallback ? 'BM (fallback)' : 'BM') : 'gap',
+      };
+    });
+    enriched.sort((a, b) => a.client.localeCompare(b.client) || a.service.localeCompare(b.service));
+    if (filter === 'active') return enriched.filter((r) => !r.resolved);
+    if (filter === 'resolved') return enriched.filter((r) => r.resolved);
+    return enriched;
+  }, [drafts, inferredMap, entityById, staffMap, resolvedIds, filter]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)', zIndex: 50,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: "'Outfit', sans-serif",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#fff', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
+          width: 'min(960px, 92vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+        }}
+      >
+        {/* Header */}
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#0f172a' }}>Reallocation proposals</h2>
+          <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, padding: 2 }}>
+            {[
+              ['all', `All (${drafts.length})`],
+              ['active', `Active (${drafts.length - resolvedDrafts.length})`],
+              ['resolved', `Resolved (${resolvedDrafts.length})`],
+            ].map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setFilter(k)}
+                style={{
+                  padding: '4px 10px', fontSize: 12, fontWeight: 500,
+                  border: 'none', borderRadius: 4, cursor: 'pointer',
+                  background: filter === k ? '#fff' : 'transparent',
+                  color: filter === k ? '#0f172a' : '#64748b',
+                  boxShadow: filter === k ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                  fontFamily: "'Outfit', sans-serif",
+                }}
+              >{label}</button>
+            ))}
+          </div>
+          <div style={{ flex: 1 }} />
+          {resolvedDrafts.length > 0 && (
+            <button
+              onClick={() => { onClearResolved(); }}
+              style={{
+                fontSize: 12, fontWeight: 500, padding: '5px 12px', borderRadius: 6,
+                border: '1px solid #16a34a', background: '#dcfce7', color: '#166534', cursor: 'pointer',
+                fontFamily: "'Outfit', sans-serif",
+              }}
+            >Clear resolved ({resolvedDrafts.length})</button>
+          )}
+          <button
+            onClick={onClose}
+            style={{
+              fontSize: 13, padding: '5px 10px', borderRadius: 6,
+              border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: 'pointer',
+              fontFamily: "'Outfit', sans-serif",
+            }}
+          >Close</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ overflow: 'auto', flex: 1 }}>
+          {rows.length === 0 ? (
+            <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+              No proposals match this filter.
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
+                <tr>
+                  <th style={modalTh}>Client</th>
+                  <th style={modalTh}>Service</th>
+                  <th style={modalTh}>From (BM)</th>
+                  <th style={modalTh}>To (proposed)</th>
+                  <th style={modalTh}>Status</th>
+                  <th style={{ ...modalTh, textAlign: 'right' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={r.id} style={{ background: i % 2 ? '#fff' : '#fafbfc', borderTop: '1px solid #f1f5f9' }}>
+                    <td style={modalTd}>{r.client}</td>
+                    <td style={{ ...modalTd, color: '#475569' }}>{r.service}</td>
+                    <td style={{ ...modalTd, color: '#475569' }}>{r.from}</td>
+                    <td style={{ ...modalTd, fontWeight: 500 }}>{r.to}</td>
+                    <td style={modalTd}>
+                      {r.resolved ? (
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                          background: '#dcfce7', color: '#166534', border: '1px solid #86efac',
+                          textTransform: 'uppercase', letterSpacing: 0.4,
+                        }}>Resolved</span>
+                      ) : (
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                          background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a',
+                          textTransform: 'uppercase', letterSpacing: 0.4,
+                        }}>Active</span>
+                      )}
+                    </td>
+                    <td style={{ ...modalTd, textAlign: 'right' }}>
+                      <button
+                        onClick={() => onDiscardDraft(r.id)}
+                        title="Discard this proposal"
+                        style={{
+                          fontSize: 11, padding: '3px 8px', borderRadius: 4,
+                          border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', cursor: 'pointer',
+                          fontFamily: "'Outfit', sans-serif",
+                        }}
+                      >Discard</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const modalTh = {
+  padding: '8px 12px', textAlign: 'left', fontWeight: 600, fontSize: 11,
+  color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4,
+  borderBottom: '1px solid #e5e7eb',
+};
+const modalTd = { padding: '7px 12px', verticalAlign: 'middle' };
 
 // ── Reviewer cell (separate from fee-earner cell; writes to service_reviewers) ──
 
