@@ -101,8 +101,22 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     const revenueUplift = revenueBase * (fInc - 1);
     const revenue = revenueBase + revenueUplift;
 
-    const staffBase = sumOf(rows, r => r.nominal_type === 'staff_cost' && r.module_key !== 'pre_opening');
+    // Staff: split into site-level (direct) and group-level (overhead),
+    // mirroring financial_core's bucketing so the on-screen P&L rows are
+    // populated when the view is location-filtered.
+    const DIRECT_ROLES = new Set(['setting_manager', 'assistant_manager',
+      'senior_qualified', 'qualified', 'apprentice', 'practitioner']);
+    const isDirectStaff = (r) => r.nominal_type === 'staff_cost'
+      && r.module_key !== 'pre_opening'
+      && DIRECT_ROLES.has(r.tags?.role);
+    const isOverheadStaff = (r) => r.nominal_type === 'staff_cost'
+      && r.module_key !== 'pre_opening'
+      && !DIRECT_ROLES.has(r.tags?.role);
+    const staffDirectBase   = sumOf(rows, isDirectStaff);
+    const staffOverheadBase = sumOf(rows, isOverheadStaff);
+    const staffBase = staffDirectBase + staffOverheadBase;
     const preOpenStaffBase = sumOf(rows, r => r.nominal_type === 'staff_cost' && r.module_key === 'pre_opening');
+
     const premisesBase = sumOf(rows, r => r.nominal_type === 'overhead' && isPremises(r.line_label || ''));
     const utilitiesBase = sumOf(rows, r => r.nominal_type === 'overhead' && isUtilities(r.line_label || ''));
     const preOpenOverheadBase = sumOf(rows, r => r.nominal_type === 'overhead' && isPreOpening(r.module_key, r.line_label || ''));
@@ -112,12 +126,19 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
       r.nominal_type === 'overhead' && isPreOpening(r.module_key, r.line_label || '') && /marketing/i.test(r.line_label || '')
     );
     const preOpenOhRecurringBase = preOpenOverheadBase - preOpenMarketingBase;
+    // Direct costs (consumables / food) carved out so the P&L row matches the engine.
+    const directCostsBase = sumOf(rows, r =>
+      r.nominal_type === 'overhead' && r.module_key !== 'pre_opening' && /consumable|food/i.test(r.line_label || '')
+    );
+    const adminBase = sumOf(rows, r =>
+      r.nominal_type === 'overhead' && r.module_key !== 'pre_opening' && (r.line_label || '') === 'Central admin'
+    );
     const otherOverheadBase = sumOf(rows, r =>
-      (r.nominal_type === 'overhead' && !isPremises(r.line_label || '') && !isUtilities(r.line_label || '') && !isPreOpening(r.module_key, r.line_label || ''))
+      (r.nominal_type === 'overhead' && !isPremises(r.line_label || '') && !isUtilities(r.line_label || '') && !isPreOpening(r.module_key, r.line_label || '') && !/consumable|food/i.test(r.line_label || '') && (r.line_label || '') !== 'Central admin')
       || r.nominal_type === 'cost_of_sales'
     );
     const preOpenBase = preOpenStaffBase + preOpenOverheadBase;
-    const costsBase = staffBase + premisesBase + utilitiesBase + otherOverheadBase + preOpenBase;
+    const costsBase = staffBase + premisesBase + utilitiesBase + otherOverheadBase + directCostsBase + adminBase + preOpenBase;
     const costsUplift = costsBase * (fCost - 1);
     const costs = costsBase + costsUplift;
 
@@ -186,6 +207,17 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     set('pnl.revenue_private',   t, revenuePrivBase * fInc);
     set('pnl.revenue_la_funded', t, revenueFundBase * fInc);
     set('pnl.income_inflation_uplift', t, revenueUplift);
+    // Per-category cost rows so the StatementView's line items populate
+    // when a location filter is active. Each is signed -ve to match the
+    // engine's convention and is inflation-loaded via fCost.
+    set('pnl.cost_staff_direct',   t, -(staffDirectBase   * fCost));
+    set('pnl.cost_direct_costs',   t, -(directCostsBase   * fCost));
+    set('pnl.cost_staff_overhead', t, -(staffOverheadBase * fCost));
+    set('pnl.cost_premises',       t, -(premisesBase      * fCost));
+    set('pnl.cost_utilities',      t, -(utilitiesBase     * fCost));
+    set('pnl.cost_other_overhead', t, -(otherOverheadBase * fCost));
+    set('pnl.cost_admin',          t, -(adminBase         * fCost));
+    set('pnl.cost_pre_opening',    t, -(preOpenBase       * fCost));
     set('pnl.cost_total', t, -costs);
     set('pnl.cost_inflation_uplift', t, -costsUplift);
     set('pnl.ebitda', t, ebitda);
