@@ -32,7 +32,7 @@ export default function StatementView({
   const scopedMap = useMemo(() => {
     if (!usingScoped) return null;
     return scopedAggregate({
-      outputs, periods, entityIds,
+      outputs, periods, entityIds, entities,
       inflationPct: { income: 0, cost: 0 },
       openingCash: 0, openingEquity: 0, taxLagMonths: 9, payoutRatioPct: 0,
     });
@@ -184,7 +184,8 @@ function KpiFooter({ outputs, scopedMap, usingScoped, grouped }) {
     const ebitda  = get('pnl.ebitda', g.periods);
     const pbt     = get('pnl.pbt', g.periods);
     const npat    = get('pnl.npat', g.periods);
-    const staff   = -get('pnl.cost_staff_direct', g.periods) + -get('pnl.cost_management', g.periods);    // sign: negative cost row -> staff cost positive
+    // sign: negative cost row -> staff cost positive
+    const staff   = -get('pnl.cost_staff_direct', g.periods) + -get('pnl.cost_staff_overhead', g.periods);
     const utilities = -get('pnl.cost_utilities', g.periods);
     const premises  = -get('pnl.cost_premises', g.periods);
     const otherOh   = -get('pnl.cost_other_overhead', g.periods);

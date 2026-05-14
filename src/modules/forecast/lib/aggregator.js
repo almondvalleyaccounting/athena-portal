@@ -42,7 +42,7 @@ const DEBT_PRIN_NTS = ['debt_principal'];
 const DEBT_BAL_NTS = ['debt_balance'];
 const WC_MVT_NTS = ['working_capital_movement'];
 
-export function scopedAggregate({ outputs, periods, entityIds, inflationPct, openingCash, openingEquity, taxLagMonths, payoutRatioPct }) {
+export function scopedAggregate({ outputs, periods, entityIds, inflationPct, openingCash, openingEquity, taxLagMonths, payoutRatioPct, entities = [] }) {
   const result = new Map();
   const set = (nt, t, v) => result.set(`${nt}::${t}`, Math.round(v));
 
@@ -144,7 +144,27 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
 
     const dep = sumOf(rows, r => DEP_NTS.includes(r.nominal_type));
     const interest = sumOf(rows, r => INT_NTS.includes(r.nominal_type));
-    const tax = sumOf(rows, r => TAX_NTS.includes(r.nominal_type));
+    // Tax: when a location filter is active, the group-level `tax` row was
+    // being pulled in wholesale — overstating the tax burden on a single
+    // entity. Recompute scoped tax from scoped PBT × effective group tax
+    // rate (= group_tax / group_PBT for periods with positive group PBT).
+    // max(0, …) matches the engine's no-group-relief behaviour.
+    const taxRaw = sumOf(rows, r => TAX_NTS.includes(r.nominal_type));
+    let tax;
+    if (entityIds) {
+      // Derive effective rate from group-emitted rows for this period.
+      let groupTax = 0, groupPbt = 0;
+      for (const r of byPeriod.get(t) || []) {
+        if (r.nominal_type === 'tax') groupTax += r.amount_p;
+        else if (r.nominal_type === 'pnl.pbt' && !r.entity_id) groupPbt += r.amount_p;
+      }
+      const effRate = groupPbt > 0 ? (groupTax / groupPbt) : 0.25;
+      // Scoped PBT (signed) computed below; we need it now → reorder.
+      const scopedPbt = (revenue - costs) - dep - interest;
+      tax = Math.max(0, scopedPbt * effRate);
+    } else {
+      tax = taxRaw;
+    }
     const capex = sumOf(rows, r => CAPEX_NTS.includes(r.nominal_type));
     const debtPrincipal = sumOf(rows, r => DEBT_PRIN_NTS.includes(r.nominal_type));
     const debtBalance = sumOf(rows, r => DEBT_BAL_NTS.includes(r.nominal_type));
@@ -220,6 +240,32 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     set('pnl.cost_pre_opening',    t, -(preOpenBase       * fCost));
     set('pnl.cost_total', t, -costs);
     set('pnl.cost_inflation_uplift', t, -costsUplift);
+
+    // ── Scoped metrics so the P&L KPI footer populates when filtering ──
+    // Headcount: sum tags.headcount on in-scope staff_cost rows (exclude
+    // pre-opening so it matches the engine's metric.headcount_total).
+    let scopedHc = 0;
+    for (const r of rows) {
+      if (r.nominal_type !== 'staff_cost') continue;
+      if (r.module_key === 'pre_opening') continue;
+      scopedHc += Number(r.tags?.headcount) || 0;
+    }
+    set('metric.headcount_total', t, scopedHc);
+    // Sq ft + active locations: from in-scope entities whose opening_month_offset ≤ t.
+    let scopedSqft = 0, scopedSqftLeased = 0, scopedLocs = 0;
+    for (const e of (entities || [])) {
+      const cfg = e.config || {};
+      const opn = cfg.opening_month_offset ?? 0;
+      if (t < opn) continue;
+      if (entityIds && !entityIds.has(e.id)) continue;
+      scopedLocs += 1;
+      const sf = Number(cfg.sq_ft) || 0;
+      scopedSqft += sf;
+      if (cfg.lease_or_buy === 'lease') scopedSqftLeased += sf;
+    }
+    set('metric.sqft_total', t, scopedSqft);
+    set('metric.sqft_leased', t, scopedSqftLeased);
+    set('metric.locations_active', t, scopedLocs);
     set('pnl.ebitda', t, ebitda);
     set('pnl.depreciation_total', t, -dep);
     set('pnl.ebit', t, ebit);
