@@ -607,6 +607,8 @@ export default function InputsView({
           forecast={forecast}
           entity={editingEntity}
           councils={councils}
+          scenarioId={scenario?.id}
+          modules={modules}
           onClose={() => setEditingEntity(null)}
           onSaved={() => { setEditingEntity(null); onEntitiesChanged?.(); onChanged?.(); }}
         />
@@ -789,7 +791,7 @@ function CustomDriverModal({ scenarioId, moduleKey, entities, onClose, onSaved }
   );
 }
 
-function EntityModal({ forecast, entity, councils, onClose, onSaved }) {
+function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose, onSaved }) {
   // For NEW locations, fall back to saved nursery defaults (first location's
   // config, captured via "Save as defaults"). For edits, only use the row's
   // own config so we don't silently drift other locations' settings.
@@ -849,11 +851,33 @@ function EntityModal({ forecast, entity, councils, onClose, onSaved }) {
           ? (form.concession_stages || []).filter(s => Number(s?.months) > 0)
           : [],
       };
-      await upsertEntity({
+      const wasNew = !form.id;
+      const saved = await upsertEntity({
         id: form.id || undefined,
         forecast_id: forecast.id,
         key: form.key, label: form.label, type: 'location', config,
       });
+
+      // Auto-seed entity-scoped drivers for brand-new locations so
+      // their per-site costs (rent, fit-out, weekly rates, utilities,
+      // insurance, fixed-asset purchases, pre-opening overhead/staffing,
+      // etc.) flow through to the P&L / cashflow / reports immediately
+      // — instead of needing the user to remember to click "Fill
+      // missing defaults" first.
+      if (wasNew && scenarioId && modules?.length && saved?.id) {
+        try {
+          await seedPackDefaults({
+            scenario_id: scenarioId,
+            modules,
+            entities: [saved],
+            vertical_pack: forecast.vertical_pack,
+          });
+        } catch (seedErr) {
+          // Don't block save if seeding fails — surface a soft warning.
+          console.warn('Auto-seed of entity drivers failed:', seedErr);
+        }
+      }
+
       onSaved();
     } catch (e) { alert(e.message); }
     setBusy(false);
