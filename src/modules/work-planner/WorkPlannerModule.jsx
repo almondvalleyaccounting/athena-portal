@@ -780,22 +780,6 @@ export default function WorkPlannerModule() {
               {tab.label}
             </button>
           ))}
-          {(profile?.is_portal_admin === true || profile?.can_import_data === true) && (
-            <button
-              onClick={() => navigate('/planner/setup/preview')}
-              style={{
-                marginLeft: 16,
-                padding: '10px 18px', fontSize: 13, fontWeight: 500,
-                color: '#64748b',
-                cursor: 'pointer', border: 'none', background: 'none',
-                fontFamily: "'Outfit', sans-serif",
-                borderLeft: '1px solid #e5e7eb',
-              }}
-              title="Admin: import rules, client exceptions, planner preview"
-            >
-              Setup →
-            </button>
-          )}
           <div style={{ flex: 1 }} />
           {showNewBtn && (
             <div style={{ display: 'flex', gap: 6 }}>
