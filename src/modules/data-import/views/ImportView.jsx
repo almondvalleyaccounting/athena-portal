@@ -1133,15 +1133,35 @@ function RuleRow({ group, isResolved, onResolved }) {
 
 function UnknownClientsPanel({ groups, onChanged }) {
   const [search, setSearch] = useState('');
-  const [resolved, setResolved] = useState({}); // { [bm_ref]: 'created' }
-  const totalTasks = groups.reduce((n, g) => n + g.count, 0);
-  const filtered = useFilteredGroups(groups, search);
+  const [resolved, setResolved] = useState({}); // { [bm_ref]: 'created'|'mapped'|'ignored' }
+  const [ignoredSet, setIgnoredSet] = useState(() => new Set());
+
+  // Fetch persisted ignore list once — already-ignored refs vanish from the panel.
+  useEffect(() => {
+    let live = true;
+    supabase
+      .from('import_ignored_bm_refs')
+      .select('bm_client_id')
+      .then(({ data }) => {
+        if (!live) return;
+        setIgnoredSet(new Set((data || []).map((r) => r.bm_client_id)));
+      });
+    return () => { live = false; };
+  }, []);
+
+  const visibleGroups = useMemo(
+    () => groups.filter((g) => !ignoredSet.has(g.key)),
+    [groups, ignoredSet]
+  );
+  const totalTasks = visibleGroups.reduce((n, g) => n + g.count, 0);
+  const filtered = useFilteredGroups(visibleGroups, search);
+  if (visibleGroups.length === 0) return null;
   return (
     <RollupFrame
       tone="red"
-      title={`Unknown client references · ${groups.length} references, ${totalTasks.toLocaleString()} tasks`}
-      summary="These BM client references don't match an Athena entity. Create them as prospects (no engagement letter yet) and the tasks will attach on next re-check."
-      search={groups.length > 8 ? search : undefined}
+      title={`Unknown client references · ${visibleGroups.length} references, ${totalTasks.toLocaleString()} tasks`}
+      summary="These BM client references don't match an Athena entity. Create as prospect, map to an existing entity, or ignore — tasks attach on next re-check."
+      search={visibleGroups.length > 8 ? search : undefined}
       onSearchChange={setSearch}
       searchPlaceholder="Filter references…"
     >
@@ -1150,7 +1170,12 @@ function UnknownClientsPanel({ groups, onChanged }) {
           key={g.key}
           group={g}
           resolvedState={resolved[g.key]}
-          onResolved={(state) => setResolved((prev) => ({ ...prev, [g.key]: state }))}
+          onResolved={(state) => {
+            setResolved((prev) => ({ ...prev, [g.key]: state }));
+            if (state === 'ignored') {
+              setIgnoredSet((prev) => new Set(prev).add(g.key));
+            }
+          }}
           onChanged={onChanged}
         />
       ))}
@@ -1170,25 +1195,52 @@ const ENTITY_TYPES = [
 
 function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
   const sampleName = group.samples.find((s) => s.client_name)?.client_name || '';
-  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState(null); // null | 'create' | 'map' | 'ignore'
   const [name, setName] = useState(sampleName);
   const [type, setType] = useState('limited_company');
+  const [reason, setReason] = useState('');
+  const [picked, setPicked] = useState(null); // { id, name, ... }
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
-  const isResolved = resolvedState === 'created';
 
-  const create = async () => {
+  const isResolved = !!resolvedState;
+  const resolvedLabel = {
+    created: '✓ Prospect created',
+    mapped:  '✓ Mapped to existing entity',
+    ignored: '✓ Ignored',
+  }[resolvedState];
+
+  const submit = async () => {
     setSaving(true); setErr(null);
-    const { error } = await supabase.rpc('create_prospect_for_bm_ref', {
-      p_bm_client_id: group.key,
-      p_name: name.trim(),
-      p_type: type,
-    });
-    setSaving(false);
-    if (error) { setErr(error.message); return; }
-    onResolved('created');
-    setOpen(false);
-    if (onChanged) onChanged();
+    try {
+      if (mode === 'create') {
+        const { error } = await supabase.rpc('create_prospect_for_bm_ref', {
+          p_bm_client_id: group.key, p_name: name.trim(), p_type: type,
+        });
+        if (error) throw error;
+        onResolved('created');
+        if (onChanged) onChanged();
+      } else if (mode === 'map') {
+        if (!picked) throw new Error('Pick an entity first');
+        const { error } = await supabase.rpc('map_bm_ref_to_entity', {
+          p_bm_client_id: group.key, p_entity_id: picked.id,
+        });
+        if (error) throw error;
+        onResolved('mapped');
+        if (onChanged) onChanged();
+      } else if (mode === 'ignore') {
+        const { error } = await supabase.rpc('ignore_bm_ref', {
+          p_bm_client_id: group.key, p_reason: reason || null,
+        });
+        if (error) throw error;
+        onResolved('ignored');
+      }
+      setMode(null);
+    } catch (e) {
+      setErr(e.message || String(e));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1200,14 +1252,23 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
         </span>
         <span style={{ fontSize: 11, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
         {isResolved ? (
-          <span style={{ fontSize: 11, color: '#065f46', fontWeight: 600 }}>✓ Prospect created</span>
+          <span style={{ fontSize: 11, color: '#065f46', fontWeight: 600 }}>{resolvedLabel}</span>
         ) : (
-          <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
-            {open ? 'Cancel' : 'Create as prospect →'}
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => setMode(mode === 'create' ? null : 'create')} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
+              {mode === 'create' ? 'Cancel' : 'Create prospect'}
+            </button>
+            <button onClick={() => setMode(mode === 'map' ? null : 'map')} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
+              {mode === 'map' ? 'Cancel' : 'Map to existing'}
+            </button>
+            <button onClick={() => setMode(mode === 'ignore' ? null : 'ignore')} style={{ ...btnGhost, fontSize: 11, padding: '4px 10px' }}>
+              {mode === 'ignore' ? 'Cancel' : 'Ignore'}
+            </button>
+          </div>
         )}
       </div>
-      {open && !isResolved && (
+
+      {mode === 'create' && !isResolved && (
         <div style={{ padding: '10px 14px', borderTop: '1px dashed #e5e7eb', background: '#fff' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8, alignItems: 'end' }}>
             <label style={miniLabel}>
@@ -1222,16 +1283,246 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
             </label>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-            <button onClick={create} disabled={saving || !name.trim()} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+            <button onClick={submit} disabled={saving || !name.trim()} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
               {saving ? 'Creating…' : 'Create prospect'}
             </button>
             <span style={{ fontSize: 11, color: '#64748b' }}>
-              Status will be <strong>prospect</strong>, source <strong>brightmanager</strong>. BM ID <strong>{group.key}</strong> is linked so re-import attaches every task with this reference.
+              Status <strong>prospect</strong>, source <strong>brightmanager</strong>, linked to BM ID <strong>{group.key}</strong>.
             </span>
           </div>
           {err && <p style={{ fontSize: 11, color: '#991b1b', marginTop: 6 }}>{err}</p>}
         </div>
       )}
+
+      {mode === 'map' && !isResolved && (
+        <div style={{ padding: '10px 14px', borderTop: '1px dashed #e5e7eb', background: '#fff' }}>
+          <EntityPicker value={picked} onChange={setPicked} initialQuery={sampleName} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+            <button onClick={submit} disabled={saving || !picked} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+              {saving ? 'Mapping…' : picked ? `Map to "${picked.name}"` : 'Pick an entity'}
+            </button>
+            <span style={{ fontSize: 11, color: '#64748b' }}>
+              Sets <strong>bm_client_id = {group.key}</strong> on the chosen entity. Fails if another entity already owns this BM ID.
+            </span>
+          </div>
+          {err && <p style={{ fontSize: 11, color: '#991b1b', marginTop: 6 }}>{err}</p>}
+        </div>
+      )}
+
+      {mode === 'ignore' && !isResolved && (
+        <div style={{ padding: '10px 14px', borderTop: '1px dashed #e5e7eb', background: '#fff' }}>
+          <label style={miniLabel}>
+            <span>Reason (optional)</span>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} style={selectStyle} placeholder="e.g. dormant in BM, never engaged" />
+          </label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+            <button onClick={submit} disabled={saving} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+              {saving ? 'Saving…' : 'Ignore this reference'}
+            </button>
+            <span style={{ fontSize: 11, color: '#64748b' }}>
+              {group.key} will be hidden from this panel on future imports. Tasks with this reference still import unattached. Unignore from Admin → Data Import → Settings.
+            </span>
+          </div>
+          {err && <p style={{ fontSize: 11, color: '#991b1b', marginTop: 6 }}>{err}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Parse `duplicate company_number SC123456 already on bm_client_id BIGH002`
+// into { company_number, existing_bm_client_id }. Returns null if the reason
+// is something else.
+function parseDupCompanyReason(reason) {
+  if (typeof reason !== 'string') return null;
+  const m = reason.match(/^duplicate company_number (\S+) already on bm_client_id (\S+)/i);
+  if (!m) return null;
+  return { company_number: m[1], existing_bm_client_id: m[2] };
+}
+
+function DuplicateCompanyPanel({ skipped }) {
+  const rows = useMemo(() => {
+    return (skipped || []).map((s) => {
+      const parsed = parseDupCompanyReason(s.reason);
+      if (!parsed) return null;
+      return {
+        incoming_bm_client_id: s.bm_client_id,
+        company_number: parsed.company_number,
+        existing_bm_client_id: parsed.existing_bm_client_id,
+      };
+    }).filter(Boolean);
+  }, [skipped]);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
+        Needs attention · duplicate company numbers
+      </p>
+      <RollupFrame
+        tone="amber"
+        title={`Duplicate company_number · ${rows.length} ${rows.length === 1 ? 'collision' : 'collisions'}`}
+        summary="The incoming BM row's company number is already held by a different BM client. Resolve by clearing the company number on the existing record (the next BM Clients import will then write the value onto the BM-owned record), or by ignoring the incoming BM ID."
+      >
+        {rows.map((r) => <DuplicateCompanyRow key={r.incoming_bm_client_id} row={r} />)}
+      </RollupFrame>
+    </div>
+  );
+}
+
+function DuplicateCompanyRow({ row }) {
+  const [existing, setExisting] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [resolved, setResolved] = useState(null); // 'cleared' | 'ignored'
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    supabase
+      .from('entities')
+      .select('id, name, bm_client_id, company_number, entity_status, source')
+      .eq('company_number', row.company_number)
+      .limit(1)
+      .then(({ data }) => {
+        if (!live) return;
+        setExisting((data || [])[0] || null);
+        setLoading(false);
+      });
+    return () => { live = false; };
+  }, [row.company_number]);
+
+  const clearCompany = async () => {
+    if (!existing) return;
+    setSaving(true); setErr(null);
+    const { error } = await supabase.rpc('clear_company_number_on_entity', { p_entity_id: existing.id });
+    setSaving(false);
+    if (error) { setErr(error.message); return; }
+    setResolved('cleared');
+  };
+
+  const ignoreRef = async () => {
+    setSaving(true); setErr(null);
+    const { error } = await supabase.rpc('ignore_bm_ref', {
+      p_bm_client_id: row.incoming_bm_client_id,
+      p_reason: `duplicate company_number with ${row.existing_bm_client_id}`,
+    });
+    setSaving(false);
+    if (error) { setErr(error.message); return; }
+    setResolved('ignored');
+  };
+
+  return (
+    <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(252,211,77,0.4)', background: resolved ? 'rgba(220,252,231,0.4)' : 'transparent' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div>
+          <p style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Incoming BM row
+          </p>
+          <p style={{ fontSize: 13, color: '#0f172a', fontFamily: 'monospace' }}>{row.incoming_bm_client_id}</p>
+          <p style={{ fontSize: 12, color: '#475569' }}>company_number <strong>{row.company_number}</strong></p>
+        </div>
+        <div>
+          <p style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Existing entity
+          </p>
+          {loading && <p style={{ fontSize: 12, color: '#94a3b8' }}>Looking up…</p>}
+          {!loading && !existing && <p style={{ fontSize: 12, color: '#94a3b8' }}>Not found in entities (refreshed since import?)</p>}
+          {existing && (
+            <>
+              <p style={{ fontSize: 13, color: '#0f172a' }}>{existing.name}</p>
+              <p style={{ fontSize: 12, color: '#475569' }}>
+                bm_client_id <strong>{existing.bm_client_id || '—'}</strong> · status <strong>{existing.entity_status}</strong>
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
+        {resolved === 'cleared' && (
+          <span style={{ fontSize: 11, color: '#065f46', fontWeight: 600 }}>
+            ✓ Company number cleared — re-run BM Clients import to attach to {row.incoming_bm_client_id}
+          </span>
+        )}
+        {resolved === 'ignored' && (
+          <span style={{ fontSize: 11, color: '#065f46', fontWeight: 600 }}>
+            ✓ Incoming BM ID ignored on future imports
+          </span>
+        )}
+        {!resolved && (
+          <>
+            <button onClick={clearCompany} disabled={saving || !existing} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
+              {saving ? 'Working…' : `Clear ${row.company_number} from existing`}
+            </button>
+            <button onClick={ignoreRef} disabled={saving} style={{ ...btnGhost, fontSize: 11, padding: '4px 10px' }}>
+              Ignore {row.incoming_bm_client_id}
+            </button>
+            <span style={{ fontSize: 11, color: '#64748b' }}>
+              Pick "Clear" if the BM record is authoritative for this company; "Ignore" if the incoming BM row is the wrong one.
+            </span>
+          </>
+        )}
+      </div>
+      {err && <p style={{ fontSize: 11, color: '#991b1b', marginTop: 6 }}>{err}</p>}
+    </div>
+  );
+}
+
+function EntityPicker({ value, onChange, initialQuery = '' }) {
+  const [query, setQuery] = useState(initialQuery);
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    const handle = setTimeout(async () => {
+      const { data } = await supabase.rpc('search_entities_for_wizard', { p_query: query, p_limit: 12 });
+      if (!live) return;
+      setResults(data || []);
+      setLoading(false);
+    }, 200);
+    return () => { live = false; clearTimeout(handle); };
+  }, [query]);
+
+  return (
+    <div>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search by name, BM ID, or company number…"
+        style={{ ...selectStyle, width: '100%' }}
+        autoFocus
+      />
+      <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 6, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
+        {loading && results.length === 0 && (
+          <div style={{ padding: 10, fontSize: 11, color: '#94a3b8' }}>Searching…</div>
+        )}
+        {!loading && results.length === 0 && (
+          <div style={{ padding: 10, fontSize: 11, color: '#94a3b8' }}>No matches.</div>
+        )}
+        {results.map((r) => {
+          const selected = value?.id === r.id;
+          return (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => onChange(r)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                textAlign: 'left', padding: '6px 10px', background: selected ? '#eff6ff' : '#fff',
+                border: 'none', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', fontFamily: font,
+              }}
+            >
+              <span style={{ flex: 1, fontSize: 12, color: '#0f172a' }}>{r.name}</span>
+              <span style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>{r.bm_client_id || '—'}</span>
+              <span style={{ fontSize: 10, color: '#64748b' }}>{r.company_number || ''}</span>
+              <span style={{ fontSize: 10, color: r.entity_status === 'prospect' ? '#92400e' : '#475569', textTransform: 'capitalize' }}>{r.entity_status}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1646,6 +1937,10 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
         <>
           <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>entities written</span><span style={resultNum}>{wr.entities_written.toLocaleString()}</span></div>
           <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>prospects converted</span><span style={resultNum}>{wr.prospects_converted.toLocaleString()}</span></div>
+          {wr.orphans_adopted > 0 && (
+            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>orphan records adopted</span><span style={resultNum}>{wr.orphans_adopted.toLocaleString()}</span></div>
+          )}
+          <DuplicateCompanyPanel skipped={wr.skipped || []} />
           {wr.errors?.length > 0 && (
             <details style={{ marginTop: 10 }}>
               <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#991b1b' }}>
