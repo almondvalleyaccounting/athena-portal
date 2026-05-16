@@ -1330,6 +1330,101 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
   );
 }
 
+// Parse `duplicate bm_client_id CLA001 used by multiple rows in this upload ("Castle Letting Agency", "Clarkson, Greg") — …`
+// into { names: [string] }. Returns null if the reason is something else.
+function parseDupBmRefReason(reason) {
+  if (typeof reason !== 'string') return null;
+  if (!/^duplicate bm_client_id /i.test(reason)) return null;
+  const namesPart = reason.match(/\(([^)]+)\)/);
+  const names = namesPart ? namesPart[1].split(',').map((s) => s.trim().replace(/^"(.*)"$/, '$1')) : [];
+  return { names };
+}
+
+function DuplicateBmRefPanel({ skipped }) {
+  const rows = useMemo(() => {
+    return (skipped || []).map((s) => {
+      const parsed = parseDupBmRefReason(s.reason);
+      if (!parsed) return null;
+      return { bm_client_id: s.bm_client_id, names: parsed.names };
+    }).filter(Boolean);
+  }, [skipped]);
+
+  // Deduplicate — every skipped row in the colliding set has the same bm_client_id.
+  const grouped = useMemo(() => {
+    const map = new Map();
+    for (const r of rows) {
+      if (!map.has(r.bm_client_id)) map.set(r.bm_client_id, r);
+    }
+    return [...map.values()];
+  }, [rows]);
+
+  if (grouped.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
+        Needs attention · duplicate Internal References
+      </p>
+      <RollupFrame
+        tone="red"
+        title={`Duplicate bm_client_id · ${grouped.length} ${grouped.length === 1 ? 'reference' : 'references'}`}
+        summary="Two or more BM clients share the same Internal Reference in this upload. Athena can't tell them apart, so all of them are skipped. Fix in BrightManager (give one of them a new Internal Reference), re-export, and re-import."
+      >
+        {grouped.map((r) => (
+          <div key={r.bm_client_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid rgba(252,165,165,0.3)' }}>
+            <span style={{ flex: '0 0 110px', fontSize: 13, color: '#0f172a', fontFamily: 'monospace' }}>{r.bm_client_id}</span>
+            <span style={{ flex: 1, fontSize: 12, color: '#475569' }}>
+              {r.names.length > 0 ? `Used by: ${r.names.join(' · ')}` : 'Multiple rows in this upload share this reference.'}
+            </span>
+          </div>
+        ))}
+      </RollupFrame>
+    </div>
+  );
+}
+
+// The RPC builds `warnings` by appending `{ duplicate_names: {...} }` to an
+// empty jsonb array, so it lands as `[{ duplicate_names: {...} }]`. Tolerate
+// both shapes (array element or top-level key) for forward-compat.
+function extractWarning(warnings, key) {
+  if (!warnings) return null;
+  if (Array.isArray(warnings)) {
+    for (const w of warnings) {
+      if (w && w[key]) return w[key];
+    }
+    return null;
+  }
+  return warnings[key] || null;
+}
+
+function DuplicateNamePanel({ duplicateNames }) {
+  if (!duplicateNames || typeof duplicateNames !== 'object') return null;
+  const entries = Object.entries(duplicateNames);
+  if (entries.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
+        Heads-up · same client name on multiple references
+      </p>
+      <RollupFrame
+        tone="amber"
+        title={`Same name, different bm_client_id · ${entries.length} ${entries.length === 1 ? 'name' : 'names'}`}
+        summary="The clients imported normally — this is informational. Check whether these are genuine namesakes (e.g. two people called John Smith) or one BM client accidentally entered twice under different Internal References."
+      >
+        {entries.map(([name, bmIds]) => (
+          <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid rgba(252,211,77,0.4)' }}>
+            <span style={{ flex: 1, fontSize: 13, color: '#0f172a' }}>{name}</span>
+            <span style={{ fontSize: 11, color: '#475569', fontFamily: 'monospace' }}>
+              {Array.isArray(bmIds) ? bmIds.join(' · ') : String(bmIds)}
+            </span>
+          </div>
+        ))}
+      </RollupFrame>
+    </div>
+  );
+}
+
 // Parse `duplicate company_number SC123456 already on bm_client_id BIGH002`
 // into { company_number, existing_bm_client_id }. Returns null if the reason
 // is something else.
@@ -1940,7 +2035,9 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
           {wr.orphans_adopted > 0 && (
             <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>orphan records adopted</span><span style={resultNum}>{wr.orphans_adopted.toLocaleString()}</span></div>
           )}
+          <DuplicateBmRefPanel skipped={wr.skipped || []} />
           <DuplicateCompanyPanel skipped={wr.skipped || []} />
+          <DuplicateNamePanel duplicateNames={extractWarning(wr.warnings, 'duplicate_names')} />
           {wr.errors?.length > 0 && (
             <details style={{ marginTop: 10 }}>
               <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#991b1b' }}>
