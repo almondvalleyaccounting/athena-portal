@@ -626,7 +626,7 @@ function buildTasksValidation(preview, parsed, matchMap) {
       const key = r.client_reference || '(blank)';
       const e = byClientRef.get(key) || { key, count: 0, samples: [] };
       e.count += 1;
-      if (e.samples.length < 3) e.samples.push({ row: r._source_row, bm_task_name: r.bm_task_name });
+      if (e.samples.length < 3) e.samples.push({ row: r._source_row, bm_task_name: r.bm_task_name, client_name: r.client_name });
       byClientRef.set(key, e);
       extraWarnings.push({ row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name, field: 'client', message: `Client reference "${r.client_reference}" not found — task won't attach to a client` });
     }
@@ -750,7 +750,7 @@ function ValidationReport({ validation, staff, onRecheck, rechecking }) {
             />
           )}
           {rollups.unknownClients.length > 0 && (
-            <UnknownClientsPanel groups={rollups.unknownClients} />
+            <UnknownClientsPanel groups={rollups.unknownClients} onChanged={onRecheck} />
           )}
 
           {rollups.unmappedAssignees.length === 0
@@ -1131,34 +1131,108 @@ function RuleRow({ group, isResolved, onResolved }) {
   );
 }
 
-function UnknownClientsPanel({ groups }) {
+function UnknownClientsPanel({ groups, onChanged }) {
   const [search, setSearch] = useState('');
+  const [resolved, setResolved] = useState({}); // { [bm_ref]: 'created' }
   const totalTasks = groups.reduce((n, g) => n + g.count, 0);
   const filtered = useFilteredGroups(groups, search);
   return (
     <RollupFrame
       tone="red"
       title={`Unknown client references · ${groups.length} references, ${totalTasks.toLocaleString()} tasks`}
-      summary="These BM client references don't match an Athena entity. Run the BM Clients import first — or tasks will import but won't attach to a client."
+      summary="These BM client references don't match an Athena entity. Create them as prospects (no engagement letter yet) and the tasks will attach on next re-check."
       search={groups.length > 8 ? search : undefined}
       onSearchChange={setSearch}
       searchPlaceholder="Filter references…"
     >
       {filtered.map((g) => (
-        <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid rgba(252,165,165,0.3)' }}>
-          <span style={{ flex: 1, fontSize: 13, color: '#0f172a', fontFamily: 'monospace' }}>{g.key}</span>
-          <span style={{ fontSize: 11, color: '#64748b' }}>{g.count.toLocaleString()} tasks</span>
-          {g.samples[0]?.bm_task_name && (
-            <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              e.g. {g.samples[0].bm_task_name}
-            </span>
-          )}
-        </div>
+        <UnknownClientRow
+          key={g.key}
+          group={g}
+          resolvedState={resolved[g.key]}
+          onResolved={(state) => setResolved((prev) => ({ ...prev, [g.key]: state }))}
+          onChanged={onChanged}
+        />
       ))}
       {filtered.length === 0 && (
         <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>No matches.</div>
       )}
     </RollupFrame>
+  );
+}
+
+const ENTITY_TYPES = [
+  { value: 'limited_company', label: 'Limited company' },
+  { value: 'sole_trader',     label: 'Sole trader' },
+  { value: 'partnership',     label: 'Partnership' },
+  { value: 'personal',        label: 'Personal' },
+];
+
+function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
+  const sampleName = group.samples.find((s) => s.client_name)?.client_name || '';
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(sampleName);
+  const [type, setType] = useState('limited_company');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(null);
+  const isResolved = resolvedState === 'created';
+
+  const create = async () => {
+    setSaving(true); setErr(null);
+    const { error } = await supabase.rpc('create_prospect_for_bm_ref', {
+      p_bm_client_id: group.key,
+      p_name: name.trim(),
+      p_type: type,
+    });
+    setSaving(false);
+    if (error) { setErr(error.message); return; }
+    onResolved('created');
+    setOpen(false);
+    if (onChanged) onChanged();
+  };
+
+  return (
+    <div style={{ borderBottom: '1px solid rgba(252,165,165,0.3)', background: isResolved ? 'rgba(220,252,231,0.4)' : 'transparent' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px' }}>
+        <span style={{ flex: '0 0 110px', fontSize: 13, color: '#0f172a', fontFamily: 'monospace' }}>{group.key}</span>
+        <span style={{ flex: 1, fontSize: 12, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {sampleName ? sampleName : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>name not in tasks CSV</span>}
+        </span>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
+        {isResolved ? (
+          <span style={{ fontSize: 11, color: '#065f46', fontWeight: 600 }}>✓ Prospect created</span>
+        ) : (
+          <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
+            {open ? 'Cancel' : 'Create as prospect →'}
+          </button>
+        )}
+      </div>
+      {open && !isResolved && (
+        <div style={{ padding: '10px 14px', borderTop: '1px dashed #e5e7eb', background: '#fff' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8, alignItems: 'end' }}>
+            <label style={miniLabel}>
+              <span>Client name</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} style={selectStyle} placeholder="e.g. Acme Holdings Ltd" />
+            </label>
+            <label style={miniLabel}>
+              <span>Entity type</span>
+              <select value={type} onChange={(e) => setType(e.target.value)} style={selectStyle}>
+                {ENTITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+            <button onClick={create} disabled={saving || !name.trim()} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+              {saving ? 'Creating…' : 'Create prospect'}
+            </button>
+            <span style={{ fontSize: 11, color: '#64748b' }}>
+              Status will be <strong>prospect</strong>, source <strong>brightmanager</strong>. BM ID <strong>{group.key}</strong> is linked so re-import attaches every task with this reference.
+            </span>
+          </div>
+          {err && <p style={{ fontSize: 11, color: '#991b1b', marginTop: 6 }}>{err}</p>}
+        </div>
+      )}
+    </div>
   );
 }
 
