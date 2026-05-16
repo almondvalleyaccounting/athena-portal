@@ -55,7 +55,7 @@ export const MODULES = [
   },
   {
     id: 'work-planner',
-    label: 'Work Planner',
+    label: 'Work',
     route: '/planner',
     icon: 'clock',
     permissions: ['work_planner'],
@@ -64,40 +64,24 @@ export const MODULES = [
     children: [
       {
         id: 'wp-task',
-        label: 'Task Planner',
+        label: 'Planner',
         route: '/planner',
         matchPaths: ['/planner', '/planner/ready', '/planner/waiting', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed'],
       },
       {
         id: 'wp-capacity',
-        label: 'Capacity Planner',
+        label: 'Capacity',
         route: '/planner/allocations',
         matchPaths: ['/planner/allocations', '/planner/estimates', '/planner/capacity'],
       },
+      {
+        id: 'wp-timesheets',
+        label: 'Timesheets',
+        route: '/timesheets',
+        permissions: ['can_view_timesheets'],
+        matchPaths: ['/timesheets'],
+      },
     ],
-  },
-  // Waiting = the pre-commit staging area inside Work Planner. Shows
-  // tasks not yet committed to staff calendars (drafts + approved).
-  // Drag tasks to reschedule; each drag stamps a manual override so
-  // future planner runs don't trample the change. Visible to anyone
-  // who can import data (admins).
-  {
-    id: 'waiting',
-    label: 'Waiting',
-    route: '/planner/waiting',
-    icon: 'calendar-check',
-    permissions: ['can_import_data'],
-    status: 'live',
-    group: 'team',
-  },
-  {
-    id: 'timesheets',
-    label: 'Timesheets',
-    route: '/timesheets',
-    icon: 'table',
-    permissions: ['can_view_timesheets'],
-    status: 'live',
-    group: 'team',
   },
   {
     id: 'pd-tracker',
