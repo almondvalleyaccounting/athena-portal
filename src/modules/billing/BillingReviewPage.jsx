@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import PlanUpliftModal from './PlanUpliftModal';
+import BillingSubNav from './BillingSubNav';
 
 const font = "'Outfit', sans-serif";
 
@@ -334,9 +335,11 @@ export default function BillingReviewPage() {
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Billing approval queue
       </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 720, marginBottom: 16 }}>
+      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
         Approve each suggested monthly recurring bill before it counts in the headline. Edit cadence or amount if the system got it wrong.
       </p>
+
+      <BillingSubNav active="import" />
 
       {/* Filter pills */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
