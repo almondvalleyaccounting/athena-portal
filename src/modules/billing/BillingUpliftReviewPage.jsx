@@ -4,6 +4,7 @@ import { ArrowLeft, Check, X, RotateCcw, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
+import SearchInput from '../../components/SearchInput';
 import { fmtGbp } from '../../lib/money';
 
 const font = "'Outfit', sans-serif";
@@ -24,6 +25,7 @@ export default function BillingUpliftReviewPage() {
   const [selected, setSelected] = useState(new Set());
   const [refreshing, setRefreshing] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const [search, setSearch] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -87,10 +89,18 @@ export default function BillingUpliftReviewPage() {
   }, [summarised]);
 
   const visible = useMemo(() => {
-    if (filter === 'all') return summarised;
-    if (filter === 'staged') return summarised.filter((r) => !r.uplift_review_status || r.uplift_review_status === 'staged');
-    return summarised.filter((r) => r.uplift_review_status === filter);
-  }, [summarised, filter]);
+    let out = summarised;
+    if (filter === 'all') {
+      // no status narrowing
+    } else if (filter === 'staged') {
+      out = out.filter((r) => !r.uplift_review_status || r.uplift_review_status === 'staged');
+    } else {
+      out = out.filter((r) => r.uplift_review_status === filter);
+    }
+    const q = search.trim().toLowerCase();
+    if (q) out = out.filter((r) => (r.entity?.name || '').toLowerCase().includes(q));
+    return out;
+  }, [summarised, filter, search]);
 
   const totals = useMemo(() => {
     const old = visible.reduce((s, r) => s + r._oldTotal, 0);
@@ -220,18 +230,12 @@ export default function BillingUpliftReviewPage() {
         <Pill label="Rejected" count={counts.rejected || 0} active={filter === 'rejected'} tone="slate" onClick={() => setFilter('rejected')} />
         <Pill label={`All (${counts.all})`} active={filter === 'all'} tone="default" onClick={() => setFilter('all')} />
 
-        <div style={{ flex: 1 }} />
-
-        {approvedCount > 0 && (
-          <>
-            <button onClick={() => pushApproved(true)} disabled={pushing} style={btnPushDry} title="Show proposed bodies in console, no QBO writes">
-              Dry-run approved
-            </button>
-            <button onClick={() => pushApproved(false)} disabled={pushing} style={btnPushLive}>
-              {pushing ? 'Pushing…' : `Push ${approvedCount} approved to QBO`}
-            </button>
-          </>
-        )}
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search client…"
+          style={{ flex: 1, minWidth: 220, marginLeft: 'auto' }}
+        />
       </div>
 
       {/* Bulk bar */}
@@ -343,6 +347,24 @@ export default function BillingUpliftReviewPage() {
           </table>
         </div>
       )}
+
+      {/* Sticky push footer — appears whenever there's something
+          approved. Keeps the primary action one click away wherever
+          the user has scrolled to. */}
+      {approvedCount > 0 && (
+        <div style={pushFooterStyle}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>
+            {approvedCount} approved {approvedCount === 1 ? 'template' : 'templates'} ready to push
+          </span>
+          <div style={{ flex: 1 }} />
+          <button onClick={() => pushApproved(true)} disabled={pushing} style={btnPushDry} title="Show proposed bodies in console, no QBO writes">
+            Dry-run
+          </button>
+          <button onClick={() => pushApproved(false)} disabled={pushing} style={btnPushLive}>
+            {pushing ? 'Pushing…' : `Push ${approvedCount} to QBO`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -387,6 +409,14 @@ const btnGhost = { padding: '6px 12px', fontSize: 12, fontWeight: 500, backgroun
 const btnSecondary = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnPushDry = { padding: '6px 14px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnPushLive = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const pushFooterStyle = {
+  position: 'sticky', bottom: 0, marginTop: 14,
+  display: 'flex', alignItems: 'center', gap: 10,
+  padding: '12px 16px',
+  background: '#fff', border: '1px solid #c4b5fd', borderRadius: 10,
+  boxShadow: '0 -6px 20px rgba(15,23,42,0.05)',
+  color: '#0f172a', fontFamily: font, zIndex: 10,
+};
 
 function iconBtn(color) {
   return { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, padding: 0, background: '#fff', border: `1px solid ${color}40`, borderRadius: 6, color, cursor: 'pointer' };
