@@ -486,11 +486,11 @@ function Cell({ cell, isEditing, onEdit, onSave, onCancel, onClearPending }) {
       onClick={duplicate ? undefined : onEdit}
       style={{
         ...cellTd,
-        background: duplicate ? '#fef2f2' : (cell.hasPending ? '#f5f3ff' : '#fff'),
+        background: cell.hasPending ? '#f5f3ff' : '#fff',
         cursor: duplicate ? 'not-allowed' : 'pointer',
       }}
       title={duplicate
-        ? `Duplicate: ${cell.services.length} service lines with id "${cell.serviceId}" on this client. Resolve on the approval queue.`
+        ? `${cell.services.length} service lines with id "${cell.serviceId}" — edit on the approval queue.`
         : 'Click to edit (stages as pending — push from Uplift Review)'}
     >
       <div style={{ fontFamily: 'monospace', color: cell.hasPending ? '#94a3b8' : '#0f172a', textDecoration: cell.hasPending ? 'line-through' : 'none' }}>
@@ -503,9 +503,6 @@ function Cell({ cell, isEditing, onEdit, onSave, onCancel, onClearPending }) {
           </span>
           <button onClick={(e) => { e.stopPropagation(); onClearPending(); }} title="Clear pending" style={clearBtnStyle}>×</button>
         </div>
-      )}
-      {duplicate && (
-        <div style={{ fontSize: 9, color: '#b91c1c', fontWeight: 600, marginTop: 2 }}>DUP × {cell.services.length}</div>
       )}
     </td>
   );

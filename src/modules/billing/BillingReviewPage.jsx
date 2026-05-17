@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown, CalendarX } from 'lucide-react';
+import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown, CalendarX, Copy } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
@@ -74,13 +74,39 @@ export default function BillingReviewPage() {
     return out;
   }, [rows]);
 
+  // Duplicate detection: (entity_id, service_id) pairs with ≥2
+  // unacknowledged service lines. A user can explicitly mark a line
+  // duplicate_acknowledged=true to say "this is intentional, don't
+  // flag it" — those don't count toward the group size.
+  const dupKeySet = useMemo(() => {
+    const counts = new Map();
+    for (const i of items) {
+      if (i.service.duplicate_acknowledged) continue;
+      const sid = i.service.service_id || '';
+      if (!sid) continue;
+      const k = `${i.entityId}::${sid}`;
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    const dups = new Set();
+    for (const [k, n] of counts) if (n >= 2) dups.add(k);
+    return dups;
+  }, [items]);
+
+  const isDup = (i) => {
+    const sid = i.service.service_id || '';
+    if (!sid || i.service.duplicate_acknowledged) return false;
+    return dupKeySet.has(`${i.entityId}::${sid}`);
+  };
+
   const filtered = useMemo(() => {
     let out = items;
     if (!showNlac) out = out.filter((i) => i.entityStatus !== 'nlac');
-    // Ending is its own bucket: shown only on the Ending pill, hidden
-    // from Suggested/Approved/Rejected/All.
+    // Ending and Duplicates are their own buckets, shown only on their
+    // pill and excluded from the other filters.
     if (filter === 'ending') {
       out = out.filter((i) => i.service.recurring_status === 'ending');
+    } else if (filter === 'duplicates') {
+      out = out.filter((i) => i.service.recurring_status !== 'ending' && isDup(i));
     } else {
       out = out.filter((i) => i.service.recurring_status !== 'ending');
       if (filter !== 'all') out = out.filter((i) => i.status === filter);
@@ -123,20 +149,23 @@ export default function BillingReviewPage() {
       return av.localeCompare(bv) * dir;
     });
     return out;
-  }, [items, filter, cadenceFilter, sourceFilter, showNlac, search, letter, sortBy, sortDir]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, filter, cadenceFilter, sourceFilter, showNlac, search, letter, sortBy, sortDir, dupKeySet]);
 
   const counts = useMemo(() => {
-    const c = { suggested: 0, approved: 0, rejected: 0, ending: 0, all: 0 };
+    const c = { suggested: 0, approved: 0, rejected: 0, ending: 0, duplicates: 0, all: 0 };
     for (const i of items) {
       if (i.service.recurring_status === 'ending') {
         c.ending++;
       } else {
         c[i.status] = (c[i.status] || 0) + 1;
         c.all++;
+        if (isDup(i)) c.duplicates++;
       }
     }
     return c;
-  }, [items]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, dupKeySet]);
 
   // Count rows (live_billing entries) with at least one pending uplift
   // AND a QBO recurring template id — these are eligible to push.
@@ -237,6 +266,18 @@ export default function BillingReviewPage() {
     approval_status: 'rejected',
     approved_by: profile?.id || null,
     approved_at: new Date().toISOString(),
+  });
+
+  const acknowledgeDuplicate = (item) => patchService(item.rowId, item.serviceIdx, {
+    duplicate_acknowledged: true,
+    duplicate_acknowledged_by: profile?.id || null,
+    duplicate_acknowledged_at: new Date().toISOString(),
+  });
+
+  const unacknowledgeDuplicate = (item) => patchService(item.rowId, item.serviceIdx, {
+    duplicate_acknowledged: null,
+    duplicate_acknowledged_by: null,
+    duplicate_acknowledged_at: null,
   });
 
   const toggleEnding = (item) => {
@@ -376,6 +417,7 @@ export default function BillingReviewPage() {
         <FilterPill label="Approved" count={counts.approved || 0} active={filter === 'approved'} tone="green" onClick={() => setFilter('approved')} />
         <FilterPill label="Rejected" count={counts.rejected || 0} active={filter === 'rejected'} tone="slate" onClick={() => setFilter('rejected')} />
         <FilterPill label="Ending" count={counts.ending || 0} active={filter === 'ending'} tone="orange" onClick={() => setFilter('ending')} />
+        <FilterPill label="Duplicates" count={counts.duplicates || 0} active={filter === 'duplicates'} tone="red" onClick={() => setFilter('duplicates')} />
         <FilterPill label={`All (${counts.all})`} count={null} active={filter === 'all'} tone="default" onClick={() => setFilter('all')} />
         <SearchInput
           value={search}
@@ -471,7 +513,7 @@ export default function BillingReviewPage() {
               <col style={{ width: 230 }} />
               <col style={{ width: 100 }} />
               <col style={{ width: 130 }} />
-              <col style={{ width: 180 }} />
+              <col style={{ width: 210 }} />
             </colgroup>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
@@ -501,6 +543,8 @@ export default function BillingReviewPage() {
                       {i.entityName}
                       {i.entityStatus === 'nlac' && <span style={tagStyle('red')} title="No Longer A Client">NLAC</span>}
                       {i.fromTemplate && <span style={tagStyle('teal')} title="From QBO RecurringTransaction template">QBO template</span>}
+                      {isDup(i) && <span style={tagStyle('red')} title={`Potential duplicate — another line on this client also has service "${i.service.service_id}"`}>DUP</span>}
+                      {i.service.duplicate_acknowledged && <span style={tagStyle('slate')} title="Duplicate acknowledged as intentional">DUP OK</span>}
                     </Td>
                     <Td>
                       <div style={{ fontWeight: 500, color: '#0f172a' }}>{s.service_id || 'service'}</div>
@@ -585,6 +629,16 @@ export default function BillingReviewPage() {
                         >
                           <CalendarX size={13} />
                         </button>
+                        {(isDup(i) || s.duplicate_acknowledged) && (
+                          <button
+                            onClick={() => s.duplicate_acknowledged ? unacknowledgeDuplicate(i) : acknowledgeDuplicate(i)}
+                            disabled={saving}
+                            title={s.duplicate_acknowledged ? 'Re-flag as potential duplicate' : 'Mark not a duplicate (intentional)'}
+                            style={iconBtn(s.duplicate_acknowledged ? '#475569' : '#b91c1c')}
+                          >
+                            <Copy size={13} />
+                          </button>
+                        )}
                         <button
                           onClick={() => setEditing(isEdit ? null : { rowId: i.rowId, serviceIdx: i.serviceIdx })}
                           disabled={saving}
@@ -754,6 +808,7 @@ function FilterPill({ label, count, active, tone, onClick }) {
     green: { active: { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, idle: { bg: '#fff', fg: '#166534', border: '#86efac' } },
     slate: { active: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' }, idle: { bg: '#fff', fg: '#64748b', border: '#cbd5e1' } },
     orange: { active: { bg: '#ffedd5', fg: '#9a3412', border: '#fdba74' }, idle: { bg: '#fff', fg: '#9a3412', border: '#fdba74' } },
+    red:    { active: { bg: '#fee2e2', fg: '#991b1b', border: '#fca5a5' }, idle: { bg: '#fff', fg: '#991b1b', border: '#fca5a5' } },
     default: { active: { bg: '#0f172a', fg: '#fff', border: '#0f172a' }, idle: { bg: '#fff', fg: '#475569', border: '#e5e7eb' } },
   };
   const t = tones[tone] || tones.default;
@@ -832,6 +887,7 @@ function tagStyle(tone) {
     teal:  { bg: '#ccfbf1', fg: '#115e59' },
     red:   { bg: '#fee2e2', fg: '#b91c1c' },
     amber: { bg: '#fef3c7', fg: '#92400e' },
+    slate: { bg: '#f1f5f9', fg: '#475569' },
   };
   const p = palettes[tone] || palettes.teal;
   return {
