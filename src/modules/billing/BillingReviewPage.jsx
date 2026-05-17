@@ -20,11 +20,10 @@ export default function BillingReviewPage() {
   const [rows, setRows] = useState([]); // live_billing rows w/ entity
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [filter, setFilter] = useState('suggested'); // suggested | approved | rejected | all
+  const [filter, setFilter] = useState('suggested'); // suggested | approved | rejected | ending | all
   const [cadenceFilter, setCadenceFilter] = useState('all'); // all | monthly | annual | one_off | unset
   const [sourceFilter, setSourceFilter] = useState('all'); // all | qbo | invoice
   const [showNlac, setShowNlac] = useState(false);
-  const [showEnding, setShowEnding] = useState(false);
   const [upliftOpen, setUpliftOpen] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [sortBy, setSortBy] = useState('client'); // client | service | monthly
@@ -74,8 +73,14 @@ export default function BillingReviewPage() {
   const filtered = useMemo(() => {
     let out = items;
     if (!showNlac) out = out.filter((i) => i.entityStatus !== 'nlac');
-    if (!showEnding) out = out.filter((i) => i.service.recurring_status !== 'ending');
-    if (filter !== 'all') out = out.filter((i) => i.status === filter);
+    // Ending is its own bucket: shown only on the Ending pill, hidden
+    // from Suggested/Approved/Rejected/All.
+    if (filter === 'ending') {
+      out = out.filter((i) => i.service.recurring_status === 'ending');
+    } else {
+      out = out.filter((i) => i.service.recurring_status !== 'ending');
+      if (filter !== 'all') out = out.filter((i) => i.status === filter);
+    }
     if (cadenceFilter !== 'all') {
       out = out.filter((i) => {
         const c = i.service.cadence;
@@ -114,11 +119,18 @@ export default function BillingReviewPage() {
       return av.localeCompare(bv) * dir;
     });
     return out;
-  }, [items, filter, cadenceFilter, sourceFilter, showNlac, showEnding, search, letter, sortBy, sortDir]);
+  }, [items, filter, cadenceFilter, sourceFilter, showNlac, search, letter, sortBy, sortDir]);
 
   const counts = useMemo(() => {
-    const c = { suggested: 0, approved: 0, rejected: 0, all: items.length };
-    for (const i of items) c[i.status] = (c[i.status] || 0) + 1;
+    const c = { suggested: 0, approved: 0, rejected: 0, ending: 0, all: 0 };
+    for (const i of items) {
+      if (i.service.recurring_status === 'ending') {
+        c.ending++;
+      } else {
+        c[i.status] = (c[i.status] || 0) + 1;
+        c.all++;
+      }
+    }
     return c;
   }, [items]);
 
@@ -331,6 +343,7 @@ export default function BillingReviewPage() {
         <FilterPill label="Suggested" count={counts.suggested || 0} active={filter === 'suggested'} tone="amber" onClick={() => setFilter('suggested')} />
         <FilterPill label="Approved" count={counts.approved || 0} active={filter === 'approved'} tone="green" onClick={() => setFilter('approved')} />
         <FilterPill label="Rejected" count={counts.rejected || 0} active={filter === 'rejected'} tone="slate" onClick={() => setFilter('rejected')} />
+        <FilterPill label="Ending" count={counts.ending || 0} active={filter === 'ending'} tone="orange" onClick={() => setFilter('ending')} />
         <FilterPill label={`All (${counts.all})`} count={null} active={filter === 'all'} tone="default" onClick={() => setFilter('all')} />
         <input
           value={search}
@@ -361,11 +374,6 @@ export default function BillingReviewPage() {
         <label style={{ ...filterLabelStyle, marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title="Include rows for clients marked No Longer A Client">
           <input type="checkbox" checked={showNlac} onChange={(e) => setShowNlac(e.target.checked)} />
           Show NLAC clients
-        </label>
-
-        <label style={{ ...filterLabelStyle, marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title="Include services marked as ending (won't continue in future billing)">
-          <input type="checkbox" checked={showEnding} onChange={(e) => setShowEnding(e.target.checked)} />
-          Show ending services
         </label>
 
         <div style={{ flex: 1 }} />
@@ -626,6 +634,7 @@ function FilterPill({ label, count, active, tone, onClick }) {
     amber: { active: { bg: '#fef3c7', fg: '#78350f', border: '#fcd34d' }, idle: { bg: '#fff', fg: '#78350f', border: '#fcd34d' } },
     green: { active: { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, idle: { bg: '#fff', fg: '#166534', border: '#86efac' } },
     slate: { active: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' }, idle: { bg: '#fff', fg: '#64748b', border: '#cbd5e1' } },
+    orange: { active: { bg: '#ffedd5', fg: '#9a3412', border: '#fdba74' }, idle: { bg: '#fff', fg: '#9a3412', border: '#fdba74' } },
     default: { active: { bg: '#0f172a', fg: '#fff', border: '#0f172a' }, idle: { bg: '#fff', fg: '#475569', border: '#e5e7eb' } },
   };
   const t = tones[tone] || tones.default;
