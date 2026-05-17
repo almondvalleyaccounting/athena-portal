@@ -27,6 +27,8 @@ export default function BillingReviewPage() {
   const [showNlac, setShowNlac] = useState(false);
   const [upliftOpen, setUpliftOpen] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnoseResult, setDiagnoseResult] = useState(null);
   const [sortBy, setSortBy] = useState('client'); // client | service | monthly
   const [sortDir, setSortDir] = useState('asc'); // asc | desc
   const [search, setSearch] = useState('');
@@ -341,6 +343,32 @@ export default function BillingReviewPage() {
 
       <BillingSubNav active="import" />
 
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button
+          onClick={async () => {
+            setDiagnosing(true);
+            try {
+              const { data, error } = await supabase.functions.invoke('qbo-diagnose-templates', { body: {} });
+              if (error) throw error;
+              setDiagnoseResult(data);
+            } catch (err) {
+              alert('Diagnose failed: ' + (err.message || err));
+            } finally {
+              setDiagnosing(false);
+            }
+          }}
+          disabled={diagnosing}
+          style={{ fontSize: 11, fontWeight: 500, padding: '4px 10px', background: '#fff', color: '#64748b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
+          title="Show every QBO recurring template and its link status"
+        >
+          {diagnosing ? 'Checking…' : 'Diagnose QBO templates'}
+        </button>
+      </div>
+
+      {diagnoseResult && (
+        <DiagnoseModal data={diagnoseResult} onClose={() => setDiagnoseResult(null)} />
+      )}
+
       {/* Filter pills */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <FilterPill label="Suggested" count={counts.suggested || 0} active={filter === 'suggested'} tone="amber" onClick={() => setFilter('suggested')} />
@@ -576,6 +604,93 @@ export default function BillingReviewPage() {
     </div>
   );
 }
+
+function DiagnoseModal({ data, onClose }) {
+  const s = data?.summary || {};
+  const noEntity = data?.unlinked_no_entity_mapping || [];
+  const noBilling = data?.unlinked_no_billing_row || [];
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: font }} onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: 12, width: 760, maxWidth: '95vw', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center' }}>
+          <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 500, color: '#0f172a', margin: 0 }}>QBO template diagnostic</h2>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18 }}>×</button>
+        </div>
+        <div style={{ padding: 18, overflow: 'auto' }}>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+            <DiagStat label="Templates in QBO" value={s.qbo_templates_total ?? '—'} />
+            <DiagStat label="Linked" value={s.linked ?? '—'} tone="green" />
+            <DiagStat label="No entity mapping" value={s.unlinked_no_entity_mapping ?? '—'} tone="red" />
+            <DiagStat label="No billing row" value={s.unlinked_no_billing_row ?? '—'} tone="amber" />
+          </div>
+
+          {noEntity.length > 0 && (
+            <details open style={{ marginBottom: 14 }}>
+              <summary style={{ fontWeight: 600, fontSize: 13, color: '#b91c1c', cursor: 'pointer', marginBottom: 6 }}>
+                {noEntity.length} template{noEntity.length === 1 ? '' : 's'} — QBO customer not mapped to any Athena entity
+              </summary>
+              <p style={{ fontSize: 11, color: '#64748b', marginTop: 0 }}>Fix on the <a href="/manage/billing/qbo-mapping" style={{ color: '#0e7fe0' }}>QBO mapping</a> page, then re-run pull.</p>
+              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <thead><tr style={{ background: '#f8fafc' }}><DiagTh>Template</DiagTh><DiagTh>QBO customer</DiagTh><DiagTh>QBO ID</DiagTh><DiagTh>Active</DiagTh></tr></thead>
+                <tbody>
+                  {noEntity.map((r, i) => (
+                    <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
+                      <DiagTd>{r.template_name || `(txn ${r.txn_id})`}</DiagTd>
+                      <DiagTd>{r.qbo_customer_name}</DiagTd>
+                      <DiagTd>{r.qbo_customer_id}</DiagTd>
+                      <DiagTd>{r.active ? '✓' : '✗'}</DiagTd>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          )}
+
+          {noBilling.length > 0 && (
+            <details open>
+              <summary style={{ fontWeight: 600, fontSize: 13, color: '#b45309', cursor: 'pointer', marginBottom: 6 }}>
+                {noBilling.length} template{noBilling.length === 1 ? '' : 's'} — entity matched but no live_billing row carries the txn id
+              </summary>
+              <p style={{ fontSize: 11, color: '#64748b', marginTop: 0 }}>Re-run the QBO pull from the Billing dashboard to fix.</p>
+              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <thead><tr style={{ background: '#f8fafc' }}><DiagTh>Template</DiagTh><DiagTh>Entity</DiagTh><DiagTh>QBO customer</DiagTh><DiagTh>Active</DiagTh></tr></thead>
+                <tbody>
+                  {noBilling.map((r, i) => (
+                    <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
+                      <DiagTd>{r.template_name || `(txn ${r.txn_id})`}</DiagTd>
+                      <DiagTd>{r.entity_name}</DiagTd>
+                      <DiagTd>{r.qbo_customer_name}</DiagTd>
+                      <DiagTd>{r.active ? '✓' : '✗'}</DiagTd>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          )}
+
+          {noEntity.length === 0 && noBilling.length === 0 && (
+            <div style={{ padding: 30, textAlign: 'center', color: '#15803d', fontSize: 13 }}>
+              Every QBO template is linked to a billing row. Nothing to fix.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiagStat({ label, value, tone }) {
+  const fg = tone === 'green' ? '#15803d' : tone === 'red' ? '#b91c1c' : tone === 'amber' ? '#b45309' : '#0f172a';
+  return (
+    <div style={{ flex: 1, minWidth: 130, padding: '10px 12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: fg, fontFamily: 'monospace', marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+const DiagTh = ({ children }) => <th style={{ textAlign: 'left', padding: '6px 10px', fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{children}</th>;
+const DiagTd = ({ children }) => <td style={{ padding: '6px 10px', verticalAlign: 'middle' }}>{children}</td>;
 
 function StatusChip({ status }) {
   const map = {
