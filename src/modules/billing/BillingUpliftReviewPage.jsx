@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, X, RotateCcw, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
+import BillingTabs from './BillingTabs';
+import { fmtGbp } from '../../lib/money';
 
 const font = "'Outfit', sans-serif";
 
@@ -194,14 +196,10 @@ export default function BillingUpliftReviewPage() {
 
   return (
     <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1400 }}>
-      <button onClick={() => navigate('/manage/billing')} style={backLinkStyle}>
-        <ArrowLeft size={14} /> Back to Billing Review
-      </button>
-
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
         <div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
-            Uplift review
+            Push uplifts
           </h1>
           <p style={{ fontSize: 13, color: '#64748b', maxWidth: 720, marginBottom: 0 }}>
             Review staged fee uplifts and approve them before pushing to QBO. Approval is per template — every pending service on a row goes through together.
@@ -212,6 +210,8 @@ export default function BillingUpliftReviewPage() {
           {refreshing ? 'Refreshing…' : 'Refresh from QBO'}
         </button>
       </div>
+
+      <BillingTabs active="push" />
 
       {/* Filter pills */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>

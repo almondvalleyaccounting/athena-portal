@@ -6,7 +6,7 @@ import { useAuth } from '../../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import SearchInput from '../../components/SearchInput';
 import PlanUpliftModal from './PlanUpliftModal';
-import BillingSubNav from './BillingSubNav';
+import BillingTabs from './BillingTabs';
 
 const font = "'Outfit', sans-serif";
 
@@ -372,10 +372,6 @@ export default function BillingReviewPage() {
 
   return (
     <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1280 }}>
-      <button onClick={() => navigate('/manage/billing')} style={backLinkStyle}>
-        <ArrowLeft size={14} /> Back to Billing Review
-      </button>
-
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Billing approval queue
       </h1>
@@ -383,7 +379,7 @@ export default function BillingReviewPage() {
         Approve each suggested monthly recurring bill before it counts in the headline. Edit cadence or amount if the system got it wrong.
       </p>
 
-      <BillingSubNav active="import" />
+      <BillingTabs active="import" />
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <button

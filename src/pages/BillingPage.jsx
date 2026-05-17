@@ -7,6 +7,7 @@ import { pushToQbo } from '../lib/qboApi';
 import QboConnectionPanel from '../components/QboConnectionPanel';
 import { useAuth } from '../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
+import BillingTabs from '../modules/billing/BillingTabs';
 
 export default function BillingPage() {
   const { profile } = useAuth();
@@ -470,6 +471,8 @@ export default function BillingPage() {
           </Btn>
         </div>
       </div>
+
+      <BillingTabs active="dashboard" />
 
       {/* QBO Connection Panel (includes Pull from QBO + Manage mapping) */}
       <QboConnectionPanel profile={profile} onSyncComplete={loadData} />

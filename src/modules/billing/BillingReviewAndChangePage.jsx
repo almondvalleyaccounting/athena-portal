@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, TrendingUp, Anchor, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
-import BillingSubNav from './BillingSubNav';
+import BillingTabs from './BillingTabs';
+import { fmtGbp } from '../../lib/money';
 
 const font = "'Outfit', sans-serif";
 
@@ -303,10 +304,6 @@ export default function BillingReviewAndChangePage() {
 
   return (
     <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1600 }}>
-      <button onClick={() => navigate('/manage/billing')} style={backLinkStyle}>
-        <ArrowLeft size={14} /> Back to Billing Review
-      </button>
-
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Review and Change
       </h1>
@@ -314,7 +311,7 @@ export default function BillingReviewAndChangePage() {
         Client × service grid of ex-VAT monthly amounts. Edit cells, apply inflation, or apply a floor. Changes stage as pending — push them to QBO from the Uplift Review screen.
       </p>
 
-      <BillingSubNav active="change" />
+      <BillingTabs active="change" />
 
       {/* Action bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -607,12 +604,6 @@ function ModalShell({ title, onClose, children }) {
 
 // Render £#,##0 — no decimals, thousands separator, negative shown
 // with a leading minus inside the £ symbol ("-£123" rather than "£-123").
-function fmtGbp(n) {
-  const v = Math.round(Number(n) || 0);
-  const abs = Math.abs(v).toLocaleString('en-GB');
-  return v < 0 ? `-£${abs}` : `£${abs}`;
-}
-
 function Tile({ group, label, value, tone }) {
   const fg = tone === 'green' ? '#15803d' : tone === 'red' ? '#b91c1c' : tone === 'slate' ? '#475569' : '#0f172a';
   return (
