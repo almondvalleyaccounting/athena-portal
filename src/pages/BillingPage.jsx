@@ -8,6 +8,7 @@ import QboConnectionPanel from '../components/QboConnectionPanel';
 import { useAuth } from '../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 import BillingTabs from '../modules/billing/BillingTabs';
+import RevenueByFeeEarner from '../modules/billing/RevenueByFeeEarner';
 import { tones as semanticTones } from '../lib/tokens';
 
 export default function BillingPage() {
@@ -690,6 +691,10 @@ export default function BillingPage() {
       <div className="mb-4">
         <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
       </div>
+
+      {/* Revenue by fee earner — uses service mapping + capacity-planner
+          allocations to attribute each line to a person. */}
+      <RevenueByFeeEarner />
 
       {/* Revenue by service type — split by cadence */}
       {serviceBreakdown.length > 0 && (
