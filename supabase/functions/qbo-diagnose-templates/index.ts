@@ -60,11 +60,15 @@ Deno.serve(async (req) => {
     billingByTxn.set(String(b.qbo_recurring_txn_id), { id: String(b.id), entity_id: String(b.entity_id) });
   }
 
-  // 3. Classify each template.
+  // 3. Classify each template. Inactive templates are bucketed
+  //    separately so the headline "linked" count reflects only live
+  //    revenue templates.
   let linked = 0;
+  let inactive = 0;
   const unlinkedNoEntity: Array<Record<string, unknown>> = [];
   const unlinkedNoBilling: Array<Record<string, unknown>> = [];
   const linkedRows: Array<Record<string, unknown>> = [];
+  const inactiveRows: Array<Record<string, unknown>> = [];
 
   for (const t of templates) {
     const inner = (t.Invoice || t.SalesReceipt || t) as Record<string, unknown>;
@@ -75,6 +79,12 @@ Deno.serve(async (req) => {
     const recurringInfo = (inner.RecurringInfo as Record<string, unknown> | undefined) || {};
     const templateName = String(recurringInfo.Name || "");
     const active = recurringInfo.Active !== false;
+
+    if (!active) {
+      inactive++;
+      inactiveRows.push({ txn_id: txnId, template_name: templateName, qbo_customer_name: qboCustomerName });
+      continue;
+    }
 
     const entityId = qboCustomerId ? entityByQboId.get(qboCustomerId) : null;
     const billing = billingByTxn.get(txnId);
@@ -98,11 +108,13 @@ Deno.serve(async (req) => {
     summary: {
       qbo_templates_total: templates.length,
       linked,
+      inactive,
       unlinked_no_entity_mapping: unlinkedNoEntity.length,
       unlinked_no_billing_row: unlinkedNoBilling.length,
     },
     unlinked_no_entity_mapping: unlinkedNoEntity,
     unlinked_no_billing_row: unlinkedNoBilling,
+    inactive: inactiveRows,
     linked: linkedRows,
   });
 });

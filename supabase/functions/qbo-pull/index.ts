@@ -192,6 +192,22 @@ Deno.serve(async (req) => {
       try {
         const innerTxn = (txn.Invoice || txn.SalesReceipt || txn) as Record<string, unknown>;
         const customerRef = (innerTxn.CustomerRef || txn.CustomerRef) as Record<string, unknown> | undefined;
+        const recurringInfo = (innerTxn.RecurringInfo || txn.RecurringInfo) as Record<string, unknown> | undefined;
+
+        // Skip inactive templates. They're paused/disabled in QBO and
+        // won't auto-generate invoices, so they shouldn't be counted
+        // as live recurring billing. If we previously linked one, the
+        // row gets unlinked so it falls back to invoice-inference.
+        if (recurringInfo && recurringInfo.Active === false) {
+          const txnId = String(txn.Id || innerTxn.Id || "");
+          if (txnId) {
+            await sb.from("live_billing")
+              .update({ qbo_recurring_txn_id: null, qbo_sync_status: "synced", last_synced_qbo: now })
+              .eq("qbo_recurring_txn_id", txnId);
+          }
+          stats.skipped++;
+          continue;
+        }
 
         if (!customerRef) {
           stats.skipped++;
