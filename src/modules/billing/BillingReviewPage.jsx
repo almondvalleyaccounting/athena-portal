@@ -389,7 +389,15 @@ export default function BillingReviewPage() {
                     <Td>
                       <CadenceSegmented
                         value={s.cadence || 'monthly'}
-                        onChange={(next) => patchService(i.rowId, i.serviceIdx, { cadence: next })}
+                        onChange={(next) => {
+                          patchService(i.rowId, i.serviceIdx, { cadence: next });
+                          setSelected((prev) => {
+                            if (prev.has(key)) return prev;
+                            const nextSet = new Set(prev);
+                            nextSet.add(key);
+                            return nextSet;
+                          });
+                        }}
                         disabled={saving}
                       />
                     </Td>
