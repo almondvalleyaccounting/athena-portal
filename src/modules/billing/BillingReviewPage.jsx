@@ -408,7 +408,11 @@ export default function BillingReviewPage() {
       </div>
 
       {diagnoseResult && (
-        <DiagnoseModal data={diagnoseResult} onClose={() => setDiagnoseResult(null)} />
+        <DiagnoseModal
+          data={diagnoseResult}
+          onClose={() => setDiagnoseResult(null)}
+          onRepaired={() => load()}
+        />
       )}
 
       {/* Filter pills */}
@@ -706,10 +710,72 @@ export default function BillingReviewPage() {
   );
 }
 
-function DiagnoseModal({ data, onClose }) {
+function DiagnoseModal({ data, onClose, onRepaired }) {
   const s = data?.summary || {};
   const noEntity = data?.unlinked_no_entity_mapping || [];
   const noBilling = data?.unlinked_no_billing_row || [];
+  // Repair workflow: for each unlinked_no_billing_row template, find
+  // the entity's existing manual live_billing row and attach the
+  // qbo_recurring_txn_id. We load candidates on first render.
+  const [candidates, setCandidates] = useState({}); // entity_id → [{ id, monthly_net, has_existing_txn }]
+  const [repairing, setRepairing] = useState(false);
+  const [repaired, setRepaired] = useState(new Set()); // txn_ids that have been attached
+
+  useEffect(() => {
+    if (noBilling.length === 0) return;
+    const entityIds = [...new Set(noBilling.map((r) => r.entity_id).filter(Boolean))];
+    if (entityIds.length === 0) return;
+    (async () => {
+      const { data: rows } = await supabase
+        .from('live_billing')
+        .select('id, entity_id, qbo_recurring_txn_id, monthly_net')
+        .in('entity_id', entityIds)
+        .eq('status', 'active');
+      const map = {};
+      for (const r of rows || []) {
+        (map[r.entity_id] ||= []).push({ id: r.id, monthly_net: r.monthly_net, has_existing_txn: !!r.qbo_recurring_txn_id });
+      }
+      setCandidates(map);
+    })();
+  }, [noBilling]);
+
+  // Returns the best billing row to attach this template to: prefer
+  // rows WITHOUT an existing txn and WITH monthly revenue.
+  const pickCandidate = (entityId) => {
+    const list = candidates[entityId] || [];
+    const free = list.filter((r) => !r.has_existing_txn);
+    if (free.length === 0) return null;
+    return free.sort((a, b) => (Number(b.monthly_net) || 0) - (Number(a.monthly_net) || 0))[0];
+  };
+
+  const attachOne = async (txn) => {
+    const candidate = pickCandidate(txn.entity_id);
+    if (!candidate) return false;
+    const { error } = await supabase
+      .from('live_billing')
+      .update({ qbo_recurring_txn_id: txn.txn_id })
+      .eq('id', candidate.id);
+    if (error) { alert('Repair failed: ' + error.message); return false; }
+    setRepaired((prev) => new Set([...prev, txn.txn_id]));
+    return true;
+  };
+
+  const repairAll = async () => {
+    const repairable = noBilling.filter((r) => pickCandidate(r.entity_id) && !repaired.has(r.txn_id));
+    if (repairable.length === 0) { alert('Nothing to repair — no candidate billing rows found.'); return; }
+    if (!window.confirm(`Attach ${repairable.length} unlinked QBO template${repairable.length === 1 ? '' : 's'} to existing billing rows?\n\nEach client's largest unlinked billing row will get the template id. Re-pull from QBO afterwards to refresh the service lines from the template.`)) return;
+    setRepairing(true);
+    let ok = 0;
+    for (const t of repairable) {
+      const success = await attachOne(t);
+      if (success) ok++;
+    }
+    setRepairing(false);
+    alert(`Repaired ${ok} of ${repairable.length}. Re-pull from QBO to refresh services from the templates.`);
+    onRepaired?.();
+  };
+
+  const repairableCount = noBilling.filter((r) => pickCandidate(r.entity_id) && !repaired.has(r.txn_id)).length;
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: font }} onClick={onClose}>
       <div style={{ background: '#fff', borderRadius: 12, width: 760, maxWidth: '95vw', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
@@ -753,18 +819,48 @@ function DiagnoseModal({ data, onClose }) {
               <summary style={{ fontWeight: 600, fontSize: 13, color: '#b45309', cursor: 'pointer', marginBottom: 6 }}>
                 {noBilling.length} template{noBilling.length === 1 ? '' : 's'} — entity matched but no live_billing row carries the txn id
               </summary>
-              <p style={{ fontSize: 11, color: '#64748b', marginTop: 0 }}>Re-run the QBO pull from the Billing dashboard to fix.</p>
+              <p style={{ fontSize: 11, color: '#64748b', marginTop: 0 }}>
+                These templates exist in QBO and belong to entities we already know about — they just never got attached to a billing row. Click <strong>Attach</strong> to wire each one to the entity's largest unlinked billing row. After repair, re-pull from QBO to refresh the service lines from the templates.
+              </p>
+              {repairableCount > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  <button
+                    onClick={repairAll}
+                    disabled={repairing}
+                    style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
+                  >
+                    {repairing ? 'Attaching…' : `Attach all ${repairableCount} suggested →`}
+                  </button>
+                </div>
+              )}
               <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                <thead><tr style={{ background: '#f8fafc' }}><DiagTh>Template</DiagTh><DiagTh>Entity</DiagTh><DiagTh>QBO customer</DiagTh><DiagTh>Active</DiagTh></tr></thead>
+                <thead><tr style={{ background: '#f8fafc' }}><DiagTh>Template</DiagTh><DiagTh>Entity</DiagTh><DiagTh>QBO customer</DiagTh><DiagTh>Active</DiagTh><DiagTh></DiagTh></tr></thead>
                 <tbody>
-                  {noBilling.map((r, i) => (
-                    <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
-                      <DiagTd>{r.template_name || `(txn ${r.txn_id})`}</DiagTd>
-                      <DiagTd>{r.entity_name}</DiagTd>
-                      <DiagTd>{r.qbo_customer_name}</DiagTd>
-                      <DiagTd>{r.active ? '✓' : '✗'}</DiagTd>
-                    </tr>
-                  ))}
+                  {noBilling.map((r, i) => {
+                    const cand = pickCandidate(r.entity_id);
+                    const done = repaired.has(r.txn_id);
+                    return (
+                      <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
+                        <DiagTd>{r.template_name || `(txn ${r.txn_id})`}</DiagTd>
+                        <DiagTd>{r.entity_name}</DiagTd>
+                        <DiagTd>{r.qbo_customer_name}</DiagTd>
+                        <DiagTd>{r.active ? '✓' : '✗'}</DiagTd>
+                        <DiagTd>
+                          {done ? (
+                            <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>✓ Attached</span>
+                          ) : cand ? (
+                            <button
+                              onClick={async () => { await attachOne(r); onRepaired?.(); }}
+                              disabled={repairing}
+                              style={{ fontSize: 11, fontWeight: 500, padding: '3px 10px', background: '#fff', color: '#059669', border: '1px solid #6ee7b7', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
+                            >Attach</button>
+                          ) : (
+                            <span style={{ fontSize: 10, color: '#94a3b8' }}>No free billing row</span>
+                          )}
+                        </DiagTd>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </details>
