@@ -93,14 +93,33 @@ export default function QuickSearch() {
           }}
           onFocus2={(e) => { e.target.style.borderColor = '#38bdf8'; e.target.style.background = '#fff'; }}
         />
-        <span style={{
-          position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-          fontSize: 10, fontWeight: 600, color: '#94a3b8', background: '#f1f5f9',
-          padding: '2px 6px', borderRadius: 4, fontFamily: "'Outfit', sans-serif",
-          pointerEvents: 'none',
-        }}>
-          ⌘K
-        </span>
+        {query ? (
+          <button
+            type="button"
+            onClick={() => { setQuery(''); setOpen(false); inputRef.current?.focus(); }}
+            aria-label="Clear search"
+            title="Clear"
+            style={{
+              position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+              width: 20, height: 20, padding: 0,
+              background: 'transparent', border: 'none',
+              color: '#94a3b8', cursor: 'pointer',
+              fontSize: 18, lineHeight: 1,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            ×
+          </button>
+        ) : (
+          <span style={{
+            position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+            fontSize: 10, fontWeight: 600, color: '#94a3b8', background: '#f1f5f9',
+            padding: '2px 6px', borderRadius: 4, fontFamily: "'Outfit', sans-serif",
+            pointerEvents: 'none',
+          }}>
+            ⌘K
+          </span>
+        )}
       </div>
 
       {open && query.length >= 2 && (

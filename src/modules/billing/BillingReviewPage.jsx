@@ -4,6 +4,7 @@ import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown, CalendarX } from 'lucid
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
+import SearchInput from '../../components/SearchInput';
 import PlanUpliftModal from './PlanUpliftModal';
 import BillingSubNav from './BillingSubNav';
 
@@ -376,11 +377,11 @@ export default function BillingReviewPage() {
         <FilterPill label="Rejected" count={counts.rejected || 0} active={filter === 'rejected'} tone="slate" onClick={() => setFilter('rejected')} />
         <FilterPill label="Ending" count={counts.ending || 0} active={filter === 'ending'} tone="orange" onClick={() => setFilter('ending')} />
         <FilterPill label={`All (${counts.all})`} count={null} active={filter === 'all'} tone="default" onClick={() => setFilter('all')} />
-        <input
+        <SearchInput
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
           placeholder="Search client or service..."
-          style={{ ...selectStyle, flex: 1, minWidth: 240, marginLeft: 'auto' }}
+          style={{ flex: 1, minWidth: 240, marginLeft: 'auto' }}
         />
       </div>
 
