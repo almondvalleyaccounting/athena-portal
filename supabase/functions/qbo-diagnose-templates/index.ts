@@ -14,11 +14,21 @@ Deno.serve(async (req) => {
   const sb = getServiceClient();
 
   // 1. Pull every RecurringTransaction from QBO.
+  // Paginate via STARTPOSITION — without it QBO caps at 1000 results
+  // (and at 100 if MAXRESULTS isn't specified).
   let templates: Array<Record<string, unknown>> = [];
   try {
-    const result = await qboQuery("SELECT * FROM RecurringTransaction MAXRESULTS 1000") as Record<string, unknown>;
-    const qr = result?.QueryResponse as Record<string, unknown>;
-    templates = (qr?.RecurringTransaction || []) as Array<Record<string, unknown>>;
+    let start = 1;
+    const pageSize = 1000;
+    for (let i = 0; i < 50; i++) {
+      const result = await qboQuery(`SELECT * FROM RecurringTransaction STARTPOSITION ${start} MAXRESULTS ${pageSize}`) as Record<string, unknown>;
+      const qr = result?.QueryResponse as Record<string, unknown>;
+      const page = (qr?.RecurringTransaction || []) as Array<Record<string, unknown>>;
+      if (page.length === 0) break;
+      templates = templates.concat(page);
+      if (page.length < pageSize) break;
+      start += pageSize;
+    }
   } catch (e) {
     return jsonResponse({ success: false, error: `QBO query failed: ${(e as Error).message}` }, 500);
   }

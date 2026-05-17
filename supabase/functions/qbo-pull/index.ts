@@ -21,9 +21,12 @@ Deno.serve(async (req) => {
     //    dormant customers appear in the Mapping UI even when they have
     //    no current recurring txn or invoice.
     // ──────────────────────────────────────────────────────────
-    const custResult = await qboQuery("SELECT * FROM Customer MAXRESULTS 1000") as Record<string, unknown>;
-    const customerResponse = custResult?.QueryResponse as Record<string, unknown>;
-    const qboCustomers = (customerResponse?.Customer || []) as Array<Record<string, unknown>>;
+    // Same pagination treatment as RecurringTransaction below — without
+    // STARTPOSITION we'd silently cap at 1000 customers.
+    const qboCustomers: Array<Record<string, unknown>> = await pageAll<Record<string, unknown>>(
+      (start, n) => qboQuery(`SELECT * FROM Customer STARTPOSITION ${start} MAXRESULTS ${n}`),
+      "Customer",
+    );
 
     // ──────────────────────────────────────────────────────────
     // 2. Load entities (for name-based auto-matching on first-seen)
@@ -129,11 +132,15 @@ Deno.serve(async (req) => {
     // 4. Fetch recurring txns and invoices (last 12 months only —
     //    one-off revenue is scored over a rolling 12-month window).
     // ──────────────────────────────────────────────────────────
+    // QBO's default MAXRESULTS is 100 — without explicit paging we were
+    // silently losing every template past the 100th. pageAll loops
+    // STARTPOSITION until we get a short page.
     let recurringTxns: Array<Record<string, unknown>> = [];
     try {
-      const result = await qboQuery("SELECT * FROM RecurringTransaction") as Record<string, unknown>;
-      const queryResponse = result?.QueryResponse as Record<string, unknown>;
-      recurringTxns = (queryResponse?.RecurringTransaction || []) as Array<Record<string, unknown>>;
+      recurringTxns = await pageAll<Record<string, unknown>>(
+        (start, n) => qboQuery(`SELECT * FROM RecurringTransaction STARTPOSITION ${start} MAXRESULTS ${n}`),
+        "RecurringTransaction",
+      );
     } catch (e) {
       console.log("RecurringTransaction query failed (may not be available):", (e as Error).message);
     }
@@ -143,11 +150,10 @@ Deno.serve(async (req) => {
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
     const twelveMonthsAgoIso = twelveMonthsAgo.toISOString().slice(0, 10);
 
-    const invoiceResult = await qboQuery(
-      `SELECT * FROM Invoice WHERE TxnDate >= '${twelveMonthsAgoIso}' MAXRESULTS 1000`,
-    ) as Record<string, unknown>;
-    const invoiceResponse = invoiceResult?.QueryResponse as Record<string, unknown>;
-    const invoices = (invoiceResponse?.Invoice || []) as Array<Record<string, unknown>>;
+    const invoices: Array<Record<string, unknown>> = await pageAll<Record<string, unknown>>(
+      (start, n) => qboQuery(`SELECT * FROM Invoice WHERE TxnDate >= '${twelveMonthsAgoIso}' STARTPOSITION ${start} MAXRESULTS ${n}`),
+      "Invoice",
+    );
 
     const stats = {
       created: 0, updated: 0, skipped: 0, matched: 0,
@@ -636,3 +642,32 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: (err as Error).message }, 500);
   }
 });
+
+// Page through a QBO SQL-like query until exhausted. QBO caps each
+// response at 1000 records (and at 100 if you don't specify
+// MAXRESULTS), so anything bigger needs STARTPOSITION pagination.
+//
+//   queryFn(start, pageSize)  — runs the actual query for one page
+//   responseKey               — the QBO entity name on QueryResponse
+//
+// pageAll stops when a page comes back shorter than the requested size
+// (or empty). Hard-caps at 50 pages = 50k records as a runaway guard.
+async function pageAll<T>(
+  queryFn: (start: number, pageSize: number) => Promise<unknown>,
+  responseKey: string,
+): Promise<T[]> {
+  const pageSize = 1000;
+  const maxPages = 50;
+  let start = 1;
+  let out: T[] = [];
+  for (let i = 0; i < maxPages; i++) {
+    const result = await queryFn(start, pageSize) as Record<string, unknown>;
+    const queryResponse = result?.QueryResponse as Record<string, unknown> | undefined;
+    const page = (queryResponse?.[responseKey] || []) as T[];
+    if (page.length === 0) break;
+    out = out.concat(page);
+    if (page.length < pageSize) break;
+    start += pageSize;
+  }
+  return out;
+}
