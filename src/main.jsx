@@ -15,6 +15,7 @@ import BillingReviewPage from './modules/billing/BillingReviewPage';
 import BillingReviewAndChangePage from './modules/billing/BillingReviewAndChangePage';
 import BillingUpliftReviewPage from './modules/billing/BillingUpliftReviewPage';
 import BillingSourcesPage from './modules/billing/BillingSourcesPage';
+import BillingServiceMappingPage from './modules/billing/BillingServiceMappingPage';
 import FeeEarnerBookPage from './modules/billing/FeeEarnerBookPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
@@ -72,6 +73,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/manage/billing/change" element={<BillingReviewAndChangePage />} />
           <Route path="/manage/billing/uplifts" element={<BillingUpliftReviewPage />} />
           <Route path="/manage/billing/sources" element={<BillingSourcesPage />} />
+          <Route path="/manage/billing/mapping" element={<BillingServiceMappingPage />} />
           <Route path="/manage/billing/fee-earners" element={<FeeEarnerBookPage />} />
           <Route path="/clients/:id" element={<ClientDetailView />} />
           {/* Setup must come before /planner/* wildcard so it matches first. */}
