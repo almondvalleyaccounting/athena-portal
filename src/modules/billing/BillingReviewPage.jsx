@@ -390,7 +390,9 @@ export default function BillingReviewPage() {
                       <CadenceSegmented
                         value={s.cadence || 'monthly'}
                         onChange={(next) => {
-                          patchService(i.rowId, i.serviceIdx, { cadence: next });
+                          if (next !== (s.cadence || 'monthly')) {
+                            patchService(i.rowId, i.serviceIdx, { cadence: next });
+                          }
                           setSelected((prev) => {
                             if (prev.has(key)) return prev;
                             const nextSet = new Set(prev);
@@ -490,7 +492,7 @@ function CadenceSegmented({ value, onChange, disabled }) {
           <button
             key={o.value}
             type="button"
-            onClick={() => { if (!active) onChange(o.value); }}
+            onClick={() => onChange(o.value)}
             disabled={disabled}
             title={`Classify as ${o.label}`}
             style={{
