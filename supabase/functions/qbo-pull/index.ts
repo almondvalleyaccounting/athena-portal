@@ -194,11 +194,20 @@ Deno.serve(async (req) => {
         const customerRef = (innerTxn.CustomerRef || txn.CustomerRef) as Record<string, unknown> | undefined;
         const recurringInfo = (innerTxn.RecurringInfo || txn.RecurringInfo) as Record<string, unknown> | undefined;
 
-        // Skip inactive templates. They're paused/disabled in QBO and
-        // won't auto-generate invoices, so they shouldn't be counted
-        // as live recurring billing. If we previously linked one, the
-        // row gets unlinked so it falls back to invoice-inference.
-        if (recurringInfo && recurringInfo.Active === false) {
+        // Skip dormant templates. A template is dormant if either:
+        //   - RecurringInfo.Active === false (explicitly paused), or
+        //   - RecurringInfo.ScheduleInfo.NextDate is missing (no upcoming
+        //     run — typically a Reminder-type template, or one whose
+        //     schedule has expired)
+        // Either way it won't auto-generate invoices in QBO, so it
+        // shouldn't be counted as live recurring billing. If we
+        // previously linked one, the row gets unlinked so it falls
+        // back to invoice-inference.
+        const scheduleInfo = (recurringInfo?.ScheduleInfo as Record<string, unknown> | undefined);
+        const nextDate = String(recurringInfo?.NextDate || scheduleInfo?.NextDate || "");
+        const isActive = recurringInfo?.Active !== false;
+        const hasNextRun = nextDate.length > 0;
+        if (!isActive || !hasNextRun) {
           const txnId = String(txn.Id || innerTxn.Id || "");
           if (txnId) {
             await sb.from("live_billing")

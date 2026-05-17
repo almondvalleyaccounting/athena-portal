@@ -78,11 +78,17 @@ Deno.serve(async (req) => {
     const qboCustomerName = customerRef ? String(customerRef.name || "") : "(no customer)";
     const recurringInfo = (inner.RecurringInfo as Record<string, unknown> | undefined) || {};
     const templateName = String(recurringInfo.Name || "");
+    const scheduleInfo = (recurringInfo.ScheduleInfo as Record<string, unknown> | undefined);
+    const nextDate = String(recurringInfo.NextDate || scheduleInfo?.NextDate || "");
     const active = recurringInfo.Active !== false;
+    const hasNextRun = nextDate.length > 0;
 
-    if (!active) {
+    // Treat templates with no upcoming run as inactive — they won't
+    // auto-bill regardless of the Active flag (e.g. Reminder-type
+    // templates, or schedules that have expired).
+    if (!active || !hasNextRun) {
       inactive++;
-      inactiveRows.push({ txn_id: txnId, template_name: templateName, qbo_customer_name: qboCustomerName });
+      inactiveRows.push({ txn_id: txnId, template_name: templateName, qbo_customer_name: qboCustomerName, reason: !active ? 'Active=false' : 'no NextDate' });
       continue;
     }
 
