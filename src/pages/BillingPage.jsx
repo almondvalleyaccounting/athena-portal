@@ -165,6 +165,11 @@ export default function BillingPage() {
     const services = Array.isArray(b.services) ? b.services : [];
     for (const s of services) {
       if (s.cadence !== 'monthly') continue;
+      // Lines explicitly marked as ending live in their own bucket on
+      // the review queue and shouldn't pad either the headline recurring
+      // or the pending count — otherwise the dashboard disagrees with
+      // what you find when you click through.
+      if (s.recurring_status === 'ending') continue;
       const amt = Number(s.monthly_amount) || 0;
       const status = s.approval_status || (b.qbo_recurring_txn_id ? 'approved' : 'suggested');
       if (status === 'approved') recurringMonthlyNet += amt;
