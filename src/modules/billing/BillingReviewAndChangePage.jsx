@@ -31,6 +31,7 @@ export default function BillingReviewAndChangePage() {
   const [editing, setEditing] = useState(null); // { entityId, serviceId }
   const [upliftOpen, setUpliftOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [focusedServiceId, setFocusedServiceId] = useState(null); // click a column header to highlight + default-scope the uplift modal
 
   const load = async () => {
     setLoading(true);
@@ -325,6 +326,12 @@ export default function BillingReviewAndChangePage() {
           placeholder="Filter clients…"
           style={{ minWidth: 200 }}
         />
+        {focusedServiceId && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: '#dbeafe', color: '#0c4a6e', borderRadius: 999, fontSize: 12, fontWeight: 500 }}>
+            Focused: <strong>{focusedServiceId}</strong>
+            <button onClick={() => setFocusedServiceId(null)} title="Clear column focus" style={{ background: 'transparent', border: 'none', color: '#0c4a6e', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         <button onClick={() => setUpliftOpen(true)} disabled={saving} style={btnAction}>
           <TrendingUp size={13} /> Apply uplift…
@@ -386,11 +393,25 @@ export default function BillingReviewAndChangePage() {
                 <tr style={{ background: '#f8fafc' }}>
                   <th style={{ ...stickyTh, left: 0, zIndex: 4, minWidth: 220, textAlign: 'left' }}>Client</th>
                   <th style={{ ...stickyTh, left: 220, zIndex: 4, minWidth: 130, background: '#f1f5f9' }}>Total</th>
-                  {matrix.services.map((sid) => (
-                    <th key={sid} style={{ ...stickyTh, top: 0, zIndex: 3, minWidth: 110 }} title={sid}>
-                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{sid}</div>
-                    </th>
-                  ))}
+                  {matrix.services.map((sid) => {
+                    const isFocused = focusedServiceId === sid;
+                    return (
+                      <th
+                        key={sid}
+                        onClick={() => setFocusedServiceId(isFocused ? null : sid)}
+                        style={{
+                          ...stickyTh,
+                          top: 0, zIndex: 3, minWidth: 110,
+                          cursor: 'pointer',
+                          background: isFocused ? '#dbeafe' : '#f8fafc',
+                          color: isFocused ? '#0c4a6e' : '#64748b',
+                        }}
+                        title={`${sid} — click to ${isFocused ? 'unfocus' : 'focus and scope Apply uplift to this service'}`}
+                      >
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{sid}</div>
+                      </th>
+                    );
+                  })}
                 </tr>
                 {/* Per-service totals row */}
                 <tr style={{ background: '#fafafa' }}>
@@ -444,11 +465,13 @@ export default function BillingReviewAndChangePage() {
                       const key = `${entity.id}::${sid}`;
                       const cell = matrix.cells.get(key);
                       const isEditing = editing && editing.entityId === entity.id && editing.serviceId === sid;
+                      const focused = focusedServiceId === sid;
                       return (
                         <Cell
                           key={sid}
                           cell={cell}
                           isEditing={isEditing}
+                          focused={focused}
                           onEdit={() => cell && cell.services.length === 1 && setEditing({ entityId: entity.id, serviceId: sid })}
                           onSave={(val) => saveCellEdit(cell, val)}
                           onCancel={() => setEditing(null)}
@@ -471,6 +494,7 @@ export default function BillingReviewAndChangePage() {
       {upliftOpen && (
         <ApplyUpliftModal
           services={matrix.services}
+          defaultServiceId={focusedServiceId}
           onClose={() => setUpliftOpen(false)}
           onApplyInflation={applyInflation}
           onApplyFloor={applyFloor}
@@ -481,9 +505,9 @@ export default function BillingReviewAndChangePage() {
   );
 }
 
-function Cell({ cell, isEditing, onEdit, onSave, onCancel, onClearPending }) {
+function Cell({ cell, isEditing, focused, onEdit, onSave, onCancel, onClearPending }) {
   if (!cell) {
-    return <td style={cellTd}><span style={{ color: '#cbd5e1' }}>—</span></td>;
+    return <td style={{ ...cellTd, background: focused ? '#f0f9ff' : undefined }}><span style={{ color: '#cbd5e1' }}>—</span></td>;
   }
   const duplicate = cell.services.length > 1;
   if (isEditing && !duplicate) {
@@ -506,12 +530,15 @@ function Cell({ cell, isEditing, onEdit, onSave, onCancel, onClearPending }) {
     );
   }
   const delta = cell.pending - cell.current;
+  // Background priority: pending edit (purple tint) > focused column
+  // (sky tint) > default white.
+  const bg = cell.hasPending ? '#f5f3ff' : (focused ? '#f0f9ff' : '#fff');
   return (
     <td
       onClick={duplicate ? undefined : onEdit}
       style={{
         ...cellTd,
-        background: cell.hasPending ? '#f5f3ff' : '#fff',
+        background: bg,
         cursor: duplicate ? 'not-allowed' : 'pointer',
       }}
       title={duplicate
@@ -562,12 +589,12 @@ function ScopeToggle({ value, onChange }) {
 
 // Unified Apply Uplift modal — pick a strategy at the top, only the
 // inputs for that strategy show.
-function ApplyUpliftModal({ services, onClose, onApplyInflation, onApplyFloor, saving }) {
+function ApplyUpliftModal({ services, defaultServiceId, onClose, onApplyInflation, onApplyFloor, saving }) {
   const [strategy, setStrategy] = useState('inflation'); // inflation | floor
   const [pct, setPct] = useState(5);
   const [roundUp, setRoundUp] = useState(true);
-  const [onlyServiceId, setOnlyServiceId] = useState('');
-  const [floorServiceId, setFloorServiceId] = useState(services[0] || '');
+  const [onlyServiceId, setOnlyServiceId] = useState(defaultServiceId || '');
+  const [floorServiceId, setFloorServiceId] = useState(defaultServiceId || services[0] || '');
   const [floor, setFloor] = useState(50);
   const [reason, setReason] = useState('Annual fee review 2026');
 
