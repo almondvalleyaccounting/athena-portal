@@ -16,7 +16,7 @@ const font = "'Outfit', sans-serif";
 // listener so they refresh when the tab regains focus.
 export default function BillingTabs({ active }) {
   const navigate = useNavigate();
-  const [counts, setCounts] = useState({ pending: 0, staged: 0, approved: 0 });
+  const [counts, setCounts] = useState({ pending: 0, staged: 0, approved: 0, manualMonthly: 0 });
 
   const refresh = async () => {
     const { data } = await supabase
@@ -24,17 +24,20 @@ export default function BillingTabs({ active }) {
       .select('services, uplift_review_status, qbo_recurring_txn_id, entity:entities(entity_status)')
       .eq('status', 'active');
 
-    let pending = 0, staged = 0, approved = 0;
+    let pending = 0, staged = 0, approved = 0, manualMonthly = 0;
     for (const r of data || []) {
       const services = Array.isArray(r.services) ? r.services : [];
       const isNlac = r.entity?.entity_status === 'nlac';
       if (!isNlac) {
+        let approvedMonthly = 0;
         for (const s of services) {
           if (s.cadence !== 'monthly') continue;
           if (s.recurring_status === 'ending') continue;
           const status = s.approval_status || (r.qbo_recurring_txn_id ? 'approved' : 'suggested');
           if (status === 'suggested') pending++;
+          if (status === 'approved') approvedMonthly += Number(s.monthly_amount) || 0;
         }
+        if (!r.qbo_recurring_txn_id && approvedMonthly > 0) manualMonthly++;
       }
       const hasPending = services.some((s) => s.pending_monthly_amount != null);
       if (hasPending) {
@@ -42,7 +45,7 @@ export default function BillingTabs({ active }) {
         if (r.uplift_review_status === 'approved') approved++;
       }
     }
-    setCounts({ pending, staged, approved });
+    setCounts({ pending, staged, approved, manualMonthly });
   };
 
   useEffect(() => {
@@ -58,6 +61,7 @@ export default function BillingTabs({ active }) {
     { id: 'import',    label: 'Import',    route: '/manage/billing/review',  badge: counts.pending  || null, tone: 'warning' },
     { id: 'change',    label: 'Change',    route: '/manage/billing/change',  badge: counts.staged   || null, tone: 'accent'  },
     { id: 'push',      label: 'Push',      route: '/manage/billing/uplifts', badge: counts.approved || null, tone: 'success' },
+    { id: 'sources',   label: 'Sources',   route: '/manage/billing/sources', badge: counts.manualMonthly || null, tone: 'danger' },
   ];
 
   return (

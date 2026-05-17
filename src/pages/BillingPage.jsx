@@ -165,12 +165,30 @@ export default function BillingPage() {
   let pendingCount = 0;
   let stagedRowCount = 0;
   let approvedRowCount = 0;
+  let manualMonthlyCount = 0;
+  let manualMonthlyValue = 0;
   for (const b of activeBilling) {
     const services = Array.isArray(b.services) ? b.services : [];
     const hasPending = services.some((s) => s.pending_monthly_amount != null);
     if (hasPending) {
       stagedRowCount += 1;
       if (b.uplift_review_status === 'approved') approvedRowCount += 1;
+    }
+    // Manual-monthly = approved monthly billing on a row without a QBO
+    // recurring template (i.e. somebody is raising the invoice by hand
+    // each cycle). Big process risk; surface it on the banner.
+    if (!b.qbo_recurring_txn_id) {
+      let rowMonthly = 0;
+      for (const s of services) {
+        if (s.cadence !== 'monthly') continue;
+        if (s.recurring_status === 'ending') continue;
+        const status = s.approval_status || 'suggested';
+        if (status === 'approved') rowMonthly += Number(s.monthly_amount) || 0;
+      }
+      if (rowMonthly > 0) {
+        manualMonthlyCount += 1;
+        manualMonthlyValue += rowMonthly;
+      }
     }
     for (const s of services) {
       if (s.cadence !== 'monthly') continue;
@@ -484,7 +502,7 @@ export default function BillingPage() {
 
       {/* Action banner: surfaces what's waiting on you with one-click
           jumps into each step. Hidden if there's nothing to do. */}
-      {(pendingCount > 0 || stagedRowCount > 0 || approvedRowCount > 0) && (
+      {(pendingCount > 0 || stagedRowCount > 0 || approvedRowCount > 0 || manualMonthlyCount > 0) && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 16,
           padding: '12px 16px', marginBottom: 16,
@@ -520,6 +538,16 @@ export default function BillingPage() {
                 label="ready to push to QBO"
                 ctaLabel="Push →"
                 onClick={() => navigate('/manage/billing/uplifts')}
+              />
+            )}
+            {manualMonthlyCount > 0 && (
+              <ActionLine
+                count={manualMonthlyCount}
+                noun={manualMonthlyCount === 1 ? 'client' : 'clients'}
+                tone="danger"
+                label={`on manual monthly invoicing (${fmt(manualMonthlyValue)}/month)`}
+                ctaLabel="Review sources →"
+                onClick={() => navigate('/manage/billing/sources')}
               />
             )}
           </div>
