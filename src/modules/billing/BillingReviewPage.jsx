@@ -328,7 +328,7 @@ export default function BillingReviewPage() {
   return (
     <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1280 }}>
       <button onClick={() => navigate('/manage/billing')} style={backLinkStyle}>
-        <ArrowLeft size={14} /> Back to Fee Billing
+        <ArrowLeft size={14} /> Back to Billing Review
       </button>
 
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>

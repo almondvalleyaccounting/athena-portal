@@ -19,7 +19,7 @@ export default function QboMappingPage() {
   const location = useLocation();
 
   const cameFromBilling = location.pathname.startsWith('/manage/billing');
-  const backLabel = cameFromBilling ? 'Back to Fee Billing' : 'Back to Clients';
+  const backLabel = cameFromBilling ? 'Back to Billing Review' : 'Back to Clients';
   const backRoute = cameFromBilling ? '/manage/billing' : '/clients';
 
   const [rows, setRows] = useState([]);

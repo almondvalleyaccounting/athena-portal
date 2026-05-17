@@ -13,7 +13,7 @@ export const MODULES = [
       { id: 'fe-clients', label: 'Clients', route: '/manage/clients' },
       { id: 'fe-quotes', label: 'Quotes', route: '/manage/quotes' },
       { id: 'fe-groups', label: 'Groups', route: '/manage/groups' },
-      { id: 'fe-billing', label: 'Fee Billing', route: '/manage/billing' },
+      { id: 'fe-billing', label: 'Billing Review', route: '/manage/billing' },
       { id: 'fe-pricing', label: 'Pricing', route: '/manage/quotes/pricing', permissions: ['can_edit_fee_schedule'] },
     ],
   },

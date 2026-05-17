@@ -195,7 +195,7 @@ export default function BillingUpliftReviewPage() {
   return (
     <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1400 }}>
       <button onClick={() => navigate('/manage/billing')} style={backLinkStyle}>
-        <ArrowLeft size={14} /> Back to Fee Billing
+        <ArrowLeft size={14} /> Back to Billing Review
       </button>
 
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>

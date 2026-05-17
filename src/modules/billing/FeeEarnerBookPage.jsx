@@ -177,7 +177,7 @@ export default function FeeEarnerBookPage() {
   return (
     <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1280 }}>
       <button onClick={() => navigate('/manage/billing')} style={backLinkStyle}>
-        <ArrowLeft size={14} /> Back to Fee Billing
+        <ArrowLeft size={14} /> Back to Billing Review
       </button>
 
       <div style={{ marginBottom: 16 }}>
