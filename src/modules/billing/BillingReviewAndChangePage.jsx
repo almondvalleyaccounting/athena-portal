@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, TrendingUp, Anchor, RotateCcw } from 'lucide-react';
+import { TrendingUp, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
+import SearchInput from '../../components/SearchInput';
+import OverflowMenu from '../../components/OverflowMenu';
 import { fmtGbp } from '../../lib/money';
 
 const font = "'Outfit', sans-serif";
@@ -26,8 +28,8 @@ export default function BillingReviewAndChangePage() {
   const [saving, setSaving] = useState(false);
   const [scope, setScope] = useState('monthly'); // monthly | annual | all
   const [editing, setEditing] = useState(null); // { entityId, serviceId }
-  const [inflationOpen, setInflationOpen] = useState(false);
-  const [floorOpen, setFloorOpen] = useState(false);
+  const [upliftOpen, setUpliftOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -241,7 +243,7 @@ export default function BillingReviewAndChangePage() {
       }).eq('id', w.id);
     }
     setSaving(false);
-    setInflationOpen(false);
+    setUpliftOpen(false);
     await load();
   };
 
@@ -283,7 +285,7 @@ export default function BillingReviewAndChangePage() {
       }).eq('id', w.id);
     }
     setSaving(false);
-    setFloorOpen(false);
+    setUpliftOpen(false);
     await load();
   };
 
@@ -316,19 +318,30 @@ export default function BillingReviewAndChangePage() {
       {/* Action bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         <ScopeToggle value={scope} onChange={setScope} />
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Filter clients…"
+          style={{ minWidth: 200 }}
+        />
         <div style={{ flex: 1 }} />
-        <button onClick={() => setInflationOpen(true)} disabled={saving} style={btnAction}>
-          <TrendingUp size={13} /> Inflation %
-        </button>
-        <button onClick={() => setFloorOpen(true)} disabled={saving} style={btnAction}>
-          <Anchor size={13} /> Floor £
-        </button>
-        <button onClick={clearAllPending} disabled={saving} style={btnGhost}>
-          <RotateCcw size={13} /> Clear all pending
+        <button onClick={() => setUpliftOpen(true)} disabled={saving} style={btnAction}>
+          <TrendingUp size={13} /> Apply uplift…
         </button>
         <button onClick={() => navigate('/manage/billing/uplifts')} style={btnPrimary}>
-          Go to Uplift Review →
+          Push uplifts →
         </button>
+        <OverflowMenu
+          items={[
+            {
+              label: 'Clear all pending edits',
+              icon: <RotateCcw size={13} />,
+              onClick: clearAllPending,
+              danger: true,
+            },
+          ]}
+          size={32}
+        />
       </div>
 
       {loading ? (
@@ -393,7 +406,9 @@ export default function BillingReviewAndChangePage() {
                 </tr>
               </thead>
               <tbody>
-                {matrix.entityList.map((entity) => (
+                {matrix.entityList
+                  .filter((entity) => !search.trim() || (entity.name || '').toLowerCase().includes(search.trim().toLowerCase()))
+                  .map((entity) => (
                   <tr key={entity.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                     <td style={{ ...stickyTd, left: 0, background: '#fff', fontWeight: 500, color: '#0f172a', textAlign: 'left', paddingLeft: 12 }}>
                       <a href={`/manage/clients/${entity.id}`} style={{ color: '#0f172a', textDecoration: 'none' }} onClick={(e) => { e.preventDefault(); navigate(`/manage/clients/${entity.id}`); }}>
@@ -443,11 +458,14 @@ export default function BillingReviewAndChangePage() {
         </>
       )}
 
-      {inflationOpen && (
-        <InflationModal services={matrix.services} onClose={() => setInflationOpen(false)} onApply={applyInflation} saving={saving} />
-      )}
-      {floorOpen && (
-        <FloorModal services={matrix.services} onClose={() => setFloorOpen(false)} onApply={applyFloor} saving={saving} />
+      {upliftOpen && (
+        <ApplyUpliftModal
+          services={matrix.services}
+          onClose={() => setUpliftOpen(false)}
+          onApplyInflation={applyInflation}
+          onApplyFloor={applyFloor}
+          saving={saving}
+        />
       )}
     </div>
   );
@@ -532,29 +550,64 @@ function ScopeToggle({ value, onChange }) {
   );
 }
 
-function InflationModal({ services, onClose, onApply, saving }) {
+// Unified Apply Uplift modal — pick a strategy at the top, only the
+// inputs for that strategy show.
+function ApplyUpliftModal({ services, onClose, onApplyInflation, onApplyFloor, saving }) {
+  const [strategy, setStrategy] = useState('inflation'); // inflation | floor
   const [pct, setPct] = useState(5);
   const [roundUp, setRoundUp] = useState(true);
   const [onlyServiceId, setOnlyServiceId] = useState('');
+  const [floorServiceId, setFloorServiceId] = useState(services[0] || '');
+  const [floor, setFloor] = useState(50);
   const [reason, setReason] = useState('Annual fee review 2026');
+
+  const apply = () => {
+    if (strategy === 'inflation') {
+      onApplyInflation({ pct: Number(pct), roundUp, onlyServiceId: onlyServiceId || null, reason });
+    } else {
+      onApplyFloor({ serviceId: floorServiceId, floor: Number(floor), reason });
+    }
+  };
+
   return (
-    <ModalShell title="Apply inflation uplift" onClose={onClose}>
-      <Label>Inflation %</Label>
-      <input type="number" step="0.1" value={pct} onChange={(e) => setPct(Number(e.target.value))} style={inputStyle} />
-      <Label style={{ marginTop: 10 }}>Limit to service</Label>
-      <select value={onlyServiceId} onChange={(e) => setOnlyServiceId(e.target.value)} style={inputStyle}>
-        <option value="">All in-scope services</option>
-        {services.map((s) => <option key={s} value={s}>{s}</option>)}
-      </select>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12 }}>
-        <input type="checkbox" checked={roundUp} onChange={(e) => setRoundUp(e.target.checked)} />
-        Round up to nearest £0.50
-      </label>
-      <Label style={{ marginTop: 10 }}>Reason / note</Label>
+    <ModalShell title="Apply uplift" onClose={onClose}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, background: '#f8fafc', padding: 4, borderRadius: 8 }}>
+        <StratTab label="Inflation %" active={strategy === 'inflation'} onClick={() => setStrategy('inflation')} />
+        <StratTab label="Floor £/month" active={strategy === 'floor'} onClick={() => setStrategy('floor')} />
+      </div>
+
+      {strategy === 'inflation' ? (
+        <>
+          <Label>Inflation %</Label>
+          <input type="number" step="0.1" value={pct} onChange={(e) => setPct(Number(e.target.value))} style={inputStyle} />
+          <Label style={{ marginTop: 10 }}>Limit to service</Label>
+          <select value={onlyServiceId} onChange={(e) => setOnlyServiceId(e.target.value)} style={inputStyle}>
+            <option value="">All in-scope services</option>
+            {services.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12 }}>
+            <input type="checkbox" checked={roundUp} onChange={(e) => setRoundUp(e.target.checked)} />
+            Round up to nearest £0.50
+          </label>
+        </>
+      ) : (
+        <>
+          <Label>Service</Label>
+          <select value={floorServiceId} onChange={(e) => setFloorServiceId(e.target.value)} style={inputStyle}>
+            {services.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <Label style={{ marginTop: 10 }}>Floor £/month</Label>
+          <input type="number" step="0.5" value={floor} onChange={(e) => setFloor(Number(e.target.value))} style={inputStyle} />
+          <p style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>Cells below the floor will be staged to the floor value. Cells already at or above are untouched.</p>
+        </>
+      )}
+
+      <Label style={{ marginTop: 12 }}>Reason / note</Label>
       <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} style={inputStyle} />
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
         <button onClick={onClose} disabled={saving} style={modalBtnGhost}>Cancel</button>
-        <button onClick={() => onApply({ pct: Number(pct), roundUp, onlyServiceId: onlyServiceId || null, reason })} disabled={saving} style={modalBtnPrimary}>
+        <button onClick={apply} disabled={saving} style={modalBtnPrimary}>
           {saving ? 'Staging…' : 'Stage uplift'}
         </button>
       </div>
@@ -562,28 +615,19 @@ function InflationModal({ services, onClose, onApply, saving }) {
   );
 }
 
-function FloorModal({ services, onClose, onApply, saving }) {
-  const [serviceId, setServiceId] = useState(services[0] || '');
-  const [floor, setFloor] = useState(50);
-  const [reason, setReason] = useState('');
+function StratTab({ label, active, onClick }) {
   return (
-    <ModalShell title="Apply floor £/month" onClose={onClose}>
-      <Label>Service</Label>
-      <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} style={inputStyle}>
-        {services.map((s) => <option key={s} value={s}>{s}</option>)}
-      </select>
-      <Label style={{ marginTop: 10 }}>Floor £/month</Label>
-      <input type="number" step="0.5" value={floor} onChange={(e) => setFloor(Number(e.target.value))} style={inputStyle} />
-      <p style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>Cells in this column where the current amount is below the floor will be staged to the floor value. Cells already at or above the floor are untouched.</p>
-      <Label style={{ marginTop: 10 }}>Reason / note</Label>
-      <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={`Floor £${Number(floor).toFixed(2)}`} style={inputStyle} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
-        <button onClick={onClose} disabled={saving} style={modalBtnGhost}>Cancel</button>
-        <button onClick={() => onApply({ serviceId, floor: Number(floor), reason })} disabled={saving} style={modalBtnPrimary}>
-          {saving ? 'Staging…' : 'Apply floor'}
-        </button>
-      </div>
-    </ModalShell>
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1, padding: '6px 10px', fontSize: 12, fontWeight: active ? 600 : 500,
+        background: active ? '#fff' : 'transparent',
+        color: active ? '#0f172a' : '#64748b',
+        border: active ? '1px solid #e5e7eb' : '1px solid transparent',
+        boxShadow: active ? '0 1px 2px rgba(15,23,42,0.05)' : 'none',
+        borderRadius: 6, cursor: 'pointer', fontFamily: font,
+      }}
+    >{label}</button>
   );
 }
 
