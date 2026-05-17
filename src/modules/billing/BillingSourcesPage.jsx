@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, FileText, ExternalLink } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import BillingTabs from './BillingTabs';
@@ -23,7 +23,23 @@ export default function BillingSourcesPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState('manual'); // manual | template | other | all
+  const bandParam = searchParams.get('band'); // lt250 | 250 | 500 | 750 | 1000 | null
+
+  // Band definitions kept in sync with the dashboard tiles.
+  const BANDS = {
+    lt250: { label: '<£250',     min: 0,    max: 250  },
+    '250': { label: '£250–£499', min: 250,  max: 500  },
+    '500': { label: '£500–£749', min: 500,  max: 750  },
+    '750': { label: '£750–£999', min: 750,  max: 1000 },
+    '1000':{ label: '£1,000+',   min: 1000, max: Infinity },
+  };
+  const activeBand = bandParam && BANDS[bandParam] ? BANDS[bandParam] : null;
+
+  // When a band is pre-selected from the dashboard, default to "All"
+  // source filter so the user sees every client in that band.
+  useEffect(() => { if (activeBand) setFilter('all'); }, [bandParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = async () => {
     setLoading(true);
@@ -75,10 +91,11 @@ export default function BillingSourcesPage() {
   const visible = useMemo(() => {
     let out = classified;
     if (filter !== 'all') out = out.filter((r) => r.source === filter);
+    if (activeBand) out = out.filter((r) => r.monthlyNet >= activeBand.min && r.monthlyNet < activeBand.max);
     const q = search.trim().toLowerCase();
     if (q) out = out.filter((r) => r.entityName.toLowerCase().includes(q));
     return out;
-  }, [classified, filter, search]);
+  }, [classified, filter, search, activeBand]);
 
   return (
     <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1280 }}>
@@ -125,11 +142,21 @@ export default function BillingSourcesPage() {
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
             <Pill label="All" count={counts.all} active={filter === 'all'} onClick={() => setFilter('all')} />
             <Pill label="Template" count={counts.template} active={filter === 'template'} tone="success" onClick={() => setFilter('template')} />
             <Pill label="Manual" count={counts.manual} active={filter === 'manual'} tone="danger" onClick={() => setFilter('manual')} />
             <Pill label="Other" count={counts.other} active={filter === 'other'} tone="neutral" onClick={() => setFilter('other')} />
+            {activeBand && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: '#dbeafe', color: '#0c4a6e', borderRadius: 999, fontSize: 12, fontWeight: 500 }}>
+                Band: <strong>{activeBand.label}</strong>
+                <button
+                  onClick={() => { searchParams.delete('band'); setSearchParams(searchParams, { replace: true }); }}
+                  title="Clear band filter"
+                  style={{ background: 'transparent', border: 'none', color: '#0c4a6e', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}
+                >×</button>
+              </span>
+            )}
             <SearchInput
               value={search}
               onChange={setSearch}
