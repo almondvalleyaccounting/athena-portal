@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, Edit2 } from 'lucide-react';
+import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
@@ -20,6 +20,11 @@ export default function BillingReviewPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('suggested'); // suggested | approved | rejected | all
+  const [cadenceFilter, setCadenceFilter] = useState('all'); // all | monthly | annual | one_off | unset
+  const [sourceFilter, setSourceFilter] = useState('all'); // all | qbo | invoice
+  const [needsClassOnly, setNeedsClassOnly] = useState(false);
+  const [sortBy, setSortBy] = useState('client'); // client | service | monthly
+  const [sortDir, setSortDir] = useState('asc'); // asc | desc
   const [search, setSearch] = useState('');
   const [letter, setLetter] = useState(null);
   const [selected, setSelected] = useState(new Set()); // "rowId::serviceId"
@@ -64,6 +69,19 @@ export default function BillingReviewPage() {
   const filtered = useMemo(() => {
     let out = items;
     if (filter !== 'all') out = out.filter((i) => i.status === filter);
+    if (cadenceFilter !== 'all') {
+      out = out.filter((i) => {
+        const c = i.service.cadence;
+        if (cadenceFilter === 'unset') return !c;
+        return c === cadenceFilter;
+      });
+    }
+    if (sourceFilter !== 'all') {
+      out = out.filter((i) => sourceFilter === 'qbo' ? i.fromTemplate : !i.fromTemplate);
+    }
+    if (needsClassOnly) {
+      out = out.filter((i) => i.status === 'suggested' && !i.service.cadence);
+    }
     if (letter) out = out.filter((i) => firstCharBucket(i.entityName) === letter);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -73,8 +91,26 @@ export default function BillingReviewPage() {
         (i.service.service_id || '').toLowerCase().includes(q)
       );
     }
+    // Sort
+    const dir = sortDir === 'asc' ? 1 : -1;
+    out = [...out].sort((a, b) => {
+      let av, bv;
+      if (sortBy === 'monthly') {
+        av = Number(a.service.monthly_amount) || 0;
+        bv = Number(b.service.monthly_amount) || 0;
+        return (av - bv) * dir;
+      }
+      if (sortBy === 'service') {
+        av = (a.service.service_id || a.service.description || '').toLowerCase();
+        bv = (b.service.service_id || b.service.description || '').toLowerCase();
+      } else { // client
+        av = (a.entityName || '').toLowerCase();
+        bv = (b.entityName || '').toLowerCase();
+      }
+      return av.localeCompare(bv) * dir;
+    });
     return out;
-  }, [items, filter, search, letter]);
+  }, [items, filter, cadenceFilter, sourceFilter, needsClassOnly, search, letter, sortBy, sortDir]);
 
   const counts = useMemo(() => {
     const c = { suggested: 0, approved: 0, rejected: 0, all: items.length };
@@ -256,6 +292,33 @@ export default function BillingReviewPage() {
         />
       </div>
 
+      {/* Secondary filters: cadence, source, needs-classification */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label style={filterLabelStyle}>Cadence</label>
+        <select value={cadenceFilter} onChange={(e) => setCadenceFilter(e.target.value)} style={selectStyle}>
+          <option value="all">All</option>
+          <option value="monthly">Monthly</option>
+          <option value="annual">Annual</option>
+          <option value="one_off">One-off</option>
+          <option value="unset">Unset</option>
+        </select>
+
+        <label style={{ ...filterLabelStyle, marginLeft: 8 }}>Source</label>
+        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} style={selectStyle}>
+          <option value="all">All</option>
+          <option value="qbo">QBO template</option>
+          <option value="invoice">Invoice-inferred</option>
+        </select>
+
+        <label style={{ ...filterLabelStyle, marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <input type="checkbox" checked={needsClassOnly} onChange={(e) => setNeedsClassOnly(e.target.checked)} />
+          Needs classification only
+        </label>
+
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>{filtered.length} of {items.length}</span>
+      </div>
+
       <div style={{ marginBottom: 10 }}>
         <AlphabetFilter
           items={items.map(i => ({ name: i.entityName || '' }))}
@@ -298,10 +361,10 @@ export default function BillingReviewPage() {
                 <Th>
                   <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelAll} title="Select all in view" />
                 </Th>
-                <Th>Client</Th>
-                <Th>Service</Th>
+                <SortableTh label="Client" sortKey="client" sortBy={sortBy} sortDir={sortDir} onSort={(k) => { if (sortBy === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc'); else { setSortBy(k); setSortDir('asc'); } }} />
+                <SortableTh label="Service" sortKey="service" sortBy={sortBy} sortDir={sortDir} onSort={(k) => { if (sortBy === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc'); else { setSortBy(k); setSortDir('asc'); } }} />
                 <Th>Cadence</Th>
-                <Th>Monthly</Th>
+                <SortableTh label="Monthly" sortKey="monthly" sortBy={sortBy} sortDir={sortDir} onSort={(k) => { if (sortBy === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc'); else { setSortBy(k); setSortDir('desc'); } }} />
                 <Th>Status</Th>
                 <Th></Th>
               </tr>
@@ -478,6 +541,23 @@ const Th = ({ children }) => (
   </th>
 );
 const Td = ({ children, style }) => <td style={{ padding: '8px 12px', verticalAlign: 'middle', ...style }}>{children}</td>;
+
+function SortableTh({ label, sortKey, sortBy, sortDir, onSort }) {
+  const active = sortBy === sortKey;
+  return (
+    <th
+      onClick={() => onSort(sortKey)}
+      style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: active ? '#0f172a' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        {label}
+        {active && (sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
+      </span>
+    </th>
+  );
+}
+
+const filterLabelStyle = { fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: font };
 
 const selectStyle = { padding: '4px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
 
