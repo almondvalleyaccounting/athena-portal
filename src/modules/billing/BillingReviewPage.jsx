@@ -22,7 +22,6 @@ export default function BillingReviewPage() {
   const [filter, setFilter] = useState('suggested'); // suggested | approved | rejected | all
   const [cadenceFilter, setCadenceFilter] = useState('all'); // all | monthly | annual | one_off | unset
   const [sourceFilter, setSourceFilter] = useState('all'); // all | qbo | invoice
-  const [needsClassOnly, setNeedsClassOnly] = useState(false);
   const [sortBy, setSortBy] = useState('client'); // client | service | monthly
   const [sortDir, setSortDir] = useState('asc'); // asc | desc
   const [search, setSearch] = useState('');
@@ -79,9 +78,6 @@ export default function BillingReviewPage() {
     if (sourceFilter !== 'all') {
       out = out.filter((i) => sourceFilter === 'qbo' ? i.fromTemplate : !i.fromTemplate);
     }
-    if (needsClassOnly) {
-      out = out.filter((i) => i.status === 'suggested' && !i.service.cadence);
-    }
     if (letter) out = out.filter((i) => firstCharBucket(i.entityName) === letter);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -110,7 +106,7 @@ export default function BillingReviewPage() {
       return av.localeCompare(bv) * dir;
     });
     return out;
-  }, [items, filter, cadenceFilter, sourceFilter, needsClassOnly, search, letter, sortBy, sortDir]);
+  }, [items, filter, cadenceFilter, sourceFilter, search, letter, sortBy, sortDir]);
 
   const counts = useMemo(() => {
     const c = { suggested: 0, approved: 0, rejected: 0, all: items.length };
@@ -309,11 +305,6 @@ export default function BillingReviewPage() {
           <option value="qbo">QBO template</option>
           <option value="invoice">Invoice-inferred</option>
         </select>
-
-        <label style={{ ...filterLabelStyle, marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-          <input type="checkbox" checked={needsClassOnly} onChange={(e) => setNeedsClassOnly(e.target.checked)} />
-          Needs classification only
-        </label>
 
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 11, color: '#94a3b8' }}>{filtered.length} of {items.length}</span>
