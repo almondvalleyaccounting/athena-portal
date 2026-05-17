@@ -86,7 +86,12 @@ export default function PlanUpliftModal({ rows, selectedKeys, onClose, onApplied
           pending_uplift_staged_at: new Date().toISOString(),
         };
       }
-      await supabase.from('live_billing').update({ services }).eq('id', rowId);
+      await supabase.from('live_billing').update({
+        services,
+        uplift_review_status: 'staged',
+        uplift_reviewed_by: null,
+        uplift_reviewed_at: null,
+      }).eq('id', rowId);
     }
     setApplying(false);
     onApplied?.();

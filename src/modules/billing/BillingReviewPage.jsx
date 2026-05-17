@@ -375,12 +375,11 @@ export default function BillingReviewPage() {
       {pendingPushableRows.length > 0 && (
         <div style={pendingBarStyle}>
           <span style={{ fontSize: 13, fontWeight: 500 }}>
-            {pendingPushableRows.length} template{pendingPushableRows.length === 1 ? ' has' : 's have'} a staged uplift ready to push to QBO
+            {pendingPushableRows.length} template{pendingPushableRows.length === 1 ? ' has' : 's have'} a staged uplift waiting for review
           </span>
           <div style={{ flex: 1 }} />
-          <button onClick={() => pushPendingToQbo(true)} disabled={pushing} style={btnPushDry}>Dry-run</button>
-          <button onClick={() => pushPendingToQbo(false)} disabled={pushing} style={btnPushLive}>
-            {pushing ? 'Pushing…' : 'Push pending to QBO'}
+          <button onClick={() => navigate('/manage/billing/uplifts')} style={btnPushLive}>
+            Review uplifts →
           </button>
         </div>
       )}

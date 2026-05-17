@@ -77,6 +77,15 @@ Deno.serve(async (req) => {
       continue;
     }
 
+    // Defense in depth: require explicit row-level approval before we
+    // overwrite a QBO template. The UI should only call with approved
+    // rows, but enforce here too.
+    if (billing.uplift_review_status !== "approved") {
+      skipped++;
+      results.push({ billing_id: billing.id, entity: entityName, status: "skipped", reason: `uplift_review_status=${billing.uplift_review_status || "null"} (not approved)` });
+      continue;
+    }
+
     try {
       // 2. Fetch current template from QBO. The recurringtransaction
       //    endpoint can return either { Invoice: {...} } or
@@ -204,6 +213,9 @@ Deno.serve(async (req) => {
         annual_total: Math.round(rowAnnualTotal * 100) / 100,
         last_synced_qbo: new Date().toISOString(),
         qbo_sync_status: "synced",
+        uplift_review_status: null,
+        uplift_reviewed_by: null,
+        uplift_reviewed_at: null,
       }).eq("id", billing.id);
 
       pushed++;

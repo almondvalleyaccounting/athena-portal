@@ -12,6 +12,7 @@ import DataImportModule from './modules/data-import/DataImportModule';
 import SetupModule from './modules/work-planner/setup/SetupModule';
 import QboMappingPage from './modules/qbo-mapping/QboMappingPage';
 import BillingReviewPage from './modules/billing/BillingReviewPage';
+import BillingUpliftReviewPage from './modules/billing/BillingUpliftReviewPage';
 import FeeEarnerBookPage from './modules/billing/FeeEarnerBookPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
@@ -66,6 +67,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/clients/qbo-mapping" element={<QboMappingPage />} />
           <Route path="/manage/billing/qbo-mapping" element={<QboMappingPage />} />
           <Route path="/manage/billing/review" element={<BillingReviewPage />} />
+          <Route path="/manage/billing/uplifts" element={<BillingUpliftReviewPage />} />
           <Route path="/manage/billing/fee-earners" element={<FeeEarnerBookPage />} />
           <Route path="/clients/:id" element={<ClientDetailView />} />
           {/* Setup must come before /planner/* wildcard so it matches first. */}
