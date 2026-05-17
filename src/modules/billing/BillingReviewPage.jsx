@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown, CalendarX } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
@@ -23,6 +23,7 @@ export default function BillingReviewPage() {
   const [cadenceFilter, setCadenceFilter] = useState('all'); // all | monthly | annual | one_off | unset
   const [sourceFilter, setSourceFilter] = useState('all'); // all | qbo | invoice
   const [showNlac, setShowNlac] = useState(false);
+  const [showEnding, setShowEnding] = useState(false);
   const [sortBy, setSortBy] = useState('client'); // client | service | monthly
   const [sortDir, setSortDir] = useState('asc'); // asc | desc
   const [search, setSearch] = useState('');
@@ -70,6 +71,7 @@ export default function BillingReviewPage() {
   const filtered = useMemo(() => {
     let out = items;
     if (!showNlac) out = out.filter((i) => i.entityStatus !== 'nlac');
+    if (!showEnding) out = out.filter((i) => i.service.recurring_status !== 'ending');
     if (filter !== 'all') out = out.filter((i) => i.status === filter);
     if (cadenceFilter !== 'all') {
       out = out.filter((i) => {
@@ -109,7 +111,7 @@ export default function BillingReviewPage() {
       return av.localeCompare(bv) * dir;
     });
     return out;
-  }, [items, filter, cadenceFilter, sourceFilter, showNlac, search, letter, sortBy, sortDir]);
+  }, [items, filter, cadenceFilter, sourceFilter, showNlac, showEnding, search, letter, sortBy, sortDir]);
 
   const counts = useMemo(() => {
     const c = { suggested: 0, approved: 0, rejected: 0, all: items.length };
@@ -180,6 +182,13 @@ export default function BillingReviewPage() {
     approved_by: profile?.id || null,
     approved_at: new Date().toISOString(),
   });
+
+  const toggleEnding = (item) => {
+    const isEnding = item.service.recurring_status === 'ending';
+    return patchService(item.rowId, item.serviceIdx, {
+      recurring_status: isEnding ? 'recurring' : 'ending',
+    });
+  };
 
   const unapprove = (item) => patchService(item.rowId, item.serviceIdx, {
     approval_status: 'suggested',
@@ -314,6 +323,11 @@ export default function BillingReviewPage() {
           Show NLAC clients
         </label>
 
+        <label style={{ ...filterLabelStyle, marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title="Include services marked as ending (won't continue in future billing)">
+          <input type="checkbox" checked={showEnding} onChange={(e) => setShowEnding(e.target.checked)} />
+          Show ending services
+        </label>
+
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 11, color: '#94a3b8' }}>{filtered.length} of {items.length}</span>
       </div>
@@ -352,8 +366,8 @@ export default function BillingReviewPage() {
               <col style={{ width: '26%' }} />
               <col style={{ width: 230 }} />
               <col style={{ width: 100 }} />
-              <col style={{ width: 100 }} />
-              <col style={{ width: 150 }} />
+              <col style={{ width: 130 }} />
+              <col style={{ width: 180 }} />
             </colgroup>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
@@ -430,6 +444,9 @@ export default function BillingReviewPage() {
                     </Td>
                     <Td>
                       <StatusChip status={i.status} />
+                      {s.recurring_status === 'ending' && (
+                        <span style={{ ...tagStyle('amber'), marginLeft: 6 }} title="Service marked as ending — excluded from future billing">Ending</span>
+                      )}
                     </Td>
                     <Td>
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
@@ -448,6 +465,14 @@ export default function BillingReviewPage() {
                             ↺
                           </button>
                         )}
+                        <button
+                          onClick={() => toggleEnding(i)}
+                          disabled={saving}
+                          title={s.recurring_status === 'ending' ? 'Unmark ending (back to recurring)' : 'Mark ending (excludes from future billing)'}
+                          style={iconBtn(s.recurring_status === 'ending' ? '#b45309' : '#64748b')}
+                        >
+                          <CalendarX size={13} />
+                        </button>
                         <button
                           onClick={() => setEditing(isEdit ? null : { rowId: i.rowId, serviceIdx: i.serviceIdx })}
                           disabled={saving}
@@ -600,8 +625,9 @@ function iconBtn(color) {
 
 function tagStyle(tone) {
   const palettes = {
-    teal: { bg: '#ccfbf1', fg: '#115e59' },
-    red:  { bg: '#fee2e2', fg: '#b91c1c' },
+    teal:  { bg: '#ccfbf1', fg: '#115e59' },
+    red:   { bg: '#fee2e2', fg: '#b91c1c' },
+    amber: { bg: '#fef3c7', fg: '#92400e' },
   };
   const p = palettes[tone] || palettes.teal;
   return {
