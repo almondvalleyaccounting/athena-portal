@@ -4,6 +4,7 @@ import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown, CalendarX } from 'lucid
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
+import PlanUpliftModal from './PlanUpliftModal';
 
 const font = "'Outfit', sans-serif";
 
@@ -24,6 +25,7 @@ export default function BillingReviewPage() {
   const [sourceFilter, setSourceFilter] = useState('all'); // all | qbo | invoice
   const [showNlac, setShowNlac] = useState(false);
   const [showEnding, setShowEnding] = useState(false);
+  const [upliftOpen, setUpliftOpen] = useState(false);
   const [sortBy, setSortBy] = useState('client'); // client | service | monthly
   const [sortDir, setSortDir] = useState('asc'); // asc | desc
   const [search, setSearch] = useState('');
@@ -347,6 +349,7 @@ export default function BillingReviewPage() {
           <div style={{ flex: 1 }} />
           <button onClick={bulkApprove} disabled={saving} style={btnApprove}>Approve</button>
           <button onClick={bulkReject} disabled={saving} style={btnReject}>Reject</button>
+          <button onClick={() => setUpliftOpen(true)} disabled={saving} style={btnUplift}>Plan uplift…</button>
           <button onClick={() => setSelected(new Set())} disabled={saving} style={btnGhost}>Clear</button>
         </div>
       )}
@@ -357,7 +360,18 @@ export default function BillingReviewPage() {
         <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
           {filter === 'suggested' ? 'Queue clear — nothing to review.' : 'Nothing here.'}
         </div>
-      ) : (
+      ) : null}
+
+      {upliftOpen && (
+        <PlanUpliftModal
+          rows={rows}
+          selectedKeys={selected}
+          onClose={() => setUpliftOpen(false)}
+          onApplied={() => { setSelected(new Set()); load(); }}
+        />
+      )}
+
+      {!loading && filtered.length > 0 && (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
             <colgroup>
@@ -439,7 +453,15 @@ export default function BillingReviewPage() {
                           style={{ ...selectStyle, width: 90 }}
                         />
                       ) : (
-                        <span style={{ fontFamily: 'monospace' }}>£{Number(s.monthly_amount || 0).toFixed(2)}</span>
+                        <div>
+                          <span style={{ fontFamily: 'monospace' }}>£{Number(s.monthly_amount || 0).toFixed(2)}</span>
+                          {s.pending_monthly_amount != null && Number(s.pending_monthly_amount) !== Number(s.monthly_amount) && (
+                            <div style={{ fontSize: 10, fontFamily: 'monospace', color: '#7c3aed', marginTop: 2 }}
+                                 title={`Pending from ${s.pending_effective_at || ''}${s.pending_uplift_reason ? ` — ${s.pending_uplift_reason}` : ''}`}>
+                              → £{Number(s.pending_monthly_amount).toFixed(2)}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </Td>
                     <Td>
@@ -612,6 +634,7 @@ const bulkBarStyle = {
 
 const btnApprove = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnReject = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnUplift = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnGhost = { padding: '6px 12px', fontSize: 12, fontWeight: 500, background: 'none', color: '#cbd5e1', border: 'none', cursor: 'pointer', fontFamily: font };
 
 function iconBtn(color) {
