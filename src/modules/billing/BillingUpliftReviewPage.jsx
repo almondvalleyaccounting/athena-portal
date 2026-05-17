@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
 import SearchInput from '../../components/SearchInput';
+import EmptyState from '../../components/EmptyState';
 import { fmtGbp } from '../../lib/money';
 
 const font = "'Outfit', sans-serif";
@@ -253,9 +254,30 @@ export default function BillingUpliftReviewPage() {
       {loading ? (
         <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : visible.length === 0 ? (
-        <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
-          {filter === 'staged' ? 'No staged uplifts. Plan one from the approval queue.' : 'Nothing in this view.'}
-        </div>
+        filter === 'staged' ? (
+          <EmptyState
+            icon="✦"
+            title="Nothing staged to review"
+            body="When you stage an uplift on the Change page, it lands here for approval before it's pushed to QBO."
+            actions={[
+              { label: 'Go to Change →', onClick: () => navigate('/manage/billing/change'), primary: true },
+            ]}
+          />
+        ) : filter === 'approved' ? (
+          <EmptyState
+            icon="—"
+            title="Nothing approved yet"
+            body="Approve staged uplifts to queue them for push."
+            actions={[{ label: 'Show staged', onClick: () => setFilter('staged') }]}
+          />
+        ) : (
+          <EmptyState
+            icon="—"
+            title="No results"
+            body="Try a different filter or clear the search."
+            actions={[{ label: 'Show staged', onClick: () => setFilter('staged') }]}
+          />
+        )
       ) : (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

@@ -6,6 +6,7 @@ import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
 import SearchInput from '../../components/SearchInput';
 import OverflowMenu from '../../components/OverflowMenu';
+import EmptyState from '../../components/EmptyState';
 import { fmtGbp } from '../../lib/money';
 
 const font = "'Outfit', sans-serif";
@@ -347,9 +348,18 @@ export default function BillingReviewAndChangePage() {
       {loading ? (
         <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : matrix.entityList.length === 0 ? (
-        <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
-          No clients have any {scope === 'all' ? '' : scope + ' '}services in scope. Try a different scope.
-        </div>
+        <EmptyState
+          icon="—"
+          title={`No ${scope === 'all' ? '' : scope + ' '}services in scope`}
+          body={scope === 'monthly'
+            ? 'No client has any approved monthly recurring services. Approve some on the Import page, or switch scope to Annual / All.'
+            : 'Try switching the scope toggle above, or approve services on the Import page first.'}
+          actions={[
+            ...(scope !== 'monthly' ? [{ label: 'Switch to Monthly', onClick: () => setScope('monthly') }] : []),
+            ...(scope !== 'all' ? [{ label: 'Show All', onClick: () => setScope('all') }] : []),
+            { label: 'Go to Import →', onClick: () => navigate('/manage/billing/review'), primary: true },
+          ]}
+        />
       ) : (
         <>
           {/* Summary tiles */}

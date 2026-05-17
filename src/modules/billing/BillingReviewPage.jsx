@@ -9,6 +9,7 @@ import PlanUpliftModal from './PlanUpliftModal';
 import BillingTabs from './BillingTabs';
 import FiltersPopover from '../../components/FiltersPopover';
 import OverflowMenu from '../../components/OverflowMenu';
+import EmptyState from '../../components/EmptyState';
 
 const font = "'Outfit', sans-serif";
 
@@ -508,9 +509,40 @@ export default function BillingReviewPage() {
       {loading ? (
         <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : filtered.length === 0 ? (
-        <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
-          {filter === 'suggested' ? 'Queue clear — nothing to review.' : 'Nothing here.'}
-        </div>
+        filter === 'suggested' ? (
+          <EmptyState
+            icon="✓"
+            title="Queue clear"
+            body="Every imported service has been reviewed. When QBO sends new billing, the suggestions will land here."
+            actions={[
+              { label: 'Plan a fee uplift →', onClick: () => navigate('/manage/billing/change'), primary: true },
+              { label: 'Back to Dashboard', onClick: () => navigate('/manage/billing') },
+            ]}
+          />
+        ) : filter === 'duplicates' ? (
+          <EmptyState
+            icon="✓"
+            title="No duplicates"
+            body="Every client has unique service lines (or you've already acknowledged the intentional ones)."
+            actions={[
+              { label: 'Show all', onClick: () => setFilter('all') },
+            ]}
+          />
+        ) : filter === 'ending' ? (
+          <EmptyState
+            icon="—"
+            title="Nothing marked ending"
+            body="When a service is winding down, mark it ending so it drops out of your forward billing view."
+            actions={[{ label: 'Show all', onClick: () => setFilter('all') }]}
+          />
+        ) : (
+          <EmptyState
+            icon="—"
+            title="No results"
+            body="Try a different filter or clear the search."
+            actions={[{ label: 'Show all', onClick: () => setFilter('all') }]}
+          />
+        )
       ) : null}
 
       {upliftOpen && (
