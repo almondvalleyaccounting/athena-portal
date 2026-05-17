@@ -6,6 +6,7 @@ import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
 import SearchInput from '../../components/SearchInput';
 import EmptyState from '../../components/EmptyState';
+import { tones } from '../../lib/tokens';
 import { fmtGbp } from '../../lib/money';
 
 const font = "'Outfit', sans-serif";
@@ -393,27 +394,27 @@ export default function BillingUpliftReviewPage() {
 
 function StatusChip({ status }) {
   const map = {
-    staged:   { bg: '#fef3c7', fg: '#78350f', label: 'Staged' },
-    approved: { bg: '#dcfce7', fg: '#166534', label: 'Approved' },
-    rejected: { bg: '#f1f5f9', fg: '#475569', label: 'Rejected' },
+    staged:   { tone: 'warning', label: 'Staged' },
+    approved: { tone: 'success', label: 'Approved' },
+    rejected: { tone: 'neutral', label: 'Rejected' },
   };
-  const t = map[status] || map.staged;
+  const m = map[status] || map.staged;
+  const t = tones[m.tone];
   return (
-    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: t.bg, color: t.fg }}>{t.label}</span>
+    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: t.bg, color: t.fg }}>{m.label}</span>
   );
 }
 
 function Pill({ label, count, active, tone, onClick }) {
-  const tones = {
-    amber:   { active: { bg: '#fef3c7', fg: '#78350f', border: '#fcd34d' }, idle: { bg: '#fff', fg: '#78350f', border: '#fcd34d' } },
-    green:   { active: { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, idle: { bg: '#fff', fg: '#166534', border: '#86efac' } },
-    slate:   { active: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' }, idle: { bg: '#fff', fg: '#64748b', border: '#cbd5e1' } },
-    default: { active: { bg: '#0f172a', fg: '#fff', border: '#0f172a' }, idle: { bg: '#fff', fg: '#475569', border: '#e5e7eb' } },
-  };
-  const t = tones[tone] || tones.default;
-  const s = active ? t.active : t.idle;
+  const semanticMap = { amber: 'warning', green: 'success', slate: 'neutral' };
+  const isMaster = !tone || tone === 'default';
+  const semantic = semanticMap[tone] || 'neutral';
+  const t = tones[semantic];
+  const bg = active ? (isMaster ? '#0f172a' : t.bg) : '#fff';
+  const fg = active && isMaster ? '#fff' : t.fg;
+  const border = isMaster && !active ? '#e5e7eb' : t.border;
   return (
-    <button onClick={onClick} style={{ fontSize: 12, fontWeight: active ? 600 : 500, padding: '5px 12px', borderRadius: 999, background: s.bg, color: s.fg, border: `1px solid ${s.border}`, cursor: 'pointer', fontFamily: font }}>
+    <button onClick={onClick} style={{ fontSize: 12, fontWeight: active ? 600 : 500, padding: '5px 12px', borderRadius: 999, background: bg, color: fg, border: `1px solid ${border}`, cursor: 'pointer', fontFamily: font }}>
       {label}{count != null ? ` · ${count}` : ''}
     </button>
   );

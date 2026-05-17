@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { tones } from '../../lib/tokens';
 
 const font = "'Outfit', sans-serif";
 
@@ -54,9 +55,9 @@ export default function BillingTabs({ active }) {
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', route: '/manage/billing',         badge: null },
-    { id: 'import',    label: 'Import',    route: '/manage/billing/review',  badge: counts.pending  || null, tone: 'amber' },
-    { id: 'change',    label: 'Change',    route: '/manage/billing/change',  badge: counts.staged   || null, tone: 'purple' },
-    { id: 'push',      label: 'Push',      route: '/manage/billing/uplifts', badge: counts.approved || null, tone: 'green' },
+    { id: 'import',    label: 'Import',    route: '/manage/billing/review',  badge: counts.pending  || null, tone: 'warning' },
+    { id: 'change',    label: 'Change',    route: '/manage/billing/change',  badge: counts.staged   || null, tone: 'accent'  },
+    { id: 'push',      label: 'Push',      route: '/manage/billing/uplifts', badge: counts.approved || null, tone: 'success' },
   ];
 
   return (
@@ -91,12 +92,7 @@ export default function BillingTabs({ active }) {
 }
 
 function Badge({ value, tone, active }) {
-  const tones = {
-    amber:  { bg: '#fef3c7', fg: '#78350f' },
-    purple: { bg: '#ede9fe', fg: '#5b21b6' },
-    green:  { bg: '#dcfce7', fg: '#166534' },
-  };
-  const t = tones[tone] || tones.amber;
+  const t = tones[tone] || tones.warning;
   return (
     <span style={{
       fontSize: 10, fontWeight: 700,

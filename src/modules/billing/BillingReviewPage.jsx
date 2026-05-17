@@ -10,6 +10,7 @@ import BillingTabs from './BillingTabs';
 import FiltersPopover from '../../components/FiltersPopover';
 import OverflowMenu from '../../components/OverflowMenu';
 import EmptyState from '../../components/EmptyState';
+import { tones } from '../../lib/tokens';
 
 const font = "'Outfit', sans-serif";
 
@@ -794,16 +795,17 @@ const DiagTd = ({ children }) => <td style={{ padding: '6px 10px', verticalAlign
 
 function StatusChip({ status }) {
   const map = {
-    suggested: { bg: '#fef3c7', fg: '#78350f', label: 'Suggested' },
-    approved: { bg: '#dcfce7', fg: '#166534', label: 'Approved' },
-    rejected: { bg: '#f1f5f9', fg: '#475569', label: 'Rejected' },
+    suggested: { tone: 'warning', label: 'Suggested' },
+    approved:  { tone: 'success', label: 'Approved' },
+    rejected:  { tone: 'neutral', label: 'Rejected' },
   };
-  const t = map[status] || map.suggested;
+  const m = map[status] || map.suggested;
+  const t = tones[m.tone];
   return (
     <span style={{
       fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
       background: t.bg, color: t.fg,
-    }}>{t.label}</span>
+    }}>{m.label}</span>
   );
 }
 
@@ -848,21 +850,20 @@ function CadenceSegmented({ value, onChange, disabled }) {
 }
 
 function FilterPill({ label, count, active, tone, onClick }) {
-  const tones = {
-    amber: { active: { bg: '#fef3c7', fg: '#78350f', border: '#fcd34d' }, idle: { bg: '#fff', fg: '#78350f', border: '#fcd34d' } },
-    green: { active: { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, idle: { bg: '#fff', fg: '#166534', border: '#86efac' } },
-    slate: { active: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' }, idle: { bg: '#fff', fg: '#64748b', border: '#cbd5e1' } },
-    orange: { active: { bg: '#ffedd5', fg: '#9a3412', border: '#fdba74' }, idle: { bg: '#fff', fg: '#9a3412', border: '#fdba74' } },
-    red:    { active: { bg: '#fee2e2', fg: '#991b1b', border: '#fca5a5' }, idle: { bg: '#fff', fg: '#991b1b', border: '#fca5a5' } },
-    default: { active: { bg: '#0f172a', fg: '#fff', border: '#0f172a' }, idle: { bg: '#fff', fg: '#475569', border: '#e5e7eb' } },
-  };
-  const t = tones[tone] || tones.default;
-  const s = active ? t.active : t.idle;
+  // Legacy tone names → semantic. The "default" pill (All) goes dark
+  // when active so it reads as the master.
+  const semanticMap = { amber: 'warning', green: 'success', slate: 'neutral', orange: 'warning', red: 'danger' };
+  const isMaster = !tone || tone === 'default';
+  const semantic = semanticMap[tone] || 'neutral';
+  const t = tones[semantic];
+  const bg = active ? (isMaster ? '#0f172a' : t.bg) : '#fff';
+  const fg = active && isMaster ? '#fff' : t.fg;
+  const border = isMaster && !active ? '#e5e7eb' : t.border;
   return (
     <button onClick={onClick} style={{
       fontSize: 12, fontWeight: active ? 600 : 500,
       padding: '5px 12px', borderRadius: 999,
-      background: s.bg, color: s.fg, border: `1px solid ${s.border}`,
+      background: bg, color: fg, border: `1px solid ${border}`,
       cursor: 'pointer', fontFamily: font,
     }}>
       {label}{count != null ? ` · ${count}` : ''}
@@ -931,17 +932,14 @@ function iconBtn(color) {
 }
 
 function tagStyle(tone) {
-  const palettes = {
-    teal:  { bg: '#ccfbf1', fg: '#115e59' },
-    red:   { bg: '#fee2e2', fg: '#b91c1c' },
-    amber: { bg: '#fef3c7', fg: '#92400e' },
-    slate: { bg: '#f1f5f9', fg: '#475569' },
-  };
-  const p = palettes[tone] || palettes.teal;
+  // Legacy tone names → semantic. teal historically meant "QBO
+  // template" — info reads better.
+  const map = { teal: 'info', red: 'danger', amber: 'warning', slate: 'neutral' };
+  const t = tones[map[tone] || 'neutral'];
   return {
     display: 'inline-block', marginLeft: 8,
     fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
     padding: '1px 6px', borderRadius: 4,
-    background: p.bg, color: p.fg,
+    background: t.bg, color: t.fg,
   };
 }

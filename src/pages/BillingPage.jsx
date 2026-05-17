@@ -8,6 +8,7 @@ import QboConnectionPanel from '../components/QboConnectionPanel';
 import { useAuth } from '../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 import BillingTabs from '../modules/billing/BillingTabs';
+import { tones as semanticTones } from '../lib/tokens';
 
 export default function BillingPage() {
   const { profile } = useAuth();
@@ -495,7 +496,7 @@ export default function BillingPage() {
               <ActionLine
                 count={pendingCount}
                 noun={pendingCount === 1 ? 'service' : 'services'}
-                tone="amber"
+                tone="warning"
                 label="waiting for approval"
                 ctaLabel="Review →"
                 onClick={() => navigate('/manage/billing/review')}
@@ -505,7 +506,7 @@ export default function BillingPage() {
               <ActionLine
                 count={stagedRowCount}
                 noun={stagedRowCount === 1 ? 'client' : 'clients'}
-                tone="purple"
+                tone="accent"
                 label="with staged uplifts"
                 ctaLabel="Change →"
                 onClick={() => navigate('/manage/billing/change')}
@@ -515,7 +516,7 @@ export default function BillingPage() {
               <ActionLine
                 count={approvedRowCount}
                 noun={approvedRowCount === 1 ? 'template' : 'templates'}
-                tone="green"
+                tone="success"
                 label="ready to push to QBO"
                 ctaLabel="Push →"
                 onClick={() => navigate('/manage/billing/uplifts')}
@@ -996,12 +997,7 @@ function SummaryCard({ label, value, color, hint, onClick, active }) {
 }
 
 function ActionLine({ count, noun, tone, label, ctaLabel, onClick }) {
-  const tones = {
-    amber:  { fg: '#92400e', bg: '#fef3c7' },
-    purple: { fg: '#5b21b6', bg: '#ede9fe' },
-    green:  { fg: '#166534', bg: '#dcfce7' },
-  };
-  const t = tones[tone] || tones.amber;
+  const t = semanticTones[tone] || semanticTones.warning;
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#1e293b' }}>
       <span style={{
