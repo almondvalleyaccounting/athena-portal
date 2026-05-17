@@ -26,6 +26,7 @@ export default function BillingReviewPage() {
   const [showNlac, setShowNlac] = useState(false);
   const [showEnding, setShowEnding] = useState(false);
   const [upliftOpen, setUpliftOpen] = useState(false);
+  const [pushing, setPushing] = useState(false);
   const [sortBy, setSortBy] = useState('client'); // client | service | monthly
   const [sortDir, setSortDir] = useState('asc'); // asc | desc
   const [search, setSearch] = useState('');
@@ -120,6 +121,43 @@ export default function BillingReviewPage() {
     for (const i of items) c[i.status] = (c[i.status] || 0) + 1;
     return c;
   }, [items]);
+
+  // Count rows (live_billing entries) with at least one pending uplift
+  // AND a QBO recurring template id — these are eligible to push.
+  const pendingPushableRows = useMemo(() => {
+    return rows.filter((r) =>
+      r.qbo_recurring_txn_id &&
+      Array.isArray(r.services) &&
+      r.services.some((s) => s.pending_monthly_amount != null)
+    );
+  }, [rows]);
+
+  const pushPendingToQbo = async (dryRun = false) => {
+    const ids = pendingPushableRows.map((r) => r.id);
+    if (ids.length === 0) return;
+    const label = dryRun ? 'Dry-run' : 'Push';
+    if (!window.confirm(`${label} ${ids.length} QBO recurring template${ids.length === 1 ? '' : 's'} with staged uplifts?\n\nThis will overwrite line amounts on the existing templates in QuickBooks.`)) return;
+    setPushing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('qbo-push-recurring', {
+        body: { billing_ids: ids, dry_run: dryRun, initiated_by: profile?.id || null },
+      });
+      if (error) throw error;
+      const s = data?.summary || {};
+      const msg = `${label} complete\n\nPushed: ${s.pushed || 0}\nSkipped: ${s.skipped || 0}\nErrored: ${s.errored || 0}`;
+      if (dryRun) {
+        console.log('Dry-run results:', data);
+        alert(msg + '\n\nFull dry-run output logged to console.');
+      } else {
+        alert(msg);
+        await load();
+      }
+    } catch (err) {
+      alert('Push failed: ' + (err.message || err));
+    } finally {
+      setPushing(false);
+    }
+  };
 
   // ── Mutation: patch a single service line in live_billing.services.
   // We read the row, modify the one index, write back. No FOR UPDATE
@@ -333,6 +371,19 @@ export default function BillingReviewPage() {
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 11, color: '#94a3b8' }}>{filtered.length} of {items.length}</span>
       </div>
+
+      {pendingPushableRows.length > 0 && (
+        <div style={pendingBarStyle}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>
+            {pendingPushableRows.length} template{pendingPushableRows.length === 1 ? ' has' : 's have'} a staged uplift ready to push to QBO
+          </span>
+          <div style={{ flex: 1 }} />
+          <button onClick={() => pushPendingToQbo(true)} disabled={pushing} style={btnPushDry}>Dry-run</button>
+          <button onClick={() => pushPendingToQbo(false)} disabled={pushing} style={btnPushLive}>
+            {pushing ? 'Pushing…' : 'Push pending to QBO'}
+          </button>
+        </div>
+      )}
 
       <div style={{ marginBottom: 10 }}>
         <AlphabetFilter
@@ -635,6 +686,9 @@ const bulkBarStyle = {
 const btnApprove = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnReject = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnUplift = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const pendingBarStyle = { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', marginBottom: 12, background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: 8 };
+const btnPushDry = { padding: '6px 14px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnPushLive = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnGhost = { padding: '6px 12px', fontSize: 12, fontWeight: 500, background: 'none', color: '#cbd5e1', border: 'none', cursor: 'pointer', fontFamily: font };
 
 function iconBtn(color) {
