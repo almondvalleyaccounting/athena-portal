@@ -268,14 +268,35 @@ Deno.serve(async (req) => {
 
         const txnId = String(txn.Id || innerTxn.Id);
 
-        const { data: existing } = await sb
+        // Find the row to write into. Preference order:
+        //   1. Existing row already linked to THIS template (txn id)
+        //   2. The entity's invoice-inferred row that has no template
+        //      yet — attach the template to it rather than insert a
+        //      duplicate.
+        //   3. Otherwise insert a new row.
+        let { data: existing } = await sb
           .from("live_billing")
           .select("id")
           .eq("qbo_recurring_txn_id", txnId)
-          .single();
+          .maybeSingle();
+
+        if (!existing) {
+          const { data: orphan } = await sb
+            .from("live_billing")
+            .select("id")
+            .eq("entity_id", entity.id)
+            .eq("status", "active")
+            .is("qbo_recurring_txn_id", null)
+            .order("monthly_net", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (orphan) existing = orphan;
+        }
 
         if (existing) {
           await sb.from("live_billing").update({
+            qbo_recurring_txn_id: txnId,
+            billing_type: "recurring",
             monthly_net: monthlyNet,
             monthly_vat: monthlyVat,
             monthly_gross: monthlyGross,
