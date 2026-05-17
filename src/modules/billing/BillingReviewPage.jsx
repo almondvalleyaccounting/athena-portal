@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown, CalendarX, Copy } from 'lucide-react';
+import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown, CalendarX, Copy, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import SearchInput from '../../components/SearchInput';
 import PlanUpliftModal from './PlanUpliftModal';
 import BillingTabs from './BillingTabs';
+import FiltersPopover from '../../components/FiltersPopover';
+import OverflowMenu from '../../components/OverflowMenu';
 
 const font = "'Outfit', sans-serif";
 
@@ -423,28 +425,46 @@ export default function BillingReviewPage() {
         />
       </div>
 
-      {/* Secondary filters: cadence, source, needs-classification */}
+      {/* Secondary filter controls collapsed behind a single Filters
+          popover so the pill row stays the only thing the eye scans. */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <label style={filterLabelStyle}>Cadence</label>
-        <select value={cadenceFilter} onChange={(e) => setCadenceFilter(e.target.value)} style={selectStyle}>
-          <option value="all">All</option>
-          <option value="monthly">Monthly</option>
-          <option value="annual">Annual</option>
-          <option value="one_off">One-off</option>
-          <option value="unset">Unset</option>
-        </select>
+        <FiltersPopover
+          activeCount={
+            (cadenceFilter !== 'all' ? 1 : 0) +
+            (sourceFilter !== 'all' ? 1 : 0) +
+            (showNlac ? 1 : 0)
+          }
+        >
+          <Label>Cadence</Label>
+          <select value={cadenceFilter} onChange={(e) => setCadenceFilter(e.target.value)} style={popoverSelectStyle}>
+            <option value="all">All</option>
+            <option value="monthly">Monthly</option>
+            <option value="annual">Annual</option>
+            <option value="one_off">One-off</option>
+            <option value="unset">Unset</option>
+          </select>
 
-        <label style={{ ...filterLabelStyle, marginLeft: 8 }}>Source</label>
-        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} style={selectStyle}>
-          <option value="all">All</option>
-          <option value="qbo">QBO template</option>
-          <option value="invoice">Invoice-inferred</option>
-        </select>
+          <Label style={{ marginTop: 10 }}>Source</Label>
+          <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} style={popoverSelectStyle}>
+            <option value="all">All</option>
+            <option value="qbo">QBO template</option>
+            <option value="invoice">Invoice-inferred</option>
+          </select>
 
-        <label style={{ ...filterLabelStyle, marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title="Include rows for clients marked No Longer A Client">
-          <input type="checkbox" checked={showNlac} onChange={(e) => setShowNlac(e.target.checked)} />
-          Show NLAC clients
-        </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, fontSize: 12, color: '#475569', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showNlac} onChange={(e) => setShowNlac(e.target.checked)} />
+            Show NLAC clients
+          </label>
+
+          {(cadenceFilter !== 'all' || sourceFilter !== 'all' || showNlac) && (
+            <button
+              onClick={() => { setCadenceFilter('all'); setSourceFilter('all'); setShowNlac(false); }}
+              style={{ marginTop: 12, fontSize: 11, fontWeight: 500, background: 'none', border: 'none', color: '#0e7fe0', cursor: 'pointer', fontFamily: font, padding: 0 }}
+            >
+              Reset filters
+            </button>
+          )}
+        </FiltersPopover>
 
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 11, color: '#94a3b8' }}>{filtered.length} of {items.length}</span>
@@ -477,7 +497,10 @@ export default function BillingReviewPage() {
           <div style={{ flex: 1 }} />
           <button onClick={bulkApprove} disabled={saving} style={btnApprove}>Approve</button>
           <button onClick={bulkReject} disabled={saving} style={btnReject}>Reject</button>
-          <button onClick={() => setUpliftOpen(true)} disabled={saving} style={btnUplift}>Plan uplift…</button>
+          <span style={{ width: 1, alignSelf: 'stretch', background: '#334155', margin: '0 4px' }} />
+          <button onClick={() => setUpliftOpen(true)} disabled={saving} style={btnUplift} title="Stage a fee uplift on the selected lines">
+            Plan uplift on {selected.size} selected →
+          </button>
           <button onClick={() => setSelected(new Set())} disabled={saving} style={btnGhost}>Clear</button>
         </div>
       )}
@@ -509,7 +532,7 @@ export default function BillingReviewPage() {
               <col style={{ width: 230 }} />
               <col style={{ width: 100 }} />
               <col style={{ width: 130 }} />
-              <col style={{ width: 210 }} />
+              <col style={{ width: 130 }} />
             </colgroup>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
@@ -601,7 +624,7 @@ export default function BillingReviewPage() {
                       )}
                     </Td>
                     <Td>
-                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center' }}>
                         {i.status !== 'approved' && (
                           <button onClick={() => approve(i)} disabled={saving} title="Approve" style={iconBtn('#059669')}>
                             <Check size={13} />
@@ -612,37 +635,31 @@ export default function BillingReviewPage() {
                             <X size={13} />
                           </button>
                         )}
-                        {i.status === 'approved' && (
-                          <button onClick={() => unapprove(i)} disabled={saving} title="Un-approve" style={iconBtn('#64748b')}>
-                            ↺
-                          </button>
-                        )}
-                        <button
-                          onClick={() => toggleEnding(i)}
-                          disabled={saving}
-                          title={s.recurring_status === 'ending' ? 'Unmark ending (back to recurring)' : 'Mark ending (excludes from future billing)'}
-                          style={iconBtn(s.recurring_status === 'ending' ? '#b45309' : '#64748b')}
-                        >
-                          <CalendarX size={13} />
-                        </button>
-                        {(isDup(i) || s.duplicate_acknowledged) && (
-                          <button
-                            onClick={() => s.duplicate_acknowledged ? unacknowledgeDuplicate(i) : acknowledgeDuplicate(i)}
-                            disabled={saving}
-                            title={s.duplicate_acknowledged ? 'Re-flag as potential duplicate' : 'Mark not a duplicate (intentional)'}
-                            style={iconBtn(s.duplicate_acknowledged ? '#475569' : '#b91c1c')}
-                          >
-                            <Copy size={13} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setEditing(isEdit ? null : { rowId: i.rowId, serviceIdx: i.serviceIdx })}
-                          disabled={saving}
-                          title="Edit cadence and amount"
-                          style={iconBtn(isEdit ? '#0e7fe0' : '#64748b')}
-                        >
-                          <Edit2 size={13} />
-                        </button>
+                        <OverflowMenu
+                          items={[
+                            ...(i.status === 'approved' ? [{ label: 'Un-approve', icon: <RotateCcw size={13} />, onClick: () => unapprove(i) }] : []),
+                            {
+                              label: s.recurring_status === 'ending' ? 'Unmark ending' : 'Mark ending (drops from future billing)',
+                              icon: <CalendarX size={13} />,
+                              onClick: () => toggleEnding(i),
+                            },
+                            ...(isDup(i) ? [{
+                              label: 'Mark not a duplicate (intentional)',
+                              icon: <Copy size={13} />,
+                              onClick: () => acknowledgeDuplicate(i),
+                            }] : []),
+                            ...(s.duplicate_acknowledged ? [{
+                              label: 'Re-flag as potential duplicate',
+                              icon: <Copy size={13} />,
+                              onClick: () => unacknowledgeDuplicate(i),
+                            }] : []),
+                            {
+                              label: isEdit ? 'Close editor' : 'Edit cadence and amount',
+                              icon: <Edit2 size={13} />,
+                              onClick: () => setEditing(isEdit ? null : { rowId: i.rowId, serviceIdx: i.serviceIdx }),
+                            },
+                          ]}
+                        />
                       </div>
                     </Td>
                   </tr>
@@ -844,6 +861,9 @@ function SortableTh({ label, sortKey, sortBy, sortDir, onSort }) {
 }
 
 const filterLabelStyle = { fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: font };
+const popoverSelectStyle = { width: '100%', padding: '6px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', boxSizing: 'border-box' };
+
+const Label = ({ children, style }) => <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5, ...style }}>{children}</div>;
 
 const selectStyle = { padding: '4px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
 
