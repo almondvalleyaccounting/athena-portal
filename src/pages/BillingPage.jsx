@@ -210,6 +210,44 @@ export default function BillingPage() {
     }
   }
 
+  // -- Future monthly net (with staged uplifts applied) and pure
+  //    annual revenue (cadence='annual' services). Both are ex-VAT.
+  let futureMonthlyNet = 0;
+  let annualFeesNet = 0;
+  const clientMonthly = new Map(); // entity_id → £ monthly approved
+  for (const b of activeBilling) {
+    const services = Array.isArray(b.services) ? b.services : [];
+    let clientTotal = 0;
+    for (const s of services) {
+      if (s.recurring_status === 'ending') continue;
+      const status = s.approval_status || (b.qbo_recurring_txn_id ? 'approved' : 'suggested');
+      if (s.cadence === 'monthly' && status === 'approved') {
+        const eff = s.pending_monthly_amount != null ? Number(s.pending_monthly_amount) : (Number(s.monthly_amount) || 0);
+        futureMonthlyNet += eff;
+        clientTotal += Number(s.monthly_amount) || 0;
+      } else if (s.cadence === 'annual' && status === 'approved') {
+        annualFeesNet += Number(s.annual_amount) || 0;
+      }
+    }
+    if (clientTotal > 0 && b.entity_id) clientMonthly.set(b.entity_id, (clientMonthly.get(b.entity_id) || 0) + clientTotal);
+  }
+
+  // -- Revenue bands: distribute clients into monthly £/month buckets.
+  const bandDefs = [
+    { id: 'lt250',   label: '<£250',          min: 0,     max: 250  },
+    { id: '250',     label: '£250–£499',      min: 250,   max: 500  },
+    { id: '500',     label: '£500–£749',      min: 500,   max: 750  },
+    { id: '750',     label: '£750–£999',      min: 750,   max: 1000 },
+    { id: '1000',    label: '£1,000+',        min: 1000,  max: Infinity },
+  ];
+  const bandCounts = bandDefs.map((b) => ({ ...b, count: 0, total: 0 }));
+  for (const v of clientMonthly.values()) {
+    const idx = bandDefs.findIndex((b) => v >= b.min && v < b.max);
+    if (idx >= 0) { bandCounts[idx].count++; bandCounts[idx].total += v; }
+  }
+
+  const totalAnnualRevenue = recurringMonthlyNet * 12 + annualFeesNet;
+
   // Annual fees: sum of services.cadence='annual' annual_amount across
   // all rows. Contributes to monthly equivalent as annual/12.
   const annualFees = activeBilling.reduce((sum, b) => {
@@ -554,59 +592,53 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* QBO Connection Panel (includes Pull from QBO + Manage mapping) */}
-      <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
-
-      {/* Summary Cards — each one lands you on the work it implies.
-          Action labels (verb first) over vanity labels. */}
-      <div className="grid grid-cols-6 gap-3 mb-4">
-        <SummaryCard
-          label="Recurring Monthly (Approved)"
+      {/* Headline tiles — current and future monthly (ex VAT, no
+          annual÷12), pure annual fees, and the combined 12-month
+          revenue figure. All clickable to drill into the client table. */}
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        <RevenueTile
+          label="Current monthly"
           value={fmt(recurringMonthlyNet)}
-          color="ocean"
-          hint={cardFilter === 'recurring' ? 'Showing ↓ (clear)' : 'Show recurring →'}
+          hint="Approved monthly, ex VAT"
           onClick={() => { setCardFilter(cardFilter === 'recurring' ? null : 'recurring'); setShowMissingPanel(false); }}
           active={cardFilter === 'recurring'}
         />
-        <SummaryCard
-          label={`Pending Approval${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
-          value={fmt(pendingMonthlyNet)}
-          color="amber"
-          hint={pendingCount > 0 ? 'Approve pending →' : null}
-          onClick={pendingCount > 0 ? () => navigate('/manage/billing/review') : null}
+        <RevenueTile
+          label="Future monthly"
+          value={fmt(futureMonthlyNet)}
+          hint={futureMonthlyNet > recurringMonthlyNet ? `+${fmt(futureMonthlyNet - recurringMonthlyNet)} from staged uplifts` : 'With staged uplifts applied'}
+          delta={futureMonthlyNet - recurringMonthlyNet}
+          onClick={() => navigate('/manage/billing/change')}
         />
-        <SummaryCard
-          label="Annual Fees (12mo)"
-          value={fmt(annualFees)}
-          color="teal"
-          hint={cardFilter === 'annual' ? 'Showing ↓ (clear)' : 'Show annual fees →'}
+        <RevenueTile
+          label="Annual fees"
+          value={fmt(annualFeesNet)}
+          hint="Pure annual (cadence=annual), ex VAT"
           onClick={() => { setCardFilter(cardFilter === 'annual' ? null : 'annual'); setShowMissingPanel(false); }}
           active={cardFilter === 'annual'}
         />
-        <SummaryCard
-          label="One-off (last 12 mo)"
-          value={fmt(oneOffLast12mo)}
-          color="purple"
-          hint={cardFilter === 'one_off' ? 'Showing ↓ (clear)' : 'Show one-offs →'}
-          onClick={() => { setCardFilter(cardFilter === 'one_off' ? null : 'one_off'); setShowMissingPanel(false); }}
-          active={cardFilter === 'one_off'}
+        <RevenueTile
+          label="Total annual revenue"
+          value={fmt(totalAnnualRevenue)}
+          hint="Monthly × 12 + annual fees"
+          highlight
         />
-        <SummaryCard
-          label="Clients with Billing"
-          value={clientsWithBilling}
-          color="green"
-          hint={cardFilter === 'billed' ? 'Showing ↓ (clear)' : 'Show billed clients →'}
-          onClick={() => { setCardFilter(cardFilter === 'billed' ? null : 'billed'); setShowMissingPanel(false); }}
-          active={cardFilter === 'billed'}
-        />
-        <SummaryCard
-          label="Clients Without Billing"
-          value={clientsWithout < 0 ? 0 : clientsWithout}
-          color="amber"
-          hint={clientsWithout > 0 ? (showMissingPanel ? 'Hide list' : 'Chase missing billing →') : null}
-          onClick={clientsWithout > 0 ? () => { setShowMissingPanel((v) => !v); setCardFilter(null); } : null}
-          active={showMissingPanel}
-        />
+      </div>
+
+      {/* Revenue bands — distribution of clients by monthly £ spend. */}
+      <div className="mb-4">
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Clients by monthly £ band (current)</div>
+        <div className="grid grid-cols-5 gap-2">
+          {bandCounts.map((b) => (
+            <BandTile
+              key={b.id}
+              label={b.label}
+              count={b.count}
+              total={b.total}
+              onClick={() => navigate(`/manage/billing/sources?band=${b.id}`)}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Missing-billing list — revealed from the orange "Clients Without
@@ -653,6 +685,12 @@ export default function BillingPage() {
         </div>
       )}
 
+      {/* QBO Connection Panel — moved below the headline numbers so
+          the dashboard leads with revenue and actions, not status. */}
+      <div className="mb-4">
+        <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
+      </div>
+
       {/* Revenue by service type — split by cadence */}
       {serviceBreakdown.length > 0 && (
         <div className="mb-4">
@@ -667,14 +705,20 @@ export default function BillingPage() {
               <span className="text-right">Total</span>
             </div>
             {serviceBreakdown.map((s) => (
-              <div key={s.service_id} className="grid text-xs px-4 py-2 border-b border-gray-50" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr' }}>
+              <button
+                key={s.service_id}
+                onClick={() => navigate(`/manage/billing/change?service=${encodeURIComponent(s.service_id)}`)}
+                className="w-full grid text-xs px-4 py-2 border-b border-gray-50 hover:bg-gray-50 text-left transition-colors"
+                style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr' }}
+                title={`Click to drill into ${s.service_id} on the Change matrix`}
+              >
                 <span className="text-gray-700 font-medium" title={s.description}>{s.service_id}</span>
                 <span className="text-right font-mono text-ocean-700">{fmt(s.monthly_annualised / 12)}</span>
                 <span className="text-right font-mono text-ocean-700">{fmt(s.monthly_annualised)}</span>
                 <span className="text-right font-mono text-teal-700">{fmt(s.annual)}</span>
                 <span className="text-right font-mono text-purple-700">{fmt(s.one_off)}</span>
                 <span className="text-right font-mono text-gray-700 font-semibold">{fmt(s.monthly_annualised + s.annual + s.one_off)}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -1021,6 +1065,43 @@ function SummaryCard({ label, value, color, hint, onClick, active }) {
       <p className="text-lg font-bold font-mono">{value}</p>
       {hint && <p className="text-xs opacity-80 mt-1 underline">{hint}</p>}
     </div>
+  );
+}
+
+function RevenueTile({ label, value, hint, delta, onClick, active, highlight }) {
+  const deltaColor = delta == null ? null : delta > 0 ? '#15803d' : delta < 0 ? '#b91c1c' : '#64748b';
+  return (
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      className="text-left rounded-lg border transition-colors"
+      style={{
+        padding: '14px 16px',
+        background: highlight ? '#0f172a' : (active ? '#eff6ff' : '#fff'),
+        borderColor: highlight ? '#0f172a' : (active ? '#93c5fd' : '#e5e7eb'),
+        color: highlight ? '#fff' : '#0f172a',
+        cursor: onClick ? 'pointer' : 'default',
+        fontFamily: "'Outfit', sans-serif",
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 600, color: highlight ? '#cbd5e1' : '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'monospace', marginTop: 4, lineHeight: 1 }}>{value}</div>
+      {hint && <div style={{ fontSize: 11, color: deltaColor || (highlight ? '#94a3b8' : '#64748b'), marginTop: 6 }}>{hint}</div>}
+    </button>
+  );
+}
+
+function BandTile({ label, count, total, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="text-left rounded-lg border border-gray-200 bg-white p-3 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+      style={{ fontFamily: "'Outfit', sans-serif" }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'monospace', marginTop: 4, color: '#0f172a' }}>{count}</div>
+      <div style={{ fontSize: 10, fontFamily: 'monospace', color: '#64748b' }}>{total > 0 ? `${count === 1 ? '' : '~'}£${Math.round(total).toLocaleString('en-GB')}/m` : ' '}</div>
+    </button>
   );
 }
 

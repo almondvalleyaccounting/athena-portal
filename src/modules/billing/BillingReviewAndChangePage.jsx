@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { TrendingUp, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
@@ -23,6 +23,7 @@ const font = "'Outfit', sans-serif";
 export default function BillingReviewAndChangePage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +32,7 @@ export default function BillingReviewAndChangePage() {
   const [editing, setEditing] = useState(null); // { entityId, serviceId }
   const [upliftOpen, setUpliftOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [focusedServiceId, setFocusedServiceId] = useState(null); // click a column header to highlight + default-scope the uplift modal
+  const [focusedServiceId, setFocusedServiceId] = useState(searchParams.get('service') || null); // click a column header to highlight + default-scope the uplift modal
 
   const load = async () => {
     setLoading(true);
