@@ -22,6 +22,7 @@ export default function BillingReviewPage() {
   const [filter, setFilter] = useState('suggested'); // suggested | approved | rejected | all
   const [cadenceFilter, setCadenceFilter] = useState('all'); // all | monthly | annual | one_off | unset
   const [sourceFilter, setSourceFilter] = useState('all'); // all | qbo | invoice
+  const [showNlac, setShowNlac] = useState(false);
   const [sortBy, setSortBy] = useState('client'); // client | service | monthly
   const [sortDir, setSortDir] = useState('asc'); // asc | desc
   const [search, setSearch] = useState('');
@@ -33,7 +34,7 @@ export default function BillingReviewPage() {
     setLoading(true);
     const { data } = await supabase
       .from('live_billing')
-      .select('id, entity_id, billing_type, services, monthly_net, annual_total, qbo_recurring_txn_id, entity:entities(id, name)')
+      .select('id, entity_id, billing_type, services, monthly_net, annual_total, qbo_recurring_txn_id, entity:entities(id, name, entity_status)')
       .eq('status', 'active')
       .order('created_at', { ascending: false });
     setRows(data || []);
@@ -56,6 +57,7 @@ export default function BillingReviewPage() {
           serviceIdx: idx,
           entityName: r.entity?.name || 'Unknown',
           entityId: r.entity_id,
+          entityStatus: r.entity?.entity_status || 'active',
           fromTemplate: !!r.qbo_recurring_txn_id,
           service: s,
           status,
@@ -67,6 +69,7 @@ export default function BillingReviewPage() {
 
   const filtered = useMemo(() => {
     let out = items;
+    if (!showNlac) out = out.filter((i) => i.entityStatus !== 'nlac');
     if (filter !== 'all') out = out.filter((i) => i.status === filter);
     if (cadenceFilter !== 'all') {
       out = out.filter((i) => {
@@ -106,7 +109,7 @@ export default function BillingReviewPage() {
       return av.localeCompare(bv) * dir;
     });
     return out;
-  }, [items, filter, cadenceFilter, sourceFilter, search, letter, sortBy, sortDir]);
+  }, [items, filter, cadenceFilter, sourceFilter, showNlac, search, letter, sortBy, sortDir]);
 
   const counts = useMemo(() => {
     const c = { suggested: 0, approved: 0, rejected: 0, all: items.length };
@@ -306,6 +309,11 @@ export default function BillingReviewPage() {
           <option value="invoice">Invoice-inferred</option>
         </select>
 
+        <label style={{ ...filterLabelStyle, marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title="Include rows for clients marked No Longer A Client">
+          <input type="checkbox" checked={showNlac} onChange={(e) => setShowNlac(e.target.checked)} />
+          Show NLAC clients
+        </label>
+
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 11, color: '#94a3b8' }}>{filtered.length} of {items.length}</span>
       </div>
@@ -373,6 +381,7 @@ export default function BillingReviewPage() {
                     </Td>
                     <Td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={i.entityName}>
                       {i.entityName}
+                      {i.entityStatus === 'nlac' && <span style={tagStyle('red')} title="No Longer A Client">NLAC</span>}
                       {i.fromTemplate && <span style={tagStyle('teal')} title="From QBO RecurringTransaction template">QBO template</span>}
                     </Td>
                     <Td>
@@ -592,6 +601,7 @@ function iconBtn(color) {
 function tagStyle(tone) {
   const palettes = {
     teal: { bg: '#ccfbf1', fg: '#115e59' },
+    red:  { bg: '#fee2e2', fg: '#b91c1c' },
   };
   const p = palettes[tone] || palettes.teal;
   return {

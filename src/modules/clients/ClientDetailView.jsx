@@ -142,13 +142,26 @@ export default function ClientDetailView() {
             <StatusEditor
               value={entity.entity_status || 'active'}
               onChange={async (next) => {
-                const prev = entity.entity_status;
+                const prev = entity.entity_status || 'active';
+                if (next === prev) return;
+                let reason = '';
+                if (next === 'nlac' || next === 'archived') {
+                  reason = window.prompt(`Reason for marking as ${next.toUpperCase()}? (optional)`, '') || '';
+                }
                 setEntity({ ...entity, entity_status: next });
                 const { error } = await supabase.from('entities').update({ entity_status: next }).eq('id', entity.id);
                 if (error) {
                   alert('Could not update status: ' + error.message);
                   setEntity({ ...entity, entity_status: prev });
+                  return;
                 }
+                await supabase.from('audit_log').insert({
+                  user_id: profile?.id || null,
+                  action: 'entity_status_change',
+                  entity_type: 'entity',
+                  entity_id: entity.id,
+                  detail: { from: prev, to: next, reason: reason || null },
+                });
               }}
             />
             <CadenceEditor
@@ -472,6 +485,7 @@ const allocSelectStyle = {
 const STATUS_OPTIONS = [
   { value: 'active',      label: 'Active',      bg: '#f0fdf4', color: '#15803d' },
   { value: 'prospect',    label: 'Prospect',    bg: '#eff6ff', color: '#0e7fe0' },
+  { value: 'nlac',        label: 'NLAC',        bg: '#fef2f2', color: '#b91c1c' },
   { value: 'third_party', label: 'Third party', bg: '#f5f3ff', color: '#6d28d9' },
   { value: 'archived',    label: 'Archived',    bg: '#f1f5f9', color: '#64748b' },
 ];
