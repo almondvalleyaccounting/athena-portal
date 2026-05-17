@@ -286,6 +286,19 @@ export default function BillingReviewAndChangePage() {
     await load();
   };
 
+  // Per-client totals — used both for the "Total" first column and to
+  // sanity-check the grand totals across the bottom of the page.
+  const rowTotals = useMemo(() => {
+    const map = new Map(); // entityId → { current, pending }
+    for (const cell of matrix.cells.values()) {
+      const t = map.get(cell.entityId) || { current: 0, pending: 0 };
+      t.current += cell.current;
+      t.pending += cell.pending;
+      map.set(cell.entityId, t);
+    }
+    return map;
+  }, [matrix]);
+
   const grandDelta = columnTotals.totalPending - columnTotals.totalCurrent;
 
   return (
@@ -329,13 +342,21 @@ export default function BillingReviewAndChangePage() {
         </div>
       ) : (
         <>
-          {/* Summary row */}
-          <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 14px', marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 18 }}>
-            <Stat label="Total current" value={`£${columnTotals.totalCurrent.toFixed(2)}`} />
-            <Stat label="Total new" value={`£${columnTotals.totalPending.toFixed(2)}`} tone={grandDelta > 0 ? 'green' : 'slate'} />
-            <Stat label="Δ" value={`${grandDelta >= 0 ? '+' : ''}£${grandDelta.toFixed(2)}`} tone={grandDelta > 0 ? 'green' : grandDelta < 0 ? 'red' : 'slate'} />
-            <Stat label="Clients" value={matrix.entityList.length} />
-            <Stat label="Services" value={matrix.services.length} />
+          {/* Summary tiles */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 10 }}>
+              <Tile group="Monthly" label="Current" value={fmtGbp(columnTotals.totalCurrent)} />
+              <Tile group="Monthly" label="New"     value={fmtGbp(columnTotals.totalPending)} tone={grandDelta > 0 ? 'green' : 'slate'} />
+              <Tile group="Monthly" label="Δ"       value={`${grandDelta >= 0 ? '+' : ''}${fmtGbp(grandDelta)}`} tone={grandDelta > 0 ? 'green' : grandDelta < 0 ? 'red' : 'slate'} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              <Tile group="Annual" label="Current" value={fmtGbp(columnTotals.totalCurrent * 12)} />
+              <Tile group="Annual" label="New"     value={fmtGbp(columnTotals.totalPending * 12)} tone={grandDelta > 0 ? 'green' : 'slate'} />
+              <Tile group="Annual" label="Δ"       value={`${grandDelta >= 0 ? '+' : ''}${fmtGbp(grandDelta * 12)}`} tone={grandDelta > 0 ? 'green' : grandDelta < 0 ? 'red' : 'slate'} />
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8' }}>
+              {matrix.entityList.length} client{matrix.entityList.length === 1 ? '' : 's'} · {matrix.services.length} service{matrix.services.length === 1 ? '' : 's'} · annual = monthly × 12
+            </div>
           </div>
 
           {/* Matrix */}
@@ -344,6 +365,7 @@ export default function BillingReviewAndChangePage() {
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
                   <th style={{ ...stickyTh, left: 0, zIndex: 4, minWidth: 220, textAlign: 'left' }}>Client</th>
+                  <th style={{ ...stickyTh, left: 220, zIndex: 4, minWidth: 130, background: '#f1f5f9' }}>Total</th>
                   {matrix.services.map((sid) => (
                     <th key={sid} style={{ ...stickyTh, top: 0, zIndex: 3, minWidth: 110 }} title={sid}>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{sid}</div>
@@ -355,14 +377,19 @@ export default function BillingReviewAndChangePage() {
                   <th style={{ ...stickyTh, left: 0, zIndex: 4, textAlign: 'left', fontSize: 10, color: '#64748b' }}>
                     <div>Current → New (Δ)</div>
                   </th>
+                  <th style={{ ...stickyTh, left: 220, top: 36, zIndex: 4, fontWeight: 500, fontSize: 10, background: '#f1f5f9' }}>
+                    <div style={{ fontFamily: 'monospace', color: '#64748b' }}>{fmtGbp(columnTotals.totalCurrent)}</div>
+                    <div style={{ fontFamily: 'monospace', color: grandDelta > 0 ? '#15803d' : grandDelta < 0 ? '#b91c1c' : '#0f172a', fontWeight: 700 }}>{fmtGbp(columnTotals.totalPending)}</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 9, color: grandDelta > 0 ? '#15803d' : grandDelta < 0 ? '#b91c1c' : '#94a3b8' }}>{grandDelta > 0 ? '+' : ''}{fmtGbp(grandDelta)}</div>
+                  </th>
                   {matrix.services.map((sid) => {
                     const t = columnTotals.perService[sid];
                     const d = t.pending - t.current;
                     return (
                       <th key={sid} style={{ ...stickyTh, top: 36, zIndex: 3, fontWeight: 500, fontSize: 10 }}>
-                        <div style={{ fontFamily: 'monospace', color: '#64748b' }}>£{t.current.toFixed(0)}</div>
-                        <div style={{ fontFamily: 'monospace', color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#0f172a', fontWeight: 600 }}>£{t.pending.toFixed(0)}</div>
-                        <div style={{ fontFamily: 'monospace', fontSize: 9, color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#94a3b8' }}>{d > 0 ? '+' : ''}£{d.toFixed(0)}</div>
+                        <div style={{ fontFamily: 'monospace', color: '#64748b' }}>{fmtGbp(t.current)}</div>
+                        <div style={{ fontFamily: 'monospace', color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#0f172a', fontWeight: 600 }}>{fmtGbp(t.pending)}</div>
+                        <div style={{ fontFamily: 'monospace', fontSize: 9, color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#94a3b8' }}>{d > 0 ? '+' : ''}{fmtGbp(d)}</div>
                       </th>
                     );
                   })}
@@ -376,6 +403,21 @@ export default function BillingReviewAndChangePage() {
                         {entity.name}
                       </a>
                     </td>
+                    {(() => {
+                      const t = rowTotals.get(entity.id) || { current: 0, pending: 0 };
+                      const d = t.pending - t.current;
+                      const hasChange = t.pending !== t.current;
+                      return (
+                        <td style={{ ...stickyTd, left: 220, background: '#f8fafc', textAlign: 'right', fontWeight: 600 }}>
+                          <div style={{ fontFamily: 'monospace', color: hasChange ? '#94a3b8' : '#0f172a', textDecoration: hasChange ? 'line-through' : 'none' }}>{fmtGbp(t.current)}</div>
+                          {hasChange && (
+                            <div style={{ fontFamily: 'monospace', color: d > 0 ? '#15803d' : '#b91c1c', fontWeight: 700 }}>
+                              {fmtGbp(t.pending)} <span style={{ fontSize: 9, fontWeight: 500 }}>({d > 0 ? '+' : ''}{fmtGbp(d)})</span>
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })()}
                     {matrix.services.map((sid) => {
                       const key = `${entity.id}::${sid}`;
                       const cell = matrix.cells.get(key);
@@ -452,12 +494,12 @@ function Cell({ cell, isEditing, onEdit, onSave, onCancel, onClearPending }) {
         : 'Click to edit (stages as pending — push from Uplift Review)'}
     >
       <div style={{ fontFamily: 'monospace', color: cell.hasPending ? '#94a3b8' : '#0f172a', textDecoration: cell.hasPending ? 'line-through' : 'none' }}>
-        £{cell.current.toFixed(2)}
+        {fmtGbp(cell.current)}
       </div>
       {cell.hasPending && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
           <span style={{ fontFamily: 'monospace', color: delta > 0 ? '#15803d' : '#b91c1c', fontWeight: 600 }}>
-            £{cell.pending.toFixed(2)}
+            {fmtGbp(cell.pending)}
           </span>
           <button onClick={(e) => { e.stopPropagation(); onClearPending(); }} title="Clear pending" style={clearBtnStyle}>×</button>
         </div>
@@ -562,6 +604,25 @@ function ModalShell({ title, onClose, children }) {
         </div>
         <div style={{ padding: 18 }}>{children}</div>
       </div>
+    </div>
+  );
+}
+
+// Render £#,##0 — no decimals, thousands separator, negative shown
+// with a leading minus inside the £ symbol ("-£123" rather than "£-123").
+function fmtGbp(n) {
+  const v = Math.round(Number(n) || 0);
+  const abs = Math.abs(v).toLocaleString('en-GB');
+  return v < 0 ? `-£${abs}` : `£${abs}`;
+}
+
+function Tile({ group, label, value, tone }) {
+  const fg = tone === 'green' ? '#15803d' : tone === 'red' ? '#b91c1c' : tone === 'slate' ? '#475569' : '#0f172a';
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 14px' }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group}</div>
+      <div style={{ fontSize: 11, fontWeight: 500, color: '#64748b', marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: fg, fontFamily: 'monospace', marginTop: 4 }}>{value}</div>
     </div>
   );
 }
