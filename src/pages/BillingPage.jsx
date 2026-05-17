@@ -162,8 +162,15 @@ export default function BillingPage() {
   let recurringMonthlyNet = 0;
   let pendingMonthlyNet = 0;
   let pendingCount = 0;
+  let stagedRowCount = 0;
+  let approvedRowCount = 0;
   for (const b of activeBilling) {
     const services = Array.isArray(b.services) ? b.services : [];
+    const hasPending = services.some((s) => s.pending_monthly_amount != null);
+    if (hasPending) {
+      stagedRowCount += 1;
+      if (b.uplift_review_status === 'approved') approvedRowCount += 1;
+    }
     for (const s of services) {
       if (s.cadence !== 'monthly') continue;
       // Lines explicitly marked as ending live in their own bucket on
@@ -473,6 +480,50 @@ export default function BillingPage() {
       </div>
 
       <BillingTabs active="dashboard" />
+
+      {/* Action banner: surfaces what's waiting on you with one-click
+          jumps into each step. Hidden if there's nothing to do. */}
+      {(pendingCount > 0 || stagedRowCount > 0 || approvedRowCount > 0) && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 16,
+          padding: '12px 16px', marginBottom: 16,
+          background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 10,
+          fontFamily: "'Outfit', sans-serif", flexWrap: 'wrap',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+            {pendingCount > 0 && (
+              <ActionLine
+                count={pendingCount}
+                noun={pendingCount === 1 ? 'service' : 'services'}
+                tone="amber"
+                label="waiting for approval"
+                ctaLabel="Review →"
+                onClick={() => navigate('/manage/billing/review')}
+              />
+            )}
+            {stagedRowCount > 0 && (
+              <ActionLine
+                count={stagedRowCount}
+                noun={stagedRowCount === 1 ? 'client' : 'clients'}
+                tone="purple"
+                label="with staged uplifts"
+                ctaLabel="Change →"
+                onClick={() => navigate('/manage/billing/change')}
+              />
+            )}
+            {approvedRowCount > 0 && (
+              <ActionLine
+                count={approvedRowCount}
+                noun={approvedRowCount === 1 ? 'template' : 'templates'}
+                tone="green"
+                label="ready to push to QBO"
+                ctaLabel="Push →"
+                onClick={() => navigate('/manage/billing/uplifts')}
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* QBO Connection Panel (includes Pull from QBO + Manage mapping) */}
       <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
@@ -941,6 +992,30 @@ function SummaryCard({ label, value, color, hint, onClick, active }) {
       <p className="text-lg font-bold font-mono">{value}</p>
       {hint && <p className="text-xs opacity-80 mt-1 underline">{hint}</p>}
     </div>
+  );
+}
+
+function ActionLine({ count, noun, tone, label, ctaLabel, onClick }) {
+  const tones = {
+    amber:  { fg: '#92400e', bg: '#fef3c7' },
+    purple: { fg: '#5b21b6', bg: '#ede9fe' },
+    green:  { fg: '#166534', bg: '#dcfce7' },
+  };
+  const t = tones[tone] || tones.amber;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#1e293b' }}>
+      <span style={{
+        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+        background: t.bg, color: t.fg,
+      }}>{count}</span>
+      <span>{noun} {label}</span>
+      <button onClick={onClick} style={{
+        fontSize: 12, fontWeight: 600, padding: '3px 10px',
+        background: '#fff', color: '#0f172a',
+        border: '1px solid #e5e7eb', borderRadius: 6,
+        cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
+      }}>{ctaLabel}</button>
+    </span>
   );
 }
 
