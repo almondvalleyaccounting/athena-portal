@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, RotateCcw, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
 import SearchInput from '../../components/SearchInput';
 import EmptyState from '../../components/EmptyState';
 import { tones } from '../../lib/tokens';
+import { composeUpliftEmail } from './composeUpliftEmail';
 import { fmtGbp } from '../../lib/money';
 
 const font = "'Outfit', sans-serif";
@@ -28,6 +29,8 @@ export default function BillingUpliftReviewPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [search, setSearch] = useState('');
+  const [emailFor, setEmailFor] = useState(null); // row whose draft email is being previewed
+  const [emailsBatch, setEmailsBatch] = useState(null); // list of rows for bulk preview
 
   const load = async () => {
     setLoading(true);
@@ -36,7 +39,7 @@ export default function BillingUpliftReviewPage() {
     // is small (~ tens of rows).
     const { data } = await supabase
       .from('live_billing')
-      .select('id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date, uplift_review_status, uplift_reviewed_at, entity:entities(id, name)')
+      .select('id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date, uplift_review_status, uplift_reviewed_at, entity:entities(id, name, billing_email)')
       .eq('status', 'active')
       .order('id', { ascending: false });
     const filtered = (data || []).filter((r) =>
@@ -347,6 +350,14 @@ export default function BillingUpliftReviewPage() {
                             <RotateCcw size={13} />
                           </button>
                         )}
+                        <button
+                          onClick={() => setEmailFor(r)}
+                          disabled={saving}
+                          title="Preview the fee-raise email for this client"
+                          style={iconBtn('#0e7fe0')}
+                        >
+                          <Mail size={13} />
+                        </button>
                         <button onClick={() => unstage(r.id)} disabled={saving} title="Discard the pending uplift entirely" style={{ ...iconBtn('#94a3b8'), fontSize: 10 }}>
                           ✕
                         </button>
@@ -380,6 +391,15 @@ export default function BillingUpliftReviewPage() {
             {approvedCount} approved {approvedCount === 1 ? 'template' : 'templates'} ready to push
           </span>
           <div style={{ flex: 1 }} />
+          <button
+            onClick={() => setEmailsBatch(summarised.filter((r) => r.uplift_review_status === 'approved'))}
+            disabled={pushing}
+            style={btnPushDry}
+            title="Preview a fee-raise email for every approved client — copy/paste or open in your mail client"
+          >
+            <Mail size={13} style={{ marginRight: 4, verticalAlign: '-2px' }} />
+            Generate emails
+          </button>
           <button onClick={() => pushApproved(true)} disabled={pushing} style={btnPushDry} title="Show proposed bodies in console, no QBO writes">
             Dry-run
           </button>
@@ -387,6 +407,13 @@ export default function BillingUpliftReviewPage() {
             {pushing ? 'Pushing…' : `Push ${approvedCount} to QBO`}
           </button>
         </div>
+      )}
+
+      {emailFor && (
+        <EmailPreviewModal rows={[emailFor]} onClose={() => setEmailFor(null)} />
+      )}
+      {emailsBatch && (
+        <EmailPreviewModal rows={emailsBatch} onClose={() => setEmailsBatch(null)} />
       )}
     </div>
   );
@@ -444,3 +471,89 @@ const pushFooterStyle = {
 function iconBtn(color) {
   return { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, padding: 0, background: '#fff', border: `1px solid ${color}40`, borderRadius: 6, color, cursor: 'pointer' };
 }
+
+// Preview drafts of the fee-raise email for one or many approved
+// rows. Each draft can be copied to clipboard or opened in the
+// system mail client via a mailto: link (subject + body pre-filled).
+// No backend send wiring — that comes in a separate piece once we
+// pick the sender (accounts@ via Gmail OAuth or transactional).
+function EmailPreviewModal({ rows, onClose }) {
+  const drafts = (rows || []).map((r) => {
+    const services = (r.services || []).filter((s) => s.pending_monthly_amount != null);
+    return {
+      row: r,
+      email: composeUpliftEmail({
+        clientName: r.entity?.name || 'Client',
+        services,
+      }),
+    };
+  });
+  const [idx, setIdx] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const active = drafts[idx];
+  if (!active) return null;
+
+  const billingEmail = active.row.entity?.billing_email || '';
+  const mailto = `mailto:${encodeURIComponent(billingEmail)}?subject=${encodeURIComponent(active.email.subject)}&body=${encodeURIComponent(active.email.body)}`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(active.email.body);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard may be unavailable */ }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: font }} onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: 12, width: 760, maxWidth: '95vw', maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 500, color: '#0f172a', margin: 0 }}>
+            Fee-raise email
+            {drafts.length > 1 && <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8', marginLeft: 8 }}>{idx + 1} of {drafts.length}</span>}
+          </h2>
+          <div style={{ flex: 1 }} />
+          {drafts.length > 1 && (
+            <>
+              <button onClick={() => setIdx(Math.max(0, idx - 1))} disabled={idx === 0} style={{ ...modalBtnGhost, opacity: idx === 0 ? 0.5 : 1 }}>Previous</button>
+              <button onClick={() => setIdx(Math.min(drafts.length - 1, idx + 1))} disabled={idx === drafts.length - 1} style={{ ...modalBtnGhost, opacity: idx === drafts.length - 1 ? 0.5 : 1 }}>Next</button>
+            </>
+          )}
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18 }}>×</button>
+        </div>
+
+        <div style={{ padding: '12px 18px', borderBottom: '1px solid #f1f5f9', fontSize: 12, color: '#475569', display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          <div><strong style={{ color: '#0f172a' }}>To:</strong> {billingEmail || <span style={{ color: '#b91c1c' }}>no billing email on entity</span>}</div>
+          <div><strong style={{ color: '#0f172a' }}>From:</strong> accounts@almondvalleyaccounting.co.uk</div>
+          <div><strong style={{ color: '#0f172a' }}>Subject:</strong> {active.email.subject}</div>
+        </div>
+
+        <pre style={{
+          padding: '14px 18px',
+          margin: 0,
+          flex: 1,
+          overflow: 'auto',
+          fontFamily: "'Outfit', sans-serif",
+          fontSize: 13,
+          color: '#0f172a',
+          whiteSpace: 'pre-wrap',
+          background: '#fafafa',
+        }}>{active.email.body}</pre>
+
+        <div style={{ padding: '12px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={copy} style={modalBtnGhost}>{copied ? 'Copied ✓' : 'Copy text'}</button>
+          <a
+            href={mailto}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ ...modalBtnPrimary, textDecoration: 'none' }}
+          >Open in mail app</a>
+          <button onClick={onClose} style={modalBtnGhost}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const modalBtnPrimary = { padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const modalBtnGhost = { padding: '8px 14px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
