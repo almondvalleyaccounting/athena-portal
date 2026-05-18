@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { TrendingUp, RotateCcw, Plus, EyeOff, Eye } from 'lucide-react';
+import { TrendingUp, RotateCcw, Plus, EyeOff, Eye, ArrowUp, ArrowDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
@@ -34,7 +34,18 @@ export default function BillingReviewAndChangePage() {
   const [upliftOpen, setUpliftOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(null); // null | { entityId?, serviceId? } — opens AddServiceModal
   const [search, setSearch] = useState('');
-  const [focusedServiceId, setFocusedServiceId] = useState(searchParams.get('service') || null); // click a column header to highlight + default-scope the uplift modal
+  // Sort state. type='client' (alpha) | 'total' (per-client total) |
+  // 'service' (per-cell amount for the named service). dir asc/desc.
+  // Defaults to client name ascending. The legacy "focus" concept on
+  // column-header click has been replaced with sort — the Apply Uplift
+  // modal already has its own "Limit to service" dropdown, and the
+  // ?service= deep link from the dashboard now seeds a sort instead
+  // of a focus.
+  const initialServiceParam = searchParams.get('service');
+  const [sortBy, setSortBy] = useState(
+    initialServiceParam ? { type: 'service', serviceId: initialServiceParam, dir: 'desc' } : { type: 'client', dir: 'asc' }
+  );
+  const focusedServiceId = sortBy.type === 'service' ? sortBy.serviceId : null;
 
   const load = async () => {
     setLoading(true);
@@ -419,6 +430,43 @@ export default function BillingReviewAndChangePage() {
 
   const grandDelta = columnTotals.totalPending - columnTotals.totalCurrent;
 
+  // User-driven sort over the matrix rows. By default we keep the
+  // canonical alpha-by-name order; click a column header to switch.
+  const sortedEntities = useMemo(() => {
+    const list = [...matrix.entityList];
+    const dir = sortBy.dir === 'asc' ? 1 : -1;
+    if (sortBy.type === 'client') {
+      list.sort((a, b) => a.name.localeCompare(b.name) * dir);
+    } else if (sortBy.type === 'total') {
+      list.sort((a, b) => {
+        const av = (rowTotals.get(a.id)?.pending) || 0;
+        const bv = (rowTotals.get(b.id)?.pending) || 0;
+        return (av - bv) * dir;
+      });
+    } else if (sortBy.type === 'service') {
+      list.sort((a, b) => {
+        const av = (matrix.cells.get(`${a.id}::${sortBy.serviceId}`)?.pending) || 0;
+        const bv = (matrix.cells.get(`${b.id}::${sortBy.serviceId}`)?.pending) || 0;
+        return (av - bv) * dir;
+      });
+    }
+    return list;
+  }, [matrix, rowTotals, sortBy]);
+
+  // Click a column header → cycle that column's sort: first click
+  // sorts desc (highest first, useful for revenue), second flips to
+  // asc, third reverts to default (client A-Z).
+  const cycleSort = (next) => {
+    setSortBy((prev) => {
+      const sameType = prev.type === next.type;
+      const sameSvc = sameType && (next.type !== 'service' || prev.serviceId === next.serviceId);
+      if (!sameType || !sameSvc) return { ...next, dir: next.type === 'client' ? 'asc' : 'desc' };
+      if (prev.dir === 'desc') return { ...next, dir: 'asc' };
+      if (prev.dir === 'asc')  return { type: 'client', dir: 'asc' };
+      return { ...next, dir: 'desc' };
+    });
+  };
+
   return (
     <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1600 }}>
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
@@ -439,10 +487,10 @@ export default function BillingReviewAndChangePage() {
           placeholder="Filter clients…"
           style={{ minWidth: 200 }}
         />
-        {focusedServiceId && (
+        {sortBy.type !== 'client' && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: '#dbeafe', color: '#0c4a6e', borderRadius: 999, fontSize: 12, fontWeight: 500 }}>
-            Focused: <strong>{focusedServiceId}</strong>
-            <button onClick={() => setFocusedServiceId(null)} title="Clear column focus" style={{ background: 'transparent', border: 'none', color: '#0c4a6e', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+            Sorted by <strong>{sortBy.type === 'total' ? 'Total' : sortBy.serviceId}</strong> ({sortBy.dir})
+            <button onClick={() => setSortBy({ type: 'client', dir: 'asc' })} title="Reset to A–Z" style={{ background: 'transparent', border: 'none', color: '#0c4a6e', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
           </span>
         )}
         <div style={{ flex: 1 }} />
@@ -512,24 +560,45 @@ export default function BillingReviewAndChangePage() {
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12, minWidth: '100%' }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  <th style={{ ...stickyTh, left: 0, zIndex: 5, minWidth: 220, textAlign: 'left' }}>Client</th>
-                  <th style={{ ...stickyTh, left: 220, zIndex: 5, minWidth: 110, background: '#f1f5f9' }}>Total</th>
+                  <th
+                    onClick={() => cycleSort({ type: 'client' })}
+                    style={{ ...stickyTh, left: 0, zIndex: 5, minWidth: 220, textAlign: 'left', cursor: 'pointer' }}
+                    title="Sort by client name"
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      Client
+                      <SortArrow active={sortBy.type === 'client'} dir={sortBy.dir} />
+                    </span>
+                  </th>
+                  <th
+                    onClick={() => cycleSort({ type: 'total' })}
+                    style={{ ...stickyTh, left: 220, zIndex: 5, minWidth: 110, background: '#f1f5f9', cursor: 'pointer' }}
+                    title="Sort by per-client new total"
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                      Total
+                      <SortArrow active={sortBy.type === 'total'} dir={sortBy.dir} />
+                    </span>
+                  </th>
                   {matrix.services.map((sid) => {
-                    const isFocused = focusedServiceId === sid;
+                    const isSorted = sortBy.type === 'service' && sortBy.serviceId === sid;
                     return (
                       <th
                         key={sid}
-                        onClick={() => setFocusedServiceId(isFocused ? null : sid)}
+                        onClick={() => cycleSort({ type: 'service', serviceId: sid })}
                         style={{
                           ...stickyTh,
                           top: 0, zIndex: 3, minWidth: 60,
                           cursor: 'pointer',
-                          background: isFocused ? '#dbeafe' : '#f8fafc',
-                          color: isFocused ? '#0c4a6e' : '#64748b',
+                          background: isSorted ? '#dbeafe' : '#f8fafc',
+                          color: isSorted ? '#0c4a6e' : '#64748b',
                         }}
-                        title={`${sid} — click to ${isFocused ? 'unfocus' : 'focus and scope Apply uplift to this service'}`}
+                        title={`${sid} — click to sort by this column`}
                       >
-                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 60 }}>{sid}</div>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 60 }}>{sid}</span>
+                          <SortArrow active={isSorted} dir={sortBy.dir} />
+                        </span>
                       </th>
                     );
                   })}
@@ -560,7 +629,7 @@ export default function BillingReviewAndChangePage() {
                 </tr>
               </thead>
               <tbody>
-                {matrix.entityList
+                {sortedEntities
                   .filter((entity) => !search.trim() || (entity.name || '').toLowerCase().includes(search.trim().toLowerCase()))
                   .map((entity) => (
                   <tr key={entity.id} style={{ borderTop: '1px solid #f1f5f9' }}>
@@ -720,6 +789,19 @@ function Cell({ cell, isEditing, focused, onEdit, onSave, onCancel, onClearPendi
       )}
     </td>
   );
+}
+
+function SortArrow({ active, dir }) {
+  if (!active) {
+    // Faint dual-arrow hint that the column is sortable.
+    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 0, color: '#cbd5e1' }}>
+      <ArrowUp size={9} style={{ marginRight: -3 }} />
+      <ArrowDown size={9} />
+    </span>;
+  }
+  return dir === 'asc'
+    ? <ArrowUp size={11} style={{ color: '#0c4a6e' }} />
+    : <ArrowDown size={11} style={{ color: '#0c4a6e' }} />;
 }
 
 function ScopeToggle({ value, onChange }) {
