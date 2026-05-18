@@ -159,6 +159,10 @@ export default function BillingReviewPage() {
   const counts = useMemo(() => {
     const c = { suggested: 0, approved: 0, rejected: 0, ending: 0, duplicates: 0, all: 0 };
     for (const i of items) {
+      // Honour the NLAC toggle in the counts so the pills match what
+      // the table renders. Show-NLAC=off (default) → NLAC services
+      // don't inflate the count.
+      if (!showNlac && i.entityStatus === 'nlac') continue;
       if (i.service.recurring_status === 'ending') {
         c.ending++;
       } else {
@@ -169,7 +173,7 @@ export default function BillingReviewPage() {
     }
     return c;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, dupKeySet]);
+  }, [items, dupKeySet, showNlac]);
 
   // Count rows (live_billing entries) with at least one pending uplift
   // AND a QBO recurring template id — these are eligible to push.
