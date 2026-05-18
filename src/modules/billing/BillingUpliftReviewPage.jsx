@@ -47,11 +47,13 @@ export default function BillingUpliftReviewPage() {
     // is small (~ tens of rows).
     const { data } = await supabase
       .from('live_billing')
-      .select('id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date, uplift_review_status, uplift_reviewed_at, uplift_email_sent_at, uplift_email_to, entity:entities(id, name, billing_email)')
+      .select('id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date, uplift_review_status, uplift_reviewed_at, uplift_email_sent_at, uplift_email_to, entity:entities(id, name, billing_email, entity_status)')
       .eq('status', 'active')
       .order('id', { ascending: false });
     const filtered = (data || []).filter((r) =>
-      Array.isArray(r.services) && r.services.some((s) => s.pending_monthly_amount != null)
+      Array.isArray(r.services)
+      && r.services.some((s) => s.pending_monthly_amount != null)
+      && (r.entity?.entity_status || 'active') !== 'nlac'
     );
     setRows(filtered);
     setSelected(new Set());

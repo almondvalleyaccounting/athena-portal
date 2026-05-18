@@ -73,7 +73,7 @@ export default function BillingPage() {
       // Load live_billing with entity join
       const { data: billingData } = await supabase
         .from('live_billing')
-        .select('*, entity:entities(id, name, company_number)')
+        .select('*, entity:entities(id, name, company_number, entity_status)')
         .order('committed_at', { ascending: false });
 
       // Load accepted quotes for comparison
@@ -154,7 +154,10 @@ export default function BillingPage() {
   // filters, but £-for-£ KPIs are derived from services.cadence so a
   // client with a mix (monthly bookkeeping + annual year-end) splits
   // correctly.
-  const activeBilling = billing.filter((b) => b.status === 'active');
+  // Exclude NLAC clients from dashboard totals — they're hidden on
+  // every downstream Billing Review screen, so the headline numbers
+  // and the action banner must match.
+  const activeBilling = billing.filter((b) => b.status === 'active' && (b.entity?.entity_status || 'active') !== 'nlac');
 
   // Net for management view — VAT is pass-through, not revenue.
   // Only *approved* monthly services count toward "Recurring Monthly" —

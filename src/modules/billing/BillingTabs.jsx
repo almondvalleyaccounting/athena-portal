@@ -41,17 +41,16 @@ export default function BillingTabs({ active }) {
     for (const r of data || []) {
       const services = Array.isArray(r.services) ? r.services : [];
       const isNlac = r.entity?.entity_status === 'nlac';
-      if (!isNlac) {
-        let approvedMonthly = 0;
-        for (const s of services) {
-          if (s.cadence !== 'monthly') continue;
-          if (s.recurring_status === 'ending') continue;
-          const status = s.approval_status || (r.qbo_recurring_txn_id ? 'approved' : 'suggested');
-          if (status === 'suggested') pending++;
-          if (status === 'approved') approvedMonthly += Number(s.monthly_amount) || 0;
-        }
-        if (!r.qbo_recurring_txn_id && approvedMonthly > 0) manualMonthly++;
+      if (isNlac) continue;
+      let approvedMonthly = 0;
+      for (const s of services) {
+        if (s.cadence !== 'monthly') continue;
+        if (s.recurring_status === 'ending') continue;
+        const status = s.approval_status || (r.qbo_recurring_txn_id ? 'approved' : 'suggested');
+        if (status === 'suggested') pending++;
+        if (status === 'approved') approvedMonthly += Number(s.monthly_amount) || 0;
       }
+      if (!r.qbo_recurring_txn_id && approvedMonthly > 0) manualMonthly++;
       const hasPending = services.some((s) => s.pending_monthly_amount != null);
       if (hasPending) {
         staged++;
