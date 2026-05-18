@@ -16,13 +16,26 @@ const font = "'Outfit', sans-serif";
 // listener so they refresh when the tab regains focus.
 export default function BillingTabs({ active }) {
   const navigate = useNavigate();
-  const [counts, setCounts] = useState({ pending: 0, staged: 0, approved: 0, manualMonthly: 0 });
+  const [counts, setCounts] = useState({ pending: 0, staged: 0, approved: 0, manualMonthly: 0, addNew: 0 });
 
   const refresh = async () => {
-    const { data } = await supabase
-      .from('live_billing')
-      .select('services, uplift_review_status, qbo_recurring_txn_id, entity:entities(entity_status)')
-      .eq('status', 'active');
+    const [billingResp, addNewResp] = await Promise.all([
+      supabase
+        .from('live_billing')
+        .select('services, uplift_review_status, qbo_recurring_txn_id, entity:entities(entity_status)')
+        .eq('status', 'active'),
+      // Count BM entities with services in capacity planner but no
+      // QBO customer (and no live_billing row gets created until they
+      // do). Cheap to count via a join through v_inferred_allocations.
+      supabase
+        .from('entities')
+        .select('id, v_inferred_allocations!inner(canonical_service_id)', { count: 'exact', head: true })
+        .eq('entity_status', 'active')
+        .eq('source', 'brightmanager')
+        .is('qbo_customer_id', null),
+    ]);
+    const { data } = billingResp;
+    const addNew = addNewResp.count || 0;
 
     let pending = 0, staged = 0, approved = 0, manualMonthly = 0;
     for (const r of data || []) {
@@ -45,7 +58,7 @@ export default function BillingTabs({ active }) {
         if (r.uplift_review_status === 'approved') approved++;
       }
     }
-    setCounts({ pending, staged, approved, manualMonthly });
+    setCounts({ pending, staged, approved, manualMonthly, addNew });
   };
 
   useEffect(() => {
@@ -60,6 +73,7 @@ export default function BillingTabs({ active }) {
     { id: 'dashboard', label: 'Dashboard', route: '/manage/billing',         badge: null },
     { id: 'import',    label: 'Import',    route: '/manage/billing/review',  badge: counts.pending  || null, tone: 'warning' },
     { id: 'change',    label: 'Change',    route: '/manage/billing/change',  badge: counts.staged   || null, tone: 'accent'  },
+    { id: 'addnew',    label: 'Add new',   route: '/manage/billing/add-new', badge: counts.addNew   || null, tone: 'info'    },
     { id: 'push',      label: 'Push',      route: '/manage/billing/uplifts', badge: counts.approved || null, tone: 'success' },
     { id: 'sources',   label: 'Sources',   route: '/manage/billing/sources', badge: counts.manualMonthly || null, tone: 'danger' },
     { id: 'mapping',   label: 'Mapping',   route: '/manage/billing/mapping', badge: null },
