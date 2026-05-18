@@ -456,8 +456,8 @@ export default function BillingReviewAndChangePage() {
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12, minWidth: '100%' }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  <th style={{ ...stickyTh, left: 0, zIndex: 4, minWidth: 220, textAlign: 'left' }}>Client</th>
-                  <th style={{ ...stickyTh, left: 220, zIndex: 4, minWidth: 130, background: '#f1f5f9' }}>Total</th>
+                  <th style={{ ...stickyTh, left: 0, zIndex: 5, minWidth: 220, textAlign: 'left' }}>Client</th>
+                  <th style={{ ...stickyTh, left: 220, zIndex: 5, minWidth: 110, background: '#f1f5f9' }}>Total</th>
                   {matrix.services.map((sid) => {
                     const isFocused = focusedServiceId === sid;
                     return (
@@ -466,36 +466,38 @@ export default function BillingReviewAndChangePage() {
                         onClick={() => setFocusedServiceId(isFocused ? null : sid)}
                         style={{
                           ...stickyTh,
-                          top: 0, zIndex: 3, minWidth: 110,
+                          top: 0, zIndex: 3, minWidth: 60,
                           cursor: 'pointer',
                           background: isFocused ? '#dbeafe' : '#f8fafc',
                           color: isFocused ? '#0c4a6e' : '#64748b',
                         }}
                         title={`${sid} — click to ${isFocused ? 'unfocus' : 'focus and scope Apply uplift to this service'}`}
                       >
-                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{sid}</div>
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 60 }}>{sid}</div>
                       </th>
                     );
                   })}
                 </tr>
-                {/* Per-service totals row */}
+                {/* Per-service totals row — top position = exact height
+                    of the row above, otherwise either a gap shows or
+                    the rows overlap as the body scrolls past. */}
                 <tr style={{ background: '#fafafa' }}>
-                  <th style={{ ...stickyTh, left: 0, zIndex: 4, textAlign: 'left', fontSize: 10, color: '#64748b' }}>
+                  <th style={{ ...stickyTh, left: 0, top: HEADER_ROW_1, zIndex: 5, textAlign: 'left', height: HEADER_ROW_2 }}>
                     <div>Current → New (Δ)</div>
                   </th>
-                  <th style={{ ...stickyTh, left: 220, top: 36, zIndex: 4, fontWeight: 500, fontSize: 10, background: '#f1f5f9' }}>
+                  <th style={{ ...stickyTh, left: 220, top: HEADER_ROW_1, zIndex: 5, fontWeight: 500, background: '#f1f5f9', height: HEADER_ROW_2 }}>
                     <div style={{ fontFamily: 'monospace', color: '#64748b' }}>{fmtGbp(columnTotals.totalCurrent)}</div>
                     <div style={{ fontFamily: 'monospace', color: grandDelta > 0 ? '#15803d' : grandDelta < 0 ? '#b91c1c' : '#0f172a', fontWeight: 700 }}>{fmtGbp(columnTotals.totalPending)}</div>
-                    <div style={{ fontFamily: 'monospace', fontSize: 9, color: grandDelta > 0 ? '#15803d' : grandDelta < 0 ? '#b91c1c' : '#94a3b8' }}>{grandDelta > 0 ? '+' : ''}{fmtGbp(grandDelta)}</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 10, color: grandDelta > 0 ? '#15803d' : grandDelta < 0 ? '#b91c1c' : '#94a3b8' }}>{grandDelta > 0 ? '+' : ''}{fmtGbp(grandDelta)}</div>
                   </th>
                   {matrix.services.map((sid) => {
                     const t = columnTotals.perService[sid];
                     const d = t.pending - t.current;
                     return (
-                      <th key={sid} style={{ ...stickyTh, top: 36, zIndex: 3, fontWeight: 500, fontSize: 10 }}>
+                      <th key={sid} style={{ ...stickyTh, top: HEADER_ROW_1, zIndex: 3, fontWeight: 500, height: HEADER_ROW_2 }}>
                         <div style={{ fontFamily: 'monospace', color: '#64748b' }}>{fmtGbp(t.current)}</div>
                         <div style={{ fontFamily: 'monospace', color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#0f172a', fontWeight: 600 }}>{fmtGbp(t.pending)}</div>
-                        <div style={{ fontFamily: 'monospace', fontSize: 9, color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#94a3b8' }}>{d > 0 ? '+' : ''}{fmtGbp(d)}</div>
+                        <div style={{ fontFamily: 'monospace', fontSize: 10, color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#94a3b8' }}>{d > 0 ? '+' : ''}{fmtGbp(d)}</div>
                       </th>
                     );
                   })}
@@ -886,9 +888,19 @@ function Stat({ label, value, tone }) {
 
 const Label = ({ children, style }) => <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5, ...style }}>{children}</div>;
 
-const stickyTh = { position: 'sticky', padding: '6px 10px', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #f1f5f9', textAlign: 'right', top: 0 };
-const stickyTd = { position: 'sticky', padding: '8px 10px', borderRight: '1px solid #f1f5f9', verticalAlign: 'middle', fontSize: 12 };
-const cellTd = { padding: '6px 8px', textAlign: 'right', verticalAlign: 'middle', borderRight: '1px solid #f1f5f9', fontSize: 12, minWidth: 110 };
+// Sticky layering reference:
+//   z 5 : corner cells (sticky-top AND sticky-left) — always on top
+//   z 3 : sticky-top header cells (column headers, totals row)
+//   z 2 : sticky-left body cells (client name, per-client total)
+//   z 1 : ordinary body cells
+// Without explicit z-index, the column-totals row in the header
+// overlaid the client name column when scrolling horizontally.
+const HEADER_ROW_1 = 32; // first thead row height in px (top headings)
+const HEADER_ROW_2 = 56; // second thead row height in px (3-line totals)
+
+const stickyTh = { position: 'sticky', padding: '4px 8px', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #f1f5f9', textAlign: 'right', top: 0, height: HEADER_ROW_1, boxSizing: 'border-box' };
+const stickyTd = { position: 'sticky', padding: '6px 8px', borderRight: '1px solid #f1f5f9', verticalAlign: 'middle', fontSize: 13, zIndex: 2 };
+const cellTd = { padding: '6px 8px', textAlign: 'right', verticalAlign: 'middle', borderRight: '1px solid #f1f5f9', fontSize: 13, minWidth: 60 };
 
 const backLinkStyle = { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 12, padding: 0, fontFamily: font };
 const btnAction = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe', borderRadius: 6, cursor: 'pointer', fontFamily: font };
