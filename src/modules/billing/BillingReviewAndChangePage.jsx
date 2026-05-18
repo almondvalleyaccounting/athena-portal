@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { TrendingUp, RotateCcw, Plus } from 'lucide-react';
+import { TrendingUp, RotateCcw, Plus, EyeOff, Eye } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
@@ -41,7 +41,7 @@ export default function BillingReviewAndChangePage() {
     const [{ data }, { data: items }] = await Promise.all([
       supabase
         .from('live_billing')
-        .select('id, entity_id, services, qbo_recurring_txn_id, entity:entities(id, name, entity_status)')
+        .select('id, entity_id, services, qbo_recurring_txn_id, entity:entities(id, name, entity_status, fee_raise_excluded)')
         .eq('status', 'active')
         .order('id', { ascending: false }),
       supabase
@@ -90,6 +90,10 @@ export default function BillingReviewAndChangePage() {
           cell = { entityId: r.entity_id, entityName: r.entity?.name || 'Unknown', serviceId, current: 0, pending: 0, hasPending: false, services: [] };
           cells.set(key, cell);
         }
+        // Track strategy of the pending uplift on each underlying
+        // service so manuals win over floor wins over inflation when
+        // the user runs successive uplift passes.
+        if (s.pending_monthly_amount != null) cell.pendingStrategy = s.pending_uplift_strategy || 'manual';
         const current = Number(s.monthly_amount) || 0;
         const pendingRaw = s.pending_monthly_amount;
         const hasPending = pendingRaw != null;
@@ -97,8 +101,12 @@ export default function BillingReviewAndChangePage() {
         cell.current += current;
         cell.pending += effective;
         if (hasPending) cell.hasPending = true;
-        cell.services.push({ rowId: r.id, idx: i, current, pending: hasPending ? Number(pendingRaw) : null });
-        entities.set(r.entity_id, { id: r.entity_id, name: r.entity?.name || 'Unknown' });
+        cell.services.push({ rowId: r.id, idx: i, current, pending: hasPending ? Number(pendingRaw) : null, strategy: s.pending_uplift_strategy || null });
+        entities.set(r.entity_id, {
+          id: r.entity_id,
+          name: r.entity?.name || 'Unknown',
+          excluded: !!r.entity?.fee_raise_excluded,
+        });
       }
     }
 
@@ -137,6 +145,9 @@ export default function BillingReviewAndChangePage() {
       pending_monthly_amount: Number(newAmount),
       pending_effective_at: existing.pending_effective_at || '2026-06-01',
       pending_uplift_staged_at: new Date().toISOString(),
+      // Manual edits get top priority and won't be touched by a
+      // subsequent inflation/floor pass.
+      pending_uplift_strategy: 'manual',
     };
     await supabase.from('live_billing').update({
       services,
@@ -201,6 +212,7 @@ export default function BillingReviewAndChangePage() {
         pending_effective_at: effectiveAt || '2026-06-01',
         pending_uplift_reason: reason || 'New service added on Change matrix',
         pending_uplift_staged_at: new Date().toISOString(),
+        pending_uplift_strategy: 'manual',
       });
       await supabase.from('live_billing').update({
         services,
@@ -213,6 +225,19 @@ export default function BillingReviewAndChangePage() {
       setSaving(false);
       setAddOpen(null);
     }
+  };
+
+  // Toggle whether this client is excluded from bulk fee raises.
+  const toggleFeeRaiseExcluded = async (entityId, currentValue) => {
+    const next = !currentValue;
+    await supabase.from('entities').update({ fee_raise_excluded: next }).eq('id', entityId);
+    // Optimistic: update the rows array's nested entity ref so the
+    // matrix re-renders without a full reload.
+    setRows((prev) => prev.map((r) =>
+      r.entity_id === entityId
+        ? { ...r, entity: { ...(r.entity || {}), fee_raise_excluded: next } }
+        : r
+    ));
   };
 
   const clearPending = async (rowId, idx) => {
@@ -266,18 +291,29 @@ export default function BillingReviewAndChangePage() {
     await load();
   };
 
-  // Apply an inflation % to in-scope service lines on every selected
-  // client (here: all visible). Writes pending_monthly_amount for each.
+  // Apply an inflation % to in-scope service lines on every visible
+  // client. Honors priority: skips clients marked fee_raise_excluded,
+  // skips services whose pending uplift was already set manually OR
+  // by an earlier floor pass.
   const applyInflation = async ({ pct, roundUp, onlyServiceId, reason }) => {
     if (!Number.isFinite(pct) || pct === 0) return;
     const writes = [];
+    let skippedExcluded = 0, skippedManual = 0, skippedFloor = 0;
     for (const r of rows) {
+      if (r.entity?.fee_raise_excluded) { skippedExcluded++; continue; }
       const services = [...(r.services || [])];
       let touched = false;
       for (let i = 0; i < services.length; i++) {
         const s = services[i];
         if (!inScope(s)) continue;
         if (onlyServiceId && s.service_id !== onlyServiceId) continue;
+        // Priority guard: don't overwrite a pending value that came
+        // from a manual entry or a floor pass.
+        if (s.pending_monthly_amount != null) {
+          const strat = s.pending_uplift_strategy;
+          if (strat === 'manual') { skippedManual++; continue; }
+          if (strat === 'floor')  { skippedFloor++;  continue; }
+        }
         const current = Number(s.monthly_amount) || 0;
         if (current === 0) continue;
         let next = current * (1 + pct / 100);
@@ -290,13 +326,24 @@ export default function BillingReviewAndChangePage() {
           pending_effective_at: s.pending_effective_at || '2026-06-01',
           pending_uplift_reason: reason || s.pending_uplift_reason || 'Inflation uplift',
           pending_uplift_staged_at: new Date().toISOString(),
+          pending_uplift_strategy: 'inflation',
         };
         touched = true;
       }
       if (touched) writes.push({ id: r.id, services });
     }
-    if (writes.length === 0) { alert('No cells matched — nothing to apply.'); return; }
-    if (!window.confirm(`Apply ${pct}% inflation to ${writes.length} client${writes.length === 1 ? '' : 's'}? Stages as pending — nothing pushed yet.`)) return;
+    if (writes.length === 0) {
+      const skips = [];
+      if (skippedExcluded) skips.push(`${skippedExcluded} excluded`);
+      if (skippedManual) skips.push(`${skippedManual} manual`);
+      if (skippedFloor) skips.push(`${skippedFloor} floor`);
+      alert(`No cells matched — nothing to apply.${skips.length ? '\n\nSkipped: ' + skips.join(', ') + '.' : ''}`);
+      return;
+    }
+    const skipSummary = (skippedExcluded || skippedManual || skippedFloor)
+      ? `\n\nSkipped: ${skippedExcluded} excluded · ${skippedManual} manual · ${skippedFloor} floor.`
+      : '';
+    if (!window.confirm(`Apply ${pct}% inflation to ${writes.length} client${writes.length === 1 ? '' : 's'}?${skipSummary}\n\nStages as pending — nothing pushed yet.`)) return;
     setSaving(true);
     for (const w of writes) {
       await supabase.from('live_billing').update({
@@ -311,19 +358,22 @@ export default function BillingReviewAndChangePage() {
     await load();
   };
 
-  // Apply a floor £ to a specific service column. Only cells where the
-  // current amount is below the floor get staged.
+  // Apply a floor £ to a specific service column. Skips excluded
+  // clients and any cell where the pending was already manually set.
   const applyFloor = async ({ serviceId, floor, reason }) => {
     if (!serviceId) return;
     if (!Number.isFinite(floor) || floor <= 0) return;
     const writes = [];
+    let skippedExcluded = 0, skippedManual = 0;
     for (const r of rows) {
+      if (r.entity?.fee_raise_excluded) { skippedExcluded++; continue; }
       const services = [...(r.services || [])];
       let touched = false;
       for (let i = 0; i < services.length; i++) {
         const s = services[i];
         if (!inScope(s)) continue;
         if (s.service_id !== serviceId) continue;
+        if (s.pending_monthly_amount != null && s.pending_uplift_strategy === 'manual') { skippedManual++; continue; }
         const current = Number(s.monthly_amount) || 0;
         if (current >= floor) continue;
         services[i] = {
@@ -332,6 +382,7 @@ export default function BillingReviewAndChangePage() {
           pending_effective_at: s.pending_effective_at || '2026-06-01',
           pending_uplift_reason: reason || s.pending_uplift_reason || `Floor £${floor.toFixed(2)}`,
           pending_uplift_staged_at: new Date().toISOString(),
+          pending_uplift_strategy: 'floor',
         };
         touched = true;
       }
@@ -447,7 +498,12 @@ export default function BillingReviewAndChangePage() {
               <Tile group="Annual" label="Δ"       value={`${grandDelta >= 0 ? '+' : ''}${fmtGbp(grandDelta * 12)}`} tone={grandDelta > 0 ? 'green' : grandDelta < 0 ? 'red' : 'slate'} />
             </div>
             <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8' }}>
-              {matrix.entityList.length} client{matrix.entityList.length === 1 ? '' : 's'} · {matrix.services.length} service{matrix.services.length === 1 ? '' : 's'} · annual = monthly × 12
+              {matrix.entityList.length} client{matrix.entityList.length === 1 ? '' : 's'}
+              {matrix.entityList.filter((e) => e.excluded).length > 0 && (
+                <> · <span style={{ color: '#b91c1c' }}>{matrix.entityList.filter((e) => e.excluded).length} excluded from raises</span></>
+              )}
+              {' · '}{matrix.services.length} service{matrix.services.length === 1 ? '' : 's'}
+              {' · '}Priority: manual → floor → inflation · annual = monthly × 12
             </div>
           </div>
 
@@ -508,10 +564,28 @@ export default function BillingReviewAndChangePage() {
                   .filter((entity) => !search.trim() || (entity.name || '').toLowerCase().includes(search.trim().toLowerCase()))
                   .map((entity) => (
                   <tr key={entity.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                    <td style={{ ...stickyTd, left: 0, background: '#fff', fontWeight: 500, color: '#0f172a', textAlign: 'left', paddingLeft: 12 }}>
-                      <a href={`/manage/clients/${entity.id}`} style={{ color: '#0f172a', textDecoration: 'none' }} onClick={(e) => { e.preventDefault(); navigate(`/manage/clients/${entity.id}`); }}>
-                        {entity.name}
-                      </a>
+                    <td style={{ ...stickyTd, left: 0, background: entity.excluded ? '#fef2f2' : '#fff', fontWeight: 500, color: entity.excluded ? '#94a3b8' : '#0f172a', textAlign: 'left', paddingLeft: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleFeeRaiseExcluded(entity.id, entity.excluded); }}
+                          title={entity.excluded ? 'Currently excluded from fee raises — click to include' : 'Click to exclude this client from bulk fee raises'}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: 22, height: 22, padding: 0,
+                            background: 'transparent', border: 'none',
+                            color: entity.excluded ? '#b91c1c' : '#cbd5e1', cursor: 'pointer',
+                          }}
+                        >
+                          {entity.excluded ? <EyeOff size={13} /> : <Eye size={13} />}
+                        </button>
+                        <a
+                          href={`/manage/clients/${entity.id}`}
+                          style={{ color: 'inherit', textDecoration: entity.excluded ? 'line-through' : 'none' }}
+                          onClick={(ev) => { ev.preventDefault(); navigate(`/manage/clients/${entity.id}`); }}
+                        >
+                          {entity.name}
+                        </a>
+                      </div>
                     </td>
                     {(() => {
                       const t = rowTotals.get(entity.id) || { current: 0, pending: 0 };
