@@ -595,12 +595,20 @@ export default function BillingReviewPage() {
                     <Td>
                       <input type="checkbox" checked={isSel} onChange={() => toggleSel(key)} />
                     </Td>
-                    <Td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={i.entityName}>
-                      {i.entityName}
-                      {i.entityStatus === 'nlac' && <span style={tagStyle('red')} title="No Longer A Client">NLAC</span>}
-                      {i.fromTemplate && <span style={tagStyle('teal')} title="From QBO RecurringTransaction template">QBO template</span>}
-                      {isDup(i) && <span style={tagStyle('red')} title={`Potential duplicate — another line on this client also has service "${i.service.service_id}"`}>DUP</span>}
-                      {i.service.duplicate_acknowledged && <span style={tagStyle('slate')} title="Duplicate acknowledged as intentional">DUP OK</span>}
+                    <Td>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={i.entityName}>
+                        {i.entityName}
+                      </div>
+                      {/* Chips on their own row so a long entity name
+                          never clips the QBO TEMPLATE / NLAC / DUP markers. */}
+                      {(i.entityStatus === 'nlac' || i.fromTemplate || isDup(i) || i.service.duplicate_acknowledged) && (
+                        <div style={{ marginTop: 2, marginLeft: -8 /* tagStyle adds marginLeft:8 to the first */ }}>
+                          {i.entityStatus === 'nlac' && <span style={tagStyle('red')} title="No Longer A Client">NLAC</span>}
+                          {i.fromTemplate && <span style={tagStyle('teal')} title="From QBO RecurringTransaction template">QBO template</span>}
+                          {isDup(i) && <span style={tagStyle('red')} title={`Potential duplicate — another line on this client also has service "${i.service.service_id}"`}>DUP</span>}
+                          {i.service.duplicate_acknowledged && <span style={tagStyle('slate')} title="Duplicate acknowledged as intentional">DUP OK</span>}
+                        </div>
+                      )}
                     </Td>
                     <Td>
                       <div style={{ fontWeight: 500, color: '#0f172a' }}>{s.service_id || 'service'}</div>
