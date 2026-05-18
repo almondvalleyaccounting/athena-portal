@@ -39,7 +39,7 @@ export default function BillingUpliftReviewPage() {
     // is small (~ tens of rows).
     const { data } = await supabase
       .from('live_billing')
-      .select('id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date, uplift_review_status, uplift_reviewed_at, entity:entities(id, name, billing_email)')
+      .select('id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date, uplift_review_status, uplift_reviewed_at, uplift_email_sent_at, uplift_email_to, entity:entities(id, name, billing_email)')
       .eq('status', 'active')
       .order('id', { ascending: false });
     const filtered = (data || []).filter((r) =>
@@ -320,7 +320,15 @@ export default function BillingUpliftReviewPage() {
                   <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9', background: isSel ? '#f0f9ff' : 'transparent' }}>
                     <Td><input type="checkbox" checked={isSel} onChange={() => toggleSel(r.id)} /></Td>
                     <Td>
-                      <div style={{ fontWeight: 500, color: '#0f172a' }}>{r.entity?.name || 'Unknown'}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontWeight: 500, color: '#0f172a' }}>{r.entity?.name || 'Unknown'}</span>
+                        {r.uplift_email_sent_at && (
+                          <span
+                            style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}
+                            title={`Email sent ${new Date(r.uplift_email_sent_at).toLocaleString('en-GB')}${r.uplift_email_to ? ` to ${r.uplift_email_to}` : ''}`}
+                          >✉ SENT</span>
+                        )}
+                      </div>
                       {!hasTemplate && <span style={{ fontSize: 10, color: '#b45309' }}>⚠ no QBO template</span>}
                       {r._reason && <div style={{ fontSize: 10, color: '#94a3b8' }} title={r._reason}>{r._reason.length > 50 ? r._reason.slice(0, 50) + '…' : r._reason}</div>}
                     </Td>
@@ -410,10 +418,10 @@ export default function BillingUpliftReviewPage() {
       )}
 
       {emailFor && (
-        <EmailPreviewModal rows={[emailFor]} onClose={() => setEmailFor(null)} />
+        <EmailPreviewModal rows={[emailFor]} onClose={() => setEmailFor(null)} initiatedBy={profile?.id} onSent={load} />
       )}
       {emailsBatch && (
-        <EmailPreviewModal rows={emailsBatch} onClose={() => setEmailsBatch(null)} />
+        <EmailPreviewModal rows={emailsBatch} onClose={() => setEmailsBatch(null)} initiatedBy={profile?.id} onSent={load} />
       )}
     </div>
   );
@@ -477,7 +485,7 @@ function iconBtn(color) {
 // system mail client via a mailto: link (subject + body pre-filled).
 // No backend send wiring — that comes in a separate piece once we
 // pick the sender (accounts@ via Gmail OAuth or transactional).
-function EmailPreviewModal({ rows, onClose }) {
+function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
   const drafts = (rows || []).map((r) => {
     const services = (r.services || []).filter((s) => s.pending_monthly_amount != null);
     return {
@@ -490,11 +498,73 @@ function EmailPreviewModal({ rows, onClose }) {
   });
   const [idx, setIdx] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [overrideTo, setOverrideTo] = useState('');
+  // Track which billing_ids have been sent in this modal session so
+  // the Send button flips to "Sent ✓" immediately.
+  const [sentRowIds, setSentRowIds] = useState(new Set());
   const active = drafts[idx];
   if (!active) return null;
 
-  const billingEmail = active.row.entity?.billing_email || '';
-  const mailto = `mailto:${encodeURIComponent(billingEmail)}?subject=${encodeURIComponent(active.email.subject)}&body=${encodeURIComponent(active.email.body)}`;
+  const defaultTo = active.row.entity?.billing_email || '';
+  const to = overrideTo || defaultTo;
+  const alreadySentOnServer = !!active.row.uplift_email_sent_at;
+  const sentThisSession = sentRowIds.has(active.row.id);
+  const isSent = sentThisSession || alreadySentOnServer;
+
+  const send = async () => {
+    if (!to) { alert('Set a recipient email first (the entity has no billing_email).'); return; }
+    if (isSent && !window.confirm('This row has already been emailed. Send again?')) return;
+    setSending(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-uplift-email', {
+        body: {
+          billing_id: active.row.id,
+          to,
+          subject: active.email.subject,
+          body_text: active.email.body,
+          initiated_by: initiatedBy || null,
+        },
+      });
+      if (error || !data?.success) throw new Error(error?.message || data?.error || 'Send failed');
+      setSentRowIds((prev) => new Set([...prev, active.row.id]));
+      onSent?.();
+    } catch (e) {
+      alert('Send failed: ' + (e.message || e));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const sendAll = async () => {
+    if (drafts.length <= 1) { send(); return; }
+    const pending = drafts.filter((d) => !sentRowIds.has(d.row.id) && !d.row.uplift_email_sent_at && (d.row.entity?.billing_email));
+    if (pending.length === 0) { alert('Nothing left to send (all already sent or missing billing email).'); return; }
+    if (!window.confirm(`Send the fee-raise email to ${pending.length} client${pending.length === 1 ? '' : 's'} now? This goes via Resend from accounts@.`)) return;
+    setSending(true);
+    let ok = 0, err = 0;
+    for (const d of pending) {
+      try {
+        const { data, error } = await supabase.functions.invoke('send-uplift-email', {
+          body: {
+            billing_id: d.row.id,
+            to: d.row.entity.billing_email,
+            subject: d.email.subject,
+            body_text: d.email.body,
+            initiated_by: initiatedBy || null,
+          },
+        });
+        if (error || !data?.success) { err++; continue; }
+        ok++;
+        setSentRowIds((prev) => new Set([...prev, d.row.id]));
+      } catch { err++; }
+    }
+    setSending(false);
+    alert(`Sent ${ok} email${ok === 1 ? '' : 's'}${err ? ` (${err} failed)` : ''}.`);
+    onSent?.();
+  };
+
+  const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(active.email.subject)}&body=${encodeURIComponent(active.email.body)}`;
 
   const copy = async () => {
     try {
@@ -522,10 +592,29 @@ function EmailPreviewModal({ rows, onClose }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18 }}>×</button>
         </div>
 
-        <div style={{ padding: '12px 18px', borderBottom: '1px solid #f1f5f9', fontSize: 12, color: '#475569', display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          <div><strong style={{ color: '#0f172a' }}>To:</strong> {billingEmail || <span style={{ color: '#b91c1c' }}>no billing email on entity</span>}</div>
-          <div><strong style={{ color: '#0f172a' }}>From:</strong> accounts@almondvalleyaccounting.co.uk</div>
-          <div><strong style={{ color: '#0f172a' }}>Subject:</strong> {active.email.subject}</div>
+        <div style={{ padding: '12px 18px', borderBottom: '1px solid #f1f5f9', fontSize: 12, color: '#475569', display: 'grid', gridTemplateColumns: '70px 1fr', gap: '6px 10px', alignItems: 'center' }}>
+          <strong style={{ color: '#0f172a' }}>To</strong>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="email"
+              value={to}
+              onChange={(e) => setOverrideTo(e.target.value)}
+              placeholder={defaultTo ? defaultTo : 'recipient@example.com (no billing_email on entity)'}
+              style={{ flex: 1, padding: '4px 8px', fontSize: 12, fontFamily: font, border: `1px solid ${defaultTo ? '#e5e7eb' : '#fca5a5'}`, borderRadius: 6, outline: 'none' }}
+            />
+            {alreadySentOnServer && !sentThisSession && (
+              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }} title={`Last sent ${new Date(active.row.uplift_email_sent_at).toLocaleString('en-GB')}${active.row.uplift_email_to ? ` to ${active.row.uplift_email_to}` : ''}`}>
+                Previously sent
+              </span>
+            )}
+            {sentThisSession && (
+              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}>✓ Sent</span>
+            )}
+          </span>
+          <strong style={{ color: '#0f172a' }}>From</strong>
+          <span>accounts@almondvalleyaccounting.co.uk</span>
+          <strong style={{ color: '#0f172a' }}>Subject</strong>
+          <span>{active.email.subject}</span>
         </div>
 
         <pre style={{
@@ -540,15 +629,25 @@ function EmailPreviewModal({ rows, onClose }) {
           background: '#fafafa',
         }}>{active.email.body}</pre>
 
-        <div style={{ padding: '12px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={copy} style={modalBtnGhost}>{copied ? 'Copied ✓' : 'Copy text'}</button>
+        <div style={{ padding: '12px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={copy} disabled={sending} style={modalBtnGhost}>{copied ? 'Copied ✓' : 'Copy text'}</button>
           <a
             href={mailto}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ ...modalBtnPrimary, textDecoration: 'none' }}
+            style={{ ...modalBtnGhost, textDecoration: 'none' }}
+            title="Open in your local mail client (no send via accounts@)"
           >Open in mail app</a>
-          <button onClick={onClose} style={modalBtnGhost}>Close</button>
+          <div style={{ flex: 1 }} />
+          {drafts.length > 1 && (
+            <button onClick={sendAll} disabled={sending} style={{ ...modalBtnGhost, color: '#0e7fe0', borderColor: '#bfdbfe' }}>
+              {sending ? 'Sending…' : `Send all (${drafts.length})`}
+            </button>
+          )}
+          <button onClick={send} disabled={sending || !to} style={{ ...modalBtnPrimary, opacity: (sending || !to) ? 0.5 : 1 }}>
+            {sending ? 'Sending…' : isSent ? 'Send again' : 'Send via accounts@'}
+          </button>
+          <button onClick={onClose} disabled={sending} style={modalBtnGhost}>Close</button>
         </div>
       </div>
     </div>
