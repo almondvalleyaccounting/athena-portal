@@ -456,10 +456,25 @@ Deno.serve(async (req) => {
     }
 
     const customersWithRecurring = new Set<string>();
+    // Also track which ENTITIES already have a template-linked row,
+    // so historic invoices on a sibling/legacy QBO customer (e.g.
+    // "Mark Cruse Joinery" #317 mapped to Cruse Joinery Limited) don't
+    // create a parallel manual row.
+    const entitiesWithRecurring = new Set<string>();
     for (const txn of recurringTxns) {
       const innerTxn = (txn.Invoice || txn.SalesReceipt || txn) as Record<string, unknown>;
       const customerRef = (innerTxn.CustomerRef || txn.CustomerRef) as Record<string, unknown> | undefined;
-      if (customerRef) customersWithRecurring.add(String(customerRef.value));
+      const recurringInfo = (innerTxn.RecurringInfo || txn.RecurringInfo) as Record<string, unknown> | undefined;
+      const scheduleInfo = (recurringInfo?.ScheduleInfo as Record<string, unknown> | undefined);
+      const nextDate = String(recurringInfo?.NextDate || scheduleInfo?.NextDate || "");
+      const isActive = recurringInfo?.Active !== false;
+      // Only count live templates — dormant ones don't bill and
+      // shouldn't suppress invoice-inference for an entity.
+      if (!customerRef || !isActive || !nextDate) continue;
+      const qboCustomerId = String(customerRef.value);
+      customersWithRecurring.add(qboCustomerId);
+      const entId = entityIdByQboId.get(qboCustomerId);
+      if (entId) entitiesWithRecurring.add(entId);
     }
 
     // "YYYY-MM" → prior-month "YYYY-MM" helper.
@@ -488,6 +503,16 @@ Deno.serve(async (req) => {
           if (!stats.unmatched_customers.includes(customerName)) {
             stats.unmatched_customers.push(customerName);
           }
+          continue;
+        }
+
+        // Sibling-customer guard: if this entity already has a live
+        // QBO template (e.g. Cruse Joinery Limited's primary customer
+        // #826 has template 22556), don't synthesise a manual row
+        // from a different customer (#317 "Mark Cruse Joinery") whose
+        // historic invoices roll into the same entity.
+        if (entitiesWithRecurring.has(entity.id as string)) {
+          stats.one_off_skipped++;
           continue;
         }
 

@@ -380,7 +380,7 @@ export default function BillingReviewPage() {
         Billing approval queue
       </h1>
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
-        Approve each suggested monthly recurring bill before it counts in the headline. Edit cadence or amount if the system got it wrong.
+        Approve each monthly recurring bill flagged for review before it counts in the headline. Edit cadence or amount if the system got it wrong.
       </p>
 
       <BillingTabs active="import" />
@@ -417,7 +417,7 @@ export default function BillingReviewPage() {
 
       {/* Filter pills */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <FilterPill label="Suggested" count={counts.suggested || 0} active={filter === 'suggested'} tone="amber" onClick={() => setFilter('suggested')} />
+        <FilterPill label="For Review" count={counts.suggested || 0} active={filter === 'suggested'} tone="amber" onClick={() => setFilter('suggested')} />
         <FilterPill label="Approved" count={counts.approved || 0} active={filter === 'approved'} tone="green" onClick={() => setFilter('approved')} />
         <FilterPill label="Rejected" count={counts.rejected || 0} active={filter === 'rejected'} tone="slate" onClick={() => setFilter('rejected')} />
         <FilterPill label="Ending" count={counts.ending || 0} active={filter === 'ending'} tone="orange" onClick={() => setFilter('ending')} />
@@ -905,7 +905,7 @@ const DiagTd = ({ children }) => <td style={{ padding: '6px 10px', verticalAlign
 
 function StatusChip({ status }) {
   const map = {
-    suggested: { tone: 'warning', label: 'Suggested' },
+    suggested: { tone: 'warning', label: 'For Review' },
     approved:  { tone: 'success', label: 'Approved' },
     rejected:  { tone: 'neutral', label: 'Rejected' },
   };
