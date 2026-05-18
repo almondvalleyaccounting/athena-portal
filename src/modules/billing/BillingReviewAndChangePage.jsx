@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { TrendingUp, RotateCcw } from 'lucide-react';
+import { TrendingUp, RotateCcw, Plus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
@@ -31,6 +31,7 @@ export default function BillingReviewAndChangePage() {
   const [scope, setScope] = useState('monthly'); // monthly | annual | all
   const [editing, setEditing] = useState(null); // { entityId, serviceId }
   const [upliftOpen, setUpliftOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(null); // null | { entityId?, serviceId? } — opens AddServiceModal
   const [search, setSearch] = useState('');
   const [focusedServiceId, setFocusedServiceId] = useState(searchParams.get('service') || null); // click a column header to highlight + default-scope the uplift modal
 
@@ -152,6 +153,56 @@ export default function BillingReviewAndChangePage() {
       return;
     }
     await stagePending(svc.rowId, svc.idx, next);
+  };
+
+  // Add a brand-new service line for an entity. Attaches to the
+  // entity's template-linked row when one exists (so when the uplift
+  // is pushed to QBO it can land on the existing template); otherwise
+  // attaches to the largest active manual row. Stages the amount as
+  // pending so it flows through Uplift Review → push.
+  const addService = async ({ entityId, serviceId, description, cadence, monthlyAmount, effectiveAt, reason }) => {
+    if (!entityId || !serviceId) return;
+    setSaving(true);
+    try {
+      // Pick the target billing row.
+      const candidates = rows.filter((r) => r.entity_id === entityId);
+      const target = candidates.find((r) => r.qbo_recurring_txn_id) || candidates[0];
+      if (!target) {
+        alert('No active billing row for this client. Create one via QBO pull first.');
+        return;
+      }
+      const services = [...(target.services || [])];
+      const monthly = cadence === 'monthly' ? Number(monthlyAmount) || 0 : 0;
+      const annual  = cadence === 'annual'  ? Number(monthlyAmount) * 12 : monthly * 12;
+      services.push({
+        service_id: serviceId,
+        description: description || serviceId,
+        cadence,
+        cadence_months: cadence === 'monthly' ? 1 : cadence === 'annual' ? 12 : 0,
+        monthly_amount: 0,                // current = nothing being billed today
+        annual_amount: 0,
+        approval_status: 'approved',
+        approved_by: profile?.id || null,
+        approved_at: new Date().toISOString(),
+        billing_type: cadence === 'monthly' ? 'recurring' : cadence,
+        // Stage the new amount as a pending uplift — pushing to QBO
+        // will write it onto the recurring template.
+        pending_monthly_amount: cadence === 'annual' ? Math.round((Number(monthlyAmount) || 0) / 12 * 100) / 100 : monthly,
+        pending_effective_at: effectiveAt || '2026-06-01',
+        pending_uplift_reason: reason || 'New service added on Change matrix',
+        pending_uplift_staged_at: new Date().toISOString(),
+      });
+      await supabase.from('live_billing').update({
+        services,
+        uplift_review_status: 'staged',
+        uplift_reviewed_by: null,
+        uplift_reviewed_at: null,
+      }).eq('id', target.id);
+      setRows((prev) => prev.map((r) => r.id === target.id ? { ...r, services } : r));
+    } finally {
+      setSaving(false);
+      setAddOpen(null);
+    }
   };
 
   const clearPending = async (rowId, idx) => {
@@ -334,6 +385,9 @@ export default function BillingReviewAndChangePage() {
           </span>
         )}
         <div style={{ flex: 1 }} />
+        <button onClick={() => setAddOpen({})} disabled={saving} style={btnAction}>
+          <Plus size={13} /> Add service
+        </button>
         <button onClick={() => setUpliftOpen(true)} disabled={saving} style={btnAction}>
           <TrendingUp size={13} /> Apply uplift…
         </button>
@@ -474,6 +528,7 @@ export default function BillingReviewAndChangePage() {
                           isEditing={isEditing}
                           focused={focused}
                           onEdit={() => cell && cell.services.length === 1 && setEditing({ entityId: entity.id, serviceId: sid })}
+                          onAdd={() => setAddOpen({ entityId: entity.id, serviceId: sid })}
                           onSave={(val) => saveCellEdit(cell, val)}
                           onCancel={() => setEditing(null)}
                           onClearPending={() => {
@@ -502,13 +557,32 @@ export default function BillingReviewAndChangePage() {
           saving={saving}
         />
       )}
+      {addOpen && (
+        <AddServiceModal
+          services={matrix.services}
+          entities={matrix.entityList}
+          defaults={addOpen}
+          onClose={() => setAddOpen(null)}
+          onApply={addService}
+          saving={saving}
+        />
+      )}
     </div>
   );
 }
 
-function Cell({ cell, isEditing, focused, onEdit, onSave, onCancel, onClearPending }) {
+function Cell({ cell, isEditing, focused, onEdit, onSave, onCancel, onClearPending, onAdd }) {
   if (!cell) {
-    return <td style={{ ...cellTd, background: focused ? '#f0f9ff' : undefined }}><span style={{ color: '#cbd5e1' }}>—</span></td>;
+    // Empty cell — click to add the service for this client.
+    return (
+      <td
+        onClick={onAdd}
+        style={{ ...cellTd, background: focused ? '#f0f9ff' : undefined, cursor: onAdd ? 'pointer' : 'default' }}
+        title="Click to add this service for the client"
+      >
+        <span style={{ color: '#cbd5e1' }}>{onAdd ? '+ add' : '—'}</span>
+      </td>
+    );
   }
   const duplicate = cell.services.length > 1;
   if (isEditing && !duplicate) {
@@ -647,6 +721,91 @@ function ApplyUpliftModal({ services, defaultServiceId, onClose, onApplyInflatio
         <button onClick={onClose} disabled={saving} style={modalBtnGhost}>Cancel</button>
         <button onClick={apply} disabled={saving} style={modalBtnPrimary}>
           {saving ? 'Staging…' : 'Stage uplift'}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function AddServiceModal({ services, entities, defaults, onClose, onApply, saving }) {
+  const [entityId, setEntityId] = useState(defaults.entityId || '');
+  const [serviceMode, setServiceMode] = useState(defaults.serviceId ? 'existing' : 'existing'); // existing | new
+  const [serviceId, setServiceId] = useState(defaults.serviceId || (services[0] || ''));
+  const [newServiceId, setNewServiceId] = useState('');
+  const [description, setDescription] = useState('');
+  const [cadence, setCadence] = useState('monthly');
+  const [amount, setAmount] = useState(0);
+  const [effectiveAt, setEffectiveAt] = useState('2026-06-01');
+  const [reason, setReason] = useState('New service added on Change matrix');
+
+  const finalServiceId = serviceMode === 'new' ? newServiceId.trim() : serviceId;
+  const canApply = entityId && finalServiceId && Number(amount) > 0;
+
+  return (
+    <ModalShell title="Add service" onClose={onClose}>
+      <Label>Client</Label>
+      <select value={entityId} onChange={(e) => setEntityId(e.target.value)} style={inputStyle}>
+        <option value="">— pick a client —</option>
+        {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+      </select>
+
+      <div style={{ display: 'flex', gap: 6, marginTop: 12, background: '#f8fafc', padding: 4, borderRadius: 8 }}>
+        <StratTab label="Pick existing service" active={serviceMode === 'existing'} onClick={() => setServiceMode('existing')} />
+        <StratTab label="Type a new service" active={serviceMode === 'new'} onClick={() => setServiceMode('new')} />
+      </div>
+
+      {serviceMode === 'existing' ? (
+        <>
+          <Label style={{ marginTop: 10 }}>Service</Label>
+          <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} style={inputStyle}>
+            {services.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </>
+      ) : (
+        <>
+          <Label style={{ marginTop: 10 }}>New service id</Label>
+          <input type="text" value={newServiceId} onChange={(e) => setNewServiceId(e.target.value)} placeholder="e.g. Annual Confirmation Statement" style={inputStyle} />
+          <Label style={{ marginTop: 10 }}>Description (optional)</Label>
+          <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Free-text description shown alongside the service id" style={inputStyle} />
+        </>
+      )}
+
+      <Label style={{ marginTop: 10 }}>Cadence</Label>
+      <select value={cadence} onChange={(e) => setCadence(e.target.value)} style={inputStyle}>
+        <option value="monthly">Monthly</option>
+        <option value="annual">Annual</option>
+        <option value="one_off">One-off</option>
+      </select>
+
+      <Label style={{ marginTop: 10 }}>{cadence === 'annual' ? 'Annual £' : cadence === 'monthly' ? 'Monthly £' : 'Amount £'}</Label>
+      <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={inputStyle} />
+
+      <Label style={{ marginTop: 10 }}>Effective from</Label>
+      <input type="date" value={effectiveAt} onChange={(e) => setEffectiveAt(e.target.value)} style={inputStyle} />
+
+      <Label style={{ marginTop: 10 }}>Reason / note</Label>
+      <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} style={inputStyle} />
+
+      <p style={{ fontSize: 11, color: '#64748b', marginTop: 10 }}>
+        Stages as a pending uplift. Push from <strong>Push uplifts</strong> to land on the QBO recurring template.
+      </p>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+        <button onClick={onClose} disabled={saving} style={modalBtnGhost}>Cancel</button>
+        <button
+          onClick={() => onApply({
+            entityId,
+            serviceId: finalServiceId,
+            description: description || finalServiceId,
+            cadence,
+            monthlyAmount: Number(amount),
+            effectiveAt,
+            reason,
+          })}
+          disabled={saving || !canApply}
+          style={{ ...modalBtnPrimary, opacity: canApply ? 1 : 0.5, cursor: canApply ? 'pointer' : 'not-allowed' }}
+        >
+          {saving ? 'Adding…' : 'Add service'}
         </button>
       </div>
     </ModalShell>
