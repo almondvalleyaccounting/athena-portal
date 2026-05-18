@@ -569,7 +569,7 @@ export default function BillingReviewPage() {
               <col style={{ width: 230 }} />
               <col style={{ width: 100 }} />
               <col style={{ width: 130 }} />
-              <col style={{ width: 130 }} />
+              <col style={{ width: 210 }} />
             </colgroup>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
@@ -672,31 +672,37 @@ export default function BillingReviewPage() {
                             <X size={13} />
                           </button>
                         )}
-                        <OverflowMenu
-                          items={[
-                            ...(i.status === 'approved' ? [{ label: 'Un-approve', icon: <RotateCcw size={13} />, onClick: () => unapprove(i) }] : []),
-                            {
-                              label: s.recurring_status === 'ending' ? 'Unmark ending' : 'Mark ending (drops from future billing)',
-                              icon: <CalendarX size={13} />,
-                              onClick: () => toggleEnding(i),
-                            },
-                            ...(isDup(i) ? [{
-                              label: 'Mark not a duplicate (intentional)',
-                              icon: <Copy size={13} />,
-                              onClick: () => acknowledgeDuplicate(i),
-                            }] : []),
-                            ...(s.duplicate_acknowledged ? [{
-                              label: 'Re-flag as potential duplicate',
-                              icon: <Copy size={13} />,
-                              onClick: () => unacknowledgeDuplicate(i),
-                            }] : []),
-                            {
-                              label: isEdit ? 'Close editor' : 'Edit cadence and amount',
-                              icon: <Edit2 size={13} />,
-                              onClick: () => setEditing(isEdit ? null : { rowId: i.rowId, serviceIdx: i.serviceIdx }),
-                            },
-                          ]}
-                        />
+                        {i.status === 'approved' && (
+                          <button onClick={() => unapprove(i)} disabled={saving} title="Un-approve" style={iconBtn('#64748b')}>
+                            <RotateCcw size={13} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => toggleEnding(i)}
+                          disabled={saving}
+                          title={s.recurring_status === 'ending' ? 'Unmark ending (back to recurring)' : 'Mark ending (drops from future billing)'}
+                          style={iconBtn(s.recurring_status === 'ending' ? '#b45309' : '#64748b')}
+                        >
+                          <CalendarX size={13} />
+                        </button>
+                        {(isDup(i) || s.duplicate_acknowledged) && (
+                          <button
+                            onClick={() => s.duplicate_acknowledged ? unacknowledgeDuplicate(i) : acknowledgeDuplicate(i)}
+                            disabled={saving}
+                            title={s.duplicate_acknowledged ? 'Re-flag as potential duplicate' : 'Mark not a duplicate (intentional)'}
+                            style={iconBtn(s.duplicate_acknowledged ? '#475569' : '#b91c1c')}
+                          >
+                            <Copy size={13} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setEditing(isEdit ? null : { rowId: i.rowId, serviceIdx: i.serviceIdx })}
+                          disabled={saving}
+                          title="Edit cadence and amount"
+                          style={iconBtn(isEdit ? '#0e7fe0' : '#64748b')}
+                        >
+                          <Edit2 size={13} />
+                        </button>
                       </div>
                     </Td>
                   </tr>
