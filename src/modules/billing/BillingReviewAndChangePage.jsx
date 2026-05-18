@@ -26,6 +26,7 @@ export default function BillingReviewAndChangePage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [rows, setRows] = useState([]);
+  const [qboItems, setQboItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [scope, setScope] = useState('monthly'); // monthly | annual | all
@@ -37,12 +38,20 @@ export default function BillingReviewAndChangePage() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('live_billing')
-      .select('id, entity_id, services, qbo_recurring_txn_id, entity:entities(id, name, entity_status)')
-      .eq('status', 'active')
-      .order('id', { ascending: false });
+    const [{ data }, { data: items }] = await Promise.all([
+      supabase
+        .from('live_billing')
+        .select('id, entity_id, services, qbo_recurring_txn_id, entity:entities(id, name, entity_status)')
+        .eq('status', 'active')
+        .order('id', { ascending: false }),
+      supabase
+        .from('qbo_items')
+        .select('qbo_item_id, name, description, unit_price, active')
+        .eq('active', true)
+        .order('name', { ascending: true }),
+    ]);
     setRows((data || []).filter((r) => (r.entity?.entity_status || 'active') !== 'nlac'));
+    setQboItems(items || []);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -160,7 +169,7 @@ export default function BillingReviewAndChangePage() {
   // is pushed to QBO it can land on the existing template); otherwise
   // attaches to the largest active manual row. Stages the amount as
   // pending so it flows through Uplift Review → push.
-  const addService = async ({ entityId, serviceId, description, cadence, monthlyAmount, effectiveAt, reason }) => {
+  const addService = async ({ entityId, qboItemId, serviceId, description, cadence, monthlyAmount, effectiveAt, reason }) => {
     if (!entityId || !serviceId) return;
     setSaving(true);
     try {
@@ -176,6 +185,7 @@ export default function BillingReviewAndChangePage() {
       const annual  = cadence === 'annual'  ? Number(monthlyAmount) * 12 : monthly * 12;
       services.push({
         service_id: serviceId,
+        qbo_item_id: qboItemId || null,
         description: description || serviceId,
         cadence,
         cadence_months: cadence === 'monthly' ? 1 : cadence === 'annual' ? 12 : 0,
@@ -561,6 +571,7 @@ export default function BillingReviewAndChangePage() {
         <AddServiceModal
           services={matrix.services}
           entities={matrix.entityList}
+          qboItems={qboItems}
           defaults={addOpen}
           onClose={() => setAddOpen(null)}
           onApply={addService}
@@ -727,19 +738,23 @@ function ApplyUpliftModal({ services, defaultServiceId, onClose, onApplyInflatio
   );
 }
 
-function AddServiceModal({ services, entities, defaults, onClose, onApply, saving }) {
+function AddServiceModal({ services, entities, qboItems, defaults, onClose, onApply, saving }) {
   const [entityId, setEntityId] = useState(defaults.entityId || '');
-  const [serviceMode, setServiceMode] = useState(defaults.serviceId ? 'existing' : 'existing'); // existing | new
-  const [serviceId, setServiceId] = useState(defaults.serviceId || (services[0] || ''));
-  const [newServiceId, setNewServiceId] = useState('');
-  const [description, setDescription] = useState('');
+  // Try to pre-pick a QBO item by matching the defaults.serviceId
+  // against item names (defaults.serviceId comes from a column header
+  // click on the matrix — that header IS a QBO item name).
+  const preselected = defaults.serviceId
+    ? (qboItems.find((it) => it.name === defaults.serviceId) || null)
+    : null;
+  const [qboItemId, setQboItemId] = useState(preselected?.qbo_item_id || (qboItems[0]?.qbo_item_id || ''));
+  const selectedItem = qboItems.find((it) => it.qbo_item_id === qboItemId) || null;
+  const [description, setDescription] = useState(preselected?.description || '');
   const [cadence, setCadence] = useState('monthly');
-  const [amount, setAmount] = useState(0);
+  const [amount, setAmount] = useState(preselected?.unit_price || 0);
   const [effectiveAt, setEffectiveAt] = useState('2026-06-01');
   const [reason, setReason] = useState('New service added on Change matrix');
 
-  const finalServiceId = serviceMode === 'new' ? newServiceId.trim() : serviceId;
-  const canApply = entityId && finalServiceId && Number(amount) > 0;
+  const canApply = entityId && qboItemId && Number(amount) > 0;
 
   return (
     <ModalShell title="Add service" onClose={onClose}>
@@ -749,25 +764,27 @@ function AddServiceModal({ services, entities, defaults, onClose, onApply, savin
         {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
       </select>
 
-      <div style={{ display: 'flex', gap: 6, marginTop: 12, background: '#f8fafc', padding: 4, borderRadius: 8 }}>
-        <StratTab label="Pick existing service" active={serviceMode === 'existing'} onClick={() => setServiceMode('existing')} />
-        <StratTab label="Type a new service" active={serviceMode === 'new'} onClick={() => setServiceMode('new')} />
-      </div>
-
-      {serviceMode === 'existing' ? (
-        <>
-          <Label style={{ marginTop: 10 }}>Service</Label>
-          <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} style={inputStyle}>
-            {services.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </>
-      ) : (
-        <>
-          <Label style={{ marginTop: 10 }}>New service id</Label>
-          <input type="text" value={newServiceId} onChange={(e) => setNewServiceId(e.target.value)} placeholder="e.g. Annual Confirmation Statement" style={inputStyle} />
-          <Label style={{ marginTop: 10 }}>Description (optional)</Label>
-          <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Free-text description shown alongside the service id" style={inputStyle} />
-        </>
+      <Label style={{ marginTop: 12 }}>QBO service item</Label>
+      <select
+        value={qboItemId}
+        onChange={(e) => {
+          const id = e.target.value;
+          setQboItemId(id);
+          const item = qboItems.find((it) => it.qbo_item_id === id);
+          if (item) {
+            setDescription(item.description || item.name);
+            if (!amount || amount === 0) setAmount(item.unit_price || 0);
+          }
+        }}
+        style={inputStyle}
+      >
+        <option value="">— pick QBO item —</option>
+        {qboItems.map((it) => (
+          <option key={it.qbo_item_id} value={it.qbo_item_id}>{it.name}</option>
+        ))}
+      </select>
+      {selectedItem?.description && (
+        <p style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{selectedItem.description}</p>
       )}
 
       <Label style={{ marginTop: 10 }}>Cadence</Label>
@@ -795,8 +812,9 @@ function AddServiceModal({ services, entities, defaults, onClose, onApply, savin
         <button
           onClick={() => onApply({
             entityId,
-            serviceId: finalServiceId,
-            description: description || finalServiceId,
+            qboItemId,
+            serviceId: selectedItem?.name || '',
+            description: description || selectedItem?.description || selectedItem?.name || '',
             cadence,
             monthlyAmount: Number(amount),
             effectiveAt,

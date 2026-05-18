@@ -32,6 +32,7 @@ export default function BillingAddNewPage() {
   const { profile } = useAuth();
 
   const [candidates, setCandidates] = useState([]);
+  const [qboItems, setQboItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -40,7 +41,7 @@ export default function BillingAddNewPage() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: ents }, { data: allocs }] = await Promise.all([
+    const [{ data: ents }, { data: allocs }, { data: items }] = await Promise.all([
       supabase
         .from('entities')
         .select('id, name, type, bm_client_id')
@@ -51,7 +52,13 @@ export default function BillingAddNewPage() {
       supabase
         .from('v_inferred_allocations')
         .select('entity_id, canonical_service_id'),
+      supabase
+        .from('qbo_items')
+        .select('qbo_item_id, name, description, type, unit_price, active')
+        .eq('active', true)
+        .order('name', { ascending: true }),
     ]);
+    setQboItems(items || []);
 
     const servicesByEntity = new Map();
     for (const a of allocs || []) {
@@ -94,6 +101,7 @@ export default function BillingAddNewPage() {
       const annual = l.cadence === 'annual' ? Number(l.amount) || 0 : monthly * 12;
       return {
         service_id: l.serviceId,
+        qbo_item_id: l.qboItemId || null,
         description: l.description || SERVICE_BY_ID[l.serviceId]?.label || l.serviceId,
         cadence: l.cadence,
         cadence_months: l.cadence === 'monthly' ? 1 : l.cadence === 'annual' ? 12 : 0,
@@ -220,6 +228,7 @@ export default function BillingAddNewPage() {
       {adding && (
         <AddBillingModal
           candidate={adding}
+          qboItems={qboItems}
           onClose={() => setAdding(null)}
           onApply={(payload) => addBilling({ entityId: adding.id, lines: payload })}
           saving={saving}
@@ -229,14 +238,35 @@ export default function BillingAddNewPage() {
   );
 }
 
-function AddBillingModal({ candidate, onClose, onApply, saving }) {
+function AddBillingModal({ candidate, qboItems, onClose, onApply, saving }) {
+  // Heuristic — try to match a BM canonical service to a QBO item by
+  // a fuzzy name overlap (e.g. 'bookkeeping' canonical → QBO Item with
+  // 'Bookkeeping' in its name). Falls back to no QBO link.
+  const findQboItem = (canonicalServiceId) => {
+    const label = (SERVICE_BY_ID[canonicalServiceId]?.label || '').toLowerCase();
+    if (!label) return null;
+    const tokens = label.split(/\s+/).filter(Boolean);
+    return qboItems.find((it) => {
+      const n = (it.name || '').toLowerCase();
+      return tokens.every((t) => n.includes(t));
+    }) || qboItems.find((it) => (it.name || '').toLowerCase().includes(tokens[0])) || null;
+  };
+
   // Seed one row per service the BM allocation says they have, with
-  // the canonical cadence + a sensible default amount. Staff can edit
-  // or delete each, or add free-text extras.
+  // the canonical cadence + a sensible default amount. Each line also
+  // attempts to pre-match a QBO item so the dropdown lands on the
+  // right line item ready for the future push to a recurring template.
   const [lines, setLines] = useState(
     candidate.services.map((sid) => {
       const def = SERVICE_BY_ID[sid] || { cadence: 'monthly', defaultAmount: 0, label: sid };
-      return { serviceId: sid, description: def.label, cadence: def.cadence, amount: def.defaultAmount };
+      const item = findQboItem(sid);
+      return {
+        qboItemId: item?.qbo_item_id || '',
+        serviceId: item?.name || def.label || sid,
+        description: item?.description || def.label,
+        cadence: def.cadence,
+        amount: (item?.unit_price && item.unit_price > 0) ? Number(item.unit_price) : def.defaultAmount,
+      };
     }),
   );
 
@@ -252,8 +282,23 @@ function AddBillingModal({ candidate, onClose, onApply, saving }) {
   const annualised = totals.monthly * 12 + totals.annual;
 
   const updateLine = (idx, patch) => setLines((prev) => prev.map((l, i) => i === idx ? { ...l, ...patch } : l));
-  const addLine = () => setLines((prev) => [...prev, { serviceId: '', description: '', cadence: 'monthly', amount: 0 }]);
+  const addLine = () => setLines((prev) => [...prev, { qboItemId: '', serviceId: '', description: '', cadence: 'monthly', amount: 0 }]);
   const removeLine = (idx) => setLines((prev) => prev.filter((_, i) => i !== idx));
+  const pickQboItem = (idx, qboItemId) => {
+    const item = qboItems.find((i) => i.qbo_item_id === qboItemId);
+    if (!item) {
+      updateLine(idx, { qboItemId: '', serviceId: '', description: '' });
+      return;
+    }
+    updateLine(idx, {
+      qboItemId: item.qbo_item_id,
+      serviceId: item.name,
+      description: item.description || item.name,
+      // Default amount from the item's UnitPrice if we have it AND
+      // the user hasn't already typed one.
+      ...(item.unit_price && (!lines[idx] || Number(lines[idx].amount) === 0) ? { amount: Number(item.unit_price) } : {}),
+    });
+  };
 
   return (
     <div style={overlayStyle} onClick={onClose}>
@@ -283,16 +328,17 @@ function AddBillingModal({ candidate, onClose, onApply, saving }) {
               {lines.map((l, idx) => (
                 <tr key={idx} style={{ borderTop: '1px solid #f1f5f9' }}>
                   <Td>
-                    <input
-                      value={l.serviceId}
-                      onChange={(e) => updateLine(idx, { serviceId: e.target.value, description: SERVICE_BY_ID[e.target.value]?.label || e.target.value })}
-                      placeholder="service id"
-                      list={`svc-${idx}`}
+                    <select
+                      value={l.qboItemId}
+                      onChange={(e) => pickQboItem(idx, e.target.value)}
                       style={inlineInput}
-                    />
-                    <datalist id={`svc-${idx}`}>
-                      {CANONICAL_SERVICES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                    </datalist>
+                      title={l.description || ''}
+                    >
+                      <option value="">— pick QBO item —</option>
+                      {qboItems.map((it) => (
+                        <option key={it.qbo_item_id} value={it.qbo_item_id}>{it.name}</option>
+                      ))}
+                    </select>
                   </Td>
                   <Td>
                     <select value={l.cadence} onChange={(e) => updateLine(idx, { cadence: e.target.value })} style={inlineInput}>
@@ -333,8 +379,8 @@ function AddBillingModal({ candidate, onClose, onApply, saving }) {
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
             <button onClick={onClose} disabled={saving} style={modalBtnGhost}>Cancel</button>
             <button
-              onClick={() => onApply(lines.filter((l) => l.serviceId && Number(l.amount) > 0))}
-              disabled={saving || lines.every((l) => !l.serviceId || Number(l.amount) <= 0)}
+              onClick={() => onApply(lines.filter((l) => l.qboItemId && Number(l.amount) > 0))}
+              disabled={saving || lines.every((l) => !l.qboItemId || Number(l.amount) <= 0)}
               style={modalBtnPrimary}
             >
               {saving ? 'Adding…' : 'Add to billing book'}

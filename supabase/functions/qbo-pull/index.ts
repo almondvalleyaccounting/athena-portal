@@ -28,6 +28,29 @@ Deno.serve(async (req) => {
       "Customer",
     );
 
+    // Pull the QBO Item catalog and mirror it into qbo_items. Powers
+    // the Add Billing service dropdown and gives future qbo-push the
+    // canonical ItemRef.value for each line.
+    const qboItems = await pageAll<Record<string, unknown>>(
+      (start, n) => qboQuery(`SELECT * FROM Item STARTPOSITION ${start} MAXRESULTS ${n}`),
+      "Item",
+    );
+    const nowIso = new Date().toISOString();
+    for (const item of qboItems) {
+      const qboItemId = String(item.Id || "");
+      if (!qboItemId) continue;
+      await sb.from("qbo_items").upsert({
+        qbo_item_id: qboItemId,
+        name: String(item.Name || item.FullyQualifiedName || ""),
+        fully_qualified_name: item.FullyQualifiedName ? String(item.FullyQualifiedName) : null,
+        description: item.Description ? String(item.Description) : null,
+        type: item.Type ? String(item.Type) : null,
+        unit_price: item.UnitPrice != null ? Number(item.UnitPrice) : null,
+        active: item.Active !== false,
+        last_seen: nowIso,
+      }, { onConflict: "qbo_item_id" });
+    }
+
     // ──────────────────────────────────────────────────────────
     // 2. Load entities (for name-based auto-matching on first-seen)
     //    and existing mappings.
