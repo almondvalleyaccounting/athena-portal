@@ -113,8 +113,30 @@ export default function ClientDetailView() {
   if (loading) return <div style={wrapStyle}><p style={{ color: '#94a3b8', fontSize: 13 }}>Loading client...</p></div>;
   if (!entity) return <div style={wrapStyle}><p style={{ color: '#ef4444', fontSize: 13 }}>Client not found.</p></div>;
 
-  const totalMonthly = billing.reduce((s, b) => s + (parseFloat(b.monthly_fee) || 0), 0);
-  const totalAnnual = totalMonthly * 12;
+  // Compute totals from the services[] jsonb (the post-2026 schema).
+  // monthly_fee on the row was the pre-Athena schema; falling back to
+  // the new approval-aware aggregation here.
+  const approvedServices = (() => {
+    const out = [];
+    for (const b of billing || []) {
+      if (b.status && b.status !== 'active') continue;
+      const services = Array.isArray(b.services) ? b.services : [];
+      for (const s of services) {
+        if (s.recurring_status === 'ending') continue;
+        const status = s.approval_status || (b.qbo_recurring_txn_id ? 'approved' : 'suggested');
+        if (status !== 'approved') continue;
+        out.push({ ...s, row_id: b.id, fromTemplate: !!b.qbo_recurring_txn_id });
+      }
+    }
+    return out;
+  })();
+  const totalMonthly = approvedServices
+    .filter((s) => s.cadence === 'monthly')
+    .reduce((sum, s) => sum + (Number(s.monthly_amount) || 0), 0);
+  const totalAnnualFees = approvedServices
+    .filter((s) => s.cadence === 'annual')
+    .reduce((sum, s) => sum + (Number(s.annual_amount) || 0), 0);
+  const totalAnnual = totalMonthly * 12 + totalAnnualFees;
   const activeQuotes = quotes.filter((q) => ['accepted', 'sent', 'approved'].includes(q.status));
   const openIssues = issues.filter((i) => !['resolved', 'closed'].includes(i.status));
   const totalCompleted = filteredCompleted.reduce((s, t) => s + (t.completion_mins || 0), 0);
@@ -219,16 +241,24 @@ export default function ClientDetailView() {
       {activeSection === 'billing' && (
         <div style={{ ...cardStyle, marginBottom: 20 }}>
           <h3 style={sectionTitle}>Active Billing</h3>
-          {billing.length > 0 ? (
+          {approvedServices.length > 0 ? (
             <>
-              <div style={{ display: 'flex', gap: 20, marginBottom: 12 }}>
+              <div style={{ display: 'flex', gap: 20, marginBottom: 12, flexWrap: 'wrap' }}>
                 <div><div style={{ fontSize: 10, color: '#94a3b8' }}>Monthly</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalMonthly)}</div></div>
-                <div><div style={{ fontSize: 10, color: '#94a3b8' }}>Annual</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalAnnual)}</div></div>
+                <div><div style={{ fontSize: 10, color: '#94a3b8' }}>Annual fees (pure)</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f766e' }}>{fmt(totalAnnualFees)}</div></div>
+                <div><div style={{ fontSize: 10, color: '#94a3b8' }}>Annualised (×12 + annual)</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalAnnual)}</div></div>
               </div>
-              {billing.map((b) => (
-                <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#1e293b' }}>{b.service_description || 'Service'}</span>
-                  <span style={{ fontWeight: 500 }}>{fmt(b.monthly_fee)}/mo</span>
+              {approvedServices.map((s, idx) => (
+                <div key={`${s.row_id}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
+                  <span style={{ color: '#1e293b' }}>
+                    {s.service_id || s.description || 'Service'}
+                    {s.fromTemplate && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600, padding: '1px 5px', borderRadius: 4, background: '#ccfbf1', color: '#115e59' }}>QBO TEMPLATE</span>}
+                  </span>
+                  <span style={{ fontWeight: 500, fontFamily: 'monospace' }}>
+                    {s.cadence === 'annual'
+                      ? `${fmt(s.annual_amount)}/yr`
+                      : `${fmt(s.monthly_amount)}/mo`}
+                  </span>
                 </div>
               ))}
 
