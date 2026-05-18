@@ -467,12 +467,20 @@ Deno.serve(async (req) => {
         // 'approved' AND its monthly_amount is still within ±10% of the
         // new one, keep it approved — otherwise revert to 'suggested'
         // with a review_reason noting the drift. 'rejected' is sticky.
-        const { data: existingForMerge } = await sb
+        // .maybeSingle() errors when multiple matches exist (legacy
+        // dup rows from earlier pulls) — order+limit instead so we
+        // deterministically pick the latest manual row and merge into
+        // it, leaving duplicates alone. Also filter on status='active'
+        // so we don't reactivate cancelled rows.
+        const { data: existingForMergeArr } = await sb
           .from("live_billing")
           .select("id, services")
           .eq("entity_id", entity.id)
+          .eq("status", "active")
           .is("qbo_recurring_txn_id", null)
-          .maybeSingle();
+          .order("last_synced_qbo", { ascending: false, nullsFirst: false })
+          .limit(1);
+        const existingForMerge = (existingForMergeArr && existingForMergeArr[0]) || null;
         const priorServicesById = new Map<string, Record<string, unknown>>();
         for (const s of (existingForMerge?.services as Array<Record<string, unknown>> | null) || []) {
           priorServicesById.set(String(s.service_id || ""), s);
