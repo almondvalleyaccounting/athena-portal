@@ -307,9 +307,11 @@ Deno.serve(async (req) => {
           "pending_effective_at",
           "pending_uplift_reason",
           "pending_uplift_staged_at",
+          "pending_uplift_strategy",
           "last_uplift_at",
           "last_uplift_reason",
           "last_uplift_pushed_at",
+          "qbo_item_id",
         ];
 
         // Recurring-txn services are auto-approved — a QBO template is
@@ -679,6 +681,32 @@ Deno.serve(async (req) => {
             }
           }
 
+          // Staff-set flags that must survive an invoice-inference
+          // re-pull (mirroring the template-path preservation just
+          // above). Without this, marking a service as 'ending' or
+          // acknowledging a duplicate gets wiped every pull.
+          const preserveKeys = [
+            "recurring_status",
+            "duplicate_acknowledged",
+            "duplicate_acknowledged_by",
+            "duplicate_acknowledged_at",
+            "pending_monthly_amount",
+            "pending_effective_at",
+            "pending_uplift_reason",
+            "pending_uplift_staged_at",
+            "pending_uplift_strategy",
+            "last_uplift_at",
+            "last_uplift_reason",
+            "last_uplift_pushed_at",
+            "qbo_item_id",
+          ];
+          const preserved: Record<string, unknown> = {};
+          if (prior) {
+            for (const k of preserveKeys) {
+              if (prior[k] !== undefined && prior[k] !== null) preserved[k] = prior[k];
+            }
+          }
+
           return {
             service_id: bucket.service_id,
             description: bucket.description,
@@ -697,6 +725,7 @@ Deno.serve(async (req) => {
             approved_by,
             approved_at,
             billing_type: cadence === "monthly" ? "recurring" : "annual",
+            ...preserved,
           };
         });
 
