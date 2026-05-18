@@ -46,7 +46,7 @@ export default function ClientDetailView() {
       try {
         const results = await Promise.allSettled([
           supabase.from('entities').select('*').eq('id', id).single(),
-          supabase.from('live_billing').select('*').eq('entity_id', id).order('service_description'),
+          supabase.from('live_billing').select('*').eq('entity_id', id).order('created_at'),
           supabase.from('quotes').select('id, quote_ref, status, monthly_gross, annual_total, created_at, relationship_group').eq('entity_id', id).order('created_at', { ascending: false }),
           supabase.from('quick_tasks').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
           supabase.from('scheduled_tasks').select('*').eq('entity_id', id).order('title'),
