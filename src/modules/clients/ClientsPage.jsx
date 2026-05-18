@@ -4,11 +4,13 @@ import { Plus, Search, Building2, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import NewClientModal from '../../components/NewClientModal';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
+import { fmtGbp } from '../../lib/money';
 
 /* ─── Clients list page ────────────────────────────────────── */
 export default function ClientsPage() {
   const navigate = useNavigate();
   const [entities, setEntities] = useState([]);
+  const [billingByEntity, setBillingByEntity] = useState({}); // entity_id → { monthly, annual, hasTemplate }
   const [search, setSearch] = useState('');
   const [letter, setLetter] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -16,16 +18,49 @@ export default function ClientsPage() {
 
   const loadEntities = async () => {
     try {
-      const { data, error } = await supabase
-        .from('entities')
-        .select('id, name, type, entity_status, company_number, manager, prospect_email, source, created_at')
-        .order('name', { ascending: true });
-      if (error) {
-        console.error('[Clients] load error:', error.message);
+      const [entitiesResp, billingResp] = await Promise.all([
+        supabase
+          .from('entities')
+          .select('id, name, type, entity_status, company_number, manager, prospect_email, source, created_at')
+          .order('name', { ascending: true }),
+        supabase
+          .from('live_billing')
+          .select('entity_id, services, qbo_recurring_txn_id')
+          .eq('status', 'active'),
+      ]);
+      if (entitiesResp.error) {
+        console.error('[Clients] entities load error:', entitiesResp.error.message);
         setEntities([]);
       } else {
-        setEntities(data || []);
+        setEntities(entitiesResp.data || []);
       }
+
+      // Aggregate approved fees per entity from live_billing.services.
+      // Monthly = sum of approved monthly_amount (ex VAT).
+      // Annual  = sum of approved annual_amount for cadence=annual lines
+      //           (pure annual fees, not monthly × 12).
+      const map = {};
+      for (const r of billingResp.data || []) {
+        const id = r.entity_id;
+        if (!id) continue;
+        const entry = map[id] || { monthly: 0, annual: 0, hasTemplate: false };
+        if (r.qbo_recurring_txn_id) entry.hasTemplate = true;
+        const services = Array.isArray(r.services) ? r.services : [];
+        for (const s of services) {
+          if (s.recurring_status === 'ending') continue;
+          const status = s.approval_status || (r.qbo_recurring_txn_id ? 'approved' : 'suggested');
+          if (status !== 'approved') continue;
+          if (s.cadence === 'monthly') entry.monthly += Number(s.monthly_amount) || 0;
+          else if (s.cadence === 'annual') entry.annual += Number(s.annual_amount) || 0;
+        }
+        map[id] = entry;
+      }
+      // Round to pennies once at the end.
+      for (const id of Object.keys(map)) {
+        map[id].monthly = Math.round(map[id].monthly * 100) / 100;
+        map[id].annual  = Math.round(map[id].annual  * 100) / 100;
+      }
+      setBillingByEntity(map);
     } catch (e) {
       console.error('[Clients] load threw:', e);
       setEntities([]);
@@ -93,6 +128,32 @@ export default function ClientsPage() {
       }}>
         {s.replace('_', ' ')}
       </span>
+    );
+  };
+
+  const FeesBlock = ({ fees }) => {
+    const monthly = fees?.monthly || 0;
+    const annual = fees?.annual || 0;
+    if (monthly === 0 && annual === 0) {
+      return (
+        <div style={{ textAlign: 'right', minWidth: 100 }}>
+          <div style={{ fontSize: 11, color: '#cbd5e1' }}>—</div>
+        </div>
+      );
+    }
+    return (
+      <div style={{ textAlign: 'right', minWidth: 110 }} title="Approved fees, ex VAT">
+        {monthly > 0 && (
+          <div style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>
+            {fmtGbp(monthly)}<span style={{ fontSize: 10, fontWeight: 500, color: '#94a3b8' }}> /mo</span>
+          </div>
+        )}
+        {annual > 0 && (
+          <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#0f766e' }}>
+            {fmtGbp(annual)}<span style={{ fontSize: 10, color: '#94a3b8' }}> /yr</span>
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -208,6 +269,7 @@ export default function ClientsPage() {
                   {e.manager && ` · ${e.manager}`}
                 </div>
               </div>
+              <FeesBlock fees={billingByEntity[e.id]} />
               {statusBadge(e.entity_status)}
             </div>
           ))}
