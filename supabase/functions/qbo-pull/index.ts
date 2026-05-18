@@ -254,6 +254,41 @@ Deno.serve(async (req) => {
         const monthlyGross = Math.round((monthlyNet + monthlyVat) * 100) / 100;
         const annualTotal = Math.round(monthlyNet * 12 * 100) / 100;
 
+        // Load prior services on this row's existing live_billing entry
+        // (matched by either the txn id or — for the orphan-attach case
+        // below — the entity's manual row). Staff-set flags must survive
+        // the rebuild from QBO:
+        //   - recurring_status ('ending')
+        //   - duplicate_acknowledged + ack metadata
+        //   - pending_monthly_amount and pending_* (staged uplifts)
+        //   - last_uplift_* (history of pushed uplifts)
+        // QBO is authoritative for amounts/cadence/description — those
+        // come from the template each pull.
+        const { data: priorRow } = await sb
+          .from("live_billing")
+          .select("services")
+          .or(`qbo_recurring_txn_id.eq.${txnId},and(entity_id.eq.${entity.id},status.eq.active,qbo_recurring_txn_id.is.null)`)
+          .order("last_synced_qbo", { ascending: false, nullsFirst: false })
+          .limit(1)
+          .maybeSingle();
+        const priorTplServicesById = new Map<string, Record<string, unknown>>();
+        for (const s of (priorRow?.services as Array<Record<string, unknown>> | null) || []) {
+          if (s.service_id) priorTplServicesById.set(String(s.service_id), s);
+        }
+        const preserveKeys = [
+          "recurring_status",
+          "duplicate_acknowledged",
+          "duplicate_acknowledged_by",
+          "duplicate_acknowledged_at",
+          "pending_monthly_amount",
+          "pending_effective_at",
+          "pending_uplift_reason",
+          "pending_uplift_staged_at",
+          "last_uplift_at",
+          "last_uplift_reason",
+          "last_uplift_pushed_at",
+        ];
+
         // Recurring-txn services are auto-approved — a QBO template is
         // explicit staff intent, not an inference. Staff can still edit
         // via the review queue.
@@ -261,8 +296,16 @@ Deno.serve(async (req) => {
           const detail = l.SalesItemLineDetail as Record<string, unknown> | undefined;
           const perOccurrence = Number(l.Amount) || 0;
           const monthly = Math.round(perOccurrence * factor * 100) / 100;
+          const sid = detail?.ItemRef ? String((detail.ItemRef as Record<string, unknown>).name || "service") : "service";
+          const prior = priorTplServicesById.get(sid);
+          const preserved: Record<string, unknown> = {};
+          if (prior) {
+            for (const k of preserveKeys) {
+              if (prior[k] !== undefined && prior[k] !== null) preserved[k] = prior[k];
+            }
+          }
           return {
-            service_id: detail?.ItemRef ? String((detail.ItemRef as Record<string, unknown>).name || "service") : "service",
+            service_id: sid,
             description: String(l.Description || ""),
             cadence: "monthly" as const,
             cadence_months: 1,
@@ -272,6 +315,7 @@ Deno.serve(async (req) => {
             approved_by: "system:qbo_template",
             approved_at: now,
             billing_type: "recurring" as const,
+            ...preserved,
           };
         });
 
