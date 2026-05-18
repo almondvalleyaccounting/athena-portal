@@ -36,9 +36,11 @@ export default function ClientsPage() {
       }
 
       // Aggregate approved fees per entity from live_billing.services.
-      // Monthly = sum of approved monthly_amount (ex VAT).
-      // Annual  = sum of approved annual_amount for cadence=annual lines
-      //           (pure annual fees, not monthly × 12).
+      // Convention: monthly_amount is the actual per-cycle charge.
+      // Monthly = sum of monthly_amount for cadence=monthly lines.
+      // Annual  = sum of monthly_amount for cadence=annual lines
+      //           (annual_amount in storage is monthly_amount × 12,
+      //            so it would inflate by 12x — don't use it here).
       const map = {};
       for (const r of billingResp.data || []) {
         const id = r.entity_id;
@@ -51,7 +53,7 @@ export default function ClientsPage() {
           const status = s.approval_status || (r.qbo_recurring_txn_id ? 'approved' : 'suggested');
           if (status !== 'approved') continue;
           if (s.cadence === 'monthly') entry.monthly += Number(s.monthly_amount) || 0;
-          else if (s.cadence === 'annual') entry.annual += Number(s.annual_amount) || 0;
+          else if (s.cadence === 'annual') entry.annual += Number(s.monthly_amount) || 0;
         }
         map[id] = entry;
       }

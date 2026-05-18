@@ -133,9 +133,11 @@ export default function ClientDetailView() {
   const totalMonthly = approvedServices
     .filter((s) => s.cadence === 'monthly')
     .reduce((sum, s) => sum + (Number(s.monthly_amount) || 0), 0);
+  // For annual lines, monthly_amount is the once-per-year fee
+  // (annual_amount in storage is monthly_amount × 12 and would inflate).
   const totalAnnualFees = approvedServices
     .filter((s) => s.cadence === 'annual')
-    .reduce((sum, s) => sum + (Number(s.annual_amount) || 0), 0);
+    .reduce((sum, s) => sum + (Number(s.monthly_amount) || 0), 0);
   const totalAnnual = totalMonthly * 12 + totalAnnualFees;
   const activeQuotes = quotes.filter((q) => ['accepted', 'sent', 'approved'].includes(q.status));
   const openIssues = issues.filter((i) => !['resolved', 'closed'].includes(i.status));
@@ -256,7 +258,7 @@ export default function ClientDetailView() {
                   </span>
                   <span style={{ fontWeight: 500, fontFamily: 'monospace' }}>
                     {s.cadence === 'annual'
-                      ? `${fmt(s.annual_amount)}/yr`
+                      ? `${fmt(s.monthly_amount)}/yr`
                       : `${fmt(s.monthly_amount)}/mo`}
                   </span>
                 </div>
