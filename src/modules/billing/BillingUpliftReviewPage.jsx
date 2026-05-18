@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail } from 'lucide-react';
+import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail, ArrowUp, ArrowDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
@@ -31,6 +31,14 @@ export default function BillingUpliftReviewPage() {
   const [search, setSearch] = useState('');
   const [emailFor, setEmailFor] = useState(null); // row whose draft email is being previewed
   const [emailsBatch, setEmailsBatch] = useState(null); // list of rows for bulk preview
+  // Sort state for the Push table. Default: largest delta first so
+  // the user works through the meaningful changes top-down.
+  const [sortBy, setSortBy] = useState({ key: 'delta', dir: 'desc' });
+  const cycleSort = (key) => setSortBy((prev) => {
+    if (prev.key !== key) return { key, dir: key === 'client' ? 'asc' : 'desc' };
+    if (prev.dir === 'desc') return { key, dir: 'asc' };
+    return { key: 'delta', dir: 'desc' };
+  });
 
   const load = async () => {
     setLoading(true);
@@ -67,15 +75,30 @@ export default function BillingUpliftReviewPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
+  // Totals are now full-row (the QBO template's total monthly), not
+  // just the pending services. Sum every approved monthly service —
+  // for ones with a pending uplift use the pending amount in the new
+  // total; otherwise the unchanged amount appears in both columns.
   const summarised = useMemo(() => rows.map((r) => {
-    const services = (r.services || []).filter((s) => s.pending_monthly_amount != null);
-    const oldTotal = services.reduce((sum, s) => sum + (Number(s.monthly_amount) || 0), 0);
-    const newTotal = services.reduce((sum, s) => sum + (Number(s.pending_monthly_amount) || 0), 0);
-    const goLive = services.map((s) => s.pending_effective_at).filter(Boolean).sort()[0] || null;
-    const reason = services.map((s) => s.pending_uplift_reason).find(Boolean) || null;
+    const allServices = r.services || [];
+    const pending = allServices.filter((s) => s.pending_monthly_amount != null);
+    let oldTotal = 0;
+    let newTotal = 0;
+    for (const s of allServices) {
+      if (s.recurring_status === 'ending') continue;
+      const status = s.approval_status || (r.qbo_recurring_txn_id ? 'approved' : 'suggested');
+      if (status !== 'approved') continue;
+      if (s.cadence !== 'monthly') continue;
+      const cur = Number(s.monthly_amount) || 0;
+      const pen = s.pending_monthly_amount != null ? Number(s.pending_monthly_amount) : cur;
+      oldTotal += cur;
+      newTotal += pen;
+    }
+    const goLive = pending.map((s) => s.pending_effective_at).filter(Boolean).sort()[0] || null;
+    const reason = pending.map((s) => s.pending_uplift_reason).find(Boolean) || null;
     return {
       ...r,
-      _pendingLines: services.length,
+      _pendingLines: pending.length,
       _oldTotal: Math.round(oldTotal * 100) / 100,
       _newTotal: Math.round(newTotal * 100) / 100,
       _delta: Math.round((newTotal - oldTotal) * 100) / 100,
@@ -104,8 +127,28 @@ export default function BillingUpliftReviewPage() {
     }
     const q = search.trim().toLowerCase();
     if (q) out = out.filter((r) => (r.entity?.name || '').toLowerCase().includes(q));
+
+    const dir = sortBy.dir === 'asc' ? 1 : -1;
+    const getKey = (r) => {
+      switch (sortBy.key) {
+        case 'client':    return (r.entity?.name || '').toLowerCase();
+        case 'lines':     return r._pendingLines || 0;
+        case 'old':       return r._oldTotal || 0;
+        case 'new':       return r._newTotal || 0;
+        case 'delta':     return r._delta || 0;
+        case 'goLive':    return r._goLive || '';
+        case 'nextRun':   return r.qbo_next_run_date || '';
+        case 'status':    return r.uplift_review_status || 'staged';
+        default:          return 0;
+      }
+    };
+    out = [...out].sort((a, b) => {
+      const av = getKey(a), bv = getKey(b);
+      if (typeof av === 'string' && typeof bv === 'string') return av.localeCompare(bv) * dir;
+      return ((av || 0) - (bv || 0)) * dir;
+    });
     return out;
-  }, [summarised, filter, search]);
+  }, [summarised, filter, search, sortBy]);
 
   const totals = useMemo(() => {
     const old = visible.reduce((s, r) => s + r._oldTotal, 0);
@@ -300,14 +343,14 @@ export default function BillingUpliftReviewPage() {
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <Th><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelAll} /></Th>
-                <Th>Client</Th>
-                <Th>Lines</Th>
-                <Th align="right">Old monthly</Th>
-                <Th align="right">New monthly</Th>
-                <Th align="right">Δ</Th>
-                <Th>Go-live</Th>
-                <Th>Next QBO run</Th>
-                <Th>Status</Th>
+                <SortTh label="Client"      sortKey="client"  active={sortBy} onClick={cycleSort} />
+                <SortTh label="Lines"       sortKey="lines"   active={sortBy} onClick={cycleSort} />
+                <SortTh label="Old monthly" sortKey="old"     active={sortBy} onClick={cycleSort} align="right" />
+                <SortTh label="New monthly" sortKey="new"     active={sortBy} onClick={cycleSort} align="right" />
+                <SortTh label="Δ"           sortKey="delta"   active={sortBy} onClick={cycleSort} align="right" />
+                <SortTh label="Go-live"     sortKey="goLive"  active={sortBy} onClick={cycleSort} />
+                <SortTh label="Next QBO run" sortKey="nextRun" active={sortBy} onClick={cycleSort} />
+                <SortTh label="Status"      sortKey="status"  active={sortBy} onClick={cycleSort} />
                 <Th></Th>
               </tr>
             </thead>
@@ -456,6 +499,23 @@ function Pill({ label, count, active, tone, onClick }) {
 }
 
 const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</th>;
+
+function SortTh({ label, sortKey, active, onClick, align }) {
+  const isActive = active.key === sortKey;
+  return (
+    <th
+      onClick={() => onClick(sortKey)}
+      style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: isActive ? '#0f172a' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexDirection: align === 'right' ? 'row-reverse' : 'row' }}>
+        {label}
+        {isActive
+          ? (active.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)
+          : <span style={{ display: 'inline-flex', color: '#cbd5e1' }}><ArrowUp size={9} style={{ marginRight: -3 }} /><ArrowDown size={9} /></span>}
+      </span>
+    </th>
+  );
+}
 const Td = ({ children, align, style, colSpan }) => <td colSpan={colSpan} style={{ padding: '8px 12px', verticalAlign: 'middle', textAlign: align || 'left', ...style }}>{children}</td>;
 
 const backLinkStyle = { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 12, padding: 0, fontFamily: font };
