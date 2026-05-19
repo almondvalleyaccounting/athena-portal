@@ -243,9 +243,10 @@ export default function CapacityView() {
       {/* Heatmap */}
       <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
         <div style={{ display: 'inline-block', minWidth: '100%' }}>
-          {/* Header */}
-          <div style={{ display: 'flex', position: 'sticky', top: 0, background: '#fff', zIndex: 2 }}>
-            <div style={headerCellStyle(STAFF_COL_W, 'left')}>Team member</div>
+          {/* Header — sticky top. First cell is also sticky-left so the
+              "Team member" title stays put under horizontal scroll. */}
+          <div style={{ display: 'flex', position: 'sticky', top: 0, background: '#fff', zIndex: 3 }}>
+            <div style={{ ...headerCellStyle(STAFF_COL_W, 'left'), position: 'sticky', left: 0, zIndex: 4 }}>Team member</div>
             {months.map((m) => (
               <div key={isoMonth(m)} style={headerCellStyle(MONTH_COL_W)}>{fmtMonth(m)}</div>
             ))}
@@ -261,7 +262,7 @@ export default function CapacityView() {
                   width: STAFF_COL_W, minWidth: STAFF_COL_W, height: ROW_H,
                   padding: '0 10px', display: 'flex', alignItems: 'center', gap: 8,
                   borderRight: '1px solid #e5e7eb', background: '#fff',
-                  position: 'sticky', left: 0, zIndex: 1,
+                  position: 'sticky', left: 0, zIndex: 2,
                 }}>
                   <span style={{
                     width: 10, height: 10, borderRadius: '50%',
