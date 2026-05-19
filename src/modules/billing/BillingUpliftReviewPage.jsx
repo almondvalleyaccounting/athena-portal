@@ -92,14 +92,23 @@ export default function BillingUpliftReviewPage() {
       `)
       .eq('status', 'active')
       .order('id', { ascending: false });
-    // A row is "really" pending only if it carries a pending amount on
-    // a service that's still live. A pending value on a service that's
-    // been flagged recurring_status='ending' is dead weight from the
-    // Change matrix — it would contribute £0 to the row delta and clog
-    // the queue with phantom rows (e.g. Road To Sea Ltd).
+    // A row is "really" pending only if at least one service has a
+    // pending amount AND that service is in scope for push:
+    //   - approval_status must be 'approved' (rejected/suggested lines
+    //     have no business pushing to QBO; the Change matrix can stage
+    //     pending values on them, but they're filtered out here)
+    //   - recurring_status must not be 'ending' (a pending value on an
+    //     ending service is dead weight — contributes £0 and just
+    //     clogs the queue with phantom rows)
+    // Past offenders fixed by this filter: Road To Sea Ltd (ending),
+    // Boiler Installation Glasgow Ltd (rejected).
     const filtered = (data || []).filter((r) =>
       Array.isArray(r.services)
-      && r.services.some((s) => s.pending_monthly_amount != null && s.recurring_status !== 'ending')
+      && r.services.some((s) =>
+        s.pending_monthly_amount != null
+        && s.recurring_status !== 'ending'
+        && (s.approval_status || 'approved') === 'approved'
+      )
       && (r.entity?.entity_status || 'active') !== 'nlac'
     );
     setRows(filtered);

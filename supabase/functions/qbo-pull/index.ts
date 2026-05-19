@@ -284,23 +284,49 @@ Deno.serve(async (req) => {
         const monthlyGross = Math.round((monthlyNet + monthlyVat) * 100) / 100;
         const annualTotal = Math.round(monthlyNet * 12 * 100) / 100;
 
-        // Load prior services on this row's existing live_billing entry
-        // (matched by either the txn id or — for the orphan-attach case
-        // below — the entity's manual row). Staff-set flags must survive
-        // the rebuild from QBO:
+        // Used by the prior-services lookup AND the write target below.
+        // Declared once here so both can reference it.
+        const txnId = String(txn.Id || innerTxn.Id);
+
+        // Load prior services on this row's existing live_billing entry.
+        // Staff-set flags must survive the rebuild from QBO:
         //   - recurring_status ('ending')
         //   - duplicate_acknowledged + ack metadata
         //   - pending_monthly_amount and pending_* (staged uplifts)
         //   - last_uplift_* (history of pushed uplifts)
         // QBO is authoritative for amounts/cadence/description — those
         // come from the template each pull.
-        const { data: priorRow } = await sb
+        //
+        // Lookup priority (matters!):
+        //   1. The row already linked to THIS template by qbo_recurring_txn_id.
+        //   2. Fallback to the entity's unlinked manual row (orphan-attach case).
+        //
+        // The earlier .or() + ORDER BY last_synced_qbo picked whichever
+        // row was synced most recently — which meant if an entity had
+        // both a template-linked row and an orphan, the orphan's blank
+        // services could "win" and overwrite the template's acknowledged
+        // flags. Bug surfaced as the Import tab forgetting acknowledged
+        // duplicates after every QBO refresh.
+        let priorRow: { services: unknown } | null = null;
+        const priorByTxn = await sb
           .from("live_billing")
           .select("services")
-          .or(`qbo_recurring_txn_id.eq.${txnId},and(entity_id.eq.${entity.id},status.eq.active,qbo_recurring_txn_id.is.null)`)
-          .order("last_synced_qbo", { ascending: false, nullsFirst: false })
-          .limit(1)
+          .eq("qbo_recurring_txn_id", txnId)
           .maybeSingle();
+        if (priorByTxn.data) {
+          priorRow = priorByTxn.data;
+        } else {
+          const { data: orphan } = await sb
+            .from("live_billing")
+            .select("services")
+            .eq("entity_id", entity.id)
+            .eq("status", "active")
+            .is("qbo_recurring_txn_id", null)
+            .order("last_synced_qbo", { ascending: false, nullsFirst: false })
+            .limit(1)
+            .maybeSingle();
+          priorRow = orphan;
+        }
         const priorTplServicesById = new Map<string, Record<string, unknown>>();
         for (const s of (priorRow?.services as Array<Record<string, unknown>> | null) || []) {
           if (s.service_id) priorTplServicesById.set(String(s.service_id), s);
@@ -350,8 +376,6 @@ Deno.serve(async (req) => {
             ...preserved,
           };
         });
-
-        const txnId = String(txn.Id || innerTxn.Id);
 
         // Find the row to write into. Preference order:
         //   1. Existing row already linked to THIS template (txn id)
