@@ -34,12 +34,15 @@ function resolvePrimaryContact(entity) {
   return primary?.person || null;
 }
 
-// First word of the person's name — placeholder until people.first_name
-// and people.preferred_name land on the schema.
+// Greeting name preference: preferred_name (BM "Preferred Name") wins
+// over first_name; falls back to the first word of `name` so legacy
+// people rows pre-dating the column split still render sensibly.
 function firstNameOf(person) {
-  if (!person?.name) return null;
-  const first = person.name.trim().split(/\s+/)[0];
-  return first || null;
+  if (!person) return null;
+  if (person.preferred_name) return person.preferred_name.trim();
+  if (person.first_name) return person.first_name.trim();
+  if (person.name) return person.name.trim().split(/\s+/)[0] || null;
+  return null;
 }
 
 // Review staged uplifts (pending_monthly_amount on services) before
@@ -83,7 +86,8 @@ export default function BillingUpliftReviewPage() {
         uplift_email_sent_at, uplift_email_to,
         entity:entities(
           id, name, billing_email, entity_status,
-          entity_people(is_primary_contact, person:people(id, name, email))
+          entity_people(is_primary_contact, person:people(id, name, first_name, preferred_name, email)),
+          qbo_customer_mappings(qbo_email, role)
         )
       `)
       .eq('status', 'active')
@@ -600,11 +604,18 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
       seen.add(a.toLowerCase());
       candidates.push({ addr: a, label });
     };
-    // billing_email can already hold multiple comma/semicolon-separated
-    // addresses today (and will be the landing pad for QBO emails once
-    // qbo-pull starts capturing PrimaryEmailAddr).
+    // Candidate sources, in user-facing priority order:
+    //   1. QBO PrimaryEmailAddr (often the one Intuit invoices go to)
+    //   2. entity.billing_email (manual billing override)
+    //   3. BM primary contact's personal email
+    // All three may carry comma/semicolon-separated lists.
+    const qboMaps = r.entity?.qbo_customer_mappings || [];
+    for (const m of qboMaps) {
+      if (m.role === 'not_a_client') continue;
+      for (const a of splitEmails(m.qbo_email)) push(a, 'QBO email');
+    }
     for (const a of splitEmails(r.entity?.billing_email)) push(a, 'Billing email');
-    push(contact?.email, 'Primary contact');
+    for (const a of splitEmails(contact?.email)) push(a, 'Primary contact');
     return {
       row: r,
       contact,

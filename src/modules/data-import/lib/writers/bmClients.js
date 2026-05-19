@@ -34,6 +34,12 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
       manager: r.manager,
       grade: r.grade,
       convert_prospect_id: decisions[r.bm_client_id] || null,
+      // Primary contact — RPC writes into people + entity_people.
+      _primary_email: r._primary_email || null,
+      _primary_first_name: r._primary_first_name || null,
+      _primary_last_name: r._primary_last_name || null,
+      _primary_preferred_name: r._primary_preferred_name || null,
+      _primary_name: r._primary_name || null,
     })),
   };
   const { data, error } = await supabase.rpc('import_bm_clients', {

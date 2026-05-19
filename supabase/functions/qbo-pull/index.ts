@@ -97,6 +97,11 @@ Deno.serve(async (req) => {
         const qboId = String(cust.Id || "");
         if (!qboId) continue;
         const name = String(cust.DisplayName || cust.CompanyName || cust.FullyQualifiedName || "").trim();
+        // QBO's PrimaryEmailAddr.Address is a single string that can
+        // hold multiple addresses (comma- or semicolon-separated). Store
+        // raw; consumers split at display time.
+        const qboEmailRaw = (cust.PrimaryEmailAddr as Record<string, unknown> | undefined)?.Address;
+        const qboEmail = qboEmailRaw ? String(qboEmailRaw).trim() : null;
         mapStats.seen++;
 
         const existing = mapByQboId.get(qboId);
@@ -105,6 +110,7 @@ Deno.serve(async (req) => {
           const flagForReview = nameChanged && existing.role === 'not_a_client';
           const updateFields: Record<string, unknown> = {
             qbo_customer_name: name,
+            qbo_email: qboEmail,
             last_seen: now,
           };
           if (flagForReview) {
@@ -122,6 +128,7 @@ Deno.serve(async (req) => {
           await sb.from("qbo_customer_mappings").insert({
             qbo_customer_id: qboId,
             qbo_customer_name: name,
+            qbo_email: qboEmail,
             entity_id: matchedEntity ? (matchedEntity.id as string) : null,
             role: 'primary',
             first_seen: now,

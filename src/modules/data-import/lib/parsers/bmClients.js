@@ -135,8 +135,12 @@ export function parseBmClientsCsv(text) {
       // service_reviewers via import_bm_reviewers — not entities.
       vat_reviewer_name: normText(get(row, 'VAT Filer (Monitor)')),
       accounts_reviewer_name: normText(get(row, 'Companies House Accounts Filer (Monitor)')),
-      // Primary person info carried for later use (not written in v1)
+      // Primary person info — persisted via import_bm_clients (mig 073)
+      // into people + entity_people as the entity's primary contact.
       _primary_email: primaryEmail,
+      _primary_first_name: normText(get(row, 'First Name')),
+      _primary_last_name: normText(get(row, 'Last Name')),
+      _primary_preferred_name: normText(get(row, 'Preferred Name')),
       _primary_name: [get(row, 'First Name'), get(row, 'Last Name')].filter(Boolean).join(' ') || null,
       _primary_phone: normText(get(row, 'Mobile Number')),
       _primary_ni: normNI(get(row, 'NI Number')),
