@@ -12,6 +12,36 @@ import { fmtGbp } from '../../lib/money';
 
 const font = "'Outfit', sans-serif";
 
+// Parse "a@b.com, c@d.com; e@f.com" → ["a@b.com", "c@d.com", "e@f.com"].
+// QBO routinely packs multiple emails into one PrimaryEmailAddr string,
+// and BM's primary email may differ from the company billing address —
+// the modal shows whichever set we find as a candidate list.
+function splitEmails(s) {
+  if (!s) return [];
+  return String(s)
+    .split(/[,;]/)
+    .map((x) => x.trim())
+    .filter((x) => /.+@.+\..+/.test(x));
+}
+
+// Pick the primary contact for an entity. Falls back to any linked
+// person if no row is flagged is_primary_contact (small entities
+// often have a single person attached without the flag set).
+function resolvePrimaryContact(entity) {
+  const links = entity?.entity_people || [];
+  if (links.length === 0) return null;
+  const primary = links.find((l) => l.is_primary_contact) || links[0];
+  return primary?.person || null;
+}
+
+// First word of the person's name — placeholder until people.first_name
+// and people.preferred_name land on the schema.
+function firstNameOf(person) {
+  if (!person?.name) return null;
+  const first = person.name.trim().split(/\s+/)[0];
+  return first || null;
+}
+
 // Review staged uplifts (pending_monthly_amount on services) before
 // they're pushed to QBO. Approval is row-level — every pending service
 // on a row goes through together because each row maps to a single QBO
@@ -47,7 +77,15 @@ export default function BillingUpliftReviewPage() {
     // is small (~ tens of rows).
     const { data } = await supabase
       .from('live_billing')
-      .select('id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date, uplift_review_status, uplift_reviewed_at, uplift_email_sent_at, uplift_email_to, entity:entities(id, name, billing_email, entity_status)')
+      .select(`
+        id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date,
+        uplift_review_status, uplift_reviewed_at,
+        uplift_email_sent_at, uplift_email_to,
+        entity:entities(
+          id, name, billing_email, entity_status,
+          entity_people(is_primary_contact, person:people(id, name, email))
+        )
+      `)
       .eq('status', 'active')
       .order('id', { ascending: false });
     const filtered = (data || []).filter((r) =>
@@ -550,38 +588,87 @@ function iconBtn(color) {
 function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
   const drafts = (rows || []).map((r) => {
     const services = (r.services || []).filter((s) => s.pending_monthly_amount != null);
+    const contact = resolvePrimaryContact(r.entity);
+    const contactName = firstNameOf(contact);
+    // Candidate "To" addresses, in priority order, deduped.
+    // Order matters — first entry is the default selection.
+    const candidates = [];
+    const seen = new Set();
+    const push = (addr, label) => {
+      const a = (addr || '').trim();
+      if (!a || seen.has(a.toLowerCase())) return;
+      seen.add(a.toLowerCase());
+      candidates.push({ addr: a, label });
+    };
+    // billing_email can already hold multiple comma/semicolon-separated
+    // addresses today (and will be the landing pad for QBO emails once
+    // qbo-pull starts capturing PrimaryEmailAddr).
+    for (const a of splitEmails(r.entity?.billing_email)) push(a, 'Billing email');
+    push(contact?.email, 'Primary contact');
     return {
       row: r,
+      contact,
+      contactName,
+      candidates,
       email: composeUpliftEmail({
         clientName: r.entity?.name || 'Client',
         services,
+        contactName,
       }),
     };
   });
   const [idx, setIdx] = useState(0);
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
-  const [overrideTo, setOverrideTo] = useState('');
+  // Per-row selected address (keyed by billing_id). Empty string = use
+  // the default (first candidate). Allows manual override per row.
+  const [selectedAddr, setSelectedAddr] = useState({});
+  // Per-row "send as physical letter" toggle. Records the send without
+  // calling Resend — for elderly clients etc. who only receive post.
+  const [letterMode, setLetterMode] = useState({});
   // Track which billing_ids have been sent in this modal session so
   // the Send button flips to "Sent ✓" immediately.
   const [sentRowIds, setSentRowIds] = useState(new Set());
   const active = drafts[idx];
   if (!active) return null;
 
-  const defaultTo = active.row.entity?.billing_email || '';
-  const to = overrideTo || defaultTo;
+  const rowId = active.row.id;
+  const defaultTo = active.candidates[0]?.addr || '';
+  const to = selectedAddr[rowId] ?? defaultTo;
+  const isLetter = !!letterMode[rowId];
   const alreadySentOnServer = !!active.row.uplift_email_sent_at;
-  const sentThisSession = sentRowIds.has(active.row.id);
+  const sentThisSession = sentRowIds.has(rowId);
   const isSent = sentThisSession || alreadySentOnServer;
+  const noContactName = !active.contactName;
+
+  const markLetterSent = async () => {
+    setSending(true);
+    try {
+      const { error } = await supabase.from('live_billing').update({
+        uplift_email_sent_at: new Date().toISOString(),
+        uplift_email_sent_by: initiatedBy || null,
+        uplift_email_to: 'Physical letter',
+      }).eq('id', rowId);
+      if (error) throw error;
+      setSentRowIds((prev) => new Set([...prev, rowId]));
+      onSent?.();
+    } catch (e) {
+      alert('Failed to record letter send: ' + (e.message || e));
+    } finally {
+      setSending(false);
+    }
+  };
 
   const send = async () => {
-    if (!to) { alert('Set a recipient email first (the entity has no billing_email).'); return; }
+    if (noContactName) { alert('No primary contact name on file. Add one in Bright Manager before sending.'); return; }
+    if (isLetter) { return markLetterSent(); }
+    if (!to) { alert('Pick a recipient address first.'); return; }
     if (isSent && !window.confirm('This row has already been emailed. Send again?')) return;
     setSending(true);
     try {
       const { data, error } = await supabase.functions.invoke('send-uplift-email', {
         body: {
-          billing_id: active.row.id,
+          billing_id: rowId,
           to,
           subject: active.email.subject,
           body_text: active.email.body,
@@ -589,7 +676,7 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
         },
       });
       if (error || !data?.success) throw new Error(error?.message || data?.error || 'Send failed');
-      setSentRowIds((prev) => new Set([...prev, active.row.id]));
+      setSentRowIds((prev) => new Set([...prev, rowId]));
       onSent?.();
     } catch (e) {
       alert('Send failed: ' + (e.message || e));
@@ -600,17 +687,26 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
 
   const sendAll = async () => {
     if (drafts.length <= 1) { send(); return; }
-    const pending = drafts.filter((d) => !sentRowIds.has(d.row.id) && !d.row.uplift_email_sent_at && (d.row.entity?.billing_email));
-    if (pending.length === 0) { alert('Nothing left to send (all already sent or missing billing email).'); return; }
-    if (!window.confirm(`Send the fee-raise email to ${pending.length} client${pending.length === 1 ? '' : 's'} now? This goes via Resend from accounts@.`)) return;
+    const pending = drafts.filter((d) =>
+      !sentRowIds.has(d.row.id)
+      && !d.row.uplift_email_sent_at
+      && d.contactName
+      && !letterMode[d.row.id]
+      && d.candidates[0]?.addr
+    );
+    const blocked = drafts.length - pending.length;
+    if (pending.length === 0) { alert('Nothing left to send (all already sent, marked as letter, or missing contact name / email).'); return; }
+    const note = blocked > 0 ? `\n\n${blocked} row${blocked === 1 ? '' : 's'} skipped (already sent, marked as letter, or missing contact name / email).` : '';
+    if (!window.confirm(`Send the fee-raise email to ${pending.length} client${pending.length === 1 ? '' : 's'} now? This goes via Resend from accounts@.${note}`)) return;
     setSending(true);
     let ok = 0, err = 0;
     for (const d of pending) {
+      const dTo = selectedAddr[d.row.id] ?? d.candidates[0].addr;
       try {
         const { data, error } = await supabase.functions.invoke('send-uplift-email', {
           body: {
             billing_id: d.row.id,
-            to: d.row.entity.billing_email,
+            to: dTo,
             subject: d.email.subject,
             body_text: d.email.body,
             initiated_by: initiatedBy || null,
@@ -654,25 +750,81 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18 }}>×</button>
         </div>
 
-        <div style={{ padding: '12px 18px', borderBottom: '1px solid #f1f5f9', fontSize: 12, color: '#475569', display: 'grid', gridTemplateColumns: '70px 1fr', gap: '6px 10px', alignItems: 'center' }}>
-          <strong style={{ color: '#0f172a' }}>To</strong>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              type="email"
-              value={to}
-              onChange={(e) => setOverrideTo(e.target.value)}
-              placeholder={defaultTo ? defaultTo : 'recipient@example.com (no billing_email on entity)'}
-              style={{ flex: 1, padding: '4px 8px', fontSize: 12, fontFamily: font, border: `1px solid ${defaultTo ? '#e5e7eb' : '#fca5a5'}`, borderRadius: 6, outline: 'none' }}
-            />
-            {alreadySentOnServer && !sentThisSession && (
-              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }} title={`Last sent ${new Date(active.row.uplift_email_sent_at).toLocaleString('en-GB')}${active.row.uplift_email_to ? ` to ${active.row.uplift_email_to}` : ''}`}>
-                Previously sent
+        <div style={{ padding: '12px 18px', borderBottom: '1px solid #f1f5f9', fontSize: 12, color: '#475569', display: 'grid', gridTemplateColumns: '70px 1fr', gap: '6px 10px', alignItems: 'start' }}>
+          <strong style={{ color: '#0f172a', paddingTop: 4 }}>Contact</strong>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {active.contact ? (
+              <>
+                <span>{active.contact.name}{active.contactName ? ` (greeting: ${active.contactName})` : ''}</span>
+                {noContactName && (
+                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#991b1b' }}>
+                    Cannot derive first name — set one in BM
+                  </span>
+                )}
+              </>
+            ) : (
+              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#991b1b' }}>
+                No primary contact on file — add one in BM before sending
               </span>
             )}
-            {sentThisSession && (
-              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}>✓ Sent</span>
-            )}
           </span>
+
+          <strong style={{ color: '#0f172a', paddingTop: 4 }}>To</strong>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {isLetter ? (
+              <span style={{ fontSize: 12, color: '#475569', fontStyle: 'italic' }}>
+                Physical letter — no email will be sent. Marks the row as sent for tracking.
+              </span>
+            ) : active.candidates.length === 0 ? (
+              <span style={{ fontSize: 11, color: '#991b1b' }}>
+                No email addresses on file. Type one below or switch to physical letter.
+              </span>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {active.candidates.map((c) => (
+                  <label key={c.addr} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name={`to-${rowId}`}
+                      checked={to === c.addr}
+                      onChange={() => setSelectedAddr((s) => ({ ...s, [rowId]: c.addr }))}
+                    />
+                    <span style={{ fontFamily: 'monospace' }}>{c.addr}</span>
+                    <span style={{ fontSize: 10, color: '#94a3b8' }}>· {c.label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {!isLetter && (
+              <input
+                type="email"
+                value={to}
+                onChange={(e) => setSelectedAddr((s) => ({ ...s, [rowId]: e.target.value }))}
+                placeholder="Or type a different address…"
+                style={{ padding: '4px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none' }}
+              />
+            )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#475569', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={isLetter}
+                onChange={(e) => setLetterMode((m) => ({ ...m, [rowId]: e.target.checked }))}
+              />
+              Send as physical letter (no email)
+            </label>
+            {(alreadySentOnServer && !sentThisSession) || sentThisSession ? (
+              <span style={{ display: 'inline-flex', alignSelf: 'flex-start' }}>
+                {sentThisSession ? (
+                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}>✓ Sent this session</span>
+                ) : (
+                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }} title={`Last sent ${new Date(active.row.uplift_email_sent_at).toLocaleString('en-GB')}${active.row.uplift_email_to ? ` to ${active.row.uplift_email_to}` : ''}`}>
+                    Previously sent{active.row.uplift_email_to ? ` to ${active.row.uplift_email_to}` : ''}
+                  </span>
+                )}
+              </span>
+            ) : null}
+          </div>
+
           <strong style={{ color: '#0f172a' }}>From</strong>
           <span>accounts@almondvalleyaccounting.co.uk</span>
           <strong style={{ color: '#0f172a' }}>Subject</strong>
@@ -706,8 +858,13 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
               {sending ? 'Sending…' : `Send all (${drafts.length})`}
             </button>
           )}
-          <button onClick={send} disabled={sending || !to} style={{ ...modalBtnPrimary, opacity: (sending || !to) ? 0.5 : 1 }}>
-            {sending ? 'Sending…' : isSent ? 'Send again' : 'Send via accounts@'}
+          <button
+            onClick={send}
+            disabled={sending || noContactName || (!isLetter && !to)}
+            title={noContactName ? 'Add a primary contact name in BM before sending' : ''}
+            style={{ ...modalBtnPrimary, opacity: (sending || noContactName || (!isLetter && !to)) ? 0.5 : 1 }}
+          >
+            {sending ? 'Sending…' : isLetter ? 'Mark letter sent' : isSent ? 'Send again' : 'Send via accounts@'}
           </button>
           <button onClick={onClose} disabled={sending} style={modalBtnGhost}>Close</button>
         </div>
