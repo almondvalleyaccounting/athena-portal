@@ -179,19 +179,23 @@ export default function AppShell() {
   return (
     <AuthContext.Provider value={{ session, profile, handleLogout }}>
       <div
-        className="min-h-screen flex"
+        className="h-screen flex"
         style={{ backgroundColor: '#fafafa' }}
       >
         {/* Sidebar */}
         <Sidebar />
 
-        {/* Main content area */}
-        <div className="flex-1 flex flex-col min-h-screen">
+        {/* Main content area — bounded to viewport so pages with their
+            own internal scroll regions (matrix views, table heatmaps)
+            actually get a fixed-height parent. Without min-h-0 here the
+            body becomes the scroll container and every sticky-top inside
+            a child fails. */}
+        <div className="flex-1 flex flex-col min-h-0">
           {/* TopBar */}
           <TopBar />
 
           {/* Page content */}
-          <main className="flex-1">
+          <main className="flex-1 overflow-auto min-h-0">
             <Outlet />
           </main>
         </div>

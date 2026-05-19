@@ -486,8 +486,10 @@ function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   return (
     <div style={{ display: 'inline-block', minWidth: '100%' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', position: 'sticky', top: 0, background: '#fff', zIndex: 2 }}>
+      {/* Header — sticky on both axes. The Group and Client cells need
+          to keep their position under horizontal scroll, so they
+          override the row's z-index and pin to left:0 / left:GROUP_COL_W. */}
+      <div style={{ display: 'flex', position: 'sticky', top: 0, background: '#fff', zIndex: 3 }}>
         <SortableHeader
           width={GROUP_COL_W}
           align="left"
@@ -495,6 +497,7 @@ function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList
           sortKey="_group"
           sortStack={sortStack}
           onToggleSort={onToggleSort}
+          stickyLeft={0}
         />
         <SortableHeader
           width={CLIENT_COL_W}
@@ -503,6 +506,7 @@ function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList
           sortKey="_client"
           sortStack={sortStack}
           onToggleSort={onToggleSort}
+          stickyLeft={GROUP_COL_W}
         />
         {ALLOCATION_SERVICES.map((s) => (
           <SortableServiceHeader
@@ -544,7 +548,7 @@ function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList
               display: 'flex', alignItems: 'center', gap: 6, height: ROW_H,
               fontSize: 12, color: '#0f172a',
               borderRight: '1px solid #e5e7eb', background: '#fff',
-              position: 'sticky', left: 0, zIndex: 1,
+              position: 'sticky', left: 0, zIndex: 2,
               cursor: group ? 'pointer' : 'default',
             }}
           >
@@ -569,7 +573,7 @@ function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList
             display: 'flex', alignItems: 'center', height: ROW_H,
             fontSize: 13, color: '#0f172a', fontWeight: 500,
             borderRight: '1px solid #e5e7eb', background: '#fff',
-            position: 'sticky', left: GROUP_COL_W, zIndex: 1,
+            position: 'sticky', left: GROUP_COL_W, zIndex: 2,
           }}>
             {e.name}
           </div>
@@ -1188,7 +1192,10 @@ function sortIndicator(sortStack, key) {
   );
 }
 
-function SortableHeader({ width, align = 'center', label, sortKey, sortStack, onToggleSort }) {
+function SortableHeader({ width, align = 'center', label, sortKey, sortStack, onToggleSort, stickyLeft }) {
+  const stickyStyle = stickyLeft != null
+    ? { position: 'sticky', left: stickyLeft, zIndex: 4, background: '#f8fafc' }
+    : null;
   return (
     <div
       onClick={() => onToggleSort(sortKey)}
@@ -1196,6 +1203,7 @@ function SortableHeader({ width, align = 'center', label, sortKey, sortStack, on
       style={{
         ...headerCellStyle(width, align),
         height: 60, cursor: 'pointer', userSelect: 'none',
+        ...stickyStyle,
       }}
     >
       <span>{label}</span>
