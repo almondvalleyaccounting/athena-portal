@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail, MailOff, ArrowUp, ArrowDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
@@ -83,7 +83,7 @@ export default function BillingUpliftReviewPage() {
       .select(`
         id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date,
         uplift_review_status, uplift_reviewed_at,
-        uplift_email_sent_at, uplift_email_to,
+        uplift_email_sent_at, uplift_email_to, uplift_email_skipped,
         entity:entities(
           id, name, billing_email, entity_status,
           entity_people(is_primary_contact, person:people(id, name, first_name, preferred_name, email)),
@@ -152,10 +152,11 @@ export default function BillingUpliftReviewPage() {
   }), [rows]);
 
   const counts = useMemo(() => {
-    const c = { staged: 0, approved: 0, rejected: 0, all: summarised.length };
+    const c = { staged: 0, approved: 0, rejected: 0, no_email: 0, all: summarised.length };
     for (const r of summarised) {
       const k = r.uplift_review_status || 'staged';
       c[k] = (c[k] || 0) + 1;
+      if (r.uplift_email_skipped) c.no_email += 1;
     }
     return c;
   }, [summarised]);
@@ -166,6 +167,8 @@ export default function BillingUpliftReviewPage() {
       // no status narrowing
     } else if (filter === 'staged') {
       out = out.filter((r) => !r.uplift_review_status || r.uplift_review_status === 'staged');
+    } else if (filter === 'no_email') {
+      out = out.filter((r) => r.uplift_email_skipped);
     } else {
       out = out.filter((r) => r.uplift_review_status === filter);
     }
@@ -199,6 +202,19 @@ export default function BillingUpliftReviewPage() {
     const neu = visible.reduce((s, r) => s + r._newTotal, 0);
     return { old: Math.round(old * 100) / 100, neu: Math.round(neu * 100) / 100, delta: Math.round((neu - old) * 100) / 100 };
   }, [visible]);
+
+  // Toggle the "no email needed" flag on one or more rows. The push to
+  // QBO still happens (or not) per uplift_review_status; this only
+  // governs whether the client gets a notification email.
+  const setEmailSkipped = async (ids, skipped) => {
+    if (ids.length === 0) return;
+    setSaving(true);
+    await supabase.from('live_billing')
+      .update({ uplift_email_skipped: skipped })
+      .in('id', ids);
+    setSaving(false);
+    await load();
+  };
 
   const setStatus = async (ids, status) => {
     if (ids.length === 0) return;
@@ -320,6 +336,7 @@ export default function BillingUpliftReviewPage() {
         <Pill label="Staged" count={counts.staged || 0} active={filter === 'staged'} tone="amber" onClick={() => setFilter('staged')} />
         <Pill label="Approved" count={counts.approved || 0} active={filter === 'approved'} tone="green" onClick={() => setFilter('approved')} />
         <Pill label="Rejected" count={counts.rejected || 0} active={filter === 'rejected'} tone="slate" onClick={() => setFilter('rejected')} />
+        <Pill label="No email" count={counts.no_email || 0} active={filter === 'no_email'} tone="slate" onClick={() => setFilter('no_email')} />
         <Pill label={`All (${counts.all})`} active={filter === 'all'} tone="default" onClick={() => setFilter('all')} />
 
         <SearchInput
@@ -338,6 +355,16 @@ export default function BillingUpliftReviewPage() {
           <button onClick={() => setStatus(Array.from(selected), 'approved')} disabled={saving} style={btnApprove}>Approve</button>
           <button onClick={() => setStatus(Array.from(selected), 'rejected')} disabled={saving} style={btnReject}>Reject</button>
           <button onClick={() => setStatus(Array.from(selected), 'staged')} disabled={saving} style={btnUndo}>Reset</button>
+          <button
+            onClick={() => {
+              const ids = Array.from(selected);
+              const allSkipped = ids.every((id) => summarised.find((r) => r.id === id)?.uplift_email_skipped);
+              setEmailSkipped(ids, !allSkipped);
+            }}
+            disabled={saving}
+            style={btnUndo}
+            title="Toggle 'no email needed' for selected rows"
+          >No email</button>
           <button onClick={() => setSelected(new Set())} disabled={saving} style={btnGhost}>Clear</button>
         </div>
       )}
@@ -360,6 +387,13 @@ export default function BillingUpliftReviewPage() {
             title="Nothing approved yet"
             body="Approve staged uplifts to queue them for push."
             actions={[{ label: 'Show staged', onClick: () => setFilter('staged') }]}
+          />
+        ) : filter === 'no_email' ? (
+          <EmptyState
+            icon="—"
+            title="No rows marked 'no email'"
+            body="Use the MailOff icon on a row, or select rows and click 'No email' in the bulk bar, to flag uplifts that don't need a client email."
+            actions={[{ label: 'Show all', onClick: () => setFilter('all') }]}
           />
         ) : (
           <EmptyState
@@ -415,6 +449,12 @@ export default function BillingUpliftReviewPage() {
                             title={`Email sent ${new Date(r.uplift_email_sent_at).toLocaleString('en-GB')}${r.uplift_email_to ? ` to ${r.uplift_email_to}` : ''}`}
                           >✉ SENT</span>
                         )}
+                        {r.uplift_email_skipped && !r.uplift_email_sent_at && (
+                          <span
+                            style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#f1f5f9', color: '#475569' }}
+                            title="Marked as not needing an email — excluded from Send all"
+                          >NO EMAIL</span>
+                        )}
                       </div>
                       {!hasTemplate && <span style={{ fontSize: 10, color: '#b45309' }}>⚠ no QBO template</span>}
                       {r._reason && <div style={{ fontSize: 10, color: '#94a3b8' }} title={r._reason}>{r._reason.length > 50 ? r._reason.slice(0, 50) + '…' : r._reason}</div>}
@@ -446,9 +486,17 @@ export default function BillingUpliftReviewPage() {
                           </button>
                         )}
                         <button
-                          onClick={() => setEmailFor(r)}
+                          onClick={() => setEmailSkipped([r.id], !r.uplift_email_skipped)}
                           disabled={saving}
-                          title="Preview the fee-raise email for this client"
+                          title={r.uplift_email_skipped ? 'Email currently skipped — click to re-enable' : 'Mark this client as not needing an email (excluded from Send all)'}
+                          style={iconBtn(r.uplift_email_skipped ? '#0f172a' : '#94a3b8')}
+                        >
+                          <MailOff size={13} />
+                        </button>
+                        <button
+                          onClick={() => setEmailFor(r)}
+                          disabled={saving || r.uplift_email_skipped}
+                          title={r.uplift_email_skipped ? 'Email skipped for this row' : 'Preview the fee-raise email for this client'}
                           style={iconBtn('#0e7fe0')}
                         >
                           <Mail size={13} />
@@ -487,7 +535,7 @@ export default function BillingUpliftReviewPage() {
           </span>
           <div style={{ flex: 1 }} />
           <button
-            onClick={() => setEmailsBatch(summarised.filter((r) => r.uplift_review_status === 'approved'))}
+            onClick={() => setEmailsBatch(summarised.filter((r) => r.uplift_review_status === 'approved' && !r.uplift_email_skipped))}
             disabled={pushing}
             style={btnPushDry}
             title="Preview a fee-raise email for every approved client — copy/paste or open in your mail client"
@@ -701,6 +749,7 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
     const pending = drafts.filter((d) =>
       !sentRowIds.has(d.row.id)
       && !d.row.uplift_email_sent_at
+      && !d.row.uplift_email_skipped
       && d.contactName
       && !letterMode[d.row.id]
       && d.candidates[0]?.addr
