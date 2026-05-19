@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail, MailOff, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail, MailX, ArrowUp, ArrowDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
@@ -392,7 +392,7 @@ export default function BillingUpliftReviewPage() {
           <EmptyState
             icon="—"
             title="No rows marked 'no email'"
-            body="Use the MailOff icon on a row, or select rows and click 'No email' in the bulk bar, to flag uplifts that don't need a client email."
+            body="Use the MailX icon on a row, or select rows and click 'No email' in the bulk bar, to flag uplifts that don't need a client email."
             actions={[{ label: 'Show all', onClick: () => setFilter('all') }]}
           />
         ) : (
@@ -491,7 +491,7 @@ export default function BillingUpliftReviewPage() {
                           title={r.uplift_email_skipped ? 'Email currently skipped — click to re-enable' : 'Mark this client as not needing an email (excluded from Send all)'}
                           style={iconBtn(r.uplift_email_skipped ? '#0f172a' : '#94a3b8')}
                         >
-                          <MailOff size={13} />
+                          <MailX size={13} />
                         </button>
                         <button
                           onClick={() => setEmailFor(r)}
