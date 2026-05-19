@@ -464,7 +464,7 @@ export default function QboMappingPage() {
       ) : filtered.length === 0 ? (
         <EmptyState filter={filter} total={rows.length} />
       ) : (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 32 }} />
