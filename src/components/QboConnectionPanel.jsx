@@ -32,10 +32,15 @@ export default function QboConnectionPanel({ profile, onSyncComplete }) {
       const { count: total } = await supabase
         .from('qbo_customer_mappings')
         .select('*', { count: 'exact', head: true });
+      // "Unmapped" here means genuinely undecided — exclude rows the
+       // user has actively ignored (role='not_a_client'). Without the
+       // neq, the dashboard shows hundreds of QBO-internal records
+       // that have already been swept aside on the Mapping page.
       const { count: unmapped } = await supabase
         .from('qbo_customer_mappings')
         .select('*', { count: 'exact', head: true })
-        .is('entity_id', null);
+        .is('entity_id', null)
+        .neq('role', 'not_a_client');
       setMapStats({ total: total ?? 0, unmapped: unmapped ?? 0 });
     } catch { /* silent */ }
   }, []);
