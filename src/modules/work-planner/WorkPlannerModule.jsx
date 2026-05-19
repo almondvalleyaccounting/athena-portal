@@ -830,8 +830,10 @@ export default function WorkPlannerModule() {
           staffColours={staffColours}
         />
 
-        {/* Active view */}
-        <div style={{ flex: 1, overflow: 'auto' }}>
+        {/* Active view — min-w-0 keeps wide matrices (Allocations)
+            contained so their own internal scroll handles horizontal
+            overflow instead of pushing the page sideways. */}
+        <div style={{ flex: 1, overflow: 'auto', minWidth: 0, minHeight: 0 }}>
           {activeTab === 'mytasks' && (
             <MyTasksView dueFilter={dueFilter} compact={compact} searchTerm={searchTerm} onAction={handleAction} />
           )}

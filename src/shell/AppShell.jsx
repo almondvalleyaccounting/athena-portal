@@ -187,15 +187,16 @@ export default function AppShell() {
 
         {/* Main content area — bounded to viewport so pages with their
             own internal scroll regions (matrix views, table heatmaps)
-            actually get a fixed-height parent. Without min-h-0 here the
-            body becomes the scroll container and every sticky-top inside
-            a child fails. */}
-        <div className="flex-1 flex flex-col min-h-0">
+            actually get a fixed-height parent. min-w-0 + min-h-0 stop
+            the column from being pushed wider/taller by an oversized
+            child; without those, a wide table would scroll the entire
+            row flex and drag the sidebar offscreen. */}
+        <div className="flex-1 flex flex-col min-h-0 min-w-0">
           {/* TopBar */}
           <TopBar />
 
           {/* Page content */}
-          <main className="flex-1 overflow-auto min-h-0">
+          <main className="flex-1 overflow-auto min-h-0 min-w-0">
             <Outlet />
           </main>
         </div>

@@ -322,7 +322,7 @@ export default function AllocationsView() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, fontFamily: "'Outfit', sans-serif" }}>
       {/* Toolbar */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
@@ -408,8 +408,10 @@ export default function AllocationsView() {
         )}
       </div>
 
-      {/* Body */}
-      <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+      {/* Body — no top padding so the sticky header sits flush at
+          the top of the scroll viewport (otherwise rows visibly
+          slide through the padding gap above the frozen header). */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '0 16px 16px', minWidth: 0, minHeight: 0 }}>
         {view === 'clients' ? (
           <ClientsMatrix
             entities={clientEntities}
