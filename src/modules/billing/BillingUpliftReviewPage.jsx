@@ -489,7 +489,9 @@ export default function BillingUpliftReviewPage() {
                           onClick={() => setEmailSkipped([r.id], !r.uplift_email_skipped)}
                           disabled={saving}
                           title={r.uplift_email_skipped ? 'Email currently skipped — click to re-enable' : 'Mark this client as not needing an email (excluded from Send all)'}
-                          style={iconBtn(r.uplift_email_skipped ? '#0f172a' : '#94a3b8')}
+                          style={r.uplift_email_skipped
+                            ? { ...iconBtn('#b91c1c'), background: '#fee2e2', borderColor: '#b91c1c' }
+                            : iconBtn('#94a3b8')}
                         >
                           <MailX size={13} />
                         </button>
@@ -731,6 +733,7 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
           to,
           subject: active.email.subject,
           body_text: active.email.body,
+          body_html: active.email.bodyHtml,
           initiated_by: initiatedBy || null,
         },
       });
@@ -769,6 +772,7 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
             to: dTo,
             subject: d.email.subject,
             body_text: d.email.body,
+            body_html: d.email.bodyHtml,
             initiated_by: initiatedBy || null,
           },
         });
@@ -891,17 +895,20 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
           <span>{active.email.subject}</span>
         </div>
 
-        <pre style={{
-          padding: '14px 18px',
-          margin: 0,
-          flex: 1,
-          overflow: 'auto',
-          fontFamily: "'Outfit', sans-serif",
-          fontSize: 13,
-          color: '#0f172a',
-          whiteSpace: 'pre-wrap',
-          background: '#fafafa',
-        }}>{active.email.body}</pre>
+        {/* HTML preview — sandboxed iframe shows exactly what the
+            recipient will see. Text version is still copyable from the
+            footer button. */}
+        <iframe
+          title="Email preview"
+          srcDoc={active.email.bodyHtml}
+          sandbox=""
+          style={{
+            flex: 1,
+            width: '100%',
+            border: 'none',
+            background: '#fafafa',
+          }}
+        />
 
         <div style={{ padding: '12px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={copy} disabled={sending} style={modalBtnGhost}>{copied ? 'Copied ✓' : 'Copy text'}</button>

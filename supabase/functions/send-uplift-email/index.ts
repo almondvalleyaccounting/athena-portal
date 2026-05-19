@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== "POST")     return json({ success: false, error: "POST required" }, 405);
 
-  let body: { billing_id?: string; to?: string; subject?: string; body_text?: string; initiated_by?: string };
+  let body: { billing_id?: string; to?: string; subject?: string; body_text?: string; body_html?: string; initiated_by?: string };
   try { body = await req.json(); } catch { return json({ success: false, error: "Invalid JSON" }, 400); }
 
   if (!body.billing_id || !body.to || !body.subject || !body.body_text) {
@@ -69,7 +69,12 @@ Deno.serve(async (req) => {
     .single();
   if (!row) return json({ success: false, error: "billing_id not found" }, 404);
 
-  const html = `<!DOCTYPE html><html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: #0f172a; line-height: 1.5; padding: 8px 0;">${textToHtml(body.body_text)}</body></html>`;
+  // Prefer a caller-supplied HTML body (the fee-raise composer produces
+  // one with proper tables and section copy). Fall back to converting
+  // the plain text version for older clients of this function.
+  const html = body.body_html && body.body_html.trim().length > 0
+    ? body.body_html
+    : `<!DOCTYPE html><html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: #0f172a; line-height: 1.5; padding: 8px 0;">${textToHtml(body.body_text)}</body></html>`;
 
   const resp = await fetch("https://api.resend.com/emails", {
     method: "POST",
