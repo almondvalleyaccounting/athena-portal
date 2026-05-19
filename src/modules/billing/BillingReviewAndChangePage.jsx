@@ -34,6 +34,7 @@ export default function BillingReviewAndChangePage() {
   const [upliftOpen, setUpliftOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(null); // null | { entityId?, serviceId? } — opens AddServiceModal
   const [search, setSearch] = useState('');
+  const [excludedFilter, setExcludedFilter] = useState('all'); // all | included | excluded
   // Sort state. type='client' (alpha) | 'total' (per-client total) |
   // 'service' (per-cell amount for the named service). dir asc/desc.
   // Defaults to client name ascending. The legacy "focus" concept on
@@ -487,6 +488,11 @@ export default function BillingReviewAndChangePage() {
           placeholder="Filter clients…"
           style={{ minWidth: 200 }}
         />
+        <ExcludedToggle
+          value={excludedFilter}
+          onChange={setExcludedFilter}
+          excludedCount={matrix.entityList.filter((e) => e.excluded).length}
+        />
         {sortBy.type !== 'client' && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: '#dbeafe', color: '#0c4a6e', borderRadius: 999, fontSize: 12, fontWeight: 500 }}>
             Sorted by <strong>{sortBy.type === 'total' ? 'Total' : sortBy.serviceId}</strong> ({sortBy.dir})
@@ -631,6 +637,11 @@ export default function BillingReviewAndChangePage() {
               <tbody>
                 {sortedEntities
                   .filter((entity) => !search.trim() || (entity.name || '').toLowerCase().includes(search.trim().toLowerCase()))
+                  .filter((entity) =>
+                    excludedFilter === 'all' ? true :
+                    excludedFilter === 'excluded' ? entity.excluded :
+                    !entity.excluded
+                  )
                   .map((entity) => (
                   <tr key={entity.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                     <td style={{ ...stickyTd, left: 0, background: entity.excluded ? '#fef2f2' : '#fff', fontWeight: 500, color: entity.excluded ? '#94a3b8' : '#0f172a', textAlign: 'left', paddingLeft: 12 }}>
@@ -802,6 +813,35 @@ function SortArrow({ active, dir }) {
   return dir === 'asc'
     ? <ArrowUp size={11} style={{ color: '#0c4a6e' }} />
     : <ArrowDown size={11} style={{ color: '#0c4a6e' }} />;
+}
+
+function ExcludedToggle({ value, onChange, excludedCount }) {
+  const opts = [
+    { v: 'all', l: 'All' },
+    { v: 'included', l: 'Included' },
+    { v: 'excluded', l: `Excluded${excludedCount ? ` · ${excludedCount}` : ''}` },
+  ];
+  return (
+    <div style={{ display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }} title="Filter by fee-raise exclusion">
+      {opts.map((o, i) => {
+        const active = value === o.v;
+        const isExcluded = o.v === 'excluded';
+        return (
+          <button
+            key={o.v}
+            onClick={() => onChange(o.v)}
+            style={{
+              padding: '6px 12px', fontSize: 12, fontWeight: active ? 600 : 500,
+              background: active ? (isExcluded ? '#b91c1c' : '#0f172a') : '#fff',
+              color: active ? '#fff' : (isExcluded ? '#b91c1c' : '#475569'),
+              border: 'none', borderLeft: i > 0 ? '1px solid #e5e7eb' : 'none',
+              cursor: 'pointer', fontFamily: font,
+            }}
+          >{o.l}</button>
+        );
+      })}
+    </div>
+  );
 }
 
 function ScopeToggle({ value, onChange }) {
