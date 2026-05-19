@@ -92,9 +92,14 @@ export default function BillingUpliftReviewPage() {
       `)
       .eq('status', 'active')
       .order('id', { ascending: false });
+    // A row is "really" pending only if it carries a pending amount on
+    // a service that's still live. A pending value on a service that's
+    // been flagged recurring_status='ending' is dead weight from the
+    // Change matrix — it would contribute £0 to the row delta and clog
+    // the queue with phantom rows (e.g. Road To Sea Ltd).
     const filtered = (data || []).filter((r) =>
       Array.isArray(r.services)
-      && r.services.some((s) => s.pending_monthly_amount != null)
+      && r.services.some((s) => s.pending_monthly_amount != null && s.recurring_status !== 'ending')
       && (r.entity?.entity_status || 'active') !== 'nlac'
     );
     setRows(filtered);
