@@ -111,7 +111,9 @@ export default function LoginPage() {
   const handleResetPassword = async () => {
     if (!email) { setError('Enter your email address first'); return; }
     setError('');
-    const { error: err } = await supabase.auth.resetPasswordForEmail(email);
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/login`,
+    });
     if (err) setError(err.message);
     else setResetSent(true);
   };
