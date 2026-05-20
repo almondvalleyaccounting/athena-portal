@@ -8,3 +8,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Flag recovery sessions so the shell can force a password-change screen
+// regardless of must_change_password.
+if (typeof window !== 'undefined') {
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      sessionStorage.setItem('passwordRecovery', '1');
+    }
+  });
+}

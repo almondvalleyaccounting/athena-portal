@@ -18,6 +18,9 @@ export default function AppShell() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [recovery, setRecovery] = useState(
+    () => typeof window !== 'undefined' && sessionStorage.getItem('passwordRecovery') === '1'
+  );
 
   // ── Listen for auth state ──
   useEffect(() => {
@@ -31,8 +34,9 @@ export default function AppShell() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
+    } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true);
       if (!s) {
         setProfile(null);
         setLoading(false);
@@ -159,16 +163,22 @@ export default function AppShell() {
     );
   }
 
-  // ── Must change password on first login ──
-  if (profile.must_change_password) {
+  // ── Must change password (first login OR password-reset recovery) ──
+  if (profile.must_change_password || recovery) {
     return (
       <ChangePasswordScreen
         onComplete={async () => {
-          await supabase
-            .from('staff_profiles')
-            .update({ must_change_password: false })
-            .eq('id', session.user.id);
-          setProfile((p) => ({ ...p, must_change_password: false }));
+          if (profile.must_change_password) {
+            await supabase
+              .from('staff_profiles')
+              .update({ must_change_password: false })
+              .eq('id', session.user.id);
+            setProfile((p) => ({ ...p, must_change_password: false }));
+          }
+          if (recovery) {
+            sessionStorage.removeItem('passwordRecovery');
+            setRecovery(false);
+          }
         }}
         onLogout={handleLogout}
       />
