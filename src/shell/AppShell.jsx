@@ -169,10 +169,7 @@ export default function AppShell() {
       <ChangePasswordScreen
         onComplete={async () => {
           if (profile.must_change_password) {
-            await supabase
-              .from('staff_profiles')
-              .update({ must_change_password: false })
-              .eq('id', session.user.id);
+            await supabase.rpc('clear_my_must_change_password');
             setProfile((p) => ({ ...p, must_change_password: false }));
           }
           if (recovery) {
