@@ -230,7 +230,7 @@ export async function generateQuotePdf(quote, lineItems, options = {}) {
       y += 5.5;
     });
 
-    // Setup total
+    // Setup subtotal (net)
     y += 1;
     doc.setDrawColor(...OCEAN_700);
     doc.setLineWidth(0.4);
@@ -241,6 +241,25 @@ export async function generateQuotePdf(quote, lineItems, options = {}) {
     doc.setTextColor(...OCEAN_700);
     doc.text('Total Setup Fees', margin + 2, y);
     doc.text(hFmt(setupTotal), annualR - 1, y, { align: 'right' });
+    y += 5.5;
+
+    // VAT on setup fees
+    const setupVat = Math.round(setupTotal * 0.2 * 100) / 100;
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...DARK);
+    doc.text('VAT (20%)', margin + 2, y);
+    doc.text(hFmt(setupVat), annualR - 1, y, { align: 'right' });
+    y += 2;
+    doc.setDrawColor(...OCEAN_700);
+    doc.setLineWidth(0.4);
+    doc.line(annualR - numW, y, annualR, y);
+    y += 4;
+
+    // Total inc VAT
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...OCEAN_700);
+    doc.text('Total Setup Fees Inc VAT', margin + 2, y);
+    doc.text(hFmt(setupTotal + setupVat), annualR - 1, y, { align: 'right' });
     y += 2;
     doc.setLineWidth(0.5);
     doc.line(annualR - numW, y, annualR, y);
