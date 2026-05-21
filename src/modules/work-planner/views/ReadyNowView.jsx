@@ -68,7 +68,8 @@ export default function ReadyNowView() {
         const { data, error } = await supabase
           .from('bm_task_schedule')
           .select('id, service, bm_status, bm_deadline, entity_id, assignee_id, entities(name, grade, expedite), staff_profiles:assignee_id(id, name)')
-          .in('service', ['Self Assessment', 'Annual Accounts']);
+          .in('service', ['Self Assessment', 'Annual Accounts'])
+          .eq('state', 'planned');
         if (error) throw error;
         if (cancelled) return;
         setRows(data || []);
