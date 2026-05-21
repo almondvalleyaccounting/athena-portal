@@ -6,6 +6,7 @@ import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
 import SearchInput from '../../components/SearchInput';
 import EmptyState from '../../components/EmptyState';
+import GmailConnectionPanel from '../../components/GmailConnectionPanel';
 import { tones } from '../../lib/tokens';
 import { composeUpliftEmail } from './composeUpliftEmail';
 import { fmtGbp } from '../../lib/money';
@@ -84,6 +85,7 @@ export default function BillingUpliftReviewPage() {
         id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date,
         uplift_review_status, uplift_reviewed_at,
         uplift_email_sent_at, uplift_email_to, uplift_email_skipped,
+        uplift_gmail_draft_id, uplift_gmail_draft_created_at,
         entity:entities(
           id, name, billing_email, entity_status,
           entity_people(is_primary_contact, person:people(id, name, first_name, preferred_name, email)),
@@ -345,6 +347,8 @@ export default function BillingUpliftReviewPage() {
 
       <BillingTabs active="push" />
 
+      <GmailConnectionPanel staffId={profile?.id} />
+
       {/* Filter pills */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <Pill label="Staged" count={counts.staged || 0} active={filter === 'staged'} tone="amber" onClick={() => setFilter('staged')} />
@@ -463,6 +467,12 @@ export default function BillingUpliftReviewPage() {
                             title={`Email sent ${new Date(r.uplift_email_sent_at).toLocaleString('en-GB')}${r.uplift_email_to ? ` to ${r.uplift_email_to}` : ''}`}
                           >✉ SENT</span>
                         )}
+                        {!r.uplift_email_sent_at && r.uplift_gmail_draft_id && (
+                          <span
+                            style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dbeafe', color: '#0c4a6e' }}
+                            title={`Gmail draft created ${r.uplift_gmail_draft_created_at ? new Date(r.uplift_gmail_draft_created_at).toLocaleString('en-GB') : ''}${r.uplift_email_to ? ` for ${r.uplift_email_to}` : ''} — finalise and send in Gmail.`}
+                          >✎ DRAFT</span>
+                        )}
                         {r.uplift_email_skipped && !r.uplift_email_sent_at && (
                           <span
                             style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#f1f5f9', color: '#475569' }}
@@ -554,10 +564,10 @@ export default function BillingUpliftReviewPage() {
             onClick={() => setEmailsBatch(summarised.filter((r) => r.uplift_review_status === 'approved' && !r.uplift_email_skipped))}
             disabled={pushing}
             style={btnPushDry}
-            title="Preview a fee-raise email for every approved client — copy/paste or open in your mail client"
+            title="Preview each approved client's fee-raise email and push them all to Gmail as drafts for final review"
           >
             <Mail size={13} style={{ marginRight: 4, verticalAlign: '-2px' }} />
-            Generate emails
+            Review &amp; draft emails
           </button>
           <button onClick={() => pushApproved(true)} disabled={pushing} style={btnPushDry} title="Show proposed bodies in console, no QBO writes">
             Dry-run
@@ -712,6 +722,7 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
   const to = selectedAddr[rowId] ?? defaultTo;
   const isLetter = !!letterMode[rowId];
   const alreadySentOnServer = !!active.row.uplift_email_sent_at;
+  const draftedOnServer = !!active.row.uplift_gmail_draft_id;
   const sentThisSession = sentRowIds.has(rowId);
   const isSent = sentThisSession || alreadySentOnServer;
   const noContactName = !active.contactName;
@@ -734,14 +745,18 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
     }
   };
 
+  // Primary action: create a Gmail draft for this row. The send proper
+  // happens inside Gmail, where the user can edit / re-style / attach
+  // before clicking Send. We stamp uplift_gmail_draft_id back so the
+  // table chip flips to "DRAFT".
   const send = async () => {
-    if (noContactName) { alert('No primary contact name on file. Add one in Bright Manager before sending.'); return; }
+    if (noContactName) { alert('No primary contact name on file. Add one in Bright Manager before drafting.'); return; }
     if (isLetter) { return markLetterSent(); }
     if (!to) { alert('Pick a recipient address first.'); return; }
-    if (isSent && !window.confirm('This row has already been emailed. Send again?')) return;
+    if (draftedOnServer && !window.confirm('A Gmail draft already exists for this row. Create another one?')) return;
     setSending(true);
     try {
-      const { data, error } = await supabase.functions.invoke('send-uplift-email', {
+      const { data, error } = await supabase.functions.invoke('gmail-create-draft', {
         body: {
           billing_id: rowId,
           to,
@@ -751,11 +766,19 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
           initiated_by: initiatedBy || null,
         },
       });
-      if (error || !data?.success) throw new Error(error?.message || data?.error || 'Send failed');
+      if (error || !data?.success) {
+        const msg = error?.message || data?.error || 'Draft creation failed';
+        if (data?.code === 'no_gmail_connection') {
+          alert('No active Gmail connection. Use the "Connect Gmail" banner at the top of the page to sign in.');
+        } else {
+          alert('Draft creation failed: ' + msg);
+        }
+        return;
+      }
       setSentRowIds((prev) => new Set([...prev, rowId]));
       onSent?.();
     } catch (e) {
-      alert('Send failed: ' + (e.message || e));
+      alert('Draft creation failed: ' + (e.message || e));
     } finally {
       setSending(false);
     }
@@ -766,21 +789,22 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
     const pending = drafts.filter((d) =>
       !sentRowIds.has(d.row.id)
       && !d.row.uplift_email_sent_at
+      && !d.row.uplift_gmail_draft_id
       && !d.row.uplift_email_skipped
       && d.contactName
       && !letterMode[d.row.id]
       && d.candidates[0]?.addr
     );
     const blocked = drafts.length - pending.length;
-    if (pending.length === 0) { alert('Nothing left to send (all already sent, marked as letter, or missing contact name / email).'); return; }
-    const note = blocked > 0 ? `\n\n${blocked} row${blocked === 1 ? '' : 's'} skipped (already sent, marked as letter, or missing contact name / email).` : '';
-    if (!window.confirm(`Send the fee-raise email to ${pending.length} client${pending.length === 1 ? '' : 's'} now? This goes via Resend from accounts@.${note}`)) return;
+    if (pending.length === 0) { alert('Nothing left to draft (all already drafted/sent, marked as letter, or missing contact name / email).'); return; }
+    const note = blocked > 0 ? `\n\n${blocked} row${blocked === 1 ? '' : 's'} skipped (already drafted/sent, marked as letter, or missing contact name / email).` : '';
+    if (!window.confirm(`Create Gmail drafts for ${pending.length} client${pending.length === 1 ? '' : 's'} now? They'll appear in your Gmail Drafts folder — nothing sends until you click Send in Gmail.${note}`)) return;
     setSending(true);
     let ok = 0, err = 0;
     for (const d of pending) {
       const dTo = selectedAddr[d.row.id] ?? d.candidates[0].addr;
       try {
-        const { data, error } = await supabase.functions.invoke('send-uplift-email', {
+        const { data, error } = await supabase.functions.invoke('gmail-create-draft', {
           body: {
             billing_id: d.row.id,
             to: dTo,
@@ -796,7 +820,7 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
       } catch { err++; }
     }
     setSending(false);
-    alert(`Sent ${ok} email${ok === 1 ? '' : 's'}${err ? ` (${err} failed)` : ''}.`);
+    alert(`Created ${ok} Gmail draft${ok === 1 ? '' : 's'}${err ? ` (${err} failed)` : ''}.\n\nOpen Gmail → Drafts to review and send.`);
     onSent?.();
   };
 
@@ -936,16 +960,16 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
           <div style={{ flex: 1 }} />
           {drafts.length > 1 && (
             <button onClick={sendAll} disabled={sending} style={{ ...modalBtnGhost, color: '#0e7fe0', borderColor: '#bfdbfe' }}>
-              {sending ? 'Sending…' : `Send all (${drafts.length})`}
+              {sending ? 'Drafting…' : `Draft all (${drafts.length})`}
             </button>
           )}
           <button
             onClick={send}
             disabled={sending || noContactName || (!isLetter && !to)}
-            title={noContactName ? 'Add a primary contact name in BM before sending' : ''}
+            title={noContactName ? 'Add a primary contact name in BM before drafting' : 'Creates a draft in your Gmail Drafts folder — nothing sends until you click Send in Gmail'}
             style={{ ...modalBtnPrimary, opacity: (sending || noContactName || (!isLetter && !to)) ? 0.5 : 1 }}
           >
-            {sending ? 'Sending…' : isLetter ? 'Mark letter sent' : isSent ? 'Send again' : 'Send via accounts@'}
+            {sending ? 'Drafting…' : isLetter ? 'Mark letter sent' : draftedOnServer ? 'Re-draft in Gmail' : 'Create Gmail draft'}
           </button>
           <button onClick={onClose} disabled={sending} style={modalBtnGhost}>Close</button>
         </div>
