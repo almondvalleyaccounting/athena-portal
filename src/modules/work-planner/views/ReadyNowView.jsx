@@ -77,7 +77,11 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
   const [search, setSearch] = useState('');
   const [normalDaysBuffer, setNormalDaysBuffer] = useState(90);
   const [impendingDays, setImpendingDays] = useState(14);
+  const [impendingCollapsed, setImpendingCollapsed] = useState(false);
   const [expediteCollapsed, setExpediteCollapsed] = useState(false);
+  const [deprioritisedCollapsed, setDeprioritisedCollapsed] = useState(false);
+  const [normalCollapsed, setNormalCollapsed] = useState(false);
+  const [depriDialog, setDepriDialog] = useState(null); // { entityId, client } | null
   const [sortKey, setSortKey] = useState('period_end');
   const [sortDir, setSortDir] = useState('asc');
 
@@ -87,7 +91,7 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
       try {
         const { data, error } = await supabase
           .from('bm_task_schedule')
-          .select('id, service, bm_task_name, bm_status, bm_deadline, bm_target_date, entity_id, assignee_id, entities(name, grade, expedite), staff_profiles:assignee_id(id, name)')
+          .select('id, service, bm_task_name, bm_status, bm_deadline, bm_target_date, entity_id, assignee_id, entities(name, grade, expedite, deprioritise_reason), staff_profiles:assignee_id(id, name)')
           .in('service', ['Self Assessment', 'Annual Accounts'])
           .eq('state', 'planned');
         if (error) throw error;
@@ -105,7 +109,6 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
 
   async function toggleExpedite(entityId, next) {
     setTogglingId(entityId);
-    // Optimistic update
     setRows((prev) => prev.map((r) =>
       r.entity_id === entityId ? { ...r, entities: { ...r.entities, expedite: next } } : r
     ));
@@ -116,6 +119,25 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
         r.entity_id === entityId ? { ...r, entities: { ...r.entities, expedite: !next } } : r
       ));
       alert('Could not update expedite flag: ' + error.message);
+    }
+  }
+
+  async function setDeprioritise(entityId, reason /* string | null */) {
+    setTogglingId(entityId);
+    const prev = rows.find((r) => r.entity_id === entityId)?.entities?.deprioritise_reason ?? null;
+    setRows((curr) => curr.map((r) =>
+      r.entity_id === entityId ? { ...r, entities: { ...r.entities, deprioritise_reason: reason } } : r
+    ));
+    const payload = reason
+      ? { deprioritise_reason: reason, deprioritised_at: new Date().toISOString() }
+      : { deprioritise_reason: null, deprioritised_at: null };
+    const { error } = await supabase.from('entities').update(payload).eq('id', entityId);
+    setTogglingId(null);
+    if (error) {
+      setRows((curr) => curr.map((r) =>
+        r.entity_id === entityId ? { ...r, entities: { ...r.entities, deprioritise_reason: prev } } : r
+      ));
+      alert('Could not update deprioritise flag: ' + error.message);
     }
   }
 
@@ -135,6 +157,7 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
           client: r.entities?.name || '(unknown)',
           grade: r.entities?.grade || null,
           expedite: !!r.entities?.expedite,
+          deprioritise_reason: r.entities?.deprioritise_reason || null,
           service: r.service,
           period_end: pe,
           bm_deadline: r.bm_deadline,
@@ -236,18 +259,21 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
     const today = todayUTC();
     const impending = [];
     const expedite = [];
+    const deprioritised = [];
     const normal = [];
     for (const r of sharedFiltered) {
+      if (r.deprioritise_reason) { deprioritised.push(r); continue; }
       const inImpending = r.bm_deadline
         && Math.floor((parseISO(r.bm_deadline) - today) / 86400000) <= impendingDays;
       if (inImpending) impending.push(r);
       else if (r.expedite && r.days_past >= 0) expedite.push(r);
       else if (!r.expedite && r.days_past >= normalDaysBuffer) normal.push(r);
     }
-    return { impending, expedite, normal };
+    return { impending, expedite, deprioritised, normal };
   }, [sharedFiltered, impendingDays, normalDaysBuffer]);
   const impendingRows = useMemo(() => applySort(partitioned.impending), [partitioned, sortKey, sortDir]);
   const expediteRows = useMemo(() => applySort(partitioned.expedite), [partitioned, sortKey, sortDir]);
+  const deprioritisedRows = useMemo(() => applySort(partitioned.deprioritised), [partitioned, sortKey, sortDir]);
   const normalRows = useMemo(() => applySort(partitioned.normal), [partitioned, sortKey, sortDir]);
 
   // Summary by service x status_group, computed across every box. We exclude
@@ -279,13 +305,14 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
       const q = search.trim().toLowerCase();
       pool = pool.filter((r) => r.client.toLowerCase().includes(q));
     }
-    // Match the box partitioning (Impending > Expedite > Normal)
+    // Match the box partitioning (Deprioritised > Impending > Expedite > Normal)
     for (const r of pool) {
-      const inImpending = r.bm_deadline
+      const inDepri = !!r.deprioritise_reason;
+      const inImpending = !inDepri && r.bm_deadline
         && Math.floor((parseISO(r.bm_deadline) - today) / 86400000) <= impendingDays;
-      const inExpedite = !inImpending && r.expedite && r.days_past >= 0;
-      const inNormal = !inImpending && !r.expedite && r.days_past >= normalDaysBuffer;
-      if (!inImpending && !inExpedite && !inNormal) continue;
+      const inExpedite = !inDepri && !inImpending && r.expedite && r.days_past >= 0;
+      const inNormal = !inDepri && !inImpending && !r.expedite && r.days_past >= normalDaysBuffer;
+      if (!inDepri && !inImpending && !inExpedite && !inNormal) continue;
       if (!tally[r.service]) tally[r.service] = {};
       tally[r.service][r.status_group] = (tally[r.service][r.status_group] || 0) + 1;
     }
@@ -320,6 +347,7 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
     };
     dump('Impending', impendingRows);
     dump('Expedite', expediteRows);
+    dump('Deprioritised', deprioritisedRows);
     dump('Normal', normalRows);
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -449,11 +477,14 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
             titleColor="#b91c1c"
             background="#fff"
             rows={impendingRows}
-            expedite={false}
+            actionKind="deprioritise"
             togglingId={togglingId}
-            onToggle={toggleExpedite}
+            onDeprioritise={(entityId, client) => setDepriDialog({ entityId, client })}
             sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
             emptyText=""
+            collapsible
+            collapsed={impendingCollapsed}
+            onToggleCollapse={() => setImpendingCollapsed((c) => !c)}
           />
           <div style={{ height: 16 }} />
         </>
@@ -468,8 +499,9 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
         background="#fff"
         rows={expediteRows}
         expedite
+        actionKind="unexpedite"
         togglingId={togglingId}
-        onToggle={toggleExpedite}
+        onUnexpedite={(entityId) => toggleExpedite(entityId, false)}
         sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
         emptyText="No expedite clients with a passed period end."
         collapsible
@@ -479,6 +511,30 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
 
       <div style={{ height: 16 }} />
 
+      {/* Deprioritised box */}
+      {deprioritisedRows.length > 0 && (
+        <>
+          <Box
+            title="Deprioritised"
+            subtitle="Parked with a reason — won't appear in Impending or Normal until reactivated."
+            accent="#94a3b8"
+            titleColor="#475569"
+            background="#fff"
+            rows={deprioritisedRows}
+            actionKind="reactivate"
+            togglingId={togglingId}
+            onReactivate={(entityId) => setDeprioritise(entityId, null)}
+            showReason
+            sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
+            emptyText=""
+            collapsible
+            collapsed={deprioritisedCollapsed}
+            onToggleCollapse={() => setDeprioritisedCollapsed((c) => !c)}
+          />
+          <div style={{ height: 16 }} />
+        </>
+      )}
+
       {/* Normal box */}
       <Box
         title="Normal priority"
@@ -486,12 +542,26 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
         accent="#64748b"
         background="#fff"
         rows={normalRows}
-        expedite={false}
+        actionKind="expedite"
         togglingId={togglingId}
-        onToggle={toggleExpedite}
+        onExpedite={(entityId) => toggleExpedite(entityId, true)}
         sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
         emptyText="No normal-priority jobs match the current filters."
+        collapsible
+        collapsed={normalCollapsed}
+        onToggleCollapse={() => setNormalCollapsed((c) => !c)}
       />
+
+      {depriDialog && (
+        <DeprioritiseDialog
+          client={depriDialog.client}
+          onCancel={() => setDepriDialog(null)}
+          onConfirm={(reason) => {
+            setDeprioritise(depriDialog.entityId, reason);
+            setDepriDialog(null);
+          }}
+        />
+      )}
 
       <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 14, lineHeight: 1.5 }}>
         Period end is derived: Annual Accounts = BM deadline − 9 months; Self Assessment = 5 April of the year before the BM deadline.
@@ -502,7 +572,14 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
   );
 }
 
-function Box({ title, subtitle, accent, titleColor, background, rows, expedite, togglingId, onToggle, sortKey, sortDir, toggleSort, emptyText, collapsible, collapsed, onToggleCollapse }) {
+function Box({
+  title, subtitle, accent, titleColor, background,
+  rows, expedite, actionKind, togglingId,
+  onExpedite, onUnexpedite, onDeprioritise, onReactivate,
+  showReason,
+  sortKey, sortDir, toggleSort, emptyText,
+  collapsible, collapsed, onToggleCollapse,
+}) {
   return (
     <div style={{
       border: `1px solid ${accent}66`, borderRadius: 8, overflow: 'hidden', background,
@@ -557,6 +634,13 @@ function Box({ title, subtitle, accent, titleColor, background, rows, expedite, 
                     <span style={{ color: '#f59e0b', fontSize: 13, lineHeight: 1 }}>⚡</span>
                     <span>{r.client}</span>
                   </span>
+                ) : showReason && r.deprioritise_reason ? (
+                  <div>
+                    <div>{r.client}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>
+                      {r.deprioritise_reason}
+                    </div>
+                  </div>
                 ) : r.client}
               </td>
               <td style={{ ...td, color: '#475569', fontWeight: 600 }}>
@@ -588,21 +672,14 @@ function Box({ title, subtitle, accent, titleColor, background, rows, expedite, 
                 {r.assignees.length ? r.assignees.join(', ') : 'Unassigned'}
               </td>
               <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                <button
-                  disabled={togglingId === r.entity_id}
-                  onClick={() => onToggle(r.entity_id, !expedite)}
-                  title={expedite ? 'Remove expedite — send back to normal box' : 'Expedite — promote to top box'}
-                  style={{
-                    fontSize: 11, padding: '3px 8px', fontFamily: font, cursor: togglingId === r.entity_id ? 'wait' : 'pointer',
-                    borderRadius: 6,
-                    border: expedite ? '1px solid #cbd5e1' : '1px solid #fcd34d',
-                    background: expedite ? '#fff' : '#fef3c7',
-                    color: expedite ? '#475569' : '#b45309',
-                    fontWeight: 600,
-                  }}
-                >
-                  {expedite ? 'Unexpedite' : '⚡ Expedite'}
-                </button>
+                <RowAction
+                  kind={actionKind}
+                  busy={togglingId === r.entity_id}
+                  onExpedite={() => onExpedite && onExpedite(r.entity_id)}
+                  onUnexpedite={() => onUnexpedite && onUnexpedite(r.entity_id)}
+                  onDeprioritise={() => onDeprioritise && onDeprioritise(r.entity_id, r.client)}
+                  onReactivate={() => onReactivate && onReactivate(r.entity_id)}
+                />
               </td>
             </tr>
           ))}
@@ -620,6 +697,111 @@ function Box({ title, subtitle, accent, titleColor, background, rows, expedite, 
 
 const td = { padding: '7px 10px', verticalAlign: 'middle' };
 const thStatic = { padding: '8px 10px', borderBottom: '1px solid #e5e7eb' };
+
+const ACTION_STYLES = {
+  expedite:    { label: '⚡ Expedite',  border: '#fcd34d', background: '#fef3c7', color: '#b45309', title: 'Expedite — promote to top box' },
+  unexpedite:  { label: 'Unexpedite',   border: '#cbd5e1', background: '#fff',    color: '#475569', title: 'Remove expedite' },
+  deprioritise:{ label: 'Deprioritise', border: '#cbd5e1', background: '#fff',    color: '#475569', title: 'Park this client with a reason' },
+  reactivate:  { label: 'Reactivate',   border: '#86efac', background: '#dcfce7', color: '#166534', title: 'Clear deprioritise reason' },
+};
+function RowAction({ kind, busy, onExpedite, onUnexpedite, onDeprioritise, onReactivate }) {
+  const s = ACTION_STYLES[kind] || ACTION_STYLES.expedite;
+  const handler = kind === 'expedite' ? onExpedite
+    : kind === 'unexpedite' ? onUnexpedite
+    : kind === 'deprioritise' ? onDeprioritise
+    : kind === 'reactivate' ? onReactivate
+    : () => {};
+  return (
+    <button
+      disabled={busy}
+      onClick={handler}
+      title={s.title}
+      style={{
+        fontSize: 11, padding: '3px 8px', fontFamily: font, cursor: busy ? 'wait' : 'pointer',
+        borderRadius: 6,
+        border: '1px solid ' + s.border,
+        background: s.background,
+        color: s.color,
+        fontWeight: 600,
+      }}
+    >
+      {s.label}
+    </button>
+  );
+}
+
+const DEPRI_REASONS = ['Client Unresponsive', 'Being Struck Off', 'Awaiting Client', 'Other'];
+function DeprioritiseDialog({ client, onCancel, onConfirm }) {
+  const [choice, setChoice] = useState('');
+  const [otherText, setOtherText] = useState('');
+  const disabled = !choice || (choice === 'Other' && !otherText.trim());
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#fff', borderRadius: 10, padding: '18px 20px',
+          width: 380, fontFamily: font, boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
+        }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>
+          Deprioritise {client}
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+          Pick a reason — the client will move into the Deprioritised box and stop appearing in Impending.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+          {DEPRI_REASONS.map((r) => (
+            <label key={r} style={{
+              display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#0f172a',
+              padding: '8px 10px', border: '1px solid ' + (choice === r ? '#0e7fe0' : '#e5e7eb'),
+              borderRadius: 6, cursor: 'pointer', background: choice === r ? '#eff6ff' : '#fff',
+            }}>
+              <input type="radio" name="depri" checked={choice === r} onChange={() => setChoice(r)} />
+              {r}
+            </label>
+          ))}
+        </div>
+        {choice === 'Other' && (
+          <input
+            autoFocus
+            value={otherText}
+            onChange={(e) => setOtherText(e.target.value)}
+            placeholder="Reason…"
+            style={{
+              width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font,
+              border: '1px solid #cbd5e1', borderRadius: 6, marginBottom: 14, boxSizing: 'border-box',
+            }}
+          />
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              fontSize: 12, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
+              borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 500,
+            }}
+          >Cancel</button>
+          <button
+            disabled={disabled}
+            onClick={() => onConfirm(choice === 'Other' ? otherText.trim() : choice)}
+            style={{
+              fontSize: 12, padding: '6px 14px', fontFamily: font, cursor: disabled ? 'not-allowed' : 'pointer',
+              borderRadius: 6, border: '1px solid #0f172a',
+              background: disabled ? '#94a3b8' : '#0f172a', color: '#fff', fontWeight: 600,
+            }}
+          >Deprioritise</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Th({ children, onClick, active, dir, align }) {
   return (
