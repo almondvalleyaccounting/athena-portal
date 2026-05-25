@@ -119,7 +119,15 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
         r.entity_id === entityId ? { ...r, entities: { ...r.entities, expedite: !next } } : r
       ));
       alert('Could not update expedite flag: ' + error.message);
+      return;
     }
+    // Audit — best-effort, doesn't block UI on failure.
+    supabase.from('entity_priority_log').insert({
+      entity_id: entityId,
+      action: next ? 'expedite' : 'unexpedite',
+    }).then(({ error: logErr }) => {
+      if (logErr) console.warn('priority log insert failed', logErr);
+    });
   }
 
   async function setDeprioritise(entityId, reason /* string | null */) {
@@ -138,7 +146,15 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
         r.entity_id === entityId ? { ...r, entities: { ...r.entities, deprioritise_reason: prev } } : r
       ));
       alert('Could not update deprioritise flag: ' + error.message);
+      return;
     }
+    supabase.from('entity_priority_log').insert({
+      entity_id: entityId,
+      action: reason ? 'deprioritise' : 'reactivate',
+      reason: reason || null,
+    }).then(({ error: logErr }) => {
+      if (logErr) console.warn('priority log insert failed', logErr);
+    });
   }
 
   // Build unique rows (one per entity+service+period_end), independent of cutoff
