@@ -460,6 +460,23 @@ export default function ReadyNowView({ teamFilter = '', clientFilter = '', setCl
         </label>
         <div style={{ flex: 1 }} />
         <button
+          onClick={() => {
+            setServiceFilter('all');
+            setStatusFilter('all');
+            setAssigneeFilter('all');
+            setGradeFilter('all');
+            setDueFilter('all');
+            setClientFilter('');
+            setImpendingDays(14);
+            setNormalDaysBuffer(90);
+          }}
+          title="Clear all filters and restore defaults"
+          style={{
+            padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font,
+            border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#475569', cursor: 'pointer',
+          }}
+        >Reset filters</button>
+        <button
           onClick={exportCsv}
           style={{
             padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font,
@@ -605,7 +622,12 @@ function Box({
         </span>
         <span style={{ fontSize: 11, color: '#64748b' }}>{subtitle}</span>
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 11, color: '#64748b' }}>{rows.length} jobs</span>
+        <span style={{
+          fontSize: 12, fontWeight: 700,
+          padding: '2px 10px', borderRadius: 999,
+          background: accent, color: '#fff',
+          fontVariantNumeric: 'tabular-nums',
+        }}>{rows.length} {rows.length === 1 ? 'job' : 'jobs'}</span>
       </div>
       {collapsed ? null : (
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
