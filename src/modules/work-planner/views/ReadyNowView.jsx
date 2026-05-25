@@ -336,7 +336,7 @@ export default function ReadyNowView() {
         title="⚡ Expedite"
         subtitle="Skip the queue — shown as soon as period end passes."
         accent="#f59e0b"
-        background="#fffbeb"
+        background="#fff"
         rows={expediteRows}
         expedite
         togglingId={togglingId}
@@ -404,10 +404,17 @@ function Box({ title, subtitle, accent, background, rows, expedite, togglingId, 
         <tbody>
           {rows.map((r, i) => (
             <tr key={r.key} style={{
-              background: i % 2 ? 'transparent' : (expedite ? '#fff8dc55' : '#fafbfc'),
+              background: i % 2 ? 'transparent' : '#fafbfc',
               borderTop: '1px solid #f1f5f9',
             }}>
-              <td style={td}>{r.client}</td>
+              <td style={td}>
+                {expedite ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#f59e0b', fontSize: 13, lineHeight: 1 }}>⚡</span>
+                    <span>{r.client}</span>
+                  </span>
+                ) : r.client}
+              </td>
               <td style={{ ...td, color: '#475569', fontWeight: 600 }}>
                 {r.grade ? <span style={{
                   fontSize: 10, padding: '1px 6px', borderRadius: 4,
