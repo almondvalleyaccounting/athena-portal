@@ -62,7 +62,7 @@ function derivePeriodEnd(service, bmDeadlineISO, taskName) {
   return null;
 }
 
-export default function ReadyNowView() {
+export default function ReadyNowView({ teamFilter = '' } = {}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -142,6 +142,7 @@ export default function ReadyNowView() {
           bm_status: r.bm_status,
           status_group: STATUS_TO_GROUP[r.bm_status] || 'Other',
           assignees: assigneeName ? [assigneeName] : [],
+          assigneeIds: r.assignee_id ? [r.assignee_id] : [],
           days_past: Math.floor((today - pe) / 86400000),
         });
       } else {
@@ -151,6 +152,7 @@ export default function ReadyNowView() {
           e.bm_target_date = r.bm_target_date;
         }
         if (assigneeName && !e.assignees.includes(assigneeName)) e.assignees.push(assigneeName);
+        if (r.assignee_id && !e.assigneeIds.includes(r.assignee_id)) e.assigneeIds.push(r.assignee_id);
       }
     }
     return Array.from(byKey.values());
@@ -177,6 +179,7 @@ export default function ReadyNowView() {
   // Apply shared filters (service/status/assignee/grade/search). Cutoff is per-box.
   function applySharedFilters(list) {
     let out = list;
+    if (teamFilter) out = out.filter((r) => r.assigneeIds.includes(teamFilter));
     if (serviceFilter === 'SA') out = out.filter((r) => r.service === 'Self Assessment');
     else if (serviceFilter === 'Acc') out = out.filter((r) => r.service === 'Annual Accounts');
     if (statusFilter !== 'all') out = out.filter((r) => r.status_group === statusFilter);
@@ -228,7 +231,7 @@ export default function ReadyNowView() {
   // Expedite box: expedite-flagged client whose period_end has passed and
   // isn't already in Impending. Normal box: remaining rows with days_past
   // >= normalDaysBuffer. Each row appears in exactly one box.
-  const sharedFiltered = useMemo(() => applySharedFilters(allReady), [allReady, serviceFilter, statusFilter, assigneeFilter, gradeFilter, dueFilter, search]);
+  const sharedFiltered = useMemo(() => applySharedFilters(allReady), [allReady, teamFilter, serviceFilter, statusFilter, assigneeFilter, gradeFilter, dueFilter, search]);
   const partitioned = useMemo(() => {
     const today = todayUTC();
     const impending = [];
@@ -247,15 +250,47 @@ export default function ReadyNowView() {
   const expediteRows = useMemo(() => applySort(partitioned.expedite), [partitioned, sortKey, sortDir]);
   const normalRows = useMemo(() => applySort(partitioned.normal), [partitioned, sortKey, sortDir]);
 
-  // Summary by service x status_group, combined across both boxes
+  // Summary by service x status_group, computed across every box. We exclude
+  // statusFilter so the pills still show counts for the other groups (and
+  // can be clicked to switch); they always reflect what's available given
+  // the other filters.
   const summary = useMemo(() => {
     const tally = { 'Self Assessment': {}, 'Annual Accounts': {} };
-    for (const r of [...impendingRows, ...expediteRows, ...normalRows]) {
+    const today = todayUTC();
+    // Re-run shared filters with statusFilter forced to 'all'
+    let pool = allReady;
+    if (teamFilter) pool = pool.filter((r) => r.assigneeIds.includes(teamFilter));
+    if (serviceFilter === 'SA') pool = pool.filter((r) => r.service === 'Self Assessment');
+    else if (serviceFilter === 'Acc') pool = pool.filter((r) => r.service === 'Annual Accounts');
+    if (assigneeFilter === 'unassigned') pool = pool.filter((r) => r.assignees.length === 0);
+    else if (assigneeFilter !== 'all') pool = pool.filter((r) => r.assignees.includes(assigneeFilter));
+    if (gradeFilter === 'none') pool = pool.filter((r) => !r.grade);
+    else if (gradeFilter !== 'all') pool = pool.filter((r) => r.grade === gradeFilter);
+    if (dueFilter !== 'all') {
+      pool = pool.filter((r) => {
+        if (!r.bm_deadline) return false;
+        const diff = Math.floor((parseISO(r.bm_deadline) - today) / 86400000);
+        if (dueFilter === 'overdue') return diff < 0;
+        const window = parseInt(dueFilter, 10);
+        return diff >= 0 && diff <= window;
+      });
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      pool = pool.filter((r) => r.client.toLowerCase().includes(q));
+    }
+    // Match the box partitioning (Impending > Expedite > Normal)
+    for (const r of pool) {
+      const inImpending = r.bm_deadline
+        && Math.floor((parseISO(r.bm_deadline) - today) / 86400000) <= impendingDays;
+      const inExpedite = !inImpending && r.expedite && r.days_past >= 0;
+      const inNormal = !inImpending && !r.expedite && r.days_past >= normalDaysBuffer;
+      if (!inImpending && !inExpedite && !inNormal) continue;
       if (!tally[r.service]) tally[r.service] = {};
       tally[r.service][r.status_group] = (tally[r.service][r.status_group] || 0) + 1;
     }
     return tally;
-  }, [impendingRows, expediteRows, normalRows]);
+  }, [allReady, teamFilter, serviceFilter, assigneeFilter, gradeFilter, dueFilter, search, impendingDays, normalDaysBuffer]);
 
   function toggleSort(key) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -328,13 +363,21 @@ export default function ReadyNowView() {
                 {Object.keys(STATUS_GROUPS).map((g) => {
                   const n = summary[svc]?.[g] || 0;
                   if (!n) return null;
+                  const active = statusFilter === g;
                   return (
-                    <span key={g} style={{
-                      fontSize: 11, padding: '2px 8px', borderRadius: 999,
-                      background: GROUP_COLOUR[g] + '22',
-                      color: GROUP_COLOUR[g],
-                      border: '1px solid ' + GROUP_COLOUR[g] + '55',
-                    }}>{g}: {n}</span>
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setStatusFilter(active ? 'all' : g)}
+                      title={active ? 'Clear status filter' : `Filter by ${g}`}
+                      style={{
+                        fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                        background: active ? GROUP_COLOUR[g] : GROUP_COLOUR[g] + '22',
+                        color: active ? '#fff' : GROUP_COLOUR[g],
+                        border: '1px solid ' + GROUP_COLOUR[g] + (active ? '' : '55'),
+                        cursor: 'pointer', fontFamily: font, fontWeight: active ? 600 : 400,
+                      }}
+                    >{g}: {n}</button>
                   );
                 })}
               </div>
