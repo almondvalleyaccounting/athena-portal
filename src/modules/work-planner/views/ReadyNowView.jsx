@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
+import ClientTypeAhead from '../components/ClientTypeAhead';
 
 const font = "'Outfit', sans-serif";
 
@@ -62,7 +63,7 @@ function derivePeriodEnd(service, bmDeadlineISO, taskName) {
   return null;
 }
 
-export default function ReadyNowView({ teamFilter = '' } = {}) {
+export default function ReadyNowView({ teamFilter = '', clientFilter = '', setClientFilter = () => {}, entityList = [] } = {}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -74,7 +75,6 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [gradeFilter, setGradeFilter] = useState('all');
   const [dueFilter, setDueFilter] = useState('all'); // all | overdue | 30 | 60 | 90
-  const [search, setSearch] = useState('');
   const [normalDaysBuffer, setNormalDaysBuffer] = useState(90);
   const [impendingDays, setImpendingDays] = useState(14);
   const [impendingCollapsed, setImpendingCollapsed] = useState(false);
@@ -221,10 +221,7 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
         return diff >= 0 && diff <= window;
       });
     }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      out = out.filter((r) => r.client.toLowerCase().includes(q));
-    }
+    if (clientFilter) out = out.filter((r) => r.entity_id === clientFilter);
     return out;
   }
 
@@ -254,7 +251,7 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
   // Expedite box: expedite-flagged client whose period_end has passed and
   // isn't already in Impending. Normal box: remaining rows with days_past
   // >= normalDaysBuffer. Each row appears in exactly one box.
-  const sharedFiltered = useMemo(() => applySharedFilters(allReady), [allReady, teamFilter, serviceFilter, statusFilter, assigneeFilter, gradeFilter, dueFilter, search]);
+  const sharedFiltered = useMemo(() => applySharedFilters(allReady), [allReady, teamFilter, clientFilter, serviceFilter, statusFilter, assigneeFilter, gradeFilter, dueFilter]);
   const partitioned = useMemo(() => {
     const today = todayUTC();
     const impending = [];
@@ -301,10 +298,7 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
         return diff >= 0 && diff <= window;
       });
     }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      pool = pool.filter((r) => r.client.toLowerCase().includes(q));
-    }
+    if (clientFilter) pool = pool.filter((r) => r.entity_id === clientFilter);
     // Match the box partitioning (Deprioritised > Impending > Expedite > Normal)
     for (const r of pool) {
       const inDepri = !!r.deprioritise_reason;
@@ -317,7 +311,7 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
       tally[r.service][r.status_group] = (tally[r.service][r.status_group] || 0) + 1;
     }
     return tally;
-  }, [allReady, teamFilter, serviceFilter, assigneeFilter, gradeFilter, dueFilter, search, impendingDays, normalDaysBuffer]);
+  }, [allReady, teamFilter, clientFilter, serviceFilter, assigneeFilter, gradeFilter, dueFilter, impendingDays, normalDaysBuffer]);
 
   function toggleSort(key) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -416,6 +410,15 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+          Client
+          <ClientTypeAhead
+            entityList={entityList}
+            value={clientFilter}
+            onChange={setClientFilter}
+            size="small"
+          />
+        </label>
         <Select label="Service" value={serviceFilter} onChange={setServiceFilter}
           options={[['all', 'All'], ['SA', 'Self Assessment'], ['Acc', 'Annual Accounts']]} />
         <Select label="Status" value={statusFilter} onChange={setStatusFilter}
@@ -449,14 +452,6 @@ export default function ReadyNowView({ teamFilter = '' } = {}) {
             }}
           />
         </label>
-        <input
-          placeholder="Search client…"
-          value={search} onChange={(e) => setSearch(e.target.value)}
-          style={{
-            padding: '5px 10px', fontSize: 12, fontFamily: font,
-            border: '1px solid #cbd5e1', borderRadius: 6, minWidth: 200,
-          }}
-        />
         <div style={{ flex: 1 }} />
         <button
           onClick={exportCsv}

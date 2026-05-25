@@ -86,17 +86,21 @@ export default function FilterBar({
         </div>
       ))}
 
-      <div style={sepStyle} />
-      <span style={labelStyle}>Client</span>
-      <TypeAhead items={entityItems} value={clientFilter} onChange={setClientFilter} placeholder="Client..." />
+      {view !== 'ready' && (
+        <>
+          <div style={sepStyle} />
+          <span style={labelStyle}>Client</span>
+          <TypeAhead items={entityItems} value={clientFilter} onChange={setClientFilter} placeholder="Client..." />
 
-      <div style={sepStyle} />
-      <span style={labelStyle}>Service</span>
-      <TypeAhead items={serviceItems} value={serviceFilter} onChange={setServiceFilter} placeholder="Service..." />
+          <div style={sepStyle} />
+          <span style={labelStyle}>Service</span>
+          <TypeAhead items={serviceItems} value={serviceFilter} onChange={setServiceFilter} placeholder="Service..." />
 
-      <div style={sepStyle} />
-      <span style={labelStyle}>Status</span>
-      <TypeAhead items={statusItems} value={statusFilter} onChange={setStatusFilter} placeholder="Status..." />
+          <div style={sepStyle} />
+          <span style={labelStyle}>Status</span>
+          <TypeAhead items={statusItems} value={statusFilter} onChange={setStatusFilter} placeholder="Status..." />
+        </>
+      )}
 
       {/* Calendar controls */}
       {view === 'calendar' && (
@@ -216,13 +220,15 @@ export default function FilterBar({
           letter filters lists by entity first-letter. Sits inline with
           the filter bar — a full-width strip on its own row felt noisy
           in tests, so it lives at the right side and wraps if needed. */}
-      <div style={{ flexBasis: '100%', marginTop: 4 }}>
-        <AlphabetFilter
-          items={entityList}
-          selected={clientLetter || null}
-          onChange={setClientLetter}
-        />
-      </div>
+      {view !== 'ready' && (
+        <div style={{ flexBasis: '100%', marginTop: 4 }}>
+          <AlphabetFilter
+            items={entityList}
+            selected={clientLetter || null}
+            onChange={setClientLetter}
+          />
+        </div>
+      )}
     </div>
   );
 }

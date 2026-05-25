@@ -853,7 +853,12 @@ export default function WorkPlannerModule() {
             <CompletedView />
           )}
           {activeTab === 'ready' && (
-            <ReadyNowView teamFilter={teamFilter} />
+            <ReadyNowView
+              teamFilter={teamFilter}
+              clientFilter={clientFilter}
+              setClientFilter={setClientFilter}
+              entityList={entityList}
+            />
           )}
           {activeTab === 'waiting' && (
             <WaitingView />
