@@ -76,6 +76,8 @@ export default function ReadyNowView() {
   const [dueFilter, setDueFilter] = useState('all'); // all | overdue | 30 | 60 | 90
   const [search, setSearch] = useState('');
   const [normalDaysBuffer, setNormalDaysBuffer] = useState(90);
+  const [impendingDays, setImpendingDays] = useState(14);
+  const [expediteCollapsed, setExpediteCollapsed] = useState(false);
   const [sortKey, setSortKey] = useState('period_end');
   const [sortDir, setSortDir] = useState('asc');
 
@@ -222,27 +224,38 @@ export default function ReadyNowView() {
     });
   }
 
-  // Expedite box: any expedite row whose period_end has passed (days_past >= 0).
-  // Normal box: non-expedite rows where days_past >= normalDaysBuffer.
+  // Impending box: bm_deadline within impendingDays of today (or overdue).
+  // Expedite box: expedite-flagged client whose period_end has passed and
+  // isn't already in Impending. Normal box: remaining rows with days_past
+  // >= normalDaysBuffer. Each row appears in exactly one box.
   const sharedFiltered = useMemo(() => applySharedFilters(allReady), [allReady, serviceFilter, statusFilter, assigneeFilter, gradeFilter, dueFilter, search]);
-  const expediteRows = useMemo(
-    () => applySort(sharedFiltered.filter((r) => r.expedite && r.days_past >= 0)),
-    [sharedFiltered, sortKey, sortDir]
-  );
-  const normalRows = useMemo(
-    () => applySort(sharedFiltered.filter((r) => !r.expedite && r.days_past >= normalDaysBuffer)),
-    [sharedFiltered, normalDaysBuffer, sortKey, sortDir]
-  );
+  const partitioned = useMemo(() => {
+    const today = todayUTC();
+    const impending = [];
+    const expedite = [];
+    const normal = [];
+    for (const r of sharedFiltered) {
+      const inImpending = r.bm_deadline
+        && Math.floor((parseISO(r.bm_deadline) - today) / 86400000) <= impendingDays;
+      if (inImpending) impending.push(r);
+      else if (r.expedite && r.days_past >= 0) expedite.push(r);
+      else if (!r.expedite && r.days_past >= normalDaysBuffer) normal.push(r);
+    }
+    return { impending, expedite, normal };
+  }, [sharedFiltered, impendingDays, normalDaysBuffer]);
+  const impendingRows = useMemo(() => applySort(partitioned.impending), [partitioned, sortKey, sortDir]);
+  const expediteRows = useMemo(() => applySort(partitioned.expedite), [partitioned, sortKey, sortDir]);
+  const normalRows = useMemo(() => applySort(partitioned.normal), [partitioned, sortKey, sortDir]);
 
   // Summary by service x status_group, combined across both boxes
   const summary = useMemo(() => {
     const tally = { 'Self Assessment': {}, 'Annual Accounts': {} };
-    for (const r of [...expediteRows, ...normalRows]) {
+    for (const r of [...impendingRows, ...expediteRows, ...normalRows]) {
       if (!tally[r.service]) tally[r.service] = {};
       tally[r.service][r.status_group] = (tally[r.service][r.status_group] || 0) + 1;
     }
     return tally;
-  }, [expediteRows, normalRows]);
+  }, [impendingRows, expediteRows, normalRows]);
 
   function toggleSort(key) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -270,6 +283,7 @@ export default function ReadyNowView() {
         lines.push(row.join(','));
       }
     };
+    dump('Impending', impendingRows);
     dump('Expedite', expediteRows);
     dump('Normal', normalRows);
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
@@ -342,6 +356,18 @@ export default function ReadyNowView() {
         <Select label="Statutory" value={dueFilter} onChange={setDueFilter}
           options={[['all', 'All'], ['overdue', 'Overdue'], ['30', 'Due in 30'], ['60', 'Due in 60'], ['90', 'Due in 90']]} />
         <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+          Impending: due in ≤
+          <input
+            type="number" min={0} value={impendingDays}
+            onChange={(e) => setImpendingDays(Math.max(0, parseInt(e.target.value || '0', 10)))}
+            style={{
+              width: 50, padding: '4px 6px', fontSize: 12, fontFamily: font,
+              border: '1px solid #cbd5e1', borderRadius: 6,
+            }}
+          />
+          days
+        </label>
+        <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
           Normal box: days past PE ≥
           <input
             type="number" min={0} value={normalDaysBuffer}
@@ -370,11 +396,32 @@ export default function ReadyNowView() {
         >Export CSV</button>
       </div>
 
+      {/* Impending box — only shown when there's something inside the window */}
+      {impendingRows.length > 0 && (
+        <>
+          <Box
+            title="🔥 Impending"
+            subtitle={`Statutory deadline within ${impendingDays} days (or overdue).`}
+            accent="#dc2626"
+            titleColor="#b91c1c"
+            background="#fff"
+            rows={impendingRows}
+            expedite={false}
+            togglingId={togglingId}
+            onToggle={toggleExpedite}
+            sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
+            emptyText=""
+          />
+          <div style={{ height: 16 }} />
+        </>
+      )}
+
       {/* Expedite box */}
       <Box
         title="⚡ Expedite"
         subtitle="Skip the queue — shown as soon as period end passes."
         accent="#f59e0b"
+        titleColor="#b45309"
         background="#fff"
         rows={expediteRows}
         expedite
@@ -382,6 +429,9 @@ export default function ReadyNowView() {
         onToggle={toggleExpedite}
         sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
         emptyText="No expedite clients with a passed period end."
+        collapsible
+        collapsed={expediteCollapsed}
+        onToggleCollapse={() => setExpediteCollapsed((c) => !c)}
       />
 
       <div style={{ height: 16 }} />
@@ -409,23 +459,34 @@ export default function ReadyNowView() {
   );
 }
 
-function Box({ title, subtitle, accent, background, rows, expedite, togglingId, onToggle, sortKey, sortDir, toggleSort, emptyText }) {
+function Box({ title, subtitle, accent, titleColor, background, rows, expedite, togglingId, onToggle, sortKey, sortDir, toggleSort, emptyText, collapsible, collapsed, onToggleCollapse }) {
   return (
     <div style={{
       border: `1px solid ${accent}66`, borderRadius: 8, overflow: 'hidden', background,
     }}>
-      <div style={{
-        display: 'flex', alignItems: 'baseline', gap: 10,
-        padding: '8px 12px', background: accent + '14',
-        borderBottom: `1px solid ${accent}44`,
-      }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: accent === '#f59e0b' ? '#b45309' : '#0f172a' }}>
+      <div
+        onClick={collapsible ? onToggleCollapse : undefined}
+        style={{
+          display: 'flex', alignItems: 'baseline', gap: 10,
+          padding: '8px 12px', background: accent + '14',
+          borderBottom: collapsed ? 'none' : `1px solid ${accent}44`,
+          cursor: collapsible ? 'pointer' : 'default',
+          userSelect: 'none',
+        }}
+      >
+        {collapsible && (
+          <span style={{ fontSize: 10, color: titleColor || '#0f172a', width: 10, display: 'inline-block' }}>
+            {collapsed ? '▶' : '▼'}
+          </span>
+        )}
+        <span style={{ fontSize: 13, fontWeight: 700, color: titleColor || '#0f172a' }}>
           {title}
         </span>
         <span style={{ fontSize: 11, color: '#64748b' }}>{subtitle}</span>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 11, color: '#64748b' }}>{rows.length} jobs</span>
       </div>
+      {collapsed ? null : (
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead style={{ background: '#f8fafc' }}>
           <tr>
@@ -509,6 +570,7 @@ function Box({ title, subtitle, accent, background, rows, expedite, togglingId, 
           )}
         </tbody>
       </table>
+      )}
     </div>
   );
 }
