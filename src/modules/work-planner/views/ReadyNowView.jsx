@@ -56,6 +56,7 @@ export default function ReadyNowView() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [gradeFilter, setGradeFilter] = useState('all');
+  const [dueFilter, setDueFilter] = useState('all'); // all | overdue | 30 | 60 | 90
   const [search, setSearch] = useState('');
   const [normalDaysBuffer, setNormalDaysBuffer] = useState(90);
   const [sortKey, setSortKey] = useState('period_end');
@@ -157,6 +158,17 @@ export default function ReadyNowView() {
     if (assigneeFilter === 'unassigned') out = out.filter((r) => r.assignees.length === 0);
     else if (assigneeFilter !== 'all') out = out.filter((r) => r.assignees.includes(assigneeFilter));
     if (gradeFilter !== 'all') out = out.filter((r) => (r.grade || '—') === gradeFilter);
+    if (dueFilter !== 'all') {
+      const today = todayUTC();
+      out = out.filter((r) => {
+        if (!r.bm_deadline) return false;
+        const d = parseISO(r.bm_deadline);
+        const diff = Math.floor((d - today) / 86400000);
+        if (dueFilter === 'overdue') return diff < 0;
+        const window = parseInt(dueFilter, 10);
+        return diff >= 0 && diff <= window;
+      });
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       out = out.filter((r) => r.client.toLowerCase().includes(q));
@@ -176,6 +188,7 @@ export default function ReadyNowView() {
         case 'assignee':   av = (a.assignees[0] || '~'); bv = (b.assignees[0] || '~'); break;
         case 'days':       av = a.days_past; bv = b.days_past; break;
         case 'target':     av = a.bm_target_date || '9999-12-31'; bv = b.bm_target_date || '9999-12-31'; break;
+        case 'statutory':  av = a.bm_deadline || '9999-12-31'; bv = b.bm_deadline || '9999-12-31'; break;
         case 'period_end':
         default:           av = a.period_end.getTime(); bv = b.period_end.getTime(); break;
       }
@@ -187,7 +200,7 @@ export default function ReadyNowView() {
 
   // Expedite box: any expedite row whose period_end has passed (days_past >= 0).
   // Normal box: non-expedite rows where days_past >= normalDaysBuffer.
-  const sharedFiltered = useMemo(() => applySharedFilters(allReady), [allReady, serviceFilter, statusFilter, assigneeFilter, gradeFilter, search]);
+  const sharedFiltered = useMemo(() => applySharedFilters(allReady), [allReady, serviceFilter, statusFilter, assigneeFilter, gradeFilter, dueFilter, search]);
   const expediteRows = useMemo(
     () => applySort(sharedFiltered.filter((r) => r.expedite && r.days_past >= 0)),
     [sharedFiltered, sortKey, sortDir]
@@ -302,6 +315,8 @@ export default function ReadyNowView() {
           options={[['all', 'All'], ['unassigned', '— Unassigned —'], ...assigneeOptions.map((n) => [n, n])]} />
         <Select label="Grade" value={gradeFilter} onChange={setGradeFilter}
           options={[['all', 'All'], ...gradeOptions.map((g) => [g, g])]} />
+        <Select label="Statutory" value={dueFilter} onChange={setDueFilter}
+          options={[['all', 'All'], ['overdue', 'Overdue'], ['30', 'Due in 30'], ['60', 'Due in 60'], ['90', 'Due in 90']]} />
         <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
           Normal box: days past PE ≥
           <input
@@ -394,6 +409,7 @@ function Box({ title, subtitle, accent, background, rows, expedite, togglingId, 
             <Th onClick={() => toggleSort('grade')} active={sortKey === 'grade'} dir={sortDir}>Grade</Th>
             <Th onClick={() => toggleSort('service')} active={sortKey === 'service'} dir={sortDir}>Service</Th>
             <Th onClick={() => toggleSort('period_end')} active={sortKey === 'period_end'} dir={sortDir}>Period end</Th>
+            <Th onClick={() => toggleSort('statutory')} active={sortKey === 'statutory'} dir={sortDir}>Statutory</Th>
             <Th onClick={() => toggleSort('target')} active={sortKey === 'target'} dir={sortDir}>BM target</Th>
             <Th onClick={() => toggleSort('days')} active={sortKey === 'days'} dir={sortDir} align="right">Days past</Th>
             <Th onClick={() => toggleSort('status')} active={sortKey === 'status'} dir={sortDir}>BM status</Th>
@@ -423,6 +439,9 @@ function Box({ title, subtitle, accent, background, rows, expedite, togglingId, 
               </td>
               <td style={{ ...td, color: '#475569' }}>{r.service === 'Self Assessment' ? 'SA' : 'Annual Accs'}</td>
               <td style={{ ...td, color: '#475569' }}>{fmt(r.period_end)}</td>
+              <td style={{ ...td, color: r.bm_deadline ? (parseISO(r.bm_deadline) < todayUTC() ? '#dc2626' : '#475569') : '#cbd5e1', fontWeight: r.bm_deadline && parseISO(r.bm_deadline) < todayUTC() ? 600 : 400 }}>
+                {r.bm_deadline ? fmt(parseISO(r.bm_deadline)) : '—'}
+              </td>
               <td style={{ ...td, color: r.bm_target_date ? '#475569' : '#cbd5e1' }}>
                 {r.bm_target_date ? fmt(parseISO(r.bm_target_date)) : '—'}
               </td>
@@ -460,7 +479,7 @@ function Box({ title, subtitle, accent, background, rows, expedite, togglingId, 
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
+            <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
               {emptyText}
             </td></tr>
           )}
