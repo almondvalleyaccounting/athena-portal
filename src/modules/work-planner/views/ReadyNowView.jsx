@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import ClientTypeAhead from '../components/ClientTypeAhead';
+import {
+  fetchPendingChangeRequests, upsertChangeRequest,
+  markChangeRequestApplied, cancelChangeRequest,
+} from '../lib/readyNowChanges';
 
 const font = "'Outfit', sans-serif";
 
@@ -16,6 +20,8 @@ const STATUS_TO_GROUP = (() => {
   for (const [g, list] of Object.entries(STATUS_GROUPS)) list.forEach((s) => { m[s] = g; });
   return m;
 })();
+const FIELD_LABEL = { grade: 'Grade', bm_target: 'BM target', assignee: 'Assignee' };
+
 const GROUP_COLOUR = {
   'Not started': '#94a3b8',
   'In progress': '#0ea5e9',
@@ -63,7 +69,7 @@ function derivePeriodEnd(service, bmDeadlineISO, taskName) {
   return null;
 }
 
-export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}, clientFilter = '', setClientFilter = () => {}, entityList = [] } = {}) {
+export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}, clientFilter = '', setClientFilter = () => {}, entityList = [], staffList = [] } = {}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -82,6 +88,11 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
   const [deprioritisedCollapsed, setDeprioritisedCollapsed] = useState(false);
   const [normalCollapsed, setNormalCollapsed] = useState(false);
   const [depriDialog, setDepriDialog] = useState(null); // { entityId, client } | null
+
+  // Change-request queue (Grade / BM Target / Assignee edits awaiting BM update)
+  const [pendingChanges, setPendingChanges] = useState([]);
+  const [editTarget, setEditTarget] = useState(null); // row being edited | null
+  const [queueOpen, setQueueOpen] = useState(false);
   const [sortKey, setSortKey] = useState('period_end');
   const [sortDir, setSortDir] = useState('asc');
 
@@ -106,6 +117,91 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
     load();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchPendingChangeRequests()
+      .then((data) => { if (!cancelled) setPendingChanges(data); })
+      .catch((err) => console.warn('pending changes load failed', err));
+    return () => { cancelled = true; };
+  }, []);
+
+  // Key a change request by entity+service+period+field for lookup.
+  const changesKey = (entityId, service, periodEndISO, field) =>
+    `${entityId}|${service}|${periodEndISO || ''}|${field}`;
+  const pendingByKey = useMemo(() => {
+    const m = new Map();
+    for (const c of pendingChanges) {
+      m.set(changesKey(c.entity_id, c.service, c.period_end, c.field), c);
+    }
+    return m;
+  }, [pendingChanges]);
+
+  async function saveChangeRequest(req) {
+    try {
+      const saved = await upsertChangeRequest(req);
+      setPendingChanges((prev) => {
+        const idx = prev.findIndex((p) => p.id === saved.id);
+        if (idx >= 0) { const c = [...prev]; c[idx] = saved; return c; }
+        return [saved, ...prev];
+      });
+    } catch (err) {
+      alert('Could not queue change: ' + err.message);
+    }
+  }
+
+  async function markApplied(id) {
+    try {
+      await markChangeRequestApplied(id);
+      setPendingChanges((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      alert('Could not mark applied: ' + err.message);
+    }
+  }
+  async function cancelOne(id) {
+    try {
+      await cancelChangeRequest(id);
+      setPendingChanges((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      alert('Could not cancel change: ' + err.message);
+    }
+  }
+  async function cancelAll() {
+    if (!pendingChanges.length) return;
+    if (!confirm(`Discard all ${pendingChanges.length} pending changes?`)) return;
+    try {
+      await Promise.all(pendingChanges.map((c) => cancelChangeRequest(c.id)));
+      setPendingChanges([]);
+    } catch (err) {
+      alert('Could not discard all: ' + err.message);
+    }
+  }
+
+  function exportChangesCsv() {
+    if (!pendingChanges.length) return;
+    const header = ['Client', 'Service', 'Period end', 'Field', 'Current', 'Proposed', 'Note', 'Queued at'];
+    const lines = [header.join(',')];
+    for (const c of pendingChanges) {
+      const row = [
+        '"' + (c.entities?.name || '').replace(/"/g, '""') + '"',
+        c.service,
+        c.period_end || '',
+        FIELD_LABEL[c.field] || c.field,
+        '"' + (c.current_value || '').replace(/"/g, '""') + '"',
+        '"' + (c.proposed_value || '').replace(/"/g, '""') + '"',
+        '"' + (c.note || '').replace(/"/g, '""') + '"',
+        c.created_at,
+      ];
+      lines.push(row.join(','));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bm-change-requests-${isoDate(todayUTC())}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function toggleExpedite(entityId, next) {
     setTogglingId(entityId);
@@ -474,6 +570,16 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
         </label>
         <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'nowrap', flexShrink: 0 }}>
           <button
+            onClick={() => setQueueOpen(true)}
+            title="Review queued BM change requests"
+            style={{
+              padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
+              border: '1px solid #0e7fe0', borderRadius: 6,
+              background: pendingChanges.length ? '#0e7fe0' : '#fff',
+              color: pendingChanges.length ? '#fff' : '#0e7fe0', cursor: 'pointer',
+            }}
+          >Queue ({pendingChanges.length})</button>
+          <button
             onClick={() => {
               setServiceFilter('all');
               setStatusFilter('all');
@@ -514,6 +620,8 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
             actionKind="deprioritise"
             togglingId={togglingId}
             onDeprioritise={(entityId, client) => setDepriDialog({ entityId, client })}
+            onEdit={(row) => setEditTarget(row)}
+            pendingByKey={pendingByKey}
             sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
             emptyText=""
             collapsible
@@ -559,6 +667,8 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
             togglingId={togglingId}
             onReactivate={(entityId) => setDeprioritise(entityId, null)}
             showReason
+            onEdit={(row) => setEditTarget(row)}
+            pendingByKey={pendingByKey}
             sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
             emptyText=""
             collapsible
@@ -597,6 +707,30 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
         />
       )}
 
+      {editTarget && (
+        <EditChangeDialog
+          row={editTarget}
+          staffList={staffList}
+          pendingByKey={pendingByKey}
+          onCancel={() => setEditTarget(null)}
+          onSave={async (drafts) => {
+            for (const d of drafts) await saveChangeRequest(d);
+            setEditTarget(null);
+          }}
+        />
+      )}
+
+      {queueOpen && (
+        <QueueModal
+          changes={pendingChanges}
+          onClose={() => setQueueOpen(false)}
+          onApplied={markApplied}
+          onCancel={cancelOne}
+          onCancelAll={cancelAll}
+          onExport={exportChangesCsv}
+        />
+      )}
+
       <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 14, lineHeight: 1.5 }}>
         Period end is derived: Annual Accounts = BM deadline − 9 months; Self Assessment = 5 April of the year before the BM deadline.
         Non-standard accounting periods (first-year, struck-off, overseas) may differ — spot-check anomalies.
@@ -610,10 +744,16 @@ function Box({
   title, subtitle, accent, titleColor, background,
   rows, expedite, actionKind, togglingId,
   onExpedite, onUnexpedite, onDeprioritise, onReactivate,
+  onEdit, pendingByKey,
   showReason,
   sortKey, sortDir, toggleSort, emptyText,
   collapsible, collapsed, onToggleCollapse,
 }) {
+  const pendingFor = (r, field) => {
+    if (!pendingByKey) return null;
+    const peIso = r.period_end ? r.period_end.toISOString().slice(0, 10) : '';
+    return pendingByKey.get(`${r.entity_id}|${r.service}|${peIso}|${field}`) || null;
+  };
   return (
     <div style={{
       border: `1px solid ${accent}66`, borderRadius: 8, overflow: 'hidden', background,
@@ -683,10 +823,14 @@ function Box({
                 ) : r.client}
               </td>
               <td style={{ ...td, color: '#475569', fontWeight: 600 }}>
-                {r.grade ? <span style={{
-                  fontSize: 10, padding: '1px 6px', borderRadius: 4,
-                  background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe',
-                }}>{r.grade}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}
+                <CellWithPending current={r.grade ? (
+                  <span style={{
+                    fontSize: 10, padding: '1px 6px', borderRadius: 4,
+                    background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe',
+                  }}>{r.grade}</span>
+                ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                pending={pendingFor(r, 'grade')?.proposed_value}
+                />
               </td>
               <td style={{ ...td, color: '#475569' }}>{r.service === 'Self Assessment' ? 'SA' : 'Annual Accs'}</td>
               <td style={{ ...td, color: '#475569' }}>{fmt(r.period_end)}</td>
@@ -694,7 +838,12 @@ function Box({
                 {r.bm_deadline ? fmt(parseISO(r.bm_deadline)) : '—'}
               </td>
               <td style={{ ...td, color: r.bm_target_date ? '#475569' : '#cbd5e1' }}>
-                {r.bm_target_date ? fmt(parseISO(r.bm_target_date)) : '—'}
+                <CellWithPending
+                  current={r.bm_target_date ? fmt(parseISO(r.bm_target_date)) : '—'}
+                  pending={pendingFor(r, 'bm_target')?.proposed_value
+                    ? fmt(parseISO(pendingFor(r, 'bm_target').proposed_value))
+                    : null}
+                />
               </td>
               <td style={{ ...td, textAlign: 'right', color: r.days_past > 365 ? '#dc2626' : '#475569', fontVariantNumeric: 'tabular-nums' }}>
                 {r.days_past}
@@ -708,17 +857,33 @@ function Box({
                 }}>{r.bm_status}</span>
               </td>
               <td style={{ ...td, color: r.assignees.length ? '#0f172a' : '#94a3b8' }}>
-                {r.assignees.length ? r.assignees.join(', ') : 'Unassigned'}
+                <CellWithPending
+                  current={r.assignees.length ? r.assignees.join(', ') : 'Unassigned'}
+                  pending={pendingFor(r, 'assignee')?.proposed_value}
+                />
               </td>
               <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                <RowAction
-                  kind={actionKind}
-                  busy={togglingId === r.entity_id}
-                  onExpedite={() => onExpedite && onExpedite(r.entity_id)}
-                  onUnexpedite={() => onUnexpedite && onUnexpedite(r.entity_id)}
-                  onDeprioritise={() => onDeprioritise && onDeprioritise(r.entity_id, r.client)}
-                  onReactivate={() => onReactivate && onReactivate(r.entity_id)}
-                />
+                <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+                  {onEdit && (
+                    <button
+                      onClick={() => onEdit(r)}
+                      title="Queue a change for Grade / BM Target / Assignee"
+                      style={{
+                        fontSize: 11, padding: '3px 8px', fontFamily: font, cursor: 'pointer',
+                        borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff',
+                        color: '#475569', fontWeight: 600,
+                      }}
+                    >Edit</button>
+                  )}
+                  <RowAction
+                    kind={actionKind}
+                    busy={togglingId === r.entity_id}
+                    onExpedite={() => onExpedite && onExpedite(r.entity_id)}
+                    onUnexpedite={() => onUnexpedite && onUnexpedite(r.entity_id)}
+                    onDeprioritise={() => onDeprioritise && onDeprioritise(r.entity_id, r.client)}
+                    onReactivate={() => onReactivate && onReactivate(r.entity_id)}
+                  />
+                </div>
               </td>
             </tr>
           ))}
@@ -768,6 +933,186 @@ function RowAction({ kind, busy, onExpedite, onUnexpedite, onDeprioritise, onRea
     </button>
   );
 }
+
+function CellWithPending({ current, pending }) {
+  if (!pending) return current;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <span style={{ textDecoration: 'line-through', opacity: 0.6 }}>{current}</span>
+      <span style={{
+        fontSize: 10, padding: '1px 6px', borderRadius: 4,
+        background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d',
+        fontWeight: 600,
+      }}>→ {pending}</span>
+    </span>
+  );
+}
+
+const GRADE_OPTIONS = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-'];
+function EditChangeDialog({ row, staffList, pendingByKey, onCancel, onSave }) {
+  const peIso = row.period_end ? row.period_end.toISOString().slice(0, 10) : '';
+  const lookup = (field) => pendingByKey?.get(`${row.entity_id}|${row.service}|${peIso}|${field}`) || null;
+
+  const [grade, setGrade] = useState(lookup('grade')?.proposed_value ?? row.grade ?? '');
+  const [bmTarget, setBmTarget] = useState(lookup('bm_target')?.proposed_value ?? row.bm_target_date ?? '');
+  const [assignee, setAssignee] = useState(lookup('assignee')?.proposed_value ?? (row.assignees[0] || ''));
+  const [note, setNote] = useState('');
+
+  const staffNames = (staffList || []).map((s) => s.name).filter(Boolean).sort();
+  const initialGrade = row.grade || '';
+  const initialBmTarget = row.bm_target_date || '';
+  const initialAssignee = row.assignees[0] || '';
+
+  function buildDrafts() {
+    const drafts = [];
+    const base = {
+      entity_id: row.entity_id,
+      service: row.service,
+      period_end: peIso || null,
+      note: note.trim() || null,
+    };
+    if ((grade || '') !== initialGrade) {
+      drafts.push({ ...base, field: 'grade', current_value: initialGrade || null, proposed_value: grade || null });
+    }
+    if ((bmTarget || '') !== initialBmTarget) {
+      drafts.push({ ...base, field: 'bm_target', current_value: initialBmTarget || null, proposed_value: bmTarget || null });
+    }
+    if ((assignee || '') !== initialAssignee) {
+      drafts.push({ ...base, field: 'assignee', current_value: initialAssignee || null, proposed_value: assignee || null });
+    }
+    return drafts;
+  }
+
+  const drafts = buildDrafts();
+  const disabled = drafts.length === 0;
+
+  return (
+    <div onClick={onCancel} style={modalBackdrop}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
+          Queue change for {row.client}
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+          {row.service} · {row.period_end ? fmt(row.period_end) : '—'} — saved as pending until applied in BM.
+        </div>
+
+        <Field label="Grade">
+          <select value={grade} onChange={(e) => setGrade(e.target.value)} style={selectInput}>
+            <option value="">— No grade —</option>
+            {GRADE_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </Field>
+        <Field label="BM Target">
+          <input type="date" value={bmTarget || ''} onChange={(e) => setBmTarget(e.target.value)} style={selectInput} />
+        </Field>
+        <Field label="Assignee">
+          <select value={assignee} onChange={(e) => setAssignee(e.target.value)} style={selectInput}>
+            <option value="">— Unassigned —</option>
+            {staffNames.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </Field>
+        <Field label="Note (optional)">
+          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything Sophie needs to know" style={selectInput} />
+        </Field>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+          <div style={{ fontSize: 11, color: '#64748b' }}>
+            {drafts.length === 0 ? 'No changes' : `${drafts.length} change${drafts.length === 1 ? '' : 's'} to queue`}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onCancel} style={btnSecondary}>Cancel</button>
+            <button disabled={disabled} onClick={() => onSave(drafts)} style={disabled ? btnPrimaryDisabled : btnPrimary}>Queue</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QueueModal({ changes, onClose, onApplied, onCancel, onCancelAll, onExport }) {
+  return (
+    <div onClick={onClose} style={modalBackdrop}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 760, maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 10 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>BM change requests</div>
+          <div style={{ fontSize: 12, color: '#64748b' }}>{changes.length} pending</div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onExport} disabled={!changes.length} style={changes.length ? btnPrimary : btnPrimaryDisabled}>Export CSV</button>
+          <button onClick={onCancelAll} disabled={!changes.length} style={btnSecondary}>Discard all</button>
+          <button onClick={onClose} style={btnSecondary}>Close</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
+              <tr>
+                <th style={qmTh}>Client</th>
+                <th style={qmTh}>Service · Period</th>
+                <th style={qmTh}>Field</th>
+                <th style={qmTh}>Current</th>
+                <th style={qmTh}>Proposed</th>
+                <th style={qmTh}>Note</th>
+                <th style={{ ...qmTh, textAlign: 'right' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {changes.length === 0 && (
+                <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>No pending changes.</td></tr>
+              )}
+              {changes.map((c) => (
+                <tr key={c.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td style={qmTd}>{c.entities?.name || c.entity_id}</td>
+                  <td style={qmTd}>{c.service}{c.period_end ? ` · ${c.period_end}` : ''}</td>
+                  <td style={qmTd}>{FIELD_LABEL[c.field] || c.field}</td>
+                  <td style={{ ...qmTd, color: '#64748b' }}>{c.current_value || '—'}</td>
+                  <td style={{ ...qmTd, fontWeight: 600, color: '#92400e' }}>{c.proposed_value || '—'}</td>
+                  <td style={{ ...qmTd, color: '#64748b' }}>{c.note || ''}</td>
+                  <td style={{ ...qmTd, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button onClick={() => onApplied(c.id)} style={{ ...btnSecondary, padding: '3px 8px', fontSize: 11, marginRight: 4 }}>Mark applied</button>
+                    <button onClick={() => onCancel(c.id)} style={{ ...btnSecondary, padding: '3px 8px', fontSize: 11 }}>Discard</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label style={{ display: 'block', marginBottom: 10, fontSize: 12, color: '#475569' }}>
+      <div style={{ marginBottom: 4, fontWeight: 500 }}>{label}</div>
+      {children}
+    </label>
+  );
+}
+
+const modalBackdrop = {
+  position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+};
+const modalCard = {
+  background: '#fff', borderRadius: 10, padding: '18px 20px',
+  fontFamily: font, boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
+};
+const selectInput = {
+  width: '100%', padding: '7px 10px', fontSize: 13, fontFamily: font,
+  border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#0f172a',
+  boxSizing: 'border-box', outline: 'none',
+};
+const btnPrimary = {
+  fontSize: 12, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
+  borderRadius: 6, border: '1px solid #0f172a', background: '#0f172a', color: '#fff', fontWeight: 600,
+};
+const btnPrimaryDisabled = { ...btnPrimary, background: '#94a3b8', border: '1px solid #94a3b8', cursor: 'not-allowed' };
+const btnSecondary = {
+  fontSize: 12, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
+  borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 500,
+};
+const qmTh = { padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid #e5e7eb' };
+const qmTd = { padding: '7px 10px', verticalAlign: 'middle' };
 
 const DEPRI_REASONS = ['Client Unresponsive', 'Being Struck Off', 'Awaiting Client', 'Other'];
 function DeprioritiseDialog({ client, onCancel, onConfirm }) {

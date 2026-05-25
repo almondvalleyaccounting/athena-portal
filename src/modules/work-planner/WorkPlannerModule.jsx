@@ -859,6 +859,7 @@ export default function WorkPlannerModule() {
               clientFilter={clientFilter}
               setClientFilter={setClientFilter}
               entityList={entityList}
+              staffList={staffList}
             />
           )}
           {activeTab === 'waiting' && (
