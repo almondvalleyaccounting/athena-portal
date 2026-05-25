@@ -274,17 +274,14 @@ export default function ReadyNowView({ teamFilter = '', clientFilter = '', setCl
   const normalRows = useMemo(() => applySort(partitioned.normal), [partitioned, sortKey, sortDir]);
 
   // Summary by service x status_group, computed across every box. We exclude
-  // statusFilter so the pills still show counts for the other groups (and
-  // can be clicked to switch); they always reflect what's available given
-  // the other filters.
+  // both serviceFilter and statusFilter so all pills always show their
+  // currently-available counts and stay clickable (the pill click sets both
+  // filters together).
   const summary = useMemo(() => {
     const tally = { 'Self Assessment': {}, 'Annual Accounts': {} };
     const today = todayUTC();
-    // Re-run shared filters with statusFilter forced to 'all'
     let pool = allReady;
     if (teamFilter) pool = pool.filter((r) => r.assigneeIds.includes(teamFilter));
-    if (serviceFilter === 'SA') pool = pool.filter((r) => r.service === 'Self Assessment');
-    else if (serviceFilter === 'Acc') pool = pool.filter((r) => r.service === 'Annual Accounts');
     if (assigneeFilter === 'unassigned') pool = pool.filter((r) => r.assignees.length === 0);
     else if (assigneeFilter !== 'all') pool = pool.filter((r) => r.assignees.includes(assigneeFilter));
     if (gradeFilter === 'none') pool = pool.filter((r) => !r.grade);
@@ -311,7 +308,7 @@ export default function ReadyNowView({ teamFilter = '', clientFilter = '', setCl
       tally[r.service][r.status_group] = (tally[r.service][r.status_group] || 0) + 1;
     }
     return tally;
-  }, [allReady, teamFilter, clientFilter, serviceFilter, assigneeFilter, gradeFilter, dueFilter, impendingDays, normalDaysBuffer]);
+  }, [allReady, teamFilter, clientFilter, assigneeFilter, gradeFilter, dueFilter, impendingDays, normalDaysBuffer]);
 
   function toggleSort(key) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -385,13 +382,22 @@ export default function ReadyNowView({ teamFilter = '', clientFilter = '', setCl
                 {Object.keys(STATUS_GROUPS).map((g) => {
                   const n = summary[svc]?.[g] || 0;
                   if (!n) return null;
-                  const active = statusFilter === g;
+                  const svcKey = svc === 'Self Assessment' ? 'SA' : 'Acc';
+                  const active = statusFilter === g && serviceFilter === svcKey;
                   return (
                     <button
                       key={g}
                       type="button"
-                      onClick={() => setStatusFilter(active ? 'all' : g)}
-                      title={active ? 'Clear status filter' : `Filter by ${g}`}
+                      onClick={() => {
+                        if (active) {
+                          setStatusFilter('all');
+                          setServiceFilter('all');
+                        } else {
+                          setStatusFilter(g);
+                          setServiceFilter(svcKey);
+                        }
+                      }}
+                      title={active ? 'Clear filter' : `Filter to ${svc} · ${g}`}
                       style={{
                         fontSize: 11, padding: '2px 8px', borderRadius: 999,
                         background: active ? GROUP_COLOUR[g] : GROUP_COLOUR[g] + '22',
