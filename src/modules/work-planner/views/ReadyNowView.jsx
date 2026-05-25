@@ -49,15 +49,15 @@ export default function ReadyNowView() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [togglingId, setTogglingId] = useState(null);
 
   // Filters
-  const [serviceFilter, setServiceFilter] = useState('all');  // all | SA | Acc
-  const [statusFilter, setStatusFilter] = useState('all');     // all | group name
-  const [assigneeFilter, setAssigneeFilter] = useState('all'); // all | id | unassigned
-  const [gradeFilter, setGradeFilter] = useState('all');       // all | A | B | C | …
-  const [expediteOnly, setExpediteOnly] = useState(false);
+  const [serviceFilter, setServiceFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [assigneeFilter, setAssigneeFilter] = useState('all');
+  const [gradeFilter, setGradeFilter] = useState('all');
   const [search, setSearch] = useState('');
-  const [daysBuffer, setDaysBuffer] = useState(90);
+  const [normalDaysBuffer, setNormalDaysBuffer] = useState(90);
   const [sortKey, setSortKey] = useState('period_end');
   const [sortDir, setSortDir] = useState('asc');
 
@@ -67,7 +67,7 @@ export default function ReadyNowView() {
       try {
         const { data, error } = await supabase
           .from('bm_task_schedule')
-          .select('id, service, bm_status, bm_deadline, entity_id, assignee_id, entities(name, grade, expedite), staff_profiles:assignee_id(id, name)')
+          .select('id, service, bm_status, bm_deadline, bm_target_date, entity_id, assignee_id, entities(name, grade, expedite), staff_profiles:assignee_id(id, name)')
           .in('service', ['Self Assessment', 'Annual Accounts'])
           .eq('state', 'planned');
         if (error) throw error;
@@ -83,26 +83,42 @@ export default function ReadyNowView() {
     return () => { cancelled = true; };
   }, []);
 
-  // Derive period_end, dedupe by entity+service+period_end (merge assignees)
-  const ready = useMemo(() => {
+  async function toggleExpedite(entityId, next) {
+    setTogglingId(entityId);
+    // Optimistic update
+    setRows((prev) => prev.map((r) =>
+      r.entity_id === entityId ? { ...r, entities: { ...r.entities, expedite: next } } : r
+    ));
+    const { error } = await supabase.from('entities').update({ expedite: next }).eq('id', entityId);
+    setTogglingId(null);
+    if (error) {
+      setRows((prev) => prev.map((r) =>
+        r.entity_id === entityId ? { ...r, entities: { ...r.entities, expedite: !next } } : r
+      ));
+      alert('Could not update expedite flag: ' + error.message);
+    }
+  }
+
+  // Build unique rows (one per entity+service+period_end), independent of cutoff
+  const allReady = useMemo(() => {
     const today = todayUTC();
-    const cutoff = addDays(today, -daysBuffer);
     const byKey = new Map();
     for (const r of rows) {
       const pe = derivePeriodEnd(r.service, r.bm_deadline);
       if (!pe) continue;
-      if (pe > cutoff) continue;
       const key = `${r.entity_id}|${r.service}|${isoDate(pe)}`;
       const assigneeName = r.staff_profiles?.name || null;
       if (!byKey.has(key)) {
         byKey.set(key, {
           key,
+          entity_id: r.entity_id,
           client: r.entities?.name || '(unknown)',
           grade: r.entities?.grade || null,
           expedite: !!r.entities?.expedite,
           service: r.service,
           period_end: pe,
           bm_deadline: r.bm_deadline,
+          bm_target_date: r.bm_target_date || null,
           bm_status: r.bm_status,
           status_group: STATUS_TO_GROUP[r.bm_status] || 'Other',
           assignees: assigneeName ? [assigneeName] : [],
@@ -110,11 +126,15 @@ export default function ReadyNowView() {
         });
       } else {
         const e = byKey.get(key);
+        // Earliest target date wins (most pressing)
+        if (r.bm_target_date && (!e.bm_target_date || r.bm_target_date < e.bm_target_date)) {
+          e.bm_target_date = r.bm_target_date;
+        }
         if (assigneeName && !e.assignees.includes(assigneeName)) e.assignees.push(assigneeName);
       }
     }
     return Array.from(byKey.values());
-  }, [rows, daysBuffer]);
+  }, [rows]);
 
   const assigneeOptions = useMemo(() => {
     const set = new Set();
@@ -122,23 +142,31 @@ export default function ReadyNowView() {
     return Array.from(set).sort();
   }, [rows]);
 
-  const filtered = useMemo(() => {
-    let out = ready;
+  const gradeOptions = useMemo(() => {
+    const set = new Set();
+    allReady.forEach((r) => { if (r.grade) set.add(r.grade); });
+    return Array.from(set).sort();
+  }, [allReady]);
+
+  // Apply shared filters (service/status/assignee/grade/search). Cutoff is per-box.
+  function applySharedFilters(list) {
+    let out = list;
     if (serviceFilter === 'SA') out = out.filter((r) => r.service === 'Self Assessment');
     else if (serviceFilter === 'Acc') out = out.filter((r) => r.service === 'Annual Accounts');
     if (statusFilter !== 'all') out = out.filter((r) => r.status_group === statusFilter);
     if (assigneeFilter === 'unassigned') out = out.filter((r) => r.assignees.length === 0);
     else if (assigneeFilter !== 'all') out = out.filter((r) => r.assignees.includes(assigneeFilter));
     if (gradeFilter !== 'all') out = out.filter((r) => (r.grade || '—') === gradeFilter);
-    if (expediteOnly) out = out.filter((r) => r.expedite);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       out = out.filter((r) => r.client.toLowerCase().includes(q));
     }
-    // Sort — Expedite always wins first
+    return out;
+  }
+
+  function applySort(list) {
     const dir = sortDir === 'asc' ? 1 : -1;
-    out = [...out].sort((a, b) => {
-      if (a.expedite !== b.expedite) return a.expedite ? -1 : 1;
+    return [...list].sort((a, b) => {
       let av, bv;
       switch (sortKey) {
         case 'client':     av = a.client.toLowerCase(); bv = b.client.toLowerCase(); break;
@@ -147,6 +175,7 @@ export default function ReadyNowView() {
         case 'status':     av = a.bm_status || ''; bv = b.bm_status || ''; break;
         case 'assignee':   av = (a.assignees[0] || '~'); bv = (b.assignees[0] || '~'); break;
         case 'days':       av = a.days_past; bv = b.days_past; break;
+        case 'target':     av = a.bm_target_date || '9999-12-31'; bv = b.bm_target_date || '9999-12-31'; break;
         case 'period_end':
         default:           av = a.period_end.getTime(); bv = b.period_end.getTime(); break;
       }
@@ -154,24 +183,29 @@ export default function ReadyNowView() {
       if (av > bv) return 1 * dir;
       return 0;
     });
-    return out;
-  }, [ready, serviceFilter, statusFilter, assigneeFilter, gradeFilter, expediteOnly, search, sortKey, sortDir]);
+  }
 
-  const gradeOptions = useMemo(() => {
-    const set = new Set();
-    ready.forEach((r) => { if (r.grade) set.add(r.grade); });
-    return Array.from(set).sort();
-  }, [ready]);
+  // Expedite box: any expedite row whose period_end has passed (days_past >= 0).
+  // Normal box: non-expedite rows where days_past >= normalDaysBuffer.
+  const sharedFiltered = useMemo(() => applySharedFilters(allReady), [allReady, serviceFilter, statusFilter, assigneeFilter, gradeFilter, search]);
+  const expediteRows = useMemo(
+    () => applySort(sharedFiltered.filter((r) => r.expedite && r.days_past >= 0)),
+    [sharedFiltered, sortKey, sortDir]
+  );
+  const normalRows = useMemo(
+    () => applySort(sharedFiltered.filter((r) => !r.expedite && r.days_past >= normalDaysBuffer)),
+    [sharedFiltered, normalDaysBuffer, sortKey, sortDir]
+  );
 
-  // Summary by service x status_group
+  // Summary by service x status_group, combined across both boxes
   const summary = useMemo(() => {
     const tally = { 'Self Assessment': {}, 'Annual Accounts': {} };
-    for (const r of filtered) {
+    for (const r of [...expediteRows, ...normalRows]) {
       if (!tally[r.service]) tally[r.service] = {};
       tally[r.service][r.status_group] = (tally[r.service][r.status_group] || 0) + 1;
     }
     return tally;
-  }, [filtered]);
+  }, [expediteRows, normalRows]);
 
   function toggleSort(key) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -179,23 +213,28 @@ export default function ReadyNowView() {
   }
 
   function exportCsv() {
-    const header = ['Client', 'Grade', 'Expedite', 'Service', 'Period end', 'Days past PE', 'BM deadline', 'BM status', 'Status group', 'Assignees'];
+    const header = ['Box', 'Client', 'Grade', 'Service', 'Period end', 'BM target', 'Days past PE', 'BM deadline', 'BM status', 'Status group', 'Assignees'];
     const lines = [header.join(',')];
-    for (const r of filtered) {
-      const row = [
-        '"' + r.client.replace(/"/g, '""') + '"',
-        r.grade || '',
-        r.expedite ? 'Y' : '',
-        r.service,
-        isoDate(r.period_end),
-        r.days_past,
-        r.bm_deadline || '',
-        r.bm_status || '',
-        r.status_group,
-        '"' + r.assignees.join('; ') + '"',
-      ];
-      lines.push(row.join(','));
-    }
+    const dump = (label, list) => {
+      for (const r of list) {
+        const row = [
+          label,
+          '"' + r.client.replace(/"/g, '""') + '"',
+          r.grade || '',
+          r.service,
+          isoDate(r.period_end),
+          r.bm_target_date || '',
+          r.days_past,
+          r.bm_deadline || '',
+          r.bm_status || '',
+          r.status_group,
+          '"' + r.assignees.join('; ') + '"',
+        ];
+        lines.push(row.join(','));
+      }
+    };
+    dump('Expedite', expediteRows);
+    dump('Normal', normalRows);
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -218,7 +257,7 @@ export default function ReadyNowView() {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 10 }}>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#0f172a' }}>Ready Now</h2>
         <span style={{ fontSize: 12, color: '#64748b' }}>
-          Self Assessment & Annual Accounts where period end is ≥ {daysBuffer} days ago and the job hasn't been submitted.
+          Self Assessment & Annual Accounts where period end has passed and the job hasn't been submitted.
         </span>
       </div>
 
@@ -263,15 +302,11 @@ export default function ReadyNowView() {
           options={[['all', 'All'], ['unassigned', '— Unassigned —'], ...assigneeOptions.map((n) => [n, n])]} />
         <Select label="Grade" value={gradeFilter} onChange={setGradeFilter}
           options={[['all', 'All'], ...gradeOptions.map((g) => [g, g])]} />
-        <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-          <input type="checkbox" checked={expediteOnly} onChange={(e) => setExpediteOnly(e.target.checked)} />
-          <span>⚡ Expedite only</span>
-        </label>
         <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
-          Days past PE ≥
+          Normal box: days past PE ≥
           <input
-            type="number" min={0} value={daysBuffer}
-            onChange={(e) => setDaysBuffer(Math.max(0, parseInt(e.target.value || '0', 10)))}
+            type="number" min={0} value={normalDaysBuffer}
+            onChange={(e) => setNormalDaysBuffer(Math.max(0, parseInt(e.target.value || '0', 10)))}
             style={{
               width: 60, padding: '4px 6px', fontSize: 12, fontFamily: font,
               border: '1px solid #cbd5e1', borderRadius: 6,
@@ -287,7 +322,6 @@ export default function ReadyNowView() {
           }}
         />
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 12, color: '#64748b' }}>{filtered.length} jobs</span>
         <button
           onClick={exportCsv}
           style={{
@@ -297,82 +331,140 @@ export default function ReadyNowView() {
         >Export CSV</button>
       </div>
 
-      {/* Table */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead style={{ background: '#f8fafc' }}>
-            <tr>
-              <Th onClick={() => toggleSort('client')} active={sortKey === 'client'} dir={sortDir}>Client</Th>
-              <Th onClick={() => toggleSort('grade')} active={sortKey === 'grade'} dir={sortDir}>Grade</Th>
-              <Th onClick={() => toggleSort('service')} active={sortKey === 'service'} dir={sortDir}>Service</Th>
-              <Th onClick={() => toggleSort('period_end')} active={sortKey === 'period_end'} dir={sortDir}>Period end</Th>
-              <Th onClick={() => toggleSort('days')} active={sortKey === 'days'} dir={sortDir} align="right">Days past</Th>
-              <Th onClick={() => toggleSort('status')} active={sortKey === 'status'} dir={sortDir}>BM status</Th>
-              <Th onClick={() => toggleSort('assignee')} active={sortKey === 'assignee'} dir={sortDir}>Assignee(s)</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((r, i) => (
-              <tr key={r.key} style={{
-                background: r.expedite ? '#fffbeb' : (i % 2 ? '#fff' : '#fafbfc'),
-                borderTop: '1px solid #f1f5f9',
-                borderLeft: r.expedite ? '3px solid #f59e0b' : '3px solid transparent',
-              }}>
-                <td style={td}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {r.expedite && (
-                      <span title="Expedite — prioritise this client" style={{
-                        fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
-                        background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d',
-                        letterSpacing: 0.3, textTransform: 'uppercase',
-                      }}>⚡ Exp</span>
-                    )}
-                    <span>{r.client}</span>
-                  </div>
-                </td>
-                <td style={{ ...td, color: '#475569', fontWeight: 600 }}>
-                  {r.grade ? <span style={{
-                    fontSize: 10, padding: '1px 6px', borderRadius: 4,
-                    background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe',
-                  }}>{r.grade}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}
-                </td>
-                <td style={{ ...td, color: '#475569' }}>{r.service === 'Self Assessment' ? 'SA' : 'Annual Accs'}</td>
-                <td style={{ ...td, color: '#475569' }}>{fmt(r.period_end)}</td>
-                <td style={{ ...td, textAlign: 'right', color: r.days_past > 365 ? '#dc2626' : '#475569', fontVariantNumeric: 'tabular-nums' }}>
-                  {r.days_past}
-                </td>
-                <td style={td}>
-                  <span style={{
-                    fontSize: 11, padding: '2px 8px', borderRadius: 999,
-                    background: GROUP_COLOUR[r.status_group] + '22',
-                    color: GROUP_COLOUR[r.status_group],
-                    border: '1px solid ' + GROUP_COLOUR[r.status_group] + '55',
-                  }}>{r.bm_status}</span>
-                </td>
-                <td style={{ ...td, color: r.assignees.length ? '#0f172a' : '#94a3b8' }}>
-                  {r.assignees.length ? r.assignees.join(', ') : 'Unassigned'}
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
-                No jobs match the current filters.
-              </td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* Expedite box */}
+      <Box
+        title="⚡ Expedite"
+        subtitle="Skip the queue — shown as soon as period end passes."
+        accent="#f59e0b"
+        background="#fffbeb"
+        rows={expediteRows}
+        expedite
+        togglingId={togglingId}
+        onToggle={toggleExpedite}
+        sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
+        emptyText="No expedite clients with a passed period end."
+      />
 
-      <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 10, lineHeight: 1.5 }}>
+      <div style={{ height: 16 }} />
+
+      {/* Normal box */}
+      <Box
+        title="Normal priority"
+        subtitle={`Period end ≥ ${normalDaysBuffer} days ago.`}
+        accent="#64748b"
+        background="#fff"
+        rows={normalRows}
+        expedite={false}
+        togglingId={togglingId}
+        onToggle={toggleExpedite}
+        sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
+        emptyText="No normal-priority jobs match the current filters."
+      />
+
+      <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 14, lineHeight: 1.5 }}>
         Period end is derived: Annual Accounts = BM deadline − 9 months; Self Assessment = 5 April of the year before the BM deadline.
         Non-standard accounting periods (first-year, struck-off, overseas) may differ — spot-check anomalies.
-        "Not yet submitted" is inferred from a row still existing in BrightManager.
+        BM target is the internal deadline from BrightManager — to change it, update the task's Target Date in BM.
       </p>
     </div>
   );
 }
 
+function Box({ title, subtitle, accent, background, rows, expedite, togglingId, onToggle, sortKey, sortDir, toggleSort, emptyText }) {
+  return (
+    <div style={{
+      border: `1px solid ${accent}66`, borderRadius: 8, overflow: 'hidden', background,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'baseline', gap: 10,
+        padding: '8px 12px', background: accent + '14',
+        borderBottom: `1px solid ${accent}44`,
+      }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: accent === '#f59e0b' ? '#b45309' : '#0f172a' }}>
+          {title}
+        </span>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{subtitle}</span>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 11, color: '#64748b' }}>{rows.length} jobs</span>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead style={{ background: '#f8fafc' }}>
+          <tr>
+            <Th onClick={() => toggleSort('client')} active={sortKey === 'client'} dir={sortDir}>Client</Th>
+            <Th onClick={() => toggleSort('grade')} active={sortKey === 'grade'} dir={sortDir}>Grade</Th>
+            <Th onClick={() => toggleSort('service')} active={sortKey === 'service'} dir={sortDir}>Service</Th>
+            <Th onClick={() => toggleSort('period_end')} active={sortKey === 'period_end'} dir={sortDir}>Period end</Th>
+            <Th onClick={() => toggleSort('target')} active={sortKey === 'target'} dir={sortDir}>BM target</Th>
+            <Th onClick={() => toggleSort('days')} active={sortKey === 'days'} dir={sortDir} align="right">Days past</Th>
+            <Th onClick={() => toggleSort('status')} active={sortKey === 'status'} dir={sortDir}>BM status</Th>
+            <Th onClick={() => toggleSort('assignee')} active={sortKey === 'assignee'} dir={sortDir}>Assignee(s)</Th>
+            <th style={thStatic}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.key} style={{
+              background: i % 2 ? 'transparent' : (expedite ? '#fff8dc55' : '#fafbfc'),
+              borderTop: '1px solid #f1f5f9',
+            }}>
+              <td style={td}>{r.client}</td>
+              <td style={{ ...td, color: '#475569', fontWeight: 600 }}>
+                {r.grade ? <span style={{
+                  fontSize: 10, padding: '1px 6px', borderRadius: 4,
+                  background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe',
+                }}>{r.grade}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}
+              </td>
+              <td style={{ ...td, color: '#475569' }}>{r.service === 'Self Assessment' ? 'SA' : 'Annual Accs'}</td>
+              <td style={{ ...td, color: '#475569' }}>{fmt(r.period_end)}</td>
+              <td style={{ ...td, color: r.bm_target_date ? '#475569' : '#cbd5e1' }}>
+                {r.bm_target_date ? fmt(parseISO(r.bm_target_date)) : '—'}
+              </td>
+              <td style={{ ...td, textAlign: 'right', color: r.days_past > 365 ? '#dc2626' : '#475569', fontVariantNumeric: 'tabular-nums' }}>
+                {r.days_past}
+              </td>
+              <td style={td}>
+                <span style={{
+                  fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                  background: GROUP_COLOUR[r.status_group] + '22',
+                  color: GROUP_COLOUR[r.status_group],
+                  border: '1px solid ' + GROUP_COLOUR[r.status_group] + '55',
+                }}>{r.bm_status}</span>
+              </td>
+              <td style={{ ...td, color: r.assignees.length ? '#0f172a' : '#94a3b8' }}>
+                {r.assignees.length ? r.assignees.join(', ') : 'Unassigned'}
+              </td>
+              <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <button
+                  disabled={togglingId === r.entity_id}
+                  onClick={() => onToggle(r.entity_id, !expedite)}
+                  title={expedite ? 'Remove expedite — send back to normal box' : 'Expedite — promote to top box'}
+                  style={{
+                    fontSize: 11, padding: '3px 8px', fontFamily: font, cursor: togglingId === r.entity_id ? 'wait' : 'pointer',
+                    borderRadius: 6,
+                    border: expedite ? '1px solid #cbd5e1' : '1px solid #fcd34d',
+                    background: expedite ? '#fff' : '#fef3c7',
+                    color: expedite ? '#475569' : '#b45309',
+                    fontWeight: 600,
+                  }}
+                >
+                  {expedite ? 'Unexpedite' : '⚡ Expedite'}
+                </button>
+              </td>
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
+              {emptyText}
+            </td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 const td = { padding: '7px 10px', verticalAlign: 'middle' };
+const thStatic = { padding: '8px 10px', borderBottom: '1px solid #e5e7eb' };
 
 function Th({ children, onClick, active, dir, align }) {
   return (
