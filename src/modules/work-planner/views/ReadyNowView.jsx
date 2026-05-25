@@ -429,8 +429,6 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
           options={[['all', 'All'], ['SA', 'Self Assessment'], ['Acc', 'Annual Accounts']]} />
         <Select label="Status" value={statusFilter} onChange={setStatusFilter}
           options={[['all', 'All'], ...Object.keys(STATUS_GROUPS).map((g) => [g, g])]} />
-        <Select label="Assignee" value={assigneeFilter} onChange={setAssigneeFilter}
-          options={[['all', 'All'], ['unassigned', '— Unassigned —'], ...assigneeOptions.map((n) => [n, n])]} />
         <Select label="Grade" value={gradeFilter} onChange={setGradeFilter}
           options={[['all', 'All'], ...gradeOptions.map((g) => [g, g]), ['none', '— No grade —']]} />
         <Select label="Statutory" value={dueFilter} onChange={setDueFilter}
@@ -458,32 +456,33 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
             }}
           />
         </label>
-        <div style={{ flex: 1 }} />
-        <button
-          onClick={() => {
-            setServiceFilter('all');
-            setStatusFilter('all');
-            setAssigneeFilter('all');
-            setGradeFilter('all');
-            setDueFilter('all');
-            setClientFilter('');
-            setTeamFilter('');
-            setImpendingDays(14);
-            setNormalDaysBuffer(90);
-          }}
-          title="Clear all filters and restore defaults"
-          style={{
-            padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font,
-            border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#475569', cursor: 'pointer',
-          }}
-        >Reset filters</button>
-        <button
-          onClick={exportCsv}
-          style={{
-            padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font,
-            border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer',
-          }}
-        >Export CSV</button>
+        <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'nowrap', flexShrink: 0 }}>
+          <button
+            onClick={() => {
+              setServiceFilter('all');
+              setStatusFilter('all');
+              setAssigneeFilter('all');
+              setGradeFilter('all');
+              setDueFilter('all');
+              setClientFilter('');
+              setTeamFilter('');
+              setImpendingDays(14);
+              setNormalDaysBuffer(90);
+            }}
+            title="Clear all filters and restore defaults"
+            style={{
+              padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
+              border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#475569', cursor: 'pointer',
+            }}
+          >Reset filters</button>
+          <button
+            onClick={exportCsv}
+            style={{
+              padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
+              border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer',
+            }}
+          >Export CSV</button>
+        </div>
       </div>
 
       {/* Impending box — only shown when there's something inside the window */}
