@@ -336,7 +336,7 @@ export default function ReadyNowView({ teamFilter = '', clientFilter = '', setCl
         lines.push(row.join(','));
       }
     };
-    dump('Impending', impendingRows);
+    dump('Urgent', impendingRows);
     dump('Expedite', expediteRows);
     dump('Deprioritised', deprioritisedRows);
     dump('Normal', normalRows);
@@ -436,7 +436,7 @@ export default function ReadyNowView({ teamFilter = '', clientFilter = '', setCl
         <Select label="Statutory" value={dueFilter} onChange={setDueFilter}
           options={[['all', 'All'], ['overdue', 'Overdue'], ['30', 'Due in 30'], ['60', 'Due in 60'], ['90', 'Due in 90']]} />
         <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
-          Impending: due in ≤
+          Urgent: due in ≤
           <input
             type="number" min={0} value={impendingDays}
             onChange={(e) => setImpendingDays(Math.max(0, parseInt(e.target.value || '0', 10)))}
@@ -472,7 +472,7 @@ export default function ReadyNowView({ teamFilter = '', clientFilter = '', setCl
       {impendingRows.length > 0 && (
         <>
           <Box
-            title="🔥 Impending"
+            title="🔥 Urgent"
             subtitle={`Statutory deadline within ${impendingDays} days (or overdue).`}
             accent="#dc2626"
             titleColor="#b91c1c"
@@ -517,7 +517,7 @@ export default function ReadyNowView({ teamFilter = '', clientFilter = '', setCl
         <>
           <Box
             title="Deprioritised"
-            subtitle="Parked with a reason — won't appear in Impending or Normal until reactivated."
+            subtitle="Parked with a reason — won't appear in Urgent or Normal until reactivated."
             accent="#94a3b8"
             titleColor="#475569"
             background="#fff"
@@ -755,7 +755,7 @@ function DeprioritiseDialog({ client, onCancel, onConfirm }) {
           Deprioritise {client}
         </div>
         <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
-          Pick a reason — the client will move into the Deprioritised box and stop appearing in Impending.
+          Pick a reason — the client will move into the Deprioritised box and stop appearing in Urgent.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
           {DEPRI_REASONS.map((r) => (
