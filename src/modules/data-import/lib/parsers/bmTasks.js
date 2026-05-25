@@ -137,5 +137,33 @@ export function parseBmTasksCsv(text) {
     });
   }
 
+  // Duplicate Client Reference scan: same reference, different client names.
+  // BM allows this (Internal Reference isn't enforced unique), but our
+  // entities table upserts on bm_client_id so one client silently absorbs
+  // the other's tasks. Flag in dry-run so the user can rename in BM before
+  // approving the import.
+  const refToNames = new Map();
+  const refFirstRow = new Map();
+  for (const r of rows) {
+    if (!r.client_reference || !r.client_name) continue;
+    if (!refToNames.has(r.client_reference)) {
+      refToNames.set(r.client_reference, new Set());
+      refFirstRow.set(r.client_reference, r._source_row);
+    }
+    refToNames.get(r.client_reference).add(r.client_name);
+  }
+  for (const [ref, nameSet] of refToNames) {
+    if (nameSet.size > 1) {
+      const names = Array.from(nameSet).sort();
+      warnings.push({
+        row: refFirstRow.get(ref),
+        bm_task_id: null,
+        name: null,
+        field: 'Client Reference',
+        message: `Duplicate Client Reference "${ref}" used by ${nameSet.size} different clients (${names.join(' / ')}) — tasks will all attach to whichever entity won the bm_clients upsert. Rename one in BrightManager before approving.`,
+      });
+    }
+  }
+
   return { rows, warnings, skipped, seenTaskIds, headerOk: true };
 }

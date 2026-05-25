@@ -147,6 +147,32 @@ export function parseBmClientsCsv(text) {
     });
   }
 
+  // Duplicate bm_client_id scan: same Internal Reference, different names.
+  // entities upserts on bm_client_id so only one row survives — the other
+  // client's tasks silently attach to the wrong entity. Flag in dry-run.
+  const refToNames = new Map();
+  const refFirstRow = new Map();
+  for (const r of rows) {
+    if (!r.bm_client_id || !r.name) continue;
+    if (!refToNames.has(r.bm_client_id)) {
+      refToNames.set(r.bm_client_id, new Set());
+      refFirstRow.set(r.bm_client_id, r._source_row || null);
+    }
+    refToNames.get(r.bm_client_id).add(r.name);
+  }
+  for (const [ref, nameSet] of refToNames) {
+    if (nameSet.size > 1) {
+      const names = Array.from(nameSet).sort();
+      warnings.push({
+        row: refFirstRow.get(ref),
+        bm_client_id: ref,
+        name: null,
+        field: 'bm_client_id',
+        message: `Duplicate Internal Reference "${ref}" used by ${nameSet.size} different clients (${names.join(' / ')}) — only one will survive the upsert. Rename one in BrightManager before approving.`,
+      });
+    }
+  }
+
   return {
     rows, warnings, skipped, headerOk: true,
   };
