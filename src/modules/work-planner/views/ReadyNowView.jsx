@@ -180,7 +180,8 @@ export default function ReadyNowView() {
     if (statusFilter !== 'all') out = out.filter((r) => r.status_group === statusFilter);
     if (assigneeFilter === 'unassigned') out = out.filter((r) => r.assignees.length === 0);
     else if (assigneeFilter !== 'all') out = out.filter((r) => r.assignees.includes(assigneeFilter));
-    if (gradeFilter !== 'all') out = out.filter((r) => (r.grade || '—') === gradeFilter);
+    if (gradeFilter === 'none') out = out.filter((r) => !r.grade);
+    else if (gradeFilter !== 'all') out = out.filter((r) => r.grade === gradeFilter);
     if (dueFilter !== 'all') {
       const today = todayUTC();
       out = out.filter((r) => {
@@ -337,7 +338,7 @@ export default function ReadyNowView() {
         <Select label="Assignee" value={assigneeFilter} onChange={setAssigneeFilter}
           options={[['all', 'All'], ['unassigned', '— Unassigned —'], ...assigneeOptions.map((n) => [n, n])]} />
         <Select label="Grade" value={gradeFilter} onChange={setGradeFilter}
-          options={[['all', 'All'], ...gradeOptions.map((g) => [g, g])]} />
+          options={[['all', 'All'], ...gradeOptions.map((g) => [g, g]), ['none', '— No grade —']]} />
         <Select label="Statutory" value={dueFilter} onChange={setDueFilter}
           options={[['all', 'All'], ['overdue', 'Overdue'], ['30', 'Due in 30'], ['60', 'Due in 60'], ['90', 'Due in 90']]} />
         <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
