@@ -36,8 +36,25 @@ function fmt(d) {
     .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-// Period end derivation
-function derivePeriodEnd(service, bmDeadlineISO) {
+// Period end derivation. Prefer parsing the task name (BM always embeds the
+// precise period end in the title) since `bm_deadline − 9 months` overflows
+// on YE 29/30/31 of a short month (e.g. YE 28/02 → BM deadline 30/11 → naive
+// subMonths gives 2 Mar instead of 28 Feb).
+function parsePeriodEndFromTaskName(service, name) {
+  if (!name) return null;
+  if (service === 'Annual Accounts') {
+    const m = name.match(/Year End\s+(\d{2})\/(\d{2})\/(\d{4})/i);
+    if (m) return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
+  }
+  if (service === 'Self Assessment') {
+    const m = name.match(/Tax Year\s+(\d{4})\/(\d{2})/i);
+    if (m) return new Date(Date.UTC(+m[1] + 1, 3, 5)); // 5 April of the closing year
+  }
+  return null;
+}
+function derivePeriodEnd(service, bmDeadlineISO, taskName) {
+  const fromName = parsePeriodEndFromTaskName(service, taskName);
+  if (fromName) return fromName;
   if (!bmDeadlineISO) return null;
   const d = parseISO(bmDeadlineISO);
   if (service === 'Annual Accounts') return subMonths(d, 9);
@@ -68,7 +85,7 @@ export default function ReadyNowView() {
       try {
         const { data, error } = await supabase
           .from('bm_task_schedule')
-          .select('id, service, bm_status, bm_deadline, bm_target_date, entity_id, assignee_id, entities(name, grade, expedite), staff_profiles:assignee_id(id, name)')
+          .select('id, service, bm_task_name, bm_status, bm_deadline, bm_target_date, entity_id, assignee_id, entities(name, grade, expedite), staff_profiles:assignee_id(id, name)')
           .in('service', ['Self Assessment', 'Annual Accounts'])
           .eq('state', 'planned');
         if (error) throw error;
@@ -105,7 +122,7 @@ export default function ReadyNowView() {
     const today = todayUTC();
     const byKey = new Map();
     for (const r of rows) {
-      const pe = derivePeriodEnd(r.service, r.bm_deadline);
+      const pe = derivePeriodEnd(r.service, r.bm_deadline, r.bm_task_name);
       if (!pe) continue;
       const key = `${r.entity_id}|${r.service}|${isoDate(pe)}`;
       const assigneeName = r.staff_profiles?.name || null;
