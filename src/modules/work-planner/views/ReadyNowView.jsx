@@ -570,16 +570,6 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
         </label>
         <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'nowrap', flexShrink: 0 }}>
           <button
-            onClick={() => setQueueOpen(true)}
-            title="Review queued BM change requests"
-            style={{
-              padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
-              border: '1px solid #0e7fe0', borderRadius: 6,
-              background: pendingChanges.length ? '#0e7fe0' : '#fff',
-              color: pendingChanges.length ? '#fff' : '#0e7fe0', cursor: 'pointer',
-            }}
-          >Queue ({pendingChanges.length})</button>
-          <button
             onClick={() => {
               setServiceFilter('all');
               setStatusFilter('all');
@@ -597,6 +587,14 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
               border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#475569', cursor: 'pointer',
             }}
           >Reset filters</button>
+          <button
+            onClick={() => setQueueOpen(true)}
+            title="Review queued BM change requests"
+            style={{
+              padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
+              border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer',
+            }}
+          >Changes Queue ({pendingChanges.length})</button>
           <button
             onClick={exportCsv}
             style={{
