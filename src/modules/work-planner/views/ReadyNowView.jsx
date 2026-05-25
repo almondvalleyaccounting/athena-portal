@@ -146,7 +146,13 @@ export default function ReadyNowView() {
   const gradeOptions = useMemo(() => {
     const set = new Set();
     allReady.forEach((r) => { if (r.grade) set.add(r.grade); });
-    return Array.from(set).sort();
+    // Sort by letter ascending, then suffix '+' < '' < '-' so A+ comes before A.
+    const suffixRank = (s) => (s === '+' ? 0 : s === '' ? 1 : s === '-' ? 2 : 3);
+    return Array.from(set).sort((a, b) => {
+      const al = a[0] || '', bl = b[0] || '';
+      if (al !== bl) return al < bl ? -1 : 1;
+      return suffixRank(a.slice(1)) - suffixRank(b.slice(1));
+    });
   }, [allReady]);
 
   // Apply shared filters (service/status/assignee/grade/search). Cutoff is per-box.
