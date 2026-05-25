@@ -63,7 +63,7 @@ function derivePeriodEnd(service, bmDeadlineISO, taskName) {
   return null;
 }
 
-export default function ReadyNowView({ teamFilter = '', clientFilter = '', setClientFilter = () => {}, entityList = [] } = {}) {
+export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}, clientFilter = '', setClientFilter = () => {}, entityList = [] } = {}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -467,6 +467,7 @@ export default function ReadyNowView({ teamFilter = '', clientFilter = '', setCl
             setGradeFilter('all');
             setDueFilter('all');
             setClientFilter('');
+            setTeamFilter('');
             setImpendingDays(14);
             setNormalDaysBuffer(90);
           }}

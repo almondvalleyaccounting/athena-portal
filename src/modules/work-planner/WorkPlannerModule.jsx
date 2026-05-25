@@ -855,6 +855,7 @@ export default function WorkPlannerModule() {
           {activeTab === 'ready' && (
             <ReadyNowView
               teamFilter={teamFilter}
+              setTeamFilter={setTeamFilter}
               clientFilter={clientFilter}
               setClientFilter={setClientFilter}
               entityList={entityList}
