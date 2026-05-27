@@ -301,6 +301,9 @@ export default function QuotesPage() {
     : '2fr 1fr 1fr 1fr 1fr 1fr 1fr 36px';
 
   const [menuQuoteId, setMenuQuoteId] = useState(null);
+  // Fixed-position coords for the row actions menu so it isn't clipped by the
+  // table card's overflow-hidden (which the last row otherwise hits).
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   useEffect(() => {
     const close = () => setMenuQuoteId(null);
     if (menuQuoteId) {
@@ -566,7 +569,13 @@ export default function QuotesPage() {
               </div>
               <div className="flex justify-end" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setMenuQuoteId(menuQuoteId === q.id ? null : q.id); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (menuQuoteId === q.id) { setMenuQuoteId(null); return; }
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setMenuPos({ top: r.bottom + 4, left: r.right - 140 });
+                    setMenuQuoteId(q.id);
+                  }}
                   title="Actions"
                   style={{
                     width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -579,7 +588,7 @@ export default function QuotesPage() {
                 </button>
                 {menuQuoteId === q.id && (
                   <div style={{
-                    position: 'absolute', right: 0, top: '100%', marginTop: 4,
+                    position: 'fixed', top: menuPos.top, left: menuPos.left,
                     background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
                     boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 50, minWidth: 140,
                     fontSize: 12, padding: 4,
