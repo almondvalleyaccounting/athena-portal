@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "POST required" }, 405);
   }
 
-  let body: { billing_item_ids?: string[]; send?: boolean; dry_run?: boolean; initiated_by?: string };
+  let body: { billing_item_ids?: string[]; send?: boolean; dry_run?: boolean; due_days?: number; initiated_by?: string };
   try {
     body = await req.json();
   } catch {
@@ -42,6 +42,8 @@ Deno.serve(async (req) => {
 
   const ids = Array.isArray(body.billing_item_ids) ? body.billing_item_ids : [];
   const send = body.send !== false; // default to sending
+  // Invoice payment terms: due N days after the invoice date (default 14).
+  const dueDays = Number.isFinite(Number(body.due_days)) && Number(body.due_days) >= 0 ? Number(body.due_days) : 14;
   if (ids.length === 0) {
     return jsonResponse({ success: false, error: "billing_item_ids required" }, 400);
   }
@@ -166,8 +168,11 @@ Deno.serve(async (req) => {
 
       // 3. Build + create the invoice. Net amount per line + the 20% tax
       //    code with TaxExcluded lets QBO add VAT matching vat_amount.
+      const txnDate = new Date().toISOString().slice(0, 10);
       const invoiceBody: Record<string, unknown> = {
         CustomerRef: { value: qboCustomerId },
+        TxnDate: txnDate,
+        DueDate: addDays(txnDate, dueDays),
         Line: [{
           DetailType: "SalesItemLineDetail",
           Amount: net,
@@ -266,6 +271,12 @@ Deno.serve(async (req) => {
     results,
   });
 });
+
+function addDays(isoDate: string, days: number): string {
+  const d = new Date(isoDate + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 // Find the standard-rate 20% sales tax code. Env override wins; else
 // pick an active sales TaxCode whose name mentions 20 / "S" standard.

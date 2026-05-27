@@ -27,6 +27,7 @@ export default function BillingPage() {
   const [showPushConfirm, setShowPushConfirm] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [sendMode, setSendMode] = useState('send'); // 'send' | 'draft'
+  const [dueDays, setDueDays] = useState(14);
   const [pushResults, setPushResults] = useState(null); // { summary, results } | { error }
   const [preview, setPreview] = useState(null); // dry-run plan rows
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -147,6 +148,8 @@ export default function BillingPage() {
         pushTargets.map((i) => i.id),
         sendMode === 'send',
         profile?.id,
+        false,
+        Number(dueDays) >= 0 ? Number(dueDays) : 14,
       );
       setPushResults(result);
       await loadData();
@@ -353,6 +356,19 @@ export default function BillingPage() {
                 <div style={{fontWeight:600,fontSize:13}}>Create as draft</div>
                 <div style={{fontSize:11,color:'#64748b'}}>Don&apos;t send — you&apos;ll send these from QBO later</div>
               </button>
+            </div>
+
+            {/* Payment terms */}
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
+              <label style={{fontSize:13,color:'#475569',fontWeight:500}}>Due in</label>
+              <input
+                type="number"
+                min="0"
+                value={dueDays}
+                onChange={(e)=>setDueDays(e.target.value)}
+                style={{width:70,padding:'6px 8px',fontSize:13,border:'1px solid #e5e7eb',borderRadius:8,fontFamily:"'Outfit', sans-serif"}}
+              />
+              <span style={{fontSize:13,color:'#64748b'}}>days from invoice date</span>
             </div>
 
             {/* Per-item results after a push attempt */}

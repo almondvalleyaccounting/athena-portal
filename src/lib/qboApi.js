@@ -38,9 +38,9 @@ export async function pushToQbo(billingId, initiatedBy, opts = {}) {
 /** Push one-off Billing module items (billing_items) to QBO as invoices.
  *  send=true emails the invoice immediately; send=false creates a draft.
  *  dryRun=true returns a read-only plan (no QBO/DB writes) for confirmation. */
-export async function pushBillingItems(billingItemIds, send, initiatedBy, dryRun = false) {
+export async function pushBillingItems(billingItemIds, send, initiatedBy, dryRun = false, dueDays = 14) {
   const { data, error } = await supabase.functions.invoke('qbo-push-billing-items', {
-    body: { billing_item_ids: billingItemIds, send, initiated_by: initiatedBy, dry_run: dryRun },
+    body: { billing_item_ids: billingItemIds, send, initiated_by: initiatedBy, dry_run: dryRun, due_days: dueDays },
   });
   if (error) throw error;
   return data;
