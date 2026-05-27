@@ -121,16 +121,21 @@ export default function QuoteDetailPage() {
     setTransitioning(true);
     setError('');
     try {
+      // Do the status transition first — if the DB rejects it (e.g. the
+      // quote is locked/verified), we bail before touching billing rows,
+      // so a blocked revert can never orphan the live_billing record.
+      const updates = { status: 'accepted', committed_at: null, committed_by: null };
+      const { error: err } = await supabase.from('quotes').update(updates).eq('id', quote.id);
+      if (err) throw err;
+
+      // Transition succeeded — now drop any live_billing rows that were
+      // never actually pushed to QBO, so a re-commit doesn't duplicate them.
       await supabase
         .from('live_billing')
         .delete()
         .eq('quote_id', quote.id)
         .is('qbo_recurring_txn_id', null)
         .is('qbo_invoice_id', null);
-
-      const updates = { status: 'accepted', committed_at: null, committed_by: null };
-      const { error: err } = await supabase.from('quotes').update(updates).eq('id', quote.id);
-      if (err) throw err;
 
       await supabase.from('audit_log').insert({
         user_id: profile.id,
