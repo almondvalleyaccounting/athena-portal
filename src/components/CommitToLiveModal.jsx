@@ -26,6 +26,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   const [groupEmails, setGroupEmails] = useState([]); // [{ email, name }]
   const [chosenEmail, setChosenEmail] = useState('');
   const [chosenEmailIsNew, setChosenEmailIsNew] = useState(false);
+  const [dueDays, setDueDays] = useState(14); // invoice due-date offset, default 14
 
   const recurring = (lineItems || []).filter((l) => l.is_recurring);
   const clientName = quote?.relationship_group || 'Unnamed Client';
@@ -200,6 +201,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
             setPlan(planResult.plan);
             setCommittedBillingId(billingRow.id);
             setRecurringStart(planResult.plan?.recurring?.next_run_date || '');
+            if (planResult.plan?.due_date_offset_days != null) setDueDays(planResult.plan.due_date_offset_days);
             // No email on file + part of a group → offer other group emails.
             if (planResult.plan?.setup_invoice && !planResult.plan.setup_invoice.has_email && quote.group_id) {
               await loadGroupEmails();
@@ -286,6 +288,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         sendSetupNow,
         recurringStartDate: recurringStart || undefined,
         billEmail: effectiveSetupEmail || undefined,
+        dueDateOffsetDays: Number.isFinite(Number(dueDays)) ? Number(dueDays) : undefined,
       });
       if (result?.success) {
         setPushStatus('pushed');
@@ -376,6 +379,20 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
                   Using <span className="font-medium">existing customer</span>: {c?.name}
                 </p>
               )}
+            </div>
+
+            {/* Payment terms — invoice due-date offset (default 14 days). */}
+            <div className="bg-gray-50 rounded-lg p-3 text-xs flex items-center gap-2">
+              <h3 className="font-semibold text-gray-500 uppercase">Payment terms</h3>
+              <span className="text-gray-600">Due in</span>
+              <input
+                type="number"
+                min="0"
+                value={dueDays}
+                onChange={(e) => setDueDays(e.target.value)}
+                className="w-16 text-xs border border-gray-200 rounded px-1.5 py-1"
+              />
+              <span className="text-gray-600">days from the invoice date</span>
             </div>
 
             {/* Setup invoice */}

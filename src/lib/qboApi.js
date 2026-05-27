@@ -29,6 +29,7 @@ export async function pushToQbo(billingId, initiatedBy, opts = {}) {
   if (opts.recurringStartDate) body.recurring_start_date = opts.recurringStartDate;
   if (opts.sendSetupNow) body.send_setup_now = true;
   if (opts.billEmail) body.bill_email = opts.billEmail;
+  if (opts.dueDateOffsetDays != null) body.due_date_offset_days = opts.dueDateOffsetDays;
   if (opts.dryRun) body.dry_run = true;
 
   const { data, error } = await supabase.functions.invoke('qbo-push', { body });

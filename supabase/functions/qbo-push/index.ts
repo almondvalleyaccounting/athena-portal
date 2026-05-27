@@ -38,6 +38,10 @@ Deno.serve(async (req) => {
   const recurringStartDate: string | null = body.recurring_start_date ?? null;
   const sendSetupNow: boolean = Boolean(body.send_setup_now);
   const billEmailOverride: string | null = body.bill_email ?? null;
+  const dueDateOffsetOverride: number | null =
+    body.due_date_offset_days != null && Number.isFinite(Number(body.due_date_offset_days))
+      ? Number(body.due_date_offset_days)
+      : null;
   const dryRun: boolean = Boolean(body.dry_run);
 
   const sb = getServiceClient();
@@ -94,7 +98,9 @@ Deno.serve(async (req) => {
 
     const { data: conn } = await sb.from("qbo_connections").select("default_tax_code_id, default_due_date_offset_days").eq("status", "active").single();
     const defaultTaxCodeId: string | null = conn?.default_tax_code_id || null;
-    const dueDateOffsetDays: number = Number(conn?.default_due_date_offset_days ?? 1);
+    // Due-date offset: caller override wins, else the connection default,
+    // else 14 days.
+    const dueDateOffsetDays: number = dueDateOffsetOverride ?? Number(conn?.default_due_date_offset_days ?? 14);
 
     const hasSetup = mode === "setup_invoice_only" || (alsoPushSetup && setupLines.length > 0);
     const hasRecurring = mode === "recurring_template" && recurringLines.length > 0;
@@ -147,6 +153,7 @@ Deno.serve(async (req) => {
           missing_mappings: missingMappings,
           setup_invoice: setupPlan,
           recurring: recurringPlan,
+          due_date_offset_days: dueDateOffsetDays,
         },
       });
     }
