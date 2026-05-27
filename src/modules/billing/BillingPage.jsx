@@ -395,7 +395,8 @@ export default function BillingPage() {
                         <Chip tone="slate" text="Type: one-off invoice" />
                         <Chip tone={p.customer_action==='create'?'amber':'slate'} text={p.customer_action==='create'?'New customer' : 'Existing customer'} />
                         <Chip tone={sendType.tone} text={sendType.text} />
-                        {willSend && <Chip tone="slate" text={`→ ${p.email}${p.email_source==='quickbooks'?' (from QBO)':''}`} />}
+                        {willSend && <Chip tone="slate" text={`→ ${p.email} (${p.email_source==='quickbooks'?'QBO':'Athena'})`} />}
+                        {willSend && p.email_mismatch && <Chip tone="amber" text={`⚠ Athena has ${p.athena_email}`} />}
                         {!p.approved && <Chip tone="red" text="Not approved — will be skipped" />}
                       </div>
                     )}

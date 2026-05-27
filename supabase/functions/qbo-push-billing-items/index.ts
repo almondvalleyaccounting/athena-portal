@@ -92,8 +92,11 @@ Deno.serve(async (req) => {
         custCache.set(cacheKey, cust);
       }
 
-      // Effective send address: local record wins, else QBO's BillEmail.
-      const email = localEmail || cust.email;
+      // Effective send address: QBO's BillEmail wins (billing addresses
+      // can be client-specific), else fall back to the Athena record.
+      const qboEmail = cust.email;
+      const email = qboEmail || localEmail;
+      const emailMismatch = !!(qboEmail && localEmail && qboEmail.toLowerCase() !== localEmail.toLowerCase());
       const itemExists = await qboRecordExists("Item", "Name", serviceName.substring(0, 100));
 
       plan.push({
@@ -105,7 +108,10 @@ Deno.serve(async (req) => {
         item_action: itemExists ? "existing" : "create",
         has_email: !!email,
         email,
-        email_source: email ? (localEmail ? "athena" : "quickbooks") : null,
+        email_source: email ? (qboEmail ? "quickbooks" : "athena") : null,
+        email_mismatch: emailMismatch,
+        athena_email: localEmail,
+        qbo_email: qboEmail,
         net: Number(item.net_amount) || 0,
         vat: Number(item.vat_amount) || 0,
         gross: Number(item.gross_amount) || 0,
@@ -152,12 +158,11 @@ Deno.serve(async (req) => {
       }
 
       const net = Number(item.net_amount) || 0;
-      // Effective send address: local record wins, else QBO's BillEmail.
-      let email = (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
-      if (!email) {
-        const cust = await fetchQboCustomer("Id", qboCustomerId);
-        email = cust.email;
-      }
+      // Effective send address: QBO's BillEmail wins (client-specific
+      // billing addresses), else fall back to the Athena record.
+      const localEmail = (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
+      const cust = await fetchQboCustomer("Id", qboCustomerId);
+      const email = cust.email || localEmail;
 
       // 3. Build + create the invoice. Net amount per line + the 20% tax
       //    code with TaxExcluded lets QBO add VAT matching vat_amount.
