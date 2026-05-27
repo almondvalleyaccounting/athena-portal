@@ -37,6 +37,7 @@ Deno.serve(async (req) => {
   const alsoPushSetup: boolean = Boolean(body.also_push_setup);
   const recurringStartDate: string | null = body.recurring_start_date ?? null;
   const sendSetupNow: boolean = Boolean(body.send_setup_now);
+  const billEmailOverride: string | null = body.bill_email ?? null;
   const dryRun: boolean = Boolean(body.dry_run);
 
   const sb = getServiceClient();
@@ -82,7 +83,9 @@ Deno.serve(async (req) => {
     }
 
     const entityName = (entity?.name as string) || (entity?.qbo_customer_name as string) || "Unknown Client";
-    const clientEmail = (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
+    // A caller-supplied bill_email (e.g. chosen from group members in the
+    // commit modal) overrides the entity's stored email for this push.
+    const clientEmail = billEmailOverride || (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
 
     const allServiceIds = new Set<string>();
     [...recurringLines, ...setupLines].forEach((l) => l.service_id && allServiceIds.add(l.service_id));

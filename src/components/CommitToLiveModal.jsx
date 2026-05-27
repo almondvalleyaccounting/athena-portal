@@ -21,6 +21,11 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   const [committedBillingId, setCommittedBillingId] = useState(null);
   const [sendSetupNow, setSendSetupNow] = useState(false);
   const [recurringStart, setRecurringStart] = useState('');
+  // When there's no client email on file: emails from other group members to
+  // pick from, plus a manually chosen/entered one for this push.
+  const [groupEmails, setGroupEmails] = useState([]); // [{ email, name }]
+  const [chosenEmail, setChosenEmail] = useState('');
+  const [chosenEmailIsNew, setChosenEmailIsNew] = useState(false);
 
   const recurring = (lineItems || []).filter((l) => l.is_recurring);
   const clientName = quote?.relationship_group || 'Unnamed Client';
@@ -195,6 +200,10 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
             setPlan(planResult.plan);
             setCommittedBillingId(billingRow.id);
             setRecurringStart(planResult.plan?.recurring?.next_run_date || '');
+            // No email on file + part of a group → offer other group emails.
+            if (planResult.plan?.setup_invoice && !planResult.plan.setup_invoice.has_email && quote.group_id) {
+              await loadGroupEmails();
+            }
             setPhase('confirm');
             setCommitting(false);
             return; // wait for the user to confirm the push
@@ -227,12 +236,48 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
     setCommitting(false);
   };
 
+  // Load billing/prospect emails from other entities in this quote's group,
+  // to offer when the client has no email on file.
+  const loadGroupEmails = async () => {
+    try {
+      const { data: members } = await supabase
+        .from('billing_group_members')
+        .select('entity_id')
+        .eq('group_id', quote.group_id);
+      const ids = (members || []).map((m) => m.entity_id).filter((id) => id && id !== entityId);
+      if (ids.length === 0) return;
+      const { data: ents } = await supabase
+        .from('entities')
+        .select('id, name, billing_email, prospect_email')
+        .in('id', ids);
+      const seen = new Set();
+      const emails = [];
+      for (const e of ents || []) {
+        const email = e.billing_email || e.prospect_email;
+        if (email && !seen.has(email)) {
+          seen.add(email);
+          emails.push({ email, name: e.name });
+        }
+      }
+      setGroupEmails(emails);
+    } catch { /* non-blocking */ }
+  };
+
+  // Resolved email for the setup invoice: whatever's on file, else the user's
+  // pick/entry from the group/manual chooser.
+  const effectiveSetupEmail = plan?.setup_invoice?.email || chosenEmail || '';
+
   // Confirm phase: execute the real QBO push with the user's choices.
   const handleConfirmPush = async () => {
     setCommitting(true);
     setError('');
     setPushStatus('pushing');
     try {
+      // Persist a newly-entered email as this client's billing email so it's
+      // on file for next time (group-picked emails are used one-off only).
+      if (chosenEmail && chosenEmailIsNew && entityId) {
+        await supabase.from('entities').update({ billing_email: chosenEmail }).eq('id', entityId);
+      }
       const hasSetupLines = (lineItems || []).some((l) => !l.is_recurring);
       const result = await pushToQbo(committedBillingId, profile.id, {
         mode: 'recurring_template',
@@ -240,6 +285,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         alsoPushSetup: hasSetupLines,
         sendSetupNow,
         recurringStartDate: recurringStart || undefined,
+        billEmail: effectiveSetupEmail || undefined,
       });
       if (result?.success) {
         setPushStatus('pushed');
@@ -348,22 +394,59 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
                     <span className="font-mono">{fmt(setup.total)}</span>
                   </div>
                 </div>
+                {/* No email on file → let the user pick a group email or add one. */}
+                {!setup.has_email && !chosenEmail && (
+                  <div className="mb-2 space-y-1.5 border-t border-gray-200 pt-2">
+                    <p className="text-amber-700">No client email on file.</p>
+                    {groupEmails.length > 0 && (
+                      <div>
+                        <label className="text-gray-400 block mb-0.5">Use an email from the group</label>
+                        <select
+                          value=""
+                          onChange={(e) => { if (e.target.value) { setChosenEmail(e.target.value); setChosenEmailIsNew(false); } }}
+                          className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                        >
+                          <option value="">— select —</option>
+                          {groupEmails.map((g, i) => (
+                            <option key={i} value={g.email}>{g.email}{g.name ? ` (${g.name})` : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-gray-400 block mb-0.5">Or add a new email</label>
+                      <input
+                        type="email"
+                        placeholder="name@example.com"
+                        onChange={(e) => { setChosenEmail(e.target.value.trim()); setChosenEmailIsNew(true); }}
+                        className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                      />
+                      <p className="text-gray-400 mt-0.5">A new email is saved as this client's billing email.</p>
+                    </div>
+                  </div>
+                )}
+                {!setup.has_email && chosenEmail && (
+                  <p className="text-gray-600 mb-1">
+                    Using {chosenEmail}{chosenEmailIsNew ? ' (will be saved as billing email)' : ' (from group)'}{' '}
+                    <button onClick={() => { setChosenEmail(''); setChosenEmailIsNew(false); setSendSetupNow(false); }} className="text-ocean-600 hover:text-ocean-700 underline">change</button>
+                  </p>
+                )}
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={sendSetupNow}
                     onChange={(e) => setSendSetupNow(e.target.checked)}
-                    disabled={!setup.has_email}
+                    disabled={!effectiveSetupEmail}
                     className="w-4 h-4 accent-ocean-600"
                   />
                   <span className="text-gray-700">
-                    Email this invoice now{setup.has_email ? ` to ${setup.email}` : ''}
+                    Email this invoice now{effectiveSetupEmail ? ` to ${effectiveSetupEmail}` : ''}
                   </span>
                 </label>
-                {!setup.has_email && (
-                  <p className="text-amber-700 mt-1">No client email on file — it will be created as a draft to send from QBO.</p>
+                {!effectiveSetupEmail && (
+                  <p className="text-amber-700 mt-1">Without an email it will be created as a draft to send from QBO.</p>
                 )}
-                {setup.has_email && !sendSetupNow && (
+                {effectiveSetupEmail && !sendSetupNow && (
                   <p className="text-gray-400 mt-1">Will be created as a draft (send later from QBO).</p>
                 )}
               </div>
