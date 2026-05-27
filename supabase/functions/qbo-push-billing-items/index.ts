@@ -57,15 +57,17 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: itemsErr.message }, 500);
   }
 
-  // Resolve the standard-rate (20%) tax code once for the whole batch.
+  // Tax code: prefer the connection's configured default (a known-good
+  // sales VAT code), else fall back to a 20% lookup. Mirrors qbo-push.
   let taxCodeId: string | null = null;
   try {
-    taxCodeId = await resolveStandardTaxCode();
+    const { data: conn } = await sb.from("qbo_connections").select("default_tax_code_id").eq("status", "active").single();
+    taxCodeId = (conn?.default_tax_code_id as string) || await resolveStandardTaxCode();
   } catch (err) {
-    return jsonResponse({ success: false, error: `Could not resolve 20% tax code: ${(err as Error).message}` }, 500);
+    return jsonResponse({ success: false, error: `Could not resolve VAT tax code: ${(err as Error).message}` }, 500);
   }
   if (!taxCodeId) {
-    return jsonResponse({ success: false, error: "No standard-rate (20%) sales tax code found in QBO. Set QBO_STANDARD_TAX_CODE_ID." }, 500);
+    return jsonResponse({ success: false, error: "No sales VAT tax code configured. Set qbo_connections.default_tax_code_id or QBO_STANDARD_TAX_CODE_ID." }, 500);
   }
 
   // Dry run: read-only plan for the confirmation summary. No QBO or DB
@@ -161,7 +163,6 @@ Deno.serve(async (req) => {
       //    code with TaxExcluded lets QBO add VAT matching vat_amount.
       const invoiceBody: Record<string, unknown> = {
         CustomerRef: { value: qboCustomerId },
-        GlobalTaxCalculation: "TaxExcluded",
         Line: [{
           DetailType: "SalesItemLineDetail",
           Amount: net,
