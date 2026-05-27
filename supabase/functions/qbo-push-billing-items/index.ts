@@ -112,6 +112,14 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: true, dry_run: true, plan });
   }
 
+  // Resolve a valid income account for any QBO items we need to create.
+  let incomeAccountId: string | null = null;
+  try {
+    incomeAccountId = await resolveIncomeAccount();
+  } catch (err) {
+    return jsonResponse({ success: false, error: `Could not resolve an income account: ${(err as Error).message}` }, 500);
+  }
+
   const itemCache = new Map<string, string>(); // service name → QBO item id
   const results: ItemResult[] = [];
   let sent = 0, created = 0, errored = 0;
@@ -137,7 +145,7 @@ Deno.serve(async (req) => {
       const serviceName = String(item.service || "Professional Services");
       let qboItemId = itemCache.get(serviceName);
       if (!qboItemId) {
-        qboItemId = await ensureQboItem(serviceName, item.description || serviceName);
+        qboItemId = await ensureQboItem(serviceName, item.description || serviceName, incomeAccountId);
         itemCache.set(serviceName, qboItemId);
       }
 
@@ -334,7 +342,7 @@ async function ensureQboCustomer(
   return qboId;
 }
 
-async function ensureQboItem(serviceName: string, description: string): Promise<string> {
+async function ensureQboItem(serviceName: string, description: string, incomeAccountId: string | null): Promise<string> {
   const name = serviceName.substring(0, 100);
   const escapedName = name.replace(/'/g, "\\'");
   const result = await qboQuery(`SELECT * FROM Item WHERE Name = '${escapedName}'`) as Record<string, unknown>;
@@ -342,13 +350,16 @@ async function ensureQboItem(serviceName: string, description: string): Promise<
   const items = (qr.Item as Array<Record<string, unknown>>) || [];
   if (items.length > 0) return String(items[0].Id);
 
+  if (!incomeAccountId) {
+    throw new Error(`cannot create item '${name}': no income account available. Set QBO_INCOME_ACCOUNT_ID.`);
+  }
   const resp = await qboFetch("item", {
     method: "POST",
     body: JSON.stringify({
       Name: name,
       Description: description,
       Type: "Service",
-      IncomeAccountRef: { value: "1" },
+      IncomeAccountRef: { value: incomeAccountId },
     }),
   });
   if (!resp.ok) {
@@ -356,4 +367,21 @@ async function ensureQboItem(serviceName: string, description: string): Promise<
   }
   const createdI = await resp.json();
   return String(createdI.Item.Id);
+}
+
+// Resolve a valid income account for new Service items. Env override
+// wins; else pick an active Income-classified account (prefer a sales /
+// services account name, then any income account).
+async function resolveIncomeAccount(): Promise<string | null> {
+  const override = Deno.env.get("QBO_INCOME_ACCOUNT_ID");
+  if (override) return override;
+
+  const result = await qboQuery("SELECT Id, Name, AccountType, Classification, Active FROM Account WHERE Classification = 'Revenue'") as Record<string, unknown>;
+  const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+  const accounts = ((qr.Account as Array<Record<string, unknown>>) || []).filter((a) => a.Active !== false);
+  if (accounts.length === 0) return null;
+
+  const preferred = accounts.find((a) => /sales|service|income|fees/i.test(String(a.Name || "")))
+    || accounts.find((a) => a.AccountType === "Income");
+  return String((preferred || accounts[0]).Id);
 }
