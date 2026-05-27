@@ -258,6 +258,50 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   // Commit is already saved; just close without pushing to QBO.
   const handleSkipPush = () => onCommitted();
 
+  // Cancel out of the whole process: undo the commit we just made — remove
+  // the live_billing record and put the quote back to Accepted — then close.
+  const handleCancelCommit = async () => {
+    setCommitting(true);
+    setError('');
+    try {
+      if (committedBillingId) {
+        await supabase.from('live_billing').delete().eq('id', committedBillingId);
+      }
+      await supabase
+        .from('quotes')
+        .update({ status: 'accepted', committed_at: null, committed_by: null })
+        .eq('id', quote.id);
+      onCommitted(); // refresh the parent so it shows Accepted again
+    } catch (e) {
+      setError(e.message || 'Failed to cancel');
+      setCommitting(false);
+    }
+  };
+
+  // Re-fetch the dry-run plan (e.g. after fixing a service→QBO mapping).
+  const handleRefreshPlan = async () => {
+    setCommitting(true);
+    setError('');
+    try {
+      const hasSetupLines = (lineItems || []).some((l) => !l.is_recurring);
+      const planResult = await pushToQbo(committedBillingId, profile.id, {
+        mode: 'recurring_template',
+        quoteId: quote.id,
+        alsoPushSetup: hasSetupLines,
+        dryRun: true,
+      });
+      if (planResult?.success) {
+        setPlan(planResult.plan);
+        setRecurringStart(planResult.plan?.recurring?.next_run_date || recurringStart);
+      } else {
+        setError(planResult?.error || 'Could not refresh plan');
+      }
+    } catch (e) {
+      setError(e.message || 'Could not refresh plan');
+    }
+    setCommitting(false);
+  };
+
   if (phase === 'confirm') {
     const c = plan?.customer;
     const setup = plan?.setup_invoice;
@@ -360,8 +404,11 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
             )}
 
             {missing.length > 0 && (
-              <div className="text-xs text-red-600 bg-red-50 rounded p-2">
-                These services aren't mapped to QBO items and will block the push: {missing.join(', ')}
+              <div className="text-xs text-red-600 bg-red-50 rounded p-2 flex items-center justify-between gap-2">
+                <span>These services aren't mapped to QBO items and will block the push: {missing.join(', ')}</span>
+                <button onClick={handleRefreshPlan} disabled={committing} className="shrink-0 text-ocean-600 hover:text-ocean-700 underline">
+                  Refresh
+                </button>
               </div>
             )}
 
@@ -370,13 +417,18 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
             {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2">{error}</div>}
           </div>
 
-          <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
-            <Btn onClick={handleSkipPush} variant="ghost" disabled={committing}>
-              Skip QBO for now
+          <div className="p-4 border-t border-gray-200 flex justify-between gap-2">
+            <Btn onClick={handleCancelCommit} variant="ghost" disabled={committing} className="text-red-600 hover:bg-red-50">
+              Cancel
             </Btn>
-            <Btn onClick={handleConfirmPush} variant="primary" disabled={committing || missing.length > 0}>
-              {committing ? 'Pushing...' : 'Confirm & Push'}
-            </Btn>
+            <div className="flex gap-2">
+              <Btn onClick={handleSkipPush} variant="ghost" disabled={committing}>
+                Skip QBO for now
+              </Btn>
+              <Btn onClick={handleConfirmPush} variant="primary" disabled={committing || missing.length > 0}>
+                {committing ? 'Pushing...' : 'Confirm & Push'}
+              </Btn>
+            </div>
           </div>
         </div>
       </div>
