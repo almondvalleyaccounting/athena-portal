@@ -5,7 +5,7 @@ import { fmt, StatusBadge, Btn } from '../components/ui';
 import { downloadCSV } from '../lib/exportUtils';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 
-const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', declined: 'Rejected', expired: 'Expired' };
+const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', committed: 'Committed to Live', declined: 'Rejected', expired: 'Expired' };
 const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
 
 // Status card definitions — pipeline is the aggregate default
@@ -17,6 +17,7 @@ const STATUS_CARDS = [
   { key: 'sent', label: 'Sent to Client', statuses: ['sent'] },
   { key: 'accepted', label: 'Accepted', statuses: ['accepted'] },
   { key: 'pipeline', label: 'Total Pipeline', statuses: PIPELINE_STATUSES },
+  { key: 'committed', label: 'Committed to Live', statuses: ['committed'] },
   { key: 'declined', label: 'Rejected', statuses: ['declined'] },
 ];
 
@@ -187,7 +188,7 @@ export default function QuotesPage() {
 
   // ── Filtering & sorting ──
   const filtered = useMemo(() => {
-    let list = quotes.filter(q => q.status !== 'deleted' && q.status !== 'committed');
+    let list = quotes.filter(q => q.status !== 'deleted');
 
     // Apply active card filter
     const card = STATUS_CARDS.find(c => c.key === activeCard);

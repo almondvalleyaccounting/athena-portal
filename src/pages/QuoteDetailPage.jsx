@@ -112,6 +112,67 @@ export default function QuoteDetailPage() {
     setTransitioning(false);
   };
 
+  // Revert a committed quote back to Accepted so it can be re-committed.
+  // Only allowed while it hasn't been verified in QB. Clears committed_at
+  // (so the Commit button reappears) and removes any live_billing rows that
+  // were never actually pushed to QBO, to avoid duplicate billing records.
+  const handleRevertToAccepted = async () => {
+    if (!window.confirm(`Move ${quote.quote_ref} back to Accepted? This unlocks it for re-committing.`)) return;
+    setTransitioning(true);
+    setError('');
+    try {
+      await supabase
+        .from('live_billing')
+        .delete()
+        .eq('quote_id', quote.id)
+        .is('qbo_recurring_txn_id', null)
+        .is('qbo_invoice_id', null);
+
+      const updates = { status: 'accepted', committed_at: null, committed_by: null };
+      const { error: err } = await supabase.from('quotes').update(updates).eq('id', quote.id);
+      if (err) throw err;
+
+      await supabase.from('audit_log').insert({
+        user_id: profile.id,
+        action: 'status_change',
+        entity_type: 'quote',
+        entity_id: quote.id,
+        detail: { from: 'committed', to: 'accepted', action: 'revert_to_accepted' },
+      });
+
+      setQuote({ ...quote, ...updates });
+    } catch (e) {
+      setError(e.message || 'Revert failed');
+    }
+    setTransitioning(false);
+  };
+
+  // Lock a committed quote as verified in QuickBooks. Once verified it can
+  // no longer be reverted to Accepted.
+  const handleMarkVerified = async () => {
+    if (!window.confirm(`Mark ${quote.quote_ref} as Verified in QB? Once verified it can't be moved back to Accepted.`)) return;
+    setTransitioning(true);
+    setError('');
+    try {
+      const updates = { qbo_verified_at: new Date().toISOString(), qbo_verified_by: profile.id };
+      const { error: err } = await supabase.from('quotes').update(updates).eq('id', quote.id);
+      if (err) throw err;
+
+      await supabase.from('audit_log').insert({
+        user_id: profile.id,
+        action: 'qbo_verified',
+        entity_type: 'quote',
+        entity_id: quote.id,
+        detail: { quote_ref: quote.quote_ref },
+      });
+
+      setQuote({ ...quote, ...updates });
+    } catch (e) {
+      setError(e.message || 'Failed to mark verified');
+    }
+    setTransitioning(false);
+  };
+
   const handleExtendValidity = async () => {
     if (!extendDate) return;
     setExtendSaving(true);
@@ -165,6 +226,9 @@ export default function QuoteDetailPage() {
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs text-gray-500">{quote.quote_ref}</span>
             <StatusBadge status={quote.status} />
+            {quote.qbo_verified_at && (
+              <span className="text-xs bg-green-100 text-green-700 rounded px-2 py-0.5 font-medium">Verified in QB</span>
+            )}
           </div>
           <p className="text-xs text-gray-400">
             {new Date(quote.created_at).toLocaleDateString('en-GB')}
@@ -214,6 +278,12 @@ export default function QuoteDetailPage() {
         )}
         {quote.status === 'accepted' && !quote.committed_at && profile?.can_approve_quotes && (
           <Btn onClick={() => setShowCommitModal(true)} variant="primary" className="min-w-[120px]">Commit to Live</Btn>
+        )}
+        {quote.status === 'committed' && !quote.qbo_verified_at && profile?.can_approve_quotes && (
+          <>
+            <Btn onClick={handleMarkVerified} variant="primary" disabled={transitioning} className="min-w-[120px]">Mark Verified in QB</Btn>
+            <Btn onClick={handleRevertToAccepted} variant="secondary" disabled={transitioning} className="min-w-[120px]">Revert to Accepted</Btn>
+          </>
         )}
         {quote.status !== 'committed' && profile?.can_edit_quotes && (
           <Btn onClick={handleDelete} variant="danger" disabled={transitioning} className="min-w-[120px]">Delete</Btn>
@@ -403,7 +473,9 @@ export default function QuoteDetailPage() {
                   <span className="text-gray-700 font-medium">
                     {a.action === 'status_change'
                       ? `${STATUS_LABELS[a.detail?.from] || a.detail?.from} \u2192 ${STATUS_LABELS[a.detail?.to] || a.detail?.to}`
-                      : a.action}
+                      : a.action === 'qbo_verified'
+                        ? 'Verified in QB'
+                        : a.action}
                   </span>
                   <span className="text-gray-400 ml-2">
                     {new Date(a.created_at).toLocaleDateString('en-GB')}{' '}
