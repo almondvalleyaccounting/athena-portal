@@ -72,22 +72,26 @@ Deno.serve(async (req) => {
   // writes. Reports per item whether the customer/item already exist.
   if (body.dry_run) {
     const plan = [];
-    const customerCache = new Map<string, boolean>(); // name → exists in QBO
+    const custCache = new Map<string, { exists: boolean; email: string | null }>();
     for (const item of (items || [])) {
       const entity = (item.entity as Record<string, unknown> | null) || null;
       const entityName = (entity?.name as string) || "Unknown Client";
-      const email = (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
+      const localEmail = (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
       const serviceName = String(item.service || "Professional Services");
 
-      let customerExists = !!(entity?.qbo_customer_id);
-      if (!customerExists) {
-        if (customerCache.has(entityName)) {
-          customerExists = customerCache.get(entityName)!;
-        } else {
-          customerExists = await qboRecordExists("Customer", "DisplayName", entityName);
-          customerCache.set(entityName, customerExists);
-        }
+      // Look up the QBO customer (by stored id, else by name) to learn
+      // whether it exists and what email QBO already has on file.
+      const cacheKey = (entity?.qbo_customer_id as string) || entityName;
+      let cust = custCache.get(cacheKey);
+      if (!cust) {
+        cust = entity?.qbo_customer_id
+          ? await fetchQboCustomer("Id", String(entity.qbo_customer_id))
+          : await fetchQboCustomer("DisplayName", entityName);
+        custCache.set(cacheKey, cust);
       }
+
+      // Effective send address: local record wins, else QBO's BillEmail.
+      const email = localEmail || cust.email;
       const itemExists = await qboRecordExists("Item", "Name", serviceName.substring(0, 100));
 
       plan.push({
@@ -95,10 +99,11 @@ Deno.serve(async (req) => {
         entity: entityName,
         service: serviceName,
         approved: item.status === "approved",
-        customer_action: customerExists ? "existing" : "create",
+        customer_action: cust.exists ? "existing" : "create",
         item_action: itemExists ? "existing" : "create",
         has_email: !!email,
         email,
+        email_source: email ? (localEmail ? "athena" : "quickbooks") : null,
         net: Number(item.net_amount) || 0,
         vat: Number(item.vat_amount) || 0,
         gross: Number(item.gross_amount) || 0,
@@ -137,7 +142,12 @@ Deno.serve(async (req) => {
       }
 
       const net = Number(item.net_amount) || 0;
-      const email = (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
+      // Effective send address: local record wins, else QBO's BillEmail.
+      let email = (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
+      if (!email) {
+        const cust = await fetchQboCustomer("Id", qboCustomerId);
+        email = cust.email;
+      }
 
       // 3. Build + create the invoice. Net amount per line + the 20% tax
       //    code with TaxExcluded lets QBO add VAT matching vat_amount.
@@ -261,6 +271,19 @@ async function resolveStandardTaxCode(): Promise<string | null> {
   const byStandard = active.find((c) => /\bS\b/.test(String(c.Name || "")) || /standard/i.test(String(c.Description || "")));
   if (byStandard) return String(byStandard.Id);
   return null;
+}
+
+// Look up a QBO customer by a field, returning whether it exists and the
+// email QBO has on file (PrimaryEmailAddr / BillEmail).
+async function fetchQboCustomer(field: string, value: string): Promise<{ exists: boolean; email: string | null }> {
+  const escaped = value.replace(/'/g, "\\'");
+  const result = await qboQuery(`SELECT Id, PrimaryEmailAddr FROM Customer WHERE ${field} = '${escaped}'`) as Record<string, unknown>;
+  const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+  const rows = (qr.Customer as Array<Record<string, unknown>>) || [];
+  if (rows.length === 0) return { exists: false, email: null };
+  const primary = rows[0].PrimaryEmailAddr as Record<string, unknown> | undefined;
+  const email = primary && primary.Address ? String(primary.Address) : null;
+  return { exists: true, email };
 }
 
 // Read-only existence check for the dry-run plan.
