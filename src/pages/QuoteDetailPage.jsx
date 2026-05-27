@@ -178,6 +178,76 @@ export default function QuoteDetailPage() {
     setTransitioning(false);
   };
 
+  // Lightweight manual commit: create the live billing record (+ entity fees)
+  // and mark the quote Committed, with no QBO push at all — for when QBO is
+  // set up by hand. Fee-earner allocations are skipped (set later from the
+  // client page). This mirrors the DB side of CommitToLiveModal.
+  const handleMarkCommitted = async () => {
+    if (!window.confirm(`Mark ${quote.quote_ref} as committed to live without pushing to QBO? You'll handle QBO manually.`)) return;
+    setTransitioning(true);
+    setError('');
+    try {
+      const entityId = quote.entity_id || quote.primary_entity_id;
+      const recurringLines = lineItems.filter((l) => l.is_recurring);
+
+      const services = recurringLines.map((l) => ({
+        service_id: l.service_id,
+        description: l.description,
+        annual_amount: Number(l.annual_amount) || 0,
+        monthly_amount: Number(l.monthly_amount) || 0,
+        detail: l.detail || null,
+      }));
+
+      const { error: billingErr } = await supabase.from('live_billing').insert({
+        entity_id: entityId,
+        quote_id: quote.id,
+        billing_type: 'recurring',
+        monthly_net: Number(quote.monthly_net) || 0,
+        monthly_vat: Number(quote.monthly_vat) || 0,
+        monthly_gross: Number(quote.monthly_gross) || 0,
+        annual_total: Number(quote.annual_total) || 0,
+        services,
+        status: 'active',
+        committed_at: new Date().toISOString(),
+        committed_by: profile.id,
+      });
+      if (billingErr) throw billingErr;
+
+      const feeRows = recurringLines.map((l) => ({
+        entity_id: entityId,
+        service_id: l.service_id,
+        description: l.description,
+        annual_amount: Number(l.annual_amount) || 0,
+        monthly_amount: Number(l.monthly_amount) || 0,
+        source: 'committed_quote',
+        source_quote_id: quote.id,
+      }));
+      if (feeRows.length > 0) {
+        const { error: feesErr } = await supabase
+          .from('entity_fees')
+          .upsert(feeRows, { onConflict: 'entity_id,service_id' });
+        if (feesErr) throw feesErr;
+      }
+
+      const updates = { status: 'committed', committed_at: new Date().toISOString(), committed_by: profile.id };
+      const { error: quoteErr } = await supabase.from('quotes').update(updates).eq('id', quote.id);
+      if (quoteErr) throw quoteErr;
+
+      await supabase.from('audit_log').insert({
+        user_id: profile.id,
+        action: 'commit_to_live',
+        entity_type: 'quote',
+        entity_id: quote.id,
+        detail: { from: quote.status, to: 'committed', manual: true, qbo: 'skipped', services_count: services.length },
+      });
+
+      setQuote({ ...quote, ...updates });
+    } catch (e) {
+      setError(e.message || 'Manual commit failed');
+    }
+    setTransitioning(false);
+  };
+
   const handleExtendValidity = async () => {
     if (!extendDate) return;
     setExtendSaving(true);
@@ -282,7 +352,10 @@ export default function QuoteDetailPage() {
           <Btn onClick={() => setShowSendModal(true)} variant="primary" className="min-w-[120px]">Send to Client</Btn>
         )}
         {quote.status === 'accepted' && !quote.committed_at && profile?.can_approve_quotes && (
-          <Btn onClick={() => setShowCommitModal(true)} variant="primary" className="min-w-[120px]">Commit to Live</Btn>
+          <>
+            <Btn onClick={() => setShowCommitModal(true)} variant="primary" className="min-w-[120px]">Commit to Live</Btn>
+            <Btn onClick={handleMarkCommitted} variant="secondary" disabled={transitioning} className="min-w-[120px]">Mark Committed (manual)</Btn>
+          </>
         )}
         {quote.status === 'committed' && !quote.qbo_verified_at && profile?.can_approve_quotes && (
           <>
