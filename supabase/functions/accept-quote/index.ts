@@ -365,6 +365,27 @@ Deno.serve(async (req) => {
       console.error("[accept-quote] event log failed", logErr);
     }
 
+    // Mirror into audit_log so the acceptance shows in the quote's audit
+    // trail (which reads audit_log). Client-driven, so user_id is null and
+    // the client email is recorded in detail. Best-effort.
+    try {
+      await service.from("audit_log").insert({
+        user_id: null,
+        action: "status_change",
+        entity_type: "quote",
+        entity_id: quote.id,
+        detail: {
+          from: quote.status,
+          to: "accepted",
+          action: "accept",
+          via: "client_link",
+          client_email: claims.recipient_email,
+        },
+      });
+    } catch (logErr) {
+      console.error("[accept-quote] audit log failed", logErr);
+    }
+
     // Fire confirmation emails. Both are best-effort — failures are logged
     // but we still return success to the client.
     const summary: QuoteSummary = {
