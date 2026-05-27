@@ -16,6 +16,7 @@ import BillingReviewAndChangePage from './modules/billing/BillingReviewAndChange
 import BillingUpliftReviewPage from './modules/billing/BillingUpliftReviewPage';
 import BillingSourcesPage from './modules/billing/BillingSourcesPage';
 import BillingServiceMappingPage from './modules/billing/BillingServiceMappingPage';
+import BillingEmailReconciliationPage from './modules/billing/BillingEmailReconciliationPage';
 import BillingAddNewPage from './modules/billing/BillingAddNewPage';
 import FeeEarnerBookPage from './modules/billing/FeeEarnerBookPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
@@ -75,6 +76,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/manage/billing/uplifts" element={<BillingUpliftReviewPage />} />
           <Route path="/manage/billing/sources" element={<BillingSourcesPage />} />
           <Route path="/manage/billing/mapping" element={<BillingServiceMappingPage />} />
+          <Route path="/manage/billing/emails" element={<BillingEmailReconciliationPage />} />
           <Route path="/manage/billing/add-new" element={<BillingAddNewPage />} />
           <Route path="/manage/billing/fee-earners" element={<FeeEarnerBookPage />} />
           <Route path="/clients/:id" element={<ClientDetailView />} />

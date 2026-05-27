@@ -76,6 +76,7 @@ export default function BillingTabs({ active }) {
     { id: 'push',      label: 'Push',      route: '/manage/billing/uplifts', badge: counts.approved || null, tone: 'success' },
     { id: 'sources',   label: 'Sources',   route: '/manage/billing/sources', badge: counts.manualMonthly || null, tone: 'danger' },
     { id: 'mapping',   label: 'Mapping',   route: '/manage/billing/mapping', badge: null },
+    { id: 'emails',    label: 'Emails',    route: '/manage/billing/emails', badge: null },
   ];
 
   return (

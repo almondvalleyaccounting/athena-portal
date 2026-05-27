@@ -33,6 +33,7 @@ export default function ClientDetailView() {
   const [billingItems, setBillingItems] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [allocations, setAllocations] = useState([]); // rows from client_service_allocations
+  const [recon, setRecon] = useState(null); // v_email_reconciliation row for this entity
   const [loading, setLoading] = useState(true);
   const [timePeriod, setTimePeriod] = useState('12');
   const [changeTaskText, setChangeTaskText] = useState('');
@@ -55,6 +56,7 @@ export default function ClientDetailView() {
           supabase.from('billing_items').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
           supabase.from('staff_profiles').select('id, name, email').order('name'),
           supabase.from('client_service_allocations').select('*').eq('entity_id', id),
+          supabase.from('v_email_reconciliation').select('*').eq('entity_id', id).maybeSingle(),
         ]);
         const get = (i) => results[i]?.value?.data;
         const ent = get(0);
@@ -69,6 +71,7 @@ export default function ClientDetailView() {
         const staff = (get(8) || []).map((s) => ({ ...s, name: s.name || s.email }));
         setStaffList(staff);
         setAllocations(get(9) || []);
+        setRecon(get(10) || null);
         // Default action assignee to client manager
         if (ent?.manager) {
           const mgr = staff.find((s) => s.name?.toLowerCase().includes(ent.manager.toLowerCase()));
@@ -229,6 +232,11 @@ export default function ClientDetailView() {
           </select>
         </div>
       </div>
+
+      {/* Email reconciliation: BM contact email (1:1) vs QBO billing email(s) (1:many) */}
+      {recon && recon.status !== 'ok' && (
+        <EmailReconPanel recon={recon} />
+      )}
 
       {/* Summary cards — all clickable */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
@@ -409,6 +417,38 @@ function DetailRow({ label, value }) {
 
 function Badge({ bg, color, children }) {
   return <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: bg, color, textTransform: 'capitalize', fontFamily: "'Outfit', sans-serif" }}>{children}</span>;
+}
+
+// Read-only reconciliation panel: BrightManager contact email vs QuickBooks
+// billing email(s). Only rendered when there's something to flag.
+function EmailReconPanel({ recon }) {
+  const META = {
+    mismatch: { label: 'Email mismatch', bg: '#fef3c7', fg: '#92400e', msg: 'The BrightManager contact email is not among the QuickBooks billing emails.' },
+    gap_qbo:  { label: 'No QBO billing email', bg: '#fee2e2', fg: '#b91c1c', msg: 'QuickBooks has no billing email for this client.' },
+    gap_bm:   { label: 'No BM contact email', bg: '#e0e7ff', fg: '#3730a3', msg: 'No BrightManager contact email on file.' },
+    gap_both: { label: 'No email either side', bg: '#f1f5f9', fg: '#475569', msg: 'Neither BrightManager nor QuickBooks has an email.' },
+  };
+  const m = META[recon.status] || META.gap_both;
+  const qbo = recon.qbo_billing_emails || [];
+  return (
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 20, fontFamily: "'Outfit', sans-serif" }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: 0 }}>Email reconciliation</h3>
+        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: m.bg, color: m.fg }}>{m.label}</span>
+      </div>
+      <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 10px 0' }}>{m.msg}</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13 }}>
+        <div>
+          <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 2 }}>BM contact email</div>
+          <div style={{ fontFamily: 'monospace', fontSize: 12, color: recon.bm_contact_email ? '#1e293b' : '#cbd5e1' }}>{recon.bm_contact_email || '—'}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 2 }}>QBO billing email(s)</div>
+          <div style={{ fontFamily: 'monospace', fontSize: 12, color: qbo.length ? '#1e293b' : '#cbd5e1', wordBreak: 'break-word' }}>{qbo.length ? qbo.join(', ') : '—'}</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Per client × service fee earner & manager editor. Lists every
