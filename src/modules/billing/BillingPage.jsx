@@ -337,7 +337,7 @@ export default function BillingPage() {
       {/* Push to QB confirmation modal */}
       {showPushConfirm && (
         <div onClick={()=>setShowPushConfirm(false)} style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-          <div onClick={(e)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:'32px',maxWidth:480,width:'100%',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
+          <div onClick={(e)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:'32px',maxWidth:920,width:'100%',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
               <AlertTriangle size={24} style={{color:'#d97706'}}/>
               <h2 style={{fontFamily:"'Playfair Display', serif",fontSize:20,fontWeight:500,color:'#0f172a',margin:0}}>Confirm Push to QuickBooks</h2>
@@ -390,39 +390,42 @@ export default function BillingPage() {
                 )}
               </div>
             )}
-            <div style={{background:'#f8fafc',borderRadius:8,padding:'12px 16px',marginBottom:20,maxHeight:260,overflowY:'auto'}}>
+            <div style={{background:'#f8fafc',borderRadius:8,padding:'8px 14px',marginBottom:20,maxHeight:380,overflowY:'auto'}}>
               {previewLoading && <div style={{fontSize:12,color:'#94a3b8',padding:'4px 0'}}>Checking QuickBooks…</div>}
               {previewError && <div style={{fontSize:12,color:'#b91c1c',padding:'4px 0'}}>Couldn&apos;t load preview: {previewError}</div>}
+              {/* Header */}
+              <div style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,padding:'4px 0',fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.04em',borderBottom:'1px solid #e5e7eb'}}>
+                <span>Client</span><span>Service</span><span>Type</span><span>Customer</span><span>Send</span>
+                <span style={{textAlign:'right'}}>Net</span><span style={{textAlign:'right'}}>VAT</span><span style={{textAlign:'right'}}>Gross</span>
+              </div>
               {pushTargets.map((item)=>{
                 const p = preview?.find((r)=>r.billing_item_id===item.id);
                 const willSend = sendMode==='send' && p?.has_email;
-                const sendType = !p ? null
-                  : willSend ? { tone:'green', text:'Send: immediately' }
-                  : (sendMode==='send' && !p.has_email) ? { tone:'amber', text:'Send: later (no client email)' }
-                  : { tone:'slate', text:'Send: later (manually from QBO)' };
+                const sendText = !p ? '…'
+                  : willSend ? `Now → ${p.email}${p.email_source==='quickbooks'?' (QBO)':''}`
+                  : (sendMode==='send' && !p.has_email) ? 'Later (no email)'
+                  : 'Later (manual)';
+                const sendColor = willSend ? '#059669' : (sendMode==='send' && p && !p.has_email) ? '#b45309' : '#64748b';
+                const sendTitle = p?.email_mismatch ? `Sending to QBO address ${p.email}; Athena has ${p.athena_email}` : (p?.email || sendText);
                 return (
-                  <div key={item.id} style={{padding:'8px 0',borderBottom:'1px solid #f1f5f9'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
-                      <span style={{fontWeight:600,color:'#0f172a'}}>{entityMap[item.entity_id]?.name} — {item.service}</span>
-                      <span style={{fontWeight:600}}>{fmt(item.gross_amount)}</span>
-                    </div>
-                    {p && (
-                      <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:4}}>
-                        <Chip tone="slate" text="Type: one-off invoice" />
-                        <Chip tone={p.customer_action==='create'?'amber':'slate'} text={p.customer_action==='create'?'New customer' : 'Existing customer'} />
-                        <Chip tone={sendType.tone} text={sendType.text} />
-                        {willSend && <Chip tone="slate" text={`→ ${p.email} (${p.email_source==='quickbooks'?'QBO':'Athena'})`} />}
-                        {willSend && p.email_mismatch && <Chip tone="amber" text={`⚠ Athena has ${p.athena_email}`} />}
-                        {!p.approved && <Chip tone="red" text="Not approved — will be skipped" />}
-                      </div>
-                    )}
-                    <div style={{fontSize:10,color:'#94a3b8',marginTop:3}}>{fmt(item.net_amount)} net + {fmt(item.vat_amount)} VAT</div>
+                  <div key={item.id} style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,alignItems:'center',padding:'7px 0',borderBottom:'1px solid #f1f5f9',fontSize:12}}>
+                    <span style={ellip} title={entityMap[item.entity_id]?.name}>{entityMap[item.entity_id]?.name||'—'}</span>
+                    <span style={{...ellip,color:'#475569'}} title={item.description||item.service}>{item.service}</span>
+                    <span style={{color:'#64748b'}}>One-off</span>
+                    <span style={{color:p?.customer_action==='create'?'#b45309':'#475569',fontWeight:500}}>{!p?'…':p.customer_action==='create'?'New':'Existing'}</span>
+                    <span style={{...ellip,color:sendColor}} title={sendTitle}>{sendText}{p?.email_mismatch?' ⚠':''}</span>
+                    <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.net_amount)}</span>
+                    <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.vat_amount)}</span>
+                    <span style={{textAlign:'right',fontFamily:'monospace',fontWeight:600,color:'#0f172a'}}>{fmt(item.gross_amount)}</span>
                   </div>
                 );
               })}
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:13,fontWeight:700,padding:'8px 0 0',borderTop:'2px solid #e5e7eb',marginTop:4}}>
-                <span>Total</span>
-                <span style={{color:'#0e7fe0'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.gross_amount||0),0))}</span>
+              {/* Totals */}
+              <div style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,padding:'8px 0 0',borderTop:'2px solid #e5e7eb',marginTop:2,fontSize:13,fontWeight:700}}>
+                <span style={{gridColumn:'1 / 6'}}>Total ({pushTargets.length})</span>
+                <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.net_amount||0),0))}</span>
+                <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.vat_amount||0),0))}</span>
+                <span style={{textAlign:'right',fontFamily:'monospace',color:'#0e7fe0'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.gross_amount||0),0))}</span>
               </div>
             </div>
             <div style={{display:'flex',gap:10}}>
@@ -451,22 +454,11 @@ function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   );
 }
 
-function Chip({ text, tone }) {
-  const tones = {
-    green: { bg:'#f0fdf4', fg:'#059669' },
-    amber: { bg:'#fffbeb', fg:'#b45309' },
-    red:   { bg:'#fef2f2', fg:'#dc2626' },
-    slate: { bg:'#f1f5f9', fg:'#475569' },
-  };
-  const t = tones[tone] || tones.slate;
-  return (
-    <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:5,background:t.bg,color:t.fg}}>{text}</span>
-  );
-}
-
-const btnPrimary = {display:'inline-flex',alignItems:'center',gap:5,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#0f172a',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
+const btnPrimary ={display:'inline-flex',alignItems:'center',gap:5,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#0f172a',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
 const btnOutline = {display:'inline-flex',alignItems:'center',gap:4,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#fff',color:'#0f172a',border:'1px solid #e5e7eb',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
 const inputStyle = {width:'100%',padding:'8px 12px',fontSize:13,border:'1px solid #e5e7eb',borderRadius:8,outline:'none',fontFamily:"'Outfit', sans-serif",boxSizing:'border-box'};
 const modeBtn = {flex:1,textAlign:'left',padding:'10px 12px',borderRadius:10,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",color:'#0f172a'};
+const INVOICE_COLS = '1.5fr 1.1fr 0.6fr 0.8fr 1.8fr 0.8fr 0.7fr 0.85fr';
+const ellip = { overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' };
 const modeBtnActive = {borderColor:'#059669',background:'#f0fdf4',boxShadow:'0 0 0 1px #059669'};
 const formLabel = {display:'block',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',marginBottom:4,fontFamily:"'Outfit', sans-serif"};
