@@ -42,3 +42,30 @@ CREATE TRIGGER trg_csa_touch BEFORE UPDATE ON client_service_allocations
 
 COMMENT ON TABLE client_service_allocations IS
   'Per client × service allocation of a fee earner and their manager. Used for practice-wide fee attribution reports.';
+
+-- RLS: mirror entity_fees posture (written in the same commit-to-live flow).
+ALTER TABLE client_service_allocations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS client_service_allocations_select ON client_service_allocations;
+CREATE POLICY client_service_allocations_select ON client_service_allocations
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM staff_profiles
+            WHERE staff_profiles.id = auth.uid()
+              AND staff_profiles.can_view_client_fees = true)
+  );
+
+DROP POLICY IF EXISTS client_service_allocations_insert ON client_service_allocations;
+CREATE POLICY client_service_allocations_insert ON client_service_allocations
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM staff_profiles
+            WHERE staff_profiles.id = auth.uid()
+              AND (staff_profiles.can_edit_quotes = true OR staff_profiles.can_manage_portal = true))
+  );
+
+DROP POLICY IF EXISTS client_service_allocations_update ON client_service_allocations;
+CREATE POLICY client_service_allocations_update ON client_service_allocations
+  FOR UPDATE USING (true) WITH CHECK (
+    EXISTS (SELECT 1 FROM staff_profiles
+            WHERE staff_profiles.id = auth.uid()
+              AND (staff_profiles.can_edit_quotes = true OR staff_profiles.can_manage_portal = true))
+  );

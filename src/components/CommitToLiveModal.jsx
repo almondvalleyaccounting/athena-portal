@@ -14,6 +14,14 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   // Per-line allocations — keyed by line index, { fee_earner_id, fee_earner_manager_id }.
   const [allocations, setAllocations] = useState({});
 
+  // Two-phase QBO push: after the DB commit we fetch a dry-run plan and show
+  // a confirmation step before any QBO writes happen.
+  const [phase, setPhase] = useState('form'); // 'form' | 'confirm'
+  const [plan, setPlan] = useState(null);
+  const [committedBillingId, setCommittedBillingId] = useState(null);
+  const [sendSetupNow, setSendSetupNow] = useState(false);
+  const [recurringStart, setRecurringStart] = useState('');
+
   const recurring = (lineItems || []).filter((l) => l.is_recurring);
   const clientName = quote?.relationship_group || 'Unnamed Client';
   const entityId = quote?.entity_id || quote?.primary_entity_id;
@@ -171,24 +179,32 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         },
       });
 
-      // 6. QBO action: push or CSV
+      // 6. QBO action: push (with confirmation) or CSV.
+      //    For a push we fetch a read-only plan and move to the confirm
+      //    phase — nothing is written to QBO until the user confirms.
       if (qboAction === 'push' && billingRow?.id) {
-        setPushStatus('pushing');
         try {
-          const pushResult = await pushToQbo(billingRow.id, profile.id);
-          if (pushResult?.success) {
-            setPushStatus('pushed');
-          } else {
-            setPushStatus('push_error');
-            setError(`Committed successfully but QBO push failed: ${pushResult?.error || 'Unknown error'}. You can push from the Billing page later.`);
+          const hasSetupLines = (lineItems || []).some((l) => !l.is_recurring);
+          const planResult = await pushToQbo(billingRow.id, profile.id, {
+            mode: 'recurring_template',
+            quoteId: quote.id,
+            alsoPushSetup: hasSetupLines,
+            dryRun: true,
+          });
+          if (planResult?.success) {
+            setPlan(planResult.plan);
+            setCommittedBillingId(billingRow.id);
+            setRecurringStart(planResult.plan?.recurring?.next_run_date || '');
+            setPhase('confirm');
             setCommitting(false);
-            // Still call onCommitted since the commit itself succeeded
-            onCommitted();
-            return;
+            return; // wait for the user to confirm the push
           }
-        } catch (pushErr) {
-          setPushStatus('push_error');
-          setError(`Committed successfully but QBO push failed: ${pushErr.message}. You can push from the Billing page later.`);
+          setError(`Committed, but couldn't build the QBO plan: ${planResult?.error || 'Unknown error'}. You can push from the Billing page later.`);
+          setCommitting(false);
+          onCommitted();
+          return;
+        } catch (planErr) {
+          setError(`Committed, but couldn't build the QBO plan: ${planErr.message}. You can push from the Billing page later.`);
           setCommitting(false);
           onCommitted();
           return;
@@ -210,6 +226,162 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
     }
     setCommitting(false);
   };
+
+  // Confirm phase: execute the real QBO push with the user's choices.
+  const handleConfirmPush = async () => {
+    setCommitting(true);
+    setError('');
+    setPushStatus('pushing');
+    try {
+      const hasSetupLines = (lineItems || []).some((l) => !l.is_recurring);
+      const result = await pushToQbo(committedBillingId, profile.id, {
+        mode: 'recurring_template',
+        quoteId: quote.id,
+        alsoPushSetup: hasSetupLines,
+        sendSetupNow,
+        recurringStartDate: recurringStart || undefined,
+      });
+      if (result?.success) {
+        setPushStatus('pushed');
+        onCommitted();
+      } else {
+        setPushStatus('push_error');
+        setError(`QBO push failed: ${result?.error || 'Unknown error'}. The commit is saved — you can push from the Billing page later.`);
+      }
+    } catch (pushErr) {
+      setPushStatus('push_error');
+      setError(`QBO push failed: ${pushErr.message}. The commit is saved — you can push from the Billing page later.`);
+    }
+    setCommitting(false);
+  };
+
+  // Commit is already saved; just close without pushing to QBO.
+  const handleSkipPush = () => onCommitted();
+
+  if (phase === 'confirm') {
+    const c = plan?.customer;
+    const setup = plan?.setup_invoice;
+    const rec = plan?.recurring;
+    const missing = plan?.missing_mappings || [];
+    return (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-auto">
+          <div className="p-4 border-b border-gray-200">
+            <h2 className="text-lg font-bold text-ocean-700">Confirm QuickBooks push</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              The live billing record is saved. Review what will be sent to QBO, then confirm.
+            </p>
+          </div>
+
+          <div className="p-4 space-y-3">
+            {/* Customer */}
+            <div className="bg-gray-50 rounded-lg p-3 text-xs">
+              <h3 className="font-semibold text-gray-500 uppercase mb-1">Customer</h3>
+              {c?.action === 'create' ? (
+                <p className="text-gray-700">
+                  <span className="text-green-700 font-medium">New customer</span> will be created: {c?.name}
+                </p>
+              ) : (
+                <p className="text-gray-700">
+                  Using <span className="font-medium">existing customer</span>: {c?.name}
+                </p>
+              )}
+            </div>
+
+            {/* Setup invoice */}
+            {setup && (
+              <div className="bg-gray-50 rounded-lg p-3 text-xs">
+                <h3 className="font-semibold text-gray-500 uppercase mb-1">One-off setup invoice</h3>
+                <div className="space-y-0.5 mb-2">
+                  {setup.lines.map((l, i) => (
+                    <div key={i} className="flex justify-between text-gray-700">
+                      <span>{l.description}</span>
+                      <span className="font-mono">{fmt(l.amount)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-gray-800 font-semibold border-t border-gray-200 pt-0.5">
+                    <span>Total</span>
+                    <span className="font-mono">{fmt(setup.total)}</span>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sendSetupNow}
+                    onChange={(e) => setSendSetupNow(e.target.checked)}
+                    disabled={!setup.has_email}
+                    className="w-4 h-4 accent-ocean-600"
+                  />
+                  <span className="text-gray-700">
+                    Email this invoice now{setup.has_email ? ` to ${setup.email}` : ''}
+                  </span>
+                </label>
+                {!setup.has_email && (
+                  <p className="text-amber-700 mt-1">No client email on file — it will be created as a draft to send from QBO.</p>
+                )}
+                {setup.has_email && !sendSetupNow && (
+                  <p className="text-gray-400 mt-1">Will be created as a draft (send later from QBO).</p>
+                )}
+              </div>
+            )}
+
+            {/* Recurring template */}
+            {rec && (
+              <div className="bg-gray-50 rounded-lg p-3 text-xs">
+                <h3 className="font-semibold text-gray-500 uppercase mb-1">Recurring template</h3>
+                <p className="text-gray-700 mb-2">
+                  {rec.action === 'overwrite' ? (
+                    <span className="text-amber-700 font-medium">Overwriting existing template</span>
+                  ) : (
+                    <span className="text-green-700 font-medium">New recurring template</span>
+                  )}
+                  {' '}— {rec.template_name}
+                </p>
+                <div className="space-y-0.5 mb-2">
+                  {rec.lines.map((l, i) => (
+                    <div key={i} className="flex justify-between text-gray-700">
+                      <span>{l.description}</span>
+                      <span className="font-mono">{fmt(l.amount)}/mo</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-gray-800 font-semibold border-t border-gray-200 pt-0.5">
+                    <span>Monthly total</span>
+                    <span className="font-mono">{fmt(rec.monthly_total)}</span>
+                  </div>
+                </div>
+                <label className="block text-gray-400 mb-0.5">Next run date</label>
+                <input
+                  type="date"
+                  value={recurringStart}
+                  onChange={(e) => setRecurringStart(e.target.value)}
+                  className="text-xs border border-gray-200 rounded px-1.5 py-1"
+                />
+              </div>
+            )}
+
+            {missing.length > 0 && (
+              <div className="text-xs text-red-600 bg-red-50 rounded p-2">
+                These services aren't mapped to QBO items and will block the push: {missing.join(', ')}
+              </div>
+            )}
+
+            {pushStatus === 'pushing' && <p className="text-xs text-ocean-600">Pushing to QBO...</p>}
+            {pushStatus === 'pushed' && <p className="text-xs text-green-600">Successfully pushed to QBO</p>}
+            {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2">{error}</div>}
+          </div>
+
+          <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+            <Btn onClick={handleSkipPush} variant="ghost" disabled={committing}>
+              Skip QBO for now
+            </Btn>
+            <Btn onClick={handleConfirmPush} variant="primary" disabled={committing || missing.length > 0}>
+              {committing ? 'Pushing...' : 'Confirm & Push'}
+            </Btn>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">

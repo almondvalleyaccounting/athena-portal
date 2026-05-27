@@ -135,7 +135,14 @@ export default function BillingPage() {
     setPushingId(billingId);
     setImportError('');
     try {
-      const result = await pushToQbo(billingId, profile.id);
+      // Re-push as a recurring template (the product bills monthly). No
+      // also_push_setup here — the one-off setup invoice is created once at
+      // commit time, not on every re-push from this page.
+      const row = billing.find((b) => b.id === billingId);
+      const result = await pushToQbo(billingId, profile.id, {
+        mode: 'recurring_template',
+        quoteId: row?.quote_id || undefined,
+      });
       if (result?.success) {
         setImportSuccess('Successfully pushed to QuickBooks Online!');
         loadData();

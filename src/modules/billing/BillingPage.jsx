@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { pushBillingItems } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
 
 const VAT_RATE = 0.20;
@@ -25,6 +26,11 @@ export default function BillingPage() {
   const [selected, setSelected] = useState(new Set());
   const [showPushConfirm, setShowPushConfirm] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const [sendMode, setSendMode] = useState('send'); // 'send' | 'draft'
+  const [pushResults, setPushResults] = useState(null); // { summary, results } | { error }
+  const [preview, setPreview] = useState(null); // dry-run plan rows
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
 
   const [formClient, setFormClient] = useState('');
   const [formService, setFormService] = useState('');
@@ -135,16 +141,41 @@ export default function BillingPage() {
 
   const handleBatchPush = async () => {
     setPushing(true);
+    setPushResults(null);
     try {
-      for (const item of pushTargets) {
-        await supabase.from('billing_items').update({ status: 'pushed' }).eq('id', item.id);
-      }
+      const result = await pushBillingItems(
+        pushTargets.map((i) => i.id),
+        sendMode === 'send',
+        profile?.id,
+      );
+      setPushResults(result);
       await loadData();
       setSelected(new Set());
-    } catch (e) { console.error(e); }
+      // Keep the modal open only if something errored, so the user can read why.
+      if (!result?.summary?.errored) setShowPushConfirm(false);
+    } catch (e) {
+      console.error(e);
+      setPushResults({ error: e.message || 'Push to QuickBooks failed' });
+    }
     setPushing(false);
-    setShowPushConfirm(false);
   };
+
+  // Fetch a read-only QBO plan when the confirm modal opens, so we can
+  // show exactly what will happen (new vs existing customer, send vs
+  // draft) before committing. Doesn't depend on sendMode — the send/draft
+  // line is derived client-side from the plan's has_email flag.
+  useEffect(() => {
+    if (!showPushConfirm) { setPreview(null); setPreviewError(null); return; }
+    let cancelled = false;
+    const ids = pushTargets.map((i) => i.id);
+    if (ids.length === 0) return;
+    setPreviewLoading(true); setPreviewError(null);
+    pushBillingItems(ids, true, profile?.id, true)
+      .then((res) => { if (!cancelled) setPreview(res?.plan || []); })
+      .catch((e) => { if (!cancelled) setPreviewError(e.message || 'Could not load preview'); })
+      .finally(() => { if (!cancelled) setPreviewLoading(false); });
+    return () => { cancelled = true; };
+  }, [showPushConfirm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startEdit = (item) => {
     setEditingId(item.id); setShowAdd(false);
@@ -204,7 +235,7 @@ export default function BillingPage() {
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           {approvedItems.length > 0 && (
-            <button onClick={()=>setShowPushConfirm(true)} style={{...btnPrimary,background:'#059669',gap:5}}>
+            <button onClick={()=>{setShowPushConfirm(true);setPushResults(null);}} style={{...btnPrimary,background:'#059669',gap:5}}>
               <Send size={14}/> Push to QB ({selectedApproved.length > 0 ? selectedApproved.length : approvedItems.length})
             </button>
           )}
@@ -308,26 +339,79 @@ export default function BillingPage() {
               <AlertTriangle size={24} style={{color:'#d97706'}}/>
               <h2 style={{fontFamily:"'Playfair Display', serif",fontSize:20,fontWeight:500,color:'#0f172a',margin:0}}>Confirm Push to QuickBooks</h2>
             </div>
-            <p style={{fontSize:13,color:'#64748b',marginBottom:16,lineHeight:1.6}}>
-              You are about to push <b>{pushTargets.length} approved billing item{pushTargets.length!==1?'s':''}</b> to QuickBooks Online.
-              This action will mark them as committed. Please confirm this is correct.
+            <p style={{fontSize:13,color:'#64748b',marginBottom:14,lineHeight:1.6}}>
+              You are about to create QuickBooks invoices for <b>{pushTargets.length} approved billing item{pushTargets.length!==1?'s':''}</b> (VAT at the standard 20% rate).
             </p>
-            <div style={{background:'#f8fafc',borderRadius:8,padding:'12px 16px',marginBottom:20,maxHeight:200,overflowY:'auto'}}>
-              {pushTargets.map((item)=>(
-                <div key={item.id} style={{display:'flex',justifyContent:'space-between',fontSize:12,padding:'4px 0',borderBottom:'1px solid #f1f5f9'}}>
-                  <span style={{fontWeight:500,color:'#0f172a'}}>{entityMap[item.entity_id]?.name} — {item.service}</span>
-                  <span style={{fontWeight:600}}>{fmt(item.gross_amount)}</span>
-                </div>
-              ))}
+
+            {/* Send mode */}
+            <div style={{display:'flex',gap:8,marginBottom:16}}>
+              <button onClick={()=>setSendMode('send')} style={{...modeBtn, ...(sendMode==='send'?modeBtnActive:{})}}>
+                <div style={{fontWeight:600,fontSize:13}}>Create &amp; send now</div>
+                <div style={{fontSize:11,color:'#64748b'}}>Email each invoice to the client immediately</div>
+              </button>
+              <button onClick={()=>setSendMode('draft')} style={{...modeBtn, ...(sendMode==='draft'?modeBtnActive:{})}}>
+                <div style={{fontWeight:600,fontSize:13}}>Create as draft</div>
+                <div style={{fontSize:11,color:'#64748b'}}>Don&apos;t send — you&apos;ll send these from QBO later</div>
+              </button>
+            </div>
+
+            {/* Per-item results after a push attempt */}
+            {pushResults && (
+              <div style={{marginBottom:16,padding:'10px 14px',borderRadius:8,background:pushResults.error?'#fef2f2':'#f8fafc',border:`1px solid ${pushResults.error?'#fecaca':'#e5e7eb'}`}}>
+                {pushResults.error ? (
+                  <div style={{fontSize:12,color:'#b91c1c'}}>{pushResults.error}</div>
+                ) : (
+                  <>
+                    <div style={{fontSize:12,fontWeight:600,color:'#0f172a',marginBottom:6}}>
+                      {pushResults.summary.sent} sent · {pushResults.summary.created_unsent} draft{pushResults.summary.errored?` · ${pushResults.summary.errored} failed`:''}
+                    </div>
+                    {(pushResults.results||[]).filter((r)=>r.status==='error'||r.reason).map((r)=>(
+                      <div key={r.billing_item_id} style={{fontSize:11,color:r.status==='error'?'#b91c1c':'#92400e',padding:'2px 0'}}>
+                        <b>{r.entity}:</b> {r.reason || r.status}
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+            <div style={{background:'#f8fafc',borderRadius:8,padding:'12px 16px',marginBottom:20,maxHeight:260,overflowY:'auto'}}>
+              {previewLoading && <div style={{fontSize:12,color:'#94a3b8',padding:'4px 0'}}>Checking QuickBooks…</div>}
+              {previewError && <div style={{fontSize:12,color:'#b91c1c',padding:'4px 0'}}>Couldn&apos;t load preview: {previewError}</div>}
+              {pushTargets.map((item)=>{
+                const p = preview?.find((r)=>r.billing_item_id===item.id);
+                const willSend = sendMode==='send' && p?.has_email;
+                const sendType = !p ? null
+                  : willSend ? { tone:'green', text:'Send: immediately' }
+                  : (sendMode==='send' && !p.has_email) ? { tone:'amber', text:'Send: later (no client email)' }
+                  : { tone:'slate', text:'Send: later (manually from QBO)' };
+                return (
+                  <div key={item.id} style={{padding:'8px 0',borderBottom:'1px solid #f1f5f9'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+                      <span style={{fontWeight:600,color:'#0f172a'}}>{entityMap[item.entity_id]?.name} — {item.service}</span>
+                      <span style={{fontWeight:600}}>{fmt(item.gross_amount)}</span>
+                    </div>
+                    {p && (
+                      <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:4}}>
+                        <Chip tone="slate" text="Type: one-off invoice" />
+                        <Chip tone={p.customer_action==='create'?'amber':'slate'} text={p.customer_action==='create'?'New customer' : 'Existing customer'} />
+                        <Chip tone={sendType.tone} text={sendType.text} />
+                        {willSend && <Chip tone="slate" text={`→ ${p.email}`} />}
+                        {!p.approved && <Chip tone="red" text="Not approved — will be skipped" />}
+                      </div>
+                    )}
+                    <div style={{fontSize:10,color:'#94a3b8',marginTop:3}}>{fmt(item.net_amount)} net + {fmt(item.vat_amount)} VAT</div>
+                  </div>
+                );
+              })}
               <div style={{display:'flex',justifyContent:'space-between',fontSize:13,fontWeight:700,padding:'8px 0 0',borderTop:'2px solid #e5e7eb',marginTop:4}}>
                 <span>Total</span>
                 <span style={{color:'#0e7fe0'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.gross_amount||0),0))}</span>
               </div>
             </div>
             <div style={{display:'flex',gap:10}}>
-              <button onClick={()=>setShowPushConfirm(false)} style={{...btnOutline,flex:1}}>Cancel</button>
+              <button onClick={()=>{setShowPushConfirm(false);setPushResults(null);}} style={{...btnOutline,flex:1}}>{pushResults && !pushResults.error ? 'Close' : 'Cancel'}</button>
               <button onClick={handleBatchPush} disabled={pushing} style={{...btnPrimary,flex:1,background:'#059669',justifyContent:'center',opacity:pushing?0.5:1}}>
-                {pushing?'Pushing...':'Confirm Push to QB'}
+                {pushing?'Pushing...':(sendMode==='send'?'Create & send':'Create drafts')}
               </button>
             </div>
           </div>
@@ -350,7 +434,22 @@ function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   );
 }
 
+function Chip({ text, tone }) {
+  const tones = {
+    green: { bg:'#f0fdf4', fg:'#059669' },
+    amber: { bg:'#fffbeb', fg:'#b45309' },
+    red:   { bg:'#fef2f2', fg:'#dc2626' },
+    slate: { bg:'#f1f5f9', fg:'#475569' },
+  };
+  const t = tones[tone] || tones.slate;
+  return (
+    <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:5,background:t.bg,color:t.fg}}>{text}</span>
+  );
+}
+
 const btnPrimary = {display:'inline-flex',alignItems:'center',gap:5,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#0f172a',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
 const btnOutline = {display:'inline-flex',alignItems:'center',gap:4,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#fff',color:'#0f172a',border:'1px solid #e5e7eb',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
 const inputStyle = {width:'100%',padding:'8px 12px',fontSize:13,border:'1px solid #e5e7eb',borderRadius:8,outline:'none',fontFamily:"'Outfit', sans-serif",boxSizing:'border-box'};
+const modeBtn = {flex:1,textAlign:'left',padding:'10px 12px',borderRadius:10,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",color:'#0f172a'};
+const modeBtnActive = {borderColor:'#059669',background:'#f0fdf4',boxShadow:'0 0 0 1px #059669'};
 const formLabel = {display:'block',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',marginBottom:4,fontFamily:"'Outfit', sans-serif"};
