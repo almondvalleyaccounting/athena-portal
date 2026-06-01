@@ -266,9 +266,10 @@ export default function useQuoteForm(D) {
     if (regFee) setSuRegFee(regFee.amount || 0);
     if (others.length) setSuOthers(others.map(o => ({ description: o.description || '', amount: o.amount || 0 })));
 
-    // Accounts
+    // Accounts — explicitly reflect the saved state (default-true flags
+    // would otherwise leak through when the saved quote had it disabled).
+    setAccEnabled(!!q.accounts_detail);
     if (q.accounts_detail) {
-      setAccEnabled(true);
       setAccType(q.accounts_detail.type || 'trading');
       setAccRate(q.accounts_detail.rate || 900);
       if (q.accounts_detail.properties) setAccProperties(q.accounts_detail.properties);
@@ -276,9 +277,11 @@ export default function useQuoteForm(D) {
 
     if (q.annual_services > 0) setCsEnabled(true);
 
-    // Directors
-    if (q.directors?.length > 0) {
-      setDtrEnabled(true);
+    // Directors — reflect the saved state. An empty/missing directors array
+    // means DTR was off; don't let the default-true initial state re-enable it.
+    const hasDtr = Array.isArray(q.directors) && q.directors.length > 0;
+    setDtrEnabled(hasDtr);
+    if (hasDtr) {
       setDirectors(q.directors.map(d => ({
         name: d.name || '', base: d.base || D.director_base,
         otherDividends: d.other_dividends || false,
