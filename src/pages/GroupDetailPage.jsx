@@ -55,14 +55,46 @@ export default function GroupDetailPage() {
   const loadGroup = async () => {
     setLoading(true);
     try {
+      // Skip deleted quotes — they shouldn't appear in the group consolidation.
       const [{ data: bg }, { data: gQuotes }, { data: members }] = await Promise.all([
         supabase.from('billing_groups').select('*').eq('id', groupId).single(),
-        supabase.from('quotes').select('*, line_items:quote_line_items(*)').eq('group_id', groupId).order('created_at'),
+        supabase.from('quotes').select('*, line_items:quote_line_items(*)').eq('group_id', groupId).neq('status', 'deleted').order('created_at'),
         supabase.from('billing_group_members').select('entity_id, entity:entities(id, name, company_number, type)').eq('group_id', groupId),
       ]);
       setGroup(bg);
-      setQuotes(gQuotes || []);
-      setGroupEntities((members || []).map(m => m.entity).filter(Boolean));
+      const quoteRows = gQuotes || [];
+      setQuotes(quoteRows);
+
+      // "Clients in this Group" should reflect every entity that's actually
+      // on a quote in this group, not only the persisted billing_group_members
+      // (which can lag behind multi-entity group quotes). Merge both sources.
+      const fromMembers = (members || []).map((m) => m.entity).filter(Boolean);
+      let merged = fromMembers;
+      if (quoteRows.length > 0) {
+        const quoteIds = quoteRows.map((q) => q.id);
+        const { data: qEnts } = await supabase
+          .from('quote_entities')
+          .select('entity:entities(id, name, company_number, type)')
+          .in('quote_id', quoteIds);
+        const seen = new Set(merged.map((e) => e.id));
+        for (const r of qEnts || []) {
+          const e = r.entity;
+          if (e && !seen.has(e.id)) { seen.add(e.id); merged = [...merged, e]; }
+        }
+        // Also pick up any entity referenced via quotes.entity_id directly
+        // (single-entity group children).
+        for (const q of quoteRows) {
+          if (q.entity_id && !seen.has(q.entity_id)) {
+            const { data: ent } = await supabase
+              .from('entities')
+              .select('id, name, company_number, type')
+              .eq('id', q.entity_id)
+              .maybeSingle();
+            if (ent) { seen.add(ent.id); merged = [...merged, ent]; }
+          }
+        }
+      }
+      setGroupEntities(merged);
     } catch {}
     setLoading(false);
   };

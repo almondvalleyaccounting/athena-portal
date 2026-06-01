@@ -341,7 +341,7 @@ export default function QuoteDetailPage() {
           )
         ))}
         {(quote.status === 'draft' || quote.status === 'pending_approval') && profile?.can_edit_quotes && (
-          <Btn onClick={() => navigate(quote.group_id ? `/manage/quotes/group/${quote.id}/edit` : `/manage/quotes/${quote.id}/edit`)} variant="secondary" className="min-w-[120px]">Edit</Btn>
+          <Btn onClick={() => navigate(`/manage/quotes/${quote.id}/edit`)} variant="secondary" className="min-w-[120px]">Edit</Btn>
         )}
         {profile?.can_edit_quotes && (
           <Btn onClick={() => navigate(`/manage/quotes/new?from=${quote.id}`)} variant="secondary" className="min-w-[120px]">Re-quote</Btn>
