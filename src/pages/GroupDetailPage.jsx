@@ -82,7 +82,9 @@ export default function GroupDetailPage() {
           if (e && !seen.has(e.id)) { seen.add(e.id); merged = [...merged, e]; }
         }
         // Also pick up any entity referenced via quotes.entity_id directly
-        // (single-entity group children).
+        // (single-entity group children). Fall back to matching by
+        // relationship_group name when entity_id is missing — older quotes
+        // got created with just a name and no entity link.
         for (const q of quoteRows) {
           if (q.entity_id && !seen.has(q.entity_id)) {
             const { data: ent } = await supabase
@@ -91,6 +93,13 @@ export default function GroupDetailPage() {
               .eq('id', q.entity_id)
               .maybeSingle();
             if (ent) { seen.add(ent.id); merged = [...merged, ent]; }
+          } else if (!q.entity_id && q.relationship_group) {
+            const { data: ent } = await supabase
+              .from('entities')
+              .select('id, name, company_number, type')
+              .ilike('name', q.relationship_group.trim())
+              .maybeSingle();
+            if (ent && !seen.has(ent.id)) { seen.add(ent.id); merged = [...merged, ent]; }
           }
         }
       }
