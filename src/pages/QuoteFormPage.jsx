@@ -56,6 +56,16 @@ export default function QuoteFormPage({ mode = 'new' }) {
 
       f.loadFromQuote(q);
 
+      // Some per-service rates (e.g. the confirmation-statement fee) are
+      // only persisted as line_items.annual_amount, not on the quote row.
+      // Pull them in so edit/re-quote shows what was actually saved.
+      const { data: lineItems } = await supabase
+        .from('quote_line_items')
+        .select('service_id, annual_amount')
+        .eq('quote_id', loadId);
+      const cs = (lineItems || []).find((l) => l.service_id === 'confirmation_statement');
+      if (cs?.annual_amount != null) f.setCsFee(Number(cs.annual_amount));
+
       if (mode === 'edit') {
         setExistingQuoteRef(q.quote_ref);
       }
