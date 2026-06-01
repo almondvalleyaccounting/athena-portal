@@ -56,15 +56,43 @@ export default function QuoteFormPage({ mode = 'new' }) {
 
       f.loadFromQuote(q);
 
-      // Some per-service rates (e.g. the confirmation-statement fee) are
-      // only persisted as line_items.annual_amount, not on the quote row.
-      // Pull them in so edit/re-quote shows what was actually saved.
+      // Several services are only persisted as line_items (no matching
+      // *_detail JSON on the quote row): confirmation statement, VAT
+      // returns, auto-enrolment, registered office. Re-hydrate their
+      // enabled flags and rates from the saved line items.
       const { data: lineItems } = await supabase
         .from('quote_line_items')
         .select('service_id, annual_amount')
         .eq('quote_id', loadId);
-      const cs = (lineItems || []).find((l) => l.service_id === 'confirmation_statement');
-      if (cs?.annual_amount != null) f.setCsFee(Number(cs.annual_amount));
+      const items = lineItems || [];
+      const findLI = (sid) => items.find((l) => l.service_id === sid);
+
+      const csLI = findLI('confirmation_statement');
+      f.setCsEnabled(!!csLI);
+      if (csLI?.annual_amount != null) f.setCsFee(Number(csLI.annual_amount));
+
+      const vatLI = findLI('vat_returns');
+      if (vatLI) {
+        f.setVatEnabled(true);
+        // The line stores annual = freq × rate. Default freq is 4
+        // (quarterly); derive a per-return rate from the saved annual so
+        // the form round-trips to the same total.
+        const annual = Number(vatLI.annual_amount) || 0;
+        f.setVatFreq(4);
+        if (annual > 0) f.setVatRate(Math.round((annual / 4) * 100) / 100);
+      }
+
+      const aeLI = findLI('auto_enrolment');
+      if (aeLI) {
+        f.setAeEnabled(true);
+        if (aeLI.annual_amount != null) f.setAeFee(Number(aeLI.annual_amount));
+      }
+
+      const roLI = findLI('registered_office');
+      if (roLI) {
+        f.setRoEnabled(true);
+        if (roLI.annual_amount != null) f.setRoFee(Number(roLI.annual_amount));
+      }
 
       if (mode === 'edit') {
         setExistingQuoteRef(q.quote_ref);

@@ -275,7 +275,9 @@ export default function useQuoteForm(D) {
       if (q.accounts_detail.properties) setAccProperties(q.accounts_detail.properties);
     }
 
-    if (q.annual_services > 0) setCsEnabled(true);
+    // csEnabled is driven by line items (set by the caller after loading
+    // line_items) — the old `annual_services > 0` heuristic spuriously
+    // re-enabled CS when other services existed.
 
     // Directors — reflect the saved state. An empty/missing directors array
     // means DTR was off; don't let the default-true initial state re-enable it.
