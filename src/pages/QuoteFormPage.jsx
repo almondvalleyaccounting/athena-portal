@@ -58,8 +58,11 @@ export default function QuoteFormPage({ mode = 'new' }) {
 
       if (mode === 'edit') {
         setExistingQuoteRef(q.quote_ref);
-        if (q.entity_id) setEntity({ id: q.entity_id });
       }
+      // Carry the source quote's entity link forward for both edit and
+      // re-quote — otherwise re-quote auto-creates a duplicate entity (or,
+      // worse, silently saves the new quote with entity_id=NULL).
+      if (q.entity_id) setEntity({ id: q.entity_id });
 
       setFormLoading(false);
     })();
@@ -102,21 +105,46 @@ export default function QuoteFormPage({ mode = 'new' }) {
         const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
         const quoteRef = `${prefix}_${String(next).padStart(3, '0')}`;
 
-        // Auto-create entity if none linked
+        // Resolve entity link: prefer the already-loaded entity, else
+        // match an existing entity by name (case-insensitive), else create
+        // one. Surface errors instead of silently saving a quote with
+        // entity_id=NULL — that's how unlinked group quotes happened.
         let entityId = entity?.id || null;
         if (!entityId && f.client.name) {
-          const { data: newEntity } = await supabase
+          const name = f.client.name.trim();
+          const { data: existingEnt } = await supabase
             .from('entities')
-            .insert({
-              name: f.client.name,
-              type: f.client.entityType || 'limited_company',
-              company_number: f.client.companyNumber || null,
-            })
-            .select().single();
-          if (newEntity) {
-            entityId = newEntity.id;
-            setEntity(newEntity);
+            .select('id, name, type, company_number')
+            .ilike('name', name)
+            .limit(1)
+            .maybeSingle();
+          if (existingEnt) {
+            entityId = existingEnt.id;
+            setEntity(existingEnt);
+          } else {
+            const { data: newEntity, error: entErr } = await supabase
+              .from('entities')
+              .insert({
+                name,
+                type: f.client.entityType || 'limited_company',
+                company_number: f.client.companyNumber || null,
+              })
+              .select().single();
+            if (entErr) {
+              setError(`Couldn't create the client record: ${entErr.message}`);
+              setSaving(false);
+              return;
+            }
+            if (newEntity) {
+              entityId = newEntity.id;
+              setEntity(newEntity);
+            }
           }
+        }
+        if (!entityId) {
+          setError("Couldn't determine the client for this quote. Pick an existing client or enter a client name.");
+          setSaving(false);
+          return;
         }
 
         const { data: savedQuotes, error: quoteErr } = await supabase
