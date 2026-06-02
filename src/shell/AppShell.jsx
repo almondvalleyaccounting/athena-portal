@@ -5,6 +5,8 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import ChangePasswordScreen from './ChangePasswordScreen';
 import MFAChallenge from './MFAChallenge';
+import SecurityPage from './SecurityPage';
+import { checkTrustedDevice } from '../lib/trustedDevice';
 
 /* ─── Auth context ─────────────────────────────────────────────── */
 const AuthContext = createContext(null);
@@ -80,20 +82,29 @@ export default function AppShell() {
     return () => { clearInterval(id); window.removeEventListener('focus', onFocus); };
   }, [session]);
 
-  // ── MFA gate: if the user has a verified TOTP factor but the current
-  // session is still aal1, force them through a 6-digit challenge before
-  // the app renders. Re-check whenever the session changes.
-  const [mfaRequired, setMfaRequired] = useState(false);
-  useEffect(() => {
-    if (!session) { setMfaRequired(false); return; }
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (cancelled) return;
-      setMfaRequired(data?.currentLevel === 'aal1' && data?.nextLevel === 'aal2');
-    })();
-    return () => { cancelled = true; };
+  // ── MFA gate ──
+  // Three states drive what we render:
+  //   mustEnrol     — user has no verified TOTP factor; hard-block until they enrol.
+  //   mustChallenge — user has a verified factor, session is aal1, and this
+  //                   device is NOT remembered → show the 6-digit prompt.
+  //   otherwise     — render the app normally.
+  // 'Remember this device' (90 days) lets aal1 sessions skip the prompt
+  // when a valid mfa_trusted_devices row matches the localStorage token.
+  const [mfaState, setMfaState] = useState('checking'); // 'checking' | 'ok' | 'enrol' | 'challenge'
+  const recheckMfa = React.useCallback(async () => {
+    if (!session) { setMfaState('ok'); return; }
+    const [{ data: aal }, { data: factors }] = await Promise.all([
+      supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+      supabase.auth.mfa.listFactors(),
+    ]);
+    const verified = (factors?.totp || []).some((f) => f.status === 'verified');
+    if (!verified) { setMfaState('enrol'); return; }
+    if (aal?.currentLevel === 'aal2') { setMfaState('ok'); return; }
+    // aal1 + has factor → maybe trusted device.
+    const trusted = await checkTrustedDevice(session.user.id);
+    setMfaState(trusted ? 'ok' : 'challenge');
   }, [session]);
+  useEffect(() => { recheckMfa(); }, [recheckMfa]);
 
   // ── Load staff profile after auth ──
   useEffect(() => {
@@ -148,12 +159,31 @@ export default function AppShell() {
   // ── Not authenticated ──
   if (!session) return null;
 
-  // ── MFA challenge required before the app proceeds ──
-  if (mfaRequired) {
-    return <MFAChallenge onPassed={async () => {
-      const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      setMfaRequired(data?.currentLevel === 'aal1' && data?.nextLevel === 'aal2');
-    }} />;
+  // ── Wait until we know the MFA state before rendering anything that
+  // might leak data behind the gate. ──
+  if (mfaState === 'checking') {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#fafafa' }}>
+        <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 14, color: '#94a3b8' }}>Loading...</p>
+      </div>
+    );
+  }
+
+  // ── Hard block: no verified factor → must enrol before the app loads. ──
+  if (mfaState === 'enrol') {
+    return (
+      <div style={{ minHeight: '100vh', background: '#fafafa', fontFamily: "'Outfit', sans-serif" }}>
+        <div style={{ background: '#fef3c7', color: '#92400e', padding: '10px 20px', fontSize: 13, borderBottom: '1px solid #fde68a' }}>
+          Two-factor authentication is required to use Athena. Please enrol an authenticator below to continue.
+        </div>
+        <SecurityPage onEnrolled={recheckMfa} />
+      </div>
+    );
+  }
+
+  // ── Verified factor + aal1 + untrusted device → 6-digit challenge. ──
+  if (mfaState === 'challenge') {
+    return <MFAChallenge onPassed={recheckMfa} />;
   }
 
   // ── No profile — show access message ──

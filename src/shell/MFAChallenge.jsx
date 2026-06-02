@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { rememberThisDevice } from '../lib/trustedDevice';
 
 // Shown after password sign-in when the user has a verified TOTP factor
 // and the current session is still aal1. On successful verify, the
@@ -11,6 +12,7 @@ export default function MFAChallenge({ onPassed }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [trust, setTrust] = useState(true); // tick by default — 90-day remember
 
   useEffect(() => {
     (async () => {
@@ -41,6 +43,10 @@ export default function MFAChallenge({ onPassed }) {
       return;
     }
     setVerifying(false);
+    if (trust) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) await rememberThisDevice(user.id);
+    }
     onPassed?.();
   };
 
@@ -68,6 +74,10 @@ export default function MFAChallenge({ onPassed }) {
               inputMode="numeric"
               style={{ width: '100%', fontSize: 24, fontFamily: 'monospace', textAlign: 'center', letterSpacing: 6, padding: '12px 8px', border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none' }}
             />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#475569', marginTop: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} />
+              Remember this device for 90 days
+            </label>
             {error && <p style={{ fontSize: 12, color: '#b91c1c', marginTop: 10 }}>{error}</p>}
             <button
               onClick={handleVerify}

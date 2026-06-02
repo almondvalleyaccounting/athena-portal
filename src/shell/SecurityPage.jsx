@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { rememberThisDevice, forgetThisDevice } from '../lib/trustedDevice';
 
 const font = "'Outfit', sans-serif";
 
 // Security settings: enroll/remove a TOTP authenticator. After enrollment
 // the user is signed in at aal2; future password logins will be prompted
 // for a 6-digit code before reaching the app.
-export default function SecurityPage() {
+export default function SecurityPage({ onEnrolled }) {
   const [factors, setFactors] = useState([]);
   const [enrolling, setEnrolling] = useState(null); // { factorId, qrSvg, secret, challengeId, code, verifying, error }
   const [aal, setAal] = useState({ currentLevel: 'aal1', nextLevel: 'aal1' });
@@ -65,14 +66,25 @@ export default function SecurityPage() {
       setEnrolling({ ...enrolling, verifying: false, code: '', challengeId: ch?.id || enrolling.challengeId, error: vErr.message || 'Verification failed' });
       return;
     }
+    // Enrolment just elevated this session to aal2 — remember the device
+    // so the 6-digit prompt isn't needed again for 90 days.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) await rememberThisDevice(user.id);
     setEnrolling(null);
     refresh();
+    onEnrolled?.();
   };
 
   const removeFactor = async (factorId) => {
-    if (!window.confirm('Remove this authenticator? You will no longer be prompted for a code at sign-in.')) return;
+    if (!window.confirm('Remove this authenticator? You will no longer be prompted for a code at sign-in, and any "remembered" devices for this account will be cleared.')) return;
     const { error: uErr } = await supabase.auth.mfa.unenroll({ factorId });
     if (uErr) { setError(uErr.message); return; }
+    // Wipe the local trusted-device token and any rows on the server —
+    // there's no enrolled factor any more, so trusted-device claims must
+    // not survive.
+    forgetThisDevice();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) await supabase.from('mfa_trusted_devices').delete().eq('user_id', user.id);
     refresh();
   };
 
