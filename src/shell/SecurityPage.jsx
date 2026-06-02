@@ -36,11 +36,22 @@ export default function SecurityPage({ onEnrolled }) {
     });
     if (eErr) { setError(eErr.message); return; }
     const factorId = data.id;
-    const qrSvg = data.totp.qr_code; // raw <svg>…</svg>
+    // Supabase returns qr_code as a data: URI (SVG). Normalise it so it
+    // renders as a clean <img>: if it's the unencoded
+    // `data:image/svg+xml;utf-8,<svg…>` form, URL-encode the SVG part,
+    // otherwise an unencoded '#' / '<' can corrupt the image on some
+    // browsers (which stops phones recognising the QR).
+    const rawQr = data.totp.qr_code || '';
+    let qrSrc = rawQr;
+    const m = rawQr.match(/^data:image\/svg\+xml(;utf-8|;charset=utf-8)?,(.*)$/s);
+    if (m && !/;base64,/.test(rawQr)) {
+      qrSrc = `data:image/svg+xml;utf-8,${encodeURIComponent(m[2])}`;
+    }
     const secret = data.totp.secret;
+    const uri = data.totp.uri || '';
     const { data: ch, error: cErr } = await supabase.auth.mfa.challenge({ factorId });
     if (cErr) { setError(cErr.message); return; }
-    setEnrolling({ factorId, qrSvg, secret, challengeId: ch.id, code: '', verifying: false, error: '' });
+    setEnrolling({ factorId, qrSrc, secret, uri, challengeId: ch.id, code: '', verifying: false, error: '' });
   };
 
   const cancelEnroll = async () => {
@@ -151,10 +162,14 @@ export default function SecurityPage({ onEnrolled }) {
             <p style={{ fontSize: 12, color: '#64748b', marginTop: 0, marginBottom: 14 }}>
               Scan this QR code with your authenticator app, then enter the 6-digit code it shows.
             </p>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }} dangerouslySetInnerHTML={{ __html: enrolling.qrSvg }} />
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+              <img src={enrolling.qrSrc} alt="Authenticator QR code" width={220} height={220} style={{ display: 'block' }} />
+            </div>
             <details style={{ fontSize: 11, color: '#94a3b8', marginBottom: 14 }}>
               <summary style={{ cursor: 'pointer' }}>Can't scan? Enter this code manually.</summary>
-              <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', marginTop: 6, color: '#475569' }}>{enrolling.secret}</div>
+              <p style={{ marginTop: 6, marginBottom: 4, color: '#64748b' }}>In your authenticator app choose "enter a setup key" and paste:</p>
+              <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', color: '#0f172a', fontSize: 13, letterSpacing: 1 }}>{enrolling.secret}</div>
+              <p style={{ marginTop: 4, color: '#94a3b8' }}>Account: Athena · Type: time-based</p>
             </details>
             <input
               autoFocus
