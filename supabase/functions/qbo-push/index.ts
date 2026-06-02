@@ -121,10 +121,18 @@ Deno.serve(async (req) => {
 
       let recurringPlan: Record<string, unknown> | null = null;
       if (hasRecurring) {
-        const existing = await findRecurringTemplateByName(recurringTemplateName);
+        // Look up every existing template attached to this customer in QBO,
+        // not just by auto-generated name — name drift between Athena and
+        // QBO is the main cause of duplicate-template pushes (Apollo
+        // Joinery hit this). If any exist, the plan defaults to overwrite.
+        const existingForCustomer = existingCustomerId
+          ? await findRecurringTemplatesForCustomer(existingCustomerId)
+          : [];
+        const target = pickTemplateToOverwrite(existingForCustomer, recurringTemplateName);
         recurringPlan = {
-          action: existing ? "overwrite" : "create",
-          existing_template_id: existing?.id ?? null,
+          action: target ? "overwrite" : "create",
+          existing_template_id: target?.id ?? null,
+          existing_templates: existingForCustomer.map((t) => ({ id: t.id, name: t.name })),
           template_name: recurringTemplateName,
           lines: recurringLines.map((l) => ({ description: l.description || itemMap[l.service_id]?.qbo_item_name || l.service_id, amount: l.monthly_amount ?? 0 })),
           monthly_total: recurringLines.reduce((s, l) => s + (l.monthly_amount ?? 0), 0),
@@ -187,9 +195,12 @@ Deno.serve(async (req) => {
 
     if (hasRecurring) {
       const lineItems = recurringLines.map((l) => buildLineItem(l, itemMap, l.monthly_amount ?? 0, defaultTaxCodeId));
-      const existing = await findRecurringTemplateByName(recurringTemplateName);
-      if (existing) {
-        recurringTxnId = await updateQboRecurringInvoice({ id: existing.id, syncToken: existing.syncToken, customerId: qboCustomerId, lineItems, templateName: recurringTemplateName, startDate, dueDateOffsetDays });
+      // Detect any existing recurring template attached to this QBO
+      // customer — never blindly create a second one.
+      const existingForCustomer = await findRecurringTemplatesForCustomer(qboCustomerId);
+      const target = pickTemplateToOverwrite(existingForCustomer, recurringTemplateName);
+      if (target) {
+        recurringTxnId = await updateQboRecurringInvoice({ id: target.id, syncToken: target.syncToken, customerId: qboCustomerId, lineItems, templateName: recurringTemplateName, startDate, dueDateOffsetDays });
         recurringAction = "overwrite";
       } else {
         recurringTxnId = await createQboRecurringInvoice({ customerId: qboCustomerId, lineItems, templateName: recurringTemplateName, startDate, dueDateOffsetDays });
@@ -268,21 +279,39 @@ async function findCustomerByName(entityName: string): Promise<string | null> {
   return customers.length > 0 ? String(customers[0].Id) : null;
 }
 
-// Look up an existing recurring Invoice template by its RecurringInfo.Name.
-// QBO's query language can't filter on RecurringInfo, so fetch and scan.
-async function findRecurringTemplateByName(name: string): Promise<{ id: string; syncToken: string } | null> {
+// All recurring Invoice templates that belong to a given QBO customer.
+// Matching by customer id is far more reliable than matching by template
+// name — Athena's auto-generated `${entity} — Monthly` can drift from
+// what's actually in QBO when the customer's display name differs even
+// slightly. Returns id + syncToken + name for each.
+async function findRecurringTemplatesForCustomer(
+  customerId: string,
+): Promise<Array<{ id: string; syncToken: string; name: string }>> {
   const result = (await qboQuery(`SELECT * FROM RecurringTransaction`)) as Record<string, unknown>;
   const qr = (result?.QueryResponse as Record<string, unknown>) || {};
   const rows = (qr.RecurringTransaction as Array<Record<string, unknown>>) || [];
+  const out: Array<{ id: string; syncToken: string; name: string }> = [];
   for (const row of rows) {
     const inv = (row.Invoice as Record<string, unknown>) || null;
     if (!inv) continue;
+    const cust = (inv.CustomerRef as Record<string, unknown>) || {};
+    if (String(cust.value || "") !== String(customerId)) continue;
     const info = (inv.RecurringInfo as Record<string, unknown>) || {};
-    if (String(info.Name || "") === name) {
-      return { id: String(inv.Id), syncToken: String(inv.SyncToken ?? "0") };
-    }
+    out.push({ id: String(inv.Id), syncToken: String(inv.SyncToken ?? "0"), name: String(info.Name || "") });
   }
-  return null;
+  return out;
+}
+
+// Choose which existing template (if any) to overwrite. Prefer the one
+// whose name matches the auto-generated template name exactly; otherwise
+// fall back to the first.
+function pickTemplateToOverwrite(
+  templates: Array<{ id: string; syncToken: string; name: string }>,
+  preferredName: string,
+): { id: string; syncToken: string; name: string } | null {
+  if (templates.length === 0) return null;
+  const exact = templates.find((t) => t.name === preferredName);
+  return exact || templates[0];
 }
 
 async function ensureQboCustomer(sb: ReturnType<typeof getServiceClient>, entity: Record<string, unknown> | null, entityName: string): Promise<string> {

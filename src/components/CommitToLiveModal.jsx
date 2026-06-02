@@ -481,6 +481,15 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
                   )}
                   {' '}— {rec.template_name}
                 </p>
+                {Array.isArray(rec.existing_templates) && rec.existing_templates.length > 0 && (
+                  <div className="text-amber-700 bg-amber-50 rounded p-1.5 mb-2">
+                    {rec.existing_templates.length === 1 ? (
+                      <>Found 1 existing template in QBO for this customer: <span className="font-mono">{rec.existing_templates[0].name || '(unnamed)'}</span>. It will be updated rather than duplicated.</>
+                    ) : (
+                      <>Found {rec.existing_templates.length} existing templates in QBO for this customer ({rec.existing_templates.map((t) => t.name || '(unnamed)').join(', ')}). The closest match will be updated; you may want to tidy duplicates in QBO.</>
+                    )}
+                  </div>
+                )}
                 <div className="space-y-0.5 mb-2">
                   {rec.lines.map((l, i) => (
                     <div key={i} className="flex justify-between text-gray-700">
