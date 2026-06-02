@@ -328,6 +328,14 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Expiry is governed by valid_until, not the token's lifetime.
+    if (quote.valid_until) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (quote.valid_until < today) {
+        return jsonResponse({ ok: false, error: "expired", valid_until: quote.valid_until }, 410);
+      }
+    }
+
     const acceptedAt = new Date().toISOString();
     const ip = clientIp(req);
     const ua = req.headers.get("user-agent");

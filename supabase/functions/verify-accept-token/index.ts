@@ -83,6 +83,16 @@ Deno.serve(async (req) => {
     const alreadyAccepted =
       quote.status === "accepted" || quote.status === "committed";
 
+    // Expiry is governed by the quote's valid_until (the figure shown to the
+    // client), NOT the token's lifetime. Only blocks quotes still awaiting a
+    // decision — already-accepted ones render their thank-you regardless.
+    if (!alreadyAccepted && quote.valid_until) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (quote.valid_until < today) {
+        return jsonResponse({ ok: false, error: "expired", valid_until: quote.valid_until }, 410);
+      }
+    }
+
     // Log the review-click as a quote event. Best-effort: failure here must
     // never block the page from rendering.
     try {
