@@ -7,7 +7,7 @@ const font = "'Outfit', sans-serif";
 // Security settings: enroll/remove a TOTP authenticator. After enrollment
 // the user is signed in at aal2; future password logins will be prompted
 // for a 6-digit code before reaching the app.
-export default function SecurityPage({ onEnrolled }) {
+export default function SecurityPage({ onEnrolled, embedded = false }) {
   const [factors, setFactors] = useState([]);
   const [enrolling, setEnrolling] = useState(null); // { factorId, qrSvg, secret, challengeId, code, verifying, error }
   const [aal, setAal] = useState({ currentLevel: 'aal1', nextLevel: 'aal1' });
@@ -100,13 +100,17 @@ export default function SecurityPage({ onEnrolled }) {
   };
 
   return (
-    <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 720 }}>
-      <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
-        Security
-      </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 640, marginBottom: 18 }}>
-        Set up two-factor authentication so signing in to Athena requires both your password and a code from your phone's authenticator app.
-      </p>
+    <div style={{ padding: embedded ? 0 : '20px 28px', fontFamily: font, maxWidth: embedded ? '100%' : 720 }}>
+      {!embedded && (
+        <>
+          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
+            Security
+          </h1>
+          <p style={{ fontSize: 13, color: '#64748b', maxWidth: 640, marginBottom: 18 }}>
+            Set up two-factor authentication so signing in to Athena requires both your password and a code from your phone's authenticator app.
+          </p>
+        </>
+      )}
 
       {error && <div style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 8, padding: '8px 12px', marginBottom: 14 }}>{error}</div>}
 

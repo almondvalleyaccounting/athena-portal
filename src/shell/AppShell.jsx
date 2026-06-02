@@ -6,6 +6,7 @@ import TopBar from './TopBar';
 import ChangePasswordScreen from './ChangePasswordScreen';
 import MFAChallenge from './MFAChallenge';
 import SecurityPage from './SecurityPage';
+import { CinematicPanel } from './LoginPage';
 import { checkTrustedDevice } from '../lib/trustedDevice';
 
 /* ─── Auth context ─────────────────────────────────────────────── */
@@ -170,13 +171,34 @@ export default function AppShell() {
   }
 
   // ── Hard block: no verified factor → must enrol before the app loads. ──
+  // Mirror the login landing: message + enrol panel on the left, the
+  // cinematic ATHENA panel on the right.
   if (mfaState === 'enrol') {
     return (
-      <div style={{ minHeight: '100vh', background: '#fafafa', fontFamily: "'Outfit', sans-serif" }}>
-        <div style={{ background: '#fef3c7', color: '#92400e', padding: '10px 20px', fontSize: 13, borderBottom: '1px solid #fde68a' }}>
-          Two-factor authentication is required to use Athena. Please enrol an authenticator below to continue.
+      <div style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Outfit', sans-serif" }}>
+        <div style={{ flex: 1, minWidth: 0, background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 40px', overflow: 'auto' }}>
+          <div style={{ width: '100%', maxWidth: 460 }}>
+            <img src="/ava-logo.jpg" alt="AVA" style={{ width: 56, height: 56, borderRadius: 10, marginBottom: 20 }} />
+            <h1 style={{ fontFamily: "'Major Mono Display', monospace", fontSize: 24, color: '#0f172a', marginBottom: 8 }}>ATHENA</h1>
+            <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 500, color: '#0f172a', margin: '8px 0 6px' }}>
+              Set up two-factor authentication
+            </h2>
+            <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, marginBottom: 24 }}>
+              Athena now holds live client data, so two-factor authentication is required before you can continue.
+              Use Google Authenticator, Authy, 1Password, or any TOTP app on your phone — it takes about a minute.
+            </p>
+            <SecurityPage onEnrolled={recheckMfa} embedded />
+            <button
+              onClick={handleLogout}
+              style={{ marginTop: 20, background: 'none', border: 'none', color: '#94a3b8', fontSize: 12, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+            >
+              Sign out
+            </button>
+          </div>
         </div>
-        <SecurityPage onEnrolled={recheckMfa} />
+        <div style={{ width: 460, flexShrink: 0, display: 'flex' }}>
+          <CinematicPanel />
+        </div>
       </div>
     );
   }

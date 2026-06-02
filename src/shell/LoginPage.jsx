@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
 /* ─── Cinematic panel (right side) ────────────────────────────── */
-function CinematicPanel() {
+export function CinematicPanel() {
   const [dotIndex, setDotIndex] = useState(-1);
   const [burst, setBurst] = useState(false);
 
