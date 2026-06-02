@@ -190,6 +190,20 @@ export default function TopBar() {
                 </p>
               </div>
               <button
+                onClick={() => { setMenuOpen(false); navigate('/security'); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  width: '100%', padding: '8px 10px', background: 'none',
+                  border: 'none', borderRadius: 6, cursor: 'pointer',
+                  fontFamily: "'Outfit', sans-serif", fontSize: 13,
+                  fontWeight: 500, color: '#64748b', transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#64748b'; }}
+              >
+                Security & 2FA
+              </button>
+              <button
                 onClick={handleLogout}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8,

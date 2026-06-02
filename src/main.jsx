@@ -8,6 +8,7 @@ import IdeasPage from './modules/ideas/IdeasPage';
 import BugReportPage from './modules/bugs/BugReportPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import AdminPage from './shell/AdminPage';
+import SecurityPage from './shell/SecurityPage';
 import DataImportModule from './modules/data-import/DataImportModule';
 import SetupModule from './modules/work-planner/setup/SetupModule';
 import QboMappingPage from './modules/qbo-mapping/QboMappingPage';
@@ -62,6 +63,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />
           <Route path="/admin/staff" element={<AdminPage />} />
+          <Route path="/security" element={<SecurityPage />} />
           <Route path="/admin/import/*" element={<DataImportModule />} />
           {/* Legacy Workflow / Staging routes redirect to the new Waiting area. */}
           <Route path="/admin/workflow" element={<Navigate to="/planner/waiting" replace />} />

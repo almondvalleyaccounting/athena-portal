@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import ChangePasswordScreen from './ChangePasswordScreen';
+import MFAChallenge from './MFAChallenge';
 
 /* ─── Auth context ─────────────────────────────────────────────── */
 const AuthContext = createContext(null);
@@ -79,6 +80,21 @@ export default function AppShell() {
     return () => { clearInterval(id); window.removeEventListener('focus', onFocus); };
   }, [session]);
 
+  // ── MFA gate: if the user has a verified TOTP factor but the current
+  // session is still aal1, force them through a 6-digit challenge before
+  // the app renders. Re-check whenever the session changes.
+  const [mfaRequired, setMfaRequired] = useState(false);
+  useEffect(() => {
+    if (!session) { setMfaRequired(false); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (cancelled) return;
+      setMfaRequired(data?.currentLevel === 'aal1' && data?.nextLevel === 'aal2');
+    })();
+    return () => { cancelled = true; };
+  }, [session]);
+
   // ── Load staff profile after auth ──
   useEffect(() => {
     if (!session) return;
@@ -131,6 +147,14 @@ export default function AppShell() {
 
   // ── Not authenticated ──
   if (!session) return null;
+
+  // ── MFA challenge required before the app proceeds ──
+  if (mfaRequired) {
+    return <MFAChallenge onPassed={async () => {
+      const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      setMfaRequired(data?.currentLevel === 'aal1' && data?.nextLevel === 'aal2');
+    }} />;
+  }
 
   // ── No profile — show access message ──
   if (!profile) {
