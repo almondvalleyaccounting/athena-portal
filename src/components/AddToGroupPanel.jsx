@@ -112,9 +112,6 @@ export default function AddToGroupPanel({ quote, profile, onDone }) {
               <span className="font-mono text-ocean-600">{fmt(q.monthly_gross)}/mo</span>
             </div>
           ))}
-          <Btn onClick={() => navigate('/manage/quotes/group/' + quote.group_id)} variant="secondary" className="w-full mt-2">
-            View Group Summary
-          </Btn>
         </>
       ) : (
         <>

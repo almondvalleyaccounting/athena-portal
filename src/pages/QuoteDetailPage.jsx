@@ -348,6 +348,9 @@ export default function QuoteDetailPage() {
         )}
         <Btn onClick={handlePreview} variant="secondary" className="min-w-[120px]">Preview Quote</Btn>
         <Btn onClick={() => generateQuotePdf(quote, lineItems)} variant="secondary" className="min-w-[120px]">Export PDF</Btn>
+        {quote.group_id && (
+          <Btn onClick={() => navigate('/manage/quotes/group/' + quote.group_id)} variant="secondary" className="min-w-[120px]">View Group Summary</Btn>
+        )}
         {(quote.status === 'approved' || quote.status === 'sent') && profile?.can_approve_quotes && (
           <Btn onClick={() => setShowSendModal(true)} variant="primary" className="min-w-[120px]">Send to Client</Btn>
         )}
