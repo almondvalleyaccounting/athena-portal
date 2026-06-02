@@ -246,6 +246,69 @@ export default function useQuoteForm(D) {
     return items;
   };
 
+  // ── Seed from an existing recurring bill ──
+  // `seedLines` is a list of { serviceId (Athena), annual, monthly } already
+  // reverse-mapped from the QBO/live_billing services by the caller. We
+  // enable each service and set the cleanest fee field. Driver-based
+  // services (directors, bookkeeping, payroll counts, management accounts,
+  // software) can't be decomposed from a flat amount, so we set a single
+  // representative driver to hit the number and return them in needsReview
+  // for the user to confirm.
+  const seedFromBilling = (seedLines) => {
+    const needsReview = [];
+    for (const line of seedLines || []) {
+      const annual = Number(line.annual) || 0;
+      const monthly = Number(line.monthly) || (annual ? annual / 12 : 0);
+      switch (line.serviceId) {
+        case 'accounts_ct':
+          setAccEnabled(true); setAccRate(Math.round(annual));
+          break;
+        case 'confirmation_statement':
+          setCsEnabled(true); setCsFee(Math.round(annual));
+          break;
+        case 'vat_returns':
+          setVatEnabled(true); setVatFreq(4); setVatRate(Math.round((annual / 4) * 100) / 100);
+          break;
+        case 'auto_enrolment':
+          setAeEnabled(true); setAeFee(Math.round(annual));
+          break;
+        case 'registered_office':
+          setRoEnabled(true); setRoFee(Math.round(annual));
+          break;
+        case 'review_meetings':
+          setRmEnabled(true); setRmCount(1); setRmRate(Math.round(annual));
+          needsReview.push('Review Meetings (set count/rate)');
+          break;
+        case 'management_accounts':
+          setMaEnabled(true); setMaSets(1); setMaRate(Math.round(annual));
+          needsReview.push('Management Accounts (set number of sets)');
+          break;
+        case 'payroll':
+          setPrEnabled(true); setPrFlat(Math.round(monthly * 100) / 100);
+          needsReview.push('Payroll (set employee counts)');
+          break;
+        case 'bookkeeping_vat':
+          setBkEnabled(true); setBkHours(1); setBkRate(Math.round(monthly * 100) / 100); setBkIncVat(true);
+          needsReview.push('Bookkeeping & VAT (set hours × rate)');
+          break;
+        case 'directors_tax_return':
+          setDtrEnabled(true); setDirectors([{ ...newDir(), base: Math.round(annual) }]);
+          needsReview.push("Directors' Tax Returns (set number of directors)");
+          break;
+        case 'modulr':
+          setModEnabled(true); setModSwPrice(Math.round(monthly * 100) / 100);
+          needsReview.push('Modulr (set payments/runs)');
+          break;
+        case 'software_accounting':
+          needsReview.push('Software (' + (annual ? '£' + Math.round(monthly) + '/mo' : '') + ' — choose the software package)');
+          break;
+        default:
+          needsReview.push((line.serviceId || 'Unknown service') + ' (no automatic mapping)');
+      }
+    }
+    return needsReview;
+  };
+
   // ── Load from saved quote (for edit/re-quote) ──
   const loadFromQuote = (q) => {
     setClient({
@@ -417,7 +480,7 @@ export default function useQuoteForm(D) {
     // Totals
     lines, annualServices, annualTotal, monthlyNet, monthlyVat, monthlyGross,
     // Builders
-    buildQuoteData, buildLineItems, loadFromQuote,
+    buildQuoteData, buildLineItems, loadFromQuote, seedFromBilling,
     // Defaults ref
     D,
   };

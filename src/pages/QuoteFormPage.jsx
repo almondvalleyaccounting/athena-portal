@@ -22,6 +22,9 @@ export default function QuoteFormPage({ mode = 'new' }) {
   const [entity, setEntity] = useState(null);
   const [existingQuoteRef, setExistingQuoteRef] = useState(null);
   const [formLoading, setFormLoading] = useState(mode === 'edit' || !!fromId);
+  // Existing recurring bill available to seed this quote from (new quotes only).
+  const [billingSeed, setBillingSeed] = useState(null); // { lines: [{serviceId, annual, monthly}], unmapped: [], raw }
+  const [seedReview, setSeedReview] = useState(null); // string[] after seeding
 
   // The hook holds all form state, computed values, and builders
   const f = useQuoteForm(D);
@@ -43,6 +46,64 @@ export default function QuoteFormPage({ mode = 'new' }) {
         });
     }
   }, [entityId]);
+
+  // For a brand-new quote on an existing entity, see whether that entity
+  // has an active recurring live_billing row we can seed the quote from.
+  // Reverse-map each billed line (stored with service_id = QBO item name)
+  // back to an Athena service via qbo_service_items. Two QBO items map
+  // from two Athena services each — prefer the "primary".
+  useEffect(() => {
+    if (mode === 'edit' || fromId || !entityId) return;
+    let cancelled = false;
+    (async () => {
+      const [{ data: billingRows }, { data: maps }] = await Promise.all([
+        supabase.from('live_billing').select('id, services, monthly_net, annual_total')
+          .eq('entity_id', entityId).eq('status', 'active')
+          .order('last_synced_qbo', { ascending: false, nullsFirst: false }).limit(1),
+        supabase.from('qbo_service_items').select('service_id, qbo_item_name'),
+      ]);
+      if (cancelled) return;
+      const row = billingRows && billingRows[0];
+      if (!row || !Array.isArray(row.services) || row.services.length === 0) return;
+
+      // Build itemName(lower) → [serviceId]. Prefer primary on collisions.
+      const PRIMARY = { payroll: 1, bookkeeping_vat: 1 }; // win over auto_enrolment / vat_returns
+      const byItemName = {};
+      for (const m of maps || []) {
+        const key = (m.qbo_item_name || '').toLowerCase().trim();
+        if (!key) continue;
+        if (!byItemName[key]) byItemName[key] = [];
+        byItemName[key].push(m.service_id);
+      }
+      const resolve = (sids) => sids.slice().sort((a, b) => (PRIMARY[b] || 0) - (PRIMARY[a] || 0))[0];
+
+      const lines = [];
+      const unmapped = [];
+      for (const s of row.services) {
+        // live_billing services use the QBO item name as service_id; also
+        // try the description as a fallback key.
+        const k1 = String(s.service_id || '').toLowerCase().trim();
+        const k2 = String(s.description || '').toLowerCase().trim();
+        const sids = byItemName[k1] || byItemName[k2];
+        const annual = Number(s.annual_amount) || (Number(s.monthly_amount) || 0) * 12;
+        const monthly = Number(s.monthly_amount) || annual / 12;
+        if (sids && sids.length) {
+          lines.push({ serviceId: resolve(sids), annual, monthly, source: s.description || s.service_id });
+        } else {
+          unmapped.push({ label: s.description || s.service_id, annual, monthly });
+        }
+      }
+      setBillingSeed({ lines, unmapped, monthlyNet: row.monthly_net, annualTotal: row.annual_total });
+    })();
+    return () => { cancelled = true; };
+  }, [entityId, mode, fromId]);
+
+  const handleSeedFromBilling = () => {
+    if (!billingSeed) return;
+    const review = f.seedFromBilling(billingSeed.lines);
+    const unmappedLabels = (billingSeed.unmapped || []).map((u) => `${u.label} (£${Math.round(u.monthly)}/mo — not mapped to a service)`);
+    setSeedReview([...review, ...unmappedLabels]);
+  };
 
   // Load existing quote for edit or re-quote
   useEffect(() => {
@@ -260,6 +321,30 @@ export default function QuoteFormPage({ mode = 'new' }) {
       </div>
 
       {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2 mb-3">{error}</div>}
+
+      {/* Seed from existing recurring bill (new quotes on an existing client) */}
+      {mode !== 'edit' && !fromId && billingSeed && !seedReview && (
+        <div className="bg-ocean-50 border border-ocean-200 rounded-lg p-3 mb-3 flex items-center justify-between gap-3">
+          <div className="text-xs text-ocean-800">
+            This client has a live recurring bill ({fmt(billingSeed.monthlyNet)}/mo net across {billingSeed.lines.length + (billingSeed.unmapped?.length || 0)} services).
+            Seed this quote from it?
+          </div>
+          <Btn onClick={handleSeedFromBilling} variant="secondary" className="whitespace-nowrap">Seed from current bill</Btn>
+        </div>
+      )}
+      {seedReview && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+          <p className="text-xs font-semibold text-amber-800 mb-1">Quote seeded from the current bill — prices set. Please review:</p>
+          {seedReview.length === 0 ? (
+            <p className="text-xs text-amber-700">All services mapped cleanly. Check the figures and add any driver detail.</p>
+          ) : (
+            <ul className="text-xs text-amber-700 list-disc pl-4 space-y-0.5">
+              {seedReview.map((r, i) => <li key={i}>{r}</li>)}
+            </ul>
+          )}
+          <p className="text-[11px] text-amber-600 mt-1.5">Driver detail (director count, bookkeeping hours, etc.) can't be read from a flat bill amount — set these so the quote rebuilds correctly.</p>
+        </div>
+      )}
 
       {/* Client info */}
       <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
