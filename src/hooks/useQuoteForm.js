@@ -254,53 +254,52 @@ export default function useQuoteForm(D) {
   // software) can't be decomposed from a flat amount, so we set a single
   // representative driver to hit the number and return them in needsReview
   // for the user to confirm.
-  const seedFromBilling = (seedLines) => {
+  // priceMode 'copy'     → set each service's fee from the bill amount.
+  // priceMode 'services' → enable the same services but leave fees at the
+  //                        current pricing defaults (re-price to standard).
+  const seedFromBilling = (seedLines, opts = {}) => {
+    const priceMode = opts.priceMode || 'copy';
+    const copy = priceMode === 'copy';
     const needsReview = [];
     for (const line of seedLines || []) {
       const annual = Number(line.annual) || 0;
       const monthly = Number(line.monthly) || (annual ? annual / 12 : 0);
       switch (line.serviceId) {
         case 'accounts_ct':
-          setAccEnabled(true); setAccRate(Math.round(annual));
+          setAccEnabled(true); if (copy) setAccRate(Math.round(annual));
           break;
         case 'confirmation_statement':
-          setCsEnabled(true); setCsFee(Math.round(annual));
+          setCsEnabled(true); if (copy) setCsFee(Math.round(annual));
           break;
         case 'vat_returns':
-          setVatEnabled(true); setVatFreq(4); setVatRate(Math.round((annual / 4) * 100) / 100);
+          setVatEnabled(true); if (copy) { setVatFreq(4); setVatRate(Math.round((annual / 4) * 100) / 100); }
           break;
         case 'auto_enrolment':
-          setAeEnabled(true); setAeFee(Math.round(annual));
+          setAeEnabled(true); if (copy) setAeFee(Math.round(annual));
           break;
         case 'registered_office':
-          setRoEnabled(true); setRoFee(Math.round(annual));
+          setRoEnabled(true); if (copy) setRoFee(Math.round(annual));
           break;
         case 'review_meetings':
-          setRmEnabled(true); setRmCount(1); setRmRate(Math.round(annual));
-          needsReview.push('Review Meetings (set count/rate)');
+          setRmEnabled(true); if (copy) { setRmCount(1); setRmRate(Math.round(annual)); needsReview.push('Review Meetings (set count/rate)'); }
           break;
         case 'management_accounts':
-          setMaEnabled(true); setMaSets(1); setMaRate(Math.round(annual));
-          needsReview.push('Management Accounts (set number of sets)');
+          setMaEnabled(true); if (copy) { setMaSets(1); setMaRate(Math.round(annual)); needsReview.push('Management Accounts (set number of sets)'); }
           break;
         case 'payroll':
-          setPrEnabled(true); setPrFlat(Math.round(monthly * 100) / 100);
-          needsReview.push('Payroll (set employee counts)');
+          setPrEnabled(true); if (copy) { setPrFlat(Math.round(monthly * 100) / 100); needsReview.push('Payroll (set employee counts)'); }
           break;
         case 'bookkeeping_vat':
-          setBkEnabled(true); setBkHours(1); setBkRate(Math.round(monthly * 100) / 100); setBkIncVat(true);
-          needsReview.push('Bookkeeping & VAT (set hours × rate)');
+          setBkEnabled(true); if (copy) { setBkHours(1); setBkRate(Math.round(monthly * 100) / 100); setBkIncVat(true); needsReview.push('Bookkeeping & VAT (set hours × rate)'); }
           break;
         case 'directors_tax_return':
-          setDtrEnabled(true); setDirectors([{ ...newDir(), base: Math.round(annual) }]);
-          needsReview.push("Directors' Tax Returns (set number of directors)");
+          setDtrEnabled(true); if (copy) { setDirectors([{ ...newDir(), base: Math.round(annual) }]); needsReview.push("Directors' Tax Returns (set number of directors)"); }
           break;
         case 'modulr':
-          setModEnabled(true); setModSwPrice(Math.round(monthly * 100) / 100);
-          needsReview.push('Modulr (set payments/runs)');
+          setModEnabled(true); if (copy) { setModSwPrice(Math.round(monthly * 100) / 100); needsReview.push('Modulr (set payments/runs)'); }
           break;
         case 'software_accounting':
-          needsReview.push('Software (' + (annual ? '£' + Math.round(monthly) + '/mo' : '') + ' — choose the software package)');
+          needsReview.push('Software (' + (copy && annual ? '£' + Math.round(monthly) + '/mo' : '') + ' — choose the software package)');
           break;
         default:
           needsReview.push((line.serviceId || 'Unknown service') + ' (no automatic mapping)');

@@ -7,6 +7,34 @@ import useQuoteForm from '../hooks/useQuoteForm';
 import { useAuth } from '../shell/AppShell';
 import { useFeeEngine } from '../contexts/FeeEngineContext';
 
+// Reverse-map a live_billing services[] array (whose service_id is the QBO
+// item name) back to Athena service ids via the qbo_service_items map.
+// Two QBO items map from two Athena services each (Payroll, Bookkeeping &
+// VAT) — prefer the "primary". Returns mappable { serviceId, annual,
+// monthly } lines plus any unmapped lines.
+function mapServicesToSeed(services, maps) {
+  const PRIMARY = { payroll: 1, bookkeeping_vat: 1 };
+  const byItemName = {};
+  for (const m of maps || []) {
+    const key = (m.qbo_item_name || '').toLowerCase().trim();
+    if (!key) continue;
+    (byItemName[key] = byItemName[key] || []).push(m.service_id);
+  }
+  const resolve = (sids) => sids.slice().sort((a, b) => (PRIMARY[b] || 0) - (PRIMARY[a] || 0))[0];
+  const lines = [];
+  const unmapped = [];
+  for (const s of services || []) {
+    const k1 = String(s.service_id || '').toLowerCase().trim();
+    const k2 = String(s.description || '').toLowerCase().trim();
+    const sids = byItemName[k1] || byItemName[k2];
+    const annual = Number(s.annual_amount) || (Number(s.monthly_amount) || 0) * 12;
+    const monthly = Number(s.monthly_amount) || annual / 12;
+    if (sids && sids.length) lines.push({ serviceId: resolve(sids), annual, monthly, source: s.description || s.service_id });
+    else unmapped.push({ label: s.description || s.service_id, annual, monthly });
+  }
+  return { lines, unmapped };
+}
+
 export default function QuoteFormPage({ mode = 'new' }) {
   const { profile } = useAuth();
   const { defaults: D } = useFeeEngine();
@@ -47,62 +75,69 @@ export default function QuoteFormPage({ mode = 'new' }) {
     }
   }, [entityId]);
 
-  // For a brand-new quote on an existing entity, see whether that entity
-  // has an active recurring live_billing row we can seed the quote from.
-  // Reverse-map each billed line (stored with service_id = QBO item name)
-  // back to an Athena service via qbo_service_items. Two QBO items map
-  // from two Athena services each — prefer the "primary".
+  // New quotes can be seeded from a recurring bill — either this client's
+  // own (auto-detected below) or another client's (picker). Load the
+  // service→item map and the list of clients that have an active recurring
+  // bill once, up front.
+  const [serviceMaps, setServiceMaps] = useState([]);
+  const [sourceClients, setSourceClients] = useState([]); // [{entity_id, name, monthly_net, services}]
+  const [showSourcePicker, setShowSourcePicker] = useState(false);
+  const [sourceId, setSourceId] = useState('');
+  const [sourcePriceMode, setSourcePriceMode] = useState('copy'); // 'copy' | 'services'
+
   useEffect(() => {
-    if (mode === 'edit' || fromId || !entityId) return;
+    if (mode === 'edit') return;
     let cancelled = false;
     (async () => {
-      const [{ data: billingRows }, { data: maps }] = await Promise.all([
-        supabase.from('live_billing').select('id, services, monthly_net, annual_total')
-          .eq('entity_id', entityId).eq('status', 'active')
-          .order('last_synced_qbo', { ascending: false, nullsFirst: false }).limit(1),
+      const [{ data: maps }, { data: billing }] = await Promise.all([
         supabase.from('qbo_service_items').select('service_id, qbo_item_name'),
+        supabase.from('live_billing')
+          .select('entity_id, monthly_net, services, entity:entities(id, name)')
+          .eq('status', 'active'),
       ]);
       if (cancelled) return;
-      const row = billingRows && billingRows[0];
-      if (!row || !Array.isArray(row.services) || row.services.length === 0) return;
-
-      // Build itemName(lower) → [serviceId]. Prefer primary on collisions.
-      const PRIMARY = { payroll: 1, bookkeeping_vat: 1 }; // win over auto_enrolment / vat_returns
-      const byItemName = {};
-      for (const m of maps || []) {
-        const key = (m.qbo_item_name || '').toLowerCase().trim();
-        if (!key) continue;
-        if (!byItemName[key]) byItemName[key] = [];
-        byItemName[key].push(m.service_id);
-      }
-      const resolve = (sids) => sids.slice().sort((a, b) => (PRIMARY[b] || 0) - (PRIMARY[a] || 0))[0];
-
-      const lines = [];
-      const unmapped = [];
-      for (const s of row.services) {
-        // live_billing services use the QBO item name as service_id; also
-        // try the description as a fallback key.
-        const k1 = String(s.service_id || '').toLowerCase().trim();
-        const k2 = String(s.description || '').toLowerCase().trim();
-        const sids = byItemName[k1] || byItemName[k2];
-        const annual = Number(s.annual_amount) || (Number(s.monthly_amount) || 0) * 12;
-        const monthly = Number(s.monthly_amount) || annual / 12;
-        if (sids && sids.length) {
-          lines.push({ serviceId: resolve(sids), annual, monthly, source: s.description || s.service_id });
-        } else {
-          unmapped.push({ label: s.description || s.service_id, annual, monthly });
+      setServiceMaps(maps || []);
+      // Dedupe to one bill per entity (the richest), only those with services.
+      const byEntity = new Map();
+      for (const r of billing || []) {
+        if (!r.entity_id || !Array.isArray(r.services) || r.services.length === 0) continue;
+        const prev = byEntity.get(r.entity_id);
+        if (!prev || (r.services.length > (prev.services?.length || 0))) {
+          byEntity.set(r.entity_id, { entity_id: r.entity_id, name: r.entity?.name || 'Client', monthly_net: r.monthly_net, services: r.services });
         }
       }
-      setBillingSeed({ lines, unmapped, monthlyNet: row.monthly_net, annualTotal: row.annual_total });
+      setSourceClients([...byEntity.values()].sort((a, b) => a.name.localeCompare(b.name)));
     })();
     return () => { cancelled = true; };
-  }, [entityId, mode, fromId]);
+  }, [mode]);
+
+  // Auto-detect this client's own bill once maps + source list are loaded.
+  useEffect(() => {
+    if (mode === 'edit' || fromId || !entityId || sourceClients.length === 0) return;
+    const own = sourceClients.find((c) => c.entity_id === entityId);
+    if (!own) { setBillingSeed(null); return; }
+    const { lines, unmapped } = mapServicesToSeed(own.services, serviceMaps);
+    setBillingSeed({ lines, unmapped, monthlyNet: own.monthly_net });
+  }, [entityId, mode, fromId, sourceClients, serviceMaps]);
 
   const handleSeedFromBilling = () => {
     if (!billingSeed) return;
-    const review = f.seedFromBilling(billingSeed.lines);
+    const review = f.seedFromBilling(billingSeed.lines, { priceMode: 'copy' });
     const unmappedLabels = (billingSeed.unmapped || []).map((u) => `${u.label} (£${Math.round(u.monthly)}/mo — not mapped to a service)`);
     setSeedReview([...review, ...unmappedLabels]);
+  };
+
+  const handleSeedFromSource = () => {
+    const src = sourceClients.find((c) => c.entity_id === sourceId);
+    if (!src) return;
+    const { lines, unmapped } = mapServicesToSeed(src.services, serviceMaps);
+    const review = f.seedFromBilling(lines, { priceMode: sourcePriceMode });
+    const unmappedLabels = (unmapped || []).map((u) => `${u.label} (£${Math.round(u.monthly)}/mo — not mapped to a service)`);
+    const modeNote = sourcePriceMode === 'services'
+      ? [`Services copied from ${src.name}; priced at this client's standard rates — review every figure.`]
+      : [`Prices copied from ${src.name}'s bill.`];
+    setSeedReview([...modeNote, ...review, ...unmappedLabels]);
+    setShowSourcePicker(false);
   };
 
   // Load existing quote for edit or re-quote
@@ -322,7 +357,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
 
       {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2 mb-3">{error}</div>}
 
-      {/* Seed from existing recurring bill (new quotes on an existing client) */}
+      {/* Seed from this client's own recurring bill */}
       {mode !== 'edit' && !fromId && billingSeed && !seedReview && (
         <div className="bg-ocean-50 border border-ocean-200 rounded-lg p-3 mb-3 flex items-center justify-between gap-3">
           <div className="text-xs text-ocean-800">
@@ -332,9 +367,48 @@ export default function QuoteFormPage({ mode = 'new' }) {
           <Btn onClick={handleSeedFromBilling} variant="secondary" className="whitespace-nowrap">Seed from current bill</Btn>
         </div>
       )}
+
+      {/* Seed from ANOTHER client's recurring bill (e.g. "use Dog Bothwell pricing") */}
+      {mode !== 'edit' && !fromId && !seedReview && sourceClients.length > 0 && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3">
+          {!showSourcePicker ? (
+            <button onClick={() => setShowSourcePicker(true)} className="text-xs text-ocean-600 hover:text-ocean-700 underline">
+              Seed from another client's pricing…
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-gray-700">Copy pricing from another client's recurring bill</div>
+              <select
+                value={sourceId}
+                onChange={(e) => setSourceId(e.target.value)}
+                className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white"
+              >
+                <option value="">— choose a client —</option>
+                {sourceClients.filter((c) => c.entity_id !== entityId).map((c) => (
+                  <option key={c.entity_id} value={c.entity_id}>{c.name} ({fmt(c.monthly_net)}/mo)</option>
+                ))}
+              </select>
+              <div className="flex flex-col gap-1">
+                <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                  <input type="radio" name="srcMode" checked={sourcePriceMode === 'copy'} onChange={() => setSourcePriceMode('copy')} className="accent-ocean-600" />
+                  Copy their exact bill prices
+                </label>
+                <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                  <input type="radio" name="srcMode" checked={sourcePriceMode === 'services'} onChange={() => setSourcePriceMode('services')} className="accent-ocean-600" />
+                  Same services, priced at this client's standard rates
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <Btn onClick={handleSeedFromSource} disabled={!sourceId} variant="secondary" className="text-xs">Apply</Btn>
+                <Btn onClick={() => { setShowSourcePicker(false); setSourceId(''); }} variant="ghost" className="text-xs">Cancel</Btn>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {seedReview && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-          <p className="text-xs font-semibold text-amber-800 mb-1">Quote seeded from the current bill — prices set. Please review:</p>
+          <p className="text-xs font-semibold text-amber-800 mb-1">Quote seeded from a recurring bill. Please review:</p>
           {seedReview.length === 0 ? (
             <p className="text-xs text-amber-700">All services mapped cleanly. Check the figures and add any driver detail.</p>
           ) : (
