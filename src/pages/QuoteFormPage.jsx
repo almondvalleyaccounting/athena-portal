@@ -44,6 +44,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
   const entityId = searchParams.get('entity');
   const fromId = searchParams.get('from');
   const groupParam = searchParams.get('group');
+  const seedParam = searchParams.get('seed'); // 'source' → open cross-client picker
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -81,7 +82,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
   // bill once, up front.
   const [serviceMaps, setServiceMaps] = useState([]);
   const [sourceClients, setSourceClients] = useState([]); // [{entity_id, name, monthly_net, services}]
-  const [showSourcePicker, setShowSourcePicker] = useState(false);
+  const [showSourcePicker, setShowSourcePicker] = useState(seedParam === 'source');
   const [sourceId, setSourceId] = useState('');
   const [sourcePriceMode, setSourcePriceMode] = useState('copy'); // 'copy' | 'services'
 

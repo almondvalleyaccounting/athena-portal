@@ -289,7 +289,24 @@ export default function ClientDetailView() {
 
       {activeSection === 'quotes' && (
         <div style={{ ...cardStyle, marginBottom: 20 }}>
-          <h3 style={sectionTitle}>Quotes ({quotes.length})</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Quotes ({quotes.length})</h3>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => navigate(`/manage/quotes/new?entity=${entity.id}`)}
+                style={{ fontSize: 12, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+              >
+                New quote
+              </button>
+              <button
+                onClick={() => navigate(`/manage/quotes/new?entity=${entity.id}&seed=source`)}
+                style={{ fontSize: 12, padding: '5px 10px', border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+                title="Start a quote seeded from another client's recurring bill pricing"
+              >
+                New quote from another client's pricing
+              </button>
+            </div>
+          </div>
           {quotes.map((q) => (
             <div key={q.id} onClick={() => navigate(`/manage/quotes/${q.id}`)} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '5px 0', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}>
               <span style={{ fontWeight: 500, color: '#0f172a' }}>{q.quote_ref}</span>
