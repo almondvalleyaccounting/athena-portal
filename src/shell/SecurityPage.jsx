@@ -30,9 +30,20 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
 
   const startEnroll = async () => {
     setError('');
+    // Clear any stale UNVERIFIED factors from abandoned attempts first —
+    // otherwise the next enroll collides on the friendly name. Verified
+    // factors are left alone (they're real, working authenticators).
+    const { data: existing } = await supabase.auth.mfa.listFactors();
+    for (const f of (existing?.totp || [])) {
+      if (f.status !== 'verified') {
+        await supabase.auth.mfa.unenroll({ factorId: f.id });
+      }
+    }
+    // Readable name; uniqueness is guaranteed by the unverified-cleanup above.
+    const friendlyName = 'Athena (' + new Date().toLocaleString('en-GB') + ')';
     const { data, error: eErr } = await supabase.auth.mfa.enroll({
       factorType: 'totp',
-      friendlyName: 'Athena (' + new Date().toISOString().slice(0, 10) + ')',
+      friendlyName,
     });
     if (eErr) { setError(eErr.message); return; }
     const factorId = data.id;
