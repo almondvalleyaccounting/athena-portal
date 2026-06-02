@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { downloadCSV } from '../lib/exportUtils';
@@ -21,11 +21,16 @@ const STATUS_CARDS = [
   { key: 'declined', label: 'Rejected', statuses: ['declined'] },
 ];
 
+const VALID_CARDS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'pipeline', 'committed', 'declined'];
+
 export default function QuotesPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Deep-link support: ?card=committed preselects that status card.
+  const cardParam = searchParams.get('card');
   const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeCard, setActiveCard] = useState('pipeline'); // default card
+  const [activeCard, setActiveCard] = useState(VALID_CARDS.includes(cardParam) ? cardParam : 'pipeline');
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState('created_at');
   const [sortAsc, setSortAsc] = useState(false);

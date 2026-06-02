@@ -434,6 +434,23 @@ export default function DashboardPage() {
             })}
           </div>
 
+          {/* Drill-through to the actual list for the selected status. */}
+          {(() => {
+            const QUOTES_CARD = { rejected: 'declined', pipeline_committed: 'pipeline' };
+            const targetCard = QUOTES_CARD[statusView] || statusView;
+            const n = statusCards[statusView]?.volume || 0;
+            return (
+              <div className="-mt-3 mb-6">
+                <button
+                  onClick={() => navigate(`/manage/quotes?card=${targetCard}`)}
+                  className="text-xs text-ocean-600 hover:text-ocean-700 underline"
+                >
+                  View {n} {STATUS_VIEW_LABELS[statusView]?.toLowerCase() || ''} quote{n === 1 ? '' : 's'} in the Quotes list →
+                </button>
+              </div>
+            );
+          })()}
+
           {/* Summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             {[
