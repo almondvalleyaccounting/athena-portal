@@ -29,6 +29,10 @@ export default function AppShell() {
       if (!s) {
         setLoading(false);
         navigate('/login', { replace: true });
+      } else if (!localStorage.getItem('sessionStartedAt')) {
+        // First load after a session was restored from storage — stamp it
+        // so the daily logout check has something to compare against.
+        localStorage.setItem('sessionStartedAt', String(Date.now()));
       }
     });
 
@@ -37,8 +41,12 @@ export default function AppShell() {
     } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       if (event === 'PASSWORD_RECOVERY') setRecovery(true);
+      if (event === 'SIGNED_IN') {
+        localStorage.setItem('sessionStartedAt', String(Date.now()));
+      }
       if (!s) {
         setProfile(null);
+        localStorage.removeItem('sessionStartedAt');
         setLoading(false);
         navigate('/login', { replace: true });
       }
@@ -46,6 +54,30 @@ export default function AppShell() {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  // ── Daily auto-logout at 00:01 GMT ──
+  // Sessions issued before today's 00:01 GMT cutoff get signed out as soon
+  // as the cutoff is reached (or on the next page focus / tick). Sessions
+  // started after the cutoff survive until the next day's cutoff.
+  useEffect(() => {
+    if (!session) return;
+    const todaysCutoff = () => {
+      const now = new Date();
+      return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 1, 0);
+    };
+    const check = async () => {
+      const startedAt = Number(localStorage.getItem('sessionStartedAt') || 0);
+      const cutoff = todaysCutoff();
+      if (startedAt && startedAt < cutoff && Date.now() >= cutoff) {
+        await supabase.auth.signOut();
+      }
+    };
+    check();
+    const id = setInterval(check, 60_000);
+    const onFocus = () => check();
+    window.addEventListener('focus', onFocus);
+    return () => { clearInterval(id); window.removeEventListener('focus', onFocus); };
+  }, [session]);
 
   // ── Load staff profile after auth ──
   useEffect(() => {
