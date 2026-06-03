@@ -310,28 +310,53 @@ export default function GroupDetailPage() {
         </div>
       )}
 
-      {/* Clients in this Group */}
+      {/* Clients & quotes in this group \u2014 one row per client, combining the
+          client record with its quote (ref / \u00A3 / status / edit). */}
       {groupEntities.length > 0 && (
         <div className="mb-4">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Clients in this Group</h3>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Clients &amp; Quotes in this Group</h3>
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             {groupEntities.map(ent => {
-              const clientQuoteCount = quotes.filter(q => q.entity_id === ent.id).length;
+              const entName = (ent.name || '').toLowerCase().trim();
+              const entQuotes = quotes.filter(q =>
+                q.entity_id === ent.id || (q.relationship_group || '').toLowerCase().trim() === entName
+              );
+              const primary = entQuotes[0];
               return (
-                <div key={ent.id} className="flex items-center justify-between px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                  <div>
-                    <button onClick={() => navigate('/manage/clients/' + ent.id)} className="text-sm font-medium text-ocean-600 hover:text-ocean-800 hover:underline">
+                <div
+                  key={ent.id}
+                  onClick={() => primary && navigate('/manage/quotes/' + primary.id)}
+                  className={`flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0 ${primary ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                >
+                  {/* Client */}
+                  <div className="min-w-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigate('/manage/clients/' + ent.id); }}
+                      className="text-sm font-medium text-ocean-600 hover:text-ocean-800 hover:underline truncate"
+                    >
                       {ent.name}
                     </button>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-400 truncate">
                       {ent.type?.replace('_', ' ')}{ent.company_number ? ` \u00B7 ${ent.company_number}` : ''}
+                      {primary && ` \u00B7 ${primary.quote_ref}`}
+                      {entQuotes.length > 1 && ` \u00B7 +${entQuotes.length - 1} more`}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 text-xs">
-                    {clientQuoteCount > 0 ? (
-                      <span className="text-gray-600">{clientQuoteCount} quote{clientQuoteCount !== 1 ? 's' : ''}</span>
+                  {/* Quote */}
+                  <div className="flex items-center gap-3 shrink-0">
+                    {primary ? (
+                      <>
+                        <span className="text-sm font-mono text-ocean-600">{fmt(primary.monthly_gross)}/mo</span>
+                        <StatusBadge status={primary.status} />
+                        <button
+                          onClick={(ev) => { ev.stopPropagation(); navigate(`/manage/quotes/${primary.id}/edit`); }}
+                          className="text-xs text-ocean-600 hover:text-ocean-700 font-medium px-2 py-1 border border-ocean-200 rounded hover:bg-ocean-50 transition-all"
+                        >
+                          Edit
+                        </button>
+                      </>
                     ) : (
-                      <span className="text-gray-300">No quotes</span>
+                      <span className="text-xs text-gray-300">No quote yet</span>
                     )}
                     <button
                       onClick={(e) => { e.stopPropagation(); handleRemoveFromGroup(ent.id, ent.name); }}
@@ -357,35 +382,6 @@ export default function GroupDetailPage() {
           discounts={discounts}
           onDiscountChange={(eid, pct) => setDiscounts(prev => ({ ...prev, [eid]: pct }))}
         />
-      </div>
-
-      {/* Individual quote cards */}
-      <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Individual Quotes</h3>
-      <div className="space-y-2 mb-4">
-        {quotes.map(q => (
-          <div
-            key={q.id}
-            onClick={() => navigate('/manage/quotes/' + q.id)}
-            className="bg-white rounded-lg border border-gray-200 p-3 cursor-pointer hover:border-ocean-300 transition-all"
-          >
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm font-medium text-gray-700">{q.relationship_group || q.quote_ref}</p>
-                <p className="text-xs text-gray-400">{q.quote_ref} · {new Date(q.created_at).toLocaleDateString('en-GB')}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-mono text-ocean-600">{fmt(q.monthly_gross)}/mo</span>
-                <StatusBadge status={q.status} />
-                <button
-                  onClick={(ev) => { ev.stopPropagation(); navigate(`/manage/quotes/${q.id}/edit`); }}
-                  className="text-xs text-ocean-600 hover:text-ocean-700 font-medium px-2 py-1 border border-ocean-200 rounded hover:bg-ocean-50 transition-all"
-                >
-                  Edit
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
       </div>
 
       {/* Actions */}
