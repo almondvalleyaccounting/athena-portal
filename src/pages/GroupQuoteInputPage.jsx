@@ -202,7 +202,10 @@ export default function GroupQuoteInputPage() {
 
         const defaultDrivers = () => ({
           director_base: defaults?.director_base || 240,
-          payroll_flat: defaults?.payroll ? Math.ceil((defaults.payroll.brightpay_annual / defaults.payroll.payroll_client_count) * (1 + defaults.payroll.markup_pct / 100)) : 0,
+          // Payroll is opt-in — no flat fee until the client actually has
+          // payroll (a flat fee or employees entered). The brightpay rate is
+          // the suggested value once payroll is added, not a default charge.
+          payroll_flat: 0,
           bk_rate: defaults?.bookkeeping_rate || 45,
           vat_per_return: defaults?.vat_per_return || 45,
           monthly_ee_rate: defaults?.payroll?.monthly_ee_rate || 6,
