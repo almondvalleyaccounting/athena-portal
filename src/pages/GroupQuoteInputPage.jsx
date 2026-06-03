@@ -175,47 +175,90 @@ export default function GroupQuoteInputPage() {
 
         // Pre-populate from any existing (non-deleted) quote per entity, so
         // Build Group Quote and the individual quotes are two views of the
-        // same thing. Saved line amounts load as manual overrides — exact
-        // prices preserved, with the standard calc still shown underneath.
+        // same thing. We pull the real DRIVERS out of each quote's detail
+        // JSONs (bookkeeping hours, director count, payroll employees,
+        // turnover, etc.) so the matrix is genuinely editable by driver.
+        // An override is set only where the matrix calc can't reproduce the
+        // saved line amount (custom rate, addons, VAT adjustments, or a
+        // driverless service like Confirmation/RO/Software), keeping the
+        // displayed value faithful to the quote.
         const { data: gQuotes } = await supabase
           .from('quotes')
-          .select('id, entity_id, relationship_group, status, created_at, line_items:quote_line_items(service_id, annual_amount, is_recurring)')
+          .select('id, entity_id, status, created_at, estimated_turnover, accounts_detail, directors, bookkeeping_detail, payroll_detail, management_accounts_detail, review_meetings_detail, cfo_detail, modulr_detail, budgeting_detail, software_detail, line_items:quote_line_items(service_id, annual_amount, is_recurring)')
           .in('entity_id', entityIds)
           .neq('status', 'deleted')
           .order('created_at', { ascending: false });
-        // Latest quote per entity.
         const quoteByEntity = {};
         for (const q of gQuotes || []) {
           if (q.entity_id && !quoteByEntity[q.entity_id]) quoteByEntity[q.entity_id] = q;
         }
-        // Map a quote line service_id onto a matrix row id.
         const toRowId = (sid) => {
           if (!sid) return null;
           if (sid.startsWith('software')) return 'software';
           if (sid === 'cfo') return 'fractional_cfo';
+          if (sid === 'bookkeeping') return 'bookkeeping_vat';
           return SERVICE_ROWS.some(r => r.id === sid) ? sid : null;
+        };
+
+        const defaultDrivers = () => ({
+          director_base: defaults?.director_base || 240,
+          payroll_flat: defaults?.payroll ? Math.ceil((defaults.payroll.brightpay_annual / defaults.payroll.payroll_client_count) * (1 + defaults.payroll.markup_pct / 100)) : 0,
+          bk_rate: defaults?.bookkeeping_rate || 45,
+          vat_per_return: defaults?.vat_per_return || 45,
+          monthly_ee_rate: defaults?.payroll?.monthly_ee_rate || 6,
+          weekly_ee_rate: defaults?.payroll?.weekly_ee_rate || 1.80,
+          ma_rate: defaults?.management_accounts_per_set || 158,
+          rm_rate: defaults?.review_meeting_rate || 210,
+          cfo_day_rate: defaults?.cfo_day_rate || 1680,
+        });
+
+        // Pull drivers out of a saved quote's detail JSONs.
+        const driversFromQuote = (q) => {
+          const d = defaultDrivers();
+          if (!q) return d;
+          if (q.estimated_turnover != null) d.turnover = Number(q.estimated_turnover) || 0;
+          if (q.accounts_detail?.type) d.acc_type = q.accounts_detail.type;
+          const dirs = Array.isArray(q.directors) ? q.directors : [];
+          if (dirs.length) { d.num_directors = dirs.length; if (dirs[0]?.base != null) d.director_base = Number(dirs[0].base) || d.director_base; }
+          const bk = q.bookkeeping_detail;
+          if (bk) { d.bk_hours = Number(bk.hours_per_month) || 0; if (bk.rate != null) d.bk_rate = Number(bk.rate); d.bk_inc_vat = bk.includes_vat !== false; }
+          const pr = q.payroll_detail;
+          if (pr) {
+            d.payroll_flat = Number(pr.flat_monthly) || 0;
+            d.monthly_employees = Number(pr.monthly_ee) || 0;
+            d.weekly_employees = Number(pr.weekly_ee) || 0;
+            if (pr.monthly_ee_rate != null) d.monthly_ee_rate = Number(pr.monthly_ee_rate);
+            if (pr.weekly_ee_rate != null) d.weekly_ee_rate = Number(pr.weekly_ee_rate);
+          }
+          const ma = q.management_accounts_detail;
+          if (ma) { d.ma_sets = Number(ma.sets) || 0; if (ma.rate_per_set != null) d.ma_rate = Number(ma.rate_per_set); }
+          const rm = q.review_meetings_detail;
+          if (rm) { d.rm_count = Number(rm.count) || 0; if (rm.rate != null) d.rm_rate = Number(rm.rate); }
+          const cfo = q.cfo_detail;
+          if (cfo) { d.cfo_days = Number(cfo.days) || 0; if (cfo.day_rate != null) d.cfo_day_rate = Number(cfo.day_rate); }
+          return d;
         };
 
         const initDrivers = {}, initOverrides = {}, initDiscounts = {};
         (ents || []).forEach(e => {
-          initDrivers[e.id] = {
-            director_base: defaults?.director_base || 240,
-            payroll_flat: defaults?.payroll ? Math.ceil((defaults.payroll.brightpay_annual / defaults.payroll.payroll_client_count) * (1 + defaults.payroll.markup_pct / 100)) : 0,
-            bk_rate: defaults?.bookkeeping_rate || 45,
-            vat_per_return: defaults?.vat_per_return || 45,
-            monthly_ee_rate: defaults?.payroll?.monthly_ee_rate || 6,
-            weekly_ee_rate: defaults?.payroll?.weekly_ee_rate || 1.80,
-            ma_rate: defaults?.management_accounts_per_set || 158,
-            rm_rate: defaults?.review_meeting_rate || 210,
-            cfo_day_rate: defaults?.cfo_day_rate || 1680,
-          };
-          const ov = {};
           const q = quoteByEntity[e.id];
+          const drv = driversFromQuote(q);
+          initDrivers[e.id] = drv;
+
+          // Saved amount per matrix row from the quote's line items.
+          const savedByRow = {};
           for (const li of (q?.line_items || [])) {
             if (li.is_recurring === false) continue; // skip one-off setup lines
             const rowId = toRowId(li.service_id);
             if (!rowId) continue;
-            ov[rowId] = (ov[rowId] || 0) + (Number(li.annual_amount) || 0);
+            savedByRow[rowId] = (savedByRow[rowId] || 0) + (Number(li.annual_amount) || 0);
+          }
+          // Override only where the driver calc can't reproduce the saved
+          // figure (driverless service, custom rate, addons, VAT adj…).
+          const ov = {};
+          for (const [rowId, saved] of Object.entries(savedByRow)) {
+            const calc = calcService(rowId, drv, defaults).value;
+            if (Math.abs(calc - saved) > 0.5) ov[rowId] = saved;
           }
           initOverrides[e.id] = ov;
           initDiscounts[e.id] = 0; // saved amounts are already net of any discount
