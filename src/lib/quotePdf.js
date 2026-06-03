@@ -390,6 +390,14 @@ export async function generateGroupQuotePdf(group, quotes, entities, discounts =
   }
   y += 8;
 
+  // Currency note above the table — makes clear every column is in £.
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'italic');
+  doc.setTextColor(...GRAY);
+  doc.text('All figures in £', margin + cw, y, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  y += 3;
+
   // ── Column headers (entity names wrap to max 2 lines) ──
   const headH = 9;
   doc.setFillColor(...OCEAN_100);
