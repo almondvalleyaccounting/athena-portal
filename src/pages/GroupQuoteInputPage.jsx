@@ -341,8 +341,6 @@ export default function GroupQuoteInputPage() {
   if (!group) return <div className="p-6"><p className="text-sm text-red-500">Group not found.</p></div>;
   if (!entities.length) return <div className="p-6"><p className="text-sm text-gray-500">No entities in this group.</p><Btn onClick={() => navigate(`/manage/quotes/group/${groupId}`)} variant="secondary" className="mt-2">Back</Btn></div>;
 
-  const colW = 'min-w-[110px]';
-
   return (
     <div className="p-6">
       <div className="flex justify-between items-start mb-4">
@@ -365,17 +363,23 @@ export default function GroupQuoteInputPage() {
           <h3 className="text-xs font-semibold text-blue-700">Quote Drivers</h3>
           <p className="text-[10px] text-blue-400">Set the inputs — values calculate automatically below</p>
         </div>
-        <table className="w-full text-xs border-collapse">
+        <table className="w-full text-xs border-collapse table-fixed">
+          <colgroup>
+            <col style={{ width: 200 }} />
+            {entities.map(e => <col key={e.id} style={{ width: 120 }} />)}
+            <col style={{ width: 120 }} />
+          </colgroup>
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
-              <th className="text-left px-3 py-2 text-gray-500 font-medium sticky left-0 bg-gray-50 z-10 min-w-[200px]">Driver</th>
-              {entities.map(e => <th key={e.id} className={`text-center px-2 py-2 text-gray-500 font-medium ${colW}`}>{e.name}</th>)}
+              <th className="text-left px-3 py-2 text-gray-500 font-medium sticky left-0 bg-gray-50 z-10">Driver</th>
+              {entities.map(e => <th key={e.id} className="text-center px-2 py-2 text-gray-500 font-medium truncate">{e.name}</th>)}
+              <th className="px-3 py-2" />
             </tr>
           </thead>
           <tbody>
             {Object.entries(driverSections).map(([section, defs]) => (
               <React.Fragment key={section}>
-                <tr><td colSpan={entities.length + 1} className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase bg-gray-50 border-t border-gray-100">{section}</td></tr>
+                <tr><td colSpan={entities.length + 2} className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase bg-gray-50 border-t border-gray-100">{section}</td></tr>
                 {defs.map(d => (
                   <tr key={d.id} className="border-b border-gray-50 hover:bg-blue-50/30">
                     <td className="px-3 py-1 text-gray-600 sticky left-0 bg-white z-10">{d.label}</td>
@@ -398,6 +402,7 @@ export default function GroupQuoteInputPage() {
                         )}
                       </td>
                     ))}
+                    <td className="px-3" />
                   </tr>
                 ))}
               </React.Fragment>
@@ -412,12 +417,17 @@ export default function GroupQuoteInputPage() {
           <h3 className="text-xs font-semibold text-ocean-700">Calculated Values (Annual)</h3>
           <p className="text-[10px] text-ocean-400">Hover any number to see its calculation. Override by typing directly.</p>
         </div>
-        <table className="w-full text-xs border-collapse">
+        <table className="w-full text-xs border-collapse table-fixed">
+          <colgroup>
+            <col style={{ width: 200 }} />
+            {entities.map(e => <col key={e.id} style={{ width: 120 }} />)}
+            <col style={{ width: 120 }} />
+          </colgroup>
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-3 py-2 text-gray-500 font-medium sticky left-0 bg-gray-50 z-10 min-w-[200px]">Service</th>
-              {entities.map(e => <th key={e.id} className={`text-right px-3 py-2 text-gray-500 font-medium ${colW}`}>{e.name}</th>)}
-              <th className={`text-right px-3 py-2 text-ocean-600 font-semibold ${colW} bg-ocean-50`}>Total</th>
+              <th className="text-left px-3 py-2 text-gray-500 font-medium sticky left-0 bg-gray-50 z-10">Service</th>
+              {entities.map(e => <th key={e.id} className="text-right px-3 py-2 text-gray-500 font-medium truncate">{e.name}</th>)}
+              <th className="text-right px-3 py-2 text-ocean-600 font-semibold bg-ocean-50">Total</th>
             </tr>
           </thead>
           <tbody>
