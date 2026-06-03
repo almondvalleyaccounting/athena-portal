@@ -262,12 +262,16 @@ export default function GroupQuoteInputPage() {
           }
           const ov = {};
           if (q) {
-            // Faithfully mirror the quote: services NOT on it are £0 (the
-            // matrix calc would otherwise fabricate a default, e.g.
-            // Auto-Enrolment £60, Confirmation £110, for clients who don't
-            // have them).
-            SERVICE_ROWS.forEach((svc) => {
-              if (!(svc.id in savedByRow)) ov[svc.id] = 0;
+            // Faithfully mirror the quote: services NOT on it are £0. Only
+            // the DRIVERLESS services need an explicit 0 override — their
+            // calc fabricates a default (Auto-Enrolment £60, Confirmation
+            // £110, Registered Office, Software, Modulr, Budgeting, and
+            // Accounts' £750 band fallback). Driver-based services already
+            // calc to £0 when their drivers are 0, and must stay live so
+            // editing a driver updates the value.
+            const ZERO_IF_ABSENT = ['accounts_ct', 'confirmation_statement', 'auto_enrolment', 'modulr', 'budgeting', 'registered_office', 'software'];
+            ZERO_IF_ABSENT.forEach((sid) => {
+              if (!(sid in savedByRow)) ov[sid] = 0;
             });
             // Services that ARE on the quote: override only where the driver
             // calc can't reproduce the saved figure (driverless service,
@@ -288,8 +292,30 @@ export default function GroupQuoteInputPage() {
     setLoading(false);
   };
 
+  // Which service a driver feeds — editing the driver clears any manual
+  // override on that service so the recalculated value takes over.
+  const DRIVER_TO_SERVICE = {
+    turnover: 'accounts_ct', acc_type: 'accounts_ct',
+    num_directors: 'directors_tax_return', director_base: 'directors_tax_return',
+    bk_hours: 'bookkeeping_vat', bk_rate: 'bookkeeping_vat', bk_inc_vat: 'bookkeeping_vat',
+    vat_returns_pa: 'vat_returns', vat_per_return: 'vat_returns',
+    monthly_employees: 'payroll', weekly_employees: 'payroll', payroll_flat: 'payroll', monthly_ee_rate: 'payroll', weekly_ee_rate: 'payroll',
+    ma_sets: 'management_accounts', ma_rate: 'management_accounts',
+    rm_count: 'review_meetings', rm_rate: 'review_meetings',
+    cfo_days: 'fractional_cfo', cfo_day_rate: 'fractional_cfo',
+  };
+
   const setDriver = (entityId, driverId, value) => {
     setDrivers(prev => ({ ...prev, [entityId]: { ...prev[entityId], [driverId]: value } }));
+    const svc = DRIVER_TO_SERVICE[driverId];
+    if (svc) {
+      setOverrides(prev => {
+        if (prev[entityId]?.[svc] == null) return prev;
+        const nextEnt = { ...prev[entityId] };
+        delete nextEnt[svc];
+        return { ...prev, [entityId]: nextEnt };
+      });
+    }
   };
 
   const setOverride = (entityId, serviceId, value) => {
