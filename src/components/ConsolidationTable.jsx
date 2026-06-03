@@ -7,7 +7,10 @@ import { fmt } from './ui';
 // discounts: { [entityId]: number (%) }
 // onDiscountChange: (entityId, pct) => void
 // readOnly: boolean (for detail view)
-export default function ConsolidationTable({ entities, entityTotals, discounts = {}, onDiscountChange, readOnly = false }) {
+// liveByEntity (optional): { [entityId]: monthlyNet } — current live billing.
+// When provided, a 'Current billing' + 'Difference' row render under the
+// blue Monthly Direct Debit row, comparing quote vs live per column.
+export default function ConsolidationTable({ entities, entityTotals, discounts = {}, onDiscountChange, readOnly = false, liveByEntity = null }) {
   if (!entities?.length) return null;
 
   // Collect all service IDs across all entities
@@ -179,11 +182,47 @@ export default function ConsolidationTable({ entities, entityTotals, discounts =
         </div>
 
         {/* Headline Monthly Direct Debit */}
-        <div className="grid gap-1 px-3 py-2.5 bg-ocean-700 text-white text-sm font-bold rounded-b-lg" style={{ gridTemplateColumns: gridCols }}>
+        <div className={`grid gap-1 px-3 py-2.5 bg-ocean-700 text-white text-sm font-bold ${liveByEntity ? '' : 'rounded-b-lg'}`} style={{ gridTemplateColumns: gridCols }}>
           <span>Monthly Direct Debit</span>
           {entities.map(e => <span key={e.id} className="text-right font-mono text-sun-300">{fmt(entityMonthlyGross[e.id])}</span>)}
           <span className="text-right font-mono text-sun-300">{fmt(groupMonthlyGross)}</span>
         </div>
+
+        {/* Comparison vs current live billing (per column), under the blue row */}
+        {liveByEntity && (() => {
+          const liveGross = (id) => (liveByEntity[id] != null ? Math.round(liveByEntity[id] * 1.2 * 100) / 100 : null);
+          const groupLiveGross = entities.reduce((s, e) => s + (liveGross(e.id) || 0), 0);
+          const diff = (id) => Math.round(((entityMonthlyGross[id] || 0) - (liveGross(id) || 0)) * 100) / 100;
+          const groupDiff = Math.round((groupMonthlyGross - groupLiveGross) * 100) / 100;
+          const dc = (n) => (n > 0.5 ? '#15803d' : n < -0.5 ? '#b91c1c' : '#94a3b8');
+          const sgn = (n) => (n > 0 ? '+' : '');
+          return (
+            <>
+              <div className="grid gap-1 px-3 py-1.5 border-t border-gray-100 text-xs" style={{ gridTemplateColumns: gridCols }}>
+                <span className="text-gray-500">Current billing (DD)</span>
+                {entities.map(e => (
+                  <span key={e.id} className="text-right font-mono text-gray-500">
+                    {liveGross(e.id) != null ? fmt(liveGross(e.id)) : '—'}
+                  </span>
+                ))}
+                <span className="text-right font-mono text-gray-600 font-medium">{groupLiveGross > 0 ? fmt(groupLiveGross) : '—'}</span>
+              </div>
+              <div className="grid gap-1 px-3 py-1.5 border-t border-gray-100 text-xs font-medium rounded-b-lg" style={{ gridTemplateColumns: gridCols }}>
+                <span className="text-gray-700">Difference</span>
+                {entities.map(e => {
+                  const d = diff(e.id);
+                  const isNew = liveGross(e.id) == null;
+                  return (
+                    <span key={e.id} className="text-right font-mono" style={{ color: dc(d) }} title={isNew ? 'No current billing — new business' : undefined}>
+                      {sgn(d)}{fmt(d)}{isNew ? '*' : ''}
+                    </span>
+                  );
+                })}
+                <span className="text-right font-mono font-bold" style={{ color: dc(groupDiff) }}>{sgn(groupDiff)}{fmt(groupDiff)}</span>
+              </div>
+            </>
+          );
+        })()}
       </div>
     </div>
   );

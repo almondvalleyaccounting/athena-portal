@@ -39,6 +39,7 @@ export default function GroupDetailPage() {
   const [savingName, setSavingName] = useState(false);
   const [groupEntities, setGroupEntities] = useState([]);
   const [removingEntity, setRemovingEntity] = useState(null);
+  const [liveByEntity, setLiveByEntity] = useState({}); // entityId → current live monthly net
   const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
 
@@ -105,6 +106,27 @@ export default function GroupDetailPage() {
         }
       }
       setGroupEntities(merged);
+
+      // Current live billing per entity (monthly net), for the in-table
+      // quote-vs-live comparison rows.
+      const allEntityIds = merged.map((e) => e.id).filter(Boolean);
+      if (allEntityIds.length > 0) {
+        const { data: lb } = await supabase
+          .from('live_billing')
+          .select('entity_id, monthly_net, last_synced_qbo, created_at')
+          .in('entity_id', allEntityIds)
+          .eq('status', 'active');
+        const latest = {};
+        for (const r of lb || []) {
+          const t = r.last_synced_qbo || r.created_at || '';
+          if (!latest[r.entity_id] || t > latest[r.entity_id]._t) latest[r.entity_id] = { net: Number(r.monthly_net) || 0, _t: t };
+        }
+        const map = {};
+        for (const [eid, v] of Object.entries(latest)) map[eid] = v.net;
+        setLiveByEntity(map);
+      } else {
+        setLiveByEntity({});
+      }
     } catch {}
     setLoading(false);
   };
@@ -389,12 +411,13 @@ export default function GroupDetailPage() {
           entityTotals={entityTotals}
           discounts={discounts}
           onDiscountChange={(eid, pct) => setDiscounts(prev => ({ ...prev, [eid]: pct }))}
+          liveByEntity={liveByEntity}
         />
       </div>
 
-      {/* Group quote vs current live billing (rolled up, filterable by entity) */}
+      {/* Detailed per-service group quote vs current billing (filterable) */}
       <BillingComparisonPanel
-        title="Group quote vs current billing"
+        title="Detailed comparison — by service"
         groupMode
         items={dedupedQuotes.map(q => ({ entityId: q.entity_id, name: q.relationship_group || q.quote_ref, lines: q.line_items || [] }))}
       />
