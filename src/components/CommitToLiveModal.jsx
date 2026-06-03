@@ -27,6 +27,9 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   const [chosenEmail, setChosenEmail] = useState('');
   const [chosenEmailIsNew, setChosenEmailIsNew] = useState(false);
   const [dueDays, setDueDays] = useState(14); // invoice due-date offset, default 14
+  // Mandatory billing address — prefilled from the plan (entity billing_*),
+  // editable here, persisted to the entity before the push.
+  const [addr, setAddr] = useState({ line1: '', line2: '', city: '', postcode: '' });
 
   const recurring = (lineItems || []).filter((l) => l.is_recurring);
   const clientName = quote?.relationship_group || 'Unnamed Client';
@@ -199,11 +202,12 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
           });
           if (planResult?.success) {
             setPlan(planResult.plan);
+            setAddr(addrFromPlan(planResult.plan));
             setCommittedBillingId(billingRow.id);
             setRecurringStart(planResult.plan?.recurring?.next_run_date || '');
             if (planResult.plan?.due_date_offset_days != null) setDueDays(planResult.plan.due_date_offset_days);
             // No email on file + part of a group → offer other group emails.
-            if (planResult.plan?.setup_invoice && !planResult.plan.setup_invoice.has_email && quote.group_id) {
+            if (!planResult.plan?.contact?.has_email && quote.group_id) {
               await loadGroupEmails();
             }
             setPhase('confirm');
@@ -265,9 +269,21 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
     } catch { /* non-blocking */ }
   };
 
-  // Resolved email for the setup invoice: whatever's on file, else the user's
-  // pick/entry from the group/manual chooser.
-  const effectiveSetupEmail = plan?.setup_invoice?.email || chosenEmail || '';
+  // Map the plan's QBO-shaped address (Line1/PostalCode…) back to our form.
+  const addrFromPlan = (p) => {
+    const a = p?.contact?.address || {};
+    return { line1: a.Line1 || '', line2: a.Line2 || '', city: a.City || '', postcode: a.PostalCode || '' };
+  };
+
+  // Resolved client email: whatever the quote/entity had, else the user's
+  // pick/entry. Used for the customer record, the recurring template, and the
+  // setup invoice send.
+  const resolvedEmail = plan?.contact?.email || chosenEmail || '';
+  const effectiveSetupEmail = resolvedEmail;
+  // Mandatory client details are satisfied once we have an email and a
+  // minimally-valid address (line 1 + postcode).
+  const addrReady = !!(addr.line1.trim() && addr.postcode.trim());
+  const contactReady = !!resolvedEmail && addrReady;
 
   // Confirm phase: execute the real QBO push with the user's choices.
   const handleConfirmPush = async () => {
@@ -279,6 +295,16 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
       // on file for next time (group-picked emails are used one-off only).
       if (chosenEmail && chosenEmailIsNew && entityId) {
         await supabase.from('entities').update({ billing_email: chosenEmail }).eq('id', entityId);
+      }
+      // Persist the (mandatory) billing address to the entity so the push —
+      // which reads the address off the entity — picks it up.
+      if (entityId && addrReady) {
+        await supabase.from('entities').update({
+          billing_line1: addr.line1.trim(),
+          billing_line2: addr.line2.trim() || null,
+          billing_city: addr.city.trim() || null,
+          billing_postcode: addr.postcode.trim(),
+        }).eq('id', entityId);
       }
       const hasSetupLines = (lineItems || []).some((l) => !l.is_recurring);
       const result = await pushToQbo(committedBillingId, profile.id, {
@@ -341,6 +367,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
       });
       if (planResult?.success) {
         setPlan(planResult.plan);
+        setAddr(addrFromPlan(planResult.plan));
         setRecurringStart(planResult.plan?.recurring?.next_run_date || recurringStart);
       } else {
         setError(planResult?.error || 'Could not refresh plan');
@@ -381,6 +408,63 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
               )}
             </div>
 
+            {/* Client details — MANDATORY. Email + billing address are written
+                to the QBO customer and the recurring/setup documents. */}
+            <div className={`rounded-lg p-3 text-xs border ${contactReady ? 'bg-gray-50 border-gray-200' : 'bg-amber-50 border-amber-200'}`}>
+              <h3 className="font-semibold text-gray-500 uppercase mb-2">Client details (required)</h3>
+
+              {/* Email */}
+              <div className="mb-2">
+                <label className="text-gray-400 block mb-0.5">Email</label>
+                {plan?.contact?.has_email ? (
+                  <p className="text-gray-700">{plan.contact.email}</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {groupEmails.length > 0 && (
+                      <select
+                        value={chosenEmailIsNew ? '' : chosenEmail}
+                        onChange={(e) => { if (e.target.value) { setChosenEmail(e.target.value); setChosenEmailIsNew(false); } }}
+                        className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                      >
+                        <option value="">— use an email from the group —</option>
+                        {groupEmails.map((g, i) => (
+                          <option key={i} value={g.email}>{g.email}{g.name ? ` (${g.name})` : ''}</option>
+                        ))}
+                      </select>
+                    )}
+                    <input
+                      type="email"
+                      placeholder="name@example.com"
+                      value={chosenEmailIsNew ? chosenEmail : ''}
+                      onChange={(e) => { setChosenEmail(e.target.value.trim()); setChosenEmailIsNew(true); }}
+                      className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                    />
+                    <p className="text-gray-400">Saved as this client's billing email.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Billing address */}
+              <div>
+                <label className="text-gray-400 block mb-0.5">Billing address</label>
+                <div className="space-y-1">
+                  <input value={addr.line1} onChange={(e) => setAddr((a) => ({ ...a, line1: e.target.value }))} placeholder="Address line 1" className="w-full text-xs border border-gray-200 rounded px-1.5 py-1" />
+                  <input value={addr.line2} onChange={(e) => setAddr((a) => ({ ...a, line2: e.target.value }))} placeholder="Address line 2 (optional)" className="w-full text-xs border border-gray-200 rounded px-1.5 py-1" />
+                  <div className="flex gap-1">
+                    <input value={addr.city} onChange={(e) => setAddr((a) => ({ ...a, city: e.target.value }))} placeholder="Town/City" className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-1" />
+                    <input value={addr.postcode} onChange={(e) => setAddr((a) => ({ ...a, postcode: e.target.value }))} placeholder="Postcode" className="w-28 text-xs border border-gray-200 rounded px-1.5 py-1" />
+                  </div>
+                </div>
+                <p className="text-gray-400 mt-0.5">Saved to the client record and used on the invoice.</p>
+              </div>
+
+              {!contactReady && (
+                <p className="text-amber-700 mt-2">
+                  Email and a billing address (line 1 + postcode) are required before pushing to QuickBooks.
+                </p>
+              )}
+            </div>
+
             {/* Payment terms — invoice due-date offset (default 14 days). */}
             <div className="bg-gray-50 rounded-lg p-3 text-xs flex items-center gap-2">
               <h3 className="font-semibold text-gray-500 uppercase">Payment terms</h3>
@@ -411,43 +495,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
                     <span className="font-mono">{fmt(setup.total)}</span>
                   </div>
                 </div>
-                {/* No email on file → let the user pick a group email or add one. */}
-                {!setup.has_email && !chosenEmail && (
-                  <div className="mb-2 space-y-1.5 border-t border-gray-200 pt-2">
-                    <p className="text-amber-700">No client email on file.</p>
-                    {groupEmails.length > 0 && (
-                      <div>
-                        <label className="text-gray-400 block mb-0.5">Use an email from the group</label>
-                        <select
-                          value=""
-                          onChange={(e) => { if (e.target.value) { setChosenEmail(e.target.value); setChosenEmailIsNew(false); } }}
-                          className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
-                        >
-                          <option value="">— select —</option>
-                          {groupEmails.map((g, i) => (
-                            <option key={i} value={g.email}>{g.email}{g.name ? ` (${g.name})` : ''}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                    <div>
-                      <label className="text-gray-400 block mb-0.5">Or add a new email</label>
-                      <input
-                        type="email"
-                        placeholder="name@example.com"
-                        onChange={(e) => { setChosenEmail(e.target.value.trim()); setChosenEmailIsNew(true); }}
-                        className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
-                      />
-                      <p className="text-gray-400 mt-0.5">A new email is saved as this client's billing email.</p>
-                    </div>
-                  </div>
-                )}
-                {!setup.has_email && chosenEmail && (
-                  <p className="text-gray-600 mb-1">
-                    Using {chosenEmail}{chosenEmailIsNew ? ' (will be saved as billing email)' : ' (from group)'}{' '}
-                    <button onClick={() => { setChosenEmail(''); setChosenEmailIsNew(false); setSendSetupNow(false); }} className="text-ocean-600 hover:text-ocean-700 underline">change</button>
-                  </p>
-                )}
+                {/* Email is captured in the required "Client details" section above. */}
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -534,7 +582,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
               <Btn onClick={handleSkipPush} variant="ghost" disabled={committing}>
                 Skip QBO for now
               </Btn>
-              <Btn onClick={handleConfirmPush} variant="primary" disabled={committing || missing.length > 0}>
+              <Btn onClick={handleConfirmPush} variant="primary" disabled={committing || missing.length > 0 || !contactReady}>
                 {committing ? 'Pushing...' : 'Confirm & Push'}
               </Btn>
             </div>

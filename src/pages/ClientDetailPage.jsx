@@ -36,19 +36,37 @@ export default function ClientDetailPage() {
     setSaving(false);
   };
 
-  const [deleting, setDeleting] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
-  const handleDeleteClient = async () => {
-    if (!window.confirm('Delete client "' + entity.name + '"? This will remove the client record. Quotes linked to this client will remain but lose their client link. This cannot be undone.')) return;
-    setDeleting(true);
-    try {
-      await supabase.from('billing_group_members').delete().eq('entity_id', entity.id);
-      const { error } = await supabase.from('entities').delete().eq('id', entity.id);
-      if (error) throw error;
+  // We archive rather than hard-delete: entities have many NO ACTION child
+  // FKs (quotes, tasks, timesheets…) so a real delete would either fail or
+  // wipe history. Archiving hides the client from the default list while
+  // preserving its records. Restorable from the list's "Show archived" view.
+  const handleArchive = async () => {
+    const isArchived = entity.entity_status === 'archived';
+    const verb = isArchived ? 'Restore' : 'Archive';
+    if (!window.confirm(`${verb} "${entity.name}"? ${isArchived ? 'It will reappear in the clients list.' : 'It will be hidden from the clients list. Its records are kept and it can be restored later.'}`)) return;
+    setArchiving(true);
+    const prev = entity.entity_status || 'active';
+    const next = isArchived ? 'active' : 'archived';
+    const { error } = await supabase.from('entities').update({ entity_status: next }).eq('id', entity.id);
+    if (error) {
+      alert(`Could not ${verb.toLowerCase()} client: ` + (error.message || 'Unknown error'));
+      setArchiving(false);
+      return;
+    }
+    await supabase.from('audit_log').insert({
+      user_id: profile?.id || null,
+      action: 'entity_status_change',
+      entity_type: 'entity',
+      entity_id: entity.id,
+      detail: { from: prev, to: next, via: 'archive_button' },
+    });
+    if (isArchived) {
+      setEntity({ ...entity, entity_status: next });
+      setArchiving(false);
+    } else {
       navigate('/manage/clients');
-    } catch (err) {
-      alert('Failed to delete: ' + (err.message || 'Unknown error'));
-      setDeleting(false);
     }
   };
 
@@ -183,11 +201,20 @@ export default function ClientDetailPage() {
           ))}
         </div>
       )}
-      {/* Delete */}
+      {/* Archive */}
       <div className="mt-6 pt-4 border-t border-gray-200">
-        <Btn onClick={handleDeleteClient} variant="danger" disabled={deleting}>
-          {deleting ? 'Deleting...' : 'Delete Client'}
+        <Btn
+          onClick={handleArchive}
+          variant={entity.entity_status === 'archived' ? 'secondary' : 'danger'}
+          disabled={archiving}
+        >
+          {archiving ? '...' : entity.entity_status === 'archived' ? 'Restore Client' : 'Archive Client'}
         </Btn>
+        <p className="text-xs text-gray-400 mt-2">
+          {entity.entity_status === 'archived'
+            ? 'This client is archived and hidden from the clients list.'
+            : 'Archiving hides the client from the list but keeps all records. It can be restored later.'}
+        </p>
       </div>
     </div>
   );

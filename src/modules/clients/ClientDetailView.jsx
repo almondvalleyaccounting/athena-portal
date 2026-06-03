@@ -41,6 +41,7 @@ export default function ClientDetailView() {
   const [taskCreating, setTaskCreating] = useState(false);
   const [taskCreated, setTaskCreated] = useState(false);
   const [activeSection, setActiveSection] = useState(null); // for tile click expansion
+  const [archiving, setArchiving] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -111,6 +112,39 @@ export default function ClientDetailView() {
       setTimeout(() => setTaskCreated(false), 3000);
     } catch (e) { console.error(e); }
     setTaskCreating(false);
+  };
+
+  // We archive rather than hard-delete: entities have many NO ACTION child
+  // FKs (quotes, tasks, timesheets…) so a real delete would either fail or
+  // wipe history. Archiving hides the client from the default list while
+  // preserving its records. Restorable from the list's "Show archived" view.
+  const handleArchive = async () => {
+    if (!entity) return;
+    const isArchived = entity.entity_status === 'archived';
+    const verb = isArchived ? 'Restore' : 'Archive';
+    if (!window.confirm(`${verb} "${entity.name}"? ${isArchived ? 'It will reappear in the clients list.' : 'It will be hidden from the clients list. Its records are kept and it can be restored later.'}`)) return;
+    setArchiving(true);
+    const prev = entity.entity_status || 'active';
+    const next = isArchived ? 'active' : 'archived';
+    const { error } = await supabase.from('entities').update({ entity_status: next }).eq('id', entity.id);
+    if (error) {
+      alert(`Could not ${verb.toLowerCase()} client: ` + error.message);
+      setArchiving(false);
+      return;
+    }
+    await supabase.from('audit_log').insert({
+      user_id: profile?.id || null,
+      action: 'entity_status_change',
+      entity_type: 'entity',
+      entity_id: entity.id,
+      detail: { from: prev, to: next, via: 'archive_button' },
+    });
+    if (isArchived) {
+      setEntity({ ...entity, entity_status: next });
+      setArchiving(false);
+    } else {
+      navigate('/clients');
+    }
   };
 
   if (loading) return <div style={wrapStyle}><p style={{ color: '#94a3b8', fontSize: 13 }}>Loading client...</p></div>;
@@ -224,12 +258,27 @@ export default function ClientDetailView() {
             )}
           </div>
         </div>
-        {/* Time period filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>Time</span>
-          <select value={timePeriod} onChange={(e) => setTimePeriod(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
-            {TIME_PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-          </select>
+        {/* Time period filter + archive */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>Time</span>
+            <select value={timePeriod} onChange={(e) => setTimePeriod(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
+              {TIME_PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+          <button
+            onClick={handleArchive}
+            disabled={archiving}
+            title={entity.entity_status === 'archived' ? 'Restore this client to the active list' : 'Archive this client — hides it from the list, keeps its records'}
+            style={{
+              fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
+              background: '#fff', color: entity.entity_status === 'archived' ? '#0e7fe0' : '#b91c1c',
+              border: '1px solid ' + (entity.entity_status === 'archived' ? '#bfdbfe' : '#fecaca'),
+              cursor: archiving ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif",
+            }}
+          >
+            {archiving ? '…' : entity.entity_status === 'archived' ? 'Restore' : 'Archive'}
+          </button>
         </div>
       </div>
 

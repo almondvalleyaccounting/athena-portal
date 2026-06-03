@@ -15,6 +15,7 @@ export default function ClientsPage() {
   const [letter, setLetter] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showNewClient, setShowNewClient] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const loadEntities = async () => {
     try {
@@ -83,9 +84,15 @@ export default function ClientsPage() {
     );
   });
 
-  // Group by source
-  const athenaClients = filtered.filter((e) => e.source === 'athena');
-  const bmClients = filtered.filter((e) => e.source !== 'athena');
+  // Group by lifecycle status so prospects and signed-up clients are
+  // visually separated. Archived clients are hidden unless toggled on.
+  const statusOf = (e) => e.entity_status || 'active';
+  const clientRows = filtered.filter((e) => statusOf(e) === 'active');
+  const prospectRows = filtered.filter((e) => statusOf(e) === 'prospect');
+  const otherRows = filtered.filter((e) => !['active', 'prospect', 'archived'].includes(statusOf(e)));
+  const archivedRows = filtered.filter((e) => statusOf(e) === 'archived');
+  const athenaCount = filtered.filter((e) => e.source === 'athena').length;
+  const visibleCount = clientRows.length + prospectRows.length + otherRows.length + (showArchived ? archivedRows.length : 0);
 
   const handleNewClient = async (fields) => {
     const { data, error } = await supabase
@@ -173,6 +180,36 @@ export default function ClientsPage() {
     return null;
   };
 
+  const renderRow = (e) => (
+    <div
+      key={e.id}
+      onClick={() => navigate(`/clients/${e.id}`)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 14,
+        padding: '14px 18px', background: '#fff', borderRadius: 12,
+        border: '1px solid #e5e7eb', cursor: 'pointer',
+        transition: 'all 0.2s ease',
+      }}
+      onMouseEnter={(ev) => { ev.currentTarget.style.transform = 'translateY(-1px)'; ev.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'; }}
+      onMouseLeave={(ev) => { ev.currentTarget.style.transform = 'none'; ev.currentTarget.style.boxShadow = 'none'; }}
+    >
+      {typeIcon(e.type)}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{e.name}</span>
+          {sourceBadge(e.source)}
+        </div>
+        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+          {e.type?.replace('_', ' ')}
+          {e.company_number && ` · ${e.company_number}`}
+          {e.manager && ` · ${e.manager}`}
+        </div>
+      </div>
+      <FeesBlock fees={billingByEntity[e.id]} />
+      {statusBadge(e.entity_status)}
+    </div>
+  );
+
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px', fontFamily: "'Outfit', sans-serif" }}>
       {/* Header */}
@@ -182,7 +219,7 @@ export default function ClientsPage() {
             Clients
           </h1>
           <p style={{ fontSize: 13, color: '#64748b' }}>
-            {entities.length} clients{athenaClients.length > 0 && ` · ${athenaClients.length} created in Athena`}
+            {clientRows.length} clients · {prospectRows.length} prospects{athenaCount > 0 && ` · ${athenaCount} created in Athena`}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -235,7 +272,7 @@ export default function ClientsPage() {
 
       {loading ? (
         <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: 40 }}>Loading clients...</p>
-      ) : filtered.length === 0 ? (
+      ) : visibleCount === 0 ? (
         <div style={{ textAlign: 'center', padding: 60, background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb' }}>
           <p style={{ fontSize: 15, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>
             {entities.length === 0 ? 'No clients yet' : 'No matches'}
@@ -245,37 +282,28 @@ export default function ClientsPage() {
           </p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {filtered.map((e) => (
-            <div
-              key={e.id}
-              onClick={() => navigate(`/clients/${e.id}`)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 14,
-                padding: '14px 18px', background: '#fff', borderRadius: 12,
-                border: '1px solid #e5e7eb', cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-            >
-              {typeIcon(e.type)}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{e.name}</span>
-                  {sourceBadge(e.source)}
-                </div>
-                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-                  {e.type?.replace('_', ' ')}
-                  {e.company_number && ` · ${e.company_number}`}
-                  {e.manager && ` · ${e.manager}`}
-                </div>
-              </div>
-              <FeesBlock fees={billingByEntity[e.id]} />
-              {statusBadge(e.entity_status)}
-            </div>
-          ))}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <Section title="Clients" count={clientRows.length} rows={clientRows} renderRow={renderRow} />
+          <Section title="Prospects" count={prospectRows.length} rows={prospectRows} renderRow={renderRow} />
+          <Section title="Other" count={otherRows.length} rows={otherRows} renderRow={renderRow} />
+          {showArchived && (
+            <Section title="Archived" count={archivedRows.length} rows={archivedRows} renderRow={renderRow} />
+          )}
         </div>
+      )}
+
+      {/* Archived toggle */}
+      {archivedRows.length > 0 && (
+        <button
+          onClick={() => setShowArchived((v) => !v)}
+          style={{
+            marginTop: 20, fontSize: 12, color: '#64748b', background: 'none',
+            border: 'none', cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
+            textDecoration: 'underline',
+          }}
+        >
+          {showArchived ? 'Hide archived' : `Show archived (${archivedRows.length})`}
+        </button>
       )}
 
       <NewClientModal
@@ -283,6 +311,25 @@ export default function ClientsPage() {
         onClose={() => setShowNewClient(false)}
         onSave={handleNewClient}
       />
+    </div>
+  );
+}
+
+// A titled group of client rows. Renders nothing when the group is empty
+// so sections only appear when they have members.
+function Section({ title, count, rows, renderRow }) {
+  if (!rows || rows.length === 0) return null;
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+        <h2 style={{ fontSize: 13, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+          {title}
+        </h2>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>{count}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {rows.map(renderRow)}
+      </div>
     </div>
   );
 }

@@ -23,6 +23,9 @@ const STATUS_CARDS = [
 
 const VALID_CARDS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'pipeline', 'committed', 'declined'];
 
+// Whole-pound formatter for the status cards (no pennies).
+const fmtWhole = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Number(n) || 0);
+
 export default function QuotesPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -178,6 +181,17 @@ export default function QuotesPage() {
   const canAddToGroup = selected.size > 0;
 
   // ── Status card aggregates (always computed from ALL quotes, unfiltered) ──
+  // Cards show the ANNUAL figure, on the Net/Gross basis from the toggle.
+  // There's no stored annual-gross, so derive each quote's effective VAT
+  // multiplier from its monthly net/gross (falls back to 20% if net is 0).
+  const annualOf = (q) => {
+    const net = parseFloat(q.annual_total) || 0;
+    if (netGross === 'net') return net;
+    const mNet = parseFloat(q.monthly_net) || 0;
+    const mGross = parseFloat(q.monthly_gross) || 0;
+    const mult = mNet > 0 ? mGross / mNet : 1.2;
+    return net * mult;
+  };
   const cardData = useMemo(() => {
     const visible = quotes.filter(q => q.status !== 'deleted');
     const result = {};
@@ -185,11 +199,12 @@ export default function QuotesPage() {
       const matching = visible.filter(q => card.statuses.includes(q.status));
       result[card.key] = {
         count: matching.length,
-        value: matching.reduce((s, q) => s + (parseFloat(q.annual_total) || 0), 0),
+        value: matching.reduce((s, q) => s + annualOf(q), 0),
       };
     });
     return result;
-  }, [quotes]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotes, netGross]);
 
   // ── Filtering & sorting ──
   const filtered = useMemo(() => {
@@ -362,6 +377,9 @@ export default function QuotesPage() {
       </div>
 
       {/* Status Cards */}
+      <p className="text-[11px] text-gray-400 mb-1.5">
+        Card totals show annual value, {netGross === 'net' ? 'net of VAT' : 'gross (inc VAT)'}.
+      </p>
       <div className="grid grid-cols-4 gap-2 mb-4">
         {STATUS_CARDS.map(card => {
           const d = cardData[card.key] || { count: 0, value: 0 };
@@ -384,7 +402,7 @@ export default function QuotesPage() {
               <div className={`text-[11px] font-medium mb-1 ${isPipeline ? 'text-ocean-200' : 'text-gray-500'}`}>{card.label}</div>
               <div className="flex items-baseline justify-between gap-2">
                 <span className={`text-lg font-bold ${isPipeline ? 'text-white' : isActive ? 'text-ocean-700' : 'text-gray-700'}`}>{d.count}</span>
-                <span className={`text-xs font-mono ${isPipeline ? 'text-ocean-200' : isActive ? 'text-ocean-600' : 'text-gray-400'}`}>{fmt(d.value)}</span>
+                <span className={`text-xs font-mono ${isPipeline ? 'text-ocean-200' : isActive ? 'text-ocean-600' : 'text-gray-400'}`}>{fmtWhole(d.value)}</span>
               </div>
             </button>
           );

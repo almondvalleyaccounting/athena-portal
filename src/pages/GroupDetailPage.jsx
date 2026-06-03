@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { STATUS_TRANSITIONS, STATUS_LABELS } from '../lib/quoteStatus';
-import { generateQuotePdf, generateGroupQuotePdf, generateGroupQuotePdfBase64 } from '../lib/quotePdf';
+import { generateQuotePdf, generateGroupQuotePdf, generateGroupQuotePdfBase64, buildGroupQuoteRef } from '../lib/quotePdf';
 import ConsolidationTable from '../components/ConsolidationTable';
 import BillingComparisonPanel from '../components/BillingComparisonPanel';
 import SendQuoteModal from '../components/SendQuoteModal';
@@ -209,6 +209,25 @@ export default function GroupDetailPage() {
     setTransitioning(false);
   };
 
+  // The group "Send to Client" sends one combined email via the edge
+  // function, which only flips the single synthetic quote (quotes[0]) to
+  // 'sent'. The group badge reflects the EARLIEST status across all rows
+  // (groupStatus), so unless every sibling quote is also marked sent the
+  // badge stays on 'approved'. Mark the rest here to match.
+  const handleGroupSent = async () => {
+    setShowSendModal(false);
+    try {
+      const sentAt = new Date().toISOString();
+      const toMark = quotes.filter(q => q.status !== 'sent');
+      for (const q of toMark) {
+        await supabase.from('quotes').update({ status: 'sent', sent_at: sentAt }).eq('id', q.id);
+      }
+    } catch (e) {
+      setError(e.message || 'Email sent but failed to update all group quote statuses');
+    }
+    await loadGroup();
+  };
+
   const handleRemoveFromGroup = async (entityId, entityName) => {
     if (!confirm(`Remove "${entityName}" from this group? The client will not be deleted.`)) return;
     setRemovingEntity(entityId);
@@ -262,7 +281,7 @@ export default function GroupDetailPage() {
     relationship_group: group.name,
     monthly_gross: groupMonthlyDD,
     annual_total: groupAnnual,
-    quote_ref: quotes.map(q => q.quote_ref).join(', '),
+    quote_ref: buildGroupQuoteRef(group, quotes),
   } : null;
   const allLineItems = quotes.flatMap(q => q.line_items || []);
 
@@ -411,7 +430,7 @@ export default function GroupDetailPage() {
           lineItems={allLineItems}
           profile={profile}
           pdfGenerator={() => generateGroupQuotePdfBase64(group, quotes, groupEntities, discounts)}
-          onSent={() => { setShowSendModal(false); loadGroup(); }}
+          onSent={handleGroupSent}
           onClose={() => setShowSendModal(false)}
         />
       )}

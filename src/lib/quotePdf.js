@@ -16,6 +16,18 @@ const FOOTER_TEXT = [
 
 const hFmt = (n) => Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Build a single reference for a group quote from the group name, e.g.
+// "LauraWrightGroup_20260603" — rather than concatenating every member
+// quote's individual ref. Mirrors the individual ref shape
+// ({NameSlug}_{YYYYMMDD}) using the group build date.
+export function buildGroupQuoteRef(group, quotes) {
+  const nameSlug = (group?.name || 'Group').replace(/[^a-zA-Z0-9]/g, '');
+  const parsed = quotes?.[0]?.created_at ? new Date(quotes[0].created_at) : new Date();
+  const d = isNaN(parsed.getTime()) ? new Date() : parsed;
+  const dateSlug = d.toISOString().slice(0, 10).replace(/-/g, '');
+  return `${nameSlug}_${dateSlug}`;
+}
+
 let logoDataUrl = null;
 async function getLogoBase64() {
   if (logoDataUrl) return logoDataUrl;
@@ -374,9 +386,9 @@ export async function generateGroupQuotePdf(group, quotes, entities, discounts =
   doc.setTextColor(...GRAY);
   // Keep metadata clear of the top-right logo (logo spans the right ~28mm).
   const metaMaxW = (pw - margin - 28) - margin - 4;
-  const refs = quotes.map(q => q.quote_ref).filter(Boolean).join(', ');
-  if (refs) {
-    const refLines = doc.splitTextToSize(`References: ${refs}`, metaMaxW);
+  const ref = buildGroupQuoteRef(group, quotes);
+  if (ref) {
+    const refLines = doc.splitTextToSize(`Reference: ${ref}`, metaMaxW);
     doc.text(refLines, margin, y);
     y += 4 * refLines.length;
   }
