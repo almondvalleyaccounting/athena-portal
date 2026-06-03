@@ -392,10 +392,11 @@ export default function GroupDetailPage() {
         />
       </div>
 
-      {/* Group quote vs current live billing (rolled up across the group) */}
+      {/* Group quote vs current live billing (rolled up, filterable by entity) */}
       <BillingComparisonPanel
         title="Group quote vs current billing"
-        items={dedupedQuotes.map(q => ({ entityId: q.entity_id, lines: q.line_items || [] }))}
+        groupMode
+        items={dedupedQuotes.map(q => ({ entityId: q.entity_id, name: q.relationship_group || q.quote_ref, lines: q.line_items || [] }))}
       />
 
       {/* Actions */}
