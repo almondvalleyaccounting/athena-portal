@@ -150,6 +150,10 @@ export default function GroupQuoteInputPage() {
   const [overrides, setOverrides] = useState({});
   // Discounts
   const [discounts, setDiscounts] = useState({});
+  // Which value cell is being edited (so it shows the raw number while
+  // focused, but a 2dp figure otherwise).
+  const [focusedCell, setFocusedCell] = useState(null); // `${entityId}:${svcId}`
+  const [focusedText, setFocusedText] = useState(''); // raw text while editing a value cell
 
   useEffect(() => { loadGroupData(); }, [groupId, defaults]);
 
@@ -300,11 +304,12 @@ export default function GroupQuoteInputPage() {
       SERVICE_ROWS.forEach(svc => {
         const calc = calcService(svc.id, drivers[e.id] || {}, defaults);
         const override = overrides[e.id]?.[svc.id];
+        const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
         result[e.id][svc.id] = {
-          value: override != null ? override : calc.value,
+          value: round2(override != null ? override : calc.value),
           calc: override != null ? `Manual override (calculated: ${fmt(calc.value)})` : calc.calc,
           isOverride: override != null,
-          calculatedValue: calc.value,
+          calculatedValue: round2(calc.value),
         };
       });
     });
@@ -446,7 +451,7 @@ export default function GroupQuoteInputPage() {
                             {d.options.map(o => <option key={o} value={o}>{o}</option>)}
                           </select>
                         ) : d.type === 'boolean' ? (
-                          <div className="text-center">
+                          <div className="flex justify-end pr-1.5">
                             <input type="checkbox" checked={!!drivers[e.id]?.[d.id]} onChange={ev => setDriver(e.id, d.id, ev.target.checked)} className="w-3 h-3 accent-ocean-600" />
                           </div>
                         ) : (
@@ -501,12 +506,21 @@ export default function GroupQuoteInputPage() {
                   const tip = belowStandard
                     ? `${cell.calc} — below standard ${fmt(cell.calculatedValue)}`
                     : cell.calc;
+                  const cellKey = `${e.id}:${svc.id}`;
+                  const isFocused = focusedCell === cellKey;
+                  // Raw text while editing (smooth decimal entry); 2dp otherwise.
+                  const display = isFocused
+                    ? focusedText
+                    : (cell.value ? cell.value.toFixed(2) : '');
                   return (
                     <td key={e.id} className="px-1 py-0.5">
                       <Tooltip text={tip}>
                         <input
-                          type="number" value={cell.value || ''} onChange={ev => setOverride(e.id, svc.id, ev.target.value)}
-                          placeholder="0" min="0" step="any"
+                          type="text" inputMode="decimal" value={display}
+                          onChange={ev => { setFocusedText(ev.target.value); setOverride(e.id, svc.id, ev.target.value); }}
+                          onFocus={() => { setFocusedCell(cellKey); setFocusedText(cell.value ? String(cell.value) : ''); }}
+                          onBlur={() => setFocusedCell(null)}
+                          placeholder="0.00"
                           title={belowStandard ? `Below standard (${fmt(cell.calculatedValue)})` : undefined}
                           className={`w-full text-right text-xs font-mono border rounded px-1.5 py-1 focus:border-ocean-300 focus:outline-none ${cls}`}
                         />
