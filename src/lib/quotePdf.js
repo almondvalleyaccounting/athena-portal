@@ -364,8 +364,14 @@ export async function generateGroupQuotePdf(group, quotes, entities, discounts =
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...GRAY);
+  // Keep metadata clear of the top-right logo (logo spans the right ~28mm).
+  const metaMaxW = (pw - margin - 28) - margin - 4;
   const refs = quotes.map(q => q.quote_ref).filter(Boolean).join(', ');
-  if (refs) { doc.text(`References: ${refs}`, margin, y); y += 4; }
+  if (refs) {
+    const refLines = doc.splitTextToSize(`References: ${refs}`, metaMaxW);
+    doc.text(refLines, margin, y);
+    y += 4 * refLines.length;
+  }
   if (quotes[0]?.created_at) {
     doc.text(`Quote Date: ${new Date(quotes[0].created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`, margin, y);
     y += 4;
