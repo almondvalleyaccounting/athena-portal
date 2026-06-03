@@ -440,6 +440,23 @@ export default function QuoteFormPage({ mode = 'new' }) {
         </div>
       </div>
 
+      {/* Below-standard pricing warning */}
+      {f.belowStandard.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+          <p className="text-xs font-semibold text-red-700 mb-1">
+            {f.belowStandard.length} service{f.belowStandard.length === 1 ? '' : 's'} priced below standard:
+          </p>
+          <ul className="text-xs text-red-700 space-y-0.5">
+            {f.belowStandard.map((b) => (
+              <li key={b.id} className="flex justify-between gap-4">
+                <span>{b.name}</span>
+                <span className="font-mono">{fmt(b.actual)} <span className="text-red-400">vs {fmt(b.standard)} standard</span></span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Setup Fees */}
       <Section title="One-Off Setup Fees" enabled={f.setupTotal > 0 || f.suFormation || f.suHmrc} onToggle={() => { if (!f.suFormation && !f.suHmrc) f.setSuFormation(true); else { f.setSuFormation(false); f.setSuHmrc(false); f.setSuRegFee(0); f.setSuOthers([]); } }} annual={f.setupTotal}>
         <TabRow cells={['Item', 'Qty', 'Rate', 'Total']} header />

@@ -179,6 +179,34 @@ export default function useQuoteForm(D) {
   if (cfoEnabled) lines.push({ id: 'fractional_cfo', name: 'Fractional CFO', annual: cfoAnnual });
   if (roEnabled) lines.push({ id: 'registered_office', name: 'Registered Office', annual: roFee });
 
+  // ── Below-standard pricing ──
+  // For each enabled service, compute the standard (defaults-rate × the same
+  // quantities) and flag where the quoted amount is below it. Driver-based
+  // services (payroll, modulr, budgeting, CFO, software) are excluded — their
+  // "standard" isn't a single rate, so flagging would be noisy.
+  const belowStandard = [];
+  const flagBelow = (id, name, actual, standard) => {
+    if (standard > 0 && actual < standard - 0.5) belowStandard.push({ id, name, actual, standard });
+  };
+  if (accEnabled && accType === 'trading' && detectedBand) flagBelow('accounts_ct', 'Accounts & CT', accAnnual, detectedBand.rate);
+  if (csEnabled) flagBelow('confirmation_statement', 'Confirmation Statement', csFee, D.confirmation_statement.fee);
+  if (dtrEnabled) {
+    const stdDtr = directors.reduce((s, d) =>
+      s + D.director_base
+        + (d.otherDividends ? D.director_addons.other_dividends : 0)
+        + (d.hasRentals ? d.rentalProperties * D.director_addons.rental_property : 0)
+        + (d.capitalGains ? D.director_addons.capital_gains : 0)
+        + (d.savingsIncome ? D.director_addons.savings_income : 0)
+        + (d.otherSources || []).reduce((a, o) => a + (o.amount || 0), 0), 0);
+    flagBelow('directors_tax_return', "Directors' Tax Returns", dtrAnnual, stdDtr);
+  }
+  if (bkEnabled) flagBelow('bookkeeping_vat', 'Bookkeeping & VAT', bkAnnual, bkHours * D.bookkeeping_rate * 12 + (bkIncVat ? bkVatAdj : 0));
+  if (vatEnabled) flagBelow('vat_returns', 'VAT Returns', vatAnnual, vatFreq * D.vat_per_return);
+  if (aeEnabled) flagBelow('auto_enrolment', 'Auto-Enrolment', aeFee, D.auto_enrolment.standard);
+  if (roEnabled) flagBelow('registered_office', 'Registered Office', roFee, D.registered_office);
+  if (rmEnabled) flagBelow('review_meetings', 'Review Meetings', rmAnnual, rmCount * (D.review_meeting_rate || 210));
+  if (maEnabled) flagBelow('management_accounts', 'Management Accounts', maAnnual, maSets * (D.management_accounts_per_set || 158));
+
   const annualServices = lines.reduce((s, l) => s + l.annual, 0);
   const annualTotal = annualServices + swAnnual;
   const monthlyNet = Math.round((annualTotal / 12) * 100) / 100;
@@ -478,6 +506,8 @@ export default function useQuoteForm(D) {
     swId, setSwId, dextEnabled, setDextEnabled, dextPrice, setDextPrice, sw, swMonthly, swAnnual,
     // Totals
     lines, annualServices, annualTotal, monthlyNet, monthlyVat, monthlyGross,
+    // Below-standard pricing flags
+    belowStandard,
     // Builders
     buildQuoteData, buildLineItems, loadFromQuote, seedFromBilling,
     // Defaults ref

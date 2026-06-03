@@ -165,6 +165,30 @@ export default function GroupQuoteInputPage() {
         const entityIds = bgm.map(m => m.entity_id);
         const { data: ents } = await supabase.from('entities').select('id, name, company_number').in('id', entityIds);
         setEntities(ents || []);
+
+        // Pre-populate from any existing (non-deleted) quote per entity, so
+        // Build Group Quote and the individual quotes are two views of the
+        // same thing. Saved line amounts load as manual overrides — exact
+        // prices preserved, with the standard calc still shown underneath.
+        const { data: gQuotes } = await supabase
+          .from('quotes')
+          .select('id, entity_id, relationship_group, status, created_at, line_items:quote_line_items(service_id, annual_amount, is_recurring)')
+          .in('entity_id', entityIds)
+          .neq('status', 'deleted')
+          .order('created_at', { ascending: false });
+        // Latest quote per entity.
+        const quoteByEntity = {};
+        for (const q of gQuotes || []) {
+          if (q.entity_id && !quoteByEntity[q.entity_id]) quoteByEntity[q.entity_id] = q;
+        }
+        // Map a quote line service_id onto a matrix row id.
+        const toRowId = (sid) => {
+          if (!sid) return null;
+          if (sid.startsWith('software')) return 'software';
+          if (sid === 'cfo') return 'fractional_cfo';
+          return SERVICE_ROWS.some(r => r.id === sid) ? sid : null;
+        };
+
         const initDrivers = {}, initOverrides = {}, initDiscounts = {};
         (ents || []).forEach(e => {
           initDrivers[e.id] = {
@@ -178,8 +202,16 @@ export default function GroupQuoteInputPage() {
             rm_rate: defaults?.review_meeting_rate || 210,
             cfo_day_rate: defaults?.cfo_day_rate || 1680,
           };
-          initOverrides[e.id] = {};
-          initDiscounts[e.id] = 0;
+          const ov = {};
+          const q = quoteByEntity[e.id];
+          for (const li of (q?.line_items || [])) {
+            if (li.is_recurring === false) continue; // skip one-off setup lines
+            const rowId = toRowId(li.service_id);
+            if (!rowId) continue;
+            ov[rowId] = (ov[rowId] || 0) + (Number(li.annual_amount) || 0);
+          }
+          initOverrides[e.id] = ov;
+          initDiscounts[e.id] = 0; // saved amounts are already net of any discount
         });
         setDrivers(initDrivers);
         setOverrides(initOverrides);
@@ -387,13 +419,23 @@ export default function GroupQuoteInputPage() {
                 <td className="px-3 py-1.5 text-gray-700 font-medium sticky left-0 bg-white z-10">{svc.name}</td>
                 {entities.map(e => {
                   const cell = computed[e.id]?.[svc.id] || { value: 0, calc: '' };
+                  // Below standard: a positive value under the standard
+                  // (defaults-calculated) amount for this client/service.
+                  const belowStandard = cell.value > 0 && cell.calculatedValue > 0 && cell.value < cell.calculatedValue - 0.5;
+                  const cls = belowStandard
+                    ? 'border-red-300 bg-red-50 text-red-700'
+                    : cell.isOverride ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white';
+                  const tip = belowStandard
+                    ? `${cell.calc} — below standard ${fmt(cell.calculatedValue)}`
+                    : cell.calc;
                   return (
                     <td key={e.id} className="px-1 py-0.5">
-                      <Tooltip text={cell.calc}>
+                      <Tooltip text={tip}>
                         <input
                           type="number" value={cell.value || ''} onChange={ev => setOverride(e.id, svc.id, ev.target.value)}
                           placeholder="0" min="0" step="any"
-                          className={`w-full text-right text-xs font-mono border rounded px-1.5 py-1 focus:border-ocean-300 focus:outline-none ${cell.isOverride ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white'}`}
+                          title={belowStandard ? `Below standard (${fmt(cell.calculatedValue)})` : undefined}
+                          className={`w-full text-right text-xs font-mono border rounded px-1.5 py-1 focus:border-ocean-300 focus:outline-none ${cls}`}
                         />
                       </Tooltip>
                     </td>
