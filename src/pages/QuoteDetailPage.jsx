@@ -8,6 +8,7 @@ import ConsolidationTable from '../components/ConsolidationTable';
 import AddToGroupPanel from '../components/AddToGroupPanel';
 import SendQuoteModal from '../components/SendQuoteModal';
 import CommitToLiveModal from '../components/CommitToLiveModal';
+import BillingComparisonPanel from '../components/BillingComparisonPanel';
 import { useAuth } from '../shell/AppShell';
 
 export default function QuoteDetailPage() {
@@ -536,6 +537,13 @@ export default function QuoteDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Quote vs current live billing */}
+      {(quote.entity_id || quote.primary_entity_id) && (
+        <BillingComparisonPanel
+          items={[{ entityId: quote.entity_id || quote.primary_entity_id, lines: lineItems }]}
+        />
+      )}
 
       {/* Add to Group / Group Info */}
       <div className="mb-3">

@@ -5,6 +5,7 @@ import { fmt, StatusBadge, Btn } from '../components/ui';
 import { STATUS_TRANSITIONS, STATUS_LABELS } from '../lib/quoteStatus';
 import { generateQuotePdf, generateGroupQuotePdf, generateGroupQuotePdfBase64 } from '../lib/quotePdf';
 import ConsolidationTable from '../components/ConsolidationTable';
+import BillingComparisonPanel from '../components/BillingComparisonPanel';
 import SendQuoteModal from '../components/SendQuoteModal';
 import { useAuth } from '../shell/AppShell';
 import { useFeeEngine } from '../contexts/FeeEngineContext';
@@ -390,6 +391,12 @@ export default function GroupDetailPage() {
           onDiscountChange={(eid, pct) => setDiscounts(prev => ({ ...prev, [eid]: pct }))}
         />
       </div>
+
+      {/* Group quote vs current live billing (rolled up across the group) */}
+      <BillingComparisonPanel
+        title="Group quote vs current billing"
+        items={dedupedQuotes.map(q => ({ entityId: q.entity_id, lines: q.line_items || [] }))}
+      />
 
       {/* Actions */}
       <div className="flex gap-2">
