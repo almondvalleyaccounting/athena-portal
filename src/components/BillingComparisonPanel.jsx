@@ -116,23 +116,15 @@ export default function BillingComparisonPanel({ items, title = 'Quote vs curren
             <FilterBtn onClick={selectBilled} active={billedSel}>Already billed ({billedCount})</FilterBtn>
             <FilterBtn onClick={selectNew} active={newSel}>Not yet billed ({perEntity.length - billedCount})</FilterBtn>
           </div>
-          {/* Per-entity one-line summary */}
-          <div className="grid gap-1 text-xs mb-3" style={{ gridTemplateColumns: '20px 2fr 1fr 1fr 1fr' }}>
-            <span />
-            <span className="text-gray-400">Client</span>
-            <span className="text-right text-gray-400">Quote (yr)</span>
-            <span className="text-right text-gray-400">Live (yr)</span>
-            <span className="text-right text-gray-400">Δ (yr)</span>
+          {/* Client filters (names only — the figures are in the table above) */}
+          <div className="flex flex-wrap gap-2 mb-3">
             {perEntity.map((e) => (
-              <React.Fragment key={e.entityId}>
-                <span><input type="checkbox" checked={isSelected(e.entityId)} onChange={() => toggle(e.entityId)} className="w-3 h-3 accent-ocean-600" /></span>
-                <span className={`truncate ${isSelected(e.entityId) ? 'text-gray-700' : 'text-gray-300'}`}>
+              <label key={e.entityId} className="inline-flex items-center gap-1.5 text-xs cursor-pointer border border-gray-200 rounded-full px-2.5 py-1">
+                <input type="checkbox" checked={isSelected(e.entityId)} onChange={() => toggle(e.entityId)} className="w-3 h-3 accent-ocean-600" />
+                <span className={isSelected(e.entityId) ? 'text-gray-700' : 'text-gray-400'}>
                   {e.name}{!e.hasLive && <span className="ml-1 text-[9px] text-green-600">new</span>}
                 </span>
-                <span className={`text-right font-mono ${isSelected(e.entityId) ? 'text-gray-600' : 'text-gray-300'}`}>{fmt(e.quoteAnnual)}</span>
-                <span className={`text-right font-mono ${isSelected(e.entityId) ? 'text-gray-600' : 'text-gray-300'}`}>{e.liveAnnual ? fmt(e.liveAnnual) : '—'}</span>
-                <span className="text-right font-mono" style={{ color: isSelected(e.entityId) ? dc(e.deltaAnnual) : '#cbd5e1' }}>{e.deltaAnnual ? `${sg(e.deltaAnnual)}${fmt(e.deltaAnnual)}` : '—'}</span>
-              </React.Fragment>
+              </label>
             ))}
           </div>
         </>

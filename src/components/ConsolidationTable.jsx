@@ -144,12 +144,40 @@ export default function ConsolidationTable({ entities, entityTotals, discounts =
           </div>
         </div>
 
-        {/* Annual After Discount */}
-        <div className="grid gap-1 px-3 py-1.5 text-xs font-medium" style={{ gridTemplateColumns: gridCols }}>
-          <span className="text-gray-700">Annual After Discount</span>
-          {entities.map(e => <span key={e.id} className="text-right font-mono text-gray-700">{fmt(entityAnnualAfterDiscount[e.id])}</span>)}
-          <span className="text-right font-mono text-ocean-700 font-bold">{fmt(groupAnnualAfter)}</span>
+        {/* Annual After Discount — headline (matches the monthly DD row) */}
+        <div className={`grid gap-1 px-3 py-2.5 bg-ocean-700 text-white text-sm font-bold ${liveByEntity ? '' : 'rounded-b-lg'}`} style={{ gridTemplateColumns: gridCols }}>
+          <span>Annual After Discount</span>
+          {entities.map(e => <span key={e.id} className="text-right font-mono text-sun-300">{fmt(entityAnnualAfterDiscount[e.id])}</span>)}
+          <span className="text-right font-mono text-sun-300">{fmt(groupAnnualAfter)}</span>
         </div>
+
+        {/* Annual comparison vs current billing (net basis, per column) */}
+        {liveByEntity && (() => {
+          const liveAnnual = (id) => (liveByEntity[id] != null ? Math.round(liveByEntity[id] * 12 * 100) / 100 : null);
+          const groupLiveAnnual = entities.reduce((s, e) => s + (liveAnnual(e.id) || 0), 0);
+          const diff = (id) => Math.round(((entityAnnualAfterDiscount[id] || 0) - (liveAnnual(id) || 0)) * 100) / 100;
+          const groupDiff = Math.round((groupAnnualAfter - groupLiveAnnual) * 100) / 100;
+          const dc = (n) => (n > 0.5 ? '#15803d' : n < -0.5 ? '#b91c1c' : '#94a3b8');
+          const sgn = (n) => (n > 0 ? '+' : '');
+          return (
+            <>
+              <div className="grid gap-1 px-3 py-1.5 border-t border-gray-100 text-xs" style={{ gridTemplateColumns: gridCols }}>
+                <span className="text-gray-500">Current billing (annual, net)</span>
+                {entities.map(e => <span key={e.id} className="text-right font-mono text-gray-500">{liveAnnual(e.id) != null ? fmt(liveAnnual(e.id)) : '—'}</span>)}
+                <span className="text-right font-mono text-gray-600 font-medium">{groupLiveAnnual > 0 ? fmt(groupLiveAnnual) : '—'}</span>
+              </div>
+              <div className="grid gap-1 px-3 py-1.5 border-t border-gray-100 text-xs font-medium rounded-b-lg" style={{ gridTemplateColumns: gridCols }}>
+                <span className="text-gray-700">Difference</span>
+                {entities.map(e => {
+                  const d = diff(e.id);
+                  const isNew = liveAnnual(e.id) == null;
+                  return <span key={e.id} className="text-right font-mono" style={{ color: dc(d) }} title={isNew ? 'No current billing — new business' : undefined}>{sgn(d)}{fmt(d)}{isNew ? '*' : ''}</span>;
+                })}
+                <span className="text-right font-mono font-bold" style={{ color: dc(groupDiff) }}>{sgn(groupDiff)}{fmt(groupDiff)}</span>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* Monthly Section */}
