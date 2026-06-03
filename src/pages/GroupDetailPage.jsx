@@ -298,47 +298,22 @@ export default function GroupDetailPage() {
 
       {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2 mb-3">{error}</div>}
 
-      {/* Status workflow actions */}
-      {transitions.length > 0 && (
-        <div className="flex items-center gap-2 mb-4 bg-gray-50 rounded-lg p-2 border border-gray-200">
-          <span className="text-xs text-gray-500 mr-1">Actions:</span>
-          {transitions.map(t => (
-            <Btn
-              key={t.action}
-              onClick={() => handleGroupTransition(t)}
-              disabled={transitioning}
-              variant={t.variant || 'secondary'}
-              className="text-xs py-1 px-3"
-            >
-              {t.label} (All)
-            </Btn>
-          ))}
-          <Btn onClick={() => setShowSendModal(true)} variant="secondary" className="text-xs py-1 px-3">
-            Send to Client
+      {/* Actions — workflow, send/export, and build/add/back together up top */}
+      <div className="flex items-center gap-2 mb-4 bg-gray-50 rounded-lg p-2 border border-gray-200 flex-wrap">
+        <span className="text-xs text-gray-500 mr-1">Actions:</span>
+        {transitions.map(t => (
+          <Btn key={t.action} onClick={() => handleGroupTransition(t)} disabled={transitioning} variant={t.variant || 'secondary'} className="text-xs py-1 px-3">
+            {t.label} (All)
           </Btn>
-          <Btn onClick={handlePreview} variant="secondary" className="text-xs py-1 px-3">
-            Preview Quote
-          </Btn>
-          <Btn onClick={handleExportPdf} variant="ghost" className="text-xs py-1 px-3">
-            Export PDF
-          </Btn>
-        </div>
-      )}
-
-      {/* If no transitions but still want send/export */}
-      {transitions.length === 0 && (
-        <div className="flex items-center gap-2 mb-4">
-          <Btn onClick={() => setShowSendModal(true)} variant="secondary" className="text-xs py-1 px-3">
-            Send to Client
-          </Btn>
-          <Btn onClick={handlePreview} variant="secondary" className="text-xs py-1 px-3">
-            Preview Quote
-          </Btn>
-          <Btn onClick={handleExportPdf} variant="ghost" className="text-xs py-1 px-3">
-            Export PDF
-          </Btn>
-        </div>
-      )}
+        ))}
+        <Btn onClick={() => setShowSendModal(true)} variant="secondary" className="text-xs py-1 px-3">Send to Client</Btn>
+        <Btn onClick={handlePreview} variant="secondary" className="text-xs py-1 px-3">Preview Quote</Btn>
+        <Btn onClick={handleExportPdf} variant="ghost" className="text-xs py-1 px-3">Export PDF</Btn>
+        <span className="mx-1 text-gray-300">|</span>
+        <Btn onClick={() => navigate(`/manage/quotes/group/${groupId}/quote`)} variant="primary" className="text-xs py-1 px-3">Build Group Quote</Btn>
+        <Btn onClick={() => navigate('/manage/quotes/new?group=' + groupId)} className="text-xs py-1 px-3">Add Entity</Btn>
+        <Btn onClick={() => navigate('/manage/quotes')} variant="secondary" className="text-xs py-1 px-3">Back to Quotes</Btn>
+      </div>
 
       {/* Clients & quotes in this group \u2014 one row per client, combining the
           client record with its quote (ref / \u00A3 / status / edit). */}
@@ -421,15 +396,6 @@ export default function GroupDetailPage() {
         groupMode
         items={dedupedQuotes.map(q => ({ entityId: q.entity_id, name: q.relationship_group || q.quote_ref, lines: q.line_items || [] }))}
       />
-
-      {/* Actions */}
-      <div className="flex gap-2">
-        <Btn onClick={() => navigate(`/manage/quotes/group/${groupId}/quote`)} variant="primary">
-          Build Group Quote
-        </Btn>
-        <Btn onClick={() => navigate('/manage/quotes/new?group=' + groupId)}>Add Entity</Btn>
-        <Btn onClick={() => navigate('/manage/quotes')} variant="secondary">Back to Quotes</Btn>
-      </div>
 
       {/* Delete Group */}
       <div className="mt-6 pt-4 border-t border-gray-200">
