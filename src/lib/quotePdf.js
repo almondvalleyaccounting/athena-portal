@@ -538,18 +538,26 @@ export async function generateGroupQuotePdf(group, quotes, entities, discounts =
   doc.setDrawColor(...OCEAN_700);
   doc.setLineWidth(0.5);
 
-  // Monthly header
+  // Monthly header (entity names wrap to max 2 lines, matching the table above)
+  const mHeadH = 9;
   doc.setFillColor(...OCEAN_100);
-  doc.rect(margin, y, cw, 6, 'F');
+  doc.rect(margin, y, cw, mHeadH, 'F');
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...OCEAN_700);
-  doc.text('Monthly Breakdown', margin + 2, y + 4);
+  const mL1 = y + 3.5, mL2 = y + 7;
+  doc.text('Monthly Breakdown', margin + 2, mL2);
   entities.forEach((e, i) => {
-    doc.text(shortName(e.name, 18), colX(i) - 1, y + 4, { align: 'right' });
+    const lines = wrapHeaderName(e.name, colW - 2);
+    if (lines.length <= 1) {
+      doc.text(lines[0] || '', colX(i) - 1, mL2, { align: 'right' });
+    } else {
+      doc.text(lines[0], colX(i) - 1, mL1, { align: 'right' });
+      doc.text(lines[1], colX(i) - 1, mL2, { align: 'right' });
+    }
   });
-  doc.text('Group Total', colX(entities.length) - 1, y + 4, { align: 'right' });
-  y += 8;
+  doc.text('Group Total', colX(entities.length) - 1, mL2, { align: 'right' });
+  y += mHeadH + 2;
 
   // Monthly Net
   drawGroupRow('Monthly Net', (eid) => entityCalcs[eid].monthlyNet, false);
