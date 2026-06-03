@@ -156,13 +156,20 @@ export default function GroupQuoteInputPage() {
   const loadGroupData = async () => {
     setLoading(true);
     try {
-      const [{ data: bg }, { data: bgm }] = await Promise.all([
+      const [{ data: bg }, { data: bgm }, { data: gQuotesForEnts }] = await Promise.all([
         supabase.from('billing_groups').select('*').eq('id', groupId).single(),
         supabase.from('billing_group_members').select('entity_id').eq('group_id', groupId),
+        supabase.from('quotes').select('entity_id').eq('group_id', groupId).neq('status', 'deleted'),
       ]);
       setGroup(bg);
-      if (bgm?.length > 0) {
-        const entityIds = bgm.map(m => m.entity_id);
+      // Entities are the UNION of billing_group_members and any entity that
+      // has a (non-deleted) quote in this group — membership rows can lag
+      // behind quotes created/assigned to the group.
+      const entityIds = [...new Set([
+        ...(bgm || []).map(m => m.entity_id),
+        ...(gQuotesForEnts || []).map(q => q.entity_id),
+      ].filter(Boolean))];
+      if (entityIds.length > 0) {
         const { data: ents } = await supabase.from('entities').select('id, name, company_number').in('id', entityIds);
         setEntities(ents || []);
 
