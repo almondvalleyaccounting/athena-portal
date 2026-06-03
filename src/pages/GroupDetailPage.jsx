@@ -111,8 +111,15 @@ export default function GroupDetailPage() {
   if (loading) return <div className="p-6"><p className="text-sm text-gray-400">Loading group...</p></div>;
   if (!group) return <div className="p-6"><p className="text-sm text-red-500">Group not found.</p></div>;
 
+  // One quote per entity for the consolidation table (an entity can briefly
+  // have more than one; show the latest). quotes are loaded oldest-first, so
+  // the last write per key wins.
+  const latestQuoteByEntity = {};
+  quotes.forEach(q => { latestQuoteByEntity[q.entity_id || q.id] = q; });
+  const dedupedQuotes = Object.values(latestQuoteByEntity);
+
   // Build entity data for consolidation table
-  const entities = quotes.map(q => ({
+  const entities = dedupedQuotes.map(q => ({
     id: q.entity_id || q.id,
     name: q.relationship_group || q.quote_ref,
     quoteId: q.id,
@@ -120,7 +127,7 @@ export default function GroupDetailPage() {
   }));
 
   const entityTotals = {};
-  quotes.forEach(q => {
+  dedupedQuotes.forEach(q => {
     const key = q.entity_id || q.id;
     const recurring = (q.line_items || []).filter(l => l.is_recurring);
     const swLines = recurring.filter(l => l.service_id?.startsWith('software'));
@@ -140,7 +147,7 @@ export default function GroupDetailPage() {
   });
 
   // Group totals
-  const groupAnnual = quotes.reduce((s, q) => {
+  const groupAnnual = dedupedQuotes.reduce((s, q) => {
     const key = q.entity_id || q.id;
     const disc = discounts[key] || 0;
     return s + ((Number(q.annual_total) || 0) * (1 - disc / 100));
@@ -258,7 +265,7 @@ export default function GroupDetailPage() {
               <span className="text-xs text-gray-300 font-normal ml-2 opacity-0 group-hover:opacity-100 transition-opacity">edit</span>
             </h2>
           )}
-          <p className="text-xs text-gray-400">{quotes.length} entities · Group quote</p>
+          <p className="text-xs text-gray-400">{groupEntities.length} entities · Group quote</p>
           <div className="mt-1">
             <StatusBadge status={currentStatus} />
           </div>

@@ -359,37 +359,71 @@ export default function GroupQuoteInputPage() {
         const annualTotal = afterDiscountTotals[entity.id] || 0;
         if (annualTotal <= 0) continue;
         const m = monthlyCalc(annualTotal);
-        const nameSlug = (entity.name || 'Entity').replace(/[^a-zA-Z0-9]/g, '');
-        const dateSlug = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const prefix = `${nameSlug}_${dateSlug}`;
-        const { data: existing } = await supabase.from('quotes').select('quote_ref').like('quote_ref', `${prefix}%`);
-        const nums = (existing || []).map(q => parseInt(q.quote_ref.split('_').pop()) || 0);
-        const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
-        const quoteRef = `${prefix}_${String(next).padStart(3, '0')}`;
-        const validUntil = new Date(); validUntil.setDate(validUntil.getDate() + 30);
 
-        const { data: quote, error: qErr } = await supabase.from('quotes').insert({
-          quote_ref: quoteRef, entity_id: entity.id, group_id: groupId, status: 'draft',
-          relationship_group: entity.name, annual_total: Math.round(annualTotal * 100) / 100,
+        // Build the recurring line items from the matrix.
+        const buildLineItems = (quoteId) => {
+          const items = [];
+          let sortOrder = 0;
+          SERVICE_ROWS.forEach(svc => {
+            const val = computed[entity.id]?.[svc.id]?.value || 0;
+            if (val > 0) {
+              const discVal = val * (1 - disc / 100);
+              items.push({
+                quote_id: quoteId, service_id: svc.id, description: svc.name,
+                annual_amount: Math.round(discVal * 100) / 100, monthly_amount: Math.round((discVal / 12) * 100) / 100,
+                detail: computed[entity.id]?.[svc.id]?.calc || '', is_recurring: true, sort_order: sortOrder++,
+              });
+            }
+          });
+          return items;
+        };
+
+        const totalsPatch = {
+          annual_total: Math.round(annualTotal * 100) / 100,
           annual_services: Math.round((entityTotals[entity.id] || 0) * 100) / 100,
-          monthly_net: m.net, monthly_vat: m.vat, monthly_gross: m.gross, one_off_total: 0,
-          defaults_version: defaults?.version || '0.3', valid_until: validUntil.toISOString().slice(0, 10), created_by: profile?.id,
-        }).select().single();
-        if (qErr) throw qErr;
+          monthly_net: m.net, monthly_vat: m.vat, monthly_gross: m.gross,
+        };
 
-        const lineItems = [];
-        let sortOrder = 0;
-        SERVICE_ROWS.forEach(svc => {
-          const val = computed[entity.id]?.[svc.id]?.value || 0;
-          if (val > 0) {
-            const discVal = val * (1 - disc / 100);
-            lineItems.push({
-              quote_id: quote.id, service_id: svc.id, description: svc.name,
-              annual_amount: Math.round(discVal * 100) / 100, monthly_amount: Math.round((discVal / 12) * 100) / 100,
-              detail: computed[entity.id]?.[svc.id]?.calc || '', is_recurring: true, sort_order: sortOrder++,
-            });
-          }
-        });
+        // Update the entity's existing (non-deleted) quote in this group if
+        // there is one — Build Group Quote and the individual quotes are the
+        // same record. Only insert a fresh quote when none exists. This stops
+        // re-running the builder from creating duplicate quotes per entity.
+        const { data: existingQuote } = await supabase
+          .from('quotes')
+          .select('id')
+          .eq('group_id', groupId)
+          .eq('entity_id', entity.id)
+          .neq('status', 'deleted')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        let quoteId;
+        if (existingQuote) {
+          quoteId = existingQuote.id;
+          const { error: upErr } = await supabase.from('quotes').update(totalsPatch).eq('id', quoteId);
+          if (upErr) throw upErr;
+          // Replace only the recurring lines; leave one-off setup lines intact.
+          await supabase.from('quote_line_items').delete().eq('quote_id', quoteId).eq('is_recurring', true);
+        } else {
+          const nameSlug = (entity.name || 'Entity').replace(/[^a-zA-Z0-9]/g, '');
+          const dateSlug = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+          const prefix = `${nameSlug}_${dateSlug}`;
+          const { data: existingRefs } = await supabase.from('quotes').select('quote_ref').like('quote_ref', `${prefix}%`);
+          const nums = (existingRefs || []).map(q => parseInt(q.quote_ref.split('_').pop()) || 0);
+          const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+          const quoteRef = `${prefix}_${String(next).padStart(3, '0')}`;
+          const validUntil = new Date(); validUntil.setDate(validUntil.getDate() + 30);
+          const { data: quote, error: qErr } = await supabase.from('quotes').insert({
+            quote_ref: quoteRef, entity_id: entity.id, group_id: groupId, status: 'draft',
+            relationship_group: entity.name, ...totalsPatch, one_off_total: 0,
+            defaults_version: defaults?.version || '0.3', valid_until: validUntil.toISOString().slice(0, 10), created_by: profile?.id,
+          }).select().single();
+          if (qErr) throw qErr;
+          quoteId = quote.id;
+        }
+
+        const lineItems = buildLineItems(quoteId);
         if (lineItems.length > 0) await supabase.from('quote_line_items').insert(lineItems);
       }
       setSuccess('Quotes saved!');
