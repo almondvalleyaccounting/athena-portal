@@ -253,12 +253,22 @@ export default function GroupQuoteInputPage() {
             if (!rowId) continue;
             savedByRow[rowId] = (savedByRow[rowId] || 0) + (Number(li.annual_amount) || 0);
           }
-          // Override only where the driver calc can't reproduce the saved
-          // figure (driverless service, custom rate, addons, VAT adj…).
           const ov = {};
-          for (const [rowId, saved] of Object.entries(savedByRow)) {
-            const calc = calcService(rowId, drv, defaults).value;
-            if (Math.abs(calc - saved) > 0.5) ov[rowId] = saved;
+          if (q) {
+            // Faithfully mirror the quote: services NOT on it are £0 (the
+            // matrix calc would otherwise fabricate a default, e.g.
+            // Auto-Enrolment £60, Confirmation £110, for clients who don't
+            // have them).
+            SERVICE_ROWS.forEach((svc) => {
+              if (!(svc.id in savedByRow)) ov[svc.id] = 0;
+            });
+            // Services that ARE on the quote: override only where the driver
+            // calc can't reproduce the saved figure (driverless service,
+            // custom rate, director addons, VAT adjustment…).
+            for (const [rowId, saved] of Object.entries(savedByRow)) {
+              const calc = calcService(rowId, drv, defaults).value;
+              if (Math.abs(calc - saved) > 0.5) ov[rowId] = saved;
+            }
           }
           initOverrides[e.id] = ov;
           initDiscounts[e.id] = 0; // saved amounts are already net of any discount
