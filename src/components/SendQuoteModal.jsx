@@ -4,7 +4,7 @@ import { Btn } from './ui';
 
 // Modal for composing and sending a quote to a client via email.
 // Generates PDF client-side, sends via Supabase Edge Function.
-export default function SendQuoteModal({ quote, lineItems, profile, onSent, onClose, pdfGenerator }) {
+export default function SendQuoteModal({ quote, lineItems, profile, onSent, onClose, pdfGenerator, groupId }) {
   const [recipientEmail, setRecipientEmail] = useState('');
   const [subject, setSubject] = useState(`Services Quote: ${quote.relationship_group || 'Client'}`);
   const expiryStr = quote.valid_until ? new Date(quote.valid_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
@@ -30,17 +30,33 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
         pdfBase64 = await generateQuotePdfBase64(quote, lineItems);
       }
 
-      // Call Supabase Edge Function — function now handles status update + audit log server-side
+      // Call Supabase Edge Function — function handles status update + audit
+      // log server-side. For a group send we pass group_id (not quote_id):
+      // the function summarises the whole group and the accept link covers
+      // every member company.
+      const emailBody = groupId
+        ? {
+            group_id: groupId,
+            group_ref: quote.quote_ref,
+            group_name: quote.relationship_group,
+            to: recipientEmail,
+            subject,
+            message,
+            pdfBase64,
+            filename: `${quote.quote_ref}.pdf`,
+            include_accept_link: true,
+          }
+        : {
+            quote_id: quote.id,
+            to: recipientEmail,
+            subject,
+            message,
+            pdfBase64,
+            filename: `${quote.quote_ref}.pdf`,
+            include_accept_link: true,
+          };
       const { data, error: fnErr } = await supabase.functions.invoke('send-quote-email', {
-        body: {
-          quote_id: quote.id,
-          to: recipientEmail,
-          subject,
-          message,
-          pdfBase64,
-          filename: `${quote.quote_ref}.pdf`,
-          include_accept_link: true,
-        },
+        body: emailBody,
       });
 
       if (fnErr) {

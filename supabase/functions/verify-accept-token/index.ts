@@ -65,6 +65,77 @@ Deno.serve(async (req) => {
     }
 
     const service = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ── Group token: return every member company for the accept page ────
+    if (claims.is_group) {
+      const groupId = claims.group_id as string;
+      const quoteIds = (claims.quote_ids ?? []) as string[];
+      const [{ data: groupRow }, { data: rows, error: gErr }] = await Promise.all([
+        service.from("billing_groups").select("name").eq("id", groupId).maybeSingle(),
+        service
+          .from("quotes")
+          .select("id, quote_ref, status, monthly_gross, annual_total, relationship_group, valid_until, accepted_at")
+          .in("id", quoteIds),
+      ]);
+      if (gErr || !rows || rows.length === 0) {
+        return jsonResponse({ ok: false, error: "quote_not_found" }, 404);
+      }
+      const companies = rows as Array<Record<string, unknown>>;
+      const allAccepted = companies.every((q) => q.status === "accepted" || q.status === "committed");
+
+      if (!allAccepted) {
+        const today = new Date().toISOString().slice(0, 10);
+        const earliest = companies
+          .filter((q) => q.status === "sent" || q.status === "approved")
+          .map((q) => q.valid_until as string | null)
+          .filter(Boolean)
+          .sort()[0] as string | undefined;
+        if (earliest && earliest < today) {
+          return jsonResponse({ ok: false, error: "expired", valid_until: earliest }, 410);
+        }
+      }
+
+      try {
+        await service.from("quote_events").insert(
+          companies.map((q) => ({
+            quote_id: q.id, event_type: "clicked_review",
+            client_email: claims.recipient_email, client_ip: clientIp(req),
+            user_agent: req.headers.get("user-agent"),
+            metadata: { already_accepted: allAccepted, group_id: groupId },
+          })),
+        );
+      } catch (logErr) {
+        console.error("[verify-accept-token] group event log failed", logErr);
+      }
+
+      const monthlyGross = companies.reduce((s, q) => s + (Number(q.monthly_gross) || 0), 0);
+      const annualTotal = companies.reduce((s, q) => s + (Number(q.annual_total) || 0), 0);
+      const validUntil = companies.map((q) => q.valid_until as string | null).filter(Boolean).sort()[0] || null;
+
+      return jsonResponse({
+        ok: true,
+        is_group: true,
+        recipient_email: claims.recipient_email,
+        already_accepted: allAccepted,
+        group: {
+          group_id: groupId,
+          name: (groupRow?.name as string) || "Group quote",
+          company_count: companies.length,
+          monthly_gross: monthlyGross,
+          annual_total: annualTotal,
+          valid_until: validUntil,
+          accepted_at: (companies.find((q) => q.accepted_at)?.accepted_at as string) || null,
+          companies: companies.map((q) => ({
+            quote_ref: q.quote_ref,
+            relationship_group: q.relationship_group,
+            monthly_gross: q.monthly_gross,
+            annual_total: q.annual_total,
+            status: q.status,
+          })),
+        },
+      });
+    }
+
     const { data: quote, error } = await service
       .from("quotes")
       .select(

@@ -180,3 +180,77 @@ export function renderBreakdownHtml(lineItems: LineItem[]): string {
       </td>
     </tr>`;
 }
+
+// ---- Group breakdown (by company, by service) ---------------------------
+// Used by send-quote-email (group quote to client) and accept-quote (group
+// acceptance notification). Renders one section per company with its service
+// lines, a per-company subtotal, then a group total. Figures net of VAT.
+
+export type GroupCompany = {
+  name: string;
+  lineItems: LineItem[];
+};
+
+export function renderGroupBreakdownHtml(companies: GroupCompany[]): string {
+  if (!companies.length) return "";
+
+  const serviceRow = (label: string, annual: number, bold = false) => {
+    const monthly = annual / 12;
+    const weight = bold ? "600" : "400";
+    return `
+      <tr>
+        <td style="padding:8px 14px;color:${bold ? "#0f172a" : "#1e293b"};font-weight:${weight};border-top:1px solid #f1f5f9;">${escapeHtml(label)}</td>
+        <td style="padding:8px 14px;color:#0f172a;text-align:right;border-top:1px solid #f1f5f9;font-weight:${weight};white-space:nowrap;">${formatGBP(annual)}</td>
+        <td style="padding:8px 14px;color:#0f172a;text-align:right;border-top:1px solid #f1f5f9;font-weight:${weight};white-space:nowrap;">${formatGBP(monthly)}</td>
+      </tr>`;
+  };
+
+  let groupAnnual = 0;
+  let sections = "";
+
+  for (const company of companies) {
+    const items = (company.lineItems || []).filter(
+      (l) => (Number(l.annual_amount) || 0) > 0,
+    );
+    const companyAnnual = items.reduce((s, l) => s + (Number(l.annual_amount) || 0), 0);
+    groupAnnual += companyAnnual;
+
+    // Company header + column captions.
+    sections += `
+      <tr style="background:#eff6ff;">
+        <td colspan="3" style="padding:10px 14px;font-weight:600;color:#0f172a;border-top:2px solid #dbeafe;">${escapeHtml(company.name)}</td>
+      </tr>
+      <tr style="background:#f8fafc;">
+        <td style="padding:6px 14px;font-size:11px;color:#94a3b8;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;">Service</td>
+        <td style="padding:6px 14px;font-size:11px;color:#94a3b8;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;text-align:right;">Annual (net)</td>
+        <td style="padding:6px 14px;font-size:11px;color:#94a3b8;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;text-align:right;">Monthly (net)</td>
+      </tr>`;
+    if (items.length === 0) {
+      sections += `<tr><td colspan="3" style="padding:8px 14px;color:#94a3b8;border-top:1px solid #f1f5f9;">No priced services.</td></tr>`;
+    } else {
+      for (const l of items) sections += serviceRow(l.description ?? "", Number(l.annual_amount) || 0);
+      sections += serviceRow(`Subtotal — ${company.name}`, companyAnnual, true);
+    }
+  }
+
+  // Group grand total.
+  sections += `
+    <tr style="background:#0f172a;">
+      <td style="padding:12px 14px;color:#ffffff;font-weight:700;">Group total</td>
+      <td style="padding:12px 14px;color:#ffffff;text-align:right;font-weight:700;white-space:nowrap;">${formatGBP(groupAnnual)}</td>
+      <td style="padding:12px 14px;color:#ffffff;text-align:right;font-weight:700;white-space:nowrap;">${formatGBP(groupAnnual / 12)}</td>
+    </tr>`;
+
+  return `
+    <tr>
+      <td style="padding-top:16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;font-size:13px;">
+          ${sections}
+        </table>
+        <div style="font-size:11px;color:#94a3b8;margin-top:8px;">
+          Figures shown net of VAT. Monthly Direct Debit in the summary above is inclusive of VAT.
+        </div>
+      </td>
+    </tr>`;
+}

@@ -429,6 +429,7 @@ export default function GroupDetailPage() {
           quote={syntheticQuote}
           lineItems={allLineItems}
           profile={profile}
+          groupId={groupId}
           pdfGenerator={() => generateGroupQuotePdfBase64(group, quotes, groupEntities, discounts)}
           onSent={handleGroupSent}
           onClose={() => setShowSendModal(false)}

@@ -15,6 +15,7 @@ const SECRET = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 // 30-day quote, locking clients out — Neon Fizz).
 export const ACCEPT_TOKEN_TTL_DAYS = 120;
 const PURPOSE = "quote_accept";
+const PURPOSE_GROUP = "quote_accept_group";
 // Effectively ignore the JWT's own exp when verifying — valid_until is the
 // authority. Lets links already in clients' inboxes keep working.
 const EXP_LEEWAY_SECONDS = 3650 * 24 * 60 * 60; // ~10 years
@@ -34,7 +35,13 @@ function getKey(): Promise<CryptoKey> {
 }
 
 export interface AcceptTokenClaims {
-  quote_id: string;
+  // Single-quote tokens carry quote_id. Group tokens carry group_id +
+  // quote_ids (every member quote the one link accepts). is_group tells
+  // callers which shape they got.
+  quote_id?: string;
+  group_id?: string;
+  quote_ids?: string[];
+  is_group: boolean;
   recipient_email: string;
   purpose: string;
   iat: number;
@@ -60,8 +67,31 @@ export async function signAcceptToken(input: {
   );
 }
 
+// Group accept token — one link that accepts every member quote of a group.
+export async function signGroupAcceptToken(input: {
+  groupId: string;
+  quoteIds: string[];
+  recipientEmail: string;
+}): Promise<string> {
+  const key = await getKey();
+  const now = Math.floor(Date.now() / 1000);
+  return jwtCreate(
+    { alg: "HS256", typ: "JWT" },
+    {
+      group_id: input.groupId,
+      quote_ids: input.quoteIds,
+      recipient_email: input.recipientEmail,
+      purpose: PURPOSE_GROUP,
+      iat: now,
+      exp: now + ACCEPT_TOKEN_TTL_DAYS * 24 * 60 * 60,
+    },
+    key,
+  );
+}
+
 /**
  * Returns claims on success; null on any failure (bad signature, expiry, wrong purpose).
+ * Handles both single-quote and group tokens — check `is_group` on the result.
  * Callers should treat null as "invalid or expired link".
  */
 export async function verifyAcceptToken(
@@ -73,10 +103,17 @@ export async function verifyAcceptToken(
     // Verify signature + claims, but don't let the token's own exp reject a
     // link whose quote is still valid — valid_until is enforced by callers.
     const payload = (await jwtVerify(token, key, { expLeeway: EXP_LEEWAY_SECONDS })) as Record<string, unknown>;
-    if (payload.purpose !== PURPOSE) return null;
-    if (typeof payload.quote_id !== "string") return null;
     if (typeof payload.recipient_email !== "string") return null;
-    return payload as unknown as AcceptTokenClaims;
+    if (payload.purpose === PURPOSE_GROUP) {
+      if (typeof payload.group_id !== "string") return null;
+      if (!Array.isArray(payload.quote_ids) || payload.quote_ids.length === 0) return null;
+      return { ...(payload as unknown as AcceptTokenClaims), is_group: true };
+    }
+    if (payload.purpose === PURPOSE) {
+      if (typeof payload.quote_id !== "string") return null;
+      return { ...(payload as unknown as AcceptTokenClaims), is_group: false };
+    }
+    return null;
   } catch {
     return null;
   }

@@ -24,8 +24,10 @@ import {
   formatDateGB,
   formatDateTimeGB,
   formatGBP,
+  GroupCompany,
   LineItem,
   renderBreakdownHtml,
+  renderGroupBreakdownHtml,
 } from "../_shared/email-format.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -212,6 +214,109 @@ function renderInternalNotification(
   return emailShell(inner);
 }
 
+// ---------- group email templates ---------------------------------------
+
+type GroupQuoteRow = {
+  id: string;
+  quote_ref: string | null;
+  status: string;
+  monthly_gross: number | null;
+  annual_total: number | null;
+  relationship_group: string | null;
+  valid_until: string | null;
+  accepted_at: string | null;
+};
+
+function groupSummaryTableHtml(opts: {
+  groupName: string;
+  groupRef: string;
+  companyCount: number;
+  monthlyGross: number;
+  annualTotal: number;
+}): string {
+  const r = (label: string, value: string, bold = false) => `
+    <tr>
+      <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">${escapeHtml(label)}</td>
+      <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;${bold ? "font-weight:600;" : ""}">${escapeHtml(value)}</td>
+    </tr>`;
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+           style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;font-size:13px;margin-top:16px;">
+      <tr style="background:#f8fafc;"><td colspan="2" style="padding:10px 14px;font-weight:600;color:#0f172a;">Group quote summary</td></tr>
+      ${r("Reference", opts.groupRef)}
+      ${r("Group", opts.groupName)}
+      ${r("Companies", String(opts.companyCount))}
+      ${r("Total monthly DD (inc VAT)", formatGBP(opts.monthlyGross), true)}
+      ${r("Total annual (inc VAT)", formatGBP(opts.annualTotal))}
+    </table>`;
+}
+
+function renderGroupClientConfirmation(opts: {
+  groupName: string; groupRef: string; companyCount: number;
+  monthlyGross: number; annualTotal: number; acceptedAtIso: string;
+}): string {
+  const inner = `
+    <tr>
+      <td>
+        <h1 style="font-family:'Playfair Display',serif;font-size:24px;font-weight:500;color:#0f172a;margin:0 0 8px 0;">
+          Thank you for accepting
+        </h1>
+        <p style="font-size:14px;line-height:1.6;color:#1e293b;margin:0;">
+          Your acceptance of the group quote for ${escapeHtml(opts.groupName)} (${opts.companyCount} ${opts.companyCount === 1 ? "company" : "companies"}) was recorded on
+          ${escapeHtml(formatDateGB(opts.acceptedAtIso))}. We will be in touch shortly to finalise the engagement.
+        </p>
+        ${groupSummaryTableHtml(opts)}
+        <p style="font-size:12px;color:#64748b;margin-top:20px;line-height:1.6;">
+          If you did not accept this quote, please reply to this email and let us know right away.
+        </p>
+      </td>
+    </tr>`;
+  return emailShell(inner);
+}
+
+function renderGroupInternalNotification(opts: {
+  groupId: string; groupName: string; groupRef: string;
+  companies: GroupCompany[]; companyCount: number;
+  monthlyGross: number; annualTotal: number;
+  acceptedAtIso: string; clientEmail: string; clientIp: string | null; userAgent: string | null;
+}): string {
+  const portalLink = `${PORTAL_PUBLIC_URL}/manage/quotes/group/${opts.groupId}`;
+  const metaRow = (label: string, value: string) => `
+    <tr>
+      <td style="padding:8px 14px;color:#64748b;border-top:1px solid #f1f5f9;font-size:12px;">${escapeHtml(label)}</td>
+      <td style="padding:8px 14px;color:#0f172a;border-top:1px solid #f1f5f9;font-size:12px;text-align:right;word-break:break-word;">${escapeHtml(value)}</td>
+    </tr>`;
+  const inner = `
+    <tr>
+      <td>
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:#38bdf8;text-transform:uppercase;">Group quote accepted</div>
+        <h1 style="font-family:'Playfair Display',serif;font-size:24px;font-weight:500;color:#0f172a;margin:6px 0 8px 0;">
+          ${escapeHtml(opts.groupName)} has accepted the group quote (${opts.companyCount} ${opts.companyCount === 1 ? "company" : "companies"})
+        </h1>
+        <p style="font-size:14px;line-height:1.6;color:#1e293b;margin:0;">
+          Every company in the group has been marked accepted. Next step is to review and push each to QBO.
+        </p>
+        ${groupSummaryTableHtml(opts)}
+        ${renderGroupBreakdownHtml(opts.companies)}
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-top:16px;">
+          <tr style="background:#f8fafc;"><td colspan="2" style="padding:10px 14px;font-weight:600;color:#0f172a;font-size:13px;">Acceptance record</td></tr>
+          ${metaRow("Accepted at", formatDateTimeGB(opts.acceptedAtIso))}
+          ${metaRow("Client email", opts.clientEmail)}
+          ${metaRow("Client IP", opts.clientIp ?? "—")}
+          ${metaRow("User agent", opts.userAgent ?? "—")}
+        </table>
+        <div style="margin-top:24px;">
+          <a href="${escapeHtml(portalLink)}"
+             style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;font-size:14px;font-family:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+            Open group in portal
+          </a>
+        </div>
+      </td>
+    </tr>`;
+  return emailShell(inner);
+}
+
 // ---------- Resend send helper ------------------------------------------
 
 async function sendResendEmail(params: {
@@ -252,6 +357,131 @@ async function sendResendEmail(params: {
   }
 }
 
+// ---------- group acceptance --------------------------------------------
+
+async function handleGroupAccept(
+  service: ReturnType<typeof createClient>,
+  claims: { group_id?: string; quote_ids?: string[]; recipient_email: string },
+  req: Request,
+): Promise<Response> {
+  const groupId = claims.group_id as string;
+  const quoteIds = (claims.quote_ids ?? []) as string[];
+
+  const [{ data: groupRow }, { data: quotesRaw, error: fetchErr }, { data: itemsRaw }] = await Promise.all([
+    service.from("billing_groups").select("name").eq("id", groupId).maybeSingle(),
+    service
+      .from("quotes")
+      .select("id, quote_ref, status, monthly_gross, annual_total, relationship_group, valid_until, accepted_at")
+      .in("id", quoteIds),
+    service
+      .from("quote_line_items")
+      .select("quote_id, description, annual_amount, is_recurring, service_id, sort_order")
+      .in("quote_id", quoteIds)
+      .order("sort_order"),
+  ]);
+
+  if (fetchErr || !quotesRaw || quotesRaw.length === 0) {
+    return jsonResponse({ ok: false, error: "quote_not_found" }, 404);
+  }
+  const quotes = quotesRaw as unknown as GroupQuoteRow[];
+  const groupName = (groupRow?.name as string) || quotes[0]?.relationship_group || "Group";
+
+  const acceptable = quotes.filter((q) => q.status === "sent" || q.status === "approved");
+  const allDone = quotes.every((q) => q.status === "accepted" || q.status === "committed");
+
+  // Expiry — only blocks if there's still something to accept. Earliest
+  // valid_until across the not-yet-accepted members governs.
+  if (acceptable.length > 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    const earliest = acceptable.map((q) => q.valid_until).filter(Boolean).sort()[0] as string | undefined;
+    if (earliest && earliest < today) {
+      return jsonResponse({ ok: false, error: "expired", valid_until: earliest }, 410);
+    }
+  }
+
+  // Nothing left to accept — idempotent success.
+  if (acceptable.length === 0) {
+    return jsonResponse({
+      ok: true, group_id: groupId, accepted_count: 0,
+      accepted_at: quotes.find((q) => q.accepted_at)?.accepted_at ?? null,
+      already_accepted: true,
+    });
+  }
+
+  const acceptedAt = new Date().toISOString();
+  const ip = clientIp(req);
+  const ua = req.headers.get("user-agent");
+  const acceptIds = acceptable.map((q) => q.id);
+
+  const { error: updateErr } = await service
+    .from("quotes")
+    .update({
+      status: "accepted",
+      accepted_at: acceptedAt,
+      accepted_client_email: claims.recipient_email,
+      accepted_ip: ip,
+      accepted_user_agent: ua,
+    })
+    .in("id", acceptIds);
+  if (updateErr) {
+    console.error("[accept-quote] group update error", updateErr);
+    return jsonResponse({ ok: false, error: updateErr.message }, 500);
+  }
+
+  // Per-quote event + audit rows. Best-effort.
+  try {
+    await service.from("quote_events").insert(
+      acceptIds.map((qid) => ({
+        quote_id: qid, event_type: "accepted",
+        client_email: claims.recipient_email, client_ip: ip, user_agent: ua,
+        metadata: { group_id: groupId, via: "group_link" },
+      })),
+    );
+  } catch (e) { console.error("[accept-quote] group event log failed", e); }
+  try {
+    await service.from("audit_log").insert(
+      acceptIds.map((qid) => ({
+        user_id: null, action: "status_change", entity_type: "quote", entity_id: qid,
+        detail: { from: "sent", to: "accepted", action: "accept", via: "client_group_link", group_id: groupId, client_email: claims.recipient_email },
+      })),
+    );
+  } catch (e) { console.error("[accept-quote] group audit log failed", e); }
+
+  // Build group figures + by-company breakdown from ALL member quotes.
+  const itemsByQuote: Record<string, LineItem[]> = {};
+  for (const it of (itemsRaw ?? []) as Array<Record<string, unknown>>) {
+    const qid = it.quote_id as string;
+    (itemsByQuote[qid] ||= []).push(it as unknown as LineItem);
+  }
+  const companies: GroupCompany[] = quotes.map((q) => ({
+    name: q.relationship_group || q.quote_ref || "Company",
+    lineItems: itemsByQuote[q.id] || [],
+  }));
+  const monthlyGross = quotes.reduce((s, q) => s + (Number(q.monthly_gross) || 0), 0);
+  const annualTotal = quotes.reduce((s, q) => s + (Number(q.annual_total) || 0), 0);
+
+  // Confirmation emails — best-effort.
+  const clientResult = await sendResendEmail({
+    to: claims.recipient_email,
+    subject: `Your group quote has been accepted — ${groupName}`.trim(),
+    html: renderGroupClientConfirmation({ groupName, groupRef: groupName, companyCount: quotes.length, monthlyGross, annualTotal, acceptedAtIso: acceptedAt }),
+    replyTo: CLIENT_REPLY_TO,
+  });
+  if (!clientResult.ok) console.error("[accept-quote] group client email failed", clientResult.error);
+
+  const internalResult = await sendResendEmail({
+    to: INTERNAL_NOTIFICATION_RECIPIENTS,
+    subject: `Group quote accepted — ${groupName} (${quotes.length} companies)`.trim(),
+    html: renderGroupInternalNotification({ groupId, groupName, groupRef: groupName, companies, companyCount: quotes.length, monthlyGross, annualTotal, acceptedAtIso: acceptedAt, clientEmail: claims.recipient_email, clientIp: ip, userAgent: ua }),
+  });
+  if (!internalResult.ok) console.error("[accept-quote] group internal email failed", internalResult.error);
+
+  return jsonResponse({
+    ok: true, group_id: groupId, accepted_count: acceptIds.length,
+    accepted_at: acceptedAt, already_accepted: false,
+  });
+}
+
 // ---------- entry point -------------------------------------------------
 
 Deno.serve(async (req) => {
@@ -275,6 +505,11 @@ Deno.serve(async (req) => {
     }
 
     const service = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ── Group acceptance: one click accepts every member quote ──────────
+    if (claims.is_group) {
+      return await handleGroupAccept(service, claims, req);
+    }
 
     // Fetch quote + line items in parallel. Line items drive the breakdown
     // in the internal notification email (so Bobby can review the quote

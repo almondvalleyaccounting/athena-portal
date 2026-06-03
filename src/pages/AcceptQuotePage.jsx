@@ -77,12 +77,52 @@ function SummaryTable({ quote }) {
   );
 }
 
+// Group summary: one row per company + a group total. Full per-service
+// detail is in the attached PDF.
+function GroupSummaryTable({ group }) {
+  const companies = group.companies || [];
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8 }}>
+        {group.name} · {group.company_count} {group.company_count === 1 ? 'company' : 'companies'}
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+        <thead>
+          <tr style={{ background: '#f8fafc' }}>
+            <th style={{ textAlign: 'left', padding: '8px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Company</th>
+            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Monthly DD</th>
+            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Annual</th>
+          </tr>
+        </thead>
+        <tbody>
+          {companies.map((c, i) => (
+            <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
+              <td style={{ padding: '10px 12px', color: '#0f172a' }}>{c.relationship_group || c.quote_ref}</td>
+              <td style={{ padding: '10px 12px', color: '#0f172a', textAlign: 'right' }}>{formatGBP(c.monthly_gross)}</td>
+              <td style={{ padding: '10px 12px', color: '#0f172a', textAlign: 'right' }}>{formatGBP(c.annual_total)}</td>
+            </tr>
+          ))}
+          <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f8fafc' }}>
+            <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 700 }}>Group total (inc VAT)</td>
+            <td style={{ padding: '10px 12px', color: '#0f172a', textAlign: 'right', fontWeight: 700 }}>{formatGBP(group.monthly_gross)}</td>
+            <td style={{ padding: '10px 12px', color: '#0f172a', textAlign: 'right', fontWeight: 700 }}>{formatGBP(group.annual_total)}</td>
+          </tr>
+        </tbody>
+      </table>
+      {group.valid_until && (
+        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Valid until {formatDateGB(group.valid_until)}</div>
+      )}
+    </div>
+  );
+}
+
 export default function AcceptQuotePage() {
   const [params] = useSearchParams();
   const token = params.get('token');
 
   const [phase, setPhase] = useState('loading'); // loading|verify_error|ready|already_accepted|accepting|accepted|accept_error
   const [quote, setQuote] = useState(null);
+  const [group, setGroup] = useState(null); // set when the link is a group quote
   const [recipientEmail, setRecipientEmail] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [acceptedAt, setAcceptedAt] = useState(null);
@@ -114,13 +154,23 @@ export default function AcceptQuotePage() {
           setPhase('verify_error');
           return;
         }
-        setQuote(data.quote);
         setRecipientEmail(data.recipient_email);
-        if (data.already_accepted) {
-          setAcceptedAt(data.quote.accepted_at);
-          setPhase('already_accepted');
+        if (data.is_group) {
+          setGroup(data.group);
+          if (data.already_accepted) {
+            setAcceptedAt(data.group.accepted_at);
+            setPhase('already_accepted');
+          } else {
+            setPhase('ready');
+          }
         } else {
-          setPhase('ready');
+          setQuote(data.quote);
+          if (data.already_accepted) {
+            setAcceptedAt(data.quote.accepted_at);
+            setPhase('already_accepted');
+          } else {
+            setPhase('ready');
+          }
         }
       } catch (e) {
         setErrorMsg(e?.message || 'Something went wrong.');
@@ -161,6 +211,9 @@ export default function AcceptQuotePage() {
 
   // RENDER -----------------------------------------------------------
 
+  const renderSummary = () => (group ? <GroupSummaryTable group={group} /> : <SummaryTable quote={quote} />);
+  const companyCount = group?.company_count || 0;
+
   if (phase === 'loading') {
     return <Shell><Card><div style={{ textAlign: 'center', color: '#64748b', fontSize: 14 }}>Loading your quote…</div></Card></Shell>;
   }
@@ -180,11 +233,11 @@ export default function AcceptQuotePage() {
     return (
       <Shell>
         <Card>
-          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 500, color: '#0f172a', margin: 0 }}>Quote already accepted</h1>
+          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 500, color: '#0f172a', margin: 0 }}>{group ? 'Group quote already accepted' : 'Quote already accepted'}</h1>
           <p style={{ fontSize: 14, color: '#64748b', marginTop: 12, lineHeight: 1.6 }}>
-            This quote was accepted on {formatDateGB(acceptedAt) || 'a previous date'}. Our team has been notified and will be in touch with next steps.
+            {group ? 'This group quote' : 'This quote'} was accepted on {formatDateGB(acceptedAt) || 'a previous date'}. Our team has been notified and will be in touch with next steps.
           </p>
-          <SummaryTable quote={quote} />
+          {renderSummary()}
         </Card>
       </Shell>
     );
@@ -201,7 +254,7 @@ export default function AcceptQuotePage() {
               Your acceptance has been recorded on {formatDateGB(acceptedAt)}. We will be in touch shortly to finalise the engagement.
             </p>
           </div>
-          <SummaryTable quote={quote} />
+          {renderSummary()}
         </Card>
       </Shell>
     );
@@ -211,11 +264,13 @@ export default function AcceptQuotePage() {
   return (
     <Shell>
       <Card>
-        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', margin: 0 }}>Your quote</h1>
+        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', margin: 0 }}>{group ? 'Your group quote' : 'Your quote'}</h1>
         <p style={{ fontSize: 14, color: '#64748b', marginTop: 8, marginBottom: 0, lineHeight: 1.6 }}>
-          This is the summary of the quote sent to {recipientEmail ? <strong style={{ color: '#0f172a' }}>{recipientEmail}</strong> : 'you'}. The full PDF is attached to the email. Click accept to confirm and we will begin the engagement.
+          {group
+            ? <>This is the summary of the group quote sent to {recipientEmail ? <strong style={{ color: '#0f172a' }}>{recipientEmail}</strong> : 'you'}, covering {companyCount} {companyCount === 1 ? 'company' : 'companies'}. The full PDF is attached to the email. Accepting confirms the quote for every company in the group.</>
+            : <>This is the summary of the quote sent to {recipientEmail ? <strong style={{ color: '#0f172a' }}>{recipientEmail}</strong> : 'you'}. The full PDF is attached to the email. Click accept to confirm and we will begin the engagement.</>}
         </p>
-        <SummaryTable quote={quote} />
+        {renderSummary()}
         <div style={{ marginTop: 24 }}>
           <button
             onClick={handleAccept}
@@ -234,7 +289,11 @@ export default function AcceptQuotePage() {
               transition: 'all 0.2s ease',
             }}
           >
-            {phase === 'accepting' ? 'Recording your acceptance…' : 'Accept this quote'}
+            {phase === 'accepting'
+              ? 'Recording your acceptance…'
+              : group
+                ? `Accept for all ${companyCount} ${companyCount === 1 ? 'company' : 'companies'}`
+                : 'Accept this quote'}
           </button>
           {phase === 'accept_error' && (
             <div style={{ marginTop: 12, padding: 10, background: '#fef2f2', color: '#b91c1c', fontSize: 12, borderRadius: 8 }}>
