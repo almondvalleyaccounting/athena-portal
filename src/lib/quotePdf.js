@@ -340,9 +340,17 @@ export async function generateGroupQuotePdf(group, quotes, entities, discounts =
 
   function colX(i) { return margin + labelW + (i * colW) + colW; } // right edge of column i
 
-  // Truncate entity names to fit
-  function shortName(name, maxLen) {
-    return name.length > maxLen ? name.slice(0, maxLen - 1) + '\u2026' : name;
+  // Wrap an entity name to at most 2 lines for the column header, fitting
+  // the column width. If it would need a 3rd line, the 2nd is truncated
+  // with an ellipsis. Assumes the caller has set the header font first.
+  function wrapHeaderName(name, maxW) {
+    const lines = doc.splitTextToSize(String(name || ''), maxW);
+    if (lines.length <= 2) return lines;
+    let second = lines[1];
+    while (second.length > 0 && doc.getTextWidth(second + '\u2026') > maxW) {
+      second = second.slice(0, -1);
+    }
+    return [lines[0], second.trimEnd() + '\u2026'];
   }
 
   // ── Logo ──
@@ -382,18 +390,26 @@ export async function generateGroupQuotePdf(group, quotes, entities, discounts =
   }
   y += 8;
 
-  // ── Column headers ──
+  // ── Column headers (entity names wrap to max 2 lines) ──
+  const headH = 9;
   doc.setFillColor(...OCEAN_100);
-  doc.rect(margin, y, cw, 6, 'F');
+  doc.rect(margin, y, cw, headH, 'F');
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...OCEAN_700);
-  doc.text('Service', margin + 2, y + 4);
+  const hL1 = y + 3.5, hL2 = y + 7; // two baselines within the band
+  doc.text('Service', margin + 2, hL2);
   entities.forEach((e, i) => {
-    doc.text(shortName(e.name, 18), colX(i) - 1, y + 4, { align: 'right' });
+    const lines = wrapHeaderName(e.name, colW - 2);
+    if (lines.length <= 1) {
+      doc.text(lines[0] || '', colX(i) - 1, hL2, { align: 'right' });
+    } else {
+      doc.text(lines[0], colX(i) - 1, hL1, { align: 'right' });
+      doc.text(lines[1], colX(i) - 1, hL2, { align: 'right' });
+    }
   });
-  doc.text('Group Total', colX(entities.length) - 1, y + 4, { align: 'right' });
-  y += 8;
+  doc.text('Group Total', colX(entities.length) - 1, hL2, { align: 'right' });
+  y += headH + 2;
 
   // Header line
   doc.setDrawColor(...OCEAN_700);
