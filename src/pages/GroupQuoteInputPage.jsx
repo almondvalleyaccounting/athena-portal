@@ -322,6 +322,47 @@ export default function GroupQuoteInputPage() {
     setOverrides(prev => ({ ...prev, [entityId]: { ...prev[entityId], [serviceId]: value === '' ? null : (parseFloat(value) || 0) } }));
   };
 
+  // Two-way edit: when a value cell is changed, push the figure back into
+  // the underlying £-rate driver (keeping the volume) so drivers and totals
+  // stay consistent and reconcile to the saved quote. Services with a
+  // volume×rate shape back-calc the rate; payroll adjusts its flat fee;
+  // services with no driver representation fall back to a manual override.
+  const VALUE_TO_DRIVER = {
+    directors_tax_return: { rate: 'director_base', vol: (d) => Number(d.num_directors) || 0 },
+    bookkeeping_vat: { rate: 'bk_rate', vol: (d) => (Number(d.bk_hours) || 0) * 12 },
+    vat_returns: { rate: 'vat_per_return', vol: (d) => Number(d.vat_returns_pa) || 0 },
+    management_accounts: { rate: 'ma_rate', vol: (d) => Number(d.ma_sets) || 0 },
+    review_meetings: { rate: 'rm_rate', vol: (d) => Number(d.rm_count) || 0 },
+    fractional_cfo: { rate: 'cfo_day_rate', vol: (d) => Number(d.cfo_days) || 0 },
+  };
+
+  const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+  const setValueCell = (entityId, serviceId, rawText) => {
+    if (rawText === '') { setOverride(entityId, serviceId, ''); return; } // clear → back to calc
+    const num = parseFloat(rawText);
+    if (!Number.isFinite(num)) return;
+    const d = drivers[entityId] || {};
+
+    // payroll: keep employee costs, absorb the rest into the flat fee.
+    if (serviceId === 'payroll') {
+      const mEe = Number(d.monthly_employees) || 0, mRate = Number(d.monthly_ee_rate) || 0;
+      const wEe = Number(d.weekly_employees) || 0, wRate = Number(d.weekly_ee_rate) || 0;
+      const flat = round2(num / 12 - (mEe * mRate + wEe * wRate * 4.33));
+      setDriver(entityId, 'payroll_flat', flat); // setDriver also clears the override
+      return;
+    }
+
+    const map = VALUE_TO_DRIVER[serviceId];
+    const vol = map ? map.vol(d) : 0;
+    if (map && vol > 0) {
+      setDriver(entityId, map.rate, round2(num / vol)); // clears override, drives the total
+    } else {
+      // No volume to divide by (or no driver) — store as a manual override.
+      setOverride(entityId, serviceId, rawText);
+    }
+  };
+
   // Computed values per entity per service
   const computed = useMemo(() => {
     const result = {};
@@ -330,7 +371,6 @@ export default function GroupQuoteInputPage() {
       SERVICE_ROWS.forEach(svc => {
         const calc = calcService(svc.id, drivers[e.id] || {}, defaults);
         const override = overrides[e.id]?.[svc.id];
-        const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
         result[e.id][svc.id] = {
           value: round2(override != null ? override : calc.value),
           calc: override != null ? `Manual override (calculated: ${fmt(calc.value)})` : calc.calc,
@@ -577,7 +617,7 @@ export default function GroupQuoteInputPage() {
                       <Tooltip text={tip}>
                         <input
                           type="text" inputMode="decimal" value={display}
-                          onChange={ev => { setFocusedText(ev.target.value); setOverride(e.id, svc.id, ev.target.value); }}
+                          onChange={ev => { setFocusedText(ev.target.value); setValueCell(e.id, svc.id, ev.target.value); }}
                           onFocus={() => { setFocusedCell(cellKey); setFocusedText(cell.value ? String(cell.value) : ''); }}
                           onBlur={() => setFocusedCell(null)}
                           placeholder="0.00"
