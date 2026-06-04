@@ -7,6 +7,7 @@ import { generateQuotePdf, generateGroupQuotePdf, generateGroupQuotePdfBase64, b
 import ConsolidationTable from '../components/ConsolidationTable';
 import BillingComparisonPanel from '../components/BillingComparisonPanel';
 import SendQuoteModal from '../components/SendQuoteModal';
+import GroupCommitModal from '../components/GroupCommitModal';
 import { useAuth } from '../shell/AppShell';
 import { useFeeEngine } from '../contexts/FeeEngineContext';
 
@@ -34,6 +35,7 @@ export default function GroupDetailPage() {
   const [transitioning, setTransitioning] = useState(false);
   const [error, setError] = useState('');
   const [showSendModal, setShowSendModal] = useState(false);
+  const [showCommitModal, setShowCommitModal] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [editName, setEditName] = useState('');
   const [savingName, setSavingName] = useState(false);
@@ -326,6 +328,11 @@ export default function GroupDetailPage() {
           </Btn>
         ))}
         <Btn onClick={() => setShowSendModal(true)} variant="secondary" className="text-xs py-1 px-3">Send to Client</Btn>
+        {quotes.filter(q => q.status === 'accepted').length > 0 && (
+          <Btn onClick={() => setShowCommitModal(true)} variant="primary" className="text-xs py-1 px-3">
+            Commit &amp; Push to QBO ({quotes.filter(q => q.status === 'accepted').length})
+          </Btn>
+        )}
         <Btn onClick={handlePreview} variant="secondary" className="text-xs py-1 px-3">Preview Quote</Btn>
         <Btn onClick={handleExportPdf} variant="ghost" className="text-xs py-1 px-3">Export PDF</Btn>
         <span className="mx-1 text-gray-300">|</span>
@@ -433,6 +440,17 @@ export default function GroupDetailPage() {
           pdfGenerator={() => generateGroupQuotePdfBase64(group, quotes, groupEntities, discounts)}
           onSent={handleGroupSent}
           onClose={() => setShowSendModal(false)}
+        />
+      )}
+
+      {/* Batch commit + QBO push for accepted members */}
+      {showCommitModal && (
+        <GroupCommitModal
+          group={group}
+          quotes={quotes}
+          profile={profile}
+          onClose={() => setShowCommitModal(false)}
+          onDone={loadGroup}
         />
       )}
 
