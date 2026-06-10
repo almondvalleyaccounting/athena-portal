@@ -25,6 +25,10 @@ export async function pushToQbo(billingId, initiatedBy, opts = {}) {
   const body = { billing_id: billingId, initiated_by: initiatedBy };
   if (opts.mode) body.mode = opts.mode;
   if (opts.quoteId) body.quote_id = opts.quoteId;
+  // For the review (dry-run) step before a commit is written, the recurring
+  // lines are passed inline so qbo-push can build a plan without a saved
+  // live_billing row.
+  if (opts.services) body.services = opts.services;
   if (opts.alsoPushSetup) body.also_push_setup = true;
   if (opts.recurringStartDate) body.recurring_start_date = opts.recurringStartDate;
   if (opts.sendSetupNow) body.send_setup_now = true;

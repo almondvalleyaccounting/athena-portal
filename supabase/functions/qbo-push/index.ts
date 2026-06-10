@@ -81,9 +81,17 @@ Deno.serve(async (req) => {
 
     let recurringLines: ServiceLine[] = [];
     if (mode === "flat_invoice" || mode === "recurring_template") {
-      if (!billing) return jsonResponse({ success: false, error: `${mode} requires billing_id` }, 400);
-      const services = (billing.services as ServiceLine[]) || [];
-      recurringLines = services.map((s) => ({ service_id: s.service_id, description: s.description, monthly_amount: Number(s.monthly_amount) || 0, annual_amount: Number(s.annual_amount) || 0 }));
+      if (billing) {
+        const services = (billing.services as ServiceLine[]) || [];
+        recurringLines = services.map((s) => ({ service_id: s.service_id, description: s.description, monthly_amount: Number(s.monthly_amount) || 0, annual_amount: Number(s.annual_amount) || 0 }));
+      } else if (dryRun && Array.isArray(body.services)) {
+        // Review step before the commit is written: the recurring lines come
+        // inline from the modal so we can build the plan without a saved
+        // live_billing row. Nothing is persisted until the user commits.
+        recurringLines = (body.services as ServiceLine[]).map((s) => ({ service_id: s.service_id, description: s.description, monthly_amount: Number(s.monthly_amount) || 0, annual_amount: Number(s.annual_amount) || 0 }));
+      } else {
+        return jsonResponse({ success: false, error: `${mode} requires billing_id` }, 400);
+      }
     }
 
     const entityName = (entity?.name as string) || (entity?.qbo_customer_name as string) || "Unknown Client";
@@ -169,6 +177,21 @@ Deno.serve(async (req) => {
         };
       }
 
+      // Address prefill for the review step. Use the entity's own billing_*
+      // first; if it has none, fall back to the existing QBO customer's
+      // BillAddr, then a group member's address. users.address is a single
+      // freeform field (no structured postcode) so it can't fill the form —
+      // it's surfaced separately as a read-only hint.
+      let prefillAddr = clientAddr;
+      if (!prefillAddr) {
+        prefillAddr = (existingCustomerId ? await fetchQboCustomerBillAddr(existingCustomerId) : null)
+          || await findGroupMemberAddr(sb, entity);
+      }
+      const addrHint = prefillAddr ? null : await findPortalUserAddrHint(sb, entity);
+      const dryMissing: string[] = [];
+      if (!clientEmail) dryMissing.push("client email");
+      if (!prefillAddr) dryMissing.push("client address (line 1 + postcode)");
+
       return jsonResponse({
         success: true,
         dry_run: true,
@@ -178,9 +201,10 @@ Deno.serve(async (req) => {
           contact: {
             email: clientEmail,
             has_email: !!clientEmail,
-            address: clientAddr,
-            has_address: !!clientAddr,
-            missing: missingContact,
+            address: prefillAddr,
+            has_address: !!prefillAddr,
+            address_hint: addrHint,
+            missing: dryMissing,
           },
           missing_mappings: missingMappings,
           setup_invoice: setupPlan,
@@ -201,6 +225,11 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: `Mandatory client details missing: ${missingContact.join(", ")}. Add them before committing to QuickBooks.`, missing_contact: missingContact }, 422);
     }
 
+    // Resolve (or create) the QBO Term matching this due-date offset so the
+    // documents carry a Terms value (e.g. "Net 14"), not just a bare due
+    // date. Non-fatal: if it can't be resolved we still set DueDate.
+    const salesTermId = await ensureSalesTermId(dueDateOffsetDays);
+
     let qboCustomerId = (entity?.qbo_customer_id as string) || null;
     if (!qboCustomerId) qboCustomerId = await ensureQboCustomer(sb, entity, entityName);
     // Make sure email + address are on the customer record itself, even when
@@ -212,7 +241,7 @@ Deno.serve(async (req) => {
     let setupSent = false;
     if (hasSetup) {
       const setupLineItems = setupLines.map((l) => buildLineItem(l, itemMap, l.amount ?? 0, defaultTaxCodeId));
-      const inv = await createQboInvoice(qboCustomerId, setupLineItems, `Setup — ${entityName}`, dueDateOffsetDays, clientEmail, clientAddr);
+      const inv = await createQboInvoice(qboCustomerId, setupLineItems, `Setup — ${entityName}`, dueDateOffsetDays, clientEmail, clientAddr, salesTermId);
       setupInvoiceId = inv.invoiceId;
       if (sendSetupNow && clientEmail) {
         await sendQboInvoice(setupInvoiceId, clientEmail);
@@ -234,10 +263,10 @@ Deno.serve(async (req) => {
       const existingForCustomer = await findRecurringTemplatesForCustomer(qboCustomerId);
       const target = pickTemplateToOverwrite(existingForCustomer, recurringTemplateName);
       if (target) {
-        recurringTxnId = await updateQboRecurringInvoice({ id: target.id, syncToken: target.syncToken, customerId: qboCustomerId, lineItems, templateName: recurringTemplateName, startDate, dueDateOffsetDays, email: clientEmail, billAddr: clientAddr });
+        recurringTxnId = await updateQboRecurringInvoice({ id: target.id, syncToken: target.syncToken, customerId: qboCustomerId, lineItems, templateName: recurringTemplateName, startDate, dueDateOffsetDays, email: clientEmail, billAddr: clientAddr, salesTermId });
         recurringAction = "overwrite";
       } else {
-        recurringTxnId = await createQboRecurringInvoice({ customerId: qboCustomerId, lineItems, templateName: recurringTemplateName, startDate, dueDateOffsetDays, email: clientEmail, billAddr: clientAddr });
+        recurringTxnId = await createQboRecurringInvoice({ customerId: qboCustomerId, lineItems, templateName: recurringTemplateName, startDate, dueDateOffsetDays, email: clientEmail, billAddr: clientAddr, salesTermId });
         recurringAction = "create";
       }
       await sb.from("live_billing").update({ qbo_recurring_txn_id: recurringTxnId, qbo_customer_id: qboCustomerId, qbo_sync_status: "synced", last_synced_qbo: new Date().toISOString() }).eq("id", (billing as { id: string }).id);
@@ -248,7 +277,7 @@ Deno.serve(async (req) => {
       const lineItems = recurringLines.map((l) => buildLineItem(l, itemMap, l.monthly_amount ?? 0, defaultTaxCodeId));
       const existingId = (billing as { qbo_invoice_id?: string }).qbo_invoice_id;
       if (existingId) { await updateQboInvoice(existingId, qboCustomerId, lineItems); flatInvoiceId = existingId; }
-      else { const inv = await createQboInvoice(qboCustomerId, lineItems, entityName, dueDateOffsetDays, clientEmail, clientAddr); flatInvoiceId = inv.invoiceId; }
+      else { const inv = await createQboInvoice(qboCustomerId, lineItems, entityName, dueDateOffsetDays, clientEmail, clientAddr, salesTermId); flatInvoiceId = inv.invoiceId; }
       await sb.from("live_billing").update({ qbo_invoice_id: flatInvoiceId, qbo_customer_id: qboCustomerId, qbo_sync_status: "synced", last_synced_qbo: new Date().toISOString() }).eq("id", (billing as { id: string }).id);
       if (quote) {
         await sb.from("quotes").update({ qbo_push_mode: "flat_invoice", qbo_pushed_at: new Date().toISOString(), qbo_pushed_by: initiatedBy }).eq("id", (quote as { id: string }).id);
@@ -295,6 +324,98 @@ function buildBillAddr(entity: Record<string, unknown> | null): Record<string, u
   if (city) addr.City = city;
   addr.PostalCode = postcode;
   return addr;
+}
+
+// Resolve (or create) a QBO sales Term whose net days match the due-date
+// offset, so invoices/recurring templates show a Terms value (e.g. "Net 14")
+// rather than just a bare DueDate — QBO keeps Terms as a separate entity.
+// Returns null (non-fatal) if it can't be resolved; the caller still sets
+// DueDate.
+async function ensureSalesTermId(dueDays: number): Promise<string | null> {
+  if (!Number.isFinite(dueDays) || dueDays < 0) return null;
+  try {
+    const result = (await qboQuery(`SELECT * FROM Term`)) as Record<string, unknown>;
+    const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+    const terms = (qr.Term as Array<Record<string, unknown>>) || [];
+    // Prefer an active standard (net-days) term with the same DueDays.
+    const byDays = terms.find((t) => Number(t.DueDays) === dueDays && (t.Type === undefined || t.Type === "STANDARD") && t.Active !== false);
+    if (byDays) return String(byDays.Id);
+    const name = dueDays === 0 ? "Due on receipt" : `Net ${dueDays}`;
+    // Reuse a same-named term before creating (QBO term names are unique).
+    const byName = terms.find((t) => String(t.Name) === name);
+    if (byName) return String(byName.Id);
+    const resp = await qboFetch("term", { method: "POST", body: JSON.stringify({ Name: name, DueDays: dueDays }) });
+    if (!resp.ok) {
+      console.error(`Failed to create QBO term "${name}": ${resp.status} ${await resp.text()}`);
+      return null;
+    }
+    const created = await resp.json();
+    return String(created.Term.Id);
+  } catch (e) {
+    console.error("ensureSalesTermId failed:", (e as Error).message);
+    return null;
+  }
+}
+
+// Read an existing QBO customer's BillAddr and map it to our form shape.
+// Returns null unless it has at least Line1 + PostalCode (matching
+// buildBillAddr's "half address is worse than none" rule).
+async function fetchQboCustomerBillAddr(customerId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const resp = await qboFetch(`customer/${customerId}`);
+    if (!resp.ok) return null;
+    const cust = ((await resp.json()) as { Customer: Record<string, unknown> }).Customer;
+    const a = (cust?.BillAddr as Record<string, unknown>) || null;
+    if (!a) return null;
+    const line1 = String(a.Line1 ?? "").trim();
+    const postcode = String(a.PostalCode ?? "").trim();
+    if (!line1 || !postcode) return null;
+    const out: Record<string, unknown> = { Line1: line1 };
+    const line2 = String(a.Line2 ?? "").trim(); if (line2) out.Line2 = line2;
+    const city = String(a.City ?? "").trim(); if (city) out.City = city;
+    out.PostalCode = postcode;
+    return out;
+  } catch { return null; }
+}
+
+// Borrow a usable billing address from another entity in the same billing
+// group — the address is often shared across a group's members.
+async function findGroupMemberAddr(sb: ReturnType<typeof getServiceClient>, entity: Record<string, unknown> | null): Promise<Record<string, unknown> | null> {
+  const entId = entity?.id as string | undefined;
+  if (!entId) return null;
+  try {
+    const { data: mine } = await sb.from("billing_group_members").select("group_id").eq("entity_id", entId);
+    const groupIds = (mine || []).map((m: Record<string, unknown>) => m.group_id).filter(Boolean);
+    if (groupIds.length === 0) return null;
+    const { data: members } = await sb.from("billing_group_members").select("entity_id").in("group_id", groupIds);
+    const ids = (members || []).map((m: Record<string, unknown>) => m.entity_id).filter((id) => id && id !== entId);
+    if (ids.length === 0) return null;
+    const { data: ents } = await sb.from("entities").select("billing_line1, billing_line2, billing_city, billing_postcode").in("id", ids);
+    for (const e of ents || []) {
+      const a = buildBillAddr(e as Record<string, unknown>);
+      if (a) return a;
+    }
+    return null;
+  } catch { return null; }
+}
+
+// users.address is a single freeform text field (client-portal user, reached
+// via entity_memberships) — it has no structured postcode so it can't fill
+// the QBO address form. Surface it as a read-only hint for staff to copy.
+async function findPortalUserAddrHint(sb: ReturnType<typeof getServiceClient>, entity: Record<string, unknown> | null): Promise<string | null> {
+  const entId = entity?.id as string | undefined;
+  if (!entId) return null;
+  try {
+    const { data: mems } = await sb.from("entity_memberships").select("user_id").eq("entity_id", entId).limit(10);
+    const ids = (mems || []).map((m: Record<string, unknown>) => m.user_id).filter(Boolean);
+    if (ids.length === 0) return null;
+    const { data: us } = await sb.from("users").select("address").in("id", ids).not("address", "is", null);
+    for (const u of us || []) {
+      const a = String((u as Record<string, unknown>).address ?? "").trim();
+      if (a) return a;
+    }
+    return null;
+  } catch { return null; }
 }
 
 // Sparse-update a QBO customer so the email + billing address are present
@@ -398,10 +519,11 @@ async function ensureQboCustomer(sb: ReturnType<typeof getServiceClient>, entity
   return qboId;
 }
 
-async function createQboInvoice(customerId: string, lineItems: Array<Record<string, unknown>>, clientName: string, dueDateOffsetDays: number, email: string | null, billAddr: Record<string, unknown> | null = null): Promise<{ invoiceId: string }> {
+async function createQboInvoice(customerId: string, lineItems: Array<Record<string, unknown>>, clientName: string, dueDateOffsetDays: number, email: string | null, billAddr: Record<string, unknown> | null = null, salesTermId: string | null = null): Promise<{ invoiceId: string }> {
   const txnDate = new Date().toISOString().slice(0, 10);
   const dueDate = addDays(txnDate, dueDateOffsetDays);
   const payload: Record<string, unknown> = { CustomerRef: { value: customerId }, Line: lineItems, TxnDate: txnDate, DueDate: dueDate, PrivateNote: `Created from Athena Portal for ${clientName}` };
+  if (salesTermId) payload.SalesTermRef = { value: salesTermId };
   if (email) payload.BillEmail = { Address: email };
   if (billAddr) payload.BillAddr = billAddr;
   const resp = await qboFetch("invoice", { method: "POST", body: JSON.stringify(payload) });
@@ -423,10 +545,11 @@ async function updateQboInvoice(invoiceId: string, customerId: string, lineItems
   if (!resp.ok) throw new Error(`Failed to update QBO invoice: ${resp.status} ${await resp.text()}`);
 }
 
-function buildRecurringPayload(opts: { customerId: string; lineItems: Array<Record<string, unknown>>; templateName: string; startDate: string; dueDateOffsetDays: number; email?: string | null; billAddr?: Record<string, unknown> | null; }): Record<string, unknown> {
+function buildRecurringPayload(opts: { customerId: string; lineItems: Array<Record<string, unknown>>; templateName: string; startDate: string; dueDateOffsetDays: number; email?: string | null; billAddr?: Record<string, unknown> | null; salesTermId?: string | null; }): Record<string, unknown> {
   const day = parseInt(opts.startDate.slice(8, 10), 10) || 1;
   const dueDate = addDays(opts.startDate, opts.dueDateOffsetDays);
   const invoice: Record<string, unknown> = { RecurringInfo: { Name: opts.templateName.substring(0, 50), Active: true, RecurType: "Automated", ScheduleInfo: { IntervalType: "Monthly", NumInterval: 1, DayOfMonth: day, StartDate: opts.startDate } }, CustomerRef: { value: opts.customerId }, Line: opts.lineItems, TxnDate: opts.startDate, DueDate: dueDate };
+  if (opts.salesTermId) invoice.SalesTermRef = { value: opts.salesTermId };
   // Email + address on the template. EmailStatus "NeedToSend" tells QBO to
   // auto-email each invoice it generates from this automated template.
   if (opts.email) {
@@ -437,7 +560,7 @@ function buildRecurringPayload(opts: { customerId: string; lineItems: Array<Reco
   return { Invoice: invoice };
 }
 
-async function createQboRecurringInvoice(opts: { customerId: string; lineItems: Array<Record<string, unknown>>; templateName: string; startDate: string; dueDateOffsetDays: number; email?: string | null; billAddr?: Record<string, unknown> | null; }): Promise<string> {
+async function createQboRecurringInvoice(opts: { customerId: string; lineItems: Array<Record<string, unknown>>; templateName: string; startDate: string; dueDateOffsetDays: number; email?: string | null; billAddr?: Record<string, unknown> | null; salesTermId?: string | null; }): Promise<string> {
   const payload = buildRecurringPayload(opts);
   const resp = await qboFetch("recurringtransaction", { method: "POST", body: JSON.stringify(payload) });
   if (!resp.ok) throw new Error(`Failed to create QBO recurring transaction: ${resp.status} ${await resp.text()}`);
@@ -447,7 +570,7 @@ async function createQboRecurringInvoice(opts: { customerId: string; lineItems: 
   return String(inv.Id);
 }
 
-async function updateQboRecurringInvoice(opts: { id: string; syncToken: string; customerId: string; lineItems: Array<Record<string, unknown>>; templateName: string; startDate: string; dueDateOffsetDays: number; email?: string | null; billAddr?: Record<string, unknown> | null; }): Promise<string> {
+async function updateQboRecurringInvoice(opts: { id: string; syncToken: string; customerId: string; lineItems: Array<Record<string, unknown>>; templateName: string; startDate: string; dueDateOffsetDays: number; email?: string | null; billAddr?: Record<string, unknown> | null; salesTermId?: string | null; }): Promise<string> {
   const base = buildRecurringPayload(opts) as { Invoice: Record<string, unknown> };
   base.Invoice.Id = opts.id;
   base.Invoice.SyncToken = opts.syncToken;

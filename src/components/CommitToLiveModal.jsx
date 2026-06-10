@@ -14,11 +14,12 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   // Per-line allocations — keyed by line index, { fee_earner_id, fee_earner_manager_id }.
   const [allocations, setAllocations] = useState({});
 
-  // Two-phase QBO push: after the DB commit we fetch a dry-run plan and show
-  // a confirmation step before any QBO writes happen.
+  // Review-first flow: the form gathers services/allocations, then (for a QBO
+  // push) we fetch a read-only dry-run plan and show a review step where the
+  // client details are verified. Nothing is written until the final Commit
+  // button on that step — backing out leaves the quote untouched.
   const [phase, setPhase] = useState('form'); // 'form' | 'confirm'
   const [plan, setPlan] = useState(null);
-  const [committedBillingId, setCommittedBillingId] = useState(null);
   const [sendSetupNow, setSendSetupNow] = useState(false);
   const [recurringStart, setRecurringStart] = useState('');
   // When there's no client email on file: emails from other group members to
@@ -91,18 +92,23 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
 
   const unallocatedCount = recurring.filter((_, idx) => !allocations[idx]?.fee_earner_id).length;
 
-  const handleCommit = async () => {
-    setCommitting(true);
-    setError('');
+  // Build the services JSONB from recurring line items. Shared by the commit
+  // and the inline review (dry-run) plan.
+  const buildServices = () => recurring.map((l) => ({
+    service_id: l.service_id,
+    description: l.description,
+    annual_amount: Number(l.annual_amount) || 0,
+    monthly_amount: Number(l.monthly_amount) || 0,
+    detail: l.detail || null,
+  }));
+
+  // Persist the commit: live_billing + entity_fees + allocations + quote
+  // status + audit log. No QBO writes. Returns the new live_billing row.
+  // Called only from a terminal action — never optimistically.
+  const persistCommit = async () => {
     try {
       // 1. Build services JSONB from recurring line items
-      const services = recurring.map((l) => ({
-        service_id: l.service_id,
-        description: l.description,
-        annual_amount: Number(l.annual_amount) || 0,
-        monthly_amount: Number(l.monthly_amount) || 0,
-        detail: l.detail || null,
-      }));
+      const services = buildServices();
 
       // 2. Insert into live_billing
       const { data: billingRow, error: billingErr } = await supabase
@@ -188,43 +194,55 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         },
       });
 
-      // 6. QBO action: push (with confirmation) or CSV.
-      //    For a push we fetch a read-only plan and move to the confirm
-      //    phase — nothing is written to QBO until the user confirms.
-      if (qboAction === 'push' && billingRow?.id) {
-        try {
-          const hasSetupLines = (lineItems || []).some((l) => !l.is_recurring);
-          const planResult = await pushToQbo(billingRow.id, profile.id, {
-            mode: 'recurring_template',
-            quoteId: quote.id,
-            alsoPushSetup: hasSetupLines,
-            dryRun: true,
-          });
-          if (planResult?.success) {
-            setPlan(planResult.plan);
-            setAddr(addrFromPlan(planResult.plan));
-            setCommittedBillingId(billingRow.id);
-            setRecurringStart(planResult.plan?.recurring?.next_run_date || '');
-            if (planResult.plan?.due_date_offset_days != null) setDueDays(planResult.plan.due_date_offset_days);
-            // No email on file + part of a group → offer other group emails.
-            if (!planResult.plan?.contact?.has_email && quote.group_id) {
-              await loadGroupEmails();
-            }
-            setPhase('confirm');
-            setCommitting(false);
-            return; // wait for the user to confirm the push
+      return billingRow;
+    } catch (e) {
+      // Re-throw so the calling terminal action surfaces the failure. These
+      // writes aren't wrapped in a transaction (pre-existing), so a failure
+      // partway through can leave a partial commit — same as before.
+      throw new Error(e.message || 'Failed to commit to live billing');
+    }
+  };
+
+  // Form primary action.
+  //  - push: build a read-only plan from the inline services (NO writes) and
+  //    move to the review step. The commit is written only by the final
+  //    Commit button there.
+  //  - csv / none: there is no review step, so this single click is the
+  //    terminal commit.
+  const handleFormPrimary = async () => {
+    setCommitting(true);
+    setError('');
+    try {
+      if (qboAction === 'push') {
+        const hasSetupLines = (lineItems || []).some((l) => !l.is_recurring);
+        const planResult = await pushToQbo(null, profile.id, {
+          mode: 'recurring_template',
+          quoteId: quote.id,
+          alsoPushSetup: hasSetupLines,
+          dryRun: true,
+          services: buildServices(),
+        });
+        if (planResult?.success) {
+          setPlan(planResult.plan);
+          setAddr(addrFromPlan(planResult.plan));
+          setRecurringStart(planResult.plan?.recurring?.next_run_date || '');
+          if (planResult.plan?.due_date_offset_days != null) setDueDays(planResult.plan.due_date_offset_days);
+          // No email on file + part of a group → offer other group emails.
+          if (!planResult.plan?.contact?.has_email && quote.group_id) {
+            await loadGroupEmails();
           }
-          setError(`Committed, but couldn't build the QBO plan: ${planResult?.error || 'Unknown error'}. You can push from the Billing page later.`);
+          setPhase('confirm');
           setCommitting(false);
-          onCommitted();
-          return;
-        } catch (planErr) {
-          setError(`Committed, but couldn't build the QBO plan: ${planErr.message}. You can push from the Billing page later.`);
-          setCommitting(false);
-          onCommitted();
-          return;
+          return; // review step is where the commit actually happens
         }
-      } else if (qboAction === 'csv') {
+        setError(`Couldn't build the QBO plan: ${planResult?.error || 'Unknown error'}.`);
+        setCommitting(false);
+        return;
+      }
+
+      // csv / none: commit now (single terminal action, no review step).
+      await persistCommit();
+      if (qboAction === 'csv') {
         const qboItems = recurring.map((l) => ({
           service_id: l.service_id,
           description: l.description,
@@ -234,12 +252,12 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         }));
         exportQboCsv(clientName, qboItems, true);
       }
-
+      setCommitting(false);
       onCommitted();
     } catch (e) {
       setError(e.message || 'Failed to commit to live billing');
+      setCommitting(false);
     }
-    setCommitting(false);
   };
 
   // Load billing/prospect emails from other entities in this quote's group,
@@ -285,29 +303,34 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   const addrReady = !!(addr.line1.trim() && addr.postcode.trim());
   const contactReady = !!resolvedEmail && addrReady;
 
-  // Confirm phase: execute the real QBO push with the user's choices.
-  const handleConfirmPush = async () => {
+  // Save the verified contact details onto the entity. The push reads the
+  // address/email off the entity, and we keep them on file for next time.
+  const persistContactDetails = async () => {
+    if (chosenEmail && chosenEmailIsNew && entityId) {
+      await supabase.from('entities').update({ billing_email: chosenEmail }).eq('id', entityId);
+    }
+    if (entityId && addrReady) {
+      await supabase.from('entities').update({
+        billing_line1: addr.line1.trim(),
+        billing_line2: addr.line2.trim() || null,
+        billing_city: addr.city.trim() || null,
+        billing_postcode: addr.postcode.trim(),
+      }).eq('id', entityId);
+    }
+  };
+
+  // Review step — the final, terminal Commit. Saves the verified contact
+  // details, writes the commit, then pushes to QBO. This is the ONLY place a
+  // committed record is created on the push path.
+  const handleConfirmCommit = async () => {
     setCommitting(true);
     setError('');
     setPushStatus('pushing');
     try {
-      // Persist a newly-entered email as this client's billing email so it's
-      // on file for next time (group-picked emails are used one-off only).
-      if (chosenEmail && chosenEmailIsNew && entityId) {
-        await supabase.from('entities').update({ billing_email: chosenEmail }).eq('id', entityId);
-      }
-      // Persist the (mandatory) billing address to the entity so the push —
-      // which reads the address off the entity — picks it up.
-      if (entityId && addrReady) {
-        await supabase.from('entities').update({
-          billing_line1: addr.line1.trim(),
-          billing_line2: addr.line2.trim() || null,
-          billing_city: addr.city.trim() || null,
-          billing_postcode: addr.postcode.trim(),
-        }).eq('id', entityId);
-      }
+      await persistContactDetails();
+      const billingRow = await persistCommit();
       const hasSetupLines = (lineItems || []).some((l) => !l.is_recurring);
-      const result = await pushToQbo(committedBillingId, profile.id, {
+      const result = await pushToQbo(billingRow.id, profile.id, {
         mode: 'recurring_template',
         quoteId: quote.id,
         alsoPushSetup: hasSetupLines,
@@ -321,34 +344,27 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         onCommitted();
       } else {
         setPushStatus('push_error');
-        setError(`QBO push failed: ${result?.error || 'Unknown error'}. The commit is saved — you can push from the Billing page later.`);
+        setError(`Committed to live billing, but the QBO push failed: ${result?.error || 'Unknown error'}. You can push from the Billing page later.`);
       }
     } catch (pushErr) {
       setPushStatus('push_error');
-      setError(`QBO push failed: ${pushErr.message}. The commit is saved — you can push from the Billing page later.`);
+      setError(`${pushErr.message}. If the commit was saved you can push from the Billing page later.`);
     }
     setCommitting(false);
   };
 
-  // Commit is already saved; just close without pushing to QBO.
-  const handleSkipPush = () => onCommitted();
-
-  // Cancel out of the whole process: undo the commit we just made — remove
-  // the live_billing record and put the quote back to Accepted — then close.
-  const handleCancelCommit = async () => {
+  // Review step — commit without pushing to QBO. Still a terminal commit, so
+  // it writes the live billing record; it just skips the QBO push.
+  const handleCommitWithoutPush = async () => {
     setCommitting(true);
     setError('');
     try {
-      if (committedBillingId) {
-        await supabase.from('live_billing').delete().eq('id', committedBillingId);
-      }
-      await supabase
-        .from('quotes')
-        .update({ status: 'accepted', committed_at: null, committed_by: null })
-        .eq('id', quote.id);
-      onCommitted(); // refresh the parent so it shows Accepted again
+      await persistContactDetails();
+      await persistCommit();
+      setCommitting(false);
+      onCommitted();
     } catch (e) {
-      setError(e.message || 'Failed to cancel');
+      setError(e.message || 'Failed to commit to live billing');
       setCommitting(false);
     }
   };
@@ -359,11 +375,12 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
     setError('');
     try {
       const hasSetupLines = (lineItems || []).some((l) => !l.is_recurring);
-      const planResult = await pushToQbo(committedBillingId, profile.id, {
+      const planResult = await pushToQbo(null, profile.id, {
         mode: 'recurring_template',
         quoteId: quote.id,
         alsoPushSetup: hasSetupLines,
         dryRun: true,
+        services: buildServices(),
       });
       if (planResult?.success) {
         setPlan(planResult.plan);
@@ -387,9 +404,9 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
         <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-auto">
           <div className="p-4 border-b border-gray-200">
-            <h2 className="text-lg font-bold text-ocean-700">Confirm QuickBooks push</h2>
+            <h2 className="text-lg font-bold text-ocean-700">Review &amp; commit</h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              The live billing record is saved. Review what will be sent to QBO, then confirm.
+              Nothing has been saved yet. Verify the client details below — the Commit button is the final step.
             </p>
           </div>
 
@@ -456,6 +473,11 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
                   </div>
                 </div>
                 <p className="text-gray-400 mt-0.5">Saved to the client record and used on the invoice.</p>
+                {plan?.contact?.address_hint && !addrReady && (
+                  <p className="text-gray-500 mt-1">
+                    On file in the client portal: <span className="text-gray-700">{plan.contact.address_hint}</span>
+                  </p>
+                )}
               </div>
 
               {!contactReady && (
@@ -575,15 +597,15 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
           </div>
 
           <div className="p-4 border-t border-gray-200 flex justify-between gap-2">
-            <Btn onClick={handleCancelCommit} variant="ghost" disabled={committing} className="text-red-600 hover:bg-red-50">
+            <Btn onClick={onClose} variant="ghost" disabled={committing} className="text-red-600 hover:bg-red-50">
               Cancel
             </Btn>
             <div className="flex gap-2">
-              <Btn onClick={handleSkipPush} variant="ghost" disabled={committing}>
-                Skip QBO for now
+              <Btn onClick={handleCommitWithoutPush} variant="ghost" disabled={committing}>
+                Commit without QBO
               </Btn>
-              <Btn onClick={handleConfirmPush} variant="primary" disabled={committing || missing.length > 0 || !contactReady}>
-                {committing ? 'Pushing...' : 'Confirm & Push'}
+              <Btn onClick={handleConfirmCommit} variant="primary" disabled={committing || missing.length > 0 || !contactReady}>
+                {committing ? 'Committing...' : 'Commit to Live'}
               </Btn>
             </div>
           </div>
@@ -599,7 +621,9 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         <div className="p-4 border-b border-gray-200">
           <h2 className="text-lg font-bold text-ocean-700">Commit to Live Billing</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            This will create a live billing record and update entity fees.
+            {qboAction === 'push'
+              ? "Review the services and allocations, then verify the client details before committing."
+              : 'This will create a live billing record and update entity fees.'}
           </p>
         </div>
 
@@ -728,8 +752,10 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
           <Btn onClick={onClose} variant="ghost" disabled={committing}>
             Cancel
           </Btn>
-          <Btn onClick={handleCommit} variant="primary" disabled={committing}>
-            {committing ? 'Committing...' : 'Commit to Live'}
+          <Btn onClick={handleFormPrimary} variant="primary" disabled={committing}>
+            {committing
+              ? (qboAction === 'push' ? 'Loading...' : 'Committing...')
+              : (qboAction === 'push' ? 'Review' : 'Commit to Live')}
           </Btn>
         </div>
       </div>
