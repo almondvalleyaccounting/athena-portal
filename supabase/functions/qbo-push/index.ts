@@ -25,6 +25,16 @@ type ItemMapping = {
   default_description: string | null;
 };
 
+type RecurringTpl = {
+  id: string;
+  syncToken: string;
+  name: string;
+  active: boolean;
+  nextDate: string | null;
+  billEmail: string | null;
+  billAddr: Record<string, unknown> | null;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "POST required" }, 405);
@@ -157,7 +167,7 @@ Deno.serve(async (req) => {
         recurringPlan = {
           action: target ? "overwrite" : "create",
           existing_template_id: target?.id ?? null,
-          existing_templates: existingForCustomer.map((t) => ({ id: t.id, name: t.name })),
+          existing_templates: existingForCustomer.map((t) => ({ id: t.id, name: t.name, active: t.active, next_date: t.nextDate })),
           template_name: recurringTemplateName,
           lines: recurringLines.map((l) => ({ description: l.description || itemMap[l.service_id]?.qbo_item_name || l.service_id, amount: l.monthly_amount ?? 0 })),
           monthly_total: recurringLines.reduce((s, l) => s + (l.monthly_amount ?? 0), 0),
@@ -185,9 +195,20 @@ Deno.serve(async (req) => {
       let prefillEmail = clientEmail;
       let prefillAddr = clientAddr;
       if ((!prefillEmail || !prefillAddr) && existingCustomerId) {
+        // First the customer record itself…
         const qboContact = await fetchQboCustomerContact(existingCustomerId);
         if (!prefillEmail) prefillEmail = qboContact.email;
         if (!prefillAddr) prefillAddr = qboContact.address;
+        // …then the live recurring template (the active "bill"), where the
+        // email/address often actually live for clients with running billing.
+        if (!prefillEmail || !prefillAddr) {
+          const tpls = await findRecurringTemplatesForCustomer(existingCustomerId);
+          const live = pickTemplateToOverwrite(tpls, recurringTemplateName);
+          if (live) {
+            if (!prefillEmail && live.billEmail) prefillEmail = live.billEmail;
+            if (!prefillAddr) prefillAddr = mapQboBillAddr(live.billAddr);
+          }
+        }
       }
       if (!prefillAddr) prefillAddr = await findGroupMemberAddr(sb, entity);
       const addrHint = prefillAddr ? null : await findPortalUserAddrHint(sb, entity);
@@ -360,29 +381,29 @@ async function ensureSalesTermId(dueDays: number): Promise<string | null> {
   }
 }
 
-// Read an existing QBO customer's primary email + billing address in one
-// fetch, mapped to our shapes. Email is the customer's PrimaryEmailAddr;
-// address is returned only if it has at least Line1 + PostalCode (matching
-// buildBillAddr's "half address is worse than none" rule).
+// Map a QBO BillAddr to our form shape. Lenient by default (Line1 required,
+// postcode optional) — this is for pre-filling a form the user reviews, so a
+// street with a missing postcode still beats a blank box. Pre-existing QBO
+// records often don't keep the postcode in the PostalCode field.
+function mapQboBillAddr(a: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  if (!a) return null;
+  const line1 = String((a as Record<string, unknown>).Line1 ?? "").trim();
+  if (!line1) return null;
+  const out: Record<string, unknown> = { Line1: line1 };
+  const line2 = String((a as Record<string, unknown>).Line2 ?? "").trim(); if (line2) out.Line2 = line2;
+  const city = String((a as Record<string, unknown>).City ?? "").trim(); if (city) out.City = city;
+  const postcode = String((a as Record<string, unknown>).PostalCode ?? "").trim(); if (postcode) out.PostalCode = postcode;
+  return out;
+}
+
+// Read an existing QBO customer's primary email + billing address.
 async function fetchQboCustomerContact(customerId: string): Promise<{ email: string | null; address: Record<string, unknown> | null }> {
   try {
     const resp = await qboFetch(`customer/${customerId}`);
     if (!resp.ok) return { email: null, address: null };
     const cust = ((await resp.json()) as { Customer: Record<string, unknown> }).Customer;
     const email = String(((cust?.PrimaryEmailAddr as Record<string, unknown>)?.Address) ?? "").trim() || null;
-    let address: Record<string, unknown> | null = null;
-    const a = (cust?.BillAddr as Record<string, unknown>) || null;
-    if (a) {
-      const line1 = String(a.Line1 ?? "").trim();
-      const postcode = String(a.PostalCode ?? "").trim();
-      if (line1 && postcode) {
-        address = { Line1: line1 };
-        const line2 = String(a.Line2 ?? "").trim(); if (line2) address.Line2 = line2;
-        const city = String(a.City ?? "").trim(); if (city) address.City = city;
-        address.PostalCode = postcode;
-      }
-    }
-    return { email, address };
+    return { email, address: mapQboBillAddr(cust?.BillAddr as Record<string, unknown>) };
   } catch { return { email: null, address: null }; }
 }
 
@@ -478,35 +499,53 @@ async function findCustomerByName(entityName: string): Promise<string | null> {
 // Matching by customer id is far more reliable than matching by template
 // name — Athena's auto-generated `${entity} — Monthly` can drift from
 // what's actually in QBO when the customer's display name differs even
-// slightly. Returns id + syncToken + name for each.
+// slightly. Returns id, syncToken, name, active, nextDate and the template's
+// own BillEmail/BillAddr (the "bill", where contact details often live).
 async function findRecurringTemplatesForCustomer(
   customerId: string,
-): Promise<Array<{ id: string; syncToken: string; name: string }>> {
+): Promise<RecurringTpl[]> {
   const result = (await qboQuery(`SELECT * FROM RecurringTransaction`)) as Record<string, unknown>;
   const qr = (result?.QueryResponse as Record<string, unknown>) || {};
   const rows = (qr.RecurringTransaction as Array<Record<string, unknown>>) || [];
-  const out: Array<{ id: string; syncToken: string; name: string }> = [];
+  const out: RecurringTpl[] = [];
   for (const row of rows) {
     const inv = (row.Invoice as Record<string, unknown>) || null;
     if (!inv) continue;
     const cust = (inv.CustomerRef as Record<string, unknown>) || {};
     if (String(cust.value || "") !== String(customerId)) continue;
     const info = (inv.RecurringInfo as Record<string, unknown>) || {};
-    out.push({ id: String(inv.Id), syncToken: String(inv.SyncToken ?? "0"), name: String(info.Name || "") });
+    const sched = (info.ScheduleInfo as Record<string, unknown>) || {};
+    out.push({
+      id: String(inv.Id),
+      syncToken: String(inv.SyncToken ?? "0"),
+      name: String(info.Name || ""),
+      active: info.Active !== false,
+      nextDate: String(sched.NextDate ?? "").trim() || null,
+      billEmail: String(((inv.BillEmail as Record<string, unknown>)?.Address) ?? "").trim() || null,
+      billAddr: (inv.BillAddr as Record<string, unknown>) || null,
+    });
   }
   return out;
 }
 
-// Choose which existing template (if any) to overwrite. Prefer the one
-// whose name matches the auto-generated template name exactly; otherwise
-// fall back to the first.
+// Choose which existing template (if any) is the LIVE one to overwrite.
+// A customer can carry old + active templates; the live one is active and has
+// the latest next run date (the reliable signal). Prefer active templates,
+// then the latest NextDate; fall back to an exact name match, then the first.
 function pickTemplateToOverwrite(
-  templates: Array<{ id: string; syncToken: string; name: string }>,
+  templates: RecurringTpl[],
   preferredName: string,
-): { id: string; syncToken: string; name: string } | null {
+): RecurringTpl | null {
   if (templates.length === 0) return null;
-  const exact = templates.find((t) => t.name === preferredName);
-  return exact || templates[0];
+  const active = templates.filter((t) => t.active);
+  const pool = active.length ? active : templates;
+  const dated = pool.filter((t) => t.nextDate);
+  if (dated.length) {
+    dated.sort((a, b) => (a.nextDate! < b.nextDate! ? 1 : a.nextDate! > b.nextDate! ? -1 : 0));
+    return dated[0];
+  }
+  const exact = pool.find((t) => t.name === preferredName);
+  return exact || pool[0];
 }
 
 async function ensureQboCustomer(sb: ReturnType<typeof getServiceClient>, entity: Record<string, unknown> | null, entityName: string): Promise<string> {
