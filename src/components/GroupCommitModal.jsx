@@ -151,10 +151,12 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
     let anyIssue = false;
     for (const q of members) {
       setResults((prev) => ({ ...prev, [q.id]: { status: 'running' } }));
+      let billingRow = null; // tracked so we can roll back if the push fails
       try {
         const entityId = q.entity_id || q.primary_entity_id;
         const cc = contactOf(q.id);
-        // 1. Save this company's billing contact to its client record.
+        // 1. Save this company's billing contact to its client record (so the
+        //    push reads it, and it's on file for a retry).
         if (entityId) {
           await supabase.from('entities').update({
             billing_email: cc.email.trim() || null,
@@ -165,7 +167,6 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           }).eq('id', entityId);
         }
 
-        // 2. Commit to live billing (recurring lines only; no fee-earner step).
         const recurring = (q.line_items || []).filter((l) => l.is_recurring);
         const services = recurring.map((l) => ({
           service_id: l.service_id,
@@ -174,7 +175,12 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           monthly_amount: Number(l.monthly_amount) || 0,
           detail: l.detail || null,
         }));
-        const { data: billingRow, error: bErr } = await supabase
+
+        // 2. Create the live_billing row — the push needs a billing_id. This
+        //    is NOT the commit yet; we only record the commit (quote status +
+        //    fees + audit) once the QBO push succeeds, so a failed company is
+        //    never left marked committed.
+        const { data: bRow, error: bErr } = await supabase
           .from('live_billing')
           .insert({
             entity_id: entityId,
@@ -192,7 +198,27 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           .select()
           .single();
         if (bErr) throw bErr;
+        billingRow = bRow;
 
+        // 3. Push to QBO FIRST. The commit is contingent on this succeeding.
+        const hasSetup = (q.line_items || []).some((l) => !l.is_recurring);
+        const res = await pushToQbo(billingRow.id, profile.id, {
+          mode: 'recurring_template',
+          quoteId: q.id,
+          alsoPushSetup: hasSetup,
+          billEmail: cc.email.trim() || undefined,
+        });
+
+        if (!res?.success) {
+          // Push failed — roll back the live_billing row and leave the quote
+          // 'accepted' so it stays in the to-commit list for a retry.
+          await supabase.from('live_billing').delete().eq('id', billingRow.id);
+          anyIssue = true;
+          setResults((prev) => ({ ...prev, [q.id]: { status: 'error', error: res?.error || 'QBO push failed — not committed.' } }));
+          continue;
+        }
+
+        // 4. Push succeeded → now record the commit.
         const feeRows = recurring.map((l) => ({
           entity_id: entityId,
           service_id: l.service_id,
@@ -205,13 +231,11 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
         if (feeRows.length) {
           await supabase.from('entity_fees').upsert(feeRows, { onConflict: 'entity_id,service_id' });
         }
-
         await supabase.from('quotes').update({
           committed_at: new Date().toISOString(),
           committed_by: profile.id,
           status: 'committed',
         }).eq('id', q.id);
-
         await supabase.from('audit_log').insert({
           user_id: profile.id,
           action: 'commit_to_live',
@@ -220,22 +244,13 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           detail: { from: q.status, to: 'committed', billing_id: billingRow.id, via: 'group_batch' },
         });
 
-        // 3. Push to QBO (auto create-vs-overwrite). Setup lines, if any, go as a draft.
-        const hasSetup = (q.line_items || []).some((l) => !l.is_recurring);
-        const res = await pushToQbo(billingRow.id, profile.id, {
-          mode: 'recurring_template',
-          quoteId: q.id,
-          alsoPushSetup: hasSetup,
-          billEmail: cc.email.trim() || undefined,
-        });
-        if (res?.success) {
-          setResults((prev) => ({ ...prev, [q.id]: { status: 'done', action: res.data?.recurring_action || 'pushed' } }));
-        } else {
-          // Commit is saved; only the push failed.
-          anyIssue = true;
-          setResults((prev) => ({ ...prev, [q.id]: { status: 'warn', error: res?.error || 'Committed, but QBO push failed — push later from Billing.' } }));
-        }
+        setResults((prev) => ({ ...prev, [q.id]: { status: 'done', action: res.data?.recurring_action || 'pushed' } }));
       } catch (e) {
+        // Roll back any live_billing row we created so a failed company isn't
+        // left half-committed.
+        if (billingRow?.id) {
+          try { await supabase.from('live_billing').delete().eq('id', billingRow.id); } catch { /* */ }
+        }
         anyIssue = true;
         setResults((prev) => ({ ...prev, [q.id]: { status: 'error', error: e.message || 'Failed' } }));
       }
