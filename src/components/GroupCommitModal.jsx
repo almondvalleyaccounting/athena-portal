@@ -92,6 +92,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
   const handleRun = async () => {
     setRunning(true);
     setError('');
+    let anyIssue = false;
     for (const q of members) {
       setResults((prev) => ({ ...prev, [q.id]: { status: 'running' } }));
       try {
@@ -173,15 +174,24 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           setResults((prev) => ({ ...prev, [q.id]: { status: 'done', action: res.data?.recurring_action || 'pushed' } }));
         } else {
           // Commit is saved; only the push failed.
+          anyIssue = true;
           setResults((prev) => ({ ...prev, [q.id]: { status: 'warn', error: res?.error || 'Committed, but QBO push failed — push later from Billing.' } }));
         }
       } catch (e) {
+        anyIssue = true;
         setResults((prev) => ({ ...prev, [q.id]: { status: 'error', error: e.message || 'Failed' } }));
       }
     }
     setRunning(false);
-    setDone(true);
     if (onDone) await onDone();
+    // All companies pushed cleanly → close automatically. If anything failed
+    // or only partially committed, stay open so the per-company results are
+    // visible and can be acted on.
+    if (anyIssue) {
+      setDone(true);
+    } else {
+      onClose();
+    }
   };
 
   const statusPill = (r) => {
