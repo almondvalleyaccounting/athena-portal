@@ -18,6 +18,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
   // Per-company billing contact, keyed by quote id.
   const [contacts, setContacts] = useState({});
   const [emailOptions, setEmailOptions] = useState([]); // shared pool to pick from
+  const [addressOptions, setAddressOptions] = useState([]); // [{ label, addr }] shared pool
   const [loadingIds, setLoadingIds] = useState({}); // quoteId -> QBO lookup in progress
   const [current, setCurrent] = useState(0); // which company is being edited
   const [running, setRunning] = useState(false);
@@ -28,6 +29,9 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
   const contactOf = (id) => contacts[id] || BLANK;
   const setContact = (id, patch) =>
     setContacts((prev) => ({ ...prev, [id]: { ...(prev[id] || BLANK), ...patch } }));
+
+  const addrLabel = (a) => [a.line1, a.city, a.postcode].filter(Boolean).join(', ');
+  const addrKey = (a) => `${(a.line1 || '').toLowerCase().trim()}|${(a.postcode || '').toLowerCase().trim()}`;
 
   // Pre-fill each company's contact: Athena billing_* first, then fall back to
   // that member's own QBO customer record (email + BillAddr) for anything
@@ -47,11 +51,17 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
       // Seed from Athena synchronously so fields aren't blank during lookup.
       const seeded = {};
       const emailSet = new Set();
+      const addrMap = new Map();
       members.forEach((q) => {
         const e = entById[q.entity_id] || {};
         if (e.billing_email) emailSet.add(e.billing_email);
         if (q.accepted_client_email) emailSet.add(q.accepted_client_email);
         if (e.prospect_email) emailSet.add(e.prospect_email);
+        if (e.billing_line1) {
+          const a = { line1: e.billing_line1 || '', line2: e.billing_line2 || '', city: e.billing_city || '', postcode: e.billing_postcode || '' };
+          const k = addrKey(a);
+          if (!addrMap.has(k)) addrMap.set(k, { label: addrLabel(a), addr: a });
+        }
         seeded[q.id] = {
           email: e.billing_email || q.accepted_client_email || e.prospect_email || '',
           line1: e.billing_line1 || '',
@@ -62,6 +72,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
       });
       setContacts(seeded);
       setEmailOptions([...emailSet]);
+      setAddressOptions([...addrMap.values()]);
 
       // Enrich anything still missing from the member's QBO customer record.
       await Promise.all(members.map(async (q) => {
@@ -96,6 +107,10 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
             patch.postcode = a.PostalCode || '';
           }
           if (qboEmail) setEmailOptions((prev) => (prev.includes(qboEmail) ? prev : [...prev, qboEmail]));
+          if (a?.Line1) {
+            const opt = { line1: a.Line1 || '', line2: a.Line2 || '', city: a.City || '', postcode: a.PostalCode || '' };
+            setAddressOptions((prev) => (prev.some((o) => addrKey(o.addr) === addrKey(opt)) ? prev : [...prev, { label: addrLabel(opt), addr: opt }]));
+          }
           if (Object.keys(patch).length) setContact(q.id, patch);
         } catch { /* leave blank for manual entry */ }
         finally {
@@ -275,12 +290,12 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
               <label className="text-xs text-gray-500 block mb-0.5">Email</label>
               {emailOptions.length > 0 && (
                 <select
-                  value={emailOptions.includes(c.email) ? c.email : ''}
+                  value=""
                   onChange={(e) => { if (e.target.value) setContact(curId, { email: e.target.value }); }}
                   disabled={running}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-1"
+                  className="w-full text-xs text-gray-500 border border-gray-200 rounded-lg px-3 py-1.5 mb-1 bg-gray-50"
                 >
-                  <option value="">— pick an email from the group —</option>
+                  <option value="">Select email from group…</option>
                   {emailOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                 </select>
               )}
@@ -297,6 +312,21 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
                 Billing address
                 {loadingIds[curId] && <span className="text-ocean-600 ml-1">· looking up from QuickBooks…</span>}
               </label>
+              {addressOptions.length > 0 && (
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value === '') return;
+                    const a = addressOptions[Number(e.target.value)]?.addr;
+                    if (a) setContact(curId, { line1: a.line1, line2: a.line2, city: a.city, postcode: a.postcode });
+                  }}
+                  disabled={running}
+                  className="w-full text-xs text-gray-500 border border-gray-200 rounded-lg px-3 py-1.5 mb-1 bg-gray-50"
+                >
+                  <option value="">Select address from group…</option>
+                  {addressOptions.map((o, i) => <option key={i} value={i}>{o.label}</option>)}
+                </select>
+              )}
               <div className="space-y-1">
                 <input value={c.line1} onChange={(e) => setContact(curId, { line1: e.target.value })} disabled={running} placeholder="Address line 1" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
                 <input value={c.line2} onChange={(e) => setContact(curId, { line2: e.target.value })} disabled={running} placeholder="Address line 2 (optional)" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
