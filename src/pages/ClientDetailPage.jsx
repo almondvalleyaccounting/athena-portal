@@ -4,6 +4,24 @@ import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { useAuth } from '../shell/AppShell';
 
+// Standard minimum annual fee for the flat-rate services where a clear
+// minimum exists (mirrors quote_defaults). Variable/turnover-banded services
+// (accounts, payroll, bookkeeping…) have no single minimum, so they're not
+// flagged. Matched loosely against both naming regimes seen in
+// live_billing.services (Athena slugs + QBO-pulled labels).
+const STANDARD_MIN_ANNUAL = [
+  { test: /confirmation/i, min: 110, label: 'Confirmation statement' },
+  { test: /registered.?office/i, min: 180, label: 'Registered office' },
+  { test: /review.?meeting/i, min: 210, label: 'Annual review meeting' },
+  { test: /dormant/i, min: 150, label: 'Dormant accounts' },
+  { test: /auto.?enrol/i, min: 60, label: 'Auto enrolment' },
+];
+function standardMinAnnual(serviceId, description) {
+  const hay = `${serviceId || ''} ${description || ''}`;
+  for (const r of STANDARD_MIN_ANNUAL) if (r.test.test(hay)) return r.min;
+  return null;
+}
+
 export default function ClientDetailPage() {
   const { profile } = useAuth();
   const { id } = useParams();
@@ -14,15 +32,35 @@ export default function ClientDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [live, setLive] = useState([]); // flattened active live-billing services
+  const [liveMonthly, setLiveMonthly] = useState(0);
 
   useEffect(() => {
     (async () => {
-      const [{ data: ent }, { data: qs }] = await Promise.all([
+      const [{ data: ent }, { data: qs }, { data: lb }] = await Promise.all([
         supabase.from('entities').select('*').eq('id', id).single(),
         supabase.from('quotes').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
+        supabase.from('live_billing').select('id, services, status').eq('entity_id', id).eq('status', 'active'),
       ]);
       setEntity(ent);
       setQuotes(qs || []);
+
+      // Flatten active live-billing into one row per service, with an
+      // under-billing flag where a standard minimum is known.
+      const flat = [];
+      for (const row of lb || []) {
+        const services = Array.isArray(row.services) ? row.services : [];
+        for (const s of services) {
+          const monthly = Number(s.monthly_amount) || (Number(s.annual_amount) || 0) / 12;
+          const annual = Number(s.annual_amount) || (Number(s.monthly_amount) || 0) * 12;
+          const min = standardMinAnnual(s.service_id, s.description);
+          const under = min != null && annual > 0 && annual < min ? min - annual : 0;
+          flat.push({ name: s.description || s.service_id || '—', monthly, annual, min, under });
+        }
+      }
+      flat.sort((a, b) => b.monthly - a.monthly);
+      setLive(flat);
+      setLiveMonthly(flat.reduce((acc, x) => acc + x.monthly, 0));
       setLoading(false);
     })();
   }, [id]);
@@ -73,9 +111,7 @@ export default function ClientDetailPage() {
   if (loading) return <div className="p-6"><p className="text-sm text-gray-400">Loading client...</p></div>;
   if (!entity) return <div className="p-6"><p className="text-sm text-red-500">Client not found.</p></div>;
 
-  const totalMonthly = quotes
-    .filter(q => q.status === 'accepted' || q.status === 'sent' || q.status === 'approved')
-    .reduce((s, q) => s + (Number(q.monthly_gross) || 0), 0);
+  const hasUnder = live.some((s) => s.under > 0);
 
   return (
     <div className="p-6 max-w-3xl">
@@ -147,13 +183,57 @@ export default function ClientDetailPage() {
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <p className="text-xs text-gray-400 mb-1">Active Monthly</p>
-          <p className="text-xl font-bold text-ocean-700 font-mono">{fmt(totalMonthly)}</p>
+          <p className="text-xl font-bold text-ocean-700 font-mono">{fmt(liveMonthly)}</p>
+          {hasUnder && <p className="text-[10px] text-amber-600 font-medium mt-0.5">under-billing flagged</p>}
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <p className="text-xs text-gray-400 mb-1">Status</p>
           <p className="text-sm font-medium text-gray-700 capitalize">{entity.entity_status || 'prospect'}</p>
         </div>
       </div>
+
+      {/* Active billing — broken out to service level, with under-billing
+          flagged against the standard minimum where one is defined. Click any
+          row (or "Manage billing") to change existing billing. */}
+      {live.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase">Active billing — by service</h3>
+            <button
+              onClick={() => navigate('/manage/billing/change?client=' + encodeURIComponent(entity.name))}
+              className="text-xs text-ocean-600 hover:text-ocean-700 font-medium px-2 py-1 border border-ocean-200 rounded hover:bg-ocean-50 transition-all"
+            >
+              Manage billing
+            </button>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {live.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => navigate('/manage/billing/change?client=' + encodeURIComponent(entity.name))}
+                className="w-full flex items-center justify-between gap-2 py-1.5 px-1 -mx-1 text-left rounded hover:bg-gray-50"
+              >
+                <span className="text-sm text-gray-700 truncate flex items-center gap-2 min-w-0">
+                  <span className="truncate">{s.name}</span>
+                  {s.under > 0 && (
+                    <span
+                      className="shrink-0 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-300"
+                      title={`Below the standard minimum of ${fmt(s.min)}/yr — under by ${fmt(s.under)}/yr`}
+                    >
+                      Under {fmt(s.under)}/yr
+                    </span>
+                  )}
+                </span>
+                <span className="text-sm font-mono text-ocean-600 shrink-0">{fmt(s.monthly)}/mo</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-between pt-2 mt-1 border-t border-gray-200 text-sm font-semibold">
+            <span className="text-gray-600">Total</span>
+            <span className="font-mono text-ocean-700">{fmt(liveMonthly)}/mo</span>
+          </div>
+        </div>
+      )}
 
       {/* Client details */}
       {(entity.utr || entity.vat_number || entity.paye_ref || entity.company_number) && (

@@ -33,7 +33,9 @@ export default function BillingReviewAndChangePage() {
   const [editing, setEditing] = useState(null); // { entityId, serviceId }
   const [upliftOpen, setUpliftOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(null); // null | { entityId?, serviceId? } — opens AddServiceModal
-  const [search, setSearch] = useState('');
+  // Seed the client filter from a ?client= deep link (e.g. from a client's
+  // detail page "Manage billing"), so the matrix opens scoped to them.
+  const [search, setSearch] = useState(searchParams.get('client') || '');
   const [excludedFilter, setExcludedFilter] = useState('all'); // all | included | excluded
   // Sort state. type='client' (alpha) | 'total' (per-client total) |
   // 'service' (per-cell amount for the named service). dir asc/desc.
