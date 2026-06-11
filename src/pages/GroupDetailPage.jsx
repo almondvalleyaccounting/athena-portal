@@ -188,26 +188,31 @@ export default function GroupDetailPage() {
   const handleGroupTransition = async (transition) => {
     setTransitioning(true);
     setError('');
-    try {
-      for (const q of quotes) {
-        const updates = { status: transition.next };
-        if (transition.next === 'approved') {
-          updates.approved_by = profile?.id;
-          updates.approved_at = new Date().toISOString();
-        }
-        if (transition.next === 'sent') {
-          updates.sent_at = new Date().toISOString();
-        }
-        if (transition.next === 'accepted') {
-          updates.accepted_at = new Date().toISOString();
-        }
-        const { error: err } = await supabase.from('quotes').update(updates).eq('id', q.id);
-        if (err) throw err;
+    // Only move quotes actually in the current (source) status. Siblings that
+    // are further along — e.g. already committed (and locked once verified in
+    // QB) — are left untouched, so a committed quote can't raise a misleading
+    // "quote locked" error or get dragged backwards.
+    const toMove = quotes.filter((q) => q.status === currentStatus);
+    const failures = [];
+    for (const q of toMove) {
+      const updates = { status: transition.next };
+      if (transition.next === 'approved') {
+        updates.approved_by = profile?.id;
+        updates.approved_at = new Date().toISOString();
       }
-      await loadGroup();
-    } catch (e) {
-      setError(e.message || 'Failed to update status');
+      if (transition.next === 'sent') {
+        updates.sent_at = new Date().toISOString();
+      }
+      if (transition.next === 'accepted') {
+        updates.accepted_at = new Date().toISOString();
+      }
+      const { error: err } = await supabase.from('quotes').update(updates).eq('id', q.id);
+      if (err) failures.push(q.quote_ref || q.id);
     }
+    if (failures.length) {
+      setError(`${toMove.length - failures.length} of ${toMove.length} updated. Couldn't change ${failures.length} (locked): ${failures.join(', ')}`);
+    }
+    await loadGroup();
     setTransitioning(false);
   };
 
@@ -220,7 +225,9 @@ export default function GroupDetailPage() {
     setShowSendModal(false);
     try {
       const sentAt = new Date().toISOString();
-      const toMark = quotes.filter(q => q.status !== 'sent');
+      // Only advance quotes that haven't been sent yet — never drag an already
+      // accepted/committed sibling backwards to 'sent'.
+      const toMark = quotes.filter(q => ['draft', 'pending_approval', 'approved'].includes(q.status));
       for (const q of toMark) {
         await supabase.from('quotes').update({ status: 'sent', sent_at: sentAt }).eq('id', q.id);
       }
