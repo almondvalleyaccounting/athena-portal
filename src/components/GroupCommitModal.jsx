@@ -16,6 +16,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
   const [email, setEmail] = useState('');
   const [emailOptions, setEmailOptions] = useState([]);
   const [addr, setAddr] = useState({ line1: '', line2: '', city: '', postcode: '' });
+  const [prefillingAddr, setPrefillingAddr] = useState(false);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
   const [results, setResults] = useState({}); // quoteId -> { status, action?, error? }
@@ -50,6 +51,8 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
         // QBO customer record of an existing member (e.g. an existing Bill) —
         // the dry-run plan resolves entity billing_* then the QBO BillAddr.
         // Use the first usable address we find; also pick up any email.
+        setPrefillingAddr(true);
+        try {
         for (const q of members) {
           try {
             const recurring = (q.line_items || []).filter((l) => l.is_recurring);
@@ -74,6 +77,9 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
               break;
             }
           } catch { /* try the next member */ }
+        }
+        } finally {
+          setPrefillingAddr(false);
         }
       }
     })();
@@ -221,7 +227,10 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
               placeholder="billing@example.com"
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-2"
             />
-            <label className="text-xs text-gray-500 block mb-0.5">Billing address</label>
+            <label className="text-xs text-gray-500 block mb-0.5">
+              Billing address
+              {prefillingAddr && <span className="text-ocean-600 ml-1">· looking up from QuickBooks…</span>}
+            </label>
             <div className="space-y-1">
               <input value={addr.line1} onChange={(e) => setAddr((a) => ({ ...a, line1: e.target.value }))} disabled={running} placeholder="Address line 1" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
               <input value={addr.line2} onChange={(e) => setAddr((a) => ({ ...a, line2: e.target.value }))} disabled={running} placeholder="Address line 2 (optional)" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
