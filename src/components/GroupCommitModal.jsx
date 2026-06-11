@@ -45,6 +45,36 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           city: withAddr.billing_city || '',
           postcode: withAddr.billing_postcode || '',
         });
+      } else {
+        // No member has a billing address on file in Athena. Fall back to the
+        // QBO customer record of an existing member (e.g. an existing Bill) —
+        // the dry-run plan resolves entity billing_* then the QBO BillAddr.
+        // Use the first usable address we find; also pick up any email.
+        for (const q of members) {
+          try {
+            const recurring = (q.line_items || []).filter((l) => l.is_recurring);
+            const services = recurring.map((l) => ({
+              service_id: l.service_id,
+              description: l.description,
+              annual_amount: Number(l.annual_amount) || 0,
+              monthly_amount: Number(l.monthly_amount) || 0,
+              detail: l.detail || null,
+            }));
+            const res = await pushToQbo(null, profile.id, {
+              mode: 'recurring_template',
+              quoteId: q.id,
+              dryRun: true,
+              services,
+            });
+            const a = res?.plan?.contact?.address;
+            const qboEmail = res?.plan?.contact?.email;
+            if (qboEmail) setEmailOptions((prev) => (prev.includes(qboEmail) ? prev : [...prev, qboEmail]));
+            if (a?.Line1) {
+              setAddr({ line1: a.Line1 || '', line2: a.Line2 || '', city: a.City || '', postcode: a.PostalCode || '' });
+              break;
+            }
+          } catch { /* try the next member */ }
+        }
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
