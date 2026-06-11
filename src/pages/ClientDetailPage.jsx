@@ -39,7 +39,7 @@ export default function ClientDetailPage() {
     (async () => {
       const [{ data: ent }, { data: qs }, { data: lb }] = await Promise.all([
         supabase.from('entities').select('*').eq('id', id).single(),
-        supabase.from('quotes').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
+        supabase.from('quotes').select('*').eq('entity_id', id).neq('status', 'deleted').order('created_at', { ascending: false }),
         supabase.from('live_billing').select('id, services, status').eq('entity_id', id).eq('status', 'active'),
       ]);
       setEntity(ent);
