@@ -128,7 +128,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
   const notReady = members.filter((q) => !isReady(q.id));
   const allReady = members.length > 0 && notReady.length === 0;
 
-  const cur = members[current];
+  const cur = members[Math.min(current, Math.max(0, members.length - 1))];
   const curId = cur?.id;
   const c = contactOf(curId);
 
@@ -149,6 +149,8 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
     setRunning(true);
     setError('');
     let anyIssue = false;
+    const fails = []; // [{ name, reason }] for a persistent summary
+    const label = (q) => q.relationship_group || q.quote_ref;
     for (const q of members) {
       setResults((prev) => ({ ...prev, [q.id]: { status: 'running' } }));
       let billingRow = null; // tracked so we can roll back if the push fails
@@ -214,7 +216,14 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           // 'accepted' so it stays in the to-commit list for a retry.
           await supabase.from('live_billing').delete().eq('id', billingRow.id);
           anyIssue = true;
-          setResults((prev) => ({ ...prev, [q.id]: { status: 'error', error: res?.error || 'QBO push failed — not committed.' } }));
+          let reason = res?.error || 'QBO push failed — not committed.';
+          if (Array.isArray(res?.missing_mappings) && res.missing_mappings.length) {
+            reason = `Not committed — these services aren't mapped to QBO items: ${res.missing_mappings.join(', ')}`;
+          } else if (Array.isArray(res?.missing_contact) && res.missing_contact.length) {
+            reason = `Not committed — missing ${res.missing_contact.join(', ')}`;
+          }
+          fails.push({ name: label(q), reason });
+          setResults((prev) => ({ ...prev, [q.id]: { status: 'error', error: reason } }));
           continue;
         }
 
@@ -252,10 +261,14 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           try { await supabase.from('live_billing').delete().eq('id', billingRow.id); } catch { /* */ }
         }
         anyIssue = true;
+        fails.push({ name: label(q), reason: e.message || 'Failed' });
         setResults((prev) => ({ ...prev, [q.id]: { status: 'error', error: e.message || 'Failed' } }));
       }
     }
     setRunning(false);
+    if (fails.length) {
+      setError(`Not committed (${fails.length}): ` + fails.map((f) => `${f.name} — ${f.reason}`).join('  ·  '));
+    }
     if (onDone) await onDone();
     // All companies pushed cleanly → close automatically. If anything failed
     // or only partially committed, stay open so the per-company results are

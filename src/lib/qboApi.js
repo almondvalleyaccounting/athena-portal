@@ -37,7 +37,18 @@ export async function pushToQbo(billingId, initiatedBy, opts = {}) {
   if (opts.dryRun) body.dry_run = true;
 
   const { data, error } = await supabase.functions.invoke('qbo-push', { body });
-  if (error) throw error;
+  if (error) {
+    // supabase-js wraps a non-2xx response in a FunctionsHttpError and hides
+    // the body on error.context. That body carries the real reason (e.g.
+    // missing_mappings / missing_contact), so surface it rather than the
+    // generic "Edge Function returned a non-2xx status code" message.
+    let payload = null;
+    try {
+      payload = error.context && typeof error.context.json === 'function' ? await error.context.json() : null;
+    } catch { /* response wasn't JSON */ }
+    if (payload && typeof payload === 'object') return payload;
+    return { success: false, error: error.message || 'QBO request failed' };
+  }
   return data;
 }
 
