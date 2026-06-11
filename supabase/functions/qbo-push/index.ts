@@ -177,19 +177,22 @@ Deno.serve(async (req) => {
         };
       }
 
-      // Address prefill for the review step. Use the entity's own billing_*
-      // first; if it has none, fall back to the existing QBO customer's
-      // BillAddr, then a group member's address. users.address is a single
-      // freeform field (no structured postcode) so it can't fill the form —
-      // it's surfaced separately as a read-only hint.
+      // Prefill the client contact for the review step. Email and address
+      // both fall back to the existing QBO customer record (one fetch) when
+      // Athena has none on file; the address additionally falls back to a
+      // group member. users.address is a single freeform field (no structured
+      // postcode) so it can't fill the form — it's surfaced as a hint.
+      let prefillEmail = clientEmail;
       let prefillAddr = clientAddr;
-      if (!prefillAddr) {
-        prefillAddr = (existingCustomerId ? await fetchQboCustomerBillAddr(existingCustomerId) : null)
-          || await findGroupMemberAddr(sb, entity);
+      if ((!prefillEmail || !prefillAddr) && existingCustomerId) {
+        const qboContact = await fetchQboCustomerContact(existingCustomerId);
+        if (!prefillEmail) prefillEmail = qboContact.email;
+        if (!prefillAddr) prefillAddr = qboContact.address;
       }
+      if (!prefillAddr) prefillAddr = await findGroupMemberAddr(sb, entity);
       const addrHint = prefillAddr ? null : await findPortalUserAddrHint(sb, entity);
       const dryMissing: string[] = [];
-      if (!clientEmail) dryMissing.push("client email");
+      if (!prefillEmail) dryMissing.push("client email");
       if (!prefillAddr) dryMissing.push("client address (line 1 + postcode)");
 
       return jsonResponse({
@@ -199,8 +202,8 @@ Deno.serve(async (req) => {
           mode,
           customer: { action: customerExists ? "existing" : "create", name: entityName, qbo_customer_id: existingCustomerId },
           contact: {
-            email: clientEmail,
-            has_email: !!clientEmail,
+            email: prefillEmail,
+            has_email: !!prefillEmail,
             address: prefillAddr,
             has_address: !!prefillAddr,
             address_hint: addrHint,
@@ -357,25 +360,30 @@ async function ensureSalesTermId(dueDays: number): Promise<string | null> {
   }
 }
 
-// Read an existing QBO customer's BillAddr and map it to our form shape.
-// Returns null unless it has at least Line1 + PostalCode (matching
+// Read an existing QBO customer's primary email + billing address in one
+// fetch, mapped to our shapes. Email is the customer's PrimaryEmailAddr;
+// address is returned only if it has at least Line1 + PostalCode (matching
 // buildBillAddr's "half address is worse than none" rule).
-async function fetchQboCustomerBillAddr(customerId: string): Promise<Record<string, unknown> | null> {
+async function fetchQboCustomerContact(customerId: string): Promise<{ email: string | null; address: Record<string, unknown> | null }> {
   try {
     const resp = await qboFetch(`customer/${customerId}`);
-    if (!resp.ok) return null;
+    if (!resp.ok) return { email: null, address: null };
     const cust = ((await resp.json()) as { Customer: Record<string, unknown> }).Customer;
+    const email = String(((cust?.PrimaryEmailAddr as Record<string, unknown>)?.Address) ?? "").trim() || null;
+    let address: Record<string, unknown> | null = null;
     const a = (cust?.BillAddr as Record<string, unknown>) || null;
-    if (!a) return null;
-    const line1 = String(a.Line1 ?? "").trim();
-    const postcode = String(a.PostalCode ?? "").trim();
-    if (!line1 || !postcode) return null;
-    const out: Record<string, unknown> = { Line1: line1 };
-    const line2 = String(a.Line2 ?? "").trim(); if (line2) out.Line2 = line2;
-    const city = String(a.City ?? "").trim(); if (city) out.City = city;
-    out.PostalCode = postcode;
-    return out;
-  } catch { return null; }
+    if (a) {
+      const line1 = String(a.Line1 ?? "").trim();
+      const postcode = String(a.PostalCode ?? "").trim();
+      if (line1 && postcode) {
+        address = { Line1: line1 };
+        const line2 = String(a.Line2 ?? "").trim(); if (line2) address.Line2 = line2;
+        const city = String(a.City ?? "").trim(); if (city) address.City = city;
+        address.PostalCode = postcode;
+      }
+    }
+    return { email, address };
+  } catch { return { email: null, address: null }; }
 }
 
 // Borrow a usable billing address from another entity in the same billing
