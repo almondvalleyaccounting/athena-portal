@@ -504,26 +504,36 @@ async function findCustomerByName(entityName: string): Promise<string | null> {
 async function findRecurringTemplatesForCustomer(
   customerId: string,
 ): Promise<RecurringTpl[]> {
-  const result = (await qboQuery(`SELECT * FROM RecurringTransaction`)) as Record<string, unknown>;
-  const qr = (result?.QueryResponse as Record<string, unknown>) || {};
-  const rows = (qr.RecurringTransaction as Array<Record<string, unknown>>) || [];
   const out: RecurringTpl[] = [];
-  for (const row of rows) {
-    const inv = (row.Invoice as Record<string, unknown>) || null;
-    if (!inv) continue;
-    const cust = (inv.CustomerRef as Record<string, unknown>) || {};
-    if (String(cust.value || "") !== String(customerId)) continue;
-    const info = (inv.RecurringInfo as Record<string, unknown>) || {};
-    const sched = (info.ScheduleInfo as Record<string, unknown>) || {};
-    out.push({
-      id: String(inv.Id),
-      syncToken: String(inv.SyncToken ?? "0"),
-      name: String(info.Name || ""),
-      active: info.Active !== false,
-      nextDate: String(sched.NextDate ?? "").trim() || null,
-      billEmail: String(((inv.BillEmail as Record<string, unknown>)?.Address) ?? "").trim() || null,
-      billAddr: (inv.BillAddr as Record<string, unknown>) || null,
-    });
+  const page = 1000;
+  let start = 1;
+  // QBO returns only 100 rows per query by default and never more than 1000,
+  // so we MUST paginate. An AVA file has far more than 100 recurring
+  // templates; without paging we'd miss this customer's existing template and
+  // create a DUPLICATE instead of overwriting it.
+  for (let guard = 0; guard < 50; guard++) {
+    const result = (await qboQuery(`SELECT * FROM RecurringTransaction STARTPOSITION ${start} MAXRESULTS ${page}`)) as Record<string, unknown>;
+    const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+    const rows = (qr.RecurringTransaction as Array<Record<string, unknown>>) || [];
+    for (const row of rows) {
+      const inv = (row.Invoice as Record<string, unknown>) || null;
+      if (!inv) continue;
+      const cust = (inv.CustomerRef as Record<string, unknown>) || {};
+      if (String(cust.value || "") !== String(customerId)) continue;
+      const info = (inv.RecurringInfo as Record<string, unknown>) || {};
+      const sched = (info.ScheduleInfo as Record<string, unknown>) || {};
+      out.push({
+        id: String(inv.Id),
+        syncToken: String(inv.SyncToken ?? "0"),
+        name: String(info.Name || ""),
+        active: info.Active !== false,
+        nextDate: String(sched.NextDate ?? "").trim() || null,
+        billEmail: String(((inv.BillEmail as Record<string, unknown>)?.Address) ?? "").trim() || null,
+        billAddr: (inv.BillAddr as Record<string, unknown>) || null,
+      });
+    }
+    if (rows.length < page) break; // last page
+    start += page;
   }
   return out;
 }
