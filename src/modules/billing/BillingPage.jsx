@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw, History } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { pushBillingItems, refreshBillingItems } from '../../lib/qboApi';
+import { pushBillingItems, refreshBillingItems, fetchClientInvoices } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
+import NewClientModal from '../../components/NewClientModal';
 
 const VAT_RATE = 0.20;
 const STATUS_CONFIG = {
@@ -43,6 +44,13 @@ export default function BillingPage() {
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const autoRefreshedRef = useRef(false); // only auto-refresh once per mount
+  const [showNewClient, setShowNewClient] = useState(false);
+  // Copy-from-past-invoice picker
+  const [showInvoicePicker, setShowInvoicePicker] = useState(false);
+  const [invLoading, setInvLoading] = useState(false);
+  const [invError, setInvError] = useState('');
+  const [clientInvoices, setClientInvoices] = useState([]);
+  const [expandedInv, setExpandedInv] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -132,6 +140,45 @@ export default function BillingPage() {
     net: t.net + (parseFloat(l.net) || 0), vat: t.vat + (parseFloat(l.vat) || 0), gross: t.gross + (parseFloat(l.gross) || 0),
   }), { net: 0, vat: 0, gross: 0 });
   const formCanSubmit = !!formClient && formLines.some((l) => l.service && l.net !== '');
+
+  // Create a new client inline (NewClientModal handles the form; we own the
+  // insert). Adds it to the dropdown and selects it for this bill.
+  const handleCreateClient = async (fields) => {
+    const { data, error } = await supabase.from('entities').insert(fields).select('id, name').single();
+    if (error) throw error;
+    setEntities((prev) => [...prev, { id: data.id, name: data.name }].sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+    setFormClient(data.id);
+    return data;
+  };
+
+  // Pull the selected client's last 24 months of QBO invoices.
+  const openInvoicePicker = async () => {
+    if (!formClient) return;
+    setShowInvoicePicker(true);
+    setInvLoading(true); setInvError(''); setClientInvoices([]); setExpandedInv(null);
+    try {
+      const res = await fetchClientInvoices(formClient);
+      if (res?.customer_found === false) setInvError('This client has no matching QuickBooks customer yet.');
+      setClientInvoices(res?.invoices || []);
+    } catch (e) { setInvError(e.message || 'Could not load invoices from QuickBooks'); }
+    setInvLoading(false);
+  };
+
+  // Copy a past invoice's lines into the multi-line editor (review before save).
+  const copyInvoiceToForm = (inv) => {
+    const ls = (inv.lines || []).map((l) => {
+      const net = Number(l.amount) || 0;
+      const vat = Math.round(net * VAT_RATE * 100) / 100;
+      return {
+        service: l.service || '', description: l.description || '',
+        net: net ? String(net) : '', vat: net ? vat.toFixed(2) : '', gross: net ? (net + vat).toFixed(2) : '',
+        vatManual: false,
+      };
+    });
+    setFormLines(ls.length ? ls : [blankLine()]);
+    setShowAdd(true); setEditingId(null);
+    setShowInvoicePicker(false);
+  };
 
   // Per-item billing-contact helpers (push-confirm modal).
   const contactOf = (id) => contacts[id] || { email: '', line1: '', line2: '', city: '', postcode: '' };
@@ -323,11 +370,15 @@ export default function BillingPage() {
   const renderForm = (onSubmit, submitLabel, onCancel) => (
     <div style={{ background:'#fff', borderRadius:12, border:'1px solid #e5e7eb', padding:'20px 24px', marginBottom:20 }}>
       {/* Client (one per bill → one invoice) */}
-      <div style={{maxWidth:340,marginBottom:14}}>
+      <div style={{marginBottom:14}}>
         <label style={formLabel}>Client *</label>
-        <select value={formClient} onChange={(e)=>setFormClient(e.target.value)} style={inputStyle}>
-          <option value="">Select client...</option>{entities.map((e)=><option key={e.id} value={e.id}>{e.name}</option>)}
-        </select>
+        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <select value={formClient} onChange={(e)=>setFormClient(e.target.value)} style={{...inputStyle,maxWidth:340}}>
+            <option value="">Select client...</option>{entities.map((e)=><option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+          <button onClick={()=>setShowNewClient(true)} style={{...btnOutline,gap:4}} title="Create a new client"><Plus size={14}/> New client</button>
+          <button onClick={openInvoicePicker} disabled={!formClient} style={{...btnOutline,gap:4,opacity:formClient?1:0.4,cursor:formClient?'pointer':'not-allowed'}} title="Copy a past QBO invoice into this bill"><History size={14}/> Copy from past invoice</button>
+        </div>
       </div>
 
       {/* Line items header */}
@@ -338,7 +389,10 @@ export default function BillingPage() {
       {formLines.map((l,idx)=>(
         <div key={idx} style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:6,alignItems:'center'}}>
           <select value={l.service} onChange={(e)=>changeLineField(idx,'service',e.target.value)} style={inputStyle}>
-            <option value="">Select...</option>{SERVICES.map((s)=><option key={s} value={s}>{s}</option>)}
+            <option value="">Select...</option>
+            {/* Include a copied QBO service name even if it isn't in our list. */}
+            {l.service && !SERVICES.includes(l.service) && <option value={l.service}>{l.service}</option>}
+            {SERVICES.map((s)=><option key={s} value={s}>{s}</option>)}
           </select>
           <input value={l.description} onChange={(e)=>changeLineField(idx,'description',e.target.value)} placeholder="Optional..." style={inputStyle}/>
           <input type="number" step="0.01" value={l.net} placeholder="0.00" style={inputStyle} onChange={(e)=>changeLineNet(idx,e.target.value)}/>
@@ -641,6 +695,53 @@ export default function BillingPage() {
               <button onClick={handleBatchPush} disabled={pushing || !allContactsReady} style={{...btnPrimary,flex:1,background:'#059669',justifyContent:'center',opacity:(pushing||!allContactsReady)?0.5:1}}>
                 {pushing?'Pushing...':(sendMode==='send'?'Create & send':'Create drafts')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create a new client inline */}
+      <NewClientModal open={showNewClient} onClose={()=>setShowNewClient(false)} onSave={handleCreateClient}/>
+
+      {/* Copy from a past QBO invoice (last 24 months) */}
+      {showInvoicePicker && (
+        <div onClick={()=>setShowInvoicePicker(false)} style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div onClick={(e)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:'28px',maxWidth:720,width:'100%',maxHeight:'85vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
+            <h2 style={{fontFamily:"'Playfair Display', serif",fontSize:20,fontWeight:500,color:'#0f172a',margin:'0 0 4px'}}>Copy from a past invoice</h2>
+            <p style={{fontSize:13,color:'#64748b',marginBottom:16}}>{entityMap[formClient]?.name||'Client'} · last 24 months from QuickBooks</p>
+            {invLoading && <p style={{fontSize:13,color:'#94a3b8',padding:'24px 0',textAlign:'center'}}>Loading invoices from QuickBooks…</p>}
+            {invError && <div style={{fontSize:12,color:'#b91c1c',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'10px 12px',marginBottom:12}}>{invError}</div>}
+            {!invLoading && !invError && clientInvoices.length===0 && <p style={{fontSize:13,color:'#94a3b8',padding:'24px 0',textAlign:'center'}}>No invoices in the last 24 months.</p>}
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {clientInvoices.map((inv)=>{
+                const open = expandedInv===inv.id;
+                return (
+                  <div key={inv.id} style={{border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden'}}>
+                    <div onClick={()=>setExpandedInv(open?null:inv.id)} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',cursor:'pointer',background:open?'#f8fafc':'#fff'}}>
+                      <span style={{fontSize:12,color:'#94a3b8',width:14}}>{open?'▾':'▸'}</span>
+                      <span style={{fontSize:13,fontWeight:600,color:'#0f172a',width:96}}>{inv.doc_number?`INV #${inv.doc_number}`:'—'}</span>
+                      <span style={{fontSize:12,color:'#64748b',flex:1}}>{inv.txn_date} · {inv.lines.length} line{inv.lines.length!==1?'s':''}</span>
+                      <span style={{fontSize:13,fontWeight:600,color:'#0f172a'}}>{fmt(inv.total_amt)}</span>
+                      <button onClick={(e)=>{e.stopPropagation();copyInvoiceToForm(inv);}} style={{...btnPrimary,padding:'6px 10px',fontSize:12,gap:4}}><Plus size={13}/> Copy</button>
+                    </div>
+                    {open && (
+                      <div style={{borderTop:'1px solid #f1f5f9',padding:'8px 14px',background:'#fafafa'}}>
+                        {inv.lines.map((l,i)=>(
+                          <div key={i} style={{display:'flex',gap:10,fontSize:12,padding:'4px 0',borderBottom:i<inv.lines.length-1?'1px solid #f1f5f9':'none'}}>
+                            <span style={{fontWeight:500,color:'#0f172a',minWidth:150}}>{l.service||'—'}</span>
+                            <span style={{color:'#64748b',flex:1}}>{l.description||''}</span>
+                            <span style={{fontFamily:'monospace',color:'#0f172a'}}>{fmt(l.amount)}</span>
+                          </div>
+                        ))}
+                        {inv.lines.length===0 && <p style={{fontSize:12,color:'#94a3b8',padding:'4px 0'}}>No service lines on this invoice.</p>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:'flex',justifyContent:'flex-end',marginTop:16}}>
+              <button onClick={()=>setShowInvoicePicker(false)} style={btnOutline}>Close</button>
             </div>
           </div>
         </div>

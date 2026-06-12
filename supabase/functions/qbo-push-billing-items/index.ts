@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "POST required" }, 405);
   }
 
-  let body: { billing_item_ids?: string[]; send?: boolean; dry_run?: boolean; refresh?: boolean; due_days?: number; initiated_by?: string };
+  let body: { billing_item_ids?: string[]; send?: boolean; dry_run?: boolean; refresh?: boolean; list_invoices?: boolean; entity_id?: string; due_days?: number; initiated_by?: string };
   try {
     body = await req.json();
   } catch {
@@ -95,6 +95,48 @@ Deno.serve(async (req) => {
       }
     }
     return jsonResponse({ success: true, refreshed });
+  }
+
+  // ── List-invoices mode ── pull the last 24 months of a client's QBO
+  // invoices (with line detail) so the user can copy a past invoice into a
+  // new bill. Read-only; no DB writes.
+  if (body.list_invoices) {
+    if (!body.entity_id) return jsonResponse({ success: false, error: "entity_id required" }, 400);
+    const { data: ent } = await sb.from("entities").select("id, name, qbo_customer_id").eq("id", body.entity_id).single();
+    if (!ent) return jsonResponse({ success: false, error: "Client not found" }, 404);
+    let custId = (ent.qbo_customer_id as string) || null;
+    if (!custId) custId = await findCustomerByName(String(ent.name || ""));
+    if (!custId) return jsonResponse({ success: true, customer_found: false, invoices: [] });
+
+    const since = new Date();
+    since.setMonth(since.getMonth() - 24);
+    const sinceIso = since.toISOString().slice(0, 10);
+    const result = await qboQuery(
+      `SELECT * FROM Invoice WHERE CustomerRef = '${String(custId).replace(/'/g, "\\'")}' AND TxnDate >= '${sinceIso}' ORDERBY TxnDate DESC MAXRESULTS 1000`,
+    ) as Record<string, unknown>;
+    const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+    const rows = (qr.Invoice as Array<Record<string, unknown>>) || [];
+    const invoices = rows.map((inv) => ({
+      id: String(inv.Id),
+      doc_number: inv.DocNumber != null ? String(inv.DocNumber) : null,
+      txn_date: String(inv.TxnDate || ""),
+      total_amt: Number(inv.TotalAmt) || 0,
+      balance: Number(inv.Balance) || 0,
+      lines: ((inv.Line as Array<Record<string, unknown>>) || [])
+        .filter((l) => l.DetailType === "SalesItemLineDetail")
+        .map((l) => {
+          const d = (l.SalesItemLineDetail as Record<string, unknown>) || {};
+          const ref = (d.ItemRef as Record<string, unknown>) || {};
+          return {
+            service: ref.name ? String(ref.name) : "",
+            description: l.Description ? String(l.Description) : "",
+            qty: Number(d.Qty) || 1,
+            unit_price: Number(d.UnitPrice) || 0,
+            amount: Number(l.Amount) || 0,
+          };
+        }),
+    }));
+    return jsonResponse({ success: true, customer_found: true, invoices });
   }
 
   if (ids.length === 0) {

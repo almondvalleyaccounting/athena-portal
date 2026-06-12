@@ -63,6 +63,16 @@ export async function pushBillingItems(billingItemIds, send, initiatedBy, dryRun
   return data;
 }
 
+/** Pull the last 24 months of a client's QBO invoices (with line detail)
+ *  so a past invoice can be copied into a new bill. */
+export async function fetchClientInvoices(entityId) {
+  const { data, error } = await supabase.functions.invoke('qbo-push-billing-items', {
+    body: { list_invoices: true, entity_id: entityId },
+  });
+  if (error) throw error;
+  return data;
+}
+
 /** Re-confirm invoice number + email status from QBO for pushed billing
  *  items. Pass ids to refresh specific rows, or omit to refresh all pushed. */
 export async function refreshBillingItems(billingItemIds, initiatedBy) {
