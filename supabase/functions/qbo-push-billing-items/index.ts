@@ -327,7 +327,6 @@ Deno.serve(async (req) => {
         TxnDate: txnDate,
         DueDate: addDays(txnDate, dueDays),
         Line: lineItems,
-        PrivateNote: `Created from Athena Portal (Billing) for ${entityName}`,
       };
       if (salesTermId) invoiceBody.SalesTermRef = { value: salesTermId };
       if (email) invoiceBody.BillEmail = { Address: email };
