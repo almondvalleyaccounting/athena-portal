@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw, History } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { pushBillingItems, refreshBillingItems, fetchClientInvoices, fetchQboSettings, assignInvoiceNumbers } from '../../lib/qboApi';
+import { pushBillingItems, refreshBillingItems, fetchClientInvoices, fetchQboSettings } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
 import NewClientModal from '../../components/NewClientModal';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
@@ -54,7 +54,6 @@ export default function BillingPage() {
   const [clientInvoices, setClientInvoices] = useState([]);
   const [expandedInv, setExpandedInv] = useState(null);
   const [customTxn, setCustomTxn] = useState(null); // QBO custom-transaction-numbers: null=unknown
-  const [assigning, setAssigning] = useState(false); // one-off number-assignment in progress
 
   useEffect(() => { loadData(); }, []);
 
@@ -101,23 +100,6 @@ export default function BillingPage() {
       if (data) setItems(data);
     } catch (e) { console.error('[Billing] refresh error:', e); }
     setRefreshing(false);
-  };
-
-  // One-off: get QBO to number invoices that were pushed before auto-
-  // numbering was on. QBO assigns the next sequential number on update.
-  const handleAssignNumbers = async () => {
-    setAssigning(true);
-    try {
-      const res = await assignInvoiceNumbers([]);
-      const { data } = await supabase.from('billing_items').select('*').order('created_at', { ascending: false });
-      if (data) setItems(data);
-      const stuck = (res?.assigned || []).filter((a) => a.action === 'still_blank' || a.error);
-      if (stuck.length) window.alert(`${stuck.length} invoice(s) couldn't be auto-numbered — they may need opening in QBO directly.`);
-    } catch (e) {
-      console.error('[Billing] assign-numbers error:', e);
-      window.alert('Could not assign numbers: ' + (e.message || 'error'));
-    }
-    setAssigning(false);
   };
 
   const entityMap = useMemo(() => { const m = {}; entities.forEach((e) => { m[e.id] = e; }); return m; }, [entities]);
@@ -493,14 +475,13 @@ export default function BillingPage() {
             </div>
           </div>
         );
-        // Setting off (or unknown) → offer the one-off assignment.
+        // Setting off (or unknown) but some bills are still blank — these
+        // were created before auto-numbering. QBO only numbers on create,
+        // not via the API on update, so they must be saved once in QBO.
         return (
-          <div style={{display:'flex',gap:12,alignItems:'center',justifyContent:'space-between',background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'12px 16px',marginBottom:16,fontSize:13,color:'#1e40af',lineHeight:1.5}}>
-            <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
-              <AlertTriangle size={16} style={{color:'#0e7fe0',flexShrink:0,marginTop:1}}/>
-              <div>{blanks.length} pushed invoice{blanks.length!==1?'s':''} {blanks.length!==1?'have':'has'} no QuickBooks number (created before auto-numbering). Assign them now — QBO will number them sequentially.</div>
-            </div>
-            <button onClick={handleAssignNumbers} disabled={assigning} style={{...btnPrimary,whiteSpace:'nowrap',opacity:assigning?0.5:1}}>{assigning?'Assigning…':`Assign number${blanks.length!==1?'s':''}`}</button>
+          <div style={{display:'flex',gap:10,alignItems:'flex-start',background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'12px 16px',marginBottom:16,fontSize:13,color:'#1e40af',lineHeight:1.5}}>
+            <AlertTriangle size={16} style={{color:'#0e7fe0',flexShrink:0,marginTop:1}}/>
+            <div>{blanks.length} pushed invoice{blanks.length!==1?'s':''} {blanks.length!==1?'have':'has'} no QuickBooks number (created before auto-numbering). Open {blanks.length!==1?'each':'it'} in QuickBooks and click <b>Save</b> to assign the number, then use <b>Refresh from QBO</b> here to pull it in.</div>
           </div>
         );
       })()}
