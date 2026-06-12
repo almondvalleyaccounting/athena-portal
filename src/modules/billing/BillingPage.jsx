@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw, History } from 'lucide-react';
+import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw, History, Ban, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { pushBillingItems, refreshBillingItems, fetchClientInvoices, fetchQboSettings } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
@@ -12,6 +12,7 @@ const STATUS_CONFIG = {
   approved: { label: 'Approved', colour: '#059669', bg: '#f0fdf4' },
   pushed: { label: 'Pushed to QBO', colour: '#0e7fe0', bg: '#eff6ff' },
   rejected: { label: 'Rejected', colour: '#dc2626', bg: '#fef2f2' },
+  not_required: { label: 'Not required', colour: '#7c3aed', bg: '#f5f3ff' },
 };
 const SERVICES = ['Admin','Accounts Production','Corporation Tax','Self Assessment','VAT Returns','Bookkeeping','Payroll','Management Accounts','Company Secretarial','Advisory','SA302s','Accountant Certificates'];
 
@@ -812,10 +813,18 @@ function QboInvoiceTag({ item }) {
 function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   const s = item.status;
   const sz = compact?12:14;
-  const b = {background:'none',border:'none',cursor:'pointer',padding:compact?2:4,borderRadius:4,display:'inline-flex',transition:'color 0.12s'};
+  const b = {background:'none',border:'none',cursor:'pointer',padding:compact?2:4,borderRadius:4,display:'inline-flex',alignItems:'center',transition:'all 0.12s'};
   return (
-    <div style={{display:'flex',gap:compact?2:4,alignItems:'center',flexShrink:0}}>
-      {s==='draft' && <button onClick={()=>onStatus(item,'approved')} style={b} title="Approve"><Check size={sz} style={{color:'#94a3b8'}} onMouseEnter={e=>e.target.style.color='#059669'} onMouseLeave={e=>e.target.style.color='#94a3b8'}/></button>}
+    <div style={{display:'flex',gap:compact?3:5,alignItems:'center',flexShrink:0}}>
+      {/* Approve — solid green so it's unmissable (was a faint grey tick). */}
+      {s==='draft' && (
+        <button onClick={()=>onStatus(item,'approved')} title="Approve"
+          style={{display:'inline-flex',alignItems:'center',gap:4,background:'#059669',color:'#fff',border:'none',borderRadius:6,cursor:'pointer',padding:compact?'2px 7px':'5px 10px',fontSize:compact?10:12,fontWeight:600,fontFamily:"'Outfit', sans-serif"}}>
+          <Check size={sz} strokeWidth={3}/>{!compact && 'Approve'}
+        </button>
+      )}
+      {(s==='draft'||s==='approved') && <button onClick={()=>onStatus(item,'not_required')} style={b} title="Mark not required"><Ban size={sz} style={{color:'#cbd5e1'}}/></button>}
+      {s==='not_required' && <button onClick={()=>onStatus(item,'draft')} style={b} title="Back to draft"><RotateCcw size={sz} style={{color:'#94a3b8'}}/></button>}
       {s!=='pushed' && <button onClick={onEdit} style={b} title="Edit"><Pencil size={sz} style={{color:'#cbd5e1'}}/></button>}
       <button onClick={onDelete} style={b} title="Delete"><Trash2 size={sz} style={{color:'#cbd5e1'}}/></button>
     </div>
