@@ -395,14 +395,15 @@ export default function BillingPage() {
         <span style={formLabel}>Net (£) *</span><span style={formLabel}>VAT (£)</span><span style={formLabel}>Gross (£)</span><span/>
       </div>
       {formLines.map((l,idx)=>(
-        <div key={idx} style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:6,alignItems:'center'}}>
+        <div key={idx} style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:6,alignItems:'flex-start'}}>
           <select value={l.service} onChange={(e)=>changeLineField(idx,'service',e.target.value)} style={inputStyle}>
             <option value="">Select...</option>
             {/* Include a copied QBO service name even if it isn't in our list. */}
             {l.service && !SERVICES.includes(l.service) && <option value={l.service}>{l.service}</option>}
             {SERVICES.map((s)=><option key={s} value={s}>{s}</option>)}
           </select>
-          <input value={l.description} onChange={(e)=>changeLineField(idx,'description',e.target.value)} placeholder="Optional..." style={inputStyle}/>
+          {/* Textarea so multi-line QBO descriptions keep their line breaks. */}
+          <textarea value={l.description} onChange={(e)=>changeLineField(idx,'description',e.target.value)} placeholder="Optional..." rows={2} style={{...inputStyle,resize:'vertical',minHeight:38,lineHeight:1.4}}/>
           <input type="number" step="0.01" value={l.net} placeholder="0.00" style={inputStyle} onChange={(e)=>changeLineNet(idx,e.target.value)}/>
           <input type="number" step="0.01" value={l.vat} placeholder="0.00" style={inputStyle} onChange={(e)=>changeLineVat(idx,e.target.value)}/>
           <input value={l.gross} placeholder="0.00" style={{...inputStyle,background:'#f8fafc'}} readOnly/>
@@ -737,7 +738,7 @@ export default function BillingPage() {
                         {inv.lines.map((l,i)=>(
                           <div key={i} style={{display:'flex',gap:10,fontSize:12,padding:'4px 0',borderBottom:i<inv.lines.length-1?'1px solid #f1f5f9':'none'}}>
                             <span style={{fontWeight:500,color:'#0f172a',minWidth:150}}>{l.service||'—'}</span>
-                            <span style={{color:'#64748b',flex:1}}>{l.description||''}</span>
+                            <span style={{color:'#64748b',flex:1,whiteSpace:'pre-line'}}>{l.description||''}</span>
                             <span style={{fontFamily:'monospace',color:'#0f172a'}}>{fmt(l.amount)}</span>
                           </div>
                         ))}
