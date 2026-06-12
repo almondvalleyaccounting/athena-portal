@@ -63,6 +63,16 @@ export async function pushBillingItems(billingItemIds, send, initiatedBy, dryRun
   return data;
 }
 
+/** Re-confirm invoice number + email status from QBO for pushed billing
+ *  items. Pass ids to refresh specific rows, or omit to refresh all pushed. */
+export async function refreshBillingItems(billingItemIds, initiatedBy) {
+  const { data, error } = await supabase.functions.invoke('qbo-push-billing-items', {
+    body: { refresh: true, billing_item_ids: billingItemIds || [], initiated_by: initiatedBy },
+  });
+  if (error) throw error;
+  return data;
+}
+
 /** Pull recurring invoices from QBO into live_billing */
 export async function pullFromQbo(initiatedBy) {
   const { data, error } = await supabase.functions.invoke('qbo-pull', {

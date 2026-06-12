@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { pushBillingItems } from '../../lib/qboApi';
+import { pushBillingItems, refreshBillingItems } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
 
 const VAT_RATE = 0.20;
@@ -41,6 +41,8 @@ export default function BillingPage() {
   // Multi-line bill editor. One client, N service lines → one QBO invoice.
   const [formLines, setFormLines] = useState([blankLine()]);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const autoRefreshedRef = useRef(false); // only auto-refresh once per mount
 
   useEffect(() => { loadData(); }, []);
 
@@ -54,8 +56,33 @@ export default function BillingPage() {
       setItems(bills || []);
       setEntities(ents || []);
       setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email || 'Unknown' })));
+      // On first load, silently re-confirm invoice number + sent status from
+      // QBO for pushed bills that don't have them yet (or aren't sent yet).
+      if (!autoRefreshedRef.current) { autoRefreshedRef.current = true; autoRefreshPushed(bills || []); }
     } catch (e) { console.error('[Billing] load error:', e); }
     setLoading(false);
+  };
+
+  // Fire-and-forget QBO re-confirm for pushed rows missing a doc number or
+  // not yet shown as sent. Updates items in place when it returns.
+  const autoRefreshPushed = async (bills) => {
+    const need = (bills || []).filter((i) => i.status === 'pushed' && (!i.qbo_doc_number || i.qbo_email_status !== 'EmailSent'));
+    if (!need.length) return;
+    try {
+      await refreshBillingItems(need.map((i) => i.id), profile?.id);
+      const { data } = await supabase.from('billing_items').select('*').order('created_at', { ascending: false });
+      if (data) setItems(data);
+    } catch (e) { console.error('[Billing] auto-refresh error:', e); }
+  };
+
+  const handleRefreshQbo = async () => {
+    setRefreshing(true);
+    try {
+      await refreshBillingItems([], profile?.id); // all pushed
+      const { data } = await supabase.from('billing_items').select('*').order('created_at', { ascending: false });
+      if (data) setItems(data);
+    } catch (e) { console.error('[Billing] refresh error:', e); }
+    setRefreshing(false);
   };
 
   const entityMap = useMemo(() => { const m = {}; entities.forEach((e) => { m[e.id] = e; }); return m; }, [entities]);
@@ -355,6 +382,11 @@ export default function BillingPage() {
           <button onClick={()=>setCompact(!compact)} style={btnOutline} title={compact?'Full view':'Compact view'}>
             {compact?<Maximize2 size={14}/>:<Minimize2 size={14}/>}
           </button>
+          {items.some((i)=>i.status==='pushed') && (
+            <button onClick={handleRefreshQbo} disabled={refreshing} style={{...btnOutline,gap:5,opacity:refreshing?0.5:1}} title="Re-confirm invoice numbers + sent status from QuickBooks">
+              <RefreshCw size={14}/> {refreshing?'Refreshing…':'Refresh from QBO'}
+            </button>
+          )}
           {filtered.length>0 && <button onClick={handleExport} style={{...btnOutline,gap:5}}><Download size={14}/> Export{selected.size>0?` (${selected.size})`:''}</button>}
           <button onClick={()=>{setShowAdd(!showAdd);setEditingId(null);resetForm();}} style={btnPrimary}><Plus size={14}/> New Item</button>
         </div>
@@ -416,6 +448,7 @@ export default function BillingPage() {
                 <span style={{fontWeight:500,color:'#0f172a',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clientName} — {item.service}</span>
                 <span style={{fontWeight:600,color:'#0f172a',flexShrink:0}}>{fmt(item.gross_amount)}</span>
                 <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 6px',borderRadius:4,flexShrink:0}}>{sc.label}</span>
+                <QboInvoiceTag item={item}/>
                 <span style={{fontSize:10,color:'#94a3b8',flexShrink:0}}>{addedBy} · {dateStr}</span>
                 <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} compact/>
               </div>
@@ -429,6 +462,7 @@ export default function BillingPage() {
                   {item.description && <div style={{fontSize:12,color:'#64748b'}}>{item.description}</div>}
                   <div style={{fontSize:11,color:'#94a3b8',marginTop:4,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                     <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 8px',borderRadius:6}}>{sc.label}</span>
+                    <QboInvoiceTag item={item}/>
                     <span>Added by {addedBy}</span>
                     <span>{dateStr}</span>
                   </div>
@@ -612,6 +646,23 @@ export default function BillingPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Invoice number + real send status, confirmed back from QBO. Pushed rows
+// only. EmailSent → green "Sent"; NeedToSend → amber "Not sent"; otherwise
+// grey "Draft".
+function QboInvoiceTag({ item }) {
+  if (item.status !== 'pushed') return null;
+  const es = item.qbo_email_status;
+  const tone = es === 'EmailSent' ? { c: '#15803d', b: '#f0fdf4', t: 'Sent' }
+    : es === 'NeedToSend' ? { c: '#b45309', b: '#fffbeb', t: 'Not sent' }
+    : { c: '#64748b', b: '#f1f5f9', t: 'Draft' };
+  return (
+    <>
+      {item.qbo_doc_number && <span style={{ fontSize: 10, fontWeight: 600, color: '#0e7fe0', background: '#eff6ff', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>INV #{item.qbo_doc_number}</span>}
+      <span style={{ fontSize: 10, fontWeight: 600, color: tone.c, background: tone.b, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>{tone.t}</span>
+    </>
   );
 }
 

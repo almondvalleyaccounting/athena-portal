@@ -29,6 +29,7 @@ interface ItemResult {
   entity: string;
   status: "sent" | "created_unsent" | "error";
   qbo_invoice_id?: string;
+  qbo_doc_number?: string | null;
   reason?: string;
 }
 
@@ -50,7 +51,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "POST required" }, 405);
   }
 
-  let body: { billing_item_ids?: string[]; send?: boolean; dry_run?: boolean; due_days?: number; initiated_by?: string };
+  let body: { billing_item_ids?: string[]; send?: boolean; dry_run?: boolean; refresh?: boolean; due_days?: number; initiated_by?: string };
   try {
     body = await req.json();
   } catch {
@@ -61,11 +62,44 @@ Deno.serve(async (req) => {
   const send = body.send !== false; // default to sending
   // Invoice payment terms: due N days after the invoice date (default 14).
   const dueDays = Number.isFinite(Number(body.due_days)) && Number(body.due_days) >= 0 ? Number(body.due_days) : 14;
+  const sb = getServiceClient();
+
+  // ── Refresh mode ── re-confirm DocNumber + EmailStatus from QBO for
+  // already-pushed bills (no creates, no sends). Runs against the supplied
+  // ids, or every pushed bill when none are given. Piggybacks the QBO
+  // query layer rather than the heavy fee-engine pull.
+  if (body.refresh) {
+    const sel = sb.from("billing_items").select("id, qbo_invoice_id").eq("status", "pushed").not("qbo_invoice_id", "is", null);
+    const { data: rows, error } = ids.length ? await sel.in("id", ids) : await sel;
+    if (error) return jsonResponse({ success: false, error: error.message }, 500);
+    const byInvId = new Map<string, string>(); // qbo_invoice_id -> billing_item id
+    for (const r of rows || []) { if (r.qbo_invoice_id) byInvId.set(String(r.qbo_invoice_id), r.id as string); }
+    const invIds = [...byInvId.keys()];
+    if (invIds.length === 0) return jsonResponse({ success: true, refreshed: [] });
+    const nowIso = new Date().toISOString();
+    const refreshed: Array<Record<string, unknown>> = [];
+    // Batch the IN clause to stay well under QBO query limits.
+    for (let i = 0; i < invIds.length; i += 50) {
+      const inList = invIds.slice(i, i + 50).map((x) => `'${x.replace(/'/g, "\\'")}'`).join(", ");
+      const result = await qboQuery(`SELECT Id, DocNumber, EmailStatus FROM Invoice WHERE Id IN (${inList})`) as Record<string, unknown>;
+      const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+      for (const inv of (qr.Invoice as Array<Record<string, unknown>>) || []) {
+        const biId = byInvId.get(String(inv.Id));
+        if (!biId) continue;
+        const docNumber = inv.DocNumber != null ? String(inv.DocNumber) : null;
+        const emailStatus = inv.EmailStatus ? String(inv.EmailStatus) : null;
+        await sb.from("billing_items").update({
+          qbo_doc_number: docNumber, qbo_email_status: emailStatus, qbo_last_checked_at: nowIso,
+        }).eq("id", biId);
+        refreshed.push({ billing_item_id: biId, doc_number: docNumber, email_status: emailStatus });
+      }
+    }
+    return jsonResponse({ success: true, refreshed });
+  }
+
   if (ids.length === 0) {
     return jsonResponse({ success: false, error: "billing_item_ids required" }, 400);
   }
-
-  const sb = getServiceClient();
 
   const { data: items, error: itemsErr } = await sb
     .from("billing_items")
@@ -251,6 +285,9 @@ Deno.serve(async (req) => {
       }
       const created_ = await createResp.json();
       const qboInvoiceId = String(created_.Invoice.Id);
+      // Confirm the invoice number + send state straight from the response.
+      const qboDocNumber = created_.Invoice.DocNumber != null ? String(created_.Invoice.DocNumber) : null;
+      let qboEmailStatus = created_.Invoice.EmailStatus ? String(created_.Invoice.EmailStatus) : null;
 
       // 5. Send now, or leave as draft.
       let finalStatus: ItemResult["status"];
@@ -261,6 +298,9 @@ Deno.serve(async (req) => {
         if (!sendResp.ok) {
           throw new Error(`invoice created (${qboInvoiceId}) but send failed: ${sendResp.status} ${await sendResp.text()}`);
         }
+        // The send response returns the updated invoice (EmailStatus=EmailSent).
+        const sentInv = await sendResp.json().catch(() => null);
+        qboEmailStatus = sentInv?.Invoice?.EmailStatus ? String(sentInv.Invoice.EmailStatus) : "EmailSent";
         finalStatus = "sent";
         sent++;
       } else {
@@ -272,9 +312,12 @@ Deno.serve(async (req) => {
       await sb.from("billing_items").update({
         status: "pushed",
         qbo_invoice_id: qboInvoiceId,
+        qbo_doc_number: qboDocNumber,
+        qbo_email_status: qboEmailStatus,
         qbo_customer_id: qboCustomerId,
         qbo_sync_status: finalStatus,
         qbo_synced_at: new Date().toISOString(),
+        qbo_last_checked_at: new Date().toISOString(),
         qbo_sync_error: null,
         pushed_by: body.initiated_by || null,
         pushed_at: new Date().toISOString(),
@@ -285,6 +328,7 @@ Deno.serve(async (req) => {
         entity: entityName,
         status: finalStatus,
         qbo_invoice_id: qboInvoiceId,
+        qbo_doc_number: qboDocNumber,
         reason: finalStatus === "created_unsent" && send && !email ? "no client email on file - created as draft" : undefined,
       });
 
@@ -295,7 +339,7 @@ Deno.serve(async (req) => {
         qbo_entity_type: "Invoice",
         qbo_entity_id: qboInvoiceId,
         status: "success",
-        detail: { billing_item_id: item.id, net, lines: lines.length, sent: finalStatus === "sent", due_days: dueDays },
+        detail: { billing_item_id: item.id, net, lines: lines.length, doc_number: qboDocNumber, sent: finalStatus === "sent", due_days: dueDays },
         initiated_by: body.initiated_by || undefined,
       });
     } catch (err) {
@@ -611,9 +655,9 @@ async function findGroupMemberAddr(sb: ReturnType<typeof getServiceClient>, enti
     const groupIds = (mine || []).map((m: Record<string, unknown>) => m.group_id).filter(Boolean);
     if (groupIds.length === 0) return null;
     const { data: members } = await sb.from("billing_group_members").select("entity_id").in("group_id", groupIds);
-    const ids = (members || []).map((m: Record<string, unknown>) => m.entity_id).filter((id) => id && id !== entId);
-    if (ids.length === 0) return null;
-    const { data: ents } = await sb.from("entities").select("billing_line1, billing_line2, billing_city, billing_postcode").in("id", ids);
+    const idsArr = (members || []).map((m: Record<string, unknown>) => m.entity_id).filter((id) => id && id !== entId);
+    if (idsArr.length === 0) return null;
+    const { data: ents } = await sb.from("entities").select("billing_line1, billing_line2, billing_city, billing_postcode").in("id", idsArr);
     for (const e of ents || []) {
       const a = buildBillAddr(e as Record<string, unknown>);
       if (a) return a;
@@ -630,9 +674,9 @@ async function findPortalUserAddrHint(sb: ReturnType<typeof getServiceClient>, e
   if (!entId) return null;
   try {
     const { data: mems } = await sb.from("entity_memberships").select("user_id").eq("entity_id", entId).limit(10);
-    const ids = (mems || []).map((m: Record<string, unknown>) => m.user_id).filter(Boolean);
-    if (ids.length === 0) return null;
-    const { data: us } = await sb.from("users").select("address").in("id", ids).not("address", "is", null);
+    const uids = (mems || []).map((m: Record<string, unknown>) => m.user_id).filter(Boolean);
+    if (uids.length === 0) return null;
+    const { data: us } = await sb.from("users").select("address").in("id", uids).not("address", "is", null);
     for (const u of us || []) {
       const a = String((u as Record<string, unknown>).address ?? "").trim();
       if (a) return a;
