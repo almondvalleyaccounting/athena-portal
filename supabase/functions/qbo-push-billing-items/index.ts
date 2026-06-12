@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "POST required" }, 405);
   }
 
-  let body: { billing_item_ids?: string[]; send?: boolean; dry_run?: boolean; refresh?: boolean; list_invoices?: boolean; check_settings?: boolean; entity_id?: string; due_days?: number; initiated_by?: string };
+  let body: { billing_item_ids?: string[]; send?: boolean; dry_run?: boolean; refresh?: boolean; list_invoices?: boolean; check_settings?: boolean; assign_numbers?: boolean; entity_id?: string; due_days?: number; initiated_by?: string };
   try {
     body = await req.json();
   } catch {
@@ -152,6 +152,44 @@ Deno.serve(async (req) => {
     } catch (e) {
       return jsonResponse({ success: false, error: (e as Error).message }, 500);
     }
+  }
+
+  // ── Assign-numbers mode ── one-off cleanup for invoices pushed while QBO
+  // had "Custom transaction numbers" on (so they have no DocNumber). With
+  // that setting now off, a full update with DocNumber omitted makes QBO
+  // assign the next sequential number — the same as hitting Save in the UI.
+  if (body.assign_numbers) {
+    const sel = sb.from("billing_items").select("id, qbo_invoice_id").eq("status", "pushed").not("qbo_invoice_id", "is", null).is("qbo_doc_number", null);
+    const { data: rows, error } = ids.length ? await sel.in("id", ids) : await sel;
+    if (error) return jsonResponse({ success: false, error: error.message }, 500);
+    const nowIso = new Date().toISOString();
+    const assigned: Array<Record<string, unknown>> = [];
+    for (const r of rows || []) {
+      const invId = String(r.qbo_invoice_id);
+      try {
+        const getResp = await qboFetch(`invoice/${invId}`);
+        if (!getResp.ok) throw new Error(`fetch failed: ${getResp.status} ${await getResp.text()}`);
+        const inv = ((await getResp.json()) as { Invoice: Record<string, unknown> }).Invoice;
+        if (inv.DocNumber) {
+          const doc = String(inv.DocNumber);
+          await sb.from("billing_items").update({ qbo_doc_number: doc, qbo_last_checked_at: nowIso }).eq("id", r.id);
+          assigned.push({ billing_item_id: r.id, qbo_invoice_id: invId, doc_number: doc, action: "already_numbered" });
+          continue;
+        }
+        // Full update (not sparse) with DocNumber omitted → QBO auto-assigns.
+        const payload = { ...inv };
+        delete payload.DocNumber;
+        const upd = await qboFetch("invoice", { method: "POST", body: JSON.stringify(payload) });
+        if (!upd.ok) throw new Error(`update failed: ${upd.status} ${await upd.text()}`);
+        const updated = ((await upd.json()) as { Invoice: Record<string, unknown> }).Invoice;
+        const doc = updated.DocNumber != null ? String(updated.DocNumber) : null;
+        await sb.from("billing_items").update({ qbo_doc_number: doc, qbo_last_checked_at: nowIso }).eq("id", r.id);
+        assigned.push({ billing_item_id: r.id, qbo_invoice_id: invId, doc_number: doc, action: doc ? "assigned" : "still_blank" });
+      } catch (e) {
+        assigned.push({ billing_item_id: r.id, qbo_invoice_id: invId, error: (e as Error).message });
+      }
+    }
+    return jsonResponse({ success: true, assigned });
   }
 
   if (ids.length === 0) {

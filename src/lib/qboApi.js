@@ -63,6 +63,16 @@ export async function pushBillingItems(billingItemIds, send, initiatedBy, dryRun
   return data;
 }
 
+/** One-off: ask QBO to assign numbers to pushed invoices left blank by the
+ *  old "custom transaction numbers" setting. Pass ids, or omit for all blank. */
+export async function assignInvoiceNumbers(billingItemIds) {
+  const { data, error } = await supabase.functions.invoke('qbo-push-billing-items', {
+    body: { assign_numbers: true, billing_item_ids: billingItemIds || [] },
+  });
+  if (error) throw error;
+  return data;
+}
+
 /** Read QBO sales preferences — currently just whether "Custom transaction
  *  numbers" is on (which leaves API-created invoices without a number). */
 export async function fetchQboSettings() {
