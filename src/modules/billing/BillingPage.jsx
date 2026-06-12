@@ -32,6 +32,10 @@ export default function BillingPage() {
   const [preview, setPreview] = useState(null); // dry-run plan rows
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState(null);
+  // Per-item billing contact (email + address), keyed by billing_item_id.
+  // Seeded from the dry-run plan's resolved contact, editable before push.
+  const [contacts, setContacts] = useState({});
+  const [contactIndex, setContactIndex] = useState(0); // which target is being edited
 
   const [formClient, setFormClient] = useState('');
   const [formService, setFormService] = useState('');
@@ -83,6 +87,11 @@ export default function BillingPage() {
 
   const fmt = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n || 0);
   const resetForm = () => { setFormClient(''); setFormService(''); setFormDesc(''); setFormNet(''); setFormVat(''); setFormGross(''); setVatManual(false); };
+
+  // Per-item billing-contact helpers (push-confirm modal).
+  const contactOf = (id) => contacts[id] || { email: '', line1: '', line2: '', city: '', postcode: '' };
+  const setContact = (id, patch) => setContacts((prev) => ({ ...prev, [id]: { ...contactOf(id), ...patch } }));
+  const isContactReady = (id) => { const c = contactOf(id); return !!(c.email?.trim() && c.line1?.trim() && c.postcode?.trim()); };
 
   const handleAdd = async () => {
     if (!formClient || !formService || !formNet) return;
@@ -139,11 +148,29 @@ export default function BillingPage() {
   const approvedItems = items.filter((i) => i.status === 'approved');
   const selectedApproved = approvedItems.filter((i) => selected.has(i.id));
   const pushTargets = selectedApproved.length > 0 ? selectedApproved : approvedItems;
+  // Email + address (line 1 + postcode) are mandatory before any push.
+  const notReadyTargets = pushTargets.filter((i) => !isContactReady(i.id));
+  const allContactsReady = pushTargets.length > 0 && notReadyTargets.length === 0;
 
   const handleBatchPush = async () => {
     setPushing(true);
     setPushResults(null);
     try {
+      // Save each chosen billing contact to its client record first, so the
+      // push reads it (the edge function resolves Athena fields first) and
+      // it's on file for any retry. One row per entity (last edit wins).
+      const byEntity = {};
+      for (const it of pushTargets) { if (it.entity_id) byEntity[it.entity_id] = contactOf(it.id); }
+      await Promise.all(Object.entries(byEntity).map(([entId, c]) =>
+        supabase.from('entities').update({
+          billing_email: c.email.trim() || null,
+          billing_line1: c.line1.trim() || null,
+          billing_line2: c.line2.trim() || null,
+          billing_city: c.city.trim() || null,
+          billing_postcode: c.postcode.trim() || null,
+        }).eq('id', entId)
+      ));
+
       const result = await pushBillingItems(
         pushTargets.map((i) => i.id),
         sendMode === 'send',
@@ -168,13 +195,32 @@ export default function BillingPage() {
   // draft) before committing. Doesn't depend on sendMode — the send/draft
   // line is derived client-side from the plan's has_email flag.
   useEffect(() => {
-    if (!showPushConfirm) { setPreview(null); setPreviewError(null); return; }
+    if (!showPushConfirm) { setPreview(null); setPreviewError(null); setContacts({}); setContactIndex(0); return; }
     let cancelled = false;
     const ids = pushTargets.map((i) => i.id);
     if (ids.length === 0) return;
     setPreviewLoading(true); setPreviewError(null);
     pushBillingItems(ids, true, profile?.id, true)
-      .then((res) => { if (!cancelled) setPreview(res?.plan || []); })
+      .then((res) => {
+        if (cancelled) return;
+        const plan = res?.plan || [];
+        setPreview(plan);
+        // Seed each item's contact from the resolved dry-run values
+        // (Athena → QBO → recurring template → group member). Don't clobber
+        // anything the user has already edited this session.
+        setContacts((prev) => {
+          const next = { ...prev };
+          for (const p of plan) {
+            if (next[p.billing_item_id]) continue;
+            const a = p.address || {};
+            next[p.billing_item_id] = {
+              email: p.email || '',
+              line1: a.Line1 || '', line2: a.Line2 || '', city: a.City || '', postcode: a.PostalCode || '',
+            };
+          }
+          return next;
+        });
+      })
       .catch((e) => { if (!cancelled) setPreviewError(e.message || 'Could not load preview'); })
       .finally(() => { if (!cancelled) setPreviewLoading(false); });
     return () => { cancelled = true; };
@@ -337,7 +383,7 @@ export default function BillingPage() {
       {/* Push to QB confirmation modal */}
       {showPushConfirm && (
         <div onClick={()=>setShowPushConfirm(false)} style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-          <div onClick={(e)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:'32px',maxWidth:920,width:'100%',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
+          <div onClick={(e)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:'32px',maxWidth:920,width:'100%',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
               <AlertTriangle size={24} style={{color:'#d97706'}}/>
               <h2 style={{fontFamily:"'Playfair Display', serif",fontSize:20,fontWeight:500,color:'#0f172a',margin:0}}>Confirm Push to QuickBooks</h2>
@@ -371,6 +417,61 @@ export default function BillingPage() {
               <span style={{fontSize:13,color:'#64748b'}}>days from invoice date</span>
             </div>
 
+            {/* Billing contact (mandatory: email + address). Seeded from QBO
+                via the dry-run, editable per item with a navigator. */}
+            {pushTargets.length > 0 && (() => {
+              const curTarget = pushTargets[Math.min(contactIndex, pushTargets.length - 1)];
+              if (!curTarget) return null;
+              const id = curTarget.id;
+              const cc = contactOf(id);
+              const cp = preview?.find((r) => r.billing_item_id === id);
+              const name = entityMap[curTarget.entity_id]?.name || 'Unknown';
+              return (
+                <div style={{background:'#f8fafc',borderRadius:10,border:'1px solid #e5e7eb',padding:'14px 16px',marginBottom:16}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                    <span style={{fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em'}}>Billing contact</span>
+                    {pushTargets.length>1 && (
+                      <div style={{display:'flex',alignItems:'center',gap:8,fontSize:12,color:'#64748b'}}>
+                        <button onClick={()=>setContactIndex((i)=>(i-1+pushTargets.length)%pushTargets.length)} disabled={pushing} style={navBtn} title="Previous">‹</button>
+                        <span>{Math.min(contactIndex,pushTargets.length-1)+1} of {pushTargets.length}</span>
+                        <button onClick={()=>setContactIndex((i)=>(i+1)%pushTargets.length)} disabled={pushing} style={navBtn} title="Next">›</button>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{fontSize:13,fontWeight:600,color:'#0f172a',marginBottom:8}}>{name} — {curTarget.service}</div>
+
+                  <label style={formLabel}>Email *</label>
+                  {cp?.email_options?.length>0 && (
+                    <select value="" onChange={(e)=>{ if(e.target.value) setContact(id,{email:e.target.value}); }} disabled={pushing} style={{...inputStyle,marginBottom:6,color:'#64748b'}}>
+                      <option value="">Pick a known email…</option>
+                      {cp.email_options.map((opt)=><option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  )}
+                  <input type="email" value={cc.email} onChange={(e)=>setContact(id,{email:e.target.value})} disabled={pushing} placeholder="billing@example.com" style={{...inputStyle,marginBottom:10}}/>
+
+                  <label style={formLabel}>Billing address *{!isContactReady(id) && cp?.address_hint && <span style={{color:'#b45309',fontWeight:400,textTransform:'none'}}> · on file: {cp.address_hint}</span>}</label>
+                  {cp?.address_options?.length>0 && (
+                    <select value="" onChange={(e)=>{ const a=cp.address_options[Number(e.target.value)]?.addr; if(a) setContact(id,{line1:a.Line1||'',line2:a.Line2||'',city:a.City||'',postcode:a.PostalCode||''}); }} disabled={pushing} style={{...inputStyle,marginBottom:6,color:'#64748b'}}>
+                      <option value="">Pick a known address…</option>
+                      {cp.address_options.map((o,i)=><option key={i} value={i}>{o.label}</option>)}
+                    </select>
+                  )}
+                  <input value={cc.line1} onChange={(e)=>setContact(id,{line1:e.target.value})} disabled={pushing} placeholder="Address line 1" style={{...inputStyle,marginBottom:6}}/>
+                  <input value={cc.line2} onChange={(e)=>setContact(id,{line2:e.target.value})} disabled={pushing} placeholder="Address line 2 (optional)" style={{...inputStyle,marginBottom:6}}/>
+                  <div style={{display:'flex',gap:6}}>
+                    <input value={cc.city} onChange={(e)=>setContact(id,{city:e.target.value})} disabled={pushing} placeholder="Town/City" style={{...inputStyle,flex:1}}/>
+                    <input value={cc.postcode} onChange={(e)=>setContact(id,{postcode:e.target.value})} disabled={pushing} placeholder="Postcode" style={{...inputStyle,width:120}}/>
+                  </div>
+                  {pushTargets.length>1 && (
+                    <button onClick={()=>{ const src=contactOf(id); setContacts((prev)=>{ const next={...prev}; pushTargets.forEach((t)=>{ next[t.id]={...contactOf(t.id),line1:src.line1,line2:src.line2,city:src.city,postcode:src.postcode}; }); return next; }); }} disabled={pushing} style={{marginTop:8,fontSize:12,color:'#0e7fe0',background:'none',border:'none',cursor:'pointer',padding:0,fontFamily:"'Outfit', sans-serif"}}>
+                      Apply this address to all
+                    </button>
+                  )}
+                  {!isContactReady(id) && <p style={{fontSize:11,color:'#b45309',marginTop:8}}>Needs an email and address (line 1 + postcode) before pushing.</p>}
+                </div>
+              );
+            })()}
+
             {/* Per-item results after a push attempt */}
             {pushResults && (
               <div style={{marginBottom:16,padding:'10px 14px',borderRadius:8,background:pushResults.error?'#fef2f2':'#f8fafc',border:`1px solid ${pushResults.error?'#fecaca':'#e5e7eb'}`}}>
@@ -398,22 +499,26 @@ export default function BillingPage() {
                 <span>Client</span><span>Service</span><span>Type</span><span>Customer</span><span>Send</span>
                 <span style={{textAlign:'right'}}>Net</span><span style={{textAlign:'right'}}>VAT</span><span style={{textAlign:'right'}}>Gross</span>
               </div>
-              {pushTargets.map((item)=>{
+              {pushTargets.map((item,idx)=>{
                 const p = preview?.find((r)=>r.billing_item_id===item.id);
-                const willSend = sendMode==='send' && p?.has_email;
-                const sendText = !p ? '…'
-                  : willSend ? `Now → ${p.email}${p.email_source==='quickbooks'?' (QBO)':''}`
-                  : (sendMode==='send' && !p.has_email) ? 'Later (no email)'
+                // Send/ready derive from the LIVE edited contact, not the
+                // pre-edit dry-run, so the row reflects gaps the user is fixing.
+                const cc = contactOf(item.id);
+                const liveEmail = cc.email?.trim();
+                const ready = isContactReady(item.id);
+                const willSend = sendMode==='send' && !!liveEmail;
+                const sendText = willSend ? `Now → ${liveEmail}`
+                  : (sendMode==='send' && !liveEmail) ? 'Later (no email)'
                   : 'Later (manual)';
-                const sendColor = willSend ? '#059669' : (sendMode==='send' && p && !p.has_email) ? '#b45309' : '#64748b';
-                const sendTitle = p?.email_mismatch ? `Sending to QBO address ${p.email}; Athena has ${p.athena_email}` : (p?.email || sendText);
+                const sendColor = willSend ? '#059669' : (sendMode==='send' && !liveEmail) ? '#b45309' : '#64748b';
+                const isCurrent = Math.min(contactIndex,pushTargets.length-1)===idx;
                 return (
-                  <div key={item.id} style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,alignItems:'center',padding:'7px 0',borderBottom:'1px solid #f1f5f9',fontSize:12}}>
-                    <span style={ellip} title={entityMap[item.entity_id]?.name}>{entityMap[item.entity_id]?.name||'—'}</span>
+                  <div key={item.id} onClick={()=>setContactIndex(idx)} style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,alignItems:'center',padding:'7px 4px',borderBottom:'1px solid #f1f5f9',fontSize:12,cursor:'pointer',background:isCurrent?'#eff6ff':'transparent',borderRadius:6}}>
+                    <span style={ellip} title={entityMap[item.entity_id]?.name}>{!ready && <span style={{color:'#b45309'}} title="Needs email + address">⚠ </span>}{entityMap[item.entity_id]?.name||'—'}</span>
                     <span style={{...ellip,color:'#475569'}} title={item.description||item.service}>{item.service}</span>
                     <span style={{color:'#64748b'}}>One-off</span>
                     <span style={{color:p?.customer_action==='create'?'#b45309':'#475569',fontWeight:500}}>{!p?'…':p.customer_action==='create'?'New':'Existing'}</span>
-                    <span style={{...ellip,color:sendColor}} title={sendTitle}>{sendText}{p?.email_mismatch?' ⚠':''}</span>
+                    <span style={{...ellip,color:sendColor}} title={liveEmail||sendText}>{sendText}</span>
                     <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.net_amount)}</span>
                     <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.vat_amount)}</span>
                     <span style={{textAlign:'right',fontFamily:'monospace',fontWeight:600,color:'#0f172a'}}>{fmt(item.gross_amount)}</span>
@@ -428,9 +533,14 @@ export default function BillingPage() {
                 <span style={{textAlign:'right',fontFamily:'monospace',color:'#0e7fe0'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.gross_amount||0),0))}</span>
               </div>
             </div>
+            {!allContactsReady && pushTargets.length>0 && !previewLoading && (
+              <p style={{fontSize:12,color:'#b45309',marginBottom:8}}>
+                {notReadyTargets.length} {notReadyTargets.length===1?'item needs':'items need'} an email + address (line 1 + postcode) before you can push.
+              </p>
+            )}
             <div style={{display:'flex',gap:10}}>
               <button onClick={()=>{setShowPushConfirm(false);setPushResults(null);}} style={{...btnOutline,flex:1}}>{pushResults && !pushResults.error ? 'Close' : 'Cancel'}</button>
-              <button onClick={handleBatchPush} disabled={pushing} style={{...btnPrimary,flex:1,background:'#059669',justifyContent:'center',opacity:pushing?0.5:1}}>
+              <button onClick={handleBatchPush} disabled={pushing || !allContactsReady} style={{...btnPrimary,flex:1,background:'#059669',justifyContent:'center',opacity:(pushing||!allContactsReady)?0.5:1}}>
                 {pushing?'Pushing...':(sendMode==='send'?'Create & send':'Create drafts')}
               </button>
             </div>
@@ -458,6 +568,7 @@ const btnPrimary ={display:'inline-flex',alignItems:'center',gap:5,padding:'8px 
 const btnOutline = {display:'inline-flex',alignItems:'center',gap:4,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#fff',color:'#0f172a',border:'1px solid #e5e7eb',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
 const inputStyle = {width:'100%',padding:'8px 12px',fontSize:13,border:'1px solid #e5e7eb',borderRadius:8,outline:'none',fontFamily:"'Outfit', sans-serif",boxSizing:'border-box'};
 const modeBtn = {flex:1,textAlign:'left',padding:'10px 12px',borderRadius:10,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",color:'#0f172a'};
+const navBtn = {padding:'2px 8px',borderRadius:6,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",fontSize:13,color:'#475569'};
 const INVOICE_COLS = '1.5fr 1.1fr 0.6fr 0.8fr 1.8fr 0.8fr 0.7fr 0.85fr';
 const ellip = { overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' };
 const modeBtnActive = {borderColor:'#059669',background:'#f0fdf4',boxShadow:'0 0 0 1px #059669'};

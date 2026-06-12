@@ -2,18 +2,25 @@ import { getServiceClient, qboFetch, qboQuery, logSync, jsonResponse, corsHeader
 
 // Push one-off Billing module items (billing_items) to QBO as real
 // invoices. For each approved item we ensure the QBO customer + item
-// exist, build a single line at the net amount with the standard 20%
-// UK tax code (so QBO computes VAT to match the stored amount), create
-// the invoice, then either email it immediately or leave it as a draft
-// for the team to send from QBO later.
+// exist, ensure the customer carries an email + billing address, build a
+// single line at the net amount with the company's configured sales VAT
+// code, create the invoice (stamped with the billing address), then
+// either email it immediately or leave it as a draft for the team to send
+// from QBO later.
 //
-// Input: { billing_item_ids: string[], send: boolean, dry_run?: boolean, initiated_by?: string }
-//   send=true  → create + email the invoice (QBO SendInvoice)
-//   send=false → create only; team sends from QBO later
-//   dry_run=true → return a read-only plan (no QBO writes, no DB writes):
-//                  whether each customer exists or will be created, the
-//                  client email, and the net/vat/gross — so the UI can
-//                  show a confirmation summary before committing.
+// Client billing details (email + address) are MANDATORY before any real
+// QBO write — mirroring the Fee Engine commit flow. The dry-run resolves
+// them with the same fallback chain so the confirm modal can pre-fill and
+// the user can fix any gaps before committing:
+//   Athena (entities.billing_*) -> the QBO customer record
+//   -> the live recurring template's BillEmail/BillAddr -> a group member's
+//   address. A portal-user address is surfaced as a read-only hint.
+//
+// Input: { billing_item_ids: string[], send: boolean, dry_run?: boolean, due_days?: number, initiated_by?: string }
+//   send=true  -> create + email the invoice (QBO SendInvoice)
+//   send=false -> create only; team sends from QBO later
+//   due_days   -> payment terms; DueDate = invoice date + due_days (default 14)
+//   dry_run=true -> read-only plan (no QBO/DB writes).
 //
 // Per-item isolation: one failure never aborts the batch.
 
@@ -24,6 +31,16 @@ interface ItemResult {
   qbo_invoice_id?: string;
   reason?: string;
 }
+
+type RecurringTpl = {
+  id: string;
+  syncToken: string;
+  name: string;
+  active: boolean;
+  nextDate: string | null;
+  billEmail: string | null;
+  billAddr: Record<string, unknown> | null;
+};
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -52,7 +69,7 @@ Deno.serve(async (req) => {
 
   const { data: items, error: itemsErr } = await sb
     .from("billing_items")
-    .select("*, entity:entities(id, name, qbo_customer_id, qbo_customer_name, billing_email, prospect_email)")
+    .select("*, entity:entities(id, name, qbo_customer_id, qbo_customer_name, billing_email, prospect_email, billing_line1, billing_line2, billing_city, billing_postcode)")
     .in("id", ids);
 
   if (itemsErr) {
@@ -73,32 +90,25 @@ Deno.serve(async (req) => {
   }
 
   // Dry run: read-only plan for the confirmation summary. No QBO or DB
-  // writes. Reports per item whether the customer/item already exist.
+  // writes. Reports per item whether the customer/item already exist, and
+  // the resolved billing contact (email + address) with picker options.
   if (body.dry_run) {
     const plan = [];
-    const custCache = new Map<string, { exists: boolean; email: string | null }>();
+    // Cache the resolved contact per entity — billing items often share a
+    // client, and the contact resolution can hit QBO multiple times.
+    const contactCache = new Map<string, Awaited<ReturnType<typeof buildContact>>>();
     for (const item of (items || [])) {
       const entity = (item.entity as Record<string, unknown> | null) || null;
       const entityName = (entity?.name as string) || "Unknown Client";
-      const localEmail = (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
       const serviceName = String(item.service || "Professional Services");
 
-      // Look up the QBO customer (by stored id, else by name) to learn
-      // whether it exists and what email QBO already has on file.
-      const cacheKey = (entity?.qbo_customer_id as string) || entityName;
-      let cust = custCache.get(cacheKey);
-      if (!cust) {
-        cust = entity?.qbo_customer_id
-          ? await fetchQboCustomer("Id", String(entity.qbo_customer_id))
-          : await fetchQboCustomer("DisplayName", entityName);
-        custCache.set(cacheKey, cust);
+      const cacheKey = (entity?.id as string) || entityName;
+      let contact = contactCache.get(cacheKey);
+      if (!contact) {
+        contact = await buildContact(sb, entity, entityName);
+        contactCache.set(cacheKey, contact);
       }
 
-      // Effective send address: QBO's BillEmail wins (billing addresses
-      // can be client-specific), else fall back to the Athena record.
-      const qboEmail = cust.email;
-      const email = qboEmail || localEmail;
-      const emailMismatch = !!(qboEmail && localEmail && qboEmail.toLowerCase() !== localEmail.toLowerCase());
       const itemExists = await qboRecordExists("Item", "Name", serviceName.substring(0, 100));
 
       plan.push({
@@ -106,14 +116,21 @@ Deno.serve(async (req) => {
         entity: entityName,
         service: serviceName,
         approved: item.status === "approved",
-        customer_action: cust.exists ? "existing" : "create",
+        customer_action: contact.customer_exists ? "existing" : "create",
         item_action: itemExists ? "existing" : "create",
-        has_email: !!email,
-        email,
-        email_source: email ? (qboEmail ? "quickbooks" : "athena") : null,
-        email_mismatch: emailMismatch,
-        athena_email: localEmail,
-        qbo_email: qboEmail,
+        // Resolved contact + picker options (mirrors qbo-push contact block).
+        has_email: contact.has_email,
+        email: contact.email,
+        email_source: contact.email_source,
+        email_mismatch: contact.email_mismatch,
+        athena_email: contact.athena_email,
+        qbo_email: contact.qbo_email,
+        has_address: contact.has_address,
+        address: contact.address,
+        address_hint: contact.address_hint,
+        email_options: contact.email_options,
+        address_options: contact.address_options,
+        missing: contact.missing,
         net: Number(item.net_amount) || 0,
         vat: Number(item.vat_amount) || 0,
         gross: Number(item.gross_amount) || 0,
@@ -130,7 +147,12 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: `Could not resolve an income account: ${(err as Error).message}` }, 500);
   }
 
-  const itemCache = new Map<string, string>(); // service name → QBO item id
+  // Resolve (or create) the QBO Term matching the due-date offset so each
+  // invoice carries a Terms value (e.g. "Net 14"), not just a bare due
+  // date. Non-fatal: if it can't be resolved we still set DueDate.
+  const salesTermId = await ensureSalesTermId(dueDays);
+
+  const itemCache = new Map<string, string>(); // service name -> QBO item id
   const results: ItemResult[] = [];
   let sent = 0, created = 0, errored = 0;
 
@@ -145,13 +167,43 @@ Deno.serve(async (req) => {
     }
 
     try {
+      // Resolve the mandatory billing contact (email + address). Athena
+      // wins; anything missing falls back through QBO / recurring template
+      // / group member. The confirm modal saves the chosen values to the
+      // entity before pushing, so for a clean push these come straight
+      // from Athena.
+      const localEmail = (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
+      let email = localEmail;
+      let billAddr = buildBillAddr(entity);
+      if (!email || !billAddr) {
+        const contact = await buildContact(sb, entity, entityName);
+        if (!email) email = contact.email;
+        if (!billAddr) billAddr = contact.address;
+      }
+
+      // Mandatory: client email + address must be present before we create
+      // anything in QBO. Per-item — never aborts the rest of the batch.
+      const missing: string[] = [];
+      if (!email) missing.push("client email");
+      if (!billAddr) missing.push("client address (line 1 + postcode)");
+      if (missing.length > 0) {
+        results.push({ billing_item_id: item.id, entity: entityName, status: "error", reason: `Mandatory client details missing: ${missing.join(", ")}. Add them before pushing.` });
+        errored++;
+        await sb.from("billing_items").update({ qbo_sync_status: "error", qbo_sync_error: `missing ${missing.join(", ")}` }).eq("id", item.id);
+        continue;
+      }
+
       // 1. Ensure QBO customer.
       let qboCustomerId = (entity?.qbo_customer_id as string) || null;
       if (!qboCustomerId) {
         qboCustomerId = await ensureQboCustomer(sb, entity, entityName);
       }
 
-      // 2. Ensure QBO item for the service.
+      // 2. Make sure email + address are on the customer record itself,
+      //    even when the customer already existed. Sparse update.
+      await ensureCustomerContactDetails(qboCustomerId, email, billAddr);
+
+      // 3. Ensure QBO item for the service.
       const serviceName = String(item.service || "Professional Services");
       let qboItemId = itemCache.get(serviceName);
       if (!qboItemId) {
@@ -160,14 +212,10 @@ Deno.serve(async (req) => {
       }
 
       const net = Number(item.net_amount) || 0;
-      // Effective send address: QBO's BillEmail wins (client-specific
-      // billing addresses), else fall back to the Athena record.
-      const localEmail = (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
-      const cust = await fetchQboCustomer("Id", qboCustomerId);
-      const email = cust.email || localEmail;
 
-      // 3. Build + create the invoice. Net amount per line + the 20% tax
-      //    code with TaxExcluded lets QBO add VAT matching vat_amount.
+      // 4. Build + create the invoice. Net amount per line with the
+      //    company's sales VAT code so QBO computes VAT. Stamp the billing
+      //    address + email on the invoice.
       const txnDate = new Date().toISOString().slice(0, 10);
       const invoiceBody: Record<string, unknown> = {
         CustomerRef: { value: qboCustomerId },
@@ -186,7 +234,9 @@ Deno.serve(async (req) => {
         }],
         PrivateNote: `Created from Athena Portal (Billing) for ${entityName}`,
       };
+      if (salesTermId) invoiceBody.SalesTermRef = { value: salesTermId };
       if (email) invoiceBody.BillEmail = { Address: email };
+      if (billAddr) invoiceBody.BillAddr = billAddr;
 
       const createResp = await qboFetch("invoice", {
         method: "POST",
@@ -198,7 +248,7 @@ Deno.serve(async (req) => {
       const created_ = await createResp.json();
       const qboInvoiceId = String(created_.Invoice.Id);
 
-      // 4. Send now, or leave as draft.
+      // 5. Send now, or leave as draft.
       let finalStatus: ItemResult["status"];
       if (send && email) {
         const sendResp = await qboFetch(`invoice/${qboInvoiceId}/send?sendTo=${encodeURIComponent(email)}`, {
@@ -214,7 +264,7 @@ Deno.serve(async (req) => {
         created++;
       }
 
-      // 5. Write back.
+      // 6. Write back.
       await sb.from("billing_items").update({
         status: "pushed",
         qbo_invoice_id: qboInvoiceId,
@@ -231,7 +281,7 @@ Deno.serve(async (req) => {
         entity: entityName,
         status: finalStatus,
         qbo_invoice_id: qboInvoiceId,
-        reason: finalStatus === "created_unsent" && send && !email ? "no client email on file — created as draft" : undefined,
+        reason: finalStatus === "created_unsent" && send && !email ? "no client email on file - created as draft" : undefined,
       });
 
       await logSync({
@@ -241,7 +291,7 @@ Deno.serve(async (req) => {
         qbo_entity_type: "Invoice",
         qbo_entity_id: qboInvoiceId,
         status: "success",
-        detail: { billing_item_id: item.id, net, sent: finalStatus === "sent" },
+        detail: { billing_item_id: item.id, net, sent: finalStatus === "sent", due_days: dueDays },
         initiated_by: body.initiated_by || undefined,
       });
     } catch (err) {
@@ -278,8 +328,129 @@ function addDays(isoDate: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Build a QBO BillAddr from the entity's billing_* fields. Returns null
+// unless there's at least a first line and a postcode — a half address is
+// worse than none for a UK invoice. (Mirrors qbo-push.)
+function buildBillAddr(entity: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!entity) return null;
+  const line1 = String(entity.billing_line1 ?? "").trim();
+  const line2 = String(entity.billing_line2 ?? "").trim();
+  const city = String(entity.billing_city ?? "").trim();
+  const postcode = String(entity.billing_postcode ?? "").trim();
+  if (!line1 || !postcode) return null;
+  const addr: Record<string, unknown> = { Line1: line1 };
+  if (line2) addr.Line2 = line2;
+  if (city) addr.City = city;
+  addr.PostalCode = postcode;
+  return addr;
+}
+
+// Map a QBO BillAddr to our form shape. Lenient (Line1 required, postcode
+// optional) — used to pre-fill a form the user reviews, so a street with a
+// missing postcode still beats a blank box.
+function mapQboBillAddr(a: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  if (!a) return null;
+  const line1 = String((a as Record<string, unknown>).Line1 ?? "").trim();
+  if (!line1) return null;
+  const out: Record<string, unknown> = { Line1: line1 };
+  const line2 = String((a as Record<string, unknown>).Line2 ?? "").trim(); if (line2) out.Line2 = line2;
+  const city = String((a as Record<string, unknown>).City ?? "").trim(); if (city) out.City = city;
+  const postcode = String((a as Record<string, unknown>).PostalCode ?? "").trim(); if (postcode) out.PostalCode = postcode;
+  return out;
+}
+
+function addrLabel(a: Record<string, unknown>): string {
+  return [a.Line1, a.City, a.PostalCode].map((x) => String(x ?? "").trim()).filter(Boolean).join(", ");
+}
+function addrKey(a: Record<string, unknown>): string {
+  return `${String(a.Line1 ?? "").toLowerCase().trim()}|${String(a.PostalCode ?? "").toLowerCase().trim()}`;
+}
+
+// Resolve the billing contact (email + address) for an entity, with the
+// same fallback chain as the Fee Engine: Athena -> QBO customer record ->
+// live recurring template -> group member; portal-user address as a hint.
+// Returns resolved values plus picker options (deduped sources) and the
+// list of still-missing details.
+async function buildContact(
+  sb: ReturnType<typeof getServiceClient>,
+  entity: Record<string, unknown> | null,
+  entityName: string,
+): Promise<{
+  customer_exists: boolean;
+  has_email: boolean; email: string | null; email_source: string | null; email_mismatch: boolean;
+  athena_email: string | null; qbo_email: string | null;
+  has_address: boolean; address: Record<string, unknown> | null; address_hint: string | null;
+  email_options: string[]; address_options: Array<{ label: string; addr: Record<string, unknown> }>;
+  missing: string[];
+}> {
+  const athenaEmail = (entity?.billing_email as string) || (entity?.prospect_email as string) || null;
+  const athenaAddr = buildBillAddr(entity);
+
+  // Find the QBO customer (by stored id, else by name) and read its email
+  // + billing address.
+  let customerId = (entity?.qbo_customer_id as string) || null;
+  if (!customerId) customerId = await findCustomerByName(entityName);
+  let qboEmail: string | null = null;
+  let qboAddr: Record<string, unknown> | null = null;
+  if (customerId) {
+    const c = await fetchQboCustomerContact(customerId);
+    qboEmail = c.email;
+    qboAddr = c.address;
+  }
+
+  let email = athenaEmail || qboEmail;
+  let address = athenaAddr || qboAddr;
+  let emailSource: string | null = athenaEmail ? "athena" : (qboEmail ? "quickbooks" : null);
+
+  // Still missing something → look at the live recurring template (where
+  // contact details often actually live for clients with running billing).
+  let recEmail: string | null = null;
+  let recAddr: Record<string, unknown> | null = null;
+  if ((!email || !address) && customerId) {
+    const tpls = await findRecurringTemplatesForCustomer(customerId);
+    const live = pickLiveTemplate(tpls);
+    if (live) {
+      recEmail = live.billEmail;
+      recAddr = mapQboBillAddr(live.billAddr);
+      if (!email && recEmail) { email = recEmail; emailSource = "recurring"; }
+      if (!address && recAddr) address = recAddr;
+    }
+  }
+
+  // Address can also be borrowed from another member of the same billing
+  // group (the address is often shared across a group).
+  if (!address) {
+    const gm = await findGroupMemberAddr(sb, entity);
+    if (gm) address = gm;
+  }
+
+  const addressHint = address ? null : await findPortalUserAddrHint(sb, entity);
+
+  // Picker options — deduped union of every source we found.
+  const emailOptions = [...new Set([athenaEmail, qboEmail, recEmail].filter(Boolean) as string[])];
+  const addrPool: Array<{ label: string; addr: Record<string, unknown> }> = [];
+  const seenAddr = new Set<string>();
+  for (const a of [athenaAddr, qboAddr, recAddr]) {
+    if (a && !seenAddr.has(addrKey(a))) { seenAddr.add(addrKey(a)); addrPool.push({ label: addrLabel(a), addr: a }); }
+  }
+
+  const missing: string[] = [];
+  if (!email) missing.push("client email");
+  if (!address) missing.push("client address (line 1 + postcode)");
+
+  return {
+    customer_exists: !!customerId,
+    has_email: !!email, email, email_source: emailSource,
+    email_mismatch: !!(qboEmail && athenaEmail && qboEmail.toLowerCase() !== athenaEmail.toLowerCase()),
+    athena_email: athenaEmail, qbo_email: qboEmail,
+    has_address: !!address, address, address_hint: addressHint,
+    email_options: emailOptions, address_options: addrPool,
+    missing,
+  };
+}
+
 // Find the standard-rate 20% sales tax code. Env override wins; else
-// pick an active sales TaxCode whose name mentions 20 / "S" standard.
+// pick an active sales TaxCode whose name mentions 20 / standard.
 async function resolveStandardTaxCode(): Promise<string | null> {
   const override = Deno.env.get("QBO_STANDARD_TAX_CODE_ID");
   if (override) return override;
@@ -289,26 +460,176 @@ async function resolveStandardTaxCode(): Promise<string | null> {
   const codes = (qr.TaxCode as Array<Record<string, unknown>>) || [];
 
   const active = codes.filter((c) => c.Active !== false);
-  // Prefer a name containing "20" (e.g. "20.0% S (VAT on Income)").
   const byTwenty = active.find((c) => /20/.test(String(c.Name || "")));
   if (byTwenty) return String(byTwenty.Id);
-  // Fallback: a standard "S" code.
   const byStandard = active.find((c) => /\bS\b/.test(String(c.Name || "")) || /standard/i.test(String(c.Description || "")));
   if (byStandard) return String(byStandard.Id);
   return null;
 }
 
-// Look up a QBO customer by a field, returning whether it exists and the
-// email QBO has on file (PrimaryEmailAddr / BillEmail).
-async function fetchQboCustomer(field: string, value: string): Promise<{ exists: boolean; email: string | null }> {
-  const escaped = value.replace(/'/g, "\\'");
-  const result = await qboQuery(`SELECT Id, PrimaryEmailAddr FROM Customer WHERE ${field} = '${escaped}'`) as Record<string, unknown>;
+// Resolve (or create) a QBO sales Term whose net days match the due-date
+// offset, so invoices show a Terms value (e.g. "Net 14") rather than just
+// a bare DueDate. Returns null (non-fatal) if it can't be resolved.
+async function ensureSalesTermId(dueDays: number): Promise<string | null> {
+  if (!Number.isFinite(dueDays) || dueDays < 0) return null;
+  try {
+    const result = (await qboQuery(`SELECT * FROM Term`)) as Record<string, unknown>;
+    const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+    const terms = (qr.Term as Array<Record<string, unknown>>) || [];
+    const byDays = terms.find((t) => Number(t.DueDays) === dueDays && (t.Type === undefined || t.Type === "STANDARD") && t.Active !== false);
+    if (byDays) return String(byDays.Id);
+    const name = dueDays === 0 ? "Due on receipt" : `Net ${dueDays}`;
+    const byName = terms.find((t) => String(t.Name) === name);
+    if (byName) return String(byName.Id);
+    const resp = await qboFetch("term", { method: "POST", body: JSON.stringify({ Name: name, DueDays: dueDays }) });
+    if (!resp.ok) {
+      console.error(`Failed to create QBO term "${name}": ${resp.status} ${await resp.text()}`);
+      return null;
+    }
+    const created = await resp.json();
+    return String(created.Term.Id);
+  } catch (e) {
+    console.error("ensureSalesTermId failed:", (e as Error).message);
+    return null;
+  }
+}
+
+// Resolve a valid income account for new Service items. Env override
+// wins; else pick an active Income-classified account (prefer a sales /
+// services account name, then any income account).
+async function resolveIncomeAccount(): Promise<string | null> {
+  const override = Deno.env.get("QBO_INCOME_ACCOUNT_ID");
+  if (override) return override;
+
+  const result = await qboQuery("SELECT Id, Name, AccountType, Classification, Active FROM Account WHERE Classification = 'Revenue'") as Record<string, unknown>;
   const qr = (result?.QueryResponse as Record<string, unknown>) || {};
-  const rows = (qr.Customer as Array<Record<string, unknown>>) || [];
-  if (rows.length === 0) return { exists: false, email: null };
-  const primary = rows[0].PrimaryEmailAddr as Record<string, unknown> | undefined;
-  const email = primary && primary.Address ? String(primary.Address) : null;
-  return { exists: true, email };
+  const accounts = ((qr.Account as Array<Record<string, unknown>>) || []).filter((a) => a.Active !== false);
+  if (accounts.length === 0) return null;
+
+  const preferred = accounts.find((a) => /sales|service|income|fees/i.test(String(a.Name || "")))
+    || accounts.find((a) => a.AccountType === "Income");
+  return String((preferred || accounts[0]).Id);
+}
+
+async function findCustomerByName(entityName: string): Promise<string | null> {
+  const escaped = entityName.replace(/'/g, "\\'");
+  const result = (await qboQuery(`SELECT Id FROM Customer WHERE DisplayName = '${escaped}'`)) as Record<string, unknown>;
+  const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+  const customers = (qr.Customer as Array<Record<string, unknown>>) || [];
+  return customers.length > 0 ? String(customers[0].Id) : null;
+}
+
+// Read an existing QBO customer's primary email + billing address.
+async function fetchQboCustomerContact(customerId: string): Promise<{ email: string | null; address: Record<string, unknown> | null }> {
+  try {
+    const resp = await qboFetch(`customer/${customerId}`);
+    if (!resp.ok) return { email: null, address: null };
+    const cust = ((await resp.json()) as { Customer: Record<string, unknown> }).Customer;
+    const email = String(((cust?.PrimaryEmailAddr as Record<string, unknown>)?.Address) ?? "").trim() || null;
+    return { email, address: mapQboBillAddr(cust?.BillAddr as Record<string, unknown>) };
+  } catch { return { email: null, address: null }; }
+}
+
+// All recurring Invoice templates that belong to a given QBO customer.
+// Paginated — an AVA file has far more than the default 100 rows. (Mirrors
+// qbo-push: matching by customer id beats matching by template name.)
+async function findRecurringTemplatesForCustomer(customerId: string): Promise<RecurringTpl[]> {
+  const out: RecurringTpl[] = [];
+  const page = 1000;
+  let start = 1;
+  for (let guard = 0; guard < 50; guard++) {
+    const result = (await qboQuery(`SELECT * FROM RecurringTransaction STARTPOSITION ${start} MAXRESULTS ${page}`)) as Record<string, unknown>;
+    const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+    const rows = (qr.RecurringTransaction as Array<Record<string, unknown>>) || [];
+    for (const row of rows) {
+      const inv = (row.Invoice as Record<string, unknown>) || null;
+      if (!inv) continue;
+      const cust = (inv.CustomerRef as Record<string, unknown>) || {};
+      if (String(cust.value || "") !== String(customerId)) continue;
+      const info = (inv.RecurringInfo as Record<string, unknown>) || {};
+      const sched = (info.ScheduleInfo as Record<string, unknown>) || {};
+      out.push({
+        id: String(inv.Id),
+        syncToken: String(inv.SyncToken ?? "0"),
+        name: String(info.Name || ""),
+        active: info.Active !== false,
+        nextDate: String(sched.NextDate ?? "").trim() || null,
+        billEmail: String(((inv.BillEmail as Record<string, unknown>)?.Address) ?? "").trim() || null,
+        billAddr: (inv.BillAddr as Record<string, unknown>) || null,
+      });
+    }
+    if (rows.length < page) break;
+    start += page;
+  }
+  return out;
+}
+
+// The live template among a customer's templates: prefer active, then the
+// latest NextDate, then the first.
+function pickLiveTemplate(templates: RecurringTpl[]): RecurringTpl | null {
+  if (templates.length === 0) return null;
+  const active = templates.filter((t) => t.active);
+  const pool = active.length ? active : templates;
+  const dated = pool.filter((t) => t.nextDate);
+  if (dated.length) {
+    dated.sort((a, b) => (a.nextDate! < b.nextDate! ? 1 : a.nextDate! > b.nextDate! ? -1 : 0));
+    return dated[0];
+  }
+  return pool[0];
+}
+
+// Borrow a usable billing address from another entity in the same billing
+// group — the address is often shared across a group's members.
+async function findGroupMemberAddr(sb: ReturnType<typeof getServiceClient>, entity: Record<string, unknown> | null): Promise<Record<string, unknown> | null> {
+  const entId = entity?.id as string | undefined;
+  if (!entId) return null;
+  try {
+    const { data: mine } = await sb.from("billing_group_members").select("group_id").eq("entity_id", entId);
+    const groupIds = (mine || []).map((m: Record<string, unknown>) => m.group_id).filter(Boolean);
+    if (groupIds.length === 0) return null;
+    const { data: members } = await sb.from("billing_group_members").select("entity_id").in("group_id", groupIds);
+    const ids = (members || []).map((m: Record<string, unknown>) => m.entity_id).filter((id) => id && id !== entId);
+    if (ids.length === 0) return null;
+    const { data: ents } = await sb.from("entities").select("billing_line1, billing_line2, billing_city, billing_postcode").in("id", ids);
+    for (const e of ents || []) {
+      const a = buildBillAddr(e as Record<string, unknown>);
+      if (a) return a;
+    }
+    return null;
+  } catch { return null; }
+}
+
+// users.address is a single freeform text field (client-portal user, reached
+// via entity_memberships) — no structured postcode, so it can't fill the
+// QBO address form. Surface it as a read-only hint for staff to copy.
+async function findPortalUserAddrHint(sb: ReturnType<typeof getServiceClient>, entity: Record<string, unknown> | null): Promise<string | null> {
+  const entId = entity?.id as string | undefined;
+  if (!entId) return null;
+  try {
+    const { data: mems } = await sb.from("entity_memberships").select("user_id").eq("entity_id", entId).limit(10);
+    const ids = (mems || []).map((m: Record<string, unknown>) => m.user_id).filter(Boolean);
+    if (ids.length === 0) return null;
+    const { data: us } = await sb.from("users").select("address").in("id", ids).not("address", "is", null);
+    for (const u of us || []) {
+      const a = String((u as Record<string, unknown>).address ?? "").trim();
+      if (a) return a;
+    }
+    return null;
+  } catch { return null; }
+}
+
+// Sparse-update a QBO customer so the email + billing address are present
+// on the customer record itself. Safe when they're already set.
+async function ensureCustomerContactDetails(customerId: string, email: string | null, addr: Record<string, unknown> | null): Promise<void> {
+  if (!email && !addr) return;
+  const getResp = await qboFetch(`customer/${customerId}`);
+  if (!getResp.ok) throw new Error(`Failed to fetch QBO customer ${customerId}: ${getResp.status} ${await getResp.text()}`);
+  const cur = ((await getResp.json()) as { Customer: Record<string, unknown> }).Customer;
+  const sparse: Record<string, unknown> = { Id: customerId, SyncToken: cur.SyncToken, sparse: true };
+  if (email) sparse.PrimaryEmailAddr = { Address: email };
+  if (addr) sparse.BillAddr = addr;
+  const resp = await qboFetch("customer", { method: "POST", body: JSON.stringify(sparse) });
+  if (!resp.ok) throw new Error(`Failed to update QBO customer contact details: ${resp.status} ${await resp.text()}`);
 }
 
 // Read-only existence check for the dry-run plan.
@@ -384,21 +705,4 @@ async function ensureQboItem(serviceName: string, description: string, incomeAcc
   }
   const createdI = await resp.json();
   return String(createdI.Item.Id);
-}
-
-// Resolve a valid income account for new Service items. Env override
-// wins; else pick an active Income-classified account (prefer a sales /
-// services account name, then any income account).
-async function resolveIncomeAccount(): Promise<string | null> {
-  const override = Deno.env.get("QBO_INCOME_ACCOUNT_ID");
-  if (override) return override;
-
-  const result = await qboQuery("SELECT Id, Name, AccountType, Classification, Active FROM Account WHERE Classification = 'Revenue'") as Record<string, unknown>;
-  const qr = (result?.QueryResponse as Record<string, unknown>) || {};
-  const accounts = ((qr.Account as Array<Record<string, unknown>>) || []).filter((a) => a.Active !== false);
-  if (accounts.length === 0) return null;
-
-  const preferred = accounts.find((a) => /sales|service|income|fees/i.test(String(a.Name || "")))
-    || accounts.find((a) => a.AccountType === "Income");
-  return String((preferred || accounts[0]).Id);
 }
