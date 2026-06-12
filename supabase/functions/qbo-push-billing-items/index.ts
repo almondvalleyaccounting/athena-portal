@@ -109,7 +109,13 @@ Deno.serve(async (req) => {
         contactCache.set(cacheKey, contact);
       }
 
-      const itemExists = await qboRecordExists("Item", "Name", serviceName.substring(0, 100));
+      // Each distinct line service maps to a QBO item; the invoice exists
+      // as "create" unless every one of them already exists.
+      const lineServices = [...new Set(normalizeLines(item).map((l) => l.service))];
+      let itemExists = true;
+      for (const s of lineServices) {
+        if (!(await qboRecordExists("Item", "Name", s.substring(0, 100)))) { itemExists = false; break; }
+      }
 
       plan.push({
         billing_item_id: item.id,
@@ -203,35 +209,33 @@ Deno.serve(async (req) => {
       //    even when the customer already existed. Sparse update.
       await ensureCustomerContactDetails(qboCustomerId, email, billAddr);
 
-      // 3. Ensure QBO item for the service.
-      const serviceName = String(item.service || "Professional Services");
-      let qboItemId = itemCache.get(serviceName);
-      if (!qboItemId) {
-        qboItemId = await ensureQboItem(serviceName, item.description || serviceName, incomeAccountId);
-        itemCache.set(serviceName, qboItemId);
+      // 3. Build the invoice lines. Each billing line becomes one QBO
+      //    SalesItemLineDetail at its net amount + the sales VAT code, so
+      //    QBO computes VAT. Ensure a QBO item per distinct service.
+      const lines = normalizeLines(item);
+      const lineItems: Array<Record<string, unknown>> = [];
+      for (const l of lines) {
+        let qboItemId = itemCache.get(l.service);
+        if (!qboItemId) {
+          qboItemId = await ensureQboItem(l.service, l.description || l.service, incomeAccountId);
+          itemCache.set(l.service, qboItemId);
+        }
+        lineItems.push({
+          DetailType: "SalesItemLineDetail",
+          Amount: l.net,
+          Description: l.description || l.service,
+          SalesItemLineDetail: { ItemRef: { value: qboItemId }, Qty: 1, UnitPrice: l.net, TaxCodeRef: { value: taxCodeId } },
+        });
       }
+      const net = lines.reduce((s, l) => s + l.net, 0);
 
-      const net = Number(item.net_amount) || 0;
-
-      // 4. Build + create the invoice. Net amount per line with the
-      //    company's sales VAT code so QBO computes VAT. Stamp the billing
-      //    address + email on the invoice.
+      // 4. Build + create the invoice, stamped with the billing address + email.
       const txnDate = new Date().toISOString().slice(0, 10);
       const invoiceBody: Record<string, unknown> = {
         CustomerRef: { value: qboCustomerId },
         TxnDate: txnDate,
         DueDate: addDays(txnDate, dueDays),
-        Line: [{
-          DetailType: "SalesItemLineDetail",
-          Amount: net,
-          Description: item.description || serviceName,
-          SalesItemLineDetail: {
-            ItemRef: { value: qboItemId },
-            Qty: 1,
-            UnitPrice: net,
-            TaxCodeRef: { value: taxCodeId },
-          },
-        }],
+        Line: lineItems,
         PrivateNote: `Created from Athena Portal (Billing) for ${entityName}`,
       };
       if (salesTermId) invoiceBody.SalesTermRef = { value: salesTermId };
@@ -291,7 +295,7 @@ Deno.serve(async (req) => {
         qbo_entity_type: "Invoice",
         qbo_entity_id: qboInvoiceId,
         status: "success",
-        detail: { billing_item_id: item.id, net, sent: finalStatus === "sent", due_days: dueDays },
+        detail: { billing_item_id: item.id, net, lines: lines.length, sent: finalStatus === "sent", due_days: dueDays },
         initiated_by: body.initiated_by || undefined,
       });
     } catch (err) {
@@ -326,6 +330,25 @@ function addDays(isoDate: string, days: number): string {
   const d = new Date(isoDate + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+// Normalize a billing_item's lines: use the stored multi-line array, else
+// fall back to a single line built from the legacy service/net fields so
+// pre-multi-line rows still push correctly.
+function normalizeLines(item: Record<string, unknown>): Array<{ service: string; description: string | null; net: number }> {
+  const raw = Array.isArray(item.lines) ? (item.lines as Array<Record<string, unknown>>) : null;
+  if (raw && raw.length) {
+    return raw.map((l) => ({
+      service: String(l.service || "Professional Services"),
+      description: (l.description as string) || null,
+      net: Number(l.net) || 0,
+    }));
+  }
+  return [{
+    service: String(item.service || "Professional Services"),
+    description: (item.description as string) || null,
+    net: Number(item.net_amount) || 0,
+  }];
 }
 
 // Build a QBO BillAddr from the entity's billing_* fields. Returns null

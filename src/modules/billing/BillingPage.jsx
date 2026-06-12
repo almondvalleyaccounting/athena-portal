@@ -38,12 +38,8 @@ export default function BillingPage() {
   const [contactIndex, setContactIndex] = useState(0); // which target is being edited
 
   const [formClient, setFormClient] = useState('');
-  const [formService, setFormService] = useState('');
-  const [formDesc, setFormDesc] = useState('');
-  const [formNet, setFormNet] = useState('');
-  const [formVat, setFormVat] = useState('');
-  const [formGross, setFormGross] = useState('');
-  const [vatManual, setVatManual] = useState(false);
+  // Multi-line bill editor. One client, N service lines → one QBO invoice.
+  const [formLines, setFormLines] = useState([blankLine()]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { loadData(); }, []);
@@ -86,24 +82,60 @@ export default function BillingPage() {
   }, [filtered]);
 
   const fmt = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n || 0);
-  const resetForm = () => { setFormClient(''); setFormService(''); setFormDesc(''); setFormNet(''); setFormVat(''); setFormGross(''); setVatManual(false); };
+  const resetForm = () => { setFormClient(''); setFormLines([blankLine()]); };
+
+  // Multi-line editor helpers. Net drives VAT (auto 20%) unless the user
+  // types a VAT figure (vatManual); gross is always net + VAT.
+  const changeLineField = (idx, key, value) => setFormLines((prev) => prev.map((l, i) => i === idx ? { ...l, [key]: value } : l));
+  const changeLineNet = (idx, value) => setFormLines((prev) => prev.map((l, i) => {
+    if (i !== idx) return l;
+    const net = parseFloat(value) || 0;
+    if (l.vatManual) { const vat = parseFloat(l.vat) || 0; return { ...l, net: value, gross: value === '' ? '' : (net + vat).toFixed(2) }; }
+    const vat = Math.round(net * VAT_RATE * 100) / 100;
+    return { ...l, net: value, vat: value === '' ? '' : vat.toFixed(2), gross: value === '' ? '' : (net + vat).toFixed(2) };
+  }));
+  const changeLineVat = (idx, value) => setFormLines((prev) => prev.map((l, i) => {
+    if (i !== idx) return l;
+    const net = parseFloat(l.net) || 0; const vat = parseFloat(value) || 0;
+    return { ...l, vat: value, vatManual: true, gross: (net + vat).toFixed(2) };
+  }));
+  const addLine = () => setFormLines((prev) => [...prev, blankLine()]);
+  const removeLine = (idx) => setFormLines((prev) => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev);
+  const formTotals = formLines.reduce((t, l) => ({
+    net: t.net + (parseFloat(l.net) || 0), vat: t.vat + (parseFloat(l.vat) || 0), gross: t.gross + (parseFloat(l.gross) || 0),
+  }), { net: 0, vat: 0, gross: 0 });
+  const formCanSubmit = !!formClient && formLines.some((l) => l.service && l.net !== '');
 
   // Per-item billing-contact helpers (push-confirm modal).
   const contactOf = (id) => contacts[id] || { email: '', line1: '', line2: '', city: '', postcode: '' };
   const setContact = (id, patch) => setContacts((prev) => ({ ...prev, [id]: { ...contactOf(id), ...patch } }));
   const isContactReady = (id) => { const c = contactOf(id); return !!(c.email?.trim() && c.line1?.trim() && c.postcode?.trim()); };
 
+  // Turn the editor rows into the stored line array + invoice totals + a
+  // short `service` summary for the list view.
+  const buildLinesPayload = () => {
+    const lines = formLines
+      .filter((l) => l.service && l.net !== '')
+      .map((l) => {
+        const net = parseFloat(l.net) || 0;
+        const vat = l.vat !== '' ? (parseFloat(l.vat) || 0) : Math.round(net * VAT_RATE * 100) / 100;
+        const gross = Math.round((net + vat) * 100) / 100;
+        return { service: l.service, description: l.description.trim() || null, net, vat, gross };
+      });
+    const totals = lines.reduce((t, l) => ({ net: t.net + l.net, vat: t.vat + l.vat, gross: t.gross + l.gross }), { net: 0, vat: 0, gross: 0 });
+    const summary = lines.length === 1 ? lines[0].service : `${lines[0].service} +${lines.length - 1} more`;
+    return { lines, totals, summary };
+  };
+
   const handleAdd = async () => {
-    if (!formClient || !formService || !formNet) return;
+    if (!formCanSubmit) return;
     setSaving(true);
-    const net = parseFloat(formNet) || 0;
-    const vat = parseFloat(formVat) || Math.round(net * VAT_RATE * 100) / 100;
-    const gross = Math.round((net + vat) * 100) / 100;
+    const { lines, totals, summary } = buildLinesPayload();
     try {
       await supabase.from('billing_items').insert({
-        entity_id: formClient, service: formService, description: formDesc.trim() || null,
-        net_amount: net, vat_amount: vat, gross_amount: gross,
-        status: 'draft', created_by: profile?.id,
+        entity_id: formClient, service: summary, description: null,
+        net_amount: totals.net, vat_amount: totals.vat, gross_amount: totals.gross,
+        lines, status: 'draft', created_by: profile?.id,
       });
       resetForm(); setShowAdd(false); await loadData();
     } catch (e) { console.error(e); }
@@ -111,15 +143,14 @@ export default function BillingPage() {
   };
 
   const handleUpdate = async (item) => {
-    if (!formClient || !formService || !formNet) return;
+    if (!formCanSubmit) return;
     setSaving(true);
-    const net = parseFloat(formNet) || 0;
-    const vat = parseFloat(formVat) || Math.round(net * VAT_RATE * 100) / 100;
-    const gross = Math.round((net + vat) * 100) / 100;
+    const { lines, totals, summary } = buildLinesPayload();
     try {
       await supabase.from('billing_items').update({
-        entity_id: formClient, service: formService, description: formDesc.trim() || null,
-        net_amount: net, vat_amount: vat, gross_amount: gross,
+        entity_id: formClient, service: summary, description: null,
+        net_amount: totals.net, vat_amount: totals.vat, gross_amount: totals.gross,
+        lines,
       }).eq('id', item.id);
       resetForm(); setEditingId(null); await loadData();
     } catch (e) { console.error(e); }
@@ -228,10 +259,20 @@ export default function BillingPage() {
 
   const startEdit = (item) => {
     setEditingId(item.id); setShowAdd(false);
-    setFormClient(item.entity_id || ''); setFormService(item.service || '');
-    setFormDesc(item.description || ''); setFormNet(String(item.net_amount || ''));
-    setFormVat(String(item.vat_amount || '')); setFormGross(String(item.gross_amount || ''));
-    setVatManual(false);
+    setFormClient(item.entity_id || '');
+    // Load the stored lines, or build a single line from the legacy fields.
+    const ls = Array.isArray(item.lines) && item.lines.length
+      ? item.lines.map((l) => ({
+          service: l.service || '', description: l.description || '',
+          net: l.net != null ? String(l.net) : '', vat: l.vat != null ? String(l.vat) : '',
+          gross: l.gross != null ? String(l.gross) : '', vatManual: true,
+        }))
+      : [{
+          service: item.service || '', description: item.description || '',
+          net: String(item.net_amount || ''), vat: String(item.vat_amount || ''),
+          gross: String(item.gross_amount || ''), vatManual: true,
+        }];
+    setFormLines(ls.length ? ls : [blankLine()]);
   };
 
   const toggleSelect = (id) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -254,22 +295,45 @@ export default function BillingPage() {
 
   const renderForm = (onSubmit, submitLabel, onCancel) => (
     <div style={{ background:'#fff', borderRadius:12, border:'1px solid #e5e7eb', padding:'20px 24px', marginBottom:20 }}>
-      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'flex-end' }}>
-        <div style={{flex:1,minWidth:160}}><label style={formLabel}>Client *</label>
-          <select value={formClient} onChange={(e)=>setFormClient(e.target.value)} style={inputStyle}><option value="">Select client...</option>{entities.map((e)=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
-        <div style={{flex:1,minWidth:140}}><label style={formLabel}>Service *</label>
-          <select value={formService} onChange={(e)=>setFormService(e.target.value)} style={inputStyle}><option value="">Select service...</option>{SERVICES.map((s)=><option key={s} value={s}>{s}</option>)}</select></div>
-        <div style={{flex:2,minWidth:200}}><label style={formLabel}>Description</label>
-          <input value={formDesc} onChange={(e)=>setFormDesc(e.target.value)} placeholder="Optional..." style={inputStyle}/></div>
-        <div style={{width:110}}><label style={formLabel}>Net (£) *</label>
-          <input type="number" step="0.01" value={formNet} placeholder="0.00" style={inputStyle} onChange={(e)=>{setFormNet(e.target.value);const n=parseFloat(e.target.value)||0;if(!vatManual){const vt=Math.round(n*VAT_RATE*100)/100;setFormVat(vt?vt.toFixed(2):'');setFormGross(vt?(n+vt).toFixed(2):'');}else{setFormGross((n+(parseFloat(formVat)||0)).toFixed(2));}}}/></div>
-        <div style={{width:100}}><label style={formLabel}>VAT (£)</label>
-          <input type="number" step="0.01" value={formVat} placeholder="0.00" style={inputStyle} onChange={(e)=>{setFormVat(e.target.value);setVatManual(true);setFormGross(((parseFloat(formNet)||0)+(parseFloat(e.target.value)||0)).toFixed(2));}}/></div>
-        <div style={{width:110}}><label style={formLabel}>Gross (£)</label>
-          <input type="number" value={formGross} placeholder="0.00" style={{...inputStyle,background:'#f8fafc'}} readOnly/></div>
-        <div style={{display:'flex',gap:6,alignItems:'flex-end',paddingBottom:1}}>
-          <button onClick={onSubmit} disabled={!formClient||!formService||!formNet||saving} style={{...btnPrimary,opacity:(!formClient||!formService||!formNet||saving)?0.4:1}}>{saving?'Saving...':submitLabel}</button>
-          <button onClick={onCancel} style={btnOutline}>Cancel</button></div>
+      {/* Client (one per bill → one invoice) */}
+      <div style={{maxWidth:340,marginBottom:14}}>
+        <label style={formLabel}>Client *</label>
+        <select value={formClient} onChange={(e)=>setFormClient(e.target.value)} style={inputStyle}>
+          <option value="">Select client...</option>{entities.map((e)=><option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+      </div>
+
+      {/* Line items header */}
+      <div style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:4,paddingRight:2}}>
+        <span style={formLabel}>Service *</span><span style={formLabel}>Description</span>
+        <span style={formLabel}>Net (£) *</span><span style={formLabel}>VAT (£)</span><span style={formLabel}>Gross (£)</span><span/>
+      </div>
+      {formLines.map((l,idx)=>(
+        <div key={idx} style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:6,alignItems:'center'}}>
+          <select value={l.service} onChange={(e)=>changeLineField(idx,'service',e.target.value)} style={inputStyle}>
+            <option value="">Select...</option>{SERVICES.map((s)=><option key={s} value={s}>{s}</option>)}
+          </select>
+          <input value={l.description} onChange={(e)=>changeLineField(idx,'description',e.target.value)} placeholder="Optional..." style={inputStyle}/>
+          <input type="number" step="0.01" value={l.net} placeholder="0.00" style={inputStyle} onChange={(e)=>changeLineNet(idx,e.target.value)}/>
+          <input type="number" step="0.01" value={l.vat} placeholder="0.00" style={inputStyle} onChange={(e)=>changeLineVat(idx,e.target.value)}/>
+          <input value={l.gross} placeholder="0.00" style={{...inputStyle,background:'#f8fafc'}} readOnly/>
+          <button onClick={()=>removeLine(idx)} disabled={formLines.length===1} title="Remove line"
+            style={{background:'none',border:'none',cursor:formLines.length===1?'default':'pointer',padding:4,opacity:formLines.length===1?0.3:1,display:'inline-flex'}}>
+            <Trash2 size={15} style={{color:'#94a3b8'}}/>
+          </button>
+        </div>
+      ))}
+      <button onClick={addLine} style={{...btnOutline,gap:5,marginTop:2}}><Plus size={14}/> Add line</button>
+
+      {/* Totals + actions */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:16,borderTop:'1px solid #f1f5f9',paddingTop:12}}>
+        <div style={{fontSize:13,color:'#64748b'}}>
+          Total: <b style={{color:'#0f172a'}}>{fmt(formTotals.net)}</b> net · {fmt(formTotals.vat)} VAT · <b style={{color:'#0e7fe0'}}>{fmt(formTotals.gross)}</b> gross
+        </div>
+        <div style={{display:'flex',gap:6}}>
+          <button onClick={onSubmit} disabled={!formCanSubmit||saving} style={{...btnPrimary,opacity:(!formCanSubmit||saving)?0.4:1}}>{saving?'Saving...':submitLabel}</button>
+          <button onClick={onCancel} style={btnOutline}>Cancel</button>
+        </div>
       </div>
     </div>
   );
@@ -570,6 +634,9 @@ const inputStyle = {width:'100%',padding:'8px 12px',fontSize:13,border:'1px soli
 const modeBtn = {flex:1,textAlign:'left',padding:'10px 12px',borderRadius:10,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",color:'#0f172a'};
 const navBtn = {padding:'2px 8px',borderRadius:6,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",fontSize:13,color:'#475569'};
 const INVOICE_COLS = '1.5fr 1.1fr 0.6fr 0.8fr 1.8fr 0.8fr 0.7fr 0.85fr';
+const LINE_COLS = '1.3fr 1.8fr 0.9fr 0.9fr 0.9fr 32px';
+// A fresh, empty editor line.
+function blankLine() { return { service: '', description: '', net: '', vat: '', gross: '', vatManual: false }; }
 const ellip = { overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' };
 const modeBtnActive = {borderColor:'#059669',background:'#f0fdf4',boxShadow:'0 0 0 1px #059669'};
 const formLabel = {display:'block',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',marginBottom:4,fontFamily:"'Outfit', sans-serif"};
