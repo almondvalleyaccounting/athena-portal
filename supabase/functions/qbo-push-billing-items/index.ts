@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "POST required" }, 405);
   }
 
-  let body: { billing_item_ids?: string[]; send?: boolean; dry_run?: boolean; refresh?: boolean; list_invoices?: boolean; entity_id?: string; due_days?: number; initiated_by?: string };
+  let body: { billing_item_ids?: string[]; send?: boolean; dry_run?: boolean; refresh?: boolean; list_invoices?: boolean; check_settings?: boolean; entity_id?: string; due_days?: number; initiated_by?: string };
   try {
     body = await req.json();
   } catch {
@@ -137,6 +137,21 @@ Deno.serve(async (req) => {
         }),
     }));
     return jsonResponse({ success: true, customer_found: true, invoices });
+  }
+
+  // ── Check-settings mode ── read the QBO company's sales preferences so
+  // the UI can confirm whether "Custom transaction numbers" is on (which
+  // leaves API-created invoices without an auto-assigned DocNumber).
+  if (body.check_settings) {
+    try {
+      const result = await qboQuery("SELECT * FROM Preferences") as Record<string, unknown>;
+      const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+      const prefs = ((qr.Preferences as Array<Record<string, unknown>>) || [])[0] || {};
+      const sales = (prefs.SalesFormsPrefs as Record<string, unknown>) || {};
+      return jsonResponse({ success: true, custom_txn_numbers: sales.CustomTxnNumbers === true });
+    } catch (e) {
+      return jsonResponse({ success: false, error: (e as Error).message }, 500);
+    }
   }
 
   if (ids.length === 0) {

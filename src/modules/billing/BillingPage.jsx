@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw, History } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { pushBillingItems, refreshBillingItems, fetchClientInvoices } from '../../lib/qboApi';
+import { pushBillingItems, refreshBillingItems, fetchClientInvoices, fetchQboSettings } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
 import NewClientModal from '../../components/NewClientModal';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
@@ -53,6 +53,7 @@ export default function BillingPage() {
   const [invError, setInvError] = useState('');
   const [clientInvoices, setClientInvoices] = useState([]);
   const [expandedInv, setExpandedInv] = useState(null);
+  const [customTxn, setCustomTxn] = useState(null); // QBO custom-transaction-numbers: null=unknown
 
   useEffect(() => { loadData(); }, []);
 
@@ -68,7 +69,13 @@ export default function BillingPage() {
       setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email || 'Unknown' })));
       // On first load, silently re-confirm invoice number + sent status from
       // QBO for pushed bills that don't have them yet (or aren't sent yet).
-      if (!autoRefreshedRef.current) { autoRefreshedRef.current = true; autoRefreshPushed(bills || []); }
+      if (!autoRefreshedRef.current) {
+        autoRefreshedRef.current = true;
+        autoRefreshPushed(bills || []);
+        // Confirm whether QBO's "Custom transaction numbers" is on — that's
+        // what leaves API-pushed invoices without a number.
+        fetchQboSettings().then((r) => setCustomTxn(r?.custom_txn_numbers ?? null)).catch(() => {});
+      }
     } catch (e) { console.error('[Billing] load error:', e); }
     setLoading(false);
   };
@@ -455,6 +462,16 @@ export default function BillingPage() {
         </div>
       </div>
 
+      {/* QBO numbering warning — confirmed via check_settings on load. */}
+      {customTxn === true && items.some((i)=>i.status==='pushed' && !i.qbo_doc_number) && (
+        <div style={{display:'flex',gap:10,alignItems:'flex-start',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'12px 16px',marginBottom:16,fontSize:13,color:'#92400e',lineHeight:1.5}}>
+          <AlertTriangle size={16} style={{color:'#d97706',flexShrink:0,marginTop:1}}/>
+          <div>
+            <b>QuickBooks isn&apos;t numbering these invoices.</b> Your QBO company has &ldquo;Custom transaction numbers&rdquo; switched on, so invoices Athena pushes go in without a number. Turn it off in QBO → <i>Account &amp; Settings → Sales → Sales form content → &ldquo;Custom transaction numbers&rdquo;</i>, then open (or re-send) the affected invoices to assign numbers. Refresh from QBO afterwards to pull them in.
+          </div>
+        </div>
+      )}
+
       {showAdd && renderForm(handleAdd, 'Add', ()=>{setShowAdd(false);resetForm();})}
       {editingId && !showAdd && renderForm(()=>handleUpdate(items.find((i)=>i.id===editingId)), 'Save', ()=>{setEditingId(null);resetForm();})}
 
@@ -770,7 +787,9 @@ function QboInvoiceTag({ item }) {
     : { c: '#64748b', b: '#f1f5f9', t: 'Draft' };
   return (
     <>
-      {item.qbo_doc_number && <span style={{ fontSize: 10, fontWeight: 600, color: '#0e7fe0', background: '#eff6ff', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>INV #{item.qbo_doc_number}</span>}
+      {item.qbo_doc_number
+        ? <span style={{ fontSize: 10, fontWeight: 600, color: '#0e7fe0', background: '#eff6ff', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>INV #{item.qbo_doc_number}</span>
+        : <span title="No invoice number in QuickBooks — likely 'Custom transaction numbers' is on. See the banner above." style={{ fontSize: 10, fontWeight: 600, color: '#b45309', background: '#fffbeb', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>no #</span>}
       <span style={{ fontSize: 10, fontWeight: 600, color: tone.c, background: tone.b, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>{tone.t}</span>
     </>
   );

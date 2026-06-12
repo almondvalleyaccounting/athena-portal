@@ -63,6 +63,16 @@ export async function pushBillingItems(billingItemIds, send, initiatedBy, dryRun
   return data;
 }
 
+/** Read QBO sales preferences — currently just whether "Custom transaction
+ *  numbers" is on (which leaves API-created invoices without a number). */
+export async function fetchQboSettings() {
+  const { data, error } = await supabase.functions.invoke('qbo-push-billing-items', {
+    body: { check_settings: true },
+  });
+  if (error) throw error;
+  return data;
+}
+
 /** Pull the last 24 months of a client's QBO invoices (with line detail)
  *  so a past invoice can be copied into a new bill. */
 export async function fetchClientInvoices(entityId) {
