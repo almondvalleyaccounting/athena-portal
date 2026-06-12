@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { pushBillingItems, refreshBillingItems, fetchClientInvoices } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
 import NewClientModal from '../../components/NewClientModal';
+import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 
 const VAT_RATE = 0.20;
 const STATUS_CONFIG = {
@@ -45,6 +46,7 @@ export default function BillingPage() {
   const [refreshing, setRefreshing] = useState(false);
   const autoRefreshedRef = useRef(false); // only auto-refresh once per mount
   const [showNewClient, setShowNewClient] = useState(false);
+  const [newClientName, setNewClientName] = useState(''); // seeds the new-client modal
   // Copy-from-past-invoice picker
   const [showInvoicePicker, setShowInvoicePicker] = useState(false);
   const [invLoading, setInvLoading] = useState(false);
@@ -369,14 +371,20 @@ export default function BillingPage() {
 
   const renderForm = (onSubmit, submitLabel, onCancel) => (
     <div style={{ background:'#fff', borderRadius:12, border:'1px solid #e5e7eb', padding:'20px 24px', marginBottom:20 }}>
-      {/* Client (one per bill → one invoice) */}
+      {/* Client (one per bill → one invoice). Type-to-filter + A-Z jumper;
+          the inline "+ Add" routes to the New Client modal. */}
       <div style={{marginBottom:14}}>
         <label style={formLabel}>Client *</label>
         <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-          <select value={formClient} onChange={(e)=>setFormClient(e.target.value)} style={{...inputStyle,maxWidth:340}}>
-            <option value="">Select client...</option>{entities.map((e)=><option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
-          <button onClick={()=>setShowNewClient(true)} style={{...btnOutline,gap:4}} title="Create a new client"><Plus size={14}/> New client</button>
+          <div style={{flex:'1 1 280px',maxWidth:340}}>
+            <ClientTypeAhead
+              entityList={entities}
+              value={formClient}
+              onChange={(id)=>setFormClient(id)}
+              onAddNew={(name)=>{ setNewClientName(name || ''); setShowNewClient(true); return null; }}
+            />
+          </div>
+          <button onClick={()=>{setNewClientName('');setShowNewClient(true);}} style={{...btnOutline,gap:4}} title="Create a new client"><Plus size={14}/> New client</button>
           <button onClick={openInvoicePicker} disabled={!formClient} style={{...btnOutline,gap:4,opacity:formClient?1:0.4,cursor:formClient?'pointer':'not-allowed'}} title="Copy a past QBO invoice into this bill"><History size={14}/> Copy from past invoice</button>
         </div>
       </div>
@@ -701,7 +709,7 @@ export default function BillingPage() {
       )}
 
       {/* Create a new client inline */}
-      <NewClientModal open={showNewClient} onClose={()=>setShowNewClient(false)} onSave={handleCreateClient}/>
+      <NewClientModal open={showNewClient} initialName={newClientName} onClose={()=>{setShowNewClient(false);setNewClientName('');}} onSave={handleCreateClient}/>
 
       {/* Copy from a past QBO invoice (last 24 months) */}
       {showInvoicePicker && (
