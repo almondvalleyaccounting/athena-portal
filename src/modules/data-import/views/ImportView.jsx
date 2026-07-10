@@ -12,7 +12,7 @@ import {
 } from '../lib/importQueries';
 import { isNstTask } from '../lib/writers/bmTasks';
 import { parseBmClientsCsv } from '../lib/parsers/bmClients';
-import { classifyBmProspects, writeBmClients } from '../lib/writers/bmClients';
+import { classifyBmProspects, writeBmClients, fetchArchiveCandidates, archiveBmClients } from '../lib/writers/bmClients';
 import { parseBmTasksCsv } from '../lib/parsers/bmTasks';
 import { classifyBmTasks, writeBmTasks } from '../lib/writers/bmTasks';
 
@@ -119,6 +119,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   const [parsedRows, setParsedRows] = useState(null);
   const [matches, setMatches] = useState({});          // bm_client_id/bm_task_id -> match info
   const [decisions, setDecisions] = useState({});      // bm_client_id -> confirmed prospect_id (or 'reject')
+  const [archiveSelection, setArchiveSelection] = useState({}); // bm_clients: bm_client_id -> bool (archive on approve?)
   const [seenTaskIds, setSeenTaskIds] = useState([]);  // bm_tasks: every task_id in the CSV (drives disappearance sweep)
   const [run, setRun] = useState(null);
   const [error, setError] = useState(null);
@@ -204,6 +205,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   useEffect(() => {
     setFile(null); setPreview(null); setStage('upload');
     setValidation(null); setParsedRows(null); setMatches({}); setDecisions({});
+    setArchiveSelection({});
     setSeenTaskIds([]);
     setRun(null); setError(null);
     (async () => {
@@ -286,6 +288,16 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           score: m.score,
         }));
 
+        // Disappearance check: active BM entities NOT in this upload are
+        // candidates for archiving (they were archived/removed in BM). The
+        // user reviews and can deselect any of these before approving.
+        const presentBmIds = parsed.rows.map((r) => r.bm_client_id).filter(Boolean);
+        const archiveCandidates = await fetchArchiveCandidates(presentBmIds);
+        // Default: archive every candidate. User unticks to keep one active.
+        setArchiveSelection(
+          Object.fromEntries(archiveCandidates.map((c) => [c.bm_client_id, true]))
+        );
+
         v = {
           sourceRows: preview.rowCount,
           valid: parsed.rows.length,
@@ -295,6 +307,8 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           warnings: parsed.warnings,
           skippedRows: parsed.skipped,
           conversions: conversionList,
+          archiveCandidates,
+          presentCount: presentBmIds.length,
           notes: [],
         };
       } else if (source.key === 'bm_tasks') {
@@ -363,6 +377,12 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
     }).length;
   }, [conversionGroups, decisions]);
 
+  // bm_client_ids the user has left ticked for archiving.
+  const archiveToApply = useMemo(() => {
+    const cands = validation?.archiveCandidates || [];
+    return cands.filter((c) => archiveSelection[c.bm_client_id]).map((c) => c.bm_client_id);
+  }, [validation, archiveSelection]);
+
   const handleCancelRun = async () => {
     if (!run) return;
     try {
@@ -389,14 +409,26 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           if (val && val !== 'reject') approvedDecisions[bmId] = val;
         }
         const result = await writeBmClients(run.id, parsedRows, approvedDecisions);
+
+        // Disappearance sweep: archive the BM clients the user left ticked.
+        // Runs after the upsert so a client that's both present and (somehow)
+        // in the candidate set never gets archived out from under itself.
+        let archiveResult = { archived: 0 };
+        if (archiveToApply.length) {
+          archiveResult = await archiveBmClients(run.id, archiveToApply);
+        }
+
         const done = await markComplete(run.id, {
-          rowCounts: { entities: result.entities_written },
+          rowCounts: {
+            entities: result.entities_written,
+            ...(archiveResult.archived ? { archived: archiveResult.archived } : {}),
+          },
           errors: result.errors || [],
         });
         setRun(done);
         setValidation((v) => ({
           ...v,
-          writeResult: result,
+          writeResult: { ...result, archived: archiveResult.archived },
         }));
       } else if (source.key === 'bm_tasks') {
         // Apply persisted task-type exclusions before writing. Any row
@@ -502,15 +534,25 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
               onToggle={toggleExclusion}
             />
           )}
+          {source.key === 'bm_clients' && validation.archiveCandidates?.length > 0 && (
+            <ArchiveCandidatesPanel
+              candidates={validation.archiveCandidates}
+              presentCount={validation.presentCount}
+              selection={archiveSelection}
+              setSelection={setArchiveSelection}
+            />
+          )}
           <ApprovePanel
             validation={validation}
             tier3Pending={tier3Pending.length}
             contestedUnresolved={contestedUnresolved}
+            archiveCount={archiveToApply.length}
             onApprove={() => setConfirmVisible(true)}
             onCancel={handleCancelRun}
           />
           {confirmVisible && (
             <ConfirmPrompt
+              archiveCount={archiveToApply.length}
               onCancel={() => setConfirmVisible(false)}
               onConfirm={handleApprove}
             />
@@ -1677,6 +1719,94 @@ function IssueTable({ issues, kind }) {
   );
 }
 
+/* ─── Archive candidates ──────────────────────────────────────
+   Active BrightManager clients that aren't in this upload — i.e.
+   they've been archived/removed in BM since the last export. Every
+   candidate is ticked by default (will be archived on approve); the
+   user unticks any they want to keep active. A loud warning fires
+   when the count looks like a partial/filtered export rather than a
+   genuine handful of departures, so nobody mass-archives by accident.
+   ─────────────────────────────────────────────────────────── */
+function ArchiveCandidatesPanel({ candidates, presentCount, selection, setSelection }) {
+  const selectedCount = candidates.filter((c) => selection[c.bm_client_id]).length;
+
+  // Heuristic: if we'd archive a big slice of the book, the upload was
+  // probably filtered (not the full active-client list). Warn loudly.
+  const ratio = presentCount > 0 ? candidates.length / presentCount : 0;
+  const looksPartial = candidates.length > 40 || ratio > 0.2;
+
+  const setOne = (bmId, val) =>
+    setSelection((s) => ({ ...s, [bmId]: val }));
+  const setAll = (val) =>
+    setSelection(Object.fromEntries(candidates.map((c) => [c.bm_client_id, val])));
+
+  const fmtDate = (d) => {
+    if (!d) return '—';
+    try { return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); }
+    catch { return '—'; }
+  };
+
+  return (
+    <div style={{
+      background: looksPartial ? '#fef2f2' : '#fff',
+      border: `1px solid ${looksPartial ? '#fca5a5' : '#e5e7eb'}`,
+      borderRadius: 10, padding: 16, marginBottom: 16,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+          Clients no longer in BrightManager — {candidates.length}
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setAll(true)} style={{ ...btnGhost, fontSize: 11 }}>Select all</button>
+          <button onClick={() => setAll(false)} style={{ ...btnGhost, fontSize: 11 }}>Deselect all</button>
+        </div>
+      </div>
+      <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
+        These active clients aren't in this export, so they look archived in BrightManager.
+        Ticked ones will be set to <strong>archived</strong> when you approve. Untick any you want to keep active.
+      </p>
+
+      {looksPartial && (
+        <div style={{ ...banner('red'), marginBottom: 10 }}>
+          <AlertTriangle size={14} style={{ color: '#991b1b', flexShrink: 0 }} />
+          <span>
+            That's {candidates.length} of {presentCount + candidates.length} clients — a large share.
+            If this export was filtered (not your full active-client list), <strong>deselect all</strong> before
+            approving, or these will be archived in error.
+          </span>
+        </div>
+      )}
+
+      <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}>
+        {candidates.map((c) => {
+          const checked = !!selection[c.bm_client_id];
+          return (
+            <label key={c.bm_client_id} style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px',
+              borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
+              background: checked ? 'transparent' : '#f8fafc',
+            }}>
+              <input type="checkbox" checked={checked} onChange={(e) => setOne(c.bm_client_id, e.target.checked)} />
+              <span style={{ flex: 1, fontSize: 13, color: checked ? '#0f172a' : '#94a3b8' }}>
+                {c.name}
+              </span>
+              <span style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>{c.bm_client_id}</span>
+              <span style={{ fontSize: 11, color: '#94a3b8', width: 96, textAlign: 'right' }}>
+                last seen {fmtDate(c.updated_at)}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
+      <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
+        {selectedCount} of {candidates.length} will be archived · {candidates.length - selectedCount} kept active.
+        Archiving is reversible — flip status back on the client record if needed.
+      </p>
+    </div>
+  );
+}
+
 function ConversionPanel({ groups, decisions, setDecisions }) {
   const totalMembers = groups.reduce((n, g) => n + g.members.length, 0);
   const contestedGroups = groups.filter((g) => g.contested);
@@ -1927,7 +2057,7 @@ function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) 
   );
 }
 
-function ApprovePanel({ validation, tier3Pending, contestedUnresolved, onApprove, onCancel }) {
+function ApprovePanel({ validation, tier3Pending, contestedUnresolved, archiveCount = 0, onApprove, onCancel }) {
   const blocked = tier3Pending > 0 || contestedUnresolved > 0;
   const blockReason = contestedUnresolved > 0
     ? 'Resolve contested prospect groups before importing'
@@ -1958,6 +2088,7 @@ function ApprovePanel({ validation, tier3Pending, contestedUnresolved, onApprove
           <span>Warnings: <b>{validation.warningCount}</b></span>
           {tier3Pending > 0 && <span>Tier 3 to action: <b>{tier3Pending}</b></span>}
           {contestedUnresolved > 0 && <span style={{ color: '#991b1b' }}>Contested groups: <b>{contestedUnresolved}</b></span>}
+          {archiveCount > 0 && <span style={{ color: '#b45309' }}>Will archive: <b>{archiveCount}</b></span>}
         </div>
       </div>
       <div style={{ display: 'flex', gap: 10 }}>
@@ -1980,7 +2111,7 @@ function ApprovePanel({ validation, tier3Pending, contestedUnresolved, onApprove
   );
 }
 
-function ConfirmPrompt({ onCancel, onConfirm }) {
+function ConfirmPrompt({ archiveCount = 0, onCancel, onConfirm }) {
   return (
     <div style={{
       marginTop: 12, padding: 14,
@@ -1990,6 +2121,7 @@ function ConfirmPrompt({ onCancel, onConfirm }) {
       <AlertTriangle size={16} style={{ color: '#d97706' }} />
       <span style={{ flex: 1, fontSize: 13, color: '#78350f' }}>
         This will write to the live database. This action cannot be undone.
+        {archiveCount > 0 && <> <strong>{archiveCount} client{archiveCount === 1 ? '' : 's'} will be archived.</strong></>}
       </span>
       <button onClick={onCancel} style={btnSecondary}>Cancel</button>
       <button onClick={onConfirm} style={btnPrimary}>Confirm import</button>
@@ -2032,6 +2164,9 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
         <>
           <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>entities written</span><span style={resultNum}>{wr.entities_written.toLocaleString()}</span></div>
           <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>prospects converted</span><span style={resultNum}>{wr.prospects_converted.toLocaleString()}</span></div>
+          {wr.archived > 0 && (
+            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>clients archived (left BM)</span><span style={resultNum}>{wr.archived.toLocaleString()}</span></div>
+          )}
           {wr.orphans_adopted > 0 && (
             <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>orphan records adopted</span><span style={resultNum}>{wr.orphans_adopted.toLocaleString()}</span></div>
           )}

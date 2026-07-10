@@ -17,6 +17,32 @@ export async function classifyBmProspects(parsedRows) {
   return map;
 }
 
+// Read-only: given the bm_client_ids present in the upload, return the
+// active BrightManager entities that have dropped out of the export and are
+// therefore candidates for archiving. Surfaced in the preview so the user
+// reviews them before anything is written.
+export async function fetchArchiveCandidates(presentBmIds) {
+  const ids = [...new Set((presentBmIds || []).filter(Boolean))];
+  const { data, error } = await supabase.rpc('preview_bm_archive_candidates', {
+    p_bm_client_ids: ids,
+  });
+  if (error) throw error;
+  return data || [];
+}
+
+// Flip the given bm_client_ids to entity_status='archived'. The RPC only
+// touches currently-active BrightManager entities, so passing a deselected
+// or already-archived id is a harmless no-op.
+export async function archiveBmClients(runId, bmClientIds) {
+  const ids = [...new Set((bmClientIds || []).filter(Boolean))];
+  if (!ids.length) return { archived: 0, archived_ids: [] };
+  const { data, error } = await supabase.rpc('archive_bm_clients', {
+    run_id: runId, p_bm_client_ids: ids,
+  });
+  if (error) throw error;
+  return data;
+}
+
 // Call the import RPC. `decisions` is a map of bm_client_id -> prospect uuid
 // for approved conversions (omit a bm_client_id to create a new entity).
 export async function writeBmClients(runId, parsedRows, decisions = {}) {
