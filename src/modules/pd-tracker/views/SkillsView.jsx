@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useAuth } from '../../../shell/AppShell';
 import RadarChart from '../components/RadarChart';
+import CustomiseTargets from '../components/CustomiseTargets';
 import { Card, SectionTitle, Pill, FONT, SERIF, Select } from '../components/ui';
 import { Star, GraduationCap } from 'lucide-react';
 import {
@@ -26,6 +27,7 @@ export default function SkillsView() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showCust, setShowCust] = useState(false);
   const groupInit = useRef(false);
 
   // Static loads
@@ -175,6 +177,12 @@ export default function SkillsView() {
               ))}
             </Select>
           </label>
+          {isRoleMode && canEdit && (
+            <button onClick={() => setShowCust((v) => !v)}
+              style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '7px 12px', borderRadius: 8, border: '1px solid ' + (showCust ? '#0f172a' : '#cbd5e1'), background: showCust ? '#0f172a' : '#fff', color: showCust ? '#fff' : '#475569' }}>
+              Customise
+            </button>
+          )}
           {isAdmin && staff.length > 0 && (
             <Select value={selectedStaffId} onChange={(e) => { setSelectedStaffId(e.target.value); }} style={{ minWidth: 180 }}>
               {staff.map((s) => (
@@ -290,6 +298,17 @@ export default function SkillsView() {
           </div>
         </Card>
       </div>
+
+      {isRoleMode && canEdit && showCust && (
+        <CustomiseTargets
+          staffId={selectedStaffId}
+          roleCategories={roleCats}
+          overrides={overrides}
+          allCategories={allCategories.filter((c) => c !== 'All')}
+          canEdit={canEdit}
+          onChanged={setOverrides}
+        />
+      )}
     </div>
   );
 }

@@ -57,6 +57,25 @@ export async function loadStaffCategoryOverrides(staffId) {
   return data || [];
 }
 
+export async function upsertStaffCategoryOverride(row) {
+  const { data, error } = await supabase
+    .from('pd_staff_category_overrides')
+    .upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: 'staff_id,category' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteStaffCategoryOverride(staffId, category) {
+  const { error } = await supabase
+    .from('pd_staff_category_overrides')
+    .delete()
+    .eq('staff_id', staffId)
+    .eq('category', category);
+  if (error) throw error;
+}
+
 export async function assignRoleProfile(staffId, roleProfileId) {
   const { error } = await supabase
     .from('staff_profiles')
