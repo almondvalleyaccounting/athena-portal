@@ -276,6 +276,44 @@ export async function updateStep(step, patch, { actorId, logBody } = {}) {
   }
 }
 
+// ── Chaser engine (edge function onboarding-chase) ──
+
+export async function getChaseConfig() {
+  const { data, error } = await supabase
+    .from('onboarding_chase_config')
+    .select('*')
+    .eq('id', true)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function setChaseConfig(patch) {
+  const { error } = await supabase
+    .from('onboarding_chase_config')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', true);
+  if (error) throw error;
+}
+
+// Dry run: returns { client_chases: [...], digests: [...] } — nothing is sent.
+export async function runChaseDryRun() {
+  const { data, error } = await supabase.functions.invoke('onboarding-chase', {
+    body: { dry_run: true },
+  });
+  if (error) throw error;
+  return data;
+}
+
+// Sends ONE sample client email + ONE sample digest to the given address.
+export async function runChaseTestSend(testRecipient) {
+  const { data, error } = await supabase.functions.invoke('onboarding-chase', {
+    body: { dry_run: false, test_recipient: testRecipient },
+  });
+  if (error) throw error;
+  return data;
+}
+
 export async function addNote(onboardingId, body, { actorId, stepId } = {}) {
   const { error } = await supabase.from('onboarding_activity').insert({
     onboarding_id: onboardingId, step_id: stepId || null,

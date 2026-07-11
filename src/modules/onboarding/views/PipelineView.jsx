@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { UserPlus, Clock, AlertTriangle, Hourglass } from 'lucide-react';
 import { Btn } from '../../../components/ui';
 import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
+import { useAuth } from '../../../shell/AppShell';
+import ChasersPanel from '../components/ChasersPanel';
 import { listOnboardings, isOverdue, daysSince, ONBOARDING_STATUSES } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -25,6 +27,8 @@ function ProgressBar({ done, total }) {
 
 export default function PipelineView() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const isAdmin = profile?.can_manage_portal === true || profile?.is_portal_admin === true;
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('open'); // open | complete | all
@@ -73,6 +77,8 @@ export default function PipelineView() {
           </span>
         </Btn>
       </div>
+
+      {isAdmin && <ChasersPanel />}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         {[['open', 'Open'], ['complete', 'Complete'], ['all', 'All']].map(([v, label]) => (
