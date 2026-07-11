@@ -12,6 +12,7 @@ import {
   FileText,
   AlertTriangle,
   TrendingUp,
+  ClipboardCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -34,6 +35,7 @@ const ICON_MAP = {
   'file-text': FileText,
   'alert-triangle': AlertTriangle,
   'trending-up': TrendingUp,
+  'clipboard-check': ClipboardCheck,
 };
 
 /* ─── Visibility rules ─────────────────────────────────────────── */

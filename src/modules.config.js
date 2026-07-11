@@ -84,6 +84,15 @@ export const MODULES = [
     ],
   },
   {
+    id: 'job-review',
+    label: 'Job Review',
+    route: '/review',
+    icon: 'clipboard-check',
+    permissions: ['work_planner'],
+    status: 'live',
+    group: 'team',
+  },
+  {
     id: 'pd-tracker',
     label: 'PD tracker',
     route: '/team/pd',

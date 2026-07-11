@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
+import JobReviewRadar from '../modules/job-review/DashboardRadar';
 
 const STATUS_VIEW_FILTERS = {
   draft: ['draft'],
@@ -407,6 +408,9 @@ export default function DashboardPage() {
         <p className="text-sm text-gray-400">Loading...</p>
       ) : (
         <>
+          {/* Operations radar — monthly job-review progress */}
+          <JobReviewRadar />
+
           {/* 5 Status Cards (always visible, unfiltered by statusView) */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
             {Object.keys(STATUS_VIEW_FILTERS).map((key) => {

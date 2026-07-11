@@ -21,6 +21,7 @@ import BillingEmailReconciliationPage from './modules/billing/BillingEmailReconc
 import BillingAddNewPage from './modules/billing/BillingAddNewPage';
 import FeeEarnerBookPage from './modules/billing/FeeEarnerBookPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
+import JobReviewModule from './modules/job-review/JobReviewModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
 import BillingPage from './modules/billing/BillingPage';
 import IssuesPage from './modules/issues/IssuesPage';
@@ -85,6 +86,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           {/* Setup must come before /planner/* wildcard so it matches first. */}
           <Route path="/planner/setup/*" element={<SetupModule />} />
           <Route path="/planner/*" element={<WorkPlannerModule />} />
+          <Route path="/review/*" element={<JobReviewModule />} />
           <Route path="/timesheets/*" element={<TimesheetModule />} />
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/issues" element={<IssuesPage />} />
