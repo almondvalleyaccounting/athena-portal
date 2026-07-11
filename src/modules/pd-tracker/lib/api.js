@@ -315,6 +315,27 @@ export async function deleteOneToOne(id) {
   if (error) throw error;
 }
 
+export async function loadOneToOneComments(oneToOneIds) {
+  if (!oneToOneIds || oneToOneIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('pd_one_to_one_comments')
+    .select('*, author:author_id(id, name)')
+    .in('one_to_one_id', oneToOneIds)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addOneToOneComment(row) {
+  const { data, error } = await supabase
+    .from('pd_one_to_one_comments')
+    .insert(row)
+    .select('*, author:author_id(id, name)')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function loadActions(staffId) {
   const { data, error } = await supabase
     .from('pd_one_to_one_actions')

@@ -5,14 +5,18 @@ import { Card, SectionTitle, Button, Input, Textarea, Select, Pill, EmptyState, 
 import {
   loadOneToOnes, createOneToOne, deleteOneToOne, updateOneToOne,
   loadActions, createAction, updateAction, deleteAction, loadStaff,
+  loadOneToOneComments, addOneToOneComment,
 } from '../lib/api';
 
 const MOOD_EMOJI = { 1: '😞', 2: '😕', 3: '😐', 4: '🙂', 5: '😄' };
 
 export default function OneToOnesView() {
   const { profile } = useAuth();
+  const isAdmin = profile?.can_manage_portal === true || profile?.is_portal_admin === true;
+  const [selectedStaffId, setSelectedStaffId] = useState(profile?.id);
   const [meetings, setMeetings] = useState([]);
   const [actions, setActions] = useState([]);
+  const [comments, setComments] = useState([]);
   const [staff, setStaff] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState(emptyDraft());
@@ -29,23 +33,35 @@ export default function OneToOnesView() {
   }
 
   useEffect(() => {
-    if (!profile?.id) return;
+    if (!selectedStaffId) return;
+    setLoading(true);
     (async () => {
       try {
         const [m, a, s] = await Promise.all([
-          loadOneToOnes(profile.id),
-          loadActions(profile.id),
+          loadOneToOnes(selectedStaffId),
+          loadActions(selectedStaffId),
           loadStaff(),
         ]);
         setMeetings(m); setActions(a); setStaff(s);
+        setComments(await loadOneToOneComments(m.map((x) => x.id)));
       } catch (e) { console.error(e); }
       setLoading(false);
     })();
-  }, [profile?.id]);
+  }, [selectedStaffId]);
+
+  const viewingSelf = selectedStaffId === profile?.id;
+
+  const addComment = async (meetingId, body) => {
+    if (!body.trim()) return;
+    try {
+      const saved = await addOneToOneComment({ one_to_one_id: meetingId, author_id: profile.id, body: body.trim() });
+      setComments((p) => [...p, saved]);
+    } catch (e) { console.error(e); }
+  };
 
   const submit = async () => {
     const row = {
-      staff_id: profile.id,
+      staff_id: selectedStaffId,
       manager_id: draft.manager_id || null,
       meeting_date: draft.meeting_date,
       duration_mins: Number(draft.duration_mins) || null,
@@ -61,8 +77,8 @@ export default function OneToOnesView() {
       const validActions = draft.newActions.filter((a) => a.action.trim());
       const createdActions = await Promise.all(validActions.map((a) => createAction({
         one_to_one_id: saved.id,
-        staff_id: profile.id,
-        owner_id: profile.id,
+        staff_id: selectedStaffId,
+        owner_id: selectedStaffId,
         action: a.action.trim(),
         due_date: a.due_date || null,
       })));
@@ -106,12 +122,19 @@ export default function OneToOnesView() {
           title="Meeting notes & actions"
           hint="Capture what was discussed, how you felt, and what you'll do next."
         />
-        {!showForm && (
-          <Button variant="accent" onClick={() => setShowForm(true)}>
-            <Plus size={14} style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
-            New 1-2-1
-          </Button>
-        )}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {isAdmin && staff.length > 0 && (
+            <Select value={selectedStaffId} onChange={(e) => { setSelectedStaffId(e.target.value); setExpandedId(null); setShowForm(false); }} style={{ minWidth: 180 }}>
+              {staff.map((s) => <option key={s.id} value={s.id}>{s.name}{s.id === profile?.id ? ' (you)' : ''}</option>)}
+            </Select>
+          )}
+          {!showForm && (
+            <Button variant="accent" onClick={() => setShowForm(true)}>
+              <Plus size={14} style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
+              New 1-2-1
+            </Button>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 24 }}>
@@ -169,7 +192,7 @@ export default function OneToOnesView() {
               <label style={lblStyle}>Manager / partner</label>
               <Select value={draft.manager_id} onChange={(e) => setDraft({ ...draft, manager_id: e.target.value })}>
                 <option value="">— select —</option>
-                {staff.filter((s) => s.id !== profile.id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {staff.filter((s) => s.id !== selectedStaffId).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
             </div>
             <div>
@@ -312,6 +335,13 @@ export default function OneToOnesView() {
                         </div>
                       </div>
                     )}
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <CommentThread
+                        meeting={m}
+                        comments={comments.filter((c) => c.one_to_one_id === m.id)}
+                        onAdd={(body) => addComment(m.id, body)}
+                      />
+                    </div>
                   </div>
                 )}
               </Card>
@@ -319,6 +349,42 @@ export default function OneToOnesView() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function CommentThread({ meeting, comments, onAdd }) {
+  const [text, setText] = useState('');
+  return (
+    <div style={{ marginTop: 4, borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
+      <div style={lblStyle}>360° feedback &amp; comments</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+        {comments.length === 0 && <div style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8' }}>No comments yet — the individual, their manager, or anyone with access can add one.</div>}
+        {comments.map((c) => {
+          const isSubject = c.author_id === meeting.staff_id;
+          return (
+            <div key={c.id} style={{
+              alignSelf: isSubject ? 'flex-start' : 'flex-end', maxWidth: '82%',
+              background: isSubject ? '#f8fafc' : '#eff6ff',
+              border: '1px solid ' + (isSubject ? '#e5e7eb' : '#dbeafe'),
+              borderRadius: 10, padding: '8px 12px',
+            }}>
+              <div style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, color: isSubject ? '#475569' : '#0e7fe0', marginBottom: 2 }}>
+                {c.author?.name || 'Someone'}{isSubject ? ' · self' : ''}
+                <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 6 }}>
+                  {new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </span>
+              </div>
+              <div style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{c.body}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Add a comment…"
+          onKeyDown={(e) => { if (e.key === 'Enter' && text.trim()) { onAdd(text); setText(''); } }} />
+        <Button variant="primary" onClick={() => { if (text.trim()) { onAdd(text); setText(''); } }}>Post</Button>
+      </div>
     </div>
   );
 }
