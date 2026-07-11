@@ -19,11 +19,86 @@ export const LEARNING_PARTNER = {
 export async function loadStaff() {
   const { data, error } = await supabase
     .from('staff_profiles')
-    .select('id, name, email, colour, is_active')
+    .select('id, name, email, colour, is_active, pd_role_profile_id')
     .eq('is_active', true)
     .order('name');
   if (error) throw error;
   return data || [];
+}
+
+// ── Role profiles (skills grouping + per-category targets) ───────────────
+
+export async function loadRoleProfiles() {
+  const { data, error } = await supabase
+    .from('pd_role_profiles')
+    .select('*')
+    .eq('active', true)
+    .order('display_order');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function loadRoleProfileCategories(roleProfileId) {
+  const { data, error } = await supabase
+    .from('pd_role_profile_categories')
+    .select('*')
+    .eq('role_profile_id', roleProfileId)
+    .order('display_order');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function loadStaffCategoryOverrides(staffId) {
+  const { data, error } = await supabase
+    .from('pd_staff_category_overrides')
+    .select('*')
+    .eq('staff_id', staffId);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function assignRoleProfile(staffId, roleProfileId) {
+  const { error } = await supabase
+    .from('staff_profiles')
+    .update({ pd_role_profile_id: roleProfileId || null })
+    .eq('id', staffId);
+  if (error) throw error;
+}
+
+// Effective category axes + targets for a staff member under a role profile,
+// applying individual overrides (add / hide / retarget). Returns
+// [{ category, target_level }] in display order.
+export function effectiveRoleCategories(roleCategories, overrides) {
+  const byCat = new Map();
+  for (const rc of roleCategories) {
+    byCat.set(rc.category, { category: rc.category, target_level: rc.target_level, order: rc.display_order });
+  }
+  for (const ov of overrides || []) {
+    if (ov.included === false) { byCat.delete(ov.category); continue; }
+    const existing = byCat.get(ov.category);
+    if (existing) {
+      if (ov.target_level != null) existing.target_level = ov.target_level;
+    } else {
+      byCat.set(ov.category, { category: ov.category, target_level: ov.target_level ?? 3, order: 999 });
+    }
+  }
+  return Array.from(byCat.values()).sort((a, b) => a.order - b.order);
+}
+
+// Build a "Help me learn" prompt + provider deep-links for a skill gap.
+export function helpMeLearnLinks(skillName, category, current, target) {
+  const prompt =
+    `I want to improve my "${skillName}" skill (category: ${category}). ` +
+    `I'm currently at level ${current}/5 (${LEVEL_LABELS[current] || '—'}) and want to reach ` +
+    `${target}/5 (${LEVEL_LABELS[target] || '—'}). Give me a concise, practical learning plan ` +
+    `with specific steps and free resources, tailored for someone working in a UK accountancy practice.`;
+  const q = encodeURIComponent(prompt);
+  return {
+    prompt,
+    claude: `https://claude.ai/new?q=${q}`,
+    chatgpt: `https://chatgpt.com/?q=${q}`,
+    udemy: `https://www.udemy.com/courses/search/?q=${encodeURIComponent(skillName)}`,
+  };
 }
 
 export async function loadSkills() {
