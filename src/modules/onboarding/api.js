@@ -354,6 +354,16 @@ export async function saveDocumentsToDrive(onboardingId) {
   return data;
 }
 
+// AI extraction (edge fn doc-extract) — runs automatically on upload via a
+// DB trigger; this is the manual (re-)run for errors or re-reads.
+export async function extractDocument(documentId, force = true) {
+  const { data, error } = await supabase.functions.invoke('doc-extract', {
+    body: { document_id: documentId, force },
+  });
+  if (error) throw error;
+  return data;
+}
+
 export async function getDocumentUrl(storagePath) {
   const { data, error } = await supabase.storage
     .from('client-documents')

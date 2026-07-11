@@ -1,10 +1,61 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, HardDriveUpload, ExternalLink, FolderOpen } from 'lucide-react';
+import { FileText, HardDriveUpload, ExternalLink, FolderOpen, Sparkles, AlertTriangle } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
-import { getDriveConnection, driveConnectUrl, saveDocumentsToDrive, getDocumentUrl } from '../api';
+import { getDriveConnection, driveConnectUrl, saveDocumentsToDrive, getDocumentUrl, extractDocument } from '../api';
 
 const font = "'Outfit', sans-serif";
+
+const DOC_TYPE_LABEL = {
+  passport: 'Passport', driving_licence: 'Driving licence', national_id: 'National ID',
+  utility_bill: 'Utility bill', bank_statement: 'Bank statement',
+  hmrc_utr_letter: 'HMRC UTR letter', hmrc_paye_letter: 'HMRC PAYE letter',
+  hmrc_vat_letter: 'HMRC VAT letter', hmrc_agent_code_letter: 'HMRC agent code',
+  companies_house_letter: 'Companies House letter', p45: 'P45', p60: 'P60',
+  payslip: 'Payslip', letter_of_engagement: 'Letter of engagement',
+  invoice: 'Invoice', rental_statement: 'Rental statement', other: 'Document',
+};
+
+function Extraction({ doc, onRetry, busy }) {
+  const x = doc.extracted;
+  if (doc.extract_status === 'done' && x) {
+    const expired = x.expiry_date && !isNaN(Date.parse(x.expiry_date)) && Date.parse(x.expiry_date) < Date.now();
+    return (
+      <div style={{ margin: '2px 0 6px 4px', fontSize: 11.5, color: '#64748b', lineHeight: 1.5 }}>
+        <span style={{ ...chipStyle('accent'), marginRight: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+          <Sparkles size={9} /> {DOC_TYPE_LABEL[doc.doc_type] || doc.doc_type}
+        </span>
+        {x.summary}
+        {x.reference_number && <span style={{ color: '#334155', fontWeight: 600 }}> · {x.reference_number}</span>}
+        {expired && (
+          <span style={{ ...chipStyle('danger'), marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <AlertTriangle size={9} /> expired {x.expiry_date}
+          </span>
+        )}
+      </div>
+    );
+  }
+  if (doc.extract_status === 'error' || doc.extract_status === 'unsupported') {
+    return (
+      <div style={{ margin: '2px 0 6px 4px', fontSize: 11.5, color: '#94a3b8' }}>
+        {doc.extract_status === 'unsupported' ? 'AI can’t read this file type — review manually.' : `AI read failed: ${doc.extract_error || 'unknown'}`}
+        {doc.extract_status === 'error' && (
+          <button onClick={onRetry} disabled={busy} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#0e7fe0', fontSize: 11.5, cursor: 'pointer', fontFamily: font, padding: 0 }}>
+            retry
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div style={{ margin: '2px 0 6px 4px', fontSize: 11.5, color: '#cbd5e1' }}>
+      AI reading…
+      <button onClick={onRetry} disabled={busy} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#94a3b8', fontSize: 11.5, cursor: 'pointer', fontFamily: font, padding: 0 }}>
+        run now
+      </button>
+    </div>
+  );
+}
 
 /*
   Documents uploaded against this onboarding (usually by the client via
@@ -15,8 +66,18 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
   const { profile } = useAuth();
   const [drive, setDrive] = useState(undefined); // undefined = loading, null = not connected
   const [busy, setBusy] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [msg, setMsg] = useState(null);
   const [folderLink, setFolderLink] = useState(null);
+
+  async function retryExtract(doc) {
+    setExtracting(true); setMsg(null);
+    try {
+      await extractDocument(doc.id);
+      onChanged?.();
+    } catch (e) { setMsg({ tone: 'danger', text: e.message }); }
+    setExtracting(false);
+  }
 
   useEffect(() => {
     getDriveConnection().then(setDrive).catch(() => setDrive(null));
@@ -67,22 +128,25 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: documents.length ? 12 : 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: documents.length ? 12 : 0 }}>
         {documents.map((d) => (
-          <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#334155' }}>
-            <button
-              onClick={() => open(d)}
-              title="Open (signed link, 1h)"
-              style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', color: '#0e7fe0', cursor: 'pointer', padding: 0, fontFamily: font, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            >
-              {d.original_name}
-            </button>
-            <span style={{ color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(d.created_at).toLocaleDateString('en-GB')}</span>
-            {d.status === 'saved_to_drive'
-              ? (d.drive_web_link
-                ? <a href={d.drive_web_link} target="_blank" rel="noreferrer" style={{ ...chipStyle('success'), display: 'inline-flex', alignItems: 'center', gap: 3, textDecoration: 'none' }}>in Drive <ExternalLink size={9} /></a>
-                : <span style={chipStyle('success')}>in Drive</span>)
-              : <span style={chipStyle('info')}>in Athena</span>}
+          <div key={d.id}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#334155' }}>
+              <button
+                onClick={() => open(d)}
+                title="Open (signed link, 1h)"
+                style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', color: '#0e7fe0', cursor: 'pointer', padding: 0, fontFamily: font, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {d.original_name}
+              </button>
+              <span style={{ color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(d.created_at).toLocaleDateString('en-GB')}</span>
+              {d.status === 'saved_to_drive'
+                ? (d.drive_web_link
+                  ? <a href={d.drive_web_link} target="_blank" rel="noreferrer" style={{ ...chipStyle('success'), display: 'inline-flex', alignItems: 'center', gap: 3, textDecoration: 'none' }}>in Drive <ExternalLink size={9} /></a>
+                  : <span style={chipStyle('success')}>in Drive</span>)
+                : <span style={chipStyle('info')}>in Athena</span>}
+            </div>
+            <Extraction doc={d} onRetry={() => retryExtract(d)} busy={extracting} />
           </div>
         ))}
       </div>
