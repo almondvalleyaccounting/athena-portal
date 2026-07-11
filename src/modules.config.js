@@ -27,6 +27,15 @@ export const MODULES = [
     group: 'billing',
   },
   {
+    id: 'onboarding',
+    label: 'Onboarding',
+    route: '/onboarding',
+    icon: 'user-plus',
+    permissions: ['can_view_onboarding'],
+    status: 'live',
+    group: 'billing',
+  },
+  {
     id: 'reports',
     label: 'Reports',
     route: '/reports',
