@@ -1,12 +1,14 @@
 import React from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Network, Target, BookOpen, MessageSquare, Sparkles, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Network, Target, BookOpen, MessageSquare, Sparkles, ShieldCheck, UserCog } from 'lucide-react';
+import { useAuth } from '../../shell/AppShell';
 import DashboardView from './views/DashboardView';
 import SkillsView from './views/SkillsView';
 import ObjectivesView from './views/ObjectivesView';
 import CPDView from './views/CPDView';
 import OneToOnesView from './views/OneToOnesView';
 import MandatoryView from './views/MandatoryView';
+import RolesView from './views/RolesView';
 import RecommendationsView from './views/RecommendationsView';
 
 const TABS = [
@@ -16,11 +18,15 @@ const TABS = [
   { id: 'cpd',            label: 'CPD log',         path: '/team/pd/cpd',             icon: BookOpen },
   { id: 'one-to-ones',    label: '1-2-1s',          path: '/team/pd/one-to-ones',     icon: MessageSquare },
   { id: 'mandatory',      label: 'Mandatory',       path: '/team/pd/mandatory',       icon: ShieldCheck },
+  { id: 'roles',          label: 'Roles',           path: '/team/pd/roles',           icon: UserCog, adminOnly: true },
   { id: 'recommendations',label: 'Recommendations', path: '/team/pd/recommendations', icon: Sparkles },
 ];
 
 export default function PDTrackerModule() {
   const location = useLocation();
+  const { profile } = useAuth();
+  const isAdmin = profile?.can_manage_portal === true || profile?.is_portal_admin === true;
+  const tabs = TABS.filter((t) => !t.adminOnly || isAdmin);
 
   return (
     <div style={{
@@ -32,7 +38,7 @@ export default function PDTrackerModule() {
         display: 'flex', background: '#fff', borderBottom: '1px solid #e5e7eb',
         padding: '0 28px', alignItems: 'center', overflowX: 'auto', flexShrink: 0,
       }}>
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const Icon = tab.icon;
           const active = tab.id === 'dashboard'
             ? location.pathname === '/team/pd' || location.pathname === '/team/pd/'
@@ -66,6 +72,7 @@ export default function PDTrackerModule() {
           <Route path="cpd" element={<CPDView />} />
           <Route path="one-to-ones" element={<OneToOnesView />} />
           <Route path="mandatory" element={<MandatoryView />} />
+          {isAdmin && <Route path="roles" element={<RolesView />} />}
           <Route path="recommendations" element={<RecommendationsView />} />
           <Route path="*" element={<Navigate to="/team/pd" replace />} />
         </Routes>

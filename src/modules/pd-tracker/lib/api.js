@@ -85,6 +85,51 @@ export function effectiveRoleCategories(roleCategories, overrides) {
   return Array.from(byCat.values()).sort((a, b) => a.order - b.order);
 }
 
+// ── Role-profile management (admin) ──────────────────────────────────────
+
+export async function createRoleProfile(row) {
+  const { data, error } = await supabase.from('pd_role_profiles').insert(row).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateRoleProfile(id, patch) {
+  const { data, error } = await supabase.from('pd_role_profiles').update(patch).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteRoleProfile(id) {
+  const { error } = await supabase.from('pd_role_profiles').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function upsertRoleCategory(row) {
+  const { data, error } = await supabase
+    .from('pd_role_profile_categories')
+    .upsert(row, { onConflict: 'role_profile_id,category' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteRoleCategory(id) {
+  const { error } = await supabase.from('pd_role_profile_categories').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// Add a new skill (and, implicitly, a new category if the name is new).
+export async function createSkill({ name, category, description }) {
+  const { data, error } = await supabase
+    .from('pd_skills')
+    .insert({ name, category, description: description ?? null, display_order: 999 })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // Build a "Help me learn" prompt + provider deep-links for a skill gap.
 export function helpMeLearnLinks(skillName, category, current, target) {
   const prompt =
