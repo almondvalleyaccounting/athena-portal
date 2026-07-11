@@ -314,6 +314,39 @@ export async function runChaseTestSend(testRecipient) {
   return data;
 }
 
+// ── Client portal access (separate app: athena-client-portal.vercel.app) ──
+
+export async function listPortalAccess(entityId) {
+  const { data, error } = await supabase
+    .from('client_portal_invites')
+    .select('id, email, created_at, claimed_at')
+    .eq('entity_id', entityId)
+    .order('created_at');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function invitePortalUser(entityId, email, { actorId, onboardingId } = {}) {
+  const { error } = await supabase.from('client_portal_invites').insert({
+    entity_id: entityId,
+    email: email.trim().toLowerCase(),
+    invited_by: actorId || null,
+  });
+  if (error) throw error;
+  if (onboardingId) {
+    await supabase.from('onboarding_activity').insert({
+      onboarding_id: onboardingId, kind: 'system',
+      body: `Portal access granted for ${email.trim().toLowerCase()} — they can now sign in at the client portal.`,
+      created_by: actorId || null,
+    });
+  }
+}
+
+export async function removePortalInvite(inviteId) {
+  const { error } = await supabase.from('client_portal_invites').delete().eq('id', inviteId);
+  if (error) throw error;
+}
+
 export async function addNote(onboardingId, body, { actorId, stepId } = {}) {
   const { error } = await supabase.from('onboarding_activity').insert({
     onboarding_id: onboardingId, step_id: stepId || null,

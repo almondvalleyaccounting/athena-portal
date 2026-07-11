@@ -4,6 +4,7 @@ import { ArrowLeft, AlertTriangle, Zap, ChevronDown, ChevronRight, Send } from '
 import { Btn } from '../../../components/ui';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
+import PortalAccessPanel from '../components/PortalAccessPanel';
 import {
   getOnboarding, listStaff, updateOnboarding, updateStep, addNote,
   isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES,
@@ -286,8 +287,10 @@ export default function OnboardingDetailView() {
           })}
         </div>
 
-        {/* Activity */}
-        <div style={{ ...card, padding: '16px 18px', position: 'sticky', top: 16 }}>
+        {/* Right column: portal access + activity */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
+        <PortalAccessPanel entityId={ob.entity_id} onboardingId={ob.id} />
+        <div style={{ ...card, padding: '16px 18px' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
             Activity
           </div>
@@ -318,6 +321,7 @@ export default function OnboardingDetailView() {
               </div>
             ))}
           </div>
+        </div>
         </div>
       </div>
     </div>
