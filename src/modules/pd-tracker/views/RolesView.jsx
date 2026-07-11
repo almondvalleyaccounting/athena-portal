@@ -17,6 +17,8 @@ export default function RolesView() {
   const [cats, setCats] = useState([]);
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
+  const [profileText, setProfileText] = useState('');
+  const [editorTab, setEditorTab] = useState('profile');
   const [addCat, setAddCat] = useState('');
   const [addTgt, setAddTgt] = useState(3);
   const [newSkillName, setNewSkillName] = useState('');
@@ -51,6 +53,7 @@ export default function RolesView() {
     const role = roles.find((r) => r.id === selectedId);
     setName(role?.name || '');
     setDesc(role?.description || '');
+    setProfileText(role?.profile_text || '');
     (async () => {
       try { setCats(await loadRoleProfileCategories(selectedId)); }
       catch (e) { console.error(e); }
@@ -76,7 +79,7 @@ export default function RolesView() {
     if (!selectedId) return;
     setBusy(true);
     try {
-      await updateRoleProfile(selectedId, { name: name.trim() || 'Untitled', description: desc.trim() || null });
+      await updateRoleProfile(selectedId, { name: name.trim() || 'Untitled', description: desc.trim() || null, profile_text: profileText || null });
       await refreshRoles();
     } catch (e) { alert('Could not save: ' + (e.message || e)); }
     setBusy(false);
@@ -167,65 +170,81 @@ export default function RolesView() {
         {/* Editor */}
         {selectedId ? (
           <Card>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
-              <Field label="Role name"><input value={name} onChange={(e) => setName(e.target.value)} onBlur={saveMeta} style={input} /></Field>
-              <Field label="Description" grow><input value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={saveMeta} style={{ ...input, width: '100%' }} /></Field>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, borderBottom: '1px solid #f1f5f9' }}>
+              {[['profile', 'Role profile'], ['skills', 'Skills']].map(([id, label]) => (
+                <button key={id} onClick={() => setEditorTab(id)}
+                  style={{ border: 'none', background: 'none', cursor: 'pointer', fontFamily: FONT, fontSize: 13, fontWeight: 600,
+                    color: editorTab === id ? '#0e7fe0' : '#64748b', padding: '8px 10px',
+                    borderBottom: editorTab === id ? '2px solid #0e7fe0' : '2px solid transparent' }}>{label}</button>
+              ))}
+              <div style={{ flex: 1 }} />
               <button onClick={removeRole} style={btnDanger}>Delete role</button>
             </div>
 
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Categories &amp; targets</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
-              {cats.map((c) => (
-                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px', border: '1px solid #f1f5f9', borderRadius: 8 }}>
-                  <span style={{ flex: 1, fontSize: 13, color: '#0f172a', fontWeight: 500 }}>{c.category}</span>
-                  <label style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    Target
-                    <Select value={c.target_level} onChange={(e) => setTarget(c, e.target.value)} style={{ minWidth: 120 }}>
+            {editorTab === 'profile' ? (
+              <div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
+                  <Field label="Role name"><input value={name} onChange={(e) => setName(e.target.value)} style={input} /></Field>
+                  <Field label="Short description" grow><input value={desc} onChange={(e) => setDesc(e.target.value)} style={{ ...input, width: '100%' }} /></Field>
+                </div>
+                <Field label="Role profile (overview, duties, skills, behaviours)">
+                  <textarea value={profileText} onChange={(e) => setProfileText(e.target.value)} rows={18}
+                    style={{ width: '100%', padding: 12, fontFamily: FONT, fontSize: 13, lineHeight: 1.55, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
+                </Field>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>Use ## for headings and - for bullets.</span>
+                  <button onClick={saveMeta} style={btnPrimary}>Save profile</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Categories &amp; targets</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
+                  {cats.map((c) => (
+                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px', border: '1px solid #f1f5f9', borderRadius: 8 }}>
+                      <span style={{ flex: 1, fontSize: 13, color: '#0f172a', fontWeight: 500 }}>{c.category}</span>
+                      <label style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        Target
+                        <Select value={c.target_level} onChange={(e) => setTarget(c, e.target.value)} style={{ minWidth: 120 }}>
+                          {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} — {LEVEL_LABELS[n]}</option>)}
+                        </Select>
+                      </label>
+                      <button onClick={() => removeCategory(c)} style={btnGhost}>Remove</button>
+                    </div>
+                  ))}
+                  {cats.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>No categories yet — add some below.</div>}
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', padding: 12, background: '#f8fafc', borderRadius: 10, marginBottom: 16 }}>
+                  <Field label="Add category">
+                    <Select value={addCat} onChange={(e) => setAddCat(e.target.value)} style={{ minWidth: 200 }}>
+                      <option value="">— Select —</option>
+                      {availableCats.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Target">
+                    <Select value={addTgt} onChange={(e) => setAddTgt(e.target.value)} style={{ minWidth: 120 }}>
                       {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} — {LEVEL_LABELS[n]}</option>)}
                     </Select>
-                  </label>
-                  <button onClick={() => removeCategory(c)} style={btnGhost}>Remove</button>
+                  </Field>
+                  <button onClick={addCategory} disabled={!addCat} style={btnPrimary}>Add</button>
                 </div>
-              ))}
-              {cats.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>No categories yet — add some below.</div>}
-            </div>
 
-            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', padding: 12, background: '#f8fafc', borderRadius: 10 }}>
-              <Field label="Add category">
-                <Select value={addCat} onChange={(e) => setAddCat(e.target.value)} style={{ minWidth: 200 }}>
-                  <option value="">— Select —</option>
-                  {availableCats.map((c) => <option key={c} value={c}>{c}</option>)}
-                </Select>
-              </Field>
-              <Field label="Target">
-                <Select value={addTgt} onChange={(e) => setAddTgt(e.target.value)} style={{ minWidth: 120 }}>
-                  {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} — {LEVEL_LABELS[n]}</option>)}
-                </Select>
-              </Field>
-              <button onClick={addCategory} disabled={!addCat} style={btnPrimary}>Add</button>
-            </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Add a skill (creates a new category if needed)</div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <Field label="Skill name"><input value={newSkillName} onChange={(e) => setNewSkillName(e.target.value)} placeholder="e.g. Chairing client meetings" style={input} /></Field>
+                  <Field label="Category">
+                    <input value={newSkillCat} onChange={(e) => setNewSkillCat(e.target.value)} placeholder="e.g. Client Meetings" list="pd-cats" style={input} />
+                    <datalist id="pd-cats">{allCategories.map((c) => <option key={c} value={c} />)}</datalist>
+                  </Field>
+                  <button onClick={addSkill} disabled={!newSkillName.trim() || !newSkillCat.trim()} style={btnPrimary}>Add skill</button>
+                </div>
+              </div>
+            )}
           </Card>
         ) : (
           <Card><Msg>Select a role, or create one.</Msg></Card>
         )}
-      </div>
-
-      {/* Add skill / category */}
-      <div style={{ marginTop: 20 }}>
-        <Card>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Add a skill (creates a new category if needed)</div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <Field label="Skill name"><input value={newSkillName} onChange={(e) => setNewSkillName(e.target.value)} placeholder="e.g. Chairing client meetings" style={input} /></Field>
-            <Field label="Category">
-              <input value={newSkillCat} onChange={(e) => setNewSkillCat(e.target.value)} placeholder="e.g. Client Meetings" list="pd-cats" style={input} />
-              <datalist id="pd-cats">{allCategories.map((c) => <option key={c} value={c} />)}</datalist>
-            </Field>
-            <button onClick={addSkill} disabled={!newSkillName.trim() || !newSkillCat.trim()} style={btnPrimary}>Add skill</button>
-          </div>
-          <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
-            Typing a new category name (e.g. “Client Meetings”, “IFRS Knowledge”) creates it — then add it to a role above.
-          </p>
-        </Card>
       </div>
     </div>
   );
