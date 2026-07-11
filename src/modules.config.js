@@ -88,7 +88,7 @@ export const MODULES = [
     label: 'Job Review',
     route: '/review',
     icon: 'clipboard-check',
-    permissions: ['work_planner'],
+    permissions: ['can_view_job_review'],
     status: 'live',
     group: 'team',
   },

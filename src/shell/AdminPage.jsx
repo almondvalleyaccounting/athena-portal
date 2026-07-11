@@ -14,6 +14,7 @@ const PERMISSION_COLS = [
   { key: 'can_view_client_fees', label: 'Client fees' },
   { key: 'can_view_reports', label: 'Reports' },
   { key: 'work_planner', label: 'Work planner' },
+  { key: 'can_view_job_review', label: 'Job Review' },
   { key: 'can_view_timesheets', label: 'Timesheets' },
   { key: 'can_view_billing', label: 'Billing' },
   { key: 'can_approve_billing', label: 'Approve billing' },
@@ -29,13 +30,16 @@ const SELECT_COLS = '*';
 const font = "'Outfit', sans-serif";
 
 const COLOUR_SWATCHES = [
-  '#0e7fe0', '#2563eb', '#3b82f6', '#60a5fa', '#38bdf8',
-  '#059669', '#10b981', '#15803d', '#65a30d',
-  '#d97706', '#f59e0b', '#eab308', '#ca8a04',
-  '#dc2626', '#ef4444', '#db2777',
-  '#7c3aed', '#8b5cf6', '#4f46e5',
-  '#0891b2', '#0d9488',
-  '#0f172a', '#475569', '#64748b',
+  '#b91c1c', '#dc2626', '#ef4444', '#f87171', '#fca5a5',
+  '#c2410c', '#ea580c', '#f97316', '#fb923c', '#fdba74',
+  '#ca8a04', '#eab308', '#f59e0b', '#facc15', '#fde047',
+  '#15803d', '#16a34a', '#22c55e', '#4ade80', '#86efac',
+  '#0f766e', '#0d9488', '#14b8a6', '#2dd4bf', '#5eead4',
+  '#0e7490', '#0891b2', '#06b6d4', '#22d3ee', '#67e8f9',
+  '#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#38bdf8',
+  '#4f46e5', '#6366f1', '#7c3aed', '#8b5cf6', '#a78bfa',
+  '#be185d', '#db2777', '#ec4899', '#f472b6', '#f9a8d4',
+  '#0f172a', '#334155', '#475569', '#64748b', '#94a3b8',
 ];
 
 export default function AdminPage() {
@@ -831,16 +835,16 @@ function ColourPicker({ colour, onChange }) {
           position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
           marginTop: 6, background: '#fff', border: '1px solid #e5e7eb',
           borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-          padding: 10, zIndex: 50, width: 180,
+          padding: 10, zIndex: 50, width: 214,
         }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: colour ? 8 : 0 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
             {COLOUR_SWATCHES.map((c) => (
               <div
                 key={c}
                 onClick={() => { onChange(c); setOpen(false); }}
                 style={{
                   width: 20, height: 20, borderRadius: 4, background: c, cursor: 'pointer',
-                  border: colour === c ? '2px solid #0f172a' : '1px solid #e5e7eb',
+                  border: (colour || '').toLowerCase() === c ? '2px solid #0f172a' : '1px solid #e5e7eb',
                   transition: 'transform 0.1s',
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.2)'; }}
@@ -848,6 +852,19 @@ function ColourPicker({ colour, onChange }) {
               />
             ))}
           </div>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0',
+            borderTop: '1px solid #f1f5f9', fontSize: 11, color: '#64748b',
+            fontFamily: "'Outfit', sans-serif", fontWeight: 500, cursor: 'pointer',
+          }}>
+            <input
+              type="color"
+              value={colour || '#0e7fe0'}
+              onChange={(e) => onChange(e.target.value)}
+              style={{ width: 26, height: 26, padding: 0, border: '1px solid #e5e7eb', borderRadius: 4, background: 'none', cursor: 'pointer' }}
+            />
+            Custom colour
+          </label>
           {colour && (
             <button
               onClick={() => { onChange(null); setOpen(false); }}
