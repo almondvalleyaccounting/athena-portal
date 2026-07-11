@@ -94,7 +94,7 @@ export const MODULES = [
   },
   {
     id: 'pd-tracker',
-    label: 'PD tracker',
+    label: 'CPD Tracker',
     route: '/team/pd',
     icon: 'graduation-cap',
     permissions: ['can_view_pd_tracker'],

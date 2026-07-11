@@ -1,11 +1,12 @@
 import React from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Network, Target, BookOpen, MessageSquare, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Network, Target, BookOpen, MessageSquare, Sparkles, ShieldCheck } from 'lucide-react';
 import DashboardView from './views/DashboardView';
 import SkillsView from './views/SkillsView';
 import ObjectivesView from './views/ObjectivesView';
 import CPDView from './views/CPDView';
 import OneToOnesView from './views/OneToOnesView';
+import MandatoryView from './views/MandatoryView';
 import RecommendationsView from './views/RecommendationsView';
 
 const TABS = [
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'objectives',     label: 'Objectives',      path: '/team/pd/objectives',      icon: Target },
   { id: 'cpd',            label: 'CPD log',         path: '/team/pd/cpd',             icon: BookOpen },
   { id: 'one-to-ones',    label: '1-2-1s',          path: '/team/pd/one-to-ones',     icon: MessageSquare },
+  { id: 'mandatory',      label: 'Mandatory',       path: '/team/pd/mandatory',       icon: ShieldCheck },
   { id: 'recommendations',label: 'Recommendations', path: '/team/pd/recommendations', icon: Sparkles },
 ];
 
@@ -63,6 +65,7 @@ export default function PDTrackerModule() {
           <Route path="objectives" element={<ObjectivesView />} />
           <Route path="cpd" element={<CPDView />} />
           <Route path="one-to-ones" element={<OneToOnesView />} />
+          <Route path="mandatory" element={<MandatoryView />} />
           <Route path="recommendations" element={<RecommendationsView />} />
           <Route path="*" element={<Navigate to="/team/pd" replace />} />
         </Routes>

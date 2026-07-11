@@ -112,7 +112,7 @@ export default function DashboardView() {
   const staffName = (id) => staff.find((s) => s.id === id)?.name || 'Someone';
 
   if (loading) {
-    return <p style={{ fontFamily: FONT, color: '#94a3b8', textAlign: 'center', padding: 60 }}>Loading your PD profile…</p>;
+    return <p style={{ fontFamily: FONT, color: '#94a3b8', textAlign: 'center', padding: 60 }}>Loading your CPD profile…</p>;
   }
 
   const greeting = getGreeting();

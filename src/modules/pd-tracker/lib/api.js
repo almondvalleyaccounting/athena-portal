@@ -281,3 +281,71 @@ export async function createKudos(row) {
   if (error) throw error;
   return data;
 }
+
+// ── Mandatory training (AML, CTF, ...) ───────────────────────────────────
+
+export async function loadMandatoryTrainings({ includeInactive = false } = {}) {
+  let q = supabase.from('pd_mandatory_training').select('*').order('display_order');
+  if (!includeInactive) q = q.eq('active', true);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+// Completions for one staff member (or every staff member when staffId omitted,
+// for the admin team-compliance view).
+export async function loadMandatoryCompletions(staffId) {
+  let q = supabase
+    .from('pd_mandatory_completion')
+    .select('*')
+    .order('completed_on', { ascending: false });
+  if (staffId) q = q.eq('staff_id', staffId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function recordMandatoryCompletion(row) {
+  // expires_on is set by a DB trigger from the training's renewal period.
+  const { data, error } = await supabase
+    .from('pd_mandatory_completion')
+    .insert(row)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function createMandatoryTraining(row) {
+  const { data, error } = await supabase
+    .from('pd_mandatory_training')
+    .insert(row)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateMandatoryTraining(id, patch) {
+  const { data, error } = await supabase
+    .from('pd_mandatory_training')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Compliance status for a training given its latest completion.
+export function mandatoryStatus(training, latestCompletion, today = new Date()) {
+  if (!latestCompletion) return { key: 'missing', label: 'Not recorded' };
+  if (!training.renewal_months || !latestCompletion.expires_on) {
+    return { key: 'done', label: 'Done' };
+  }
+  const exp = new Date(latestCompletion.expires_on + 'T00:00:00Z');
+  const days = Math.floor((exp - today) / 86400000);
+  if (days < 0) return { key: 'overdue', label: 'Overdue', expires_on: latestCompletion.expires_on };
+  if (days <= 60) return { key: 'due', label: `Due in ${days}d`, expires_on: latestCompletion.expires_on };
+  return { key: 'valid', label: 'Valid', expires_on: latestCompletion.expires_on };
+}
