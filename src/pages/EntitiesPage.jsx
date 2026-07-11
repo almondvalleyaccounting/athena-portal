@@ -38,6 +38,7 @@ export default function EntitiesPage() {
             .from('quotes')
             .select('entity_id, status, monthly_gross, monthly_net, annual_total, quote_ref, created_at')
             .in('entity_id', ents.map(e => e.id))
+            .neq('status', 'deleted') // soft-deleted quotes must not surface as a "Deleted" pill on the client row
             .order('created_at', { ascending: false }),
           supabase
             .from('billing_group_members')

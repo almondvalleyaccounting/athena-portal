@@ -18,10 +18,11 @@ const STATUS_CARDS = [
   { key: 'accepted', label: 'Accepted', statuses: ['accepted'] },
   { key: 'pipeline', label: 'Total Pipeline', statuses: PIPELINE_STATUSES },
   { key: 'committed', label: 'Committed to Live', statuses: ['committed'] },
+  { key: 'pipeline_committed', label: 'Pipeline + Committed', statuses: [...PIPELINE_STATUSES, 'committed'] },
   { key: 'declined', label: 'Rejected', statuses: ['declined'] },
 ];
 
-const VALID_CARDS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'pipeline', 'committed', 'declined'];
+const VALID_CARDS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'pipeline', 'committed', 'pipeline_committed', 'declined'];
 
 // Whole-pound formatter for the status cards (no pennies).
 const fmtWhole = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Number(n) || 0);

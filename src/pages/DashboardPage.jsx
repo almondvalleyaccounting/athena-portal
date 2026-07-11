@@ -440,7 +440,7 @@ export default function DashboardPage() {
 
           {/* Drill-through to the actual list for the selected status. */}
           {(() => {
-            const QUOTES_CARD = { rejected: 'declined', pipeline_committed: 'pipeline' };
+            const QUOTES_CARD = { rejected: 'declined', awaiting_approval: 'pending_approval' };
             const targetCard = QUOTES_CARD[statusView] || statusView;
             const n = statusCards[statusView]?.volume || 0;
             return (

@@ -373,9 +373,9 @@ export default function QuoteFormPage({ mode = 'new' }) {
       {mode !== 'edit' && !fromId && !seedReview && sourceClients.length > 0 && (
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3">
           {!showSourcePicker ? (
-            <button onClick={() => setShowSourcePicker(true)} className="text-xs text-ocean-600 hover:text-ocean-700 underline">
-              Seed from another client's pricing…
-            </button>
+            <Btn onClick={() => setShowSourcePicker(true)} variant="primary" className="text-xs">
+              ⎘ Seed from another client's pricing…
+            </Btn>
           ) : (
             <div className="space-y-2">
               <div className="text-xs font-medium text-gray-700">Copy pricing from another client's recurring bill</div>
