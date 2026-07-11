@@ -1,6 +1,6 @@
 import React from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Network, Target, BookOpen, MessageSquare, Sparkles, ShieldCheck, UserCog } from 'lucide-react';
+import { LayoutDashboard, Network, Target, BookOpen, MessageSquare, Sparkles, ShieldCheck, UserCog, Share2 } from 'lucide-react';
 import { useAuth } from '../../shell/AppShell';
 import DashboardView from './views/DashboardView';
 import SkillsView from './views/SkillsView';
@@ -9,6 +9,7 @@ import CPDView from './views/CPDView';
 import OneToOnesView from './views/OneToOnesView';
 import MandatoryView from './views/MandatoryView';
 import RolesView from './views/RolesView';
+import SharingView from './views/SharingView';
 import RecommendationsView from './views/RecommendationsView';
 
 const TABS = [
@@ -18,6 +19,7 @@ const TABS = [
   { id: 'cpd',            label: 'CPD log',         path: '/team/pd/cpd',             icon: BookOpen },
   { id: 'one-to-ones',    label: '1-2-1s',          path: '/team/pd/one-to-ones',     icon: MessageSquare },
   { id: 'mandatory',      label: 'Mandatory',       path: '/team/pd/mandatory',       icon: ShieldCheck },
+  { id: 'sharing',        label: 'Sharing',         path: '/team/pd/sharing',         icon: Share2 },
   { id: 'roles',          label: 'Roles',           path: '/team/pd/roles',           icon: UserCog, adminOnly: true },
   { id: 'recommendations',label: 'Recommendations', path: '/team/pd/recommendations', icon: Sparkles },
 ];
@@ -72,6 +74,7 @@ export default function PDTrackerModule() {
           <Route path="cpd" element={<CPDView />} />
           <Route path="one-to-ones" element={<OneToOnesView />} />
           <Route path="mandatory" element={<MandatoryView />} />
+          <Route path="sharing" element={<SharingView />} />
           {isAdmin && <Route path="roles" element={<RolesView />} />}
           <Route path="recommendations" element={<RecommendationsView />} />
           <Route path="*" element={<Navigate to="/team/pd" replace />} />

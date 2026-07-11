@@ -8,7 +8,7 @@ import {
   loadSkills, loadSkillLevels, upsertSkillLevel, setShowOnRadar,
   loadStaff, loadRoleProfiles, loadRoleProfileCategories, loadStaffCategoryOverrides,
   assignRoleProfile, effectiveRoleCategories, helpMeLearnLinks,
-  LEVEL_LABELS, LEVEL_DESCS,
+  loadGrantsToMe, LEVEL_LABELS, LEVEL_DESCS,
 } from '../lib/api';
 
 export default function SkillsView() {
@@ -28,19 +28,26 @@ export default function SkillsView() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showCust, setShowCust] = useState(false);
+  const [grantsToMe, setGrantsToMe] = useState([]);
   const groupInit = useRef(false);
 
   // Static loads
   useEffect(() => {
     (async () => {
       try {
-        const [sk, rp, st] = await Promise.all([
-          loadSkills(), loadRoleProfiles(), isAdmin ? loadStaff() : Promise.resolve([]),
+        const [sk, rp, st, gm] = await Promise.all([
+          loadSkills(), loadRoleProfiles(), loadStaff(), loadGrantsToMe(profile?.id),
         ]);
-        setSkills(sk); setRoleProfiles(rp); setStaff(st);
+        setSkills(sk); setRoleProfiles(rp); setStaff(st); setGrantsToMe(gm);
       } catch (e) { console.error(e); }
     })();
-  }, [isAdmin]);
+  }, [profile?.id]);
+
+  const accessibleStaff = useMemo(() => {
+    if (isAdmin) return staff;
+    const owners = new Set(grantsToMe.map((g) => g.owner_id));
+    return staff.filter((s) => s.id === profile?.id || owners.has(s.id));
+  }, [isAdmin, staff, grantsToMe, profile?.id]);
 
   // Per-staff loads
   useEffect(() => {
@@ -82,7 +89,7 @@ export default function SkillsView() {
   }, [levels]);
 
   const isRoleMode = group !== 'picks';
-  const canEdit = selectedStaffId === profile?.id || isAdmin;
+  const canEdit = selectedStaffId === profile?.id || isAdmin || grantsToMe.some((g) => g.owner_id === selectedStaffId);
 
   // Effective role category axes + targets (role mode)
   const effCats = useMemo(
@@ -183,9 +190,9 @@ export default function SkillsView() {
               Customise
             </button>
           )}
-          {isAdmin && staff.length > 0 && (
+          {accessibleStaff.length > 1 && (
             <Select value={selectedStaffId} onChange={(e) => { setSelectedStaffId(e.target.value); }} style={{ minWidth: 180 }}>
-              {staff.map((s) => (
+              {accessibleStaff.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}{s.id === profile?.id ? ' (you)' : ''}</option>
               ))}
             </Select>

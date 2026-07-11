@@ -149,6 +149,80 @@ export async function createSkill({ name, category, description }) {
   return data;
 }
 
+// ── CPD sharing + 360 feedback requests ──────────────────────────────────
+
+// Grants this person has GIVEN (colleagues who can see their CPD).
+export async function loadGrantsByOwner(ownerId) {
+  const { data, error } = await supabase
+    .from('pd_access_grants')
+    .select('*, grantee:grantee_id(id, name)')
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+// Grants this person has RECEIVED (whose CPD they can see).
+export async function loadGrantsToMe(granteeId) {
+  const { data, error } = await supabase
+    .from('pd_access_grants')
+    .select('*, owner:owner_id(id, name)')
+    .eq('grantee_id', granteeId);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createGrant({ owner_id, grantee_id, role }) {
+  const { data, error } = await supabase
+    .from('pd_access_grants')
+    .upsert({ owner_id, grantee_id, role }, { onConflict: 'owner_id,grantee_id' })
+    .select('*, grantee:grantee_id(id, name)')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteGrant(id) {
+  const { error } = await supabase.from('pd_access_grants').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// Ask colleagues for feedback on a 1-2-1 (no view access granted).
+export async function createFeedbackRequests({ subject_id, responder_ids, one_to_one_id, message }) {
+  const rows = responder_ids.map((rid) => ({ subject_id, responder_id: rid, one_to_one_id: one_to_one_id || null, message: message || null }));
+  const { data, error } = await supabase.from('pd_feedback_requests').insert(rows).select();
+  if (error) throw error;
+  return data || [];
+}
+
+// Requests directed AT me (I'm the responder).
+export async function loadFeedbackRequestsForMe(responderId) {
+  const { data, error } = await supabase
+    .from('pd_feedback_requests')
+    .select('*, subject:subject_id(id, name), meeting:one_to_one_id(id, meeting_date, what_went_well, what_didnt, blockers, notes)')
+    .eq('responder_id', responderId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+// Requests I raised (as the subject).
+export async function loadFeedbackRequestsBySubject(subjectId) {
+  const { data, error } = await supabase
+    .from('pd_feedback_requests')
+    .select('*, responder:responder_id(id, name)')
+    .eq('subject_id', subjectId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function updateFeedbackRequest(id, patch) {
+  const { data, error } = await supabase.from('pd_feedback_requests').update(patch).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
 // Build a "Help me learn" prompt + provider deep-links for a skill gap.
 export function helpMeLearnLinks(skillName, category, current, target) {
   const prompt =

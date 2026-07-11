@@ -5,7 +5,7 @@ import { Card, SectionTitle, Button, Input, Textarea, Select, Pill, EmptyState, 
 import {
   loadOneToOnes, createOneToOne, deleteOneToOne, updateOneToOne,
   loadActions, createAction, updateAction, deleteAction, loadStaff,
-  loadOneToOneComments, addOneToOneComment,
+  loadOneToOneComments, addOneToOneComment, loadGrantsToMe,
 } from '../lib/api';
 
 const MOOD_EMOJI = { 1: '😞', 2: '😕', 3: '😐', 4: '🙂', 5: '😄' };
@@ -22,6 +22,18 @@ export default function OneToOnesView() {
   const [draft, setDraft] = useState(emptyDraft());
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
+  const [grantsToMe, setGrantsToMe] = useState([]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    loadGrantsToMe(profile.id).then(setGrantsToMe).catch((e) => console.error(e));
+  }, [profile?.id]);
+
+  const accessibleStaff = useMemo(() => {
+    if (isAdmin) return staff;
+    const owners = new Set(grantsToMe.map((g) => g.owner_id));
+    return staff.filter((s) => s.id === profile?.id || owners.has(s.id));
+  }, [isAdmin, staff, grantsToMe, profile?.id]);
 
   function emptyDraft() {
     return {
@@ -123,9 +135,9 @@ export default function OneToOnesView() {
           hint="Capture what was discussed, how you felt, and what you'll do next."
         />
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          {isAdmin && staff.length > 0 && (
+          {accessibleStaff.length > 1 && (
             <Select value={selectedStaffId} onChange={(e) => { setSelectedStaffId(e.target.value); setExpandedId(null); setShowForm(false); }} style={{ minWidth: 180 }}>
-              {staff.map((s) => <option key={s.id} value={s.id}>{s.name}{s.id === profile?.id ? ' (you)' : ''}</option>)}
+              {accessibleStaff.map((s) => <option key={s.id} value={s.id}>{s.name}{s.id === profile?.id ? ' (you)' : ''}</option>)}
             </Select>
           )}
           {!showForm && (
