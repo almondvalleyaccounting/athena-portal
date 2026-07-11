@@ -27,6 +27,7 @@ export const STEP_STATUSES = [
   { value: 'waiting_client', label: 'Waiting on client', tone: 'warning' },
   { value: 'waiting_external', label: 'Waiting on HMRC / 3rd party', tone: 'accent' },
   { value: 'blocked', label: 'Blocked', tone: 'danger' },
+  { value: 'received', label: 'Received — to check', tone: 'info' },
   { value: 'complete', label: 'Complete', tone: 'success' },
   { value: 'na', label: 'N/A', tone: 'neutral' },
 ];
@@ -96,7 +97,7 @@ export async function listOnboardings() {
 }
 
 export async function getOnboarding(id) {
-  const [{ data: ob, error: e1 }, { data: activity, error: e2 }] = await Promise.all([
+  const [{ data: ob, error: e1 }, { data: activity, error: e2 }, { data: documents, error: e3 }] = await Promise.all([
     supabase
       .from('onboardings')
       .select(`
@@ -114,11 +115,17 @@ export async function getOnboarding(id) {
       .select('*, author:staff_profiles!onboarding_activity_created_by_fkey(id, name)')
       .eq('onboarding_id', id)
       .order('created_at', { ascending: false }),
+    supabase
+      .from('onboarding_documents')
+      .select('*')
+      .eq('onboarding_id', id)
+      .order('created_at', { ascending: false }),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
+  if (e3) throw e3;
   ob.steps = (ob.steps || []).sort((a, b) => a.group_sort - b.group_sort || a.sort - b.sort);
-  return { ...ob, activity: activity || [] };
+  return { ...ob, activity: activity || [], documents: documents || [] };
 }
 
 export async function searchEntities(term) {
@@ -312,6 +319,47 @@ export async function runChaseTestSend(testRecipient) {
   });
   if (error) throw error;
   return data;
+}
+
+// ── Documents + Google Drive ──
+
+export async function getDriveConnection() {
+  const { data, error } = await supabase
+    .from('gdrive_connections')
+    .select('id, account_email, status, connected_at')
+    .eq('status', 'active')
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+// Kicks off the Google consent flow; the callback lands back on returnTo.
+export function driveConnectUrl(staffId, returnTo = '/onboarding') {
+  const base = import.meta.env.VITE_SUPABASE_URL;
+  return `${base}/functions/v1/drive-auth-init?staff_id=${staffId || ''}&return_to=${encodeURIComponent(returnTo)}`;
+}
+
+export async function saveDocumentsToDrive(onboardingId) {
+  const { data, error } = await supabase.functions.invoke('drive-save-documents', {
+    body: { onboarding_id: onboardingId },
+  });
+  if (error) {
+    // FunctionsHttpError carries the response — surface the server's message
+    try {
+      const body = await error.context?.json?.();
+      if (body?.error) throw new Error(body.error);
+    } catch (inner) { if (inner instanceof Error && inner.message !== error.message) throw inner; }
+    throw error;
+  }
+  return data;
+}
+
+export async function getDocumentUrl(storagePath) {
+  const { data, error } = await supabase.storage
+    .from('client-documents')
+    .createSignedUrl(storagePath, 3600);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 // ── Client portal access (separate app: athena-client-portal.vercel.app) ──

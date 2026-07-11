@@ -5,6 +5,7 @@ import { Btn } from '../../../components/ui';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import PortalAccessPanel from '../components/PortalAccessPanel';
+import DocumentsPanel from '../components/DocumentsPanel';
 import {
   getOnboarding, listStaff, updateOnboarding, updateStep, addNote,
   isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES,
@@ -290,6 +291,7 @@ export default function OnboardingDetailView() {
         {/* Right column: portal access + activity */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
         <PortalAccessPanel entityId={ob.entity_id} onboardingId={ob.id} />
+        <DocumentsPanel onboarding={ob} documents={ob.documents || []} onChanged={load} />
         <div style={{ ...card, padding: '16px 18px' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
             Activity
