@@ -85,8 +85,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/clients/:id" element={<ClientDetailView />} />
           {/* Setup must come before /planner/* wildcard so it matches first. */}
           <Route path="/planner/setup/*" element={<SetupModule />} />
+          {/* Job Review lives under Work — must precede the /planner/* wildcard. */}
+          <Route path="/planner/review/*" element={<JobReviewModule />} />
           <Route path="/planner/*" element={<WorkPlannerModule />} />
-          <Route path="/review/*" element={<JobReviewModule />} />
+          <Route path="/review" element={<Navigate to="/planner/review" replace />} />
+          <Route path="/review/*" element={<Navigate to="/planner/review" replace />} />
           <Route path="/timesheets/*" element={<TimesheetModule />} />
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/issues" element={<IssuesPage />} />

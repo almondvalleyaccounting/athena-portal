@@ -75,6 +75,12 @@ export const MODULES = [
         matchPaths: ['/planner/allocations', '/planner/estimates', '/planner/capacity'],
       },
       {
+        id: 'wp-job-review',
+        label: 'Job Review',
+        route: '/planner/review',
+        matchPaths: ['/planner/review', '/planner/review/team'],
+      },
+      {
         id: 'wp-timesheets',
         label: 'Timesheets',
         route: '/timesheets',
@@ -82,15 +88,6 @@ export const MODULES = [
         matchPaths: ['/timesheets'],
       },
     ],
-  },
-  {
-    id: 'job-review',
-    label: 'Job Review',
-    route: '/review',
-    icon: 'clipboard-check',
-    permissions: ['can_view_job_review'],
-    status: 'live',
-    group: 'team',
   },
   {
     id: 'pd-tracker',

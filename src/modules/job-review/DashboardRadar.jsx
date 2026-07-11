@@ -43,7 +43,7 @@ export default function JobReviewRadar() {
 
   return (
     <div
-      onClick={() => navigate('/review/team')}
+      onClick={() => navigate('/planner/review/team')}
       className="bg-white rounded-lg border border-gray-200 p-4 mb-6 cursor-pointer hover:border-ocean-300"
     >
       <div className="flex items-center justify-between mb-3">

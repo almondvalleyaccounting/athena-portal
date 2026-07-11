@@ -51,7 +51,7 @@ function monthLabel(iso: string): string {
 }
 
 function renderEmail(name: string, monthLbl: string, items: Array<Record<string, unknown>>, reminder: boolean): { html: string; text: string } {
-  const url = `${PORTAL_PUBLIC_URL}/review`;
+  const url = `${PORTAL_PUBLIC_URL}/planner/review`;
   const rows = items.slice(0, 20).map((i) => `
     <tr>
       <td style="padding:6px 10px;border-top:1px solid #f1f5f9;color:#0f172a;">${esc(i.client_name)}</td>
@@ -185,6 +185,7 @@ Deno.serve(async (req) => {
       entity_id: cycle.id,
       detail: { to, jobs: g.items.length, resend_id: r.id, ok: r.ok, test: Boolean(testRecipient) },
     });
+    if (testRecipient) break; // a test send is one sample email, not one per assignee
   }
   return json({ success: true, dry_run: false, cycle_month: cycle.period_month, sent: results.filter((r) => r.ok).length, results });
 });

@@ -14,12 +14,12 @@ export default function JobReviewModule() {
   const isManager = profile?.can_manage_portal === true || profile?.is_portal_admin === true;
 
   const tabs = useMemo(() => {
-    const t = [{ id: 'mine', label: 'My Review', path: '/review' }];
-    if (isManager) t.push({ id: 'team', label: 'Team', path: '/review/team' });
+    const t = [{ id: 'mine', label: 'My Review', path: '/planner/review' }];
+    if (isManager) t.push({ id: 'team', label: 'Team', path: '/planner/review/team' });
     return t;
   }, [isManager]);
 
-  const activeTab = location.pathname.startsWith('/review/team') && isManager ? 'team' : 'mine';
+  const activeTab = location.pathname.startsWith('/planner/review/team') && isManager ? 'team' : 'mine';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: font }}>
