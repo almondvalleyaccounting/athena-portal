@@ -1,8 +1,9 @@
 import React from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Network, Target, BookOpen, MessageSquare, Sparkles, ShieldCheck, UserCog, Share2 } from 'lucide-react';
+import { LayoutDashboard, Network, Target, BookOpen, MessageSquare, Sparkles, ShieldCheck, UserCog, Share2, ScrollText } from 'lucide-react';
 import { useAuth } from '../../shell/AppShell';
 import DashboardView from './views/DashboardView';
+import MyRoleView from './views/MyRoleView';
 import SkillsView from './views/SkillsView';
 import ObjectivesView from './views/ObjectivesView';
 import CPDView from './views/CPDView';
@@ -14,6 +15,7 @@ import RecommendationsView from './views/RecommendationsView';
 
 const TABS = [
   { id: 'dashboard',      label: 'Dashboard',       path: '/team/pd',                 icon: LayoutDashboard },
+  { id: 'my-role',        label: 'My Role',         path: '/team/pd/my-role',         icon: ScrollText },
   { id: 'skills',         label: 'Skills',          path: '/team/pd/skills',          icon: Network },
   { id: 'objectives',     label: 'Objectives',      path: '/team/pd/objectives',      icon: Target },
   { id: 'cpd',            label: 'CPD log',         path: '/team/pd/cpd',             icon: BookOpen },
@@ -69,6 +71,7 @@ export default function PDTrackerModule() {
       <div style={{ flex: 1 }}>
         <Routes>
           <Route index element={<DashboardView />} />
+          <Route path="my-role" element={<MyRoleView />} />
           <Route path="skills" element={<SkillsView />} />
           <Route path="objectives" element={<ObjectivesView />} />
           <Route path="cpd" element={<CPDView />} />

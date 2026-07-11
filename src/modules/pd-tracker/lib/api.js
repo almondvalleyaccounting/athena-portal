@@ -38,6 +38,36 @@ export async function loadRoleProfiles() {
   return data || [];
 }
 
+export async function loadRoleProfileById(id) {
+  if (!id) return null;
+  const { data, error } = await supabase.from('pd_role_profiles').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+// Per-staff role-profile-text overlay (removed base items + per-section additions).
+export async function loadStaffRoleProfile(staffId, roleProfileId) {
+  if (!staffId || !roleProfileId) return null;
+  const { data, error } = await supabase
+    .from('pd_staff_role_profile')
+    .select('*')
+    .eq('staff_id', staffId)
+    .eq('role_profile_id', roleProfileId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function saveStaffRoleProfile({ staff_id, role_profile_id, removed, additions }) {
+  const { data, error } = await supabase
+    .from('pd_staff_role_profile')
+    .upsert({ staff_id, role_profile_id, removed, additions, updated_at: new Date().toISOString() }, { onConflict: 'staff_id,role_profile_id' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function loadRoleProfileCategories(roleProfileId) {
   const { data, error } = await supabase
     .from('pd_role_profile_categories')
