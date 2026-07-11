@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../shell/AppShell';
 import { Card, SectionTitle, Button, FONT, SERIF } from '../components/ui';
+import TeamBehaviours from '../components/TeamBehaviours';
 import { loadRoleProfileById, loadStaffRoleProfile, saveStaffRoleProfile } from '../lib/api';
 
 function parseSections(text) {
@@ -84,7 +85,6 @@ export default function MyRoleView() {
   };
 
   if (loading) return <Msg>Loading your role…</Msg>;
-  if (!roleId || !role) return <Msg>No role assigned yet. Ask an admin to set your role profile.</Msg>;
 
   // Active view = overlay applied
   const activeRemoved = editing ? removedSet : new Set(overlay?.removed || []);
@@ -94,6 +94,10 @@ export default function MyRoleView() {
 
   return (
     <div style={{ padding: '32px 32px 80px', maxWidth: 820, margin: '0 auto', fontFamily: FONT }}>
+      {!roleId || !role ? (
+        <Msg>No role assigned yet — ask an admin to set your role profile. The team behaviours below still apply to everyone.</Msg>
+      ) : (
+      <>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         <SectionTitle kicker="My role" title={role.name} hint={role.description || 'Your role profile — personalise it to make it yours.'} />
         {!editing ? (
@@ -160,6 +164,10 @@ export default function MyRoleView() {
       <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 12 }}>
         The base role profile is maintained centrally. Your changes only affect your own copy — removals move to the bottom, additions are marked.
       </p>
+      </>
+      )}
+
+      <TeamBehaviours />
     </div>
   );
 }
