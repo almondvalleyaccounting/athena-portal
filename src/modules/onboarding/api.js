@@ -102,7 +102,7 @@ export async function getOnboarding(id) {
       .from('onboardings')
       .select(`
         *,
-        entity:entities!onboardings_entity_id_fkey(id, name, entity_status),
+        entity:entities!onboardings_entity_id_fkey(id, name, entity_status, prospect_email, billing_email),
         referred_by:entities!onboardings_referred_by_entity_id_fkey(id, name),
         template:onboarding_templates(id, code, name),
         owner:staff_profiles!onboardings_owner_id_fkey(id, name),

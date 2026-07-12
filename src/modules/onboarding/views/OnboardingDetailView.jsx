@@ -319,7 +319,7 @@ export default function OnboardingDetailView() {
         <EscalationPanel ob={ob} onChanged={load} />
         <CompaniesHousePanel ob={ob} onChanged={load} />
         <HandoverPanel ob={ob} staff={staff} onChanged={load} />
-        <PortalAccessPanel entityId={ob.entity_id} onboardingId={ob.id} />
+        <PortalAccessPanel entityId={ob.entity_id} onboardingId={ob.id} entityEmail={ob.entity?.prospect_email || ob.entity?.billing_email} />
         <DocumentsPanel onboarding={ob} documents={ob.documents || []} onChanged={load} />
         <div style={{ ...card, padding: '16px 18px' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>

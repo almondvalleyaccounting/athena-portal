@@ -12,7 +12,7 @@ export const PORTAL_URL = 'https://clients.almondvalleyaccounting.co.uk';
   The invite is claimed automatically the first time that email signs in
   with a magic link — no password setup, nothing else to do our side.
 */
-export default function PortalAccessPanel({ entityId, onboardingId }) {
+export default function PortalAccessPanel({ entityId, onboardingId, entityEmail }) {
   const { profile } = useAuth();
   const [invites, setInvites] = useState([]);
   const [email, setEmail] = useState('');
@@ -23,6 +23,14 @@ export default function PortalAccessPanel({ entityId, onboardingId }) {
     listPortalAccess(entityId).then(setInvites).catch((e) => setMsg({ tone: 'danger', text: e.message }));
   }, [entityId]);
   useEffect(() => { load(); }, [load]);
+
+  // Prefill from the entity's known email so staff don't have to retype
+  // what was already entered at setup — only while nothing's been typed
+  // yet and no one's been invited (avoid clobbering in-progress input).
+  useEffect(() => {
+    if (entityEmail && !email && invites.length === 0) setEmail(entityEmail);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityEmail, invites.length]);
 
   async function invite(withWelcome) {
     if (!email.includes('@')) return;
