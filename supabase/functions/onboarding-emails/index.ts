@@ -68,20 +68,20 @@ function welcomeEmail(entityName: string, asks: string[]) {
   const askRows = asks.slice(0, 8).map((a) =>
     `<tr><td style="padding:7px 12px;border-top:1px solid #f1f5f9;font-size:14px;color:#0f172a;line-height:1.5;">${esc(a)}</td></tr>`).join("");
   const html = shell(`
-    <tr><td style="font-size:22px;font-weight:700;color:#1E4560;padding-bottom:6px;">Welcome aboard 🎉</td></tr>
+    <tr><td style="font-size:22px;font-weight:700;color:#1E4560;padding-bottom:6px;">Welcome aboard</td></tr>
     <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;">
-      We're genuinely delighted to be looking after <strong>${esc(entityName)}</strong>. Getting set up with a new
-      accountant usually means paperwork and chasing — we've built something better. You have your own
-      client portal: it shows exactly where things are up to, what we're doing behind the scenes,
-      and the handful of things we need from you — no forms, no passwords, no fuss.
+      We're delighted to be looking after <strong>${esc(entityName)}</strong>. Getting set up with a new
+      accountant usually means paperwork and chasing — we've designed our onboarding to be different.
+      You have your own client portal: it shows exactly where things are up to, what we're doing
+      behind the scenes, and the handful of things we need from you — with no forms and no passwords.
     </td></tr>
     <tr><td style="padding:22px 0 6px;">
       <a href="${esc(CLIENT_PORTAL_URL)}" style="display:inline-block;background:#1E4560;color:#fff;text-decoration:none;padding:14px 26px;border-radius:12px;font-weight:600;font-size:15px;">Open your portal</a>
       <div style="font-size:12px;color:#94a3b8;padding-top:8px;">Sign in with just this email address — we'll send you a secure link, no password needed.</div>
     </td></tr>
     <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;padding-top:14px;">
-      <strong>What happens next?</strong> We handle the heavy lifting — HMRC registrations, agent authorisations,
-      the boring bits. Your portal ticks along as we go, and we'll give you a friendly nudge when something needs you.
+      <strong>What happens next?</strong> We handle the heavy lifting — HMRC registrations, agent authorisations
+      and the admin. Your portal updates as we go, and we'll let you know when something needs your attention.
     </td></tr>
     ${asks.length ? `<tr><td style="padding-top:16px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
@@ -90,12 +90,12 @@ function welcomeEmail(entityName: string, asks: string[]) {
       </table>
     </td></tr>` : ""}
     <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;padding-top:18px;">
-      Questions at any point — just reply to this email. A real person reads it (promise).
+      Questions at any point? Just reply to this email and one of the team will come back to you.
       <br/><br/>The Almond Valley team
     </td></tr>`);
-  const text = `Welcome aboard!\n\nWe're delighted to be looking after ${entityName}. You have your own client portal showing exactly where things are up to and the few things we need from you.\n\nOpen your portal: ${CLIENT_PORTAL_URL}\n(Sign in with just this email address — we'll send you a secure link, no password needed.)\n\n` +
+  const text = `Welcome aboard\n\nWe're delighted to be looking after ${entityName}. You have your own client portal showing exactly where things are up to and the few things we need from you.\n\nOpen your portal: ${CLIENT_PORTAL_URL}\n(Sign in with just this email address — we'll send you a secure link, no password needed.)\n\n` +
     (asks.length ? `To get us started, we'll need:\n${asks.slice(0, 8).map((a) => `- ${a}`).join("\n")}\n\n` : "") +
-    `Questions at any point — just reply to this email.\n\nThe Almond Valley team`;
+    `Questions at any point? Just reply to this email and one of the team will come back to you.\n\nThe Almond Valley team`;
   return { subject, html, text };
 }
 
@@ -105,39 +105,38 @@ function pauseEmail(entityName: string) {
     <tr><td style="font-size:20px;font-weight:700;color:#1E4560;padding-bottom:6px;">No pressure from us</td></tr>
     <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;">
       We've reached out a few times about getting <strong>${esc(entityName)}</strong> set up and haven't managed
-      to catch you — and we know how it goes; life and business get busy. The last thing we want is to pester you,
-      so we've paused our reminders for now.
+      to catch you — we understand things get busy. Rather than keep sending reminders, we've paused them for now.
     </td></tr>
     <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;padding-top:14px;">
-      Whenever you're ready, just reply to this email or pop back into your portal and we'll pick up
-      exactly where we left off — everything's saved.
+      Whenever you're ready, just reply to this email or sign back into your portal and we'll pick up
+      exactly where we left off — everything is saved.
     </td></tr>
     <tr><td style="padding:22px 0 6px;">
-      <a href="${esc(CLIENT_PORTAL_URL)}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;padding:12px 22px;border-radius:12px;font-weight:600;font-size:14px;">Pick up where we left off</a>
+      <a href="${esc(CLIENT_PORTAL_URL)}" style="display:inline-block;background:#0e7490;color:#fff;text-decoration:none;padding:12px 22px;border-radius:12px;font-weight:600;font-size:14px;">Pick up where we left off</a>
     </td></tr>
     <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;padding-top:14px;">Speak soon,<br/>The Almond Valley team</td></tr>`);
-  const text = `No pressure from us.\n\nWe've reached out a few times about getting ${entityName} set up and haven't managed to catch you — and we know how it goes. The last thing we want is to pester you, so we've paused our reminders for now.\n\nWhenever you're ready, just reply to this email or pop back into your portal (${CLIENT_PORTAL_URL}) and we'll pick up exactly where we left off.\n\nSpeak soon,\nThe Almond Valley team`;
+  const text = `No pressure from us.\n\nWe've reached out a few times about getting ${entityName} set up and haven't managed to catch you — we understand things get busy. Rather than keep sending reminders, we've paused them for now.\n\nWhenever you're ready, just reply to this email or sign back into your portal (${CLIENT_PORTAL_URL}) and we'll pick up exactly where we left off.\n\nSpeak soon,\nThe Almond Valley team`;
   return { subject, html, text };
 }
 
 function checkinEmail(entityName: string) {
   const subject = "How's everything going? — Almond Valley Accounting";
   const html = shell(`
-    <tr><td style="font-size:20px;font-weight:700;color:#1E4560;padding-bottom:6px;">A quick check-in 👋</td></tr>
+    <tr><td style="font-size:20px;font-weight:700;color:#1E4560;padding-bottom:6px;">A quick check-in</td></tr>
     <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;">
       It's been a few months since we got <strong>${esc(entityName)}</strong> set up, and we'd
       rather ask than assume all is well. How's everything going from your side?
     </td></tr>
     <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;padding-top:12px;">
       Anything confusing? Anything we could do better? Anything you'd like more (or less) of?
-      Just <strong>hit reply</strong> — it comes straight to a real person, and we genuinely act on it.
-      And if it's all running smoothly, that's lovely to hear too.
+      Just <strong>reply to this email</strong> — it comes straight to the team, and we act on it.
+      And if everything is running smoothly, that's good to hear too.
     </td></tr>
     <tr><td style="padding:22px 0 6px;">
-      <a href="${esc(CLIENT_PORTAL_URL)}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;padding:12px 22px;border-radius:12px;font-weight:600;font-size:14px;">See where everything's up to</a>
+      <a href="${esc(CLIENT_PORTAL_URL)}" style="display:inline-block;background:#0e7490;color:#fff;text-decoration:none;padding:12px 22px;border-radius:12px;font-weight:600;font-size:14px;">See where everything's up to</a>
     </td></tr>
     <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;padding-top:14px;">Speak soon,<br/>The Almond Valley team</td></tr>`);
-  const text = `A quick check-in!\n\nIt's been a few months since we got ${entityName} set up, and we'd rather ask than assume all is well. How's everything going from your side?\n\nAnything confusing? Anything we could do better? Anything you'd like more (or less) of? Just hit reply — it comes straight to a real person. And if it's all running smoothly, that's lovely to hear too.\n\nYour portal: ${CLIENT_PORTAL_URL}\n\nSpeak soon,\nThe Almond Valley team`;
+  const text = `A quick check-in\n\nIt's been a few months since we got ${entityName} set up, and we'd rather ask than assume all is well. How's everything going from your side?\n\nAnything confusing? Anything we could do better? Anything you'd like more (or less) of? Just reply to this email — it comes straight to the team, and we act on it. And if everything is running smoothly, that's good to hear too.\n\nYour portal: ${CLIENT_PORTAL_URL}\n\nSpeak soon,\nThe Almond Valley team`;
   return { subject, html, text };
 }
 
