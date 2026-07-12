@@ -102,7 +102,8 @@ export async function getOnboarding(id) {
       .from('onboardings')
       .select(`
         *,
-        entity:entities(id, name, entity_status),
+        entity:entities!onboardings_entity_id_fkey(id, name, entity_status),
+        referred_by:entities!onboardings_referred_by_entity_id_fkey(id, name),
         template:onboarding_templates(id, code, name),
         owner:staff_profiles!onboardings_owner_id_fkey(id, name),
         lead:staff_profiles!onboardings_lead_id_fkey(id, name),
@@ -140,6 +141,60 @@ export async function searchEntities(term) {
   return data || [];
 }
 
+// Mirrors the Clients page insert so prospects can be created mid-flow
+export async function createEntity({ name, prospectEmail, type }) {
+  const { data, error } = await supabase
+    .from('entities')
+    .insert({
+      name,
+      type: type || 'limited_company',
+      entity_status: 'prospect',
+      prospect_email: prospectEmail || null,
+      source: 'athena',
+    })
+    .select('id, name, entity_status')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Layer SA steps for an additional director (BM can't do this) — copies the
+// template's SA group onto the live onboarding as "SA — <name>".
+export async function addDirectorSa(onboarding, directorName, { actorId } = {}) {
+  const { data: tSteps, error: e1 } = await supabase
+    .from('onboarding_template_steps')
+    .select('*')
+    .eq('template_id', onboarding.template_id)
+    .eq('group_name', 'SA')
+    .order('sort');
+  if (e1) throw e1;
+  if (!tSteps?.length) throw new Error('This template has no SA group to copy.');
+
+  const maxGroupSort = Math.max(0, ...onboarding.steps.map((s) => s.group_sort));
+  const rows = tSteps.map((ts) => ({
+    onboarding_id: onboarding.id,
+    template_step_id: ts.id,
+    group_name: `SA — ${directorName}`,
+    group_sort: maxGroupSort + 1,
+    sort: ts.sort,
+    name: ts.name,
+    description: ts.description,
+    owner_type: ts.owner_type,
+    assignee_id: ts.assignee_id || onboarding.owner_id || null,
+    status: 'pending',
+    expected_days: ts.expected_days,
+    chase_after_days: ts.chase_after_days,
+    client_label: ts.client_label,
+  }));
+  const { error: e2 } = await supabase.from('onboarding_steps').insert(rows);
+  if (e2) throw e2;
+  await supabase.from('onboarding_activity').insert({
+    onboarding_id: onboarding.id, kind: 'system',
+    body: `Self-assessment steps added for director: ${directorName}`,
+    created_by: actorId || null,
+  });
+}
+
 export async function activeOnboardingsForEntity(entityId) {
   const { data, error } = await supabase
     .from('onboardings')
@@ -150,18 +205,21 @@ export async function activeOnboardingsForEntity(entityId) {
   return data || [];
 }
 
-// Latest committed/accepted quote + its service ids — used to resolve
-// conditional steps and the 'quote_accepted' auto-check.
-export async function findCommittedQuote(entityId) {
+// Best active quote + its service ids — used to resolve conditional steps
+// and the 'quote_accepted' auto-check. A new prospect's quote is usually
+// still 'sent' (commit is the terminal billing step, at go-live), so we
+// take the most advanced non-deleted quote rather than requiring committed.
+const QUOTE_PRIORITY = { committed: 5, accepted: 4, sent: 3, approved: 2, pending_approval: 1, draft: 0 };
+export async function findActiveQuote(entityId) {
   const { data, error } = await supabase
     .from('quotes')
-    .select('id, quote_ref, status, created_at, line_items:quote_line_items(service_id)')
+    .select('id, quote_ref, status, created_at, dd_mandate_status, line_items:quote_line_items(service_id)')
     .eq('entity_id', entityId)
-    .in('status', ['committed', 'accepted'])
-    .order('created_at', { ascending: false })
-    .limit(1);
+    .neq('status', 'deleted');
   if (error) throw error;
-  const quote = data?.[0] || null;
+  const quote = (data || []).sort((a, b) =>
+    (QUOTE_PRIORITY[b.status] ?? 0) - (QUOTE_PRIORITY[a.status] ?? 0)
+    || new Date(b.created_at) - new Date(a.created_at))[0] || null;
   const serviceIds = new Set((quote?.line_items || []).map((li) => li.service_id));
   return { quote, serviceIds };
 }
@@ -192,7 +250,7 @@ export function resolveSteps(templateSteps, { quote, serviceIds, liveBilling }) 
           : `Quote has no ${ts.service_condition.replace(/_/g, ' ')} service`;
       }
     }
-    if (initialStatus === 'pending' && ts.auto_check === 'quote_accepted' && quote) {
+    if (initialStatus === 'pending' && ts.auto_check === 'quote_accepted' && quote && ['committed', 'accepted'].includes(quote.status)) {
       initialStatus = 'complete';
       reason = `Auto-verified: quote ${quote.quote_ref || ''} is ${quote.status}`;
     }
@@ -204,8 +262,8 @@ export function resolveSteps(templateSteps, { quote, serviceIds, liveBilling }) 
   });
 }
 
-export async function createOnboarding({ entityId, template, ownerId, leadId, targetDate, actorId }) {
-  const { quote, serviceIds } = await findCommittedQuote(entityId);
+export async function createOnboarding({ entityId, template, ownerId, leadId, targetDate, referredById, actorId }) {
+  const { quote, serviceIds } = await findActiveQuote(entityId);
   const liveBilling = await hasLiveBilling(entityId);
   const resolved = resolveSteps(template.steps, { quote, serviceIds, liveBilling });
 
@@ -218,6 +276,7 @@ export async function createOnboarding({ entityId, template, ownerId, leadId, ta
       owner_id: ownerId || null,
       lead_id: leadId || null,
       target_date: targetDate || null,
+      referred_by_entity_id: referredById || null,
       created_by: actorId || null,
     })
     .select('id')
@@ -249,7 +308,7 @@ export async function createOnboarding({ entityId, template, ownerId, leadId, ta
     .filter((r) => r.reason)
     .map((r) => `${r.templateStep.name} → ${r.initialStatus === 'na' ? 'N/A' : 'complete'} (${r.reason})`);
   const body = [
-    `Onboarding started — template "${template.name}"${quote ? `, linked to quote ${quote.quote_ref || quote.id}` : ', no committed quote found'}`,
+    `Onboarding started — template "${template.name}"${quote ? `, linked to ${quote.status} quote ${quote.quote_ref || quote.id}` : ', no quote found in the fee engine'}`,
     ...autoNotes,
   ].join('\n');
   await supabase.from('onboarding_activity').insert({

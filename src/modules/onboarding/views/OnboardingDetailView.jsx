@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, Zap, ChevronDown, ChevronRight, Send } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Zap, ChevronDown, ChevronRight, Send, UserPlus } from 'lucide-react';
 import { Btn } from '../../../components/ui';
-import { tones, chipStyle } from '../../../lib/tokens';
+import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import PortalAccessPanel from '../components/PortalAccessPanel';
 import DocumentsPanel from '../components/DocumentsPanel';
 import {
-  getOnboarding, listStaff, updateOnboarding, updateStep, addNote,
+  getOnboarding, listStaff, updateOnboarding, updateStep, addNote, addDirectorSa,
   isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES,
 } from '../api';
 
@@ -37,6 +37,7 @@ export default function OnboardingDetailView() {
   const [expanded, setExpanded] = useState({});
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [taskFilter, setTaskFilter] = useState('all'); // all | client | staff
 
   const load = useCallback(() => {
     getOnboarding(id).then(setOb).catch((e) => setError(e.message));
@@ -147,7 +148,8 @@ export default function OnboardingDetailView() {
             <h1 style={{ margin: 0, fontSize: 21, fontWeight: 700, color: '#0f172a' }}>{ob.entity?.name}</h1>
             <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
               {ob.template?.name} · started {new Date(ob.started_at).toLocaleDateString('en-GB')}
-              {ob.quote_id ? ' · linked to committed quote' : ' · no quote linked'}
+              {ob.quote_id ? ' · quote linked' : ' · no quote linked'}
+              {ob.referred_by?.name ? ` · referred by ${ob.referred_by.name}` : ''}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -182,9 +184,30 @@ export default function OnboardingDetailView() {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.8fr) minmax(280px, 1fr)', gap: 16, alignItems: 'start' }}>
         {/* Checklist */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {groups.map(([groupName, steps]) => {
-            const groupDone = steps.filter((s) => s.status === 'complete').length;
-            const groupApplicable = steps.filter((s) => s.status !== 'na').length;
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {[['all', 'All tasks'], ['client', 'Client tasks'], ['staff', 'AVA tasks']].map(([v, lbl]) => (
+              <button key={v} onClick={() => setTaskFilter(v)} style={pillStyle({ tone: 'info', active: taskFilter === v })}>
+                {lbl}
+              </button>
+            ))}
+            <button
+              onClick={async () => {
+                const name = window.prompt('Director name for the additional self-assessment steps:');
+                if (!name?.trim()) return;
+                try { await addDirectorSa(ob, name.trim(), { actorId: profile?.id }); load(); }
+                catch (e) { setError(e.message); }
+              }}
+              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: `1px solid ${tones.info.border}`, borderRadius: 999, color: tones.info.fg, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: font, padding: '5px 12px' }}
+            >
+              <UserPlus size={12} /> Add director SA
+            </button>
+          </div>
+          {groups.map(([groupName, allSteps]) => {
+            const steps = taskFilter === 'all' ? allSteps
+              : allSteps.filter((s) => taskFilter === 'client' ? s.owner_type === 'client' : s.owner_type !== 'client');
+            if (steps.length === 0) return null;
+            const groupDone = allSteps.filter((s) => s.status === 'complete').length;
+            const groupApplicable = allSteps.filter((s) => s.status !== 'na').length;
             const allNa = groupApplicable === 0;
             return (
               <div key={groupName} style={{ ...card, padding: '14px 18px', opacity: allNa ? 0.6 : 1 }}>

@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, MinusCircle, Zap } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, MinusCircle, Zap, UserPlus } from 'lucide-react';
 import { Btn } from '../../../components/ui';
+import NewClientModal from '../../../components/NewClientModal';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import {
   listTemplates, listStaff, searchEntities, activeOnboardingsForEntity,
-  findCommittedQuote, hasLiveBilling, resolveSteps, createOnboarding,
+  findActiveQuote, hasLiveBilling, resolveSteps, createOnboarding, createEntity,
 } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -36,6 +37,10 @@ export default function NewOnboardingView() {
   const [targetDate, setTargetDate] = useState('');
   const [preview, setPreview] = useState(null); // { quote, resolved }
   const [saving, setSaving] = useState(false);
+  const [showNewClient, setShowNewClient] = useState(false);
+  const [refSearch, setRefSearch] = useState('');
+  const [refOptions, setRefOptions] = useState([]);
+  const [referredBy, setReferredBy] = useState(null);
 
   useEffect(() => {
     Promise.all([listTemplates(), listStaff()])
@@ -57,6 +62,15 @@ export default function NewOnboardingView() {
     return () => clearTimeout(h);
   }, [search]);
 
+  // Referred-by search (debounced; only while typing)
+  useEffect(() => {
+    if (!refSearch) { setRefOptions([]); return; }
+    const h = setTimeout(() => {
+      searchEntities(refSearch).then(setRefOptions).catch(() => {});
+    }, 250);
+    return () => clearTimeout(h);
+  }, [refSearch]);
+
   // Pre-select entity when arriving via /onboarding/new?entity=<id>
   useEffect(() => {
     const preselect = params.get('entity');
@@ -74,7 +88,7 @@ export default function NewOnboardingView() {
   useEffect(() => {
     if (!entity || !template) { setPreview(null); return; }
     let cancelled = false;
-    Promise.all([findCommittedQuote(entity.id), hasLiveBilling(entity.id), activeOnboardingsForEntity(entity.id)])
+    Promise.all([findActiveQuote(entity.id), hasLiveBilling(entity.id), activeOnboardingsForEntity(entity.id)])
       .then(([{ quote, serviceIds }, liveBilling, open]) => {
         if (cancelled) return;
         setExisting(open);
@@ -92,7 +106,8 @@ export default function NewOnboardingView() {
       const id = await createOnboarding({
         entityId: entity.id, template,
         ownerId: ownerId || null, leadId: leadId || null,
-        targetDate: targetDate || null, actorId: profile?.id || null,
+        targetDate: targetDate || null, referredById: referredBy?.id || null,
+        actorId: profile?.id || null,
       });
       navigate(`/onboarding/${id}`);
     } catch (e) {
@@ -126,7 +141,17 @@ export default function NewOnboardingView() {
         {/* Left column: choices */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={card}>
-            <span style={label}>Client</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span style={label}>Client</span>
+              {!entity && (
+                <button
+                  onClick={() => setShowNewClient(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#0e7fe0', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: font, padding: 0 }}
+                >
+                  <UserPlus size={13} /> New client
+                </button>
+              )}
+            </div>
             {entity ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <div>
@@ -199,9 +224,39 @@ export default function NewOnboardingView() {
                   {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
-              <div style={{ gridColumn: '1 / -1' }}>
+              <div>
                 <span style={label}>Target date (optional)</span>
                 <input type="date" style={input} value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+              </div>
+              <div>
+                <span style={label}>Referred by (existing client)</span>
+                {referredBy ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{referredBy.name}</span>
+                    <button onClick={() => { setReferredBy(null); setRefSearch(''); }} style={{ background: 'none', border: 'none', color: '#0e7fe0', fontSize: 12, cursor: 'pointer', fontFamily: font }}>
+                      change
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative' }}>
+                    <input style={input} value={refSearch} onChange={(e) => setRefSearch(e.target.value)} placeholder="Search…" />
+                    {refOptions.length > 0 && refSearch && (
+                      <div style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, maxHeight: 160, overflowY: 'auto', boxShadow: '0 4px 12px rgba(15,23,42,0.08)' }}>
+                        {refOptions.map((o) => (
+                          <div
+                            key={o.id}
+                            onClick={() => { setReferredBy(o); setRefOptions([]); }}
+                            style={{ padding: '7px 10px', fontSize: 12.5, cursor: 'pointer' }}
+                            onMouseEnter={(ev) => (ev.currentTarget.style.background = '#f1f5f9')}
+                            onMouseLeave={(ev) => (ev.currentTarget.style.background = 'transparent')}
+                          >
+                            {o.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -220,8 +275,8 @@ export default function NewOnboardingView() {
             <>
               <div style={{ fontSize: 12.5, marginBottom: 12, color: preview.quote ? tones.success.fg : tones.warning.fg }}>
                 {preview.quote
-                  ? `Linked to ${preview.quote.status} quote ${preview.quote.quote_ref || ''} — conditional steps resolved from its services.`
-                  : 'No committed/accepted quote found — all steps start as To do; mark N/A manually as needed.'}
+                  ? `Linked to quote ${preview.quote.quote_ref || ''} (${preview.quote.status}) — conditional steps resolved from its services.${['committed', 'accepted'].includes(preview.quote.status) ? '' : ' The "Accepted quote" step stays open until the client accepts.'}`
+                  : 'This client has no quote in the fee engine yet — all steps start as To do; mark N/A manually, or create the quote first so services resolve automatically.'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 480, overflowY: 'auto' }}>
                 {groups.map(([groupName, items]) => (
@@ -248,6 +303,18 @@ export default function NewOnboardingView() {
           )}
         </div>
       </div>
+
+      <NewClientModal
+        open={showNewClient}
+        onClose={() => setShowNewClient(false)}
+        initialName={search}
+        onSave={async (fields) => {
+          const created = await createEntity({ name: fields.name, prospectEmail: fields.prospect_email, type: fields.type });
+          setEntity(created);
+          setShowNewClient(false);
+          return created;
+        }}
+      />
     </div>
   );
 }
