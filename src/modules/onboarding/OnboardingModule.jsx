@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import PipelineView from './views/PipelineView';
 import NewOnboardingView from './views/NewOnboardingView';
 import OnboardingDetailView from './views/OnboardingDetailView';
+import UpdatesView from './views/UpdatesView';
 
 /*
   Onboarding module — internal tracking of new-client / new-service
@@ -19,6 +20,7 @@ export default function OnboardingModule() {
         <Routes>
           <Route index element={<PipelineView />} />
           <Route path="new" element={<NewOnboardingView />} />
+          <Route path="updates" element={<UpdatesView />} />
           <Route path=":id" element={<OnboardingDetailView />} />
           <Route path="*" element={<Navigate to="/onboarding" replace />} />
         </Routes>

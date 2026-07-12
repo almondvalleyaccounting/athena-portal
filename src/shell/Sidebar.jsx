@@ -104,8 +104,10 @@ export default function Sidebar() {
 
   const isOwner = profile?.can_manage_portal === true;
   const canImport = profile?.can_import_data === true || profile?.is_portal_admin === true;
+  const canAdminTasks = profile?.can_view_onboarding === true || profile?.is_portal_admin === true;
   const adminChildren = [
     isOwner && { id: 'admin-staff', label: 'Staff & Permissions', route: '/admin/staff' },
+    canAdminTasks && { id: 'admin-tasks', label: 'Admin Task List', route: '/admin/tasks' },
     canImport && { id: 'admin-import', label: 'Data Import', route: '/admin/import' },
     // Workflow consolidated into the Work Planner module's Setup area
     // (/planner/setup). Admins reach it from inside Work Planner now.

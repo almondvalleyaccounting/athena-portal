@@ -98,5 +98,13 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
     }
   }
 
-  return { ...data, reviewers: reviewerResult };
+  // The BM upload is the source of truth for entity codes — confirm and
+  // clear any admin_tasks (Sophie's BM list) the fresh data now satisfies.
+  let confirmedTasks = 0;
+  try {
+    const { data: confirmed } = await supabase.rpc('admin_tasks_confirm_from_bm');
+    confirmedTasks = confirmed || 0;
+  } catch { /* non-fatal — the admin tasks page re-checks on load */ }
+
+  return { ...data, reviewers: reviewerResult, admin_tasks_confirmed: confirmedTasks };
 }

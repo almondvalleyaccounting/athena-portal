@@ -71,11 +71,19 @@ export default function PipelineView() {
             New clients and new services, from first contact to fully set up
           </p>
         </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={() => navigate('/onboarding/updates')}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, fontFamily: font, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer' }}
+          >
+            ✨ Latest updates
+          </button>
         <Btn onClick={() => navigate('/onboarding/new')}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <UserPlus size={15} /> Start onboarding
           </span>
         </Btn>
+        </div>
       </div>
 
       {isAdmin && <ChasersPanel />}

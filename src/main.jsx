@@ -33,6 +33,7 @@ import OnboardingModule from './modules/onboarding/OnboardingModule';
 import ClientDetailView from './modules/clients/ClientDetailView';
 import FeeEngineLayout from './contexts/FeeEngineContext';
 import AcceptQuotePage from './pages/AcceptQuotePage';
+import AdminTasksPage from './pages/AdminTasksPage';
 
 // Fee Engine pages (now render inside AppShell via FeeEngineLayout)
 import DashboardPage from './pages/DashboardPage';
@@ -65,6 +66,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />
           <Route path="/admin/staff" element={<AdminPage />} />
+          <Route path="/admin/tasks" element={<AdminTasksPage />} />
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/admin/import/*" element={<DataImportModule />} />
           {/* Legacy Workflow / Staging routes redirect to the new Waiting area. */}
