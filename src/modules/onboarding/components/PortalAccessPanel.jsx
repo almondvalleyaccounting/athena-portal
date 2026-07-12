@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Globe, Trash2 } from 'lucide-react';
+import { Globe, Trash2, Mail } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
-import { listPortalAccess, invitePortalUser, removePortalInvite } from '../api';
+import { listPortalAccess, invitePortalUser, removePortalInvite, sendOnboardingEmail } from '../api';
 
 const font = "'Outfit', sans-serif";
 export const PORTAL_URL = 'https://athena-client-portal.vercel.app';
@@ -24,17 +24,32 @@ export default function PortalAccessPanel({ entityId, onboardingId }) {
   }, [entityId]);
   useEffect(() => { load(); }, [load]);
 
-  async function invite() {
+  async function invite(withWelcome) {
     if (!email.includes('@')) return;
     setBusy(true); setMsg(null);
+    const addr = email.trim().toLowerCase();
     try {
-      await invitePortalUser(entityId, email, { actorId: profile?.id, onboardingId });
+      await invitePortalUser(entityId, addr, { actorId: profile?.id, onboardingId });
       setEmail('');
-      setMsg({ tone: 'success', text: 'Invited — they can sign in straight away with this email.' });
+      if (withWelcome && onboardingId) {
+        await sendOnboardingEmail(onboardingId, 'welcome', addr);
+        setMsg({ tone: 'success', text: `Invited + welcome email sent to ${addr}.` });
+      } else {
+        setMsg({ tone: 'success', text: 'Invited — they can sign in straight away with this email.' });
+      }
       load();
     } catch (e) {
       setMsg({ tone: 'danger', text: e.message?.includes('duplicate') ? 'That email is already invited for this client.' : e.message });
     }
+    setBusy(false);
+  }
+
+  async function resendWelcome(inv) {
+    setBusy(true); setMsg(null);
+    try {
+      await sendOnboardingEmail(onboardingId, 'welcome', inv.email);
+      setMsg({ tone: 'success', text: `Welcome email sent to ${inv.email}.` });
+    } catch (e) { setMsg({ tone: 'danger', text: e.message }); }
     setBusy(false);
   }
 
@@ -61,10 +76,18 @@ export default function PortalAccessPanel({ entityId, onboardingId }) {
           style={{ flex: 1, padding: '7px 10px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }}
         />
         <button
-          onClick={invite} disabled={busy || !email.includes('@')}
-          style={{ padding: '7px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: '#F5C518', color: '#1E4560', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+          onClick={() => invite(true)} disabled={busy || !email.includes('@')}
+          title="Create the portal invite and send the warm welcome email (portal link + what we need)"
+          style={{ padding: '7px 14px', fontSize: 12.5, fontWeight: 700, fontFamily: font, background: '#F5C518', color: '#1E4560', border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}
         >
-          Invite
+          Invite + welcome
+        </button>
+        <button
+          onClick={() => invite(false)} disabled={busy || !email.includes('@')}
+          title="Invite silently — no email goes out"
+          style={{ padding: '7px 10px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: '#fff', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: 8, cursor: 'pointer' }}
+        >
+          Quietly
         </button>
       </div>
       {msg && <div style={{ fontSize: 12, color: tones[msg.tone].fg, marginBottom: 8 }}>{msg.text}</div>}
@@ -75,6 +98,9 @@ export default function PortalAccessPanel({ entityId, onboardingId }) {
             <span style={chipStyle(inv.claimed_at ? 'success' : 'neutral')}>
               {inv.claimed_at ? 'signed in' : 'invited'}
             </span>
+            <button onClick={() => resendWelcome(inv)} disabled={busy} title="Send / resend the welcome email" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 2 }}>
+              <Mail size={13} />
+            </button>
             <button onClick={() => remove(inv)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 2 }}>
               <Trash2 size={13} />
             </button>

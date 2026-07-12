@@ -85,7 +85,7 @@ export async function listOnboardings() {
     .from('onboardings')
     .select(`
       *,
-      entity:entities(id, name, entity_status),
+      entity:entities!onboardings_entity_id_fkey(id, name, entity_status),
       template:onboarding_templates(id, code, name),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name),
       lead:staff_profiles!onboardings_lead_id_fkey(id, name),
@@ -429,6 +429,23 @@ export async function getDocumentUrl(storagePath) {
     .createSignedUrl(storagePath, 3600);
   if (error) throw error;
   return data.signedUrl;
+}
+
+// ── Client emails (edge fn onboarding-emails) ──
+// kind 'welcome': warm intro + portal link + what we need
+// kind 'pause': graceful stop-chasing email (sets escalation to paused)
+export async function sendOnboardingEmail(onboardingId, kind, to = null) {
+  const { data, error } = await supabase.functions.invoke('onboarding-emails', {
+    body: { onboarding_id: onboardingId, kind, to },
+  });
+  if (error) {
+    try {
+      const body = await error.context?.json?.();
+      if (body?.error) throw new Error(body.error);
+    } catch (inner) { if (inner instanceof Error && inner.message !== error.message) throw inner; }
+    throw error;
+  }
+  return data;
 }
 
 // ── Client portal access (separate app: athena-client-portal.vercel.app) ──

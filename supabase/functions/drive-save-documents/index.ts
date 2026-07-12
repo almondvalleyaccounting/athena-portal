@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
 
   const { data: ob, error: obErr } = await service
     .from("onboardings")
-    .select("id, entity_id, entity:entities(id, name)")
+    .select("id, entity_id, entity:entities!onboardings_entity_id_fkey(id, name)")
     .eq("id", onboardingId)
     .single();
   if (obErr || !ob) return json({ success: false, error: obErr?.message || "Onboarding not found" }, 404);

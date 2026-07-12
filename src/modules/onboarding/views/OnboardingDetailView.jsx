@@ -6,6 +6,7 @@ import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import PortalAccessPanel from '../components/PortalAccessPanel';
 import DocumentsPanel from '../components/DocumentsPanel';
+import EscalationPanel from '../components/EscalationPanel';
 import {
   getOnboarding, listStaff, updateOnboarding, updateStep, addNote, addDirectorSa,
   isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES,
@@ -313,6 +314,7 @@ export default function OnboardingDetailView() {
 
         {/* Right column: portal access + activity */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
+        <EscalationPanel ob={ob} onChanged={load} />
         <PortalAccessPanel entityId={ob.entity_id} onboardingId={ob.id} />
         <DocumentsPanel onboarding={ob} documents={ob.documents || []} onChanged={load} />
         <div style={{ ...card, padding: '16px 18px' }}>

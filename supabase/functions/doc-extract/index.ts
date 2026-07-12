@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
 
   const { data: doc, error: docErr } = await service
     .from("onboarding_documents")
-    .select("*, onboarding:onboardings(id, entity:entities(id, name)), step:onboarding_steps(id, name, client_label)")
+    .select("*, onboarding:onboardings(id, entity:entities!onboardings_entity_id_fkey(id, name)), step:onboarding_steps(id, name, client_label)")
     .eq("id", documentId)
     .single();
   if (docErr || !doc) return json({ success: false, error: docErr?.message || "Document not found" }, 404);

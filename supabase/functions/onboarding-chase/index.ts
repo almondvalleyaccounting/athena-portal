@@ -118,9 +118,10 @@ function digestHtml(ownerName: string, sections: {
   overdueExternal: Array<{ entity: string; step: Step; waited: number }>;
   nonResponsive: Array<{ entity: string; step: Step }>;
   noEmail: Array<{ entity: string; steps: Step[] }>;
-}): { html: string; text: string; subject: string } {
+  offboard: Array<{ entity: string; pausedDays: number }>;
+}, callAssigneeName: string): { html: string; text: string; subject: string } {
   const url = `${PORTAL_PUBLIC_URL}/onboarding`;
-  const count = sections.overdueExternal.length + sections.nonResponsive.length + sections.noEmail.length;
+  const count = sections.overdueExternal.length + sections.nonResponsive.length + sections.noEmail.length + sections.offboard.length;
   const subject = `Onboarding digest — ${count > 0 ? `${count} item${count === 1 ? "" : "s"} need attention` : "chasers sent"}`;
 
   const sec = (title: string, rows: string) => rows
@@ -142,6 +143,8 @@ function digestHtml(ownerName: string, sections: {
     row(`${esc(n.entity)} — ${esc(n.step.client_label || n.step.name)}`, `${n.step.chase_count} chases, no response`, "#dc2626")).join("");
   const noEmailRows = sections.noEmail.map((n) =>
     row(`${esc(n.entity)} — ${n.steps.length} item${n.steps.length === 1 ? "" : "s"} due a chase`, "no email on file", "#d97706")).join("");
+  const offboardRows = sections.offboard.map((n) =>
+    row(esc(n.entity), `paused ${n.pausedDays}d — review & offboard?`, "#dc2626")).join("");
 
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#fafafa;font-family:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1e293b;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;padding:32px 16px;"><tr><td align="center">
@@ -150,7 +153,8 @@ function digestHtml(ownerName: string, sections: {
         <tr><td style="font-size:14px;line-height:1.6;color:#1e293b;">Today's onboarding round-up for the clients you own.</td></tr>
         ${sec("Client chasers sent today", chasedRows)}
         ${sec("Waiting on HMRC / 3rd party — overdue", overdueRows)}
-        ${sec("Non-responsive clients — needs a call", nonRespRows)}
+        ${sec(`Non-responsive — needs a call (${esc(callAssigneeName)})`, nonRespRows)}
+        ${sec("Paused clients — offboard due", offboardRows)}
         ${sec("Couldn't chase — no email on file", noEmailRows)}
         <tr><td style="padding:20px 0 4px;">
           <a href="${esc(url)}" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;font-size:14px;">Open onboarding in Athena</a>
@@ -163,7 +167,8 @@ function digestHtml(ownerName: string, sections: {
   const text = `Hi ${ownerName || "there"},\n\nToday's onboarding round-up:\n` +
     (sections.chased.length ? `\nChasers sent:\n${sections.chased.map((c) => `- ${c.entity}: ${c.steps.length} item(s) → ${c.to}`).join("\n")}\n` : "") +
     (sections.overdueExternal.length ? `\nOverdue with HMRC/3rd party:\n${sections.overdueExternal.map((o) => `- ${o.entity}: ${o.step.name} (${o.waited}d, expect ~${o.step.expected_days}d)`).join("\n")}\n` : "") +
-    (sections.nonResponsive.length ? `\nNon-responsive:\n${sections.nonResponsive.map((n) => `- ${n.entity}: ${n.step.client_label || n.step.name} (${n.step.chase_count} chases)`).join("\n")}\n` : "") +
+    (sections.nonResponsive.length ? `\nNon-responsive (call: ${callAssigneeName}):\n${sections.nonResponsive.map((n) => `- ${n.entity}: ${n.step.client_label || n.step.name} (${n.step.chase_count} chases)`).join("\n")}\n` : "") +
+    (sections.offboard.length ? `\nPaused — offboard due:\n${sections.offboard.map((n) => `- ${n.entity} (paused ${n.pausedDays}d)`).join("\n")}\n` : "") +
     (sections.noEmail.length ? `\nNo email on file:\n${sections.noEmail.map((n) => `- ${n.entity} (${n.steps.length} item(s) due)`).join("\n")}\n` : "") +
     `\nOpen onboarding: ${url}`;
   return { html, text, subject };
@@ -202,13 +207,20 @@ Deno.serve(async (req) => {
   const { data: obs, error: obsErr } = await service
     .from("onboardings")
     .select(`
-      id, status, entity_id, owner_id,
-      entity:entities(id, name, billing_email, prospect_email),
+      id, status, entity_id, owner_id, escalation_status, escalated_at, paused_at,
+      entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name, email, is_active),
       steps:onboarding_steps(*)
     `)
     .eq("status", "active");
   if (obsErr) return json({ success: false, error: obsErr.message }, 500);
+
+  // Call assignee for the escalation ladder (configurable; Sophie by default)
+  let callAssigneeName = "the onboarding owner";
+  if (cfg.call_assignee_id) {
+    const { data: ca } = await service.from("staff_profiles").select("name").eq("id", cfg.call_assignee_id).maybeSingle();
+    if (ca?.name) callAssigneeName = ca.name as string;
+  }
 
   const entityIds = (obs || []).map((o: Ob) => o.entity_id);
   const [{ data: qboRows }, { data: bmRows }] = await Promise.all([
@@ -243,12 +255,14 @@ Deno.serve(async (req) => {
   // ── Classify steps ──
   const today = new Date().toISOString().slice(0, 10);
   const chases: Array<{ ob: Ob; entity: string; to: string | null; steps: Step[] }> = [];
+  const offboardDue: Ob[] = [];
   const perOwner = new Map<string, {
     name: string; email: string | null;
     chased: Array<{ entity: string; steps: Step[]; to: string | null }>;
     overdueExternal: Array<{ entity: string; step: Step; waited: number }>;
     nonResponsive: Array<{ entity: string; step: Step }>;
     noEmail: Array<{ entity: string; steps: Step[] }>;
+    offboard: Array<{ entity: string; pausedDays: number }>;
   }>();
 
   const ownerBucket = (o: Ob) => {
@@ -258,7 +272,7 @@ Deno.serve(async (req) => {
       perOwner.set(key, {
         name: (owner?.name as string) || "team",
         email: owner && owner.is_active !== false ? firstEmail(owner.email as string) : null,
-        chased: [], overdueExternal: [], nonResponsive: [], noEmail: [],
+        chased: [], overdueExternal: [], nonResponsive: [], noEmail: [], offboard: [],
       });
     }
     return perOwner.get(key)!;
@@ -267,6 +281,17 @@ Deno.serve(async (req) => {
   for (const o of (obs || []) as Ob[]) {
     const entityName = ((o.entity as Ob)?.name as string) || "Unknown client";
     const bucket = ownerBucket(o);
+    const escalation = (o.escalation_status as string) || "none";
+
+    // Paused past the offboard window → flag for a human decision
+    if (["paused", "offboard_due"].includes(escalation)) {
+      const pausedDays = daysSince(o.paused_at as string);
+      if (pausedDays != null && pausedDays >= (cfg.offboard_after_days as number)) {
+        bucket.offboard.push({ entity: entityName, pausedDays });
+        if (escalation === "paused") offboardDue.push(o);
+      }
+    }
+
     const due: Step[] = [];
     for (const s of (o.steps as Step[]) || []) {
       if (s.status === "waiting_external") {
@@ -277,6 +302,8 @@ Deno.serve(async (req) => {
         continue;
       }
       if (s.owner_type !== "client" || s.status !== "waiting_client" || !s.requested_at) continue;
+      // The pause email means what it says — no more client emails
+      if (["paused", "offboard_due"].includes(escalation)) continue;
       const count = (s.chase_count as number) || 0;
       if (count >= (cfg.max_chases as number)) {
         bucket.nonResponsive.push({ entity: entityName, step: s });
@@ -301,7 +328,7 @@ Deno.serve(async (req) => {
   }
 
   const digests = Array.from(perOwner.values()).filter((b) =>
-    b.chased.length || b.overdueExternal.length || b.nonResponsive.length || b.noEmail.length);
+    b.chased.length || b.overdueExternal.length || b.nonResponsive.length || b.noEmail.length || b.offboard.length);
 
   if (dryRun) {
     return json({
@@ -314,6 +341,7 @@ Deno.serve(async (req) => {
         owner: b.name, to: testRecipient || b.email,
         chasers: b.chased.length, overdue_external: b.overdueExternal.length,
         non_responsive: b.nonResponsive.length, no_email: b.noEmail.length,
+        offboard_due: b.offboard.length,
       })),
     });
   }
@@ -344,8 +372,15 @@ Deno.serve(async (req) => {
         if (newCount >= (cfg.max_chases as number)) {
           await service.from("onboarding_activity").insert({
             onboarding_id: (c.ob as Ob).id, step_id: s.id, kind: "system",
-            body: `Client non-responsive: ${newCount} chases sent for "${s.client_label || s.name}" with no response — consider a phone call.`,
+            body: `Client non-responsive: ${newCount} chases sent for "${s.client_label || s.name}" with no response — escalated: ${callAssigneeName} to call.`,
           });
+          // Escalation ladder: emails exhausted → a human calls
+          if ((((c.ob as Ob).escalation_status as string) || "none") === "none") {
+            await service.from("onboardings").update({
+              escalation_status: "call_needed", escalated_at: today,
+            }).eq("id", (c.ob as Ob).id);
+            (c.ob as Ob).escalation_status = "call_needed";
+          }
         }
       }
     }
@@ -356,12 +391,23 @@ Deno.serve(async (req) => {
     if (testRecipient) break; // one sample client email on test sends
   }
 
+  // ── Persist offboard-due flags (paused past the configurable window) ──
+  if (!testRecipient) {
+    for (const o of offboardDue) {
+      await service.from("onboardings").update({ escalation_status: "offboard_due" }).eq("id", o.id);
+      await service.from("onboarding_activity").insert({
+        onboarding_id: o.id, kind: "system",
+        body: `Paused for ${cfg.offboard_after_days}+ days with no response — flagged for offboarding. Review and archive if appropriate.`,
+      });
+    }
+  }
+
   // ── Send internal digests ──
   if (cfg.internal_digest_enabled) {
     for (const b of digests) {
       const to = testRecipient || b.email;
       if (!to) { results.push({ kind: "digest", owner: b.name, ok: false, error: "owner has no email" }); continue; }
-      const { html, text, subject } = digestHtml(b.name, b);
+      const { html, text, subject } = digestHtml(b.name, b, callAssigneeName);
       const r = await sendEmail({ to, subject, html, text });
       results.push({ kind: "digest", owner: b.name, to, ok: r.ok, resend_id: r.id, error: r.error });
       if (testRecipient) break; // one sample digest on test sends
