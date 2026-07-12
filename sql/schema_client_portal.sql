@@ -42,13 +42,18 @@ as $$
 declare
   uid uuid := auth.uid();
   uemail text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  dname text;
   inv record;
   n int := 0;
 begin
   if uid is null or uemail = '' then
     return 0;
   end if;
-  insert into users (id, email) values (uid, uemail)
+  -- users.name is NOT NULL (shared table, also used by the shortie rewards
+  -- system) — derive a placeholder from the email local-part rather than
+  -- failing the whole claim silently.
+  dname := initcap(replace(replace(split_part(uemail, '@', 1), '.', ' '), '_', ' '));
+  insert into users (id, email, name) values (uid, uemail, dname)
   on conflict (id) do nothing;
   for inv in
     select * from client_portal_invites
