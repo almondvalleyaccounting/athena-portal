@@ -27,7 +27,7 @@ const PORTAL_PUBLIC_URL =
   Deno.env.get("PORTAL_PUBLIC_URL") || "https://portal.almondvalleyaccounting.co.uk";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const RESEND_FROM_EMAIL =
-  Deno.env.get("RESEND_FROM_EMAIL") || "accounts@almondvalleyaccounting.co.uk";
+  Deno.env.get("RESEND_FROM_EMAIL") || "info@almondvalleyaccounting.co.uk";
 const RESEND_FROM_NAME =
   Deno.env.get("RESEND_FROM_NAME") || "Almond Valley Accounting";
 
@@ -119,9 +119,10 @@ function digestHtml(ownerName: string, sections: {
   nonResponsive: Array<{ entity: string; step: Step }>;
   noEmail: Array<{ entity: string; steps: Step[] }>;
   offboard: Array<{ entity: string; pausedDays: number }>;
+  handovers: Array<{ entity: string; toName: string; due: string }>;
 }, callAssigneeName: string): { html: string; text: string; subject: string } {
   const url = `${PORTAL_PUBLIC_URL}/onboarding`;
-  const count = sections.overdueExternal.length + sections.nonResponsive.length + sections.noEmail.length + sections.offboard.length;
+  const count = sections.overdueExternal.length + sections.nonResponsive.length + sections.noEmail.length + sections.offboard.length + sections.handovers.length;
   const subject = `Onboarding digest — ${count > 0 ? `${count} item${count === 1 ? "" : "s"} need attention` : "chasers sent"}`;
 
   const sec = (title: string, rows: string) => rows
@@ -145,6 +146,8 @@ function digestHtml(ownerName: string, sections: {
     row(`${esc(n.entity)} — ${n.steps.length} item${n.steps.length === 1 ? "" : "s"} due a chase`, "no email on file", "#d97706")).join("");
   const offboardRows = sections.offboard.map((n) =>
     row(esc(n.entity), `paused ${n.pausedDays}d — review & offboard?`, "#dc2626")).join("");
+  const handoverRows = sections.handovers.map((h) =>
+    row(esc(h.entity), `hand over to ${esc(h.toName)} (due ${esc(h.due)})`, "#d97706")).join("");
 
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#fafafa;font-family:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1e293b;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;padding:32px 16px;"><tr><td align="center">
@@ -155,6 +158,7 @@ function digestHtml(ownerName: string, sections: {
         ${sec("Waiting on HMRC / 3rd party — overdue", overdueRows)}
         ${sec(`Non-responsive — needs a call (${esc(callAssigneeName)})`, nonRespRows)}
         ${sec("Paused clients — offboard due", offboardRows)}
+        ${sec("Handovers due", handoverRows)}
         ${sec("Couldn't chase — no email on file", noEmailRows)}
         <tr><td style="padding:20px 0 4px;">
           <a href="${esc(url)}" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;font-size:14px;">Open onboarding in Athena</a>
@@ -169,6 +173,7 @@ function digestHtml(ownerName: string, sections: {
     (sections.overdueExternal.length ? `\nOverdue with HMRC/3rd party:\n${sections.overdueExternal.map((o) => `- ${o.entity}: ${o.step.name} (${o.waited}d, expect ~${o.step.expected_days}d)`).join("\n")}\n` : "") +
     (sections.nonResponsive.length ? `\nNon-responsive (call: ${callAssigneeName}):\n${sections.nonResponsive.map((n) => `- ${n.entity}: ${n.step.client_label || n.step.name} (${n.step.chase_count} chases)`).join("\n")}\n` : "") +
     (sections.offboard.length ? `\nPaused — offboard due:\n${sections.offboard.map((n) => `- ${n.entity} (paused ${n.pausedDays}d)`).join("\n")}\n` : "") +
+    (sections.handovers.length ? `\nHandovers due:\n${sections.handovers.map((h) => `- ${h.entity} → ${h.toName} (due ${h.due})`).join("\n")}\n` : "") +
     (sections.noEmail.length ? `\nNo email on file:\n${sections.noEmail.map((n) => `- ${n.entity} (${n.steps.length} item(s) due)`).join("\n")}\n` : "") +
     `\nOpen onboarding: ${url}`;
   return { html, text, subject };
@@ -208,12 +213,44 @@ Deno.serve(async (req) => {
     .from("onboardings")
     .select(`
       id, status, entity_id, owner_id, escalation_status, escalated_at, paused_at,
-      entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email),
+      handover_due, handover_done_at,
+      handover:staff_profiles!onboardings_handover_to_fkey(name),
+      entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email, ch_auth_code, vat_number, utr, paye_ref),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name, email, is_active),
       steps:onboarding_steps(*)
     `)
     .eq("status", "active");
   if (obsErr) return json({ success: false, error: obsErr.message }, 500);
+
+  // ── BM cross-reference sweep: complete steps the BrightManager record
+  // already proves are done (auth code / VAT number / UTR / PAYE ref on the
+  // entity). Idempotent verification, so it runs on dry runs too.
+  const BM_FIELD_BY_CHECK: Record<string, string> = {
+    bm_ch_auth_code: "ch_auth_code", bm_vat_number: "vat_number", bm_utr: "utr", bm_paye_ref: "paye_ref",
+  };
+  let autoVerified = 0;
+  if (!testRecipient) {
+    for (const o of (obs || []) as Ob[]) {
+      const ent = o.entity as Ob;
+      for (const s of (o.steps as Step[]) || []) {
+        const field = BM_FIELD_BY_CHECK[s.auto_check as string];
+        if (!field || ["complete", "na"].includes(s.status as string)) continue;
+        const val = ent?.[field];
+        if (val) {
+          await service.from("onboarding_steps").update({
+            status: "complete", completed_at: new Date().toISOString(),
+            note: `Auto-verified: ${field.replace(/_/g, " ")} is on the BrightManager record`,
+          }).eq("id", s.id);
+          await service.from("onboarding_activity").insert({
+            onboarding_id: o.id, step_id: s.id, kind: "system",
+            body: `Auto-verified from BM data: "${s.name}" — ${field.replace(/_/g, " ")} is now on record.`,
+          });
+          s.status = "complete";
+          autoVerified++;
+        }
+      }
+    }
+  }
 
   // Call assignee for the escalation ladder (configurable; Sophie by default)
   let callAssigneeName = "the onboarding owner";
@@ -263,6 +300,7 @@ Deno.serve(async (req) => {
     nonResponsive: Array<{ entity: string; step: Step }>;
     noEmail: Array<{ entity: string; steps: Step[] }>;
     offboard: Array<{ entity: string; pausedDays: number }>;
+    handovers: Array<{ entity: string; toName: string; due: string }>;
   }>();
 
   const ownerBucket = (o: Ob) => {
@@ -272,7 +310,7 @@ Deno.serve(async (req) => {
       perOwner.set(key, {
         name: (owner?.name as string) || "team",
         email: owner && owner.is_active !== false ? firstEmail(owner.email as string) : null,
-        chased: [], overdueExternal: [], nonResponsive: [], noEmail: [], offboard: [],
+        chased: [], overdueExternal: [], nonResponsive: [], noEmail: [], offboard: [], handovers: [],
       });
     }
     return perOwner.get(key)!;
@@ -282,6 +320,15 @@ Deno.serve(async (req) => {
     const entityName = ((o.entity as Ob)?.name as string) || "Unknown client";
     const bucket = ownerBucket(o);
     const escalation = (o.escalation_status as string) || "none";
+
+    // Handover past due → remind the buddy in the digest
+    if (o.handover_due && !o.handover_done_at && daysSince(o.handover_due as string) !== null && (daysSince(o.handover_due as string) as number) >= 0) {
+      bucket.handovers.push({
+        entity: entityName,
+        toName: ((o.handover as Ob | null)?.name as string) || "their permanent team member",
+        due: o.handover_due as string,
+      });
+    }
 
     // Paused past the offboard window → flag for a human decision
     if (["paused", "offboard_due"].includes(escalation)) {
@@ -328,11 +375,11 @@ Deno.serve(async (req) => {
   }
 
   const digests = Array.from(perOwner.values()).filter((b) =>
-    b.chased.length || b.overdueExternal.length || b.nonResponsive.length || b.noEmail.length || b.offboard.length);
+    b.chased.length || b.overdueExternal.length || b.nonResponsive.length || b.noEmail.length || b.offboard.length || b.handovers.length);
 
   if (dryRun) {
     return json({
-      success: true, dry_run: true, sending_enabled: cfg.sending_enabled,
+      success: true, dry_run: true, sending_enabled: cfg.sending_enabled, auto_verified: autoVerified,
       client_chases: chases.map((c) => ({
         entity: c.entity, to: testRecipient || c.to,
         steps: c.steps.map((s) => ({ name: s.name, ask: s.client_label || s.name, chase_number: ((s.chase_count as number) || 0) + 1 })),
@@ -341,7 +388,7 @@ Deno.serve(async (req) => {
         owner: b.name, to: testRecipient || b.email,
         chasers: b.chased.length, overdue_external: b.overdueExternal.length,
         non_responsive: b.nonResponsive.length, no_email: b.noEmail.length,
-        offboard_due: b.offboard.length,
+        offboard_due: b.offboard.length, handovers_due: b.handovers.length,
       })),
     });
   }
@@ -414,5 +461,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ success: true, dry_run: false, sent: results.filter((r) => r.ok).length, results });
+  return json({ success: true, dry_run: false, auto_verified: autoVerified, sent: results.filter((r) => r.ok).length, results });
 });

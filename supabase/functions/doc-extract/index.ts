@@ -42,7 +42,7 @@ const EXTRACT_SCHEMA = {
         "passport", "driving_licence", "national_id", "utility_bill", "bank_statement",
         "hmrc_utr_letter", "hmrc_paye_letter", "hmrc_vat_letter", "hmrc_agent_code_letter",
         "companies_house_letter", "p45", "p60", "payslip", "letter_of_engagement",
-        "invoice", "rental_statement", "other",
+        "invoice", "rental_statement", "client_interview", "other",
       ],
     },
     summary: { type: "string", description: "One short sentence describing the document, written for an accountant's file notes." },
@@ -153,7 +153,9 @@ Deno.serve(async (req) => {
             type: "text",
             text: `You are reading a document uploaded by a client of a UK accounting practice during onboarding. The client is "${entityName}".` +
               (stepLabel ? ` It was uploaded against the checklist item: "${stepLabel}".` : "") +
-              ` Classify the document and extract the key information an accountant needs on file. UK context: UTRs are 10 digits, PAYE employer references look like 123/AB456, VAT numbers are 9 digits (often prefixed GB), NI numbers look like QQ123456C. If text is unreadable or the document is not what it claims to be, reflect that in confidence and the summary.`,
+              ` Classify the document and extract the key information an accountant needs on file. UK context: UTRs are 10 digits, PAYE employer references look like 123/AB456, VAT numbers are 9 digits (often prefixed GB), NI numbers look like QQ123456C.` +
+              ` If this is a new-client interview / fact-find document (typically a PDF the practice produced summarising a client conversation), classify it as client_interview and be exhaustive in fields: capture every data point — personal and business details, services discussed, payroll arrangements and frequency, VAT scheme, year end, banking, software, key dates, anything actionable.` +
+              ` If text is unreadable or the document is not what it claims to be, reflect that in confidence and the summary.`,
           },
         ],
       }],

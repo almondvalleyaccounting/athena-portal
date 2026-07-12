@@ -458,6 +458,29 @@ export async function saveDocumentsToDrive(onboardingId) {
   return data;
 }
 
+// Staff-side upload (interview PDFs, documents received by email/post).
+// Lands in the same bucket + table as portal uploads, so the extraction
+// trigger reads it automatically.
+export async function uploadStaffDocument(onboarding, file, { actorId } = {}) {
+  const safeName = file.name.replace(/[^\w.\- ]+/g, '_');
+  const path = `${onboarding.entity_id}/${crypto.randomUUID()}-${safeName}`;
+  const { error: upErr } = await supabase.storage
+    .from('client-documents')
+    .upload(path, file, { contentType: file.type || undefined });
+  if (upErr) throw upErr;
+  const { error } = await supabase.from('onboarding_documents').insert({
+    onboarding_id: onboarding.id,
+    entity_id: onboarding.entity_id,
+    uploaded_by_kind: 'staff',
+    uploaded_by: actorId || null,
+    storage_path: path,
+    original_name: file.name,
+    mime_type: file.type || null,
+    size_bytes: file.size,
+  });
+  if (error) throw error;
+}
+
 // AI extraction (edge fn doc-extract) — runs automatically on upload via a
 // DB trigger; this is the manual (re-)run for errors or re-reads.
 export async function extractDocument(documentId, force = true) {

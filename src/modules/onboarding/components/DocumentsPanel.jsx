@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, HardDriveUpload, ExternalLink, FolderOpen, Sparkles, AlertTriangle } from 'lucide-react';
+import { FileText, HardDriveUpload, ExternalLink, FolderOpen, Sparkles, AlertTriangle, Upload } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
-import { getDriveConnection, driveConnectUrl, saveDocumentsToDrive, getDocumentUrl, extractDocument } from '../api';
+import { getDriveConnection, driveConnectUrl, saveDocumentsToDrive, getDocumentUrl, extractDocument, uploadStaffDocument } from '../api';
 
 const font = "'Outfit', sans-serif";
 
@@ -20,8 +20,9 @@ function Extraction({ doc, onRetry, busy }) {
   const x = doc.extracted;
   if (doc.extract_status === 'done' && x) {
     const expired = x.expiry_date && !isNaN(Date.parse(x.expiry_date)) && Date.parse(x.expiry_date) < Date.now();
+    const fieldsTip = (x.fields || []).map((f) => `${f.label}: ${f.value}`).join('\n');
     return (
-      <div style={{ margin: '2px 0 6px 4px', fontSize: 11.5, color: '#64748b', lineHeight: 1.5 }}>
+      <div title={fieldsTip || undefined} style={{ margin: '2px 0 6px 4px', fontSize: 11.5, color: '#64748b', lineHeight: 1.5 }}>
         <span style={{ ...chipStyle('accent'), marginRight: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
           <Sparkles size={9} /> {DOC_TYPE_LABEL[doc.doc_type] || doc.doc_type}
         </span>
@@ -79,6 +80,19 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
     setExtracting(false);
   }
 
+  async function handleStaffUpload(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true); setMsg(null);
+    try {
+      await uploadStaffDocument(onboarding, file, { actorId: profile?.id });
+      setMsg({ tone: 'success', text: `${file.name} uploaded — AI is reading it now.` });
+      onChanged?.();
+    } catch (e2) { setMsg({ tone: 'danger', text: e2.message }); }
+    setBusy(false);
+  }
+
   useEffect(() => {
     getDriveConnection().then(setDrive).catch(() => setDrive(null));
   }, []);
@@ -115,8 +129,15 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
         <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>
           Documents{documents.length ? ` (${documents.length})` : ''}
         </span>
+        <label
+          title="Upload a document from our side (interview PDF, something received by email/post) — the AI reads it automatically"
+          style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#0e7fe0', cursor: 'pointer' }}
+        >
+          <Upload size={12} /> {busy ? 'Uploading…' : 'Upload'}
+          <input type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={handleStaffUpload} disabled={busy} style={{ display: 'none' }} />
+        </label>
         {folderLink && (
-          <a href={folderLink} target="_blank" rel="noreferrer" style={{ marginLeft: 'auto', fontSize: 12, color: '#0e7fe0', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <a href={folderLink} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#0e7fe0', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <FolderOpen size={12} /> Drive folder
           </a>
         )}
