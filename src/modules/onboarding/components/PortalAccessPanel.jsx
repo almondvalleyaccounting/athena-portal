@@ -5,7 +5,7 @@ import { useAuth } from '../../../shell/AppShell';
 import { listPortalAccess, invitePortalUser, removePortalInvite, sendOnboardingEmail } from '../api';
 
 const font = "'Outfit', sans-serif";
-export const PORTAL_URL = 'https://athena-client-portal.vercel.app';
+export const PORTAL_URL = 'https://clients.almondvalleyaccounting.co.uk';
 
 /*
   Grants a client email access to the client portal for this entity.
