@@ -224,39 +224,78 @@ export async function findActiveQuote(entityId) {
   return { quote, serviceIds };
 }
 
-export async function hasLiveBilling(entityId) {
+// Active QBO billing for the entity — existing clients have no quote, but
+// their live_billing row carries service names ("Bookkeeping & VAT Returns")
+// we can resolve conditions from.
+export async function findLiveBilling(entityId) {
   const { data, error } = await supabase
     .from('live_billing')
-    .select('id')
+    .select('id, status, services')
     .eq('entity_id', entityId)
-    .limit(1);
+    .eq('status', 'active');
   if (error) throw error;
-  return (data || []).length > 0;
+  const rows = data || [];
+  const serviceNames = rows.flatMap((r) => (r.services || []).map((s) => s.service_id).filter(Boolean));
+  return { hasBilling: rows.length > 0, serviceNames };
+}
+
+export async function hasLiveBilling(entityId) {
+  return (await findLiveBilling(entityId)).hasBilling;
+}
+
+// QBO billing service display names → onboarding condition keys (keyword match)
+const BILLING_CONDITION_RULES = [
+  [/vat/i, 'vat'],
+  [/payroll/i, 'paye'],
+  [/self assessment|sole trader/i, 'sa'],
+  [/accounts|business tax|package|retainer/i, 'ct'],
+  [/confirmation statement/i, 'confirmation_statement'],
+  [/software/i, 'software'],
+  [/cis|construction/i, 'cis'],
+];
+
+// Union of condition keys met by the quote's line items and/or the live
+// billing service names.
+export function metConditions({ serviceIds, billingNames }) {
+  const met = new Set();
+  for (const [key, ids] of Object.entries(SERVICE_CONDITION_MAP)) {
+    if (ids.some((sid) => serviceIds?.has(sid))) met.add(key);
+  }
+  for (const name of billingNames || []) {
+    for (const [re, key] of BILLING_CONDITION_RULES) {
+      if (re.test(name)) met.add(key);
+    }
+  }
+  return met;
 }
 
 // Resolve what will happen to each template step for a given entity.
 // Returns [{ templateStep, initialStatus, reason }]
-export function resolveSteps(templateSteps, { quote, serviceIds, liveBilling }) {
+export function resolveSteps(templateSteps, { quote, serviceIds, liveBilling, billingNames }) {
+  const hasServiceSource = Boolean(quote) || (billingNames || []).length > 0;
+  const met = metConditions({ serviceIds, billingNames });
+  const source = quote ? 'quote' : 'billing';
   return templateSteps.map((ts) => {
     let initialStatus = 'pending';
     let reason = null;
-    if (ts.service_condition && quote) {
-      const mapped = SERVICE_CONDITION_MAP[ts.service_condition] || [];
-      const met = mapped.some((sid) => serviceIds.has(sid));
-      if (!met) {
-        initialStatus = 'na';
-        reason = ts.service_condition === 'cis'
-          ? 'No CIS mapping from the quote — toggle on if needed'
-          : `Quote has no ${ts.service_condition.replace(/_/g, ' ')} service`;
-      }
+    if (ts.service_condition && hasServiceSource && !met.has(ts.service_condition)) {
+      initialStatus = 'na';
+      reason = ts.service_condition === 'cis'
+        ? `No CIS service on the ${source} — toggle on if needed`
+        : `No ${ts.service_condition.replace(/_/g, ' ')} service on the ${source}`;
     }
-    if (initialStatus === 'pending' && ts.auto_check === 'quote_accepted' && quote && ['committed', 'accepted'].includes(quote.status)) {
-      initialStatus = 'complete';
-      reason = `Auto-verified: quote ${quote.quote_ref || ''} is ${quote.status}`;
+    if (initialStatus === 'pending' && ts.auto_check === 'quote_accepted') {
+      if (quote && ['committed', 'accepted'].includes(quote.status)) {
+        initialStatus = 'complete';
+        reason = `Auto-verified: quote ${quote.quote_ref || ''} is ${quote.status}`;
+      } else if (!quote && liveBilling) {
+        initialStatus = 'na';
+        reason = 'Existing client billed via QBO — no quote to accept';
+      }
     }
     if (initialStatus === 'pending' && ts.auto_check === 'live_billing' && liveBilling) {
       initialStatus = 'complete';
-      reason = 'Auto-verified: live billing exists for this client';
+      reason = 'Auto-verified: active QBO billing exists for this client';
     }
     return { templateStep: ts, initialStatus, reason };
   });
@@ -264,8 +303,8 @@ export function resolveSteps(templateSteps, { quote, serviceIds, liveBilling }) 
 
 export async function createOnboarding({ entityId, template, ownerId, leadId, targetDate, referredById, actorId }) {
   const { quote, serviceIds } = await findActiveQuote(entityId);
-  const liveBilling = await hasLiveBilling(entityId);
-  const resolved = resolveSteps(template.steps, { quote, serviceIds, liveBilling });
+  const { hasBilling, serviceNames } = await findLiveBilling(entityId);
+  const resolved = resolveSteps(template.steps, { quote, serviceIds, liveBilling: hasBilling, billingNames: serviceNames });
 
   const { data: ob, error: e1 } = await supabase
     .from('onboardings')

@@ -8,6 +8,7 @@ import PortalAccessPanel from '../components/PortalAccessPanel';
 import DocumentsPanel from '../components/DocumentsPanel';
 import EscalationPanel from '../components/EscalationPanel';
 import CompaniesHousePanel from '../components/CompaniesHousePanel';
+import HandoverPanel from '../components/HandoverPanel';
 import {
   getOnboarding, listStaff, updateOnboarding, updateStep, addNote, addDirectorSa,
   isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES,
@@ -317,6 +318,7 @@ export default function OnboardingDetailView() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
         <EscalationPanel ob={ob} onChanged={load} />
         <CompaniesHousePanel ob={ob} onChanged={load} />
+        <HandoverPanel ob={ob} staff={staff} onChanged={load} />
         <PortalAccessPanel entityId={ob.entity_id} onboardingId={ob.id} />
         <DocumentsPanel onboarding={ob} documents={ob.documents || []} onChanged={load} />
         <div style={{ ...card, padding: '16px 18px' }}>

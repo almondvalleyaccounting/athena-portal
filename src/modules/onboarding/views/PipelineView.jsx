@@ -150,6 +150,14 @@ export default function PipelineView() {
                     <AlertTriangle size={10} /> {s.overdue} overdue
                   </span>
                 )}
+                {r.escalation_status && r.escalation_status !== 'none' && (
+                  <span style={chipStyle(r.escalation_status === 'paused' ? 'neutral' : 'danger')}>
+                    {r.escalation_status.replace(/_/g, ' ')}
+                  </span>
+                )}
+                {r.handover_due && !r.handover_done_at && new Date(r.handover_due) <= new Date() && (
+                  <span style={chipStyle('warning')}>handover due</span>
+                )}
               </div>
               <div style={{ fontSize: 12, color: '#64748b', textAlign: 'right' }}>
                 {age != null ? `${age}d in` : ''}

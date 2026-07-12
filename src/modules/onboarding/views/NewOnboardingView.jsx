@@ -7,7 +7,7 @@ import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import {
   listTemplates, listStaff, searchEntities, activeOnboardingsForEntity,
-  findActiveQuote, hasLiveBilling, resolveSteps, createOnboarding, createEntity,
+  findActiveQuote, findLiveBilling, resolveSteps, createOnboarding, createEntity,
 } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -88,11 +88,14 @@ export default function NewOnboardingView() {
   useEffect(() => {
     if (!entity || !template) { setPreview(null); return; }
     let cancelled = false;
-    Promise.all([findActiveQuote(entity.id), hasLiveBilling(entity.id), activeOnboardingsForEntity(entity.id)])
-      .then(([{ quote, serviceIds }, liveBilling, open]) => {
+    Promise.all([findActiveQuote(entity.id), findLiveBilling(entity.id), activeOnboardingsForEntity(entity.id)])
+      .then(([{ quote, serviceIds }, { hasBilling, serviceNames }, open]) => {
         if (cancelled) return;
         setExisting(open);
-        setPreview({ quote, resolved: resolveSteps(template.steps, { quote, serviceIds, liveBilling }) });
+        setPreview({
+          quote, hasBilling,
+          resolved: resolveSteps(template.steps, { quote, serviceIds, liveBilling: hasBilling, billingNames: serviceNames }),
+        });
       })
       .catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
@@ -273,10 +276,12 @@ export default function NewOnboardingView() {
           {!preview && <div style={{ fontSize: 13, color: '#94a3b8' }}>Pick a client and a template to preview the checklist.</div>}
           {preview && (
             <>
-              <div style={{ fontSize: 12.5, marginBottom: 12, color: preview.quote ? tones.success.fg : tones.warning.fg }}>
+              <div style={{ fontSize: 12.5, marginBottom: 12, color: (preview.quote || preview.hasBilling) ? tones.success.fg : tones.warning.fg }}>
                 {preview.quote
                   ? `Linked to quote ${preview.quote.quote_ref || ''} (${preview.quote.status}) — conditional steps resolved from its services.${['committed', 'accepted'].includes(preview.quote.status) ? '' : ' The "Accepted quote" step stays open until the client accepts.'}`
-                  : 'This client has no quote in the fee engine yet — all steps start as To do; mark N/A manually, or create the quote first so services resolve automatically.'}
+                  : preview.hasBilling
+                    ? 'No quote, but this client has active QBO billing — services resolved from it (existing client).'
+                    : 'This client has no quote or live billing yet — all steps start as To do; mark N/A manually, or create the quote first so services resolve automatically.'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 480, overflowY: 'auto' }}>
                 {groups.map(([groupName, items]) => (
