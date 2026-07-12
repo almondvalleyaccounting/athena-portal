@@ -5,8 +5,16 @@
 //      chase_after_days, then every chase_every_days, capped at max_chases).
 //   2. INTERNAL digest — one email per onboarding owner covering: chasers
 //      that went out, waiting-on-HMRC/3rd-party steps past their expected
-//      turnaround, non-responsive clients (max chases reached), and clients
-//      we could not chase because no email is on file.
+//      turnaround, OUR OWN steps running late (staff/system steps past their
+//      expected_days, clocked from requested_at or the onboarding start),
+//      non-responsive clients (max chases reached), and clients we could not
+//      chase because no email is on file.
+//   3. BM cross-reference sweep — auto-completes steps proven done by the
+//      BrightManager record (ch_auth_code / vat_number / utr / paye_ref).
+//   4. Service-condition heal — onboardings created BEFORE their quote
+//      existed never had conditional steps resolved to N/A. One-shot per
+//      onboarding+quote: untouched pending steps whose service_condition
+//      isn't met by the linked quote flip to 'na' (mirrors createOnboarding).
 //
 // SAFETY: dry_run defaults to TRUE. Real sends additionally require
 // onboarding_chase_config.sending_enabled = true (test_recipient bypasses
@@ -116,13 +124,14 @@ function clientEmailHtml(entityName: string, steps: Step[], anyReminder: boolean
 function digestHtml(ownerName: string, sections: {
   chased: Array<{ entity: string; steps: Step[]; to: string | null }>;
   overdueExternal: Array<{ entity: string; step: Step; waited: number }>;
+  lateInternal: Array<{ entity: string; step: Step; waited: number; assignee: string | null }>;
   nonResponsive: Array<{ entity: string; step: Step }>;
   noEmail: Array<{ entity: string; steps: Step[] }>;
   offboard: Array<{ entity: string; pausedDays: number }>;
   handovers: Array<{ entity: string; toName: string; due: string }>;
 }, callAssigneeName: string): { html: string; text: string; subject: string } {
   const url = `${PORTAL_PUBLIC_URL}/onboarding`;
-  const count = sections.overdueExternal.length + sections.nonResponsive.length + sections.noEmail.length + sections.offboard.length + sections.handovers.length;
+  const count = sections.overdueExternal.length + sections.lateInternal.length + sections.nonResponsive.length + sections.noEmail.length + sections.offboard.length + sections.handovers.length;
   const subject = `Onboarding digest — ${count > 0 ? `${count} item${count === 1 ? "" : "s"} need attention` : "chasers sent"}`;
 
   const sec = (title: string, rows: string) => rows
@@ -140,6 +149,9 @@ function digestHtml(ownerName: string, sections: {
     row(`${esc(c.entity)} — ${c.steps.length} item${c.steps.length === 1 ? "" : "s"}`, esc(c.to || ""))).join("");
   const overdueRows = sections.overdueExternal.map((o) =>
     row(`${esc(o.entity)} — ${esc(o.step.name)}`, `${o.waited}d waited (expect ~${o.step.expected_days}d)`, "#dc2626")).join("");
+  const lateInternalRows = sections.lateInternal.map((l) =>
+    row(`${esc(l.entity)} — ${esc(l.step.name)}${l.assignee ? ` (${esc(l.assignee)})` : ""}`,
+        `${l.waited}d in (expect ~${l.step.expected_days}d)`, "#d97706")).join("");
   const nonRespRows = sections.nonResponsive.map((n) =>
     row(`${esc(n.entity)} — ${esc(n.step.client_label || n.step.name)}`, `${n.step.chase_count} chases, no response`, "#dc2626")).join("");
   const noEmailRows = sections.noEmail.map((n) =>
@@ -156,6 +168,7 @@ function digestHtml(ownerName: string, sections: {
         <tr><td style="font-size:14px;line-height:1.6;color:#1e293b;">Today's onboarding round-up for the clients you own.</td></tr>
         ${sec("Client chasers sent today", chasedRows)}
         ${sec("Waiting on HMRC / 3rd party — overdue", overdueRows)}
+        ${sec("Running late with us — internal steps past their window", lateInternalRows)}
         ${sec(`Non-responsive — needs a call (${esc(callAssigneeName)})`, nonRespRows)}
         ${sec("Paused clients — offboard due", offboardRows)}
         ${sec("Handovers due", handoverRows)}
@@ -171,6 +184,7 @@ function digestHtml(ownerName: string, sections: {
   const text = `Hi ${ownerName || "there"},\n\nToday's onboarding round-up:\n` +
     (sections.chased.length ? `\nChasers sent:\n${sections.chased.map((c) => `- ${c.entity}: ${c.steps.length} item(s) → ${c.to}`).join("\n")}\n` : "") +
     (sections.overdueExternal.length ? `\nOverdue with HMRC/3rd party:\n${sections.overdueExternal.map((o) => `- ${o.entity}: ${o.step.name} (${o.waited}d, expect ~${o.step.expected_days}d)`).join("\n")}\n` : "") +
+    (sections.lateInternal.length ? `\nRunning late with us:\n${sections.lateInternal.map((l) => `- ${l.entity}: ${l.step.name}${l.assignee ? ` (${l.assignee})` : ""} — ${l.waited}d in, expect ~${l.step.expected_days}d`).join("\n")}\n` : "") +
     (sections.nonResponsive.length ? `\nNon-responsive (call: ${callAssigneeName}):\n${sections.nonResponsive.map((n) => `- ${n.entity}: ${n.step.client_label || n.step.name} (${n.step.chase_count} chases)`).join("\n")}\n` : "") +
     (sections.offboard.length ? `\nPaused — offboard due:\n${sections.offboard.map((n) => `- ${n.entity} (paused ${n.pausedDays}d)`).join("\n")}\n` : "") +
     (sections.handovers.length ? `\nHandovers due:\n${sections.handovers.map((h) => `- ${h.entity} → ${h.toName} (due ${h.due})`).join("\n")}\n` : "") +
@@ -212,12 +226,12 @@ Deno.serve(async (req) => {
   const { data: obs, error: obsErr } = await service
     .from("onboardings")
     .select(`
-      id, status, entity_id, owner_id, escalation_status, escalated_at, paused_at,
-      handover_due, handover_done_at,
+      id, status, entity_id, owner_id, quote_id, escalation_status, escalated_at, paused_at,
+      handover_due, handover_done_at, started_at,
       handover:staff_profiles!onboardings_handover_to_fkey(name),
       entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email, ch_auth_code, vat_number, utr, paye_ref),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name, email, is_active),
-      steps:onboarding_steps(*)
+      steps:onboarding_steps(*, assignee:staff_profiles!onboarding_steps_assignee_id_fkey(name))
     `)
     .eq("status", "active");
   if (obsErr) return json({ success: false, error: obsErr.message }, 500);
@@ -248,6 +262,58 @@ Deno.serve(async (req) => {
           s.status = "complete";
           autoVerified++;
         }
+      }
+    }
+  }
+
+  // ── Service-condition heal (one-shot per onboarding+quote) ──
+  // Mirrors src/modules/onboarding/api.js SERVICE_CONDITION_MAP; keep in sync.
+  const SERVICE_CONDITION_MAP: Record<string, string[]> = {
+    sa: ["directors_tax_return"], ct: ["accounts_ct"],
+    vat: ["bookkeeping_vat", "vat_returns"], paye: ["payroll", "auto_enrolment"],
+    cis: [], software: ["software_accounting", "software"],
+    confirmation_statement: ["confirmation_statement"],
+  };
+  let healed = 0;
+  if (!testRecipient) {
+    const quoteObs = ((obs || []) as Ob[]).filter((o) => o.quote_id);
+    if (quoteObs.length) {
+      const HEAL_MARKER = "Service conditions applied from quote";
+      const [{ data: doneMarkers }, { data: liRows }, { data: tSteps }] = await Promise.all([
+        service.from("onboarding_activity").select("onboarding_id")
+          .in("onboarding_id", quoteObs.map((o) => o.id)).eq("kind", "system").like("body", `${HEAL_MARKER}%`),
+        service.from("quote_line_items").select("quote_id, service_id")
+          .in("quote_id", quoteObs.map((o) => o.quote_id)),
+        service.from("onboarding_template_steps").select("id, service_condition")
+          .not("service_condition", "is", null),
+      ]);
+      const alreadyHealed = new Set((doneMarkers || []).map((r: Ob) => r.onboarding_id));
+      const quoteServices = new Map<string, Set<string>>();
+      for (const li of (liRows || []) as Ob[]) {
+        if (!quoteServices.has(li.quote_id as string)) quoteServices.set(li.quote_id as string, new Set());
+        quoteServices.get(li.quote_id as string)!.add(li.service_id as string);
+      }
+      const conditionByTemplateStep = new Map((tSteps || []).map((r: Ob) => [r.id as string, r.service_condition as string]));
+
+      for (const o of quoteObs) {
+        if (alreadyHealed.has(o.id)) continue;
+        const services = quoteServices.get(o.quote_id as string) || new Set<string>();
+        const met = new Set(Object.entries(SERVICE_CONDITION_MAP)
+          .filter(([, ids]) => ids.some((sid) => services.has(sid))).map(([k]) => k));
+        const toNa = ((o.steps as Step[]) || []).filter((s) =>
+          s.status === "pending" && !s.requested_at && !s.completed_at
+          && s.template_step_id && conditionByTemplateStep.has(s.template_step_id as string)
+          && !met.has(conditionByTemplateStep.get(s.template_step_id as string)!));
+        if (toNa.length) {
+          await service.from("onboarding_steps").update({ status: "na", updated_at: new Date().toISOString() })
+            .in("id", toNa.map((s) => s.id as string));
+          toNa.forEach((s) => { s.status = "na"; });
+          healed += toNa.length;
+        }
+        await service.from("onboarding_activity").insert({
+          onboarding_id: o.id, kind: "system",
+          body: `${HEAL_MARKER} — ${toNa.length ? `${toNa.length} step${toNa.length === 1 ? "" : "s"} not on the quote set to N/A (toggle back in Athena if needed)` : "no changes needed"}.`,
+        });
       }
     }
   }
@@ -297,6 +363,7 @@ Deno.serve(async (req) => {
     name: string; email: string | null;
     chased: Array<{ entity: string; steps: Step[]; to: string | null }>;
     overdueExternal: Array<{ entity: string; step: Step; waited: number }>;
+    lateInternal: Array<{ entity: string; step: Step; waited: number; assignee: string | null }>;
     nonResponsive: Array<{ entity: string; step: Step }>;
     noEmail: Array<{ entity: string; steps: Step[] }>;
     offboard: Array<{ entity: string; pausedDays: number }>;
@@ -310,7 +377,7 @@ Deno.serve(async (req) => {
       perOwner.set(key, {
         name: (owner?.name as string) || "team",
         email: owner && owner.is_active !== false ? firstEmail(owner.email as string) : null,
-        chased: [], overdueExternal: [], nonResponsive: [], noEmail: [], offboard: [], handovers: [],
+        chased: [], overdueExternal: [], lateInternal: [], nonResponsive: [], noEmail: [], offboard: [], handovers: [],
       });
     }
     return perOwner.get(key)!;
@@ -348,7 +415,21 @@ Deno.serve(async (req) => {
         }
         continue;
       }
-      if (s.owner_type !== "client" || s.status !== "waiting_client" || !s.requested_at) continue;
+      // Our own steps past their expected turnaround → "running late with us"
+      if (s.owner_type !== "client") {
+        if (!["complete", "na"].includes(s.status as string) && s.expected_days != null) {
+          const anchor = (s.requested_at as string) || (o.started_at as string);
+          const waitedInt = daysSince(anchor);
+          if (waitedInt != null && waitedInt > (s.expected_days as number)) {
+            bucket.lateInternal.push({
+              entity: entityName, step: s, waited: waitedInt,
+              assignee: ((s.assignee as Ob | null)?.name as string) || null,
+            });
+          }
+        }
+        continue;
+      }
+      if (s.status !== "waiting_client" || !s.requested_at) continue;
       // The pause email means what it says — no more client emails
       if (["paused", "offboard_due"].includes(escalation)) continue;
       const count = (s.chase_count as number) || 0;
@@ -375,11 +456,11 @@ Deno.serve(async (req) => {
   }
 
   const digests = Array.from(perOwner.values()).filter((b) =>
-    b.chased.length || b.overdueExternal.length || b.nonResponsive.length || b.noEmail.length || b.offboard.length || b.handovers.length);
+    b.chased.length || b.overdueExternal.length || b.lateInternal.length || b.nonResponsive.length || b.noEmail.length || b.offboard.length || b.handovers.length);
 
   if (dryRun) {
     return json({
-      success: true, dry_run: true, sending_enabled: cfg.sending_enabled, auto_verified: autoVerified,
+      success: true, dry_run: true, sending_enabled: cfg.sending_enabled, auto_verified: autoVerified, conditions_healed: healed,
       client_chases: chases.map((c) => ({
         entity: c.entity, to: testRecipient || c.to,
         steps: c.steps.map((s) => ({ name: s.name, ask: s.client_label || s.name, chase_number: ((s.chase_count as number) || 0) + 1 })),
@@ -387,6 +468,7 @@ Deno.serve(async (req) => {
       digests: digests.map((b) => ({
         owner: b.name, to: testRecipient || b.email,
         chasers: b.chased.length, overdue_external: b.overdueExternal.length,
+        late_internal: b.lateInternal.length,
         non_responsive: b.nonResponsive.length, no_email: b.noEmail.length,
         offboard_due: b.offboard.length, handovers_due: b.handovers.length,
       })),
@@ -461,5 +543,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ success: true, dry_run: false, auto_verified: autoVerified, sent: results.filter((r) => r.ok).length, results });
+  return json({ success: true, dry_run: false, auto_verified: autoVerified, conditions_healed: healed, sent: results.filter((r) => r.ok).length, results });
 });

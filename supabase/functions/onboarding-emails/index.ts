@@ -1,7 +1,11 @@
 // onboarding-emails — Athena Portal
 // Staff-triggered client emails for onboarding:
 //   kind: "welcome" — warm welcome to the practice + personal portal link +
-//         what happens next + what we need from you (from their open steps)
+//         what happens next + what we need from you (from their open steps).
+//         Sending it also RELEASES the client's steps: every client-owned
+//         'pending' step flips to 'waiting_client' with requested_at=today —
+//         the email is the moment we formally ask, so the portal shows them
+//         as "needed from you" and the chaser engine starts its clock.
 //   kind: "pause"   — the graceful "we don't want to pester you" email after
 //         the escalation ladder is exhausted; sets escalation_status='paused'
 //         so the chaser engine stops emailing until the client re-engages.
@@ -136,7 +140,7 @@ Deno.serve(async (req) => {
 
   const { data: ob, error: obErr } = await service
     .from("onboardings")
-    .select("id, entity_id, entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email), steps:onboarding_steps(name, client_label, owner_type, status, group_sort, sort)")
+    .select("id, entity_id, entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email), steps:onboarding_steps(id, name, client_label, owner_type, status, group_sort, sort)")
     .eq("id", onboardingId)
     .single();
   if (obErr || !ob) return json({ success: false, error: obErr?.message || "Onboarding not found" }, 404);
@@ -162,6 +166,24 @@ Deno.serve(async (req) => {
     await service.from("onboardings").update({
       escalation_status: "paused", paused_at: new Date().toISOString().slice(0, 10),
     }).eq("id", onboardingId);
+  }
+
+  if (kind === "welcome") {
+    const toRelease = ((ob.steps as Array<Record<string, unknown>>) || [])
+      .filter((s) => s.owner_type === "client" && s.status === "pending")
+      .map((s) => s.id as string);
+    if (toRelease.length) {
+      await service.from("onboarding_steps").update({
+        status: "waiting_client",
+        requested_at: new Date().toISOString().slice(0, 10),
+        updated_at: new Date().toISOString(),
+      }).in("id", toRelease);
+      await service.from("onboarding_activity").insert({
+        onboarding_id: onboardingId, kind: "system",
+        body: `Welcome email released ${toRelease.length} client step${toRelease.length === 1 ? "" : "s"} — now marked as requested (portal shows them as needed; chasers armed).`,
+        created_by: user.id,
+      });
+    }
   }
   await service.from("onboarding_activity").insert({
     onboarding_id: onboardingId, kind: "email_out",
