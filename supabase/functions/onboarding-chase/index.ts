@@ -129,9 +129,10 @@ function digestHtml(ownerName: string, sections: {
   noEmail: Array<{ entity: string; steps: Step[] }>;
   offboard: Array<{ entity: string; pausedDays: number }>;
   handovers: Array<{ entity: string; toName: string; due: string }>;
+  checkins: Array<{ entity: string; due: string }>;
 }, callAssigneeName: string): { html: string; text: string; subject: string } {
   const url = `${PORTAL_PUBLIC_URL}/onboarding`;
-  const count = sections.overdueExternal.length + sections.lateInternal.length + sections.nonResponsive.length + sections.noEmail.length + sections.offboard.length + sections.handovers.length;
+  const count = sections.overdueExternal.length + sections.lateInternal.length + sections.nonResponsive.length + sections.noEmail.length + sections.offboard.length + sections.handovers.length + sections.checkins.length;
   const subject = `Onboarding digest — ${count > 0 ? `${count} item${count === 1 ? "" : "s"} need attention` : "chasers sent"}`;
 
   const sec = (title: string, rows: string) => rows
@@ -160,6 +161,8 @@ function digestHtml(ownerName: string, sections: {
     row(esc(n.entity), `paused ${n.pausedDays}d — review & offboard?`, "#dc2626")).join("");
   const handoverRows = sections.handovers.map((h) =>
     row(esc(h.entity), `hand over to ${esc(h.toName)} (due ${esc(h.due)})`, "#d97706")).join("");
+  const checkinRows = sections.checkins.map((c) =>
+    row(esc(c.entity), `3-month check-in due ${esc(c.due)}`, "#0e7fe0")).join("");
 
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#fafafa;font-family:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1e293b;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;padding:32px 16px;"><tr><td align="center">
@@ -172,6 +175,7 @@ function digestHtml(ownerName: string, sections: {
         ${sec(`Non-responsive — needs a call (${esc(callAssigneeName)})`, nonRespRows)}
         ${sec("Paused clients — offboard due", offboardRows)}
         ${sec("Handovers due", handoverRows)}
+        ${sec("3-month check-ins due", checkinRows)}
         ${sec("Couldn't chase — no email on file", noEmailRows)}
         <tr><td style="padding:20px 0 4px;">
           <a href="${esc(url)}" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;font-size:14px;">Open onboarding in Athena</a>
@@ -188,6 +192,7 @@ function digestHtml(ownerName: string, sections: {
     (sections.nonResponsive.length ? `\nNon-responsive (call: ${callAssigneeName}):\n${sections.nonResponsive.map((n) => `- ${n.entity}: ${n.step.client_label || n.step.name} (${n.step.chase_count} chases)`).join("\n")}\n` : "") +
     (sections.offboard.length ? `\nPaused — offboard due:\n${sections.offboard.map((n) => `- ${n.entity} (paused ${n.pausedDays}d)`).join("\n")}\n` : "") +
     (sections.handovers.length ? `\nHandovers due:\n${sections.handovers.map((h) => `- ${h.entity} → ${h.toName} (due ${h.due})`).join("\n")}\n` : "") +
+    (sections.checkins.length ? `\n3-month check-ins due:\n${sections.checkins.map((c) => `- ${c.entity} (due ${c.due})`).join("\n")}\n` : "") +
     (sections.noEmail.length ? `\nNo email on file:\n${sections.noEmail.map((n) => `- ${n.entity} (${n.steps.length} item(s) due)`).join("\n")}\n` : "") +
     `\nOpen onboarding: ${url}`;
   return { html, text, subject };
@@ -227,8 +232,8 @@ Deno.serve(async (req) => {
     .from("onboardings")
     .select(`
       id, status, entity_id, owner_id, quote_id, escalation_status, escalated_at, paused_at,
-      handover_due, handover_done_at, started_at,
-      handover:staff_profiles!onboardings_handover_to_fkey(name),
+      started_at, checkin_due, checkin_sent_at,
+      service_handovers:onboarding_handovers(area, due, done_at, to:staff_profiles!onboarding_handovers_handover_to_fkey(name)),
       entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email, ch_auth_code, vat_number, utr, paye_ref),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name, email, is_active),
       steps:onboarding_steps(*, assignee:staff_profiles!onboarding_steps_assignee_id_fkey(name))
@@ -368,6 +373,7 @@ Deno.serve(async (req) => {
     noEmail: Array<{ entity: string; steps: Step[] }>;
     offboard: Array<{ entity: string; pausedDays: number }>;
     handovers: Array<{ entity: string; toName: string; due: string }>;
+    checkins: Array<{ entity: string; due: string }>;
   }>();
 
   const ownerBucket = (o: Ob) => {
@@ -377,7 +383,7 @@ Deno.serve(async (req) => {
       perOwner.set(key, {
         name: (owner?.name as string) || "team",
         email: owner && owner.is_active !== false ? firstEmail(owner.email as string) : null,
-        chased: [], overdueExternal: [], lateInternal: [], nonResponsive: [], noEmail: [], offboard: [], handovers: [],
+        chased: [], overdueExternal: [], lateInternal: [], nonResponsive: [], noEmail: [], offboard: [], handovers: [], checkins: [],
       });
     }
     return perOwner.get(key)!;
@@ -388,13 +394,20 @@ Deno.serve(async (req) => {
     const bucket = ownerBucket(o);
     const escalation = (o.escalation_status as string) || "none";
 
-    // Handover past due → remind the buddy in the digest
-    if (o.handover_due && !o.handover_done_at && daysSince(o.handover_due as string) !== null && (daysSince(o.handover_due as string) as number) >= 0) {
-      bucket.handovers.push({
-        entity: entityName,
-        toName: ((o.handover as Ob | null)?.name as string) || "their permanent team member",
-        due: o.handover_due as string,
-      });
+    // Service-area handovers past due → remind the owner in the digest
+    for (const h of ((o.service_handovers as Ob[]) || [])) {
+      if (h.due && !h.done_at && daysSince(h.due as string) !== null && (daysSince(h.due as string) as number) >= 0) {
+        bucket.handovers.push({
+          entity: `${entityName} — ${h.area}`,
+          toName: ((h.to as Ob | null)?.name as string) || "their permanent team member",
+          due: h.due as string,
+        });
+      }
+    }
+
+    // 3-month check-in due and not yet sent → digest reminder
+    if (o.checkin_due && !o.checkin_sent_at && daysSince(o.checkin_due as string) !== null && (daysSince(o.checkin_due as string) as number) >= 0) {
+      bucket.checkins.push({ entity: entityName, due: o.checkin_due as string });
     }
 
     // Paused past the offboard window → flag for a human decision
@@ -456,7 +469,7 @@ Deno.serve(async (req) => {
   }
 
   const digests = Array.from(perOwner.values()).filter((b) =>
-    b.chased.length || b.overdueExternal.length || b.lateInternal.length || b.nonResponsive.length || b.noEmail.length || b.offboard.length || b.handovers.length);
+    b.chased.length || b.overdueExternal.length || b.lateInternal.length || b.nonResponsive.length || b.noEmail.length || b.offboard.length || b.handovers.length || b.checkins.length);
 
   if (dryRun) {
     return json({
@@ -471,6 +484,7 @@ Deno.serve(async (req) => {
         late_internal: b.lateInternal.length,
         non_responsive: b.nonResponsive.length, no_email: b.noEmail.length,
         offboard_due: b.offboard.length, handovers_due: b.handovers.length,
+        checkins_due: b.checkins.length,
       })),
     });
   }

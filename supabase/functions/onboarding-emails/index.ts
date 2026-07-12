@@ -9,9 +9,12 @@
 //   kind: "pause"   — the graceful "we don't want to pester you" email after
 //         the escalation ladder is exhausted; sets escalation_status='paused'
 //         so the chaser engine stops emailing until the client re-engages.
+//   kind: "checkin" — the 3-month "how's everything going?" check-in; sets
+//         onboardings.checkin_sent_at (internal per-area feedback lives in
+//         checkin_feedback, gathered in Athena before sending).
 //
 // Auth: active staff JWT (these are explicit button clicks, not automation).
-// Body: { onboarding_id: string, kind: "welcome" | "pause", to?: string }
+// Body: { onboarding_id: string, kind: "welcome" | "pause" | "checkin", to?: string }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -117,6 +120,27 @@ function pauseEmail(entityName: string) {
   return { subject, html, text };
 }
 
+function checkinEmail(entityName: string) {
+  const subject = "How's everything going? — Almond Valley Accounting";
+  const html = shell(`
+    <tr><td style="font-size:20px;font-weight:700;color:#1E4560;padding-bottom:6px;">A quick check-in 👋</td></tr>
+    <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;">
+      It's been a few months since we got <strong>${esc(entityName)}</strong> set up, and we'd
+      rather ask than assume all is well. How's everything going from your side?
+    </td></tr>
+    <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;padding-top:12px;">
+      Anything confusing? Anything we could do better? Anything you'd like more (or less) of?
+      Just <strong>hit reply</strong> — it comes straight to a real person, and we genuinely act on it.
+      And if it's all running smoothly, that's lovely to hear too.
+    </td></tr>
+    <tr><td style="padding:22px 0 6px;">
+      <a href="${esc(CLIENT_PORTAL_URL)}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;padding:12px 22px;border-radius:12px;font-weight:600;font-size:14px;">See where everything's up to</a>
+    </td></tr>
+    <tr><td style="font-size:14.5px;line-height:1.7;color:#1e293b;padding-top:14px;">Speak soon,<br/>The Almond Valley team</td></tr>`);
+  const text = `A quick check-in!\n\nIt's been a few months since we got ${entityName} set up, and we'd rather ask than assume all is well. How's everything going from your side?\n\nAnything confusing? Anything we could do better? Anything you'd like more (or less) of? Just hit reply — it comes straight to a real person. And if it's all running smoothly, that's lovely to hear too.\n\nYour portal: ${CLIENT_PORTAL_URL}\n\nSpeak soon,\nThe Almond Valley team`;
+  return { subject, html, text };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "POST required" }, 405);
@@ -134,8 +158,8 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const onboardingId: string | null = body.onboarding_id || null;
   const kind: string = body.kind || "";
-  if (!onboardingId || !["welcome", "pause"].includes(kind)) {
-    return json({ success: false, error: "onboarding_id and kind (welcome|pause) required" }, 400);
+  if (!onboardingId || !["welcome", "pause", "checkin"].includes(kind)) {
+    return json({ success: false, error: "onboarding_id and kind (welcome|pause|checkin) required" }, 400);
   }
 
   const { data: ob, error: obErr } = await service
@@ -158,7 +182,9 @@ Deno.serve(async (req) => {
     .sort((a, b) => (a.group_sort as number) - (b.group_sort as number) || (a.sort as number) - (b.sort as number))
     .map((s) => (s.client_label || s.name) as string);
 
-  const email = kind === "welcome" ? welcomeEmail(entityName, asks) : pauseEmail(entityName);
+  const email = kind === "welcome" ? welcomeEmail(entityName, asks)
+    : kind === "checkin" ? checkinEmail(entityName)
+    : pauseEmail(entityName);
   const r = await sendEmail({ to, ...email });
   if (!r.ok) return json({ success: false, error: `Send failed: ${JSON.stringify(r.error)}` }, 502);
 
@@ -166,6 +192,10 @@ Deno.serve(async (req) => {
     await service.from("onboardings").update({
       escalation_status: "paused", paused_at: new Date().toISOString().slice(0, 10),
     }).eq("id", onboardingId);
+  }
+
+  if (kind === "checkin") {
+    await service.from("onboardings").update({ checkin_sent_at: new Date().toISOString() }).eq("id", onboardingId);
   }
 
   if (kind === "welcome") {
@@ -189,7 +219,9 @@ Deno.serve(async (req) => {
     onboarding_id: onboardingId, kind: "email_out",
     body: kind === "welcome"
       ? `Welcome email sent to ${to} (portal introduction + what we need)`
-      : `Pause email sent to ${to} — chasing paused until the client re-engages`,
+      : kind === "checkin"
+        ? `3-month check-in email sent to ${to}`
+        : `Pause email sent to ${to} — chasing paused until the client re-engages`,
     created_by: user.id,
   });
   await service.from("audit_log").insert({

@@ -89,15 +89,82 @@ export async function listOnboardings() {
       template:onboarding_templates(id, code, name),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name),
       lead:staff_profiles!onboardings_lead_id_fkey(id, name),
-      steps:onboarding_steps(id, status, owner_type, requested_at, expected_days, chase_after_days)
+      steps:onboarding_steps(id, status, owner_type, requested_at, expected_days, chase_after_days),
+      handovers:onboarding_handovers(area, due, done_at)
     `)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
 }
 
+// ── Service-area handovers ──
+// Defaults (customisable): who owns each area during onboarding, and which
+// service condition makes the area relevant. Instantiated per onboarding.
+
+export async function listHandoverDefaults() {
+  const { data, error } = await supabase
+    .from('onboarding_handover_defaults')
+    .select('*')
+    .order('sort');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function saveHandoverDefault(def) {
+  const { error } = await supabase
+    .from('onboarding_handover_defaults')
+    .upsert({ ...def, updated_at: new Date().toISOString() }, { onConflict: 'area' });
+  if (error) throw error;
+}
+
+// Create any missing area rows from the defaults — areas with a service
+// condition only apply when the client's quote/billing meets it (same
+// resolution as conditional steps). Safe to call repeatedly.
+export async function initHandovers(onboarding) {
+  const [defaults, { quote, serviceIds }, { serviceNames }] = await Promise.all([
+    listHandoverDefaults(),
+    findActiveQuote(onboarding.entity_id),
+    findLiveBilling(onboarding.entity_id),
+  ]);
+  const have = new Set((onboarding.handovers || []).map((h) => h.area));
+  const hasSource = Boolean(quote) || serviceNames.length > 0;
+  const met = metConditions({ serviceIds, billingNames: serviceNames });
+  const rows = defaults
+    .filter((d) => d.active && !have.has(d.area))
+    .filter((d) => !d.service_condition || !hasSource || met.has(d.service_condition))
+    .map((d) => ({
+      onboarding_id: onboarding.id,
+      area: d.area,
+      owner_id: d.default_owner_id || onboarding.owner_id || null,
+    }));
+  if (rows.length) {
+    const { error } = await supabase
+      .from('onboarding_handovers')
+      .upsert(rows, { onConflict: 'onboarding_id,area', ignoreDuplicates: true });
+    if (error) throw error;
+  }
+  return rows.length;
+}
+
+export async function updateHandover(id, patch) {
+  const { error } = await supabase.from('onboarding_handovers').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function addHandoverArea(onboardingId, area, ownerId) {
+  const { error } = await supabase.from('onboarding_handovers').insert({
+    onboarding_id: onboardingId, area: area.trim(), owner_id: ownerId || null,
+  });
+  if (error) throw error;
+}
+
+export async function removeHandover(id) {
+  const { error } = await supabase.from('onboarding_handovers').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function getOnboarding(id) {
-  const [{ data: ob, error: e1 }, { data: activity, error: e2 }, { data: documents, error: e3 }] = await Promise.all([
+  const [{ data: ob, error: e1 }, { data: activity, error: e2 }, { data: documents, error: e3 }, { data: handovers }] = await Promise.all([
     supabase
       .from('onboardings')
       .select(`
@@ -121,12 +188,17 @@ export async function getOnboarding(id) {
       .select('*')
       .eq('onboarding_id', id)
       .order('created_at', { ascending: false }),
+    supabase
+      .from('onboarding_handovers')
+      .select('*')
+      .eq('onboarding_id', id)
+      .order('created_at'),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
   if (e3) throw e3;
   ob.steps = (ob.steps || []).sort((a, b) => a.group_sort - b.group_sort || a.sort - b.sort);
-  return { ...ob, activity: activity || [], documents: documents || [] };
+  return { ...ob, activity: activity || [], documents: documents || [], handovers: handovers || [] };
 }
 
 export async function searchEntities(term) {

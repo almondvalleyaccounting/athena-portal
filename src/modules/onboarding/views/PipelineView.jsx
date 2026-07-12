@@ -155,8 +155,11 @@ export default function PipelineView() {
                     {r.escalation_status.replace(/_/g, ' ')}
                   </span>
                 )}
-                {r.handover_due && !r.handover_done_at && new Date(r.handover_due) <= new Date() && (
+                {(r.handovers || []).some((h) => h.due && !h.done_at && new Date(h.due) <= new Date()) && (
                   <span style={chipStyle('warning')}>handover due</span>
+                )}
+                {r.checkin_due && !r.checkin_sent_at && new Date(r.checkin_due) <= new Date() && (
+                  <span style={chipStyle('info')}>check-in due</span>
                 )}
               </div>
               <div style={{ fontSize: 12, color: '#64748b', textAlign: 'right' }}>

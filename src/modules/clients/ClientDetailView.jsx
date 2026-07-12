@@ -34,6 +34,7 @@ export default function ClientDetailView() {
   const [staffList, setStaffList] = useState([]);
   const [allocations, setAllocations] = useState([]); // rows from client_service_allocations
   const [recon, setRecon] = useState(null); // v_email_reconciliation row for this entity
+  const [onboardings, setOnboardings] = useState([]); // in-flight onboarding runs for the banner
   const [loading, setLoading] = useState(true);
   const [timePeriod, setTimePeriod] = useState('12');
   const [changeTaskText, setChangeTaskText] = useState('');
@@ -58,6 +59,9 @@ export default function ClientDetailView() {
           supabase.from('staff_profiles').select('id, name, email').order('name'),
           supabase.from('client_service_allocations').select('*').eq('entity_id', id),
           supabase.from('v_email_reconciliation').select('*').eq('entity_id', id).maybeSingle(),
+          supabase.from('onboardings')
+            .select('id, status, template:onboarding_templates(name), steps:onboarding_steps(status)')
+            .eq('entity_id', id).in('status', ['active', 'on_hold', 'issues']),
         ]);
         const get = (i) => results[i]?.value?.data;
         const ent = get(0);
@@ -73,6 +77,7 @@ export default function ClientDetailView() {
         setStaffList(staff);
         setAllocations(get(9) || []);
         setRecon(get(10) || null);
+        setOnboardings(get(11) || []);
         // Default action assignee to client manager
         if (ent?.manager) {
           const mgr = staff.find((s) => s.name?.toLowerCase().includes(ent.manager.toLowerCase()));
@@ -282,6 +287,41 @@ export default function ClientDetailView() {
         </div>
       </div>
 
+      {/* Active onboarding banner — click through to the workflow */}
+      {onboardings.map((ob) => {
+        const applicable = (ob.steps || []).filter((s) => s.status !== 'na');
+        const done = applicable.filter((s) => s.status === 'complete').length;
+        const pct = applicable.length ? Math.round((done / applicable.length) * 100) : 0;
+        return (
+          <div
+            key={ob.id}
+            onClick={() => navigate(`/onboarding/${ob.id}`)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20, cursor: 'pointer',
+              border: '1px solid #bfdbfe', background: 'linear-gradient(100deg, #eff6ff, #f0fdfa)',
+              borderRadius: 12, padding: '13px 16px',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(14,127,224,0.12)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+          >
+            <span style={{ fontSize: 20 }}>🚀</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a' }}>
+                Onboarding in progress
+                {ob.status !== 'active' && <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#fef3c7', color: '#92400e', textTransform: 'uppercase' }}>{ob.status.replace('_', ' ')}</span>}
+              </div>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                {ob.template?.name || 'Onboarding'} · {done}/{applicable.length} steps ({pct}%)
+              </div>
+            </div>
+            <div style={{ width: 120, height: 6, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden', flexShrink: 0 }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? '#059669' : '#0e7fe0' }} />
+            </div>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: '#0e7fe0', whiteSpace: 'nowrap' }}>View onboarding →</span>
+          </div>
+        );
+      })}
+
       {/* Email reconciliation: BM contact email (1:1) vs QBO billing email(s) (1:many) */}
       {recon && recon.status !== 'ok' && (
         <EmailReconPanel recon={recon} />
@@ -428,14 +468,15 @@ export default function ClientDetailView() {
           <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: 13 }}>
             <DetailRow label="Name" value={entity.name} />
             <DetailRow label="Type" value={entity.type?.replace('_', ' ')} />
-            {entity.company_number && <DetailRow label="Company No." value={entity.company_number} />}
-            {entity.utr && <DetailRow label="UTR" value={entity.utr} />}
-            {entity.vat_number && <DetailRow label="VAT Number" value={entity.vat_number} />}
-            {entity.paye_ref && <DetailRow label="PAYE Ref" value={entity.paye_ref} />}
+            <EditableRow label="Company No." field="company_number" entity={entity} setEntity={setEntity} profile={profile} placeholder="e.g. SC123456" />
+            <EditableRow label="UTR" field="utr" entity={entity} setEntity={setEntity} profile={profile} />
+            <EditableRow label="VAT Number" field="vat_number" entity={entity} setEntity={setEntity} profile={profile} />
+            <EditableRow label="PAYE Ref" field="paye_ref" entity={entity} setEntity={setEntity} profile={profile} />
+            <EditableRow label="CH Auth Code" field="ch_auth_code" entity={entity} setEntity={setEntity} profile={profile} />
             {entity.manager && <DetailRow label="Manager" value={entity.manager} />}
             {entity.grade && <DetailRow label="Grade" value={entity.grade} />}
             <DetailRow label="Expedite" value={entity.expedite ? 'Yes — prioritise post-period-end' : 'No'} />
-            {entity.prospect_email && <DetailRow label="Email" value={entity.prospect_email} />}
+            <EditableRow label="Email" field="prospect_email" entity={entity} setEntity={setEntity} profile={profile} placeholder="client@example.com" />
             <DetailRow label="Source" value={entity.source === 'athena' ? 'Athena (manual)' : 'BrightManager'} />
           </div>
         </div>
@@ -478,6 +519,60 @@ function DetailRow({ label, value }) {
   return (<>
     <span style={{ fontSize: 12, color: '#94a3b8' }}>{label}</span>
     <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 500 }}>{value}</span>
+  </>);
+}
+
+// Click-to-edit registration field. Always rendered (even when empty) so
+// missing values — company number especially — are obviously addable.
+// Persists straight to entities with an audit_log entry.
+function EditableRow({ label, field, entity, setEntity, profile, placeholder }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState('');
+  const [saving, setSaving] = useState(false);
+  const current = entity[field] || '';
+
+  async function save(nextRaw) {
+    const next = (nextRaw ?? val).trim() || null;
+    if (next === (entity[field] || null)) { setEditing(false); return; }
+    setSaving(true);
+    const { error } = await supabase.from('entities').update({ [field]: next }).eq('id', entity.id);
+    if (error) {
+      alert(`Could not save ${label}: ` + error.message);
+    } else {
+      setEntity({ ...entity, [field]: next });
+      await supabase.from('audit_log').insert({
+        user_id: profile?.id || null, action: 'entity_field_edit', entity_type: 'entity',
+        entity_id: entity.id, detail: { field, from: entity[field] || null, to: next },
+      });
+    }
+    setSaving(false);
+    setEditing(false);
+  }
+
+  return (<>
+    <span style={{ fontSize: 12, color: '#94a3b8' }}>{label}</span>
+    {editing ? (
+      <input
+        autoFocus value={val} placeholder={placeholder || ''}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={(e) => save(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') save(e.currentTarget.value); if (e.key === 'Escape') setEditing(false); }}
+        disabled={saving}
+        style={{ fontSize: 13, padding: '3px 8px', border: '1px solid #0e7fe0', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif", maxWidth: 220 }}
+      />
+    ) : (
+      <span
+        onClick={() => { setVal(current); setEditing(true); }}
+        title={`Click to ${current ? 'edit' : 'add'} ${label}`}
+        style={{
+          fontSize: 13, fontWeight: 500, cursor: 'pointer',
+          color: current ? '#0f172a' : '#94a3b8',
+          borderBottom: '1px dashed #cbd5e1', display: 'inline-block', maxWidth: 'fit-content',
+        }}
+      >
+        {current || '+ add'}
+      </span>
+    )}
   </>);
 }
 

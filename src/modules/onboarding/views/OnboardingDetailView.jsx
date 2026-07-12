@@ -9,6 +9,7 @@ import DocumentsPanel from '../components/DocumentsPanel';
 import EscalationPanel from '../components/EscalationPanel';
 import CompaniesHousePanel from '../components/CompaniesHousePanel';
 import HandoverPanel from '../components/HandoverPanel';
+import CheckinPanel from '../components/CheckinPanel';
 import {
   getOnboarding, listStaff, updateOnboarding, updateStep, addNote, addDirectorSa,
   isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES,
@@ -148,7 +149,15 @@ export default function OnboardingDetailView() {
       <div style={{ ...card, padding: '18px 22px', marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: 21, fontWeight: 700, color: '#0f172a' }}>{ob.entity?.name}</h1>
+            <h1
+              onClick={() => navigate(`/clients/${ob.entity_id}`)}
+              title="Open the client screen"
+              style={{ margin: 0, fontSize: 21, fontWeight: 700, color: '#0f172a', cursor: 'pointer', display: 'inline-block' }}
+              onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.color = '#0e7fe0'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; e.currentTarget.style.color = '#0f172a'; }}
+            >
+              {ob.entity?.name}
+            </h1>
             <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
               {ob.template?.name} · started {new Date(ob.started_at).toLocaleDateString('en-GB')}
               {ob.quote_id ? ' · quote linked' : ' · no quote linked'}
@@ -315,10 +324,11 @@ export default function OnboardingDetailView() {
         </div>
 
         {/* Right column: portal access + activity */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', paddingRight: 2 }}>
         <EscalationPanel ob={ob} onChanged={load} />
         <CompaniesHousePanel ob={ob} onChanged={load} />
         <HandoverPanel ob={ob} staff={staff} onChanged={load} />
+        <CheckinPanel ob={ob} staff={staff} onChanged={load} />
         <PortalAccessPanel entityId={ob.entity_id} onboardingId={ob.id} entityEmail={ob.entity?.prospect_email || ob.entity?.billing_email} />
         <DocumentsPanel onboarding={ob} documents={ob.documents || []} onChanged={load} />
         <div style={{ ...card, padding: '16px 18px' }}>
