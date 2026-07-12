@@ -315,6 +315,12 @@ export async function createOnboarding({ entityId, template, ownerId, leadId, ta
     onboarding_id: ob.id, kind: 'system', body, created_by: actorId || null,
   });
 
+  // Companies: fire the Companies House lookup in the background — it
+  // auto-completes the search step and pre-fills the director list.
+  if (template.client_type === 'company') {
+    supabase.functions.invoke('ch-lookup', { body: { onboarding_id: ob.id } }).catch(() => {});
+  }
+
   return ob.id;
 }
 
@@ -429,6 +435,23 @@ export async function getDocumentUrl(storagePath) {
     .createSignedUrl(storagePath, 3600);
   if (error) throw error;
   return data.signedUrl;
+}
+
+// ── Companies House (edge fn ch-lookup) ──
+// Resolves the company, caches profile + officers on the onboarding, and
+// auto-completes the "Companies House search" step.
+export async function runChLookup(onboardingId) {
+  const { data, error } = await supabase.functions.invoke('ch-lookup', {
+    body: { onboarding_id: onboardingId },
+  });
+  if (error) {
+    try {
+      const body = await error.context?.json?.();
+      if (body?.error) throw new Error(body.error);
+    } catch (inner) { if (inner instanceof Error && inner.message !== error.message) throw inner; }
+    throw error;
+  }
+  return data;
 }
 
 // ── Client emails (edge fn onboarding-emails) ──
