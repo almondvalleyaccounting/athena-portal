@@ -1,9 +1,13 @@
 // drive-save-documents — Athena Portal
 // Saves an onboarding's received documents to Google Drive in one click:
-// ensures the "Athena Client Documents/<Client Name>" folder exists
-// (drive.file scope — only app-created folders are visible to us),
-// uploads every onboarding_documents row still at status 'received',
-// stamps drive_file_id/drive_web_link and logs to the activity timeline.
+// ensures the "Athena Client Documents/<Client Name>" folder exists inside
+// the AV.Shared shared drive (drive.file scope — only app-created folders
+// are visible to us), uploads every onboarding_documents row still at
+// status 'received', stamps drive_file_id/drive_web_link and logs to the
+// activity timeline.
+//
+// The connecting Google account must be a member of AV.Shared with at
+// least Content manager access, or every upload below 403s.
 //
 // Auth: any active staff JWT. Body: { onboarding_id: string }
 
@@ -15,6 +19,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 const ROOT_FOLDER_NAME = "Athena Client Documents";
+const SHARED_DRIVE_ID = "0ADCuEG7gsLOGUk9PVA"; // AV.Shared
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -62,25 +67,28 @@ async function getValidDriveToken(sb: any): Promise<string> {
   return tokens.access_token;
 }
 
-async function findOrCreateFolder(token: string, name: string, parentId: string | null): Promise<{ id: string; link: string }> {
+async function findOrCreateFolder(token: string, name: string, parentId: string): Promise<{ id: string; link: string }> {
   const safe = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-  const qParts = [`name = '${safe}'`, "mimeType = 'application/vnd.google-apps.folder'", "trashed = false"];
-  if (parentId) qParts.push(`'${parentId}' in parents`);
-  const listResp = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(qParts.join(" and "))}&fields=${encodeURIComponent("files(id,webViewLink)")}`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
+  const qParts = [`name = '${safe}'`, "mimeType = 'application/vnd.google-apps.folder'", "trashed = false", `'${parentId}' in parents`];
+  const listParams = new URLSearchParams({
+    q: qParts.join(" and "),
+    fields: "files(id,webViewLink)",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+    corpora: "drive",
+    driveId: SHARED_DRIVE_ID,
+  });
+  const listResp = await fetch(`https://www.googleapis.com/drive/v3/files?${listParams.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!listResp.ok) throw new Error(`Drive folder search failed: ${listResp.status} ${await listResp.text()}`);
   const list = await listResp.json();
   if (list.files?.length) return { id: list.files[0].id, link: list.files[0].webViewLink };
 
-  const createResp = await fetch(`https://www.googleapis.com/drive/v3/files?fields=${encodeURIComponent("id,webViewLink")}`, {
+  const createResp = await fetch(`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=${encodeURIComponent("id,webViewLink")}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name, mimeType: "application/vnd.google-apps.folder",
-      ...(parentId ? { parents: [parentId] } : {}),
-    }),
+    body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] }),
   });
   if (!createResp.ok) throw new Error(`Drive folder create failed: ${createResp.status} ${await createResp.text()}`);
   const created = await createResp.json();
@@ -99,7 +107,7 @@ async function uploadToDrive(token: string, folderId: string, name: string, mime
   body.set(head, 0); body.set(bytes, head.length); body.set(tail, head.length + bytes.length);
 
   const resp = await fetch(
-    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=${encodeURIComponent("id,webViewLink")}`,
+    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=${encodeURIComponent("id,webViewLink")}`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
@@ -155,7 +163,7 @@ Deno.serve(async (req) => {
   const entityName = ((ob.entity as Record<string, unknown>)?.name as string) || "Unknown client";
   let folder: { id: string; link: string };
   try {
-    const root = await findOrCreateFolder(token, ROOT_FOLDER_NAME, null);
+    const root = await findOrCreateFolder(token, ROOT_FOLDER_NAME, SHARED_DRIVE_ID);
     folder = await findOrCreateFolder(token, entityName, root.id);
   } catch (e) {
     return json({ success: false, error: String((e as Error).message || e) }, 502);
