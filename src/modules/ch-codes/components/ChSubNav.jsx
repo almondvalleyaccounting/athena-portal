@@ -12,6 +12,7 @@ export default function ChSubNav({ active, queuedCount = 0 }) {
   const navigate = useNavigate();
   const items = [
     { path: '/onboarding/ch-codes', label: 'Pipeline' },
+    { path: '/onboarding/ch-codes/dashboard', label: 'Dashboard' },
     { path: '/onboarding/ch-codes/queue', label: 'Queue' },
     { path: '/onboarding/ch-codes/templates', label: 'Templates' },
   ];

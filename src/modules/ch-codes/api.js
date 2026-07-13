@@ -303,6 +303,20 @@ export async function saveTemplate(key, { subject, body_html }, { actorId } = {}
   if (error) throw error;
 }
 
+// Shared, editable email signature (Sophie by default) appended to every
+// rendered CH-code email. Stored on the config singleton.
+export async function getEmailSignature() {
+  const { data, error } = await supabase.from('ch_code_chase_config').select('email_signature_html').eq('id', true).maybeSingle();
+  if (error) throw error;
+  return data?.email_signature_html || '';
+}
+
+export async function saveEmailSignature(html) {
+  const { error } = await supabase.from('ch_code_chase_config')
+    .update({ email_signature_html: html, updated_at: new Date().toISOString() }).eq('id', true);
+  if (error) throw error;
+}
+
 // ── Queue ──
 // Render the chosen template against this request and drop it on the queue.
 // Nothing sends until someone reviews the queue and hits "Send All".
@@ -310,19 +324,40 @@ export async function queueEmail(request, kind, { actorId } = {}) {
   const to = firstEmail(request.person?.email);
   if (!to) throw new Error(`No email on file for ${request.person?.name || 'this person'} — add one to their people record first.`);
 
-  const { data: tpl, error: tErr } = await supabase.from('ch_code_email_templates').select('*').eq('key', kind).single();
+  const [{ data: tpl, error: tErr }, signatureHtml] = await Promise.all([
+    supabase.from('ch_code_email_templates').select('*').eq('key', kind).single(),
+    getEmailSignature().catch(() => ''),
+  ]);
   if (tErr) throw tErr;
 
   const { subject, html, text } = renderTemplate(tpl, {
     person: request.person?.name || 'there',
     entity: request.entity?.name || 'your company',
-  });
+  }, { signatureHtml });
 
   const { error } = await supabase.from('ch_code_email_queue').insert({
     request_id: request.id, kind, to_email: to, subject, html, text, status: 'queued', created_by: actorId || null,
   });
   if (error) throw error;
   await logActivity(request.id, 'note', `Queued a ${QUEUE_KINDS[kind] || kind} email to ${to}.`, actorId);
+}
+
+// ── Dashboard data ──
+// Lightweight rows for the stage × sub-stage matrix.
+export async function listChCodeStageRows() {
+  const { data, error } = await supabase.from('ch_code_requests').select('stage, emails_sent, escalation_status');
+  if (error) throw error;
+  return data || [];
+}
+
+// Activity since a timestamp — for the rolling weekly emails/calls series.
+export async function listChCodeActivitySince(sinceIso) {
+  const { data, error } = await supabase.from('ch_code_activity')
+    .select('kind, body, created_at')
+    .gte('created_at', sinceIso)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
 }
 
 // Count of queued (not-yet-sent) emails per request — for tile badges.

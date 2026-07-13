@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, PhoneCall, Mail, Send, IdCard, KeyRound, Check, Rows3, LayoutGrid,
-  ArrowRight, Ban, RotateCcw, FileText, Building2,
+  ArrowRight, Ban, RotateCcw, FileText, Building2, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { chipStyle, pillStyle, tones } from '../../../lib/tokens';
 import ChSubNav from '../components/ChSubNav';
@@ -116,6 +116,21 @@ export default function PipelineView() {
   const [compact, setCompact] = useState(true);
   const [callFor, setCallFor] = useState(null);
   const [codeDraft, setCodeDraft] = useState({}); // requestId -> code input
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('ch_collapsed_stages') || '[]')); }
+    catch { return new Set(); }
+  });
+
+  const persistCollapsed = (next) => {
+    setCollapsed(next);
+    try { localStorage.setItem('ch_collapsed_stages', JSON.stringify([...next])); } catch { /* ignore */ }
+  };
+  const toggleStage = (value) => {
+    const next = new Set(collapsed);
+    next.has(value) ? next.delete(value) : next.add(value);
+    persistCollapsed(next);
+  };
+  const setAllCollapsed = (all) => persistCollapsed(all ? new Set(CH_STAGES.map((g) => g.value)) : new Set());
 
   const load = () => Promise.all([listChCodeRequests(), queuedCountsByRequest()])
     .then(([data, counts]) => { setRows(data); setQueuedCounts(counts); })
@@ -351,6 +366,10 @@ export default function PipelineView() {
           style={{ ...pillStyle({ tone: 'neutral', active: compact }), display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           {compact ? <LayoutGrid size={13} /> : <Rows3 size={13} />} {compact ? 'Comfortable' : 'Compact'}
         </button>
+        <button onClick={() => setAllCollapsed(collapsed.size < CH_STAGES.length)} title="Collapse or expand all stages"
+          style={{ ...pillStyle({ tone: 'neutral', active: false }), display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {collapsed.size < CH_STAGES.length ? <><ChevronRight size={13} /> Collapse all</> : <><ChevronDown size={13} /> Expand all</>}
+        </button>
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search person or company…"
           style={{ marginLeft: 'auto', padding: '7px 12px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, minWidth: 220, background: '#fff' }} />
       </div>
@@ -377,21 +396,26 @@ export default function PipelineView() {
             const showEmpty = !g.terminal && filter !== 'submitted';
             if (groupRows.length === 0 && !showEmpty) return null;
             const t = tones[g.tone] || tones.neutral;
+            const isCollapsed = collapsed.has(g.value);
             return (
               <div key={g.value}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-                  <span style={{ width: 9, height: 9, borderRadius: 999, background: t.solid, flexShrink: 0, alignSelf: 'center' }} />
+                <button
+                  onClick={() => toggleStage(g.value)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: font, width: '100%', textAlign: 'left' }}
+                >
+                  {isCollapsed ? <ChevronRight size={15} color="#94a3b8" /> : <ChevronDown size={15} color="#94a3b8" />}
+                  <span style={{ width: 9, height: 9, borderRadius: 999, background: t.solid, flexShrink: 0 }} />
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.4 }}>{g.short}</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{g.label}</span>
                   <span style={{ fontSize: 12, color: '#94a3b8' }}>{groupRows.length}</span>
-                </div>
-                {groupRows.length === 0 ? (
-                  <div style={{ fontSize: 12.5, color: '#cbd5e1', padding: '2px 2px 2px' }}>Nobody at this stage.</div>
+                </button>
+                {!isCollapsed && (groupRows.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: '#cbd5e1', padding: '2px 2px 12px' }}>Nobody at this stage.</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 6 : 12 }}>
                     {groupRows.map((r) => <Tile key={r.id} r={r} />)}
                   </div>
-                )}
+                ))}
               </div>
             );
           })}
