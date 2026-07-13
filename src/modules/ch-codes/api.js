@@ -29,48 +29,87 @@ export const HANDLING_OPTIONS = [
   { value: 'awaiting_response', label: 'Awaiting response', tone: 'warning' },
 ];
 
-// Chase stage — how far along the chasing is. This is the board grouping.
-// Derived from emails_sent + escalation_status (no separate column), so it
-// stays in step with real queue sends and the automated chaser; Sophie can
-// also set it directly from a tile, which writes those same fields.
+// ── Lifecycle stage — the authoritative board axis (see schema_ch_code_lifecycle) ──
+// 1 Offer → 2 Decision → 3a Client verifying / 3b We verify → 4 Awaiting code
+// → 5 Entered (Inform Direct + BM) → 6 Submitted ✓ / 7 Rejected·exit.
 export const CH_STAGES = [
-  { value: 'not_started', label: 'Not started', tone: 'neutral' },
-  { value: 'one_email', label: 'One email', tone: 'info' },
-  { value: 'two_emails', label: 'Two emails', tone: 'warning' },
-  { value: 'called', label: 'Called', tone: 'accent' },
-  { value: 'escalated', label: 'Escalated', tone: 'danger' },
+  { value: 's1_offer',     short: 'Stage 1',  label: 'Offer',            tone: 'neutral', chasing: true },
+  { value: 's2_decision',  short: 'Stage 2',  label: 'Decision',         tone: 'info' },
+  { value: 's3a_client',   short: 'Stage 3a', label: 'Client verifying', tone: 'info',    chasing: true },
+  { value: 's3b_us',       short: 'Stage 3b', label: 'We verify',        tone: 'accent',  chasing: true },
+  { value: 's4_code',      short: 'Stage 4',  label: 'Awaiting code',    tone: 'warning', chasing: true },
+  { value: 's5_entered',   short: 'Stage 5',  label: 'Entered',          tone: 'info' },
+  { value: 's6_submitted', short: 'Stage 6',  label: 'Submitted',        tone: 'success', terminal: true },
+  { value: 's7_rejected',  short: 'Stage 7',  label: 'Rejected / exit',  tone: 'danger',  terminal: true },
 ];
+export function stageMeta(v) { return CH_STAGES.find((s) => s.value === v) || CH_STAGES[0]; }
 
-export function stageOf(r) {
+// `status` (legacy enum) kept in sync from `stage` for continuity with the
+// still-disarmed automated chaser. `stage` is the source of truth.
+const STAGE_STATUS = {
+  s1_offer: 'pending_offer', s2_decision: 'awaiting_decision',
+  s3a_client: 'awaiting_code', s3b_us: 'awaiting_id_poa', s4_code: 'awaiting_code',
+  s5_entered: 'code_received', s6_submitted: 'entered_on_bm', s7_rejected: 'stalled',
+};
+const RESET_COMMS = { emails_sent: 0, escalation_status: 'none', escalated_at: null, called_at: null };
+
+// ── Comms ladder WITHIN a chasing stage: no emails → 1/2/3 emails → called →
+// escalated. Resets every time the stage advances. Derived, not stored. ──
+export const COMMS_STEPS = [
+  { value: 'not_started',  label: 'No emails', tone: 'neutral' },
+  { value: 'one_email',    label: '1 email',   tone: 'info' },
+  { value: 'two_emails',   label: '2 emails',  tone: 'info' },
+  { value: 'three_emails', label: '3 emails',  tone: 'warning' },
+  { value: 'called',       label: 'Called',    tone: 'accent' },
+  { value: 'escalated',    label: 'Escalated', tone: 'danger' },
+];
+export function commsOf(r) {
   if (r.escalation_status === 'escalated_tracy') return 'escalated';
   if (r.escalation_status === 'call_needed') return 'called';
   const n = r.emails_sent || 0;
-  if (n >= 2) return 'two_emails';
+  if (n >= 3) return 'three_emails';
+  if (n === 2) return 'two_emails';
   if (n === 1) return 'one_email';
   return 'not_started';
 }
 
-export async function setStage(request, stage, { actorId } = {}) {
+// Move a request to another lifecycle stage; each new stage starts its chase
+// ladder fresh. Dedicated helpers (recordDecision, recordCodeReceived,
+// submitRequest, rejectRequest) handle the stages with side effects.
+export async function advanceStage(request, toStage, { actorId } = {}) {
+  await supabase.from('ch_code_requests').update({
+    stage: toStage, status: STAGE_STATUS[toStage] || request.status,
+    ...RESET_COMMS, updated_at: new Date().toISOString(),
+  }).eq('id', request.id);
+  await logActivity(request.id, 'status_change', `Moved to ${stageMeta(toStage).short} — ${stageMeta(toStage).label}.`, actorId);
+}
+
+// Comms-ladder actions within the current stage (call / escalate / clear).
+export async function setComms(request, action, { actorId, calledAt } = {}) {
   const today = new Date().toISOString().slice(0, 10);
-  let patch;
-  switch (stage) {
-    case 'not_started': patch = { emails_sent: 0, escalation_status: 'none', escalated_at: null }; break;
-    case 'one_email':   patch = { emails_sent: 1, escalation_status: 'none', escalated_at: null }; break;
-    case 'two_emails':  patch = { emails_sent: 2, escalation_status: 'none', escalated_at: null }; break;
-    case 'called':      patch = { escalation_status: 'call_needed', escalated_at: today }; break;
-    case 'escalated':   patch = { escalation_status: 'escalated_tracy', escalated_at: today }; break;
+  let patch; let body; let kind = 'system';
+  switch (action) {
+    case 'called': {
+      const when = calledAt || new Date().toISOString();
+      patch = { escalation_status: 'call_needed', escalated_at: today, called_at: when };
+      body = `Call logged for ${new Date(when).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`;
+      kind = 'status_change';
+      break;
+    }
+    case 'escalated': patch = { escalation_status: 'escalated_tracy', escalated_at: today }; body = 'Escalated.'; break;
+    case 'reset':     patch = { escalation_status: 'none', escalated_at: null, called_at: null }; body = 'Call / escalation cleared.'; break;
     default: return;
   }
   patch.updated_at = new Date().toISOString();
   await supabase.from('ch_code_requests').update(patch).eq('id', request.id);
-  const label = CH_STAGES.find((s) => s.value === stage)?.label || stage;
-  await logActivity(request.id, 'status_change', `Stage set to "${label}".`, actorId);
+  await logActivity(request.id, kind, body, actorId);
 }
 
 // Email kinds that can be queued from a tile.
 export const QUEUE_KINDS = {
   offer: 'Offer',
   reminder: 'Reminder (decision)',
+  self_verify: 'Self-verify reminder',
   id_poa: 'ID & POA request',
   code: 'Code reminder',
 };
@@ -126,6 +165,9 @@ async function logActivity(requestId, kind, body, actorId) {
   await supabase.from('ch_code_activity').insert({ request_id: requestId, kind, body, created_by: actorId || null });
 }
 
+// Stage 2 → 3a/3b. "paid" (we do it) raises + sends the £20+VAT ID-check
+// invoice — the UI guards on a client email first so it never becomes an
+// unsent QBO draft. "self" moves to 3a (client self-verifies).
 export async function recordDecision(request, decision, { actorId } = {}) {
   if (decision === 'paid') {
     const { data: item, error: billErr } = await supabase.from('billing_items').insert({
@@ -137,29 +179,40 @@ export async function recordDecision(request, decision, { actorId } = {}) {
     if (billErr) throw billErr;
     const push = await pushBillingItems([item.id], true, actorId);
     await supabase.from('ch_code_requests').update({
-      decision: 'paid', status: 'awaiting_id_poa', billing_item_id: item.id, updated_at: new Date().toISOString(),
+      decision: 'paid', stage: 's3b_us', status: STAGE_STATUS.s3b_us, billing_item_id: item.id,
+      ...RESET_COMMS, updated_at: new Date().toISOString(),
     }).eq('id', request.id);
-    await logActivity(request.id, 'status_change', 'Decision recorded: paid (£20+VAT). Invoice created and sent.', actorId);
+    await logActivity(request.id, 'status_change', 'Decision: we verify (£20+VAT invoice created and sent). Now at Stage 3b.', actorId);
     if (push?.results?.[0]?.error) {
       await logActivity(request.id, 'system', `⚠️ Invoice push had an issue: ${JSON.stringify(push.results[0].error)}`, actorId);
     }
     return push;
   }
-  await supabase.from('ch_code_requests').update({ decision: 'self', status: 'awaiting_code', updated_at: new Date().toISOString() }).eq('id', request.id);
-  await logActivity(request.id, 'status_change', 'Decision recorded: self-verify.', actorId);
+  await supabase.from('ch_code_requests').update({
+    decision: 'self', stage: 's3a_client', status: STAGE_STATUS.s3a_client,
+    ...RESET_COMMS, updated_at: new Date().toISOString(),
+  }).eq('id', request.id);
+  await logActivity(request.id, 'status_change', 'Decision: client is self-verifying. Now at Stage 3a.', actorId);
   return null;
 }
 
-export async function recordIdPoaReceived(requestId, { actorId } = {}) {
-  await supabase.from('ch_code_requests').update({ status: 'awaiting_code', updated_at: new Date().toISOString() }).eq('id', requestId);
-  await logActivity(requestId, 'status_change', 'ID/POA received — verified.', actorId);
+// Stage 3b: ID + proof of address received & verified → Stage 4 (awaiting code).
+export async function recordIdPoaReceived(request, { actorId } = {}) {
+  await supabase.from('ch_code_requests').update({
+    stage: 's4_code', status: STAGE_STATUS.s4_code, ...RESET_COMMS, updated_at: new Date().toISOString(),
+  }).eq('id', request.id);
+  await logActivity(request.id, 'status_change', 'ID/POA received & verified — now awaiting the code (Stage 4).', actorId);
 }
 
+// Stage 4 → 5. Save the code on the person, move to Entered, and drop the
+// "add to BM" task (auto-confirmed by the BM import when the code matches).
 export async function recordCodeReceived(request, code, { actorId } = {}) {
   const trimmed = code.trim();
   await supabase.from('people').update({ ch_personal_code: trimmed }).eq('id', request.person_id);
-  await supabase.from('ch_code_requests').update({ status: 'code_received', updated_at: new Date().toISOString() }).eq('id', request.id);
-  await logActivity(request.id, 'status_change', 'Code received.', actorId);
+  await supabase.from('ch_code_requests').update({
+    stage: 's5_entered', status: STAGE_STATUS.s5_entered, ...RESET_COMMS, updated_at: new Date().toISOString(),
+  }).eq('id', request.id);
+  await logActivity(request.id, 'status_change', `Code received: ${trimmed}. Now at Stage 5 (entering on Inform Direct & BM).`, actorId);
   await supabase.from('admin_tasks').insert({
     kind: 'bm_code', entity_id: request.entity_id, person_id: request.person_id,
     field: 'ch_personal_code', value: trimmed,
@@ -169,29 +222,51 @@ export async function recordCodeReceived(request, code, { actorId } = {}) {
   });
 }
 
-export async function markEnteredOnBm(requestId, { actorId } = {}) {
-  await supabase.from('ch_code_requests').update({ status: 'entered_on_bm', updated_at: new Date().toISOString() }).eq('id', requestId);
-  await logActivity(requestId, 'status_change', 'Entered on BrightManager.', actorId);
+// ── Stage 5 sub-steps ──
+export async function markInformDirect(request, on = true, { actorId } = {}) {
+  await supabase.from('ch_code_requests').update({ entered_inform_direct_at: on ? new Date().toISOString() : null, updated_at: new Date().toISOString() }).eq('id', request.id);
+  await logActivity(request.id, 'status_change', on ? 'Entered on Inform Direct.' : 'Cleared Inform Direct entry.', actorId);
+}
+export async function markEnteredBm(request, on = true, { actorId } = {}) {
+  await supabase.from('ch_code_requests').update({ entered_bm_at: on ? new Date().toISOString() : null, bm_code_mismatch: null, updated_at: new Date().toISOString() }).eq('id', request.id);
+  await logActivity(request.id, 'status_change', on ? 'Entered on BrightManager.' : 'Cleared BM entry.', actorId);
 }
 
-export async function resendOffer(requestId, { actorId } = {}) {
-  await supabase.from('ch_code_requests').update({ chase_count: 0, escalation_status: 'none', updated_at: new Date().toISOString() }).eq('id', requestId);
-  await logActivity(requestId, 'note', 'Marked for a fresh offer — will go out on the next chase run.', actorId);
+// Stage 5 → 6: Confirmation Statement filed via Inform Direct.
+export async function submitRequest(request, { actorId } = {}) {
+  await supabase.from('ch_code_requests').update({
+    stage: 's6_submitted', status: STAGE_STATUS.s6_submitted, submitted_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  }).eq('id', request.id);
+  await logActivity(request.id, 'status_change', 'Confirmation Statement submitted via Inform Direct. ✅', actorId);
 }
 
-export async function escalateNow(requestId, { actorId } = {}) {
-  const today = new Date().toISOString().slice(0, 10);
-  await supabase.from('ch_code_requests').update({ escalation_status: 'call_needed', escalated_at: today, updated_at: new Date().toISOString() }).eq('id', requestId);
-  await logActivity(requestId, 'system', 'Manually escalated — call needed.', actorId);
+// Stage 7: rejected (technical) or exit (won't pursue). Available from any stage.
+export async function rejectRequest(request, reason, { actorId } = {}) {
+  await supabase.from('ch_code_requests').update({
+    stage: 's7_rejected', status: STAGE_STATUS.s7_rejected, rejected_at: new Date().toISOString(), rejected_reason: reason || null, updated_at: new Date().toISOString(),
+  }).eq('id', request.id);
+  await logActivity(request.id, 'system', `Rejected / exited${reason ? `: ${reason}` : ''}.`, actorId);
+}
+
+// Bring a terminal request back to Stage 1.
+export async function reopenRequest(request, { actorId } = {}) {
+  await supabase.from('ch_code_requests').update({
+    stage: 's1_offer', status: STAGE_STATUS.s1_offer, rejected_at: null, rejected_reason: null, submitted_at: null,
+    ...RESET_COMMS, updated_at: new Date().toISOString(),
+  }).eq('id', request.id);
+  await logActivity(request.id, 'status_change', 'Reopened to Stage 1.', actorId);
 }
 
 export async function addNote(requestId, body, { actorId } = {}) {
   await logActivity(requestId, 'note', body, actorId);
 }
 
-export async function markStalled(requestId, { actorId } = {}) {
-  await supabase.from('ch_code_requests').update({ status: 'stalled', updated_at: new Date().toISOString() }).eq('id', requestId);
-  await logActivity(requestId, 'system', 'Marked stalled — no longer chased.', actorId);
+// Capture/patch a person's email (used by the Stage-3b guard so the £20+VAT
+// invoice always has a client email to send to).
+export async function setPersonEmail(personId, email) {
+  const clean = String(email || '').trim();
+  await supabase.from('people').update({ email: clean }).eq('id', personId);
+  return clean;
 }
 
 // Manual "record a reply" — staff logs what a client said in an actual

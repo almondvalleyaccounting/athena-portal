@@ -10,8 +10,8 @@
 // to Resend, then:
 //   * marks the queue row sent/failed (+ resend_id / error)
 //   * logs an email_out activity on the request
-//   * increments ch_code_requests.emails_sent
-//   * advances the request status where it makes sense (offer → awaiting_decision)
+//   * increments ch_code_requests.emails_sent (the current stage's comms ladder)
+// The lifecycle stage itself is advanced manually by staff — never here.
 //
 // Auth: active-staff JWT (is_portal_admin / can_manage_portal / can_view_ch_codes).
 // Body: { ids?: string[] }  — specific queued rows, or omit to send ALL queued.
@@ -86,22 +86,19 @@ Deno.serve(async (req) => {
 
       // Log + count + advance the request.
       const kind = String(item.kind);
-      const label = kind === "offer" ? "Offer" : kind === "id_poa" ? "ID/POA reminder" : kind === "code" ? "Code reminder" : "Reminder";
+      const label = kind === "offer" ? "Offer" : kind === "id_poa" ? "ID/POA reminder"
+        : kind === "code" ? "Code reminder" : kind === "self_verify" ? "Self-verify reminder" : "Reminder";
       await service.from("ch_code_activity").insert({
         request_id: item.request_id as string, kind: "email_out",
         body: `${label} emailed to ${to} (from the queue).`, created_by: user.id,
       });
 
-      const { data: reqRow } = await service.from("ch_code_requests").select("emails_sent, status").eq("id", item.request_id as string).maybeSingle();
-      const update: Row = {
-        emails_sent: ((reqRow?.emails_sent as number) || 0) + 1,
-        updated_at: nowIso,
-      };
-      // An offer going out moves a fresh request into the decision wait.
-      if (kind === "offer" && reqRow?.status === "pending_offer") {
-        update.status = "awaiting_decision";
-        update.requested_at = today;
-      }
+      // Bump the current stage's comms ladder. The lifecycle stage is advanced
+      // manually by staff (or, later, the automated chaser) — never here.
+      const { data: reqRow } = await service.from("ch_code_requests").select("emails_sent").eq("id", item.request_id as string).maybeSingle();
+      const prev = (reqRow?.emails_sent as number) || 0;
+      const update: Row = { emails_sent: prev + 1, updated_at: nowIso };
+      if (prev === 0) update.requested_at = today; // first email of this stage
       await service.from("ch_code_requests").update(update).eq("id", item.request_id as string);
     } else {
       await service.from("ch_code_email_queue").update({ status: "failed", error: String(r.error), sent_at: nowIso }).eq("id", item.id as string);

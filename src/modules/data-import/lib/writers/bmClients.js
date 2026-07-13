@@ -116,5 +116,19 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
     confirmedNlac = n || 0;
   } catch { /* non-fatal */ }
 
-  return { ...data, reviewers: reviewerResult, admin_tasks_confirmed: confirmedTasks + confirmedNlac };
+  // CH personal-code reconciliation (Stage 5) — only fires once the export
+  // carries the code column (see parser _primary_ch_personal_code). Inert
+  // otherwise.
+  let codeReconcile = null;
+  try {
+    const pairs = parsedRows
+      .filter((r) => r._primary_ch_personal_code)
+      .map((r) => ({ bm_client_id: r.bm_client_id, code: r._primary_ch_personal_code }));
+    if (pairs.length) {
+      const { data: rc } = await supabase.rpc('reconcile_ch_codes', { p_pairs: pairs });
+      codeReconcile = rc;
+    }
+  } catch { /* non-fatal */ }
+
+  return { ...data, reviewers: reviewerResult, admin_tasks_confirmed: confirmedTasks + confirmedNlac, ch_code_reconcile: codeReconcile };
 }

@@ -67,6 +67,15 @@ export function parseBmClientsCsv(text) {
     return i < 0 ? null : normText(row[i]);
   };
 
+  // CH personal (identity-verification) code — added to the BM export later.
+  // Matched case-insensitively against a few likely header spellings so the
+  // Stage-5 reconciliation lights up automatically once the column appears.
+  const CODE_HEADERS = [
+    'CH Personal Code', 'Companies House Personal Code', 'Personal Code',
+    'CH Identity Code', 'Identity Verification Code', 'ID Verification Code',
+  ].map((h) => h.toLowerCase());
+  const codeIdx = header.findIndex((h) => CODE_HEADERS.includes(h.toLowerCase()));
+
   const rows = [];
   const warnings = [];
   const skipped = [];
@@ -144,6 +153,7 @@ export function parseBmClientsCsv(text) {
       _primary_name: [get(row, 'First Name'), get(row, 'Last Name')].filter(Boolean).join(' ') || null,
       _primary_phone: normText(get(row, 'Mobile Number')),
       _primary_ni: normNI(get(row, 'NI Number')),
+      _primary_ch_personal_code: codeIdx >= 0 ? normText(row[codeIdx]) : null,
     });
   }
 

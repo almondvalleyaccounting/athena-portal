@@ -40,9 +40,9 @@ begin
   -- Stall this client's open CH personal-code requests → they leave the pipeline.
   with upd as (
     update ch_code_requests
-       set status = 'stalled', updated_at = now()
+       set status = 'stalled', stage = 's7_rejected', updated_at = now()
      where entity_id = p_entity_id
-       and status not in ('entered_on_bm','stalled')
+       and stage not in ('s6_submitted','s7_rejected')
     returning id
   ), logged as (
     insert into ch_code_activity (request_id, kind, body, created_by)

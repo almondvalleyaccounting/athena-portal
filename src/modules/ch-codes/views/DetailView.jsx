@@ -5,9 +5,9 @@ import { Btn } from '../../../components/ui';
 import { chipStyle, tones } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import {
-  getChCodeRequest, CH_CODE_STATUSES, recordDecision, recordIdPoaReceived,
-  recordCodeReceived, markEnteredOnBm, resendOffer, escalateNow, addNote,
-  markStalled, recordClientReply,
+  getChCodeRequest, stageMeta, recordDecision, recordIdPoaReceived,
+  recordCodeReceived, markInformDirect, markEnteredBm, submitRequest, rejectRequest,
+  reopenRequest, advanceStage, setComms, addNote, recordClientReply, setPersonEmail,
 } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -16,9 +16,11 @@ const btnGhost = {
   padding: '8px 14px', fontSize: 13, fontWeight: 600, fontFamily: font,
   background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer',
 };
-
-function statusMeta(value) {
-  return CH_CODE_STATUSES.find((s) => s.value === value) || CH_CODE_STATUSES[0];
+const isEmail = (e) => typeof e === 'string' && e.includes('@');
+function localNowValue() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 const ACTIVITY_TONE = {
@@ -29,10 +31,12 @@ export default function DetailView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const actorId = profile?.id;
   const [req, setReq] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [codeInput, setCodeInput] = useState('');
+  const [callAt, setCallAt] = useState(localNowValue);
   const [noteInput, setNoteInput] = useState('');
   const [replyInput, setReplyInput] = useState('');
 
@@ -45,17 +49,35 @@ export default function DetailView() {
     setBusy(false);
   }
 
+  async function decideWeDoIt() {
+    let email = req.person?.email;
+    if (!isEmail(email)) {
+      const entered = window.prompt(`No email on file for ${req.person?.name || 'this director'}. Enter their email so the £20+VAT invoice can be sent:`, '');
+      if (!entered || !entered.includes('@')) return;
+      email = entered.trim();
+      await setPersonEmail(req.person_id, email);
+    }
+    if (!window.confirm(`Record “we do it”? This raises a £20 + VAT ID-check invoice and sends it to ${email} now.`)) return;
+    await run(() => recordDecision({ ...req, person: { ...req.person, email } }, 'paid', { actorId }));
+  }
+
+  function reject() {
+    const reason = window.prompt('Reject / exit — reason (optional):', '');
+    if (reason === null) return;
+    run(() => rejectRequest(req, reason, { actorId }));
+  }
+
   if (error && !req) return <div style={{ padding: 24, color: tones.danger.fg }}>Failed to load: {error}</div>;
   if (!req) return <div style={{ padding: 24, color: '#64748b' }}>Loading…</div>;
 
-  const meta = statusMeta(req.status);
+  const meta = stageMeta(req.stage);
+  const chasing = meta.chasing;
+  const terminal = meta.terminal;
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: font, maxWidth: 900 }}>
-      <button
-        onClick={() => navigate('/onboarding/ch-codes')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: font }}
-      >
+      <button onClick={() => navigate('/onboarding/ch-codes')}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: font }}>
         <ArrowLeft size={14} /> Back to pipeline
       </button>
 
@@ -64,35 +86,37 @@ export default function DetailView() {
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{req.person?.name || 'Unknown'}</h1>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
             {req.entity_id ? (
-              <span
-                onClick={() => navigate(`/clients/${req.entity_id}`)}
-                title="Open this client's page"
-                style={{ color: '#0e7fe0', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
-              >
+              <span onClick={() => navigate(`/clients/${req.entity_id}`)} title="Open this client's page"
+                style={{ color: '#0e7fe0', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>
                 {req.entity?.name || 'client'}
               </span>
             ) : (req.entity?.name || '—')}
             {' · Owner: '}{req.owner?.name || 'unassigned'}
           </p>
         </div>
-        <span style={chipStyle(meta.tone)}>{meta.label}</span>
+        <span style={{ ...chipStyle(meta.tone), fontSize: 12 }}>{meta.short} · {meta.label}</span>
       </div>
 
       {error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
-      {!req.person?.email && !['entered_on_bm', 'stalled'].includes(req.status) && (
+      {!isEmail(req.person?.email) && !terminal && (
         <div style={{ background: tones.warning.bg, color: tones.warning.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
-          No email on file for {req.person?.name} — chasers can't reach them until an email address is added to their people record.
+          No email on file for {req.person?.name} — add one to their people record so they can be emailed.
         </div>
       )}
       {req.escalation_status === 'call_needed' && (
         <div style={{ background: tones.danger.bg, color: tones.danger.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
-          📞 2 chases sent with no response — Sophie to call {req.person?.name}.
+          📞 Call flagged for {req.person?.name}{req.called_at ? ` — logged ${new Date(req.called_at).toLocaleString('en-GB')}` : ''}.
         </div>
       )}
       {req.escalation_status === 'escalated_tracy' && (
         <div style={{ background: tones.danger.bg, color: tones.danger.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
-          🚨 Escalated to Tracy — no response since the call flag.
+          🚨 Escalated — no response since the call flag.
+        </div>
+      )}
+      {req.stage === 's5_entered' && req.bm_code_mismatch && (
+        <div style={{ background: tones.danger.bg, color: tones.danger.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
+          ⚠️ BM shows a different personal code ({req.bm_code_mismatch}) — reconcile before submitting.
         </div>
       )}
 
@@ -100,89 +124,99 @@ export default function DetailView() {
         <div style={card}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Actions</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {req.status === 'pending_offer' && (
-              <div style={{ fontSize: 13, color: '#64748b' }}>Offer not sent yet — goes out on the next chase run.</div>
-            )}
-            {req.status === 'awaiting_decision' && (
+            {req.stage === 's1_offer' && (
               <>
-                <Btn onClick={() => run(() => recordDecision(req, 'paid', { actorId: profile?.id }))} disabled={busy}>
-                  Record decision: paid (£20+VAT) — creates &amp; sends invoice
-                </Btn>
-                <button style={btnGhost} onClick={() => run(() => recordDecision(req, 'self', { actorId: profile?.id }))} disabled={busy}>
-                  Record decision: self-verify
-                </button>
+                <div style={{ fontSize: 13, color: '#64748b' }}>Queue the offer/reminders from the pipeline. When the client responds, record their decision.</div>
+                <Btn onClick={() => run(() => advanceStage(req, 's2_decision', { actorId }))} disabled={busy}>Record decision →</Btn>
               </>
             )}
-            {req.status === 'awaiting_id_poa' && (
-              <Btn onClick={() => run(() => recordIdPoaReceived(req.id, { actorId: profile?.id }))} disabled={busy}>
-                Mark ID/POA received &amp; verified
-              </Btn>
+            {req.stage === 's2_decision' && (
+              <>
+                <Btn onClick={() => run(() => recordDecision(req, 'self', { actorId }))} disabled={busy}>Client is doing it (Stage 3a)</Btn>
+                <button style={btnGhost} onClick={decideWeDoIt} disabled={busy}>We're doing it — £20+VAT invoice (Stage 3b)</button>
+                <button style={btnGhost} onClick={() => run(() => advanceStage(req, 's1_offer', { actorId }))} disabled={busy}>← Back to Stage 1</button>
+              </>
             )}
-            {['awaiting_code', 'awaiting_id_poa'].includes(req.status) && (
+            {req.stage === 's3a_client' && (
+              <Btn onClick={() => run(() => advanceStage(req, 's4_code', { actorId }))} disabled={busy}>Move to awaiting code (Stage 4)</Btn>
+            )}
+            {req.stage === 's3b_us' && (
+              <>
+                {req.billing_item_id && <div style={{ fontSize: 12.5, color: tones.accent.fg }}>£20+VAT ID-check invoice raised.</div>}
+                <Btn onClick={() => run(() => recordIdPoaReceived(req, { actorId }))} disabled={busy}>ID &amp; POA received &amp; verified (Stage 4)</Btn>
+              </>
+            )}
+            {req.stage === 's4_code' && (
               <div style={{ display: 'flex', gap: 6 }}>
-                <input
-                  value={codeInput} onChange={(e) => setCodeInput(e.target.value)}
-                  placeholder="FT5-15ED-7JY5"
-                  style={{ flex: 1, padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }}
-                />
-                <button
-                  style={btnGhost} disabled={busy || !codeInput.trim()}
-                  onClick={() => run(async () => { await recordCodeReceived(req, codeInput, { actorId: profile?.id }); setCodeInput(''); })}
-                >
-                  Save code
-                </button>
+                <input value={codeInput} onChange={(e) => setCodeInput(e.target.value)} placeholder="FT5-15ED-7JY5"
+                  style={{ flex: 1, padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }} />
+                <button style={btnGhost} disabled={busy || !codeInput.trim()}
+                  onClick={() => run(async () => { await recordCodeReceived(req, codeInput, { actorId }); setCodeInput(''); })}>Save code</button>
               </div>
             )}
-            {req.status === 'code_received' && (
-              <Btn onClick={() => run(() => markEnteredOnBm(req.id, { actorId: profile?.id }))} disabled={busy}>
-                Mark entered on BrightManager
-              </Btn>
+            {req.stage === 's5_entered' && (
+              <>
+                <button style={{ ...btnGhost, ...(req.entered_inform_direct_at ? { background: tones.success.bg, borderColor: tones.success.border, color: tones.success.fg } : {}) }}
+                  onClick={() => run(() => markInformDirect(req, !req.entered_inform_direct_at, { actorId }))} disabled={busy}>
+                  {req.entered_inform_direct_at ? '✓ Entered on Inform Direct' : 'Mark entered on Inform Direct'}
+                </button>
+                <button style={{ ...btnGhost, ...(req.entered_bm_at ? { background: tones.success.bg, borderColor: tones.success.border, color: tones.success.fg } : {}) }}
+                  onClick={() => run(() => markEnteredBm(req, !req.entered_bm_at, { actorId }))} disabled={busy}>
+                  {req.entered_bm_at ? '✓ Entered on BM' : 'Mark entered on BM'}
+                </button>
+                <Btn onClick={() => run(() => submitRequest(req, { actorId }))} disabled={busy || !req.entered_inform_direct_at || !req.entered_bm_at}>
+                  Mark submitted via Inform Direct (Stage 6)
+                </Btn>
+              </>
             )}
-            {req.status === 'entered_on_bm' && (
-              <div style={{ fontSize: 13, color: tones.success.fg }}>✅ Done — code entered on BM.</div>
+            {req.stage === 's6_submitted' && (
+              <>
+                <div style={{ fontSize: 13, color: tones.success.fg }}>✅ Filed{req.submitted_at ? ` on ${new Date(req.submitted_at).toLocaleDateString('en-GB')}` : ''}.</div>
+                <button style={btnGhost} onClick={() => run(() => reopenRequest(req, { actorId }))} disabled={busy}>Reopen</button>
+              </>
+            )}
+            {req.stage === 's7_rejected' && (
+              <>
+                <div style={{ fontSize: 13, color: tones.danger.fg }}>Rejected / exited{req.rejected_reason ? `: ${req.rejected_reason}` : ''}.</div>
+                <button style={btnGhost} onClick={() => run(() => reopenRequest(req, { actorId }))} disabled={busy}>Reopen</button>
+              </>
             )}
 
-            {!['entered_on_bm', 'stalled'].includes(req.status) && (
-              <>
-                <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 6, paddingTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button style={btnGhost} onClick={() => run(() => resendOffer(req.id, { actorId: profile?.id }))} disabled={busy}>Reset chase count</button>
-                  <button style={btnGhost} onClick={() => run(() => escalateNow(req.id, { actorId: profile?.id }))} disabled={busy}>Escalate now</button>
-                  <button style={{ ...btnGhost, color: tones.danger.fg }} onClick={() => run(() => markStalled(req.id, { actorId: profile?.id }))} disabled={busy}>Mark stalled</button>
-                </div>
-              </>
+            {/* Comms ladder controls for chasing stages */}
+            {chasing && (
+              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 6, paddingTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                <input type="datetime-local" value={callAt} onChange={(e) => setCallAt(e.target.value)}
+                  style={{ padding: '6px 8px', fontSize: 12, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }} />
+                <button style={btnGhost} disabled={busy || !callAt}
+                  onClick={() => run(() => setComms(req, 'called', { actorId, calledAt: new Date(callAt).toISOString() }))}>Log call</button>
+                {req.escalation_status !== 'escalated_tracy'
+                  ? <button style={{ ...btnGhost, color: tones.danger.fg }} onClick={() => run(() => setComms(req, 'escalated', { actorId }))} disabled={busy}>Escalate</button>
+                  : <button style={btnGhost} onClick={() => run(() => setComms(req, 'reset', { actorId }))} disabled={busy}>Clear flag</button>}
+              </div>
+            )}
+
+            {!terminal && (
+              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 6, paddingTop: 10 }}>
+                <button style={{ ...btnGhost, color: tones.danger.fg }} onClick={reject} disabled={busy}>Reject / exit</button>
+              </div>
             )}
           </div>
         </div>
 
         <div style={card}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Log a client reply / note</div>
-          <textarea
-            value={replyInput} onChange={(e) => setReplyInput(e.target.value)}
-            placeholder="Paste or summarise what the client said in an email/call…"
-            rows={3}
-            style={{ width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }}
-          />
+          <textarea value={replyInput} onChange={(e) => setReplyInput(e.target.value)}
+            placeholder="Paste or summarise what the client said in an email/call…" rows={3}
+            style={{ width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <button
-              style={btnGhost} disabled={busy || !replyInput.trim()}
-              onClick={() => run(async () => { await recordClientReply(req.id, replyInput, { actorId: profile?.id }); setReplyInput(''); })}
-            >
-              Log as client reply
-            </button>
+            <button style={btnGhost} disabled={busy || !replyInput.trim()}
+              onClick={() => run(async () => { await recordClientReply(req.id, replyInput, { actorId }); setReplyInput(''); })}>Log as client reply</button>
           </div>
           <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 12, paddingTop: 12 }}>
-            <textarea
-              value={noteInput} onChange={(e) => setNoteInput(e.target.value)}
-              placeholder="Internal note…"
-              rows={2}
-              style={{ width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }}
-            />
-            <button
-              style={{ ...btnGhost, marginTop: 8 }} disabled={busy || !noteInput.trim()}
-              onClick={() => run(async () => { await addNote(req.id, noteInput, { actorId: profile?.id }); setNoteInput(''); })}
-            >
-              Add note
-            </button>
+            <textarea value={noteInput} onChange={(e) => setNoteInput(e.target.value)} placeholder="Internal note…" rows={2}
+              style={{ width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
+            <button style={{ ...btnGhost, marginTop: 8 }} disabled={busy || !noteInput.trim()}
+              onClick={() => run(async () => { await addNote(req.id, noteInput, { actorId }); setNoteInput(''); })}>Add note</button>
           </div>
         </div>
       </div>

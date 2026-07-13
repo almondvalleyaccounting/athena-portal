@@ -49,14 +49,16 @@ const ACTIVITY_LABELS: Array<[RegExp, string]> = [
   // Queue-sent emails (ch-code-queue-send bodies) — specific before generic.
   [/id\/poa reminder emailed/i, "🪪 ID/POA reminder sent"],
   [/code reminder emailed/i, "🔑 Code reminder sent"],
+  [/self-verify reminder emailed/i, "🔔 Self-verify reminder sent"],
   [/reminder emailed/i, "🔔 Reminder sent"],
-  [/decision recorded: paid/i, "💳 Chose the paid option"],
-  [/decision recorded: self/i, "🙋 Chose to self-verify"],
-  [/id.?\/?poa received/i, "🪪 ID/proof of address received"],
-  [/code received/i, "🔑 Personal code received"],
-  [/entered on brightmanager|entered on bm/i, "✅ Entered on BrightManager"],
-  [/escalated: sophie to call/i, "📞 Escalated — call needed"],
-  [/escalated to tracy/i, "🚨 Escalated to Tracy"],
+  [/^decision: we verify/i, "💳 Decision: we verify"],
+  [/^decision: client is self/i, "🙋 Decision: client self-verifies"],
+  [/id\/poa received/i, "🪪 ID/proof of address received"],
+  [/^code received/i, "🔑 Personal code received"],
+  [/submitted via inform direct/i, "✅ Submitted via Inform Direct"],
+  [/call logged/i, "📞 Call logged"],
+  [/^escalated/i, "🚨 Escalated"],
+  [/moved to stage/i, "➡️ Stage moved"],
 ];
 function activityLabel(body: string): string {
   for (const [re, label] of ACTIVITY_LABELS) if (re.test(body)) return label;
@@ -69,7 +71,7 @@ const shell = (inner: string) =>
       <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:28px;">
         ${inner}
         <tr><td style="padding:20px 0 4px;">
-          <a href="${esc(ATHENA_URL)}/ch-codes" style="display:inline-block;background:#1E4560;color:#fff;text-decoration:none;padding:11px 20px;border-radius:10px;font-weight:600;font-size:14px;">Open in Athena</a>
+          <a href="${esc(ATHENA_URL)}/onboarding/ch-codes" style="display:inline-block;background:#1E4560;color:#fff;text-decoration:none;padding:11px 20px;border-radius:10px;font-weight:600;font-size:14px;">Open in Athena</a>
         </td></tr>
         <tr><td style="padding-top:22px;border-top:1px solid #f1f5f9;font-size:11px;color:#94a3b8;text-align:center;">Almond Valley Accounting · CH personal code weekly</td></tr>
       </table>
@@ -104,8 +106,8 @@ Deno.serve(async (req) => {
       .in("kind", ["email_out", "system", "status_change"]).gte("created_at", since).order("created_at"),
     service.from("staff_profiles").select("id, email").eq("is_active", true),
     service.from("ch_code_requests")
-      .select("chase_count, status, escalation_status, person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name, id)")
-      .not("status", "in", "(entered_on_bm,stalled)"),
+      .select("chase_count, status, stage, escalation_status, person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name, id)")
+      .not("stage", "in", "(s6_submitted,s7_rejected)"),
   ]);
 
   // Recipients: the configured people (Bobby + Tracy) resolved to emails from
