@@ -5,6 +5,7 @@ import { Btn } from '../../../components/ui';
 import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import ChasersPanel from '../components/ChasersPanel';
+import ViewTabs from '../components/ViewTabs';
 import { listOnboardings, isOverdue, daysSince, ONBOARDING_STATUSES } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -72,6 +73,7 @@ export default function PipelineView() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ViewTabs active="List" />
           <button
             onClick={() => navigate('/onboarding/updates')}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, fontFamily: font, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer' }}

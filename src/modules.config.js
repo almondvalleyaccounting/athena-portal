@@ -36,6 +36,15 @@ export const MODULES = [
     group: 'billing',
   },
   {
+    id: 'ch-codes',
+    label: 'CH Codes',
+    route: '/ch-codes',
+    icon: 'clipboard-check',
+    permissions: ['can_view_ch_codes'],
+    status: 'live',
+    group: 'billing',
+  },
+  {
     id: 'reports',
     label: 'Reports',
     route: '/reports',

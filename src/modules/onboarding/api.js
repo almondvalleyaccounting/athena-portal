@@ -40,6 +40,67 @@ export const ONBOARDING_STATUSES = [
   { value: 'cancelled', label: 'Cancelled', tone: 'neutral' },
 ];
 
+// Board view columns — the significant milestones staff want to see at a
+// glance (akin to the old Excel tracker's columns), grouped the same way as
+// onboarding_steps.group_name. A step counts for a column when it's flagged
+// milestone=true AND its (group_name, name) appears in that column's match
+// list. Some milestone names are reused verbatim across groups ("Received
+// agent code and switched on BM" appears under both SA and PAYE) so matching
+// must always use the (group_name, name) pair, never name alone. The
+// standalone vat_reg/paye_reg templates use different group names/wording
+// for the same real-world milestone as the company template — their steps
+// are folded into the same column via extra match entries rather than
+// getting their own near-empty columns.
+export const MILESTONE_COLUMNS = [
+  { key: 'loe', group: 'Onboarding', label: 'LOE signed', match: [{ group_name: 'Onboarding', name: 'Letter of Engagement signed and returned' }] },
+  { key: 'id', group: 'Onboarding', label: '2 forms of ID', match: [{ group_name: 'Onboarding', name: 'Received 2 forms of ID' }] },
+  { key: 'qb_licence', group: 'Onboarding', label: 'QB licence', match: [{ group_name: 'Onboarding', name: 'Assign QB licence to client (if applicable)' }] },
+  { key: 'ch_auth_code', group: 'Onboarding', label: 'CH auth code', match: [{ group_name: 'Onboarding', name: 'Companies House authentication code entered' }] },
+  { key: 'quote_accepted', group: 'Onboarding', label: 'Quote accepted', match: [{ group_name: 'Onboarding', name: 'Accepted quote' }] },
+
+  { key: 'personal_utr', group: 'SA', label: 'Personal UTR', match: [{ group_name: 'SA', name: 'Received personal UTR' }] },
+  { key: 'sa_agent_code', group: 'SA', label: 'Agent code', match: [{ group_name: 'SA', name: 'Received agent code and switched on BM' }] },
+  { key: 'sa_billing_tracker', group: 'SA', label: 'Billing tracker', match: [{ group_name: 'SA', name: 'Added to billing tracker' }] },
+
+  { key: 'company_utr', group: 'CT', label: 'Company UTR', match: [{ group_name: 'CT', name: 'Company UTR received and logged on BM' }] },
+  { key: 'ct_agent_code', group: 'CT', label: 'Agent code', match: [{ group_name: 'CT', name: 'Received CT agent code and switched on BM' }] },
+
+  {
+    key: 'vat_number', group: 'VAT', label: 'VAT number',
+    match: [
+      { group_name: 'VAT', name: 'Enter VAT number on BM and validate' },
+      { group_name: 'VAT Registration', name: 'Received VAT number' },
+    ],
+  },
+
+  {
+    key: 'paye_ref', group: 'PAYE', label: 'PAYE ref',
+    match: [
+      { group_name: 'PAYE', name: 'Receive PAYE ref / accounts office ref' },
+      { group_name: 'PAYE Registration', name: 'Received PAYE ref from client — save to BM' },
+    ],
+  },
+  {
+    key: 'paye_agent_code', group: 'PAYE', label: 'Agent code',
+    match: [
+      { group_name: 'PAYE', name: 'Received agent code and switched on BM' },
+      { group_name: 'PAYE Registration', name: 'Received agent code and switched on BM' },
+    ],
+  },
+  { key: 'brightpay', group: 'PAYE', label: 'Brightpay setup', match: [{ group_name: 'PAYE', name: 'Setup on Brightpay' }] },
+
+  { key: 'cis_code', group: 'CIS', label: 'CIS code', match: [{ group_name: 'CIS', name: 'Receive CIS code and switched on BM' }] },
+
+  { key: 'live_billing', group: 'Billing', label: 'Live billing', match: [{ group_name: 'Billing', name: 'Committed to live billing (QB invoice / recurring in place)' }] },
+];
+
+// Returns the step (or undefined) from an onboarding's steps that fills a
+// given board column — undefined means the client's template doesn't
+// include this milestone at all (renders as a blank cell, not 'na').
+export function findMilestoneCell(steps, column) {
+  return (steps || []).find((s) => s.milestone && column.match.some((m) => m.group_name === s.group_name && m.name === s.name));
+}
+
 const dayMs = 24 * 60 * 60 * 1000;
 export function daysSince(dateStr) {
   if (!dateStr) return null;
@@ -89,7 +150,7 @@ export async function listOnboardings() {
       template:onboarding_templates(id, code, name),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name),
       lead:staff_profiles!onboardings_lead_id_fkey(id, name),
-      steps:onboarding_steps(id, status, owner_type, requested_at, expected_days, chase_after_days),
+      steps:onboarding_steps(id, status, owner_type, requested_at, expected_days, chase_after_days, name, group_name, milestone),
       handovers:onboarding_handovers(area, due, done_at)
     `)
     .order('created_at', { ascending: false });

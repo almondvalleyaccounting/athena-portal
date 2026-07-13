@@ -133,6 +133,25 @@ Deno.serve(async (req) => {
         }
         const pscs = pscRes.body?.items ?? [];
 
+        // Confirmation Statement due date → deadlines (tag 'Confirmation
+        // Statement'), so the CH personal-code chaser can prioritise by it.
+        const profileRes = await chFetch(`/company/${cn}`);
+        const csNextDue: string | null = profileRes.ok ? (profileRes.body?.confirmation_statement?.next_due ?? null) : null;
+        if (csNextDue) {
+          const { data: existingDeadline } = await service.from("deadlines")
+            .select("id, due_date").eq("entity_id", e.id).eq("tag", "Confirmation Statement")
+            .neq("status", "complete").maybeSingle();
+          if (existingDeadline) {
+            if (existingDeadline.due_date !== csNextDue) {
+              await service.from("deadlines").update({ due_date: csNextDue, updated_at: new Date().toISOString() }).eq("id", existingDeadline.id);
+            }
+          } else {
+            await service.from("deadlines").insert({
+              entity_id: e.id, title: "Confirmation Statement", due_date: csNextDue, tag: "Confirmation Statement",
+            });
+          }
+        }
+
         // Officers (active only).
         for (const o of officers) {
           if (o.resigned_on) continue;

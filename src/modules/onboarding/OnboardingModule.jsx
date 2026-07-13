@@ -4,6 +4,7 @@ import PipelineView from './views/PipelineView';
 import NewOnboardingView from './views/NewOnboardingView';
 import OnboardingDetailView from './views/OnboardingDetailView';
 import UpdatesView from './views/UpdatesView';
+import BoardView from './views/BoardView';
 
 /*
   Onboarding module — internal tracking of new-client / new-service
@@ -21,6 +22,7 @@ export default function OnboardingModule() {
           <Route index element={<PipelineView />} />
           <Route path="new" element={<NewOnboardingView />} />
           <Route path="updates" element={<UpdatesView />} />
+          <Route path="board" element={<BoardView />} />
           <Route path=":id" element={<OnboardingDetailView />} />
           <Route path="*" element={<Navigate to="/onboarding" replace />} />
         </Routes>
