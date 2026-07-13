@@ -53,7 +53,7 @@ export default function DetailView() {
   return (
     <div style={{ padding: '24px 28px', fontFamily: font, maxWidth: 900 }}>
       <button
-        onClick={() => navigate('/ch-codes')}
+        onClick={() => navigate('/onboarding/ch-codes')}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: font }}
       >
         <ArrowLeft size={14} /> Back to pipeline
@@ -62,7 +62,18 @@ export default function DetailView() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{req.person?.name || 'Unknown'}</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>{req.entity?.name} · Owner: {req.owner?.name || 'unassigned'}</p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+            {req.entity_id ? (
+              <span
+                onClick={() => navigate(`/clients/${req.entity_id}`)}
+                title="Open this client's page"
+                style={{ color: '#0e7fe0', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                {req.entity?.name || 'client'}
+              </span>
+            ) : (req.entity?.name || '—')}
+            {' · Owner: '}{req.owner?.name || 'unassigned'}
+          </p>
         </div>
         <span style={chipStyle(meta.tone)}>{meta.label}</span>
       </div>

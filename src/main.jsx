@@ -30,7 +30,6 @@ import ForecastModule from './modules/forecast/ForecastModule';
 import PDTrackerModule from './modules/pd-tracker/PDTrackerModule';
 import ClientsPage from './modules/clients/ClientsPage';
 import OnboardingModule from './modules/onboarding/OnboardingModule';
-import ChCodesModule from './modules/ch-codes/ChCodesModule';
 import ClientDetailView from './modules/clients/ClientDetailView';
 import FeeEngineLayout from './contexts/FeeEngineContext';
 import AcceptQuotePage from './pages/AcceptQuotePage';
@@ -101,7 +100,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/forecast/*" element={<ForecastModule />} />
           <Route path="/team/pd/*" element={<PDTrackerModule />} />
           <Route path="/onboarding/*" element={<OnboardingModule />} />
-          <Route path="/ch-codes/*" element={<ChCodesModule />} />
+          {/* CH Codes moved under Onboarding; keep old links (e.g. digest emails) working */}
+          <Route path="/ch-codes" element={<Navigate to="/onboarding/ch-codes" replace />} />
+          <Route path="/ch-codes/*" element={<Navigate to="/onboarding/ch-codes" replace />} />
 
           {/* Fee Engine — wrapped in FeeEngineLayout for defaults context */}
           <Route element={<FeeEngineLayout />}>

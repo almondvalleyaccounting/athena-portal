@@ -43,6 +43,8 @@ export default function ClientDetailView() {
   const [taskCreated, setTaskCreated] = useState(false);
   const [activeSection, setActiveSection] = useState(null); // for tile click expansion
   const [archiving, setArchiving] = useState(false);
+  const [offboarding, setOffboarding] = useState(false);
+  const [offboardResult, setOffboardResult] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -150,6 +152,41 @@ export default function ClientDetailView() {
     } else {
       navigate('/clients');
     }
+  };
+
+  // "No longer a client" — one deliberate action. Sets NLAC, cascades so the
+  // client leaves the operational views (CH codes stalled, onboardings
+  // archived), and drops a task on Sophie's list to mirror it in BM (which
+  // auto-confirms on the next BM import). See offboard_entity() SQL.
+  const handleOffboard = async () => {
+    if (!entity || offboarding) return;
+    if (!window.confirm(`Mark "${entity.name}" as no longer a client?\n\nThis hides them from the clients list and stops billing views, stalls any Companies House code chasing, archives any in-progress onboarding, and adds a task for Sophie to archive them in BrightManager (which clears itself on the next BM import).`)) return;
+    const reason = window.prompt('Reason (optional) — e.g. moved accountant, ceased trading:', '') || '';
+    setOffboarding(true);
+    try {
+      const { data, error } = await supabase.rpc('offboard_entity', { p_entity_id: entity.id, p_reason: reason || null });
+      if (error) throw error;
+      setEntity({ ...entity, entity_status: 'nlac' });
+      setOffboardResult(data || { status: 'nlac' });
+    } catch (e) {
+      alert('Could not mark as no longer a client: ' + e.message);
+    }
+    setOffboarding(false);
+  };
+
+  const handleReinstate = async () => {
+    if (!entity || offboarding) return;
+    if (!window.confirm(`Reinstate "${entity.name}" as an active client?`)) return;
+    setOffboarding(true);
+    try {
+      const { error } = await supabase.rpc('reinstate_entity', { p_entity_id: entity.id });
+      if (error) throw error;
+      setEntity({ ...entity, entity_status: 'active' });
+      setOffboardResult(null);
+    } catch (e) {
+      alert('Could not reinstate client: ' + e.message);
+    }
+    setOffboarding(false);
   };
 
   if (loading) return <div style={wrapStyle}><p style={{ color: '#94a3b8', fontSize: 13 }}>Loading client...</p></div>;
@@ -271,6 +308,33 @@ export default function ClientDetailView() {
               {TIME_PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
           </div>
+          {entity.entity_status === 'nlac' ? (
+            <button
+              onClick={handleReinstate}
+              disabled={offboarding}
+              title="Reinstate this former client as active"
+              style={{
+                fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
+                background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe',
+                cursor: offboarding ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif",
+              }}
+            >
+              {offboarding ? '…' : 'Reinstate client'}
+            </button>
+          ) : (
+            <button
+              onClick={handleOffboard}
+              disabled={offboarding}
+              title="Mark as no longer a client — removes them from views and queues the BrightManager change for Sophie"
+              style={{
+                fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
+                background: '#fff', color: '#b91c1c', border: '1px solid #fecaca',
+                cursor: offboarding ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif",
+              }}
+            >
+              {offboarding ? '…' : 'No longer a client'}
+            </button>
+          )}
           <button
             onClick={handleArchive}
             disabled={archiving}
@@ -286,6 +350,22 @@ export default function ClientDetailView() {
           </button>
         </div>
       </div>
+
+      {offboardResult && (
+        <div style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 12, padding: '12px 16px', marginBottom: 20, fontFamily: "'Outfit', sans-serif" }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
+            Marked no longer a client
+          </div>
+          <div style={{ fontSize: 12.5, color: '#7f1d1d' }}>
+            Removed from the clients list and billing views.
+            {offboardResult.ch_stalled > 0 && ` ${offboardResult.ch_stalled} Companies House chase${offboardResult.ch_stalled === 1 ? '' : 's'} stopped.`}
+            {offboardResult.onboardings_archived > 0 && ` ${offboardResult.onboardings_archived} onboarding${offboardResult.onboardings_archived === 1 ? '' : 's'} archived.`}
+            {offboardResult.bm_task_created
+              ? ' A task has been added to Sophie’s admin list to archive them in BrightManager — it clears itself on the next BM import.'
+              : ' No BrightManager record to mirror.'}
+          </div>
+        </div>
+      )}
 
       {/* Active onboarding banner — click through to the workflow */}
       {onboardings.map((ob) => {

@@ -106,5 +106,15 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
     confirmedTasks = confirmed || 0;
   } catch { /* non-fatal — the admin tasks page re-checks on load */ }
 
-  return { ...data, reviewers: reviewerResult, admin_tasks_confirmed: confirmedTasks };
+  // Silently confirm "archive in BM" tasks for clients marked no-longer-a-client
+  // in Athena that have now dropped out of the BM client export (Sophie has
+  // archived them in BM → their bm_client_id is absent from this upload).
+  let confirmedNlac = 0;
+  try {
+    const presentIds = [...new Set(parsedRows.map((r) => r.bm_client_id).filter(Boolean))];
+    const { data: n } = await supabase.rpc('confirm_nlac_mirror_tasks', { p_bm_client_ids: presentIds });
+    confirmedNlac = n || 0;
+  } catch { /* non-fatal */ }
+
+  return { ...data, reviewers: reviewerResult, admin_tasks_confirmed: confirmedTasks + confirmedNlac };
 }

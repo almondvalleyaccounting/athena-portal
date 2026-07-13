@@ -159,6 +159,7 @@ export default function AllocationsView() {
   const clientEntities = useMemo(() => {
     const term = search.trim().toLowerCase();
     const filtered = entities
+      .filter((e) => !['nlac', 'archived'].includes(e.entity_status)) // former clients drop out
       .filter((e) => includeProspects ? true : e.entity_status !== 'prospect')
       .filter((e) => !typeFilter || e.type === typeFilter)
       .filter((e) => !term || (e.name || '').toLowerCase().includes(term))

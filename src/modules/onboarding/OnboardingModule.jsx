@@ -5,6 +5,10 @@ import NewOnboardingView from './views/NewOnboardingView';
 import OnboardingDetailView from './views/OnboardingDetailView';
 import UpdatesView from './views/UpdatesView';
 import BoardView from './views/BoardView';
+import ChPipelineView from '../ch-codes/views/PipelineView';
+import ChDetailView from '../ch-codes/views/DetailView';
+import ChQueueView from '../ch-codes/views/QueueView';
+import ChTemplatesView from '../ch-codes/views/TemplatesView';
 
 /*
   Onboarding module — internal tracking of new-client / new-service
@@ -23,6 +27,11 @@ export default function OnboardingModule() {
           <Route path="new" element={<NewOnboardingView />} />
           <Route path="updates" element={<UpdatesView />} />
           <Route path="board" element={<BoardView />} />
+          {/* CH personal-code chase — rolled in as a sub-tab of onboarding */}
+          <Route path="ch-codes" element={<ChPipelineView />} />
+          <Route path="ch-codes/queue" element={<ChQueueView />} />
+          <Route path="ch-codes/templates" element={<ChTemplatesView />} />
+          <Route path="ch-codes/:id" element={<ChDetailView />} />
           <Route path=":id" element={<OnboardingDetailView />} />
           <Route path="*" element={<Navigate to="/onboarding" replace />} />
         </Routes>

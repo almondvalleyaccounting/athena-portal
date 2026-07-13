@@ -89,10 +89,12 @@ export default function ClientsPage() {
   const statusOf = (e) => e.entity_status || 'active';
   const clientRows = filtered.filter((e) => statusOf(e) === 'active');
   const prospectRows = filtered.filter((e) => statusOf(e) === 'prospect');
-  const otherRows = filtered.filter((e) => !['active', 'prospect', 'archived'].includes(statusOf(e)));
-  const archivedRows = filtered.filter((e) => statusOf(e) === 'archived');
+  // Former (nlac) and archived clients are hidden by default — surfaced together
+  // under the toggle. third_party etc. stay visible in "Other".
+  const otherRows = filtered.filter((e) => !['active', 'prospect', 'archived', 'nlac'].includes(statusOf(e)));
+  const hiddenRows = filtered.filter((e) => ['archived', 'nlac'].includes(statusOf(e)));
   const athenaCount = filtered.filter((e) => e.source === 'athena').length;
-  const visibleCount = clientRows.length + prospectRows.length + otherRows.length + (showArchived ? archivedRows.length : 0);
+  const visibleCount = clientRows.length + prospectRows.length + otherRows.length + (showArchived ? hiddenRows.length : 0);
 
   const handleNewClient = async (fields) => {
     const { data, error } = await supabase
@@ -126,16 +128,18 @@ export default function ClientsPage() {
       prospect: { bg: '#eff6ff', color: '#0e7fe0' },
       inactive: { bg: '#f1f5f9', color: '#64748b' },
       archived: { bg: '#f1f5f9', color: '#64748b' },
+      nlac: { bg: '#fef2f2', color: '#b91c1c' },
       third_party: { bg: '#f5f3ff', color: '#6d28d9' },
     };
     const st = styles[s] || styles.active;
+    const label = s === 'nlac' ? 'Former client' : s.replace('_', ' ');
     return (
       <span style={{
         fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
         background: st.bg, color: st.color, fontFamily: "'Outfit', sans-serif",
         textTransform: 'capitalize',
       }}>
-        {s.replace('_', ' ')}
+        {label}
       </span>
     );
   };
@@ -287,13 +291,13 @@ export default function ClientsPage() {
           <Section title="Prospects" count={prospectRows.length} rows={prospectRows} renderRow={renderRow} />
           <Section title="Other" count={otherRows.length} rows={otherRows} renderRow={renderRow} />
           {showArchived && (
-            <Section title="Archived" count={archivedRows.length} rows={archivedRows} renderRow={renderRow} />
+            <Section title="Former & archived" count={hiddenRows.length} rows={hiddenRows} renderRow={renderRow} />
           )}
         </div>
       )}
 
-      {/* Archived toggle */}
-      {archivedRows.length > 0 && (
+      {/* Former & archived toggle */}
+      {hiddenRows.length > 0 && (
         <button
           onClick={() => setShowArchived((v) => !v)}
           style={{
@@ -302,7 +306,7 @@ export default function ClientsPage() {
             textDecoration: 'underline',
           }}
         >
-          {showArchived ? 'Hide archived' : `Show archived (${archivedRows.length})`}
+          {showArchived ? 'Hide former & archived' : `Show former & archived (${hiddenRows.length})`}
         </button>
       )}
 

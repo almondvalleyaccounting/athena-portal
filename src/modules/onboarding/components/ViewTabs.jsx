@@ -5,6 +5,7 @@ import { pillStyle } from '../../../lib/tokens';
 const TABS = [
   { path: '/onboarding', label: 'List' },
   { path: '/onboarding/board', label: 'Board' },
+  { path: '/onboarding/ch-codes', label: 'CH Codes' },
 ];
 
 export default function ViewTabs({ active }) {
