@@ -62,7 +62,7 @@ export default function BoardView() {
   const navigate = useNavigate();
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('open'); // open | complete | all
+  const [filter, setFilter] = useState('open'); // open | complete | all | archived
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -76,6 +76,8 @@ export default function BoardView() {
   const filtered = useMemo(() => {
     if (!rows) return [];
     return rows.filter((r) => {
+      const archived = Boolean(r.archived_at);
+      if (filter === 'archived' ? !archived : archived) return false;
       if (filter === 'open' && !['active', 'on_hold', 'issues'].includes(r.status)) return false;
       if (filter === 'complete' && r.status !== 'complete') return false;
       if (search && !r.entity?.name?.toLowerCase().includes(search.toLowerCase())) return false;
@@ -101,7 +103,7 @@ export default function BoardView() {
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        {[['open', 'Open'], ['complete', 'Complete'], ['all', 'All']].map(([v, label]) => (
+        {[['open', 'Open'], ['complete', 'Complete'], ['all', 'All'], ['archived', 'Archived']].map(([v, label]) => (
           <button key={v} onClick={() => setFilter(v)} style={pillStyle({ tone: 'info', active: filter === v })}>
             {label}
           </button>

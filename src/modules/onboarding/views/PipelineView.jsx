@@ -6,12 +6,21 @@ import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import ChasersPanel from '../components/ChasersPanel';
 import ViewTabs from '../components/ViewTabs';
-import { listOnboardings, isOverdue, daysSince, ONBOARDING_STATUSES } from '../api';
+import { listOnboardings, isOverdue, daysSince, ONBOARDING_STATUSES, setOnboardingStatus, setOnboardingArchived } from '../api';
 
 const font = "'Outfit', sans-serif";
 
 function statusMeta(value) {
   return ONBOARDING_STATUSES.find((s) => s.value === value) || ONBOARDING_STATUSES[0];
+}
+
+function actionBtnStyle(tone) {
+  const t = tones[tone] || tones.neutral;
+  return {
+    padding: '6px 12px', fontSize: 12, fontWeight: 600, fontFamily: font,
+    background: t.bg, color: t.fg, border: `1px solid ${t.border}`,
+    borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap',
+  };
 }
 
 function ProgressBar({ done, total }) {
@@ -32,8 +41,10 @@ export default function PipelineView() {
   const isAdmin = profile?.can_manage_portal === true || profile?.is_portal_admin === true;
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('open'); // open | complete | all
+  const [filter, setFilter] = useState('open'); // open | complete | archived | all
   const [search, setSearch] = useState('');
+  const [busyId, setBusyId] = useState(null);
+  const [hoverIssue, setHoverIssue] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,12 +57,41 @@ export default function PipelineView() {
   const filtered = useMemo(() => {
     if (!rows) return [];
     return rows.filter((r) => {
+      const archived = Boolean(r.archived_at);
+      // Archived onboardings live only in the Archived tab; everything else
+      // works on live rows.
+      if (filter === 'archived' ? !archived : archived) return false;
       if (filter === 'open' && !['active', 'on_hold', 'issues'].includes(r.status)) return false;
       if (filter === 'complete' && r.status !== 'complete') return false;
       if (search && !r.entity?.name?.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
   }, [rows, filter, search]);
+
+  async function runAction(r, action, e) {
+    e.stopPropagation();
+    setBusyId(r.id);
+    try {
+      let patch;
+      if (action === 'complete') {
+        await setOnboardingStatus(r.id, 'complete', { actorId: profile?.id, prevStatus: r.status });
+        patch = { status: 'complete', completed_at: new Date().toISOString() };
+      } else if (action === 'reopen') {
+        await setOnboardingStatus(r.id, 'active', { actorId: profile?.id, prevStatus: r.status });
+        patch = { status: 'active', completed_at: null };
+      } else if (action === 'archive') {
+        await setOnboardingArchived(r.id, true, { actorId: profile?.id });
+        patch = { archived_at: new Date().toISOString() };
+      } else if (action === 'restore') {
+        await setOnboardingArchived(r.id, false, { actorId: profile?.id });
+        patch = { archived_at: null };
+      }
+      setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, ...patch } : x)));
+    } catch (err) {
+      setError(err.message);
+    }
+    setBusyId(null);
+  }
 
   const summarise = (r) => {
     const steps = r.steps || [];
@@ -91,7 +131,7 @@ export default function PipelineView() {
       {isAdmin && <ChasersPanel />}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        {[['open', 'Open'], ['complete', 'Complete'], ['all', 'All']].map(([v, label]) => (
+        {[['open', 'Open'], ['complete', 'Complete'], ['all', 'All'], ['archived', 'Archived']].map(([v, label]) => (
           <button key={v} onClick={() => setFilter(v)} style={pillStyle({ tone: 'info', active: filter === v })}>
             {label}
           </button>
@@ -130,10 +170,11 @@ export default function PipelineView() {
               onClick={() => navigate(`/onboarding/${r.id}`)}
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'minmax(180px, 2fr) 110px minmax(140px, 1.4fr) minmax(200px, 1.6fr) 110px',
+                gridTemplateColumns: 'minmax(180px, 2fr) 110px minmax(140px, 1.4fr) minmax(180px, 1.4fr) 90px auto',
                 gap: 14, alignItems: 'center',
                 background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
                 padding: '14px 18px', cursor: 'pointer',
+                opacity: busyId === r.id ? 0.55 : 1,
               }}
             >
               <div>
@@ -142,7 +183,27 @@ export default function PipelineView() {
                   {r.template?.name || '—'} · {r.owner?.name ? `Owner: ${r.owner.name}` : 'No owner'}
                 </div>
               </div>
-              <span style={{ ...chipStyle(meta.tone), justifySelf: 'start' }}>{meta.label}</span>
+              {r.status === 'issues' ? (
+                <span
+                  style={{ position: 'relative', justifySelf: 'start' }}
+                  onMouseEnter={() => setHoverIssue(r.id)}
+                  onMouseLeave={() => setHoverIssue((h) => (h === r.id ? null : h))}
+                >
+                  <span style={{ ...chipStyle(meta.tone), cursor: 'help' }}>{meta.label}</span>
+                  {hoverIssue === r.id && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 20,
+                      width: 260, background: '#0f172a', color: '#fff', fontSize: 12, lineHeight: 1.45,
+                      padding: '9px 11px', borderRadius: 8, boxShadow: '0 8px 24px rgba(15,23,42,0.28)',
+                      whiteSpace: 'normal', fontWeight: 400,
+                    }}>
+                      {r.issue_note || 'No reason recorded yet — open the client to add one.'}
+                    </div>
+                  )}
+                </span>
+              ) : (
+                <span style={{ ...chipStyle(meta.tone), justifySelf: 'start' }}>{meta.label}</span>
+              )}
               <ProgressBar done={s.done} total={s.total} />
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {s.waitingClient > 0 && (
@@ -175,6 +236,28 @@ export default function PipelineView() {
               <div style={{ fontSize: 12, color: '#64748b', textAlign: 'right' }}>
                 {age != null ? `${age}d in` : ''}
                 {r.target_date ? <div>due {new Date(r.target_date).toLocaleDateString('en-GB')}</div> : null}
+              </div>
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                {r.archived_at ? (
+                  <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'restore', e)} style={actionBtnStyle('info')}>
+                    Restore
+                  </button>
+                ) : (
+                  <>
+                    {r.status === 'complete' ? (
+                      <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'reopen', e)} style={actionBtnStyle('neutral')}>
+                        Reopen
+                      </button>
+                    ) : (
+                      <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'complete', e)} style={actionBtnStyle('success')}>
+                        Complete
+                      </button>
+                    )}
+                    <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'archive', e)} style={actionBtnStyle('neutral')}>
+                      Archive
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           );

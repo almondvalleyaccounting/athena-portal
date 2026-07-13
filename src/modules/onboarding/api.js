@@ -40,6 +40,38 @@ export const ONBOARDING_STATUSES = [
   { value: 'cancelled', label: 'Cancelled', tone: 'neutral' },
 ];
 
+// Editable service selection — gates conditional step groups, handover areas
+// (the per-area "task owner") and the 3-month check-in tiles. Keys match
+// onboarding_template_steps.service_condition.
+export const SERVICE_OPTIONS = [
+  { key: 'ct', label: 'Accounts & Corporation Tax' },
+  { key: 'vat', label: 'Bookkeeping & VAT' },
+  { key: 'paye', label: 'Payroll (PAYE)' },
+  { key: 'sa', label: 'Self-Assessment' },
+  { key: 'cis', label: 'CIS' },
+  { key: 'software', label: 'Software' },
+  { key: 'confirmation_statement', label: 'Confirmation statement' },
+];
+
+// One-off HMRC registrations — ticking one adds a tracked task step.
+export const REGISTRATION_OPTIONS = [
+  { key: 'vat', label: 'VAT', stepName: 'Register client for VAT with HMRC' },
+  { key: 'paye', label: 'PAYE (employer)', stepName: 'Register client as an employer (PAYE) with HMRC' },
+  { key: 'cis', label: 'CIS', stepName: 'Register client for CIS with HMRC' },
+];
+
+// Ad-hoc Companies House changes — each adds a tracked task step.
+export const CH_TASK_OPTIONS = [
+  { key: 'change_directors', label: 'Change directors', stepName: 'Companies House — update directors' },
+  { key: 'change_shareholding', label: 'Change shareholding', stepName: 'Companies House — update shareholding' },
+  { key: 'other', label: 'Other…', stepName: 'Companies House — ' },
+];
+
+export const REG_GROUP = 'HMRC Registration';
+export const REG_GROUP_SORT = 900;
+export const CH_GROUP = 'Companies House';
+export const CH_GROUP_SORT = 950;
+
 // Board view columns — the significant milestones staff want to see at a
 // glance (akin to the old Excel tracker's columns), grouped the same way as
 // onboarding_steps.group_name. A step counts for a column when it's flagged
@@ -182,20 +214,16 @@ export async function saveHandoverDefault(def) {
 // condition only apply when the client's quote/billing meets it (same
 // resolution as conditional steps). Safe to call repeatedly.
 export async function initHandovers(onboarding) {
-  const [defaults, { quote, serviceIds }, { serviceNames }] = await Promise.all([
-    listHandoverDefaults(),
-    findActiveQuote(onboarding.entity_id),
-    findLiveBilling(onboarding.entity_id),
-  ]);
+  const defaults = await listHandoverDefaults();
   const have = new Set((onboarding.handovers || []).map((h) => h.area));
-  const hasSource = Boolean(quote) || serviceNames.length > 0;
-  const met = metConditions({ serviceIds, billingNames: serviceNames });
+  const conds = onboarding.service_conditions || [];
   const rows = defaults
     .filter((d) => d.active && !have.has(d.area))
-    .filter((d) => !d.service_condition || !hasSource || met.has(d.service_condition))
+    .filter((d) => !d.service_condition || conds.includes(d.service_condition))
     .map((d) => ({
       onboarding_id: onboarding.id,
       area: d.area,
+      service_condition: d.service_condition || null,
       owner_id: d.default_owner_id || onboarding.owner_id || null,
     }));
   if (rows.length) {
@@ -318,6 +346,8 @@ export async function addDirectorSa(onboarding, directorName, { actorId } = {}) 
     expected_days: ts.expected_days,
     chase_after_days: ts.chase_after_days,
     client_label: ts.client_label,
+    milestone: ts.milestone,
+    service_condition: ts.service_condition,
   }));
   const { error: e2 } = await supabase.from('onboarding_steps').insert(rows);
   if (e2) throw e2;
@@ -439,6 +469,14 @@ export async function createOnboarding({ entityId, template, ownerId, leadId, ta
   const { hasBilling, serviceNames } = await findLiveBilling(entityId);
   const resolved = resolveSteps(template.steps, { quote, serviceIds, liveBilling: hasBilling, billingNames: serviceNames });
 
+  // Authoritative service selection = conditions that have at least one
+  // applicable (non-na) step. Editable afterwards in the Services panel.
+  const conditions = [...new Set(
+    resolved
+      .filter((r) => r.templateStep.service_condition && r.initialStatus !== 'na')
+      .map((r) => r.templateStep.service_condition),
+  )];
+
   const { data: ob, error: e1 } = await supabase
     .from('onboardings')
     .insert({
@@ -449,6 +487,7 @@ export async function createOnboarding({ entityId, template, ownerId, leadId, ta
       lead_id: leadId || null,
       target_date: targetDate || null,
       referred_by_entity_id: referredById || null,
+      service_conditions: conditions,
       created_by: actorId || null,
     })
     .select('id')
@@ -471,6 +510,8 @@ export async function createOnboarding({ entityId, template, ownerId, leadId, ta
     chase_after_days: ts.chase_after_days,
     auto_check: ts.auto_check,
     client_label: ts.client_label,
+    milestone: ts.milestone,
+    service_condition: ts.service_condition,
     completed_at: initialStatus === 'complete' ? now : null,
   }));
   const { error: e2 } = await supabase.from('onboarding_steps').insert(stepRows);
@@ -504,6 +545,110 @@ export async function updateOnboarding(id, patch, { actorId, logBody } = {}) {
       onboarding_id: id, kind: 'status_change', body: logBody, created_by: actorId || null,
     });
   }
+}
+
+// Set the onboarding-level status (Complete / Reopen quick actions on the
+// list). Mirrors OnboardingDetailView.handleObStatus: 'complete' stamps
+// completed_at, anything else clears it.
+export async function setOnboardingStatus(id, status, { actorId, prevStatus } = {}) {
+  const patch = { status, completed_at: status === 'complete' ? new Date().toISOString() : null };
+  await updateOnboarding(id, patch, {
+    actorId,
+    logBody: `Onboarding status: ${prevStatus || '?'} → ${status}`,
+  });
+}
+
+// Archive / restore — filed away from the working List and Board without
+// changing status (a completed client stays completed once archived).
+export async function setOnboardingArchived(id, archived, { actorId } = {}) {
+  await updateOnboarding(id, { archived_at: archived ? new Date().toISOString() : null }, {
+    actorId,
+    logBody: archived ? 'Onboarding archived' : 'Onboarding restored from archive',
+  });
+}
+
+// Edit the client's service selection. Re-syncs (never touching completed
+// steps): conditional steps flip na<->to-do; handover areas (the "task owner"
+// tiles) and — through them — the check-in tiles appear/disappear.
+export async function setServiceConditions(ob, next, { actorId } = {}) {
+  const prev = ob.service_conditions || [];
+  const added = next.filter((c) => !prev.includes(c));
+  const removed = prev.filter((c) => !next.includes(c));
+  if (added.length === 0 && removed.length === 0) return;
+
+  const steps = ob.steps || [];
+  const toPending = steps.filter((s) => added.includes(s.service_condition) && s.status === 'na');
+  const toNa = steps.filter((s) => removed.includes(s.service_condition) && !['complete', 'na'].includes(s.status));
+  const now = new Date().toISOString();
+  if (toPending.length) {
+    const { error } = await supabase.from('onboarding_steps')
+      .update({ status: 'pending', updated_at: now }).in('id', toPending.map((s) => s.id));
+    if (error) throw error;
+  }
+  if (toNa.length) {
+    const { error } = await supabase.from('onboarding_steps')
+      .update({ status: 'na', updated_at: now }).in('id', toNa.map((s) => s.id));
+    if (error) throw error;
+  }
+
+  const { error: eSel } = await supabase.from('onboardings').update({ service_conditions: next }).eq('id', ob.id);
+  if (eSel) throw eSel;
+
+  // Sync handover areas from the team defaults for the changed conditions.
+  const defaults = await listHandoverDefaults();
+  const haveConds = new Set((ob.handovers || []).map((h) => h.service_condition).filter(Boolean));
+  const addRows = defaults
+    .filter((d) => d.active && d.service_condition && added.includes(d.service_condition) && !haveConds.has(d.service_condition))
+    .map((d) => ({
+      onboarding_id: ob.id, area: d.area, service_condition: d.service_condition,
+      owner_id: d.default_owner_id || ob.owner_id || null,
+    }));
+  if (addRows.length) {
+    const { error } = await supabase.from('onboarding_handovers')
+      .upsert(addRows, { onConflict: 'onboarding_id,area', ignoreDuplicates: true });
+    if (error) throw error;
+  }
+  const removeIds = (ob.handovers || [])
+    .filter((h) => h.service_condition && removed.includes(h.service_condition) && !h.done_at)
+    .map((h) => h.id);
+  if (removeIds.length) {
+    const { error } = await supabase.from('onboarding_handovers').delete().in('id', removeIds);
+    if (error) throw error;
+  }
+
+  const parts = [];
+  if (added.length) parts.push(`added ${added.join(', ')}`);
+  if (removed.length) parts.push(`removed ${removed.join(', ')}`);
+  await supabase.from('onboarding_activity').insert({
+    onboarding_id: ob.id, kind: 'system',
+    body: `Services updated — ${parts.join('; ')}.`, created_by: actorId || null,
+  });
+}
+
+// Add a tracked task step (HMRC registration / Companies House change).
+export async function addAdHocStep(ob, { group, groupSort, name, assigneeId, note, actorId } = {}) {
+  const inGroup = (ob.steps || []).filter((s) => s.group_name === group);
+  const { error } = await supabase.from('onboarding_steps').insert({
+    onboarding_id: ob.id,
+    group_name: group,
+    group_sort: groupSort,
+    sort: Math.max(0, ...inGroup.map((s) => s.sort || 0)) + 1,
+    name,
+    owner_type: 'staff',
+    assignee_id: assigneeId || ob.owner_id || null,
+    status: 'pending',
+    note: note || null,
+    milestone: false,
+  });
+  if (error) throw error;
+  await supabase.from('onboarding_activity').insert({
+    onboarding_id: ob.id, kind: 'system', body: `Task added — ${name}`, created_by: actorId || null,
+  });
+}
+
+export async function deleteOnboardingStep(stepId) {
+  const { error } = await supabase.from('onboarding_steps').delete().eq('id', stepId);
+  if (error) throw error;
 }
 
 export async function updateStep(step, patch, { actorId, logBody } = {}) {

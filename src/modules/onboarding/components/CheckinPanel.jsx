@@ -23,7 +23,11 @@ export default function CheckinPanel({ ob, staff, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const feedback = ob.checkin_feedback || {};
-  const areas = (ob.handovers || []).map((h) => h.area);
+  // Mirror the handover panel: only areas whose service applies to this client.
+  const conds = ob.service_conditions || [];
+  const areas = (ob.handovers || [])
+    .filter((h) => !h.service_condition || conds.includes(h.service_condition))
+    .map((h) => h.area);
   const due = ob.checkin_due && !ob.checkin_sent_at && new Date(ob.checkin_due) <= new Date();
   const staffName = (id) => staff.find((s) => s.id === id)?.name;
 

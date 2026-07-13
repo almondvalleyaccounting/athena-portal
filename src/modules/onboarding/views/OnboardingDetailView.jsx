@@ -8,6 +8,7 @@ import PortalAccessPanel from '../components/PortalAccessPanel';
 import DocumentsPanel from '../components/DocumentsPanel';
 import EscalationPanel from '../components/EscalationPanel';
 import CompaniesHousePanel from '../components/CompaniesHousePanel';
+import ServicesPanel from '../components/ServicesPanel';
 import HandoverPanel from '../components/HandoverPanel';
 import CheckinPanel from '../components/CheckinPanel';
 import {
@@ -193,6 +194,24 @@ export default function OnboardingDetailView() {
 
       {error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 10 }}>{error}</div>}
 
+      {ob.status === 'issues' && (
+        <div style={{ ...card, borderColor: tones.danger.border, background: tones.danger.bg, padding: '14px 18px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <AlertTriangle size={15} color={tones.danger.fg} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: tones.danger.fg, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              What's the issue?
+            </span>
+          </div>
+          <textarea
+            key={`issue-${ob.id}`}
+            defaultValue={ob.issue_note || ''}
+            placeholder="Describe what's blocking this onboarding — this shows on hover in the pipeline."
+            onBlur={(e) => { if (e.target.value !== (ob.issue_note || '')) handleObField({ issue_note: e.target.value || null }); }}
+            style={{ ...selectStyle, width: '100%', minHeight: 44, resize: 'vertical', boxSizing: 'border-box', background: '#fff' }}
+          />
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.8fr) minmax(280px, 1fr)', gap: 16, alignItems: 'start' }}>
         {/* Checklist */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -326,9 +345,22 @@ export default function OnboardingDetailView() {
         {/* Right column: portal access + activity */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', paddingRight: 2 }}>
         <EscalationPanel ob={ob} onChanged={load} />
+        <ServicesPanel ob={ob} staff={staff} onChanged={load} />
         <CompaniesHousePanel ob={ob} onChanged={load} />
         <HandoverPanel ob={ob} staff={staff} onChanged={load} />
         <CheckinPanel ob={ob} staff={staff} onChanged={load} />
+        <div style={{ ...card, padding: '14px 18px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+            Notes &amp; background
+          </div>
+          <textarea
+            key={`notes-${ob.id}`}
+            defaultValue={ob.notes || ''}
+            placeholder="Internal notes / imported background…"
+            onBlur={(e) => { if (e.target.value !== (ob.notes || '')) handleObField({ notes: e.target.value || null }); }}
+            style={{ ...selectStyle, width: '100%', minHeight: 90, resize: 'vertical', boxSizing: 'border-box', whiteSpace: 'pre-wrap' }}
+          />
+        </div>
         <PortalAccessPanel entityId={ob.entity_id} onboardingId={ob.id} entityEmail={ob.entity?.prospect_email || ob.entity?.billing_email} />
         <DocumentsPanel onboarding={ob} documents={ob.documents || []} onChanged={load} />
         <div style={{ ...card, padding: '16px 18px' }}>

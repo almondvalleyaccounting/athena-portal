@@ -29,7 +29,11 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
   const [showDefaults, setShowDefaults] = useState(false);
   const initialised = useRef(false);
 
-  const handovers = ob.handovers || [];
+  // Only show areas whose service applies to this client (or unconditional
+  // areas). Keeps stray areas — e.g. Payroll on a non-payroll client — off the
+  // tiles without deleting rows that may already be part-configured.
+  const conds = ob.service_conditions || [];
+  const handovers = (ob.handovers || []).filter((h) => !h.service_condition || conds.includes(h.service_condition));
   const staffName = (id) => staff.find((s) => s.id === id)?.name || null;
   const dueNow = (h) => h.due && !h.done_at && new Date(h.due) <= new Date();
   const anyDue = handovers.some(dueNow);
@@ -40,7 +44,7 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
   useEffect(() => {
     if (initialised.current || !ob?.id) return;
     initialised.current = true;
-    if (handovers.length === 0) {
+    if ((ob.handovers || []).length === 0) {
       initHandovers(ob).then((n) => { if (n > 0) onChanged?.(); }).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
