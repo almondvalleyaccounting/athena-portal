@@ -147,7 +147,7 @@ export default function PipelineView() {
   const [busyId, setBusyId] = useState(null);
   const [filter, setFilter] = useState('open'); // open | done | all
   const [search, setSearch] = useState('');
-  const [compact, setCompact] = useState(false);
+  const [compact, setCompact] = useState(true);
 
   const load = () => Promise.all([listChCodeRequests(), queuedCountsByRequest()])
     .then(([data, counts]) => { setRows(data); setQueuedCounts(counts); })

@@ -46,6 +46,10 @@ async function sendEmail(to: string[], subject: string, html: string, text: stri
 const ACTIVITY_LABELS: Array<[RegExp, string]> = [
   [/^offer emailed/i, "✉️ Offer sent"],
   [/^chase #\d+ emailed/i, "🔔 Reminder sent"],
+  // Queue-sent emails (ch-code-queue-send bodies) — specific before generic.
+  [/id\/poa reminder emailed/i, "🪪 ID/POA reminder sent"],
+  [/code reminder emailed/i, "🔑 Code reminder sent"],
+  [/reminder emailed/i, "🔔 Reminder sent"],
   [/decision recorded: paid/i, "💳 Chose the paid option"],
   [/decision recorded: self/i, "🙋 Chose to self-verify"],
   [/id.?\/?poa received/i, "🪪 ID/proof of address received"],
@@ -98,15 +102,21 @@ Deno.serve(async (req) => {
     service.from("ch_code_activity")
       .select("body, created_at, kind, request:ch_code_requests(person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name))")
       .in("kind", ["email_out", "system", "status_change"]).gte("created_at", since).order("created_at"),
-    service.from("staff_profiles").select("email").eq("is_active", true),
+    service.from("staff_profiles").select("id, email").eq("is_active", true),
     service.from("ch_code_requests")
       .select("chase_count, status, escalation_status, person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name, id)")
       .not("status", "in", "(entered_on_bm,stalled)"),
   ]);
 
+  // Recipients: the configured people (Bobby + Tracy) resolved to emails from
+  // staff_profiles; fall back to all active staff if none are configured.
+  const wantIds = (cfg?.weekly_recipient_ids as string[]) || [];
+  const emailOf = (list: Row[]) => list.map((s) => (s.email as string)?.trim()).filter((e: string) => e?.includes("@"));
   const recipients = testRecipient
     ? [testRecipient]
-    : (staff || []).map((s: Row) => (s.email as string)?.trim()).filter((e: string) => e?.includes("@"));
+    : wantIds.length
+      ? emailOf((staff || []).filter((s: Row) => wantIds.includes(s.id as string)))
+      : emailOf((staff || []) as Row[]);
 
   // ── What moved last week ──
   const byPerson = new Map<string, Row[]>();
