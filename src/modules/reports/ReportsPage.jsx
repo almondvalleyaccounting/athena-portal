@@ -27,8 +27,8 @@ const REPORTS = [
   { name: 'ProfitAndLossMonthlyPY', label: 'P&L Monthly (Prior Year)',   dateMode: 'prior_range', defaultOn: true,  extraParam: 'summarize_column_by=Month' },
   { name: 'AgedReceivablesCurrent', label: 'Aged Receivables (Current)', dateMode: 'point',       defaultOn: true,  extraParam: 'aging_method=Current' },
   { name: 'AgedPayablesCurrent',  label: 'Aged Payables (Current)',      dateMode: 'point',       defaultOn: true,  extraParam: 'aging_method=Current' },
-  { name: 'AccountList',          label: 'Account List',                 dateMode: 'range',       defaultOn: false, experimental: true },
-  { name: 'ItemSales',            label: 'Sales by Product-Service',     dateMode: 'range',       defaultOn: false, experimental: true },
+  { name: 'AccountList',          label: 'Account List',                 dateMode: 'range',       defaultOn: true },
+  { name: 'ItemSales',            label: 'Sales by Product-Service',     dateMode: 'range',       defaultOn: true },
 ];
 
 const API_URL = '/api/run-qbo-reports';
