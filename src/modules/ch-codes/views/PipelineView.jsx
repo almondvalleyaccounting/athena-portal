@@ -17,6 +17,28 @@ import {
 const font = "'Outfit', sans-serif";
 const isEmail = (e) => typeof e === 'string' && e.includes('@');
 
+// Split a person's name into surname/forename for sorting. Handles both
+// "First Middle Last" and BM's "Last, First" formats.
+function nameParts(r) {
+  const raw = (r.person?.name || '').trim();
+  if (raw.includes(',')) {
+    const [sur, fore] = raw.split(',');
+    return { surname: (sur || '').trim().toLowerCase(), forename: (fore || '').trim().split(/\s+/)[0]?.toLowerCase() || '' };
+  }
+  const parts = raw.split(/\s+/).filter(Boolean);
+  return {
+    forename: (parts[0] || '').toLowerCase(),
+    surname: (parts.length > 1 ? parts[parts.length - 1] : parts[0] || '').toLowerCase(),
+  };
+}
+// Emails sent (desc) → surname → forename.
+function cmpRows(a, b) {
+  const d = (b.emails_sent || 0) - (a.emails_sent || 0);
+  if (d) return d;
+  const na = nameParts(a), nb = nameParts(b);
+  return na.surname.localeCompare(nb.surname) || na.forename.localeCompare(nb.forename);
+}
+
 function localNowValue() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
@@ -159,6 +181,7 @@ export default function PipelineView() {
   const grouped = useMemo(() => {
     const m = {};
     for (const r of filtered) (m[r.stage] ||= []).push(r);
+    for (const k of Object.keys(m)) m[k].sort(cmpRows);
     return m;
   }, [filtered]);
 
