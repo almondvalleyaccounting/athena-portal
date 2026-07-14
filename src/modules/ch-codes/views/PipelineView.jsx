@@ -8,7 +8,7 @@ import { chipStyle, pillStyle, tones } from '../../../lib/tokens';
 import ChSubNav from '../components/ChSubNav';
 import { useAuth } from '../../../shell/AppShell';
 import {
-  listChCodeRequests, CH_STAGES, stageMeta, commsOf, COMMS_STEPS, daysSince,
+  listChCodeRequests, CH_STAGES, stageMeta, commsOf, daysSince,
   advanceStage, setComms, setEmailsSent, recordDecision, recordIdPoaReceived,
   recordCodeReceived, markInformDirect, markEnteredBm, submitRequest, rejectRequest,
   reopenRequest, setPersonEmail, queueEmail, queuedCountsByRequest,
@@ -60,23 +60,27 @@ function EmailCounter({ value, onSave }) {
         style={{ width: 52, padding: '3px 6px', fontSize: 12, fontFamily: font, border: '1px solid #93c5fd', borderRadius: 7 }} />
     );
   }
+  // Colour the counter by how many emails have gone: 0 grey, 1 blue, 2 amber, 3+ red.
+  const n = value ?? 0;
+  const t = n >= 3 ? tones.danger : n === 2 ? tones.warning : n === 1 ? tones.info : { bg: '#f8fafc', border: '#e5e7eb', fg: '#475569' };
   return (
     <button onClick={(e) => { e.stopPropagation(); setEditing(true); }} title="Emails sent this stage — click to set"
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 999, padding: '3px 9px', fontSize: 12, fontWeight: 600, color: '#475569', cursor: 'pointer', fontFamily: font }}>
-      <Mail size={12} /> {value ?? 0}/3
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: t.bg, border: `1px solid ${t.border}`, borderRadius: 999, padding: '3px 9px', fontSize: 12, fontWeight: 700, color: t.fg, cursor: 'pointer', fontFamily: font }}>
+      <Mail size={12} /> {n}/3
     </button>
   );
 }
 
-// Read-only chip showing where the current stage's chase ladder is up to.
+// Chip for the escalation states only — the coloured email counter already
+// conveys the 0/1/2/3 email progress, so we don't duplicate it here.
 function CommsChip({ r }) {
   const c = commsOf(r);
-  const meta = COMMS_STEPS.find((s) => s.value === c) || COMMS_STEPS[0];
-  if (c === 'called' && r.called_at) {
-    return <span style={{ ...chipStyle('accent'), display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`Called ${new Date(r.called_at).toLocaleString('en-GB')}`}><PhoneCall size={10} /> Called {new Date(r.called_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>;
+  if (c === 'called') {
+    return <span style={{ ...chipStyle('accent'), display: 'inline-flex', alignItems: 'center', gap: 3 }} title={r.called_at ? `Called ${new Date(r.called_at).toLocaleString('en-GB')}` : 'Call needed'}>
+      <PhoneCall size={10} /> {r.called_at ? `Called ${new Date(r.called_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Call needed'}</span>;
   }
   if (c === 'escalated') return <span style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={10} /> Escalated</span>;
-  return <span style={chipStyle(meta.tone)}>{meta.label}</span>;
+  return null;
 }
 
 function Btn({ icon: Icon, label, onClick, disabled, tone = 'info', solid = false }) {
