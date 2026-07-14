@@ -1,0 +1,27 @@
+-- ============================================================
+-- BM client import must not overwrite a deliberate Athena status decision.
+-- (migration bm_import_preserve_athena_status)
+--
+-- Problem: import_bm_clients set entity_status='active' on every client still
+-- present in the BM export — silently reverting an Athena "No longer a client"
+-- (nlac) or archived decision on the next import (this is what un-did Gordon
+-- Hunter / Braids Property Management Ltd).
+--
+-- Fix: on both the convert and the ON CONFLICT upsert paths, preserve an
+-- existing nlac/archived status instead of forcing 'active':
+--   entity_status = CASE WHEN <current> IN ('nlac','archived')
+--                        THEN <current> ELSE 'active' END
+-- nlac/archived are only ever set in Athena, so keeping them is always right.
+-- The inconsistency (client still active in BM but nlac in Athena) stays
+-- flagged on Sophie's admin list via the nlac_bm_mirror task, which
+-- confirm_nlac_mirror_tasks() closes once the client drops from the BM export.
+--
+-- NOTE: other entity fields (name/utr/vat/paye/ch_auth_code/…) are STILL
+-- overwritten by BM on import — protecting Athena edits to those needs the
+-- field-level override mechanism (see the "Athena override" follow-up), not
+-- yet built. Only status is protected here.
+--
+-- The full CREATE OR REPLACE FUNCTION public.import_bm_clients(...) was applied
+-- via the migration of the same name; only the two entity_status assignments
+-- changed from `'active'` to the CASE expression above.
+-- ============================================================
