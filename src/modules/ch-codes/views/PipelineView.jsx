@@ -185,13 +185,15 @@ export default function PipelineView() {
     return m;
   }, [filtered]);
 
-  const kpis = useMemo(() => {
-    if (!rows) return { call: 0, esc: 0 };
-    const open = rows.filter((r) => !['s6_submitted', 's7_rejected'].includes(r.stage));
-    return {
-      call: open.filter((r) => r.escalation_status === 'call_needed').length,
-      esc: open.filter((r) => r.escalation_status === 'escalated_tracy').length,
-    };
+  // Chase-ladder summary across the open chasing stages (s1/s3a/s3b/s4).
+  const summary = useMemo(() => {
+    const s = { not_started: 0, one_email: 0, two_emails: 0, three_emails: 0, called: 0, escalated: 0, total: 0 };
+    for (const r of rows || []) {
+      if (!stageMeta(r.stage).chasing) continue;
+      s[commsOf(r)] += 1;
+      s.total += 1;
+    }
+    return s;
   }, [rows]);
 
   async function act(id, fn, msg) {
@@ -375,11 +377,26 @@ export default function PipelineView() {
         <ChSubNav active="Pipeline" queuedCount={totalQueued} />
       </div>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-        {kpis.call > 0 && <span style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}><PhoneCall size={11} /> {kpis.call} need a call</span>}
-        {kpis.esc > 0 && <span style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}><AlertTriangle size={11} /> {kpis.esc} escalated</span>}
+      {/* Chase-ladder summary across the open chasing stages */}
+      <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', background: '#fff', marginBottom: 6, flexWrap: 'wrap' }}>
+        {[
+          ['0 emails', summary.not_started, { bg: '#f8fafc', fg: '#475569' }],
+          ['1 email', summary.one_email, tones.info],
+          ['2 emails', summary.two_emails, tones.warning],
+          ['3 emails · call due', summary.three_emails, tones.danger],
+          ['Called', summary.called, tones.accent],
+          ['Escalated', summary.escalated, tones.danger],
+        ].map(([label, val, t], i) => (
+          <div key={label} style={{ flex: '1 1 110px', minWidth: 104, padding: '10px 14px', borderLeft: i ? '1px solid #f1f5f9' : 'none' }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: t.fg }}>{val}</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 11.5, color: '#94a3b8' }}>Across the {summary.total} people being chased (Stages 1, 3a, 3b, 4) — 3 emails triggers a call.</span>
         {totalQueued > 0 && (
-          <button onClick={() => navigate('/onboarding/ch-codes/queue')} style={{ ...chipStyle('info'), display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, border: 'none', cursor: 'pointer' }}>
+          <button onClick={() => navigate('/onboarding/ch-codes/queue')} style={{ ...chipStyle('info'), display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, border: 'none', cursor: 'pointer', marginLeft: 'auto' }}>
             <Send size={11} /> {totalQueued} email{totalQueued === 1 ? '' : 's'} queued — review &amp; send
           </button>
         )}
