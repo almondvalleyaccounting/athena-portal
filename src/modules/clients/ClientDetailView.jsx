@@ -45,6 +45,7 @@ export default function ClientDetailView() {
   const [archiving, setArchiving] = useState(false);
   const [offboarding, setOffboarding] = useState(false);
   const [offboardResult, setOffboardResult] = useState(null);
+  const [fieldOverrides, setFieldOverrides] = useState({}); // field -> { value, bm_value } pending BM sync
 
   useEffect(() => {
     (async () => {
@@ -64,6 +65,9 @@ export default function ClientDetailView() {
           supabase.from('onboardings')
             .select('id, status, template:onboarding_templates(name), steps:onboarding_steps(status)')
             .eq('entity_id', id).in('status', ['active', 'on_hold', 'issues']),
+          supabase.from('admin_tasks')
+            .select('field, value, bm_value')
+            .eq('entity_id', id).eq('kind', 'bm_field').is('confirmed_at', null).is('dismissed_at', null),
         ]);
         const get = (i) => results[i]?.value?.data;
         const ent = get(0);
@@ -80,6 +84,9 @@ export default function ClientDetailView() {
         setAllocations(get(9) || []);
         setRecon(get(10) || null);
         setOnboardings(get(11) || []);
+        const ov = {};
+        for (const t of (get(12) || [])) ov[t.field] = { value: t.value, bm_value: t.bm_value };
+        setFieldOverrides(ov);
         // Default action assignee to client manager
         if (ent?.manager) {
           const mgr = staff.find((s) => s.name?.toLowerCase().includes(ent.manager.toLowerCase()));
@@ -548,11 +555,11 @@ export default function ClientDetailView() {
           <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: 13 }}>
             <DetailRow label="Name" value={entity.name} />
             <DetailRow label="Type" value={entity.type?.replace('_', ' ')} />
-            <EditableRow label="Company No." field="company_number" entity={entity} setEntity={setEntity} profile={profile} placeholder="e.g. SC123456" />
-            <EditableRow label="UTR" field="utr" entity={entity} setEntity={setEntity} profile={profile} />
-            <EditableRow label="VAT Number" field="vat_number" entity={entity} setEntity={setEntity} profile={profile} />
-            <EditableRow label="PAYE Ref" field="paye_ref" entity={entity} setEntity={setEntity} profile={profile} />
-            <EditableRow label="CH Auth Code" field="ch_auth_code" entity={entity} setEntity={setEntity} profile={profile} />
+            <EditableRow label="Company No." field="company_number" entity={entity} setEntity={setEntity} profile={profile} placeholder="e.g. SC123456" overrides={fieldOverrides} setOverrides={setFieldOverrides} />
+            <EditableRow label="UTR" field="utr" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
+            <EditableRow label="VAT Number" field="vat_number" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
+            <EditableRow label="PAYE Ref" field="paye_ref" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
+            <EditableRow label="CH Auth Code" field="ch_auth_code" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
             {entity.manager && <DetailRow label="Manager" value={entity.manager} />}
             {entity.grade && <DetailRow label="Grade" value={entity.grade} />}
             <DetailRow label="Expedite" value={entity.expedite ? 'Yes — prioritise post-period-end' : 'No'} />
@@ -602,19 +609,27 @@ function DetailRow({ label, value }) {
   </>);
 }
 
+// Fields that also live in BrightManager — editing these keeps the Athena
+// value, raises a Sophie to-do, and shows a "BM differs" flag until BM aligns.
+const BM_SHARED_FIELDS = new Set(['company_number', 'utr', 'vat_number', 'paye_ref', 'ch_auth_code']);
+const normCode = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
 // Click-to-edit registration field. Always rendered (even when empty) so
 // missing values — company number especially — are obviously addable.
 // Persists straight to entities with an audit_log entry.
-function EditableRow({ label, field, entity, setEntity, profile, placeholder }) {
+function EditableRow({ label, field, entity, setEntity, profile, placeholder, overrides, setOverrides }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState('');
   const [saving, setSaving] = useState(false);
   const current = entity[field] || '';
+  const ov = overrides?.[field];
+  const bmDiffers = ov && normCode(ov.value) !== normCode(ov.bm_value);
 
   async function save(nextRaw) {
     const next = (nextRaw ?? val).trim() || null;
     if (next === (entity[field] || null)) { setEditing(false); return; }
     setSaving(true);
+    const oldVal = entity[field] || null;
     const { error } = await supabase.from('entities').update({ [field]: next }).eq('id', entity.id);
     if (error) {
       alert(`Could not save ${label}: ` + error.message);
@@ -622,8 +637,23 @@ function EditableRow({ label, field, entity, setEntity, profile, placeholder }) 
       setEntity({ ...entity, [field]: next });
       await supabase.from('audit_log').insert({
         user_id: profile?.id || null, action: 'entity_field_edit', entity_type: 'entity',
-        entity_id: entity.id, detail: { field, from: entity[field] || null, to: next },
+        entity_id: entity.id, detail: { field, from: oldVal, to: next },
       });
+      // BM-shared field: keep the Athena value, flag BM, and raise Sophie's to-do.
+      if (BM_SHARED_FIELDS.has(field) && setOverrides) {
+        // Preserve the last-known BM value if an override already exists, else
+        // the value we just replaced was BM's.
+        const bmVal = ov?.bm_value ?? oldVal;
+        try {
+          await supabase.rpc('record_field_override', { p_entity_id: entity.id, p_field: field, p_value: next, p_bm_value: bmVal });
+        } catch (e) { console.warn('[record_field_override]', e); }
+        setOverrides((prev) => {
+          const n = { ...prev };
+          if (normCode(next) === normCode(bmVal)) delete n[field];
+          else n[field] = { value: next, bm_value: bmVal };
+          return n;
+        });
+      }
     }
     setSaving(false);
     setEditing(false);
@@ -641,16 +671,26 @@ function EditableRow({ label, field, entity, setEntity, profile, placeholder }) 
         style={{ fontSize: 13, padding: '3px 8px', border: '1px solid #0e7fe0', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif", maxWidth: 220 }}
       />
     ) : (
-      <span
-        onClick={() => { setVal(current); setEditing(true); }}
-        title={`Click to ${current ? 'edit' : 'add'} ${label}`}
-        style={{
-          fontSize: 13, fontWeight: 500, cursor: 'pointer',
-          color: current ? '#0f172a' : '#94a3b8',
-          borderBottom: '1px dashed #cbd5e1', display: 'inline-block', maxWidth: 'fit-content',
-        }}
-      >
-        {current || '+ add'}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span
+          onClick={() => { setVal(current); setEditing(true); }}
+          title={`Click to ${current ? 'edit' : 'add'} ${label}`}
+          style={{
+            fontSize: 13, fontWeight: 500, cursor: 'pointer',
+            color: current ? '#0f172a' : '#94a3b8',
+            borderBottom: '1px dashed #cbd5e1',
+          }}
+        >
+          {current || '+ add'}
+        </span>
+        {bmDiffers && (
+          <span
+            title={`BrightManager still shows "${ov.bm_value || '(blank)'}" — on Sophie's admin list to update in BM. Clears automatically once BM matches.`}
+            style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 6, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', whiteSpace: 'nowrap' }}
+          >
+            BM: {ov.bm_value || '—'}
+          </span>
+        )}
       </span>
     )}
   </>);
