@@ -83,7 +83,15 @@ export default function DetailView() {
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{req.person?.name || 'Unknown'}</h1>
+          <h1
+            onClick={() => req.entity_id && navigate(`/clients/${req.entity_id}`)}
+            title={req.entity_id ? "Open this client's page" : undefined}
+            style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#0f172a', cursor: req.entity_id ? 'pointer' : 'default', display: 'inline-block' }}
+            onMouseEnter={(e) => { if (req.entity_id) e.currentTarget.style.textDecoration = 'underline'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+          >
+            {req.person?.name || 'Unknown'}
+          </h1>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
             {req.entity_id ? (
               <span onClick={() => navigate(`/clients/${req.entity_id}`)} title="Open this client's page"
@@ -94,7 +102,17 @@ export default function DetailView() {
             {' · Owner: '}{req.owner?.name || 'unassigned'}
           </p>
         </div>
-        <span style={{ ...chipStyle(meta.tone), fontSize: 12 }}>{meta.short} · {meta.label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ ...chipStyle(meta.tone), fontSize: 12 }}>{meta.short} · {meta.label}</span>
+          {req.entity_id && (
+            <button
+              onClick={() => navigate(`/clients/${req.entity_id}`)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: font, fontSize: 12.5, fontWeight: 600, padding: '6px 12px', borderRadius: 9, background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe', cursor: 'pointer' }}
+            >
+              Open client page →
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 12 }}>{error}</div>}
