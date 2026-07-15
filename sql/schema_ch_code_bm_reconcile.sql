@@ -1,65 +1,88 @@
 -- ============================================================
--- CH personal-code — BM reconciliation on import (Stage 5).
--- The personal code is per-director and isn't in today's BM client export.
--- Once it is (user is adding it), the BM import calls reconcile_ch_codes()
--- with {bm_client_id, code} pairs. For each client's PRIMARY CONTACT person
--- with a request at Stage 5 (s5_entered):
---   * code missing on our side → land it (BM as source of truth) + mark BM ✓
---   * code matches (normalised)  → mark entered_bm_at, clear any mismatch flag
---   * code differs               → set bm_code_mismatch + log, so staff reconcile
--- Inert until codes actually appear in the import.
+-- CH personal-code reconciliation on BM import (Stage 5).
+--
+-- v2 (14/07/2026): the code must reach the person who HOLDS THE CHASE, not
+-- just the BM primary contact. Root cause of the Iraj Ali mismatch: the same
+-- human exists as separate people rows — a BrightManager primary-contact
+-- record ("Iraj Ali") AND Companies-House officer/PSC records with the full
+-- legal name ("Iraj Leo Kiryakos Keverian Ali"). CH-code requests are seeded
+-- on the CH-officer/PSC records; the BM code was landing on the contact record,
+-- so the chase never closed.
+--
+-- reconcile_ch_codes now, for each {bm_client_id, code}: takes the primary
+-- contact's first+last name tokens and applies the code to every OPEN request
+-- on that entity held by the primary contact OR a same-first+last-name person
+-- (the matching officer/PSC record) — setting the code, marking entered_bm and
+-- moving the request to Stage 5 (code received). A differing existing real code
+-- raises bm_code_mismatch. Falls back to the primary contact if no chase.
+-- Ignores blank and masked placeholder codes (contains '*').
+--
+-- ⚠️ DATA-QUALITY CAVEAT: as of 14/07 492/495 people.ch_personal_code values
+-- end in "-2223" — i.e. the stored codes are redacted/placeholder, not genuine
+-- CH codes. Until real codes are sourced, this reconcile will "close" chases on
+-- placeholder values. Do not rely on it for genuine codes yet.
 -- ============================================================
 
 create or replace function public.reconcile_ch_codes(p_pairs jsonb)
 returns jsonb
-language plpgsql
-security definer
-set search_path = public
+language plpgsql security definer set search_path = public
 as $$
 declare
-  rec         record;
-  v_person    uuid;
-  v_existing  text;
-  v_landed    int := 0;
-  v_confirmed int := 0;
-  v_flagged   int := 0;
+  rec record; e_id uuid; pc_first text; pc_last text; pc_person uuid;
+  q record; v_landed int := 0; v_closed int := 0; v_flagged int := 0; v_targeted boolean;
 begin
   if not is_active_staff() then raise exception 'forbidden: staff only'; end if;
 
   for rec in select * from jsonb_to_recordset(coalesce(p_pairs, '[]'::jsonb)) as x(bm_client_id text, code text)
   loop
-    if rec.code is null or btrim(rec.code) = '' then continue; end if;
+    if rec.code is null or btrim(rec.code) = '' or rec.code like '%*%' then continue; end if;
 
-    select ep.person_id into v_person
-      from entities e
-      join entity_people ep on ep.entity_id = e.id and ep.is_primary_contact
-     where e.bm_client_id = rec.bm_client_id
-     limit 1;
-    if v_person is null then continue; end if;
+    select id into e_id from entities where bm_client_id = rec.bm_client_id;
+    if e_id is null then continue; end if;
 
-    select ch_personal_code into v_existing from people where id = v_person;
+    select ep.person_id, lower(split_part(p.name,' ',1)), lower(regexp_replace(p.name,'^.* ',''))
+      into pc_person, pc_first, pc_last
+      from entity_people ep join people p on p.id = ep.person_id
+      where ep.entity_id = e_id and ep.is_primary_contact limit 1;
 
-    if v_existing is null then
-      update people set ch_personal_code = btrim(rec.code) where id = v_person;
-      update ch_code_requests set entered_bm_at = now(), bm_code_mismatch = null, updated_at = now()
-        where person_id = v_person and stage = 's5_entered';
+    v_targeted := false;
+
+    for q in
+      select r.id as req_id, r.person_id, r.stage, p.ch_personal_code, p.name
+      from ch_code_requests r
+      join people p on p.id = r.person_id
+      join entity_people ep on ep.person_id = p.id and ep.entity_id = e_id
+      where r.entity_id = e_id and r.stage not in ('s6_submitted','s7_rejected')
+        and ( ep.is_primary_contact
+           or ( pc_first is not null
+                and lower(split_part(p.name,' ',1)) = pc_first
+                and lower(regexp_replace(p.name,'^.* ','')) = pc_last ) )
+    loop
+      v_targeted := true;
+      if coalesce(q.ch_personal_code,'') = '' or q.ch_personal_code like '%*%'
+         or _norm_code(q.ch_personal_code) = _norm_code(rec.code) then
+        update people set ch_personal_code = btrim(rec.code) where id = q.person_id;
+        update ch_code_requests set stage = 's5_entered', status = 'code_received',
+               entered_bm_at = now(), bm_code_mismatch = null,
+               emails_sent = 0, escalation_status = 'none', escalated_at = null, called_at = null, updated_at = now()
+          where id = q.req_id;
+        insert into ch_code_activity (request_id, kind, body)
+          values (q.req_id, 'status_change', 'Personal code ' || btrim(rec.code) || ' found on BrightManager — code received & entered (Stage 5).');
+        v_landed := v_landed + 1; v_closed := v_closed + 1;
+      else
+        update ch_code_requests set bm_code_mismatch = btrim(rec.code) where id = q.req_id;
+        v_flagged := v_flagged + 1;
+      end if;
+    end loop;
+
+    if not v_targeted and pc_person is not null then
+      update people set ch_personal_code = btrim(rec.code)
+        where id = pc_person and (coalesce(ch_personal_code,'') = '' or ch_personal_code like '%*%');
       v_landed := v_landed + 1;
-    elsif regexp_replace(lower(v_existing), '[^a-z0-9]', '', 'g') = regexp_replace(lower(rec.code), '[^a-z0-9]', '', 'g') then
-      update ch_code_requests set entered_bm_at = now(), bm_code_mismatch = null, updated_at = now()
-        where person_id = v_person and stage = 's5_entered';
-      v_confirmed := v_confirmed + 1;
-    else
-      update ch_code_requests set bm_code_mismatch = btrim(rec.code), updated_at = now()
-        where person_id = v_person and stage = 's5_entered';
-      insert into ch_code_activity (request_id, kind, body)
-        select id, 'system',
-               'BM import shows a different personal code (' || btrim(rec.code) || ') than recorded (' || v_existing || ') — please reconcile.'
-          from ch_code_requests where person_id = v_person and stage = 's5_entered';
-      v_flagged := v_flagged + 1;
     end if;
   end loop;
 
-  return jsonb_build_object('landed', v_landed, 'confirmed', v_confirmed, 'flagged', v_flagged);
+  return jsonb_build_object('codes_landed', v_landed, 'chases_closed', v_closed, 'flagged', v_flagged);
 end;
 $$;
 
