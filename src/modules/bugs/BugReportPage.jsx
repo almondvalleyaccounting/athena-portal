@@ -64,23 +64,26 @@ export default function BugReportPage() {
 
   const handleDelete = async (bug) => {
     if (!window.confirm(`Delete bug report "${bug.description.substring(0, 50)}..."?`)) return;
-    try {
-      await supabase.from('bug_reports').delete().eq('id', bug.id);
-      setBugs((prev) => prev.filter((b) => b.id !== bug.id));
-      setSelected((prev) => { const n = new Set(prev); n.delete(bug.id); return n; });
-    } catch { /* silent */ }
+    // Check the DB result before touching local state — otherwise a blocked
+    // delete looks successful until the next refetch brings the row back.
+    const { error } = await supabase.from('bug_reports').delete().eq('id', bug.id);
+    if (error) { window.alert(`Could not delete bug report: ${error.message}`); return; }
+    setBugs((prev) => prev.filter((b) => b.id !== bug.id));
+    setSelected((prev) => { const n = new Set(prev); n.delete(bug.id); return n; });
   };
 
   const handleBulkDelete = async () => {
     if (selected.size === 0) return;
     if (!window.confirm(`Delete ${selected.size} selected bug report(s)?`)) return;
-    try {
-      for (const id of selected) {
-        await supabase.from('bug_reports').delete().eq('id', id);
-      }
-      setBugs((prev) => prev.filter((b) => !selected.has(b.id)));
-      setSelected(new Set());
-    } catch { /* silent */ }
+    const failed = [];
+    for (const id of selected) {
+      const { error } = await supabase.from('bug_reports').delete().eq('id', id);
+      if (error) failed.push(id);
+    }
+    // Keep only rows that genuinely failed to delete; drop the rest.
+    setBugs((prev) => prev.filter((b) => !selected.has(b.id) || failed.includes(b.id)));
+    setSelected(new Set(failed));
+    if (failed.length) window.alert(`${failed.length} bug report(s) could not be deleted.`);
   };
 
   const toggleSelect = (id) => {
