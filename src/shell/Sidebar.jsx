@@ -15,6 +15,7 @@ import {
   TrendingUp,
   ClipboardCheck,
   Gauge,
+  Briefcase,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -40,6 +41,7 @@ const ICON_MAP = {
   'trending-up': TrendingUp,
   'clipboard-check': ClipboardCheck,
   gauge: Gauge,
+  briefcase: Briefcase,
 };
 
 /* ─── Visibility rules ─────────────────────────────────────────── */
@@ -131,10 +133,20 @@ export default function Sidebar() {
 
   const isActive = (route) => location.pathname.startsWith(route);
 
-  // Auto-expand modules whose route matches the current path
+  // Route match as a whole path segment (exact, or a "/route/…" descendant).
+  const routeMatches = (route) => {
+    if (!route) return false;
+    return location.pathname === route || location.pathname.startsWith(route + '/');
+  };
+  // A parent is "active" if its own route OR any child route matches — children
+  // here don't necessarily share the parent's route prefix (e.g. Client Work).
+  const moduleMatches = (mod) =>
+    routeMatches(mod.route) || (mod.children || []).some((c) => routeMatches(c.route));
+
+  // Auto-expand modules whose route (or a child's) matches the current path
   useEffect(() => {
     mainModules.forEach((mod) => {
-      if (mod.children && isActive(mod.route)) {
+      if (mod.children && moduleMatches(mod)) {
         setExpandedModules((prev) => ({ ...prev, [mod.id]: true }));
       }
     });
@@ -250,11 +262,14 @@ export default function Sidebar() {
         {/* Main modules */}
         {mainModules.map((mod) => {
           const IconComp = ICON_MAP[mod.icon] || Receipt;
-          const active = isActive(mod.route);
+          const active = moduleMatches(mod);
           const clickable = isModuleClickable(mod);
           const hasChildren = mod.children && mod.children.length > 0;
           const isExpanded = expandedModules[mod.id] && !collapsed;
           const kids = visibleChildren(mod.children);
+          // Hide a parent group that has children defined but none visible to
+          // this user (e.g. Client Work when they lack every child's permission).
+          if (hasChildren && kids.length === 0) return null;
 
           return (
             <React.Fragment key={mod.id}>

@@ -202,7 +202,7 @@ export default function ReportsPage() {
           marginBottom: '8px',
         }}
       >
-        QBO Reports
+        Client Reports
       </h1>
       <p
         style={{

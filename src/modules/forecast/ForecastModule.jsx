@@ -351,7 +351,7 @@ function Header({ forecast, forecasts, forecastId, onSelect, onCreate, onEdit, o
     <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
       <div>
         <h1 style={{ fontFamily: serifStack, fontSize: 30, fontWeight: 500, color: colors.ink, margin: 0 }}>
-          Forecast
+          Client Forecast
           {forecast?.client_name && (
             <span style={{ fontSize: 16, fontWeight: 400, color: colors.muted, marginLeft: 12 }}>
               · {forecast.client_name}
