@@ -55,6 +55,140 @@ function drawFooter(doc, pw, margin, cw) {
   });
 }
 
+// Standard terms and conditions that accompany every quote. These are the
+// commercial terms of the quote itself — the signed engagement letter remains
+// the full contract and prevails over anything here.
+const QUOTE_TERMS = [
+  {
+    h: 'About these terms',
+    p: [
+      'These terms and conditions accompany, and form part of, the attached quote from Almond Valley Accounting Limited ("we", "us", "our"). They set out the basis on which the quoted services are offered. On engagement you will be issued with a formal letter of engagement; where anything in that engagement letter differs from these terms, the engagement letter prevails.',
+    ],
+  },
+  {
+    h: 'Validity of this quote',
+    p: [
+      'This quote is valid until the "Valid Until" date shown, or for 30 days from the quote date where no such date is shown. After that point the quote may be withdrawn or re-priced. Fees are based on the information available to us at the date of the quote; if the scope, size or complexity of your affairs differs materially from what we were told, we will discuss a revised fee with you before proceeding.',
+    ],
+  },
+  {
+    h: 'Fees, VAT and payment',
+    p: [
+      'Recurring fees are payable monthly in advance by Direct Debit, unless we agree otherwise in writing. All fees are subject to VAT at the prevailing rate (currently 20%). One-off setup fees are payable on commencement of the engagement.',
+      'We reserve the right to suspend work where fees are overdue. Amounts unpaid beyond their due date may be subject to interest at the statutory rate under the Late Payment of Commercial Debts (Interest) Act 1998.',
+    ],
+  },
+  {
+    h: 'Annual fee review',
+    p: [
+      'Fees are reviewed at least annually. They may be adjusted to reflect inflation, changes in the scope or volume of work, and changes in the cost of third-party services. We will notify you of any change in advance of it taking effect.',
+    ],
+  },
+  {
+    h: 'Scope of services',
+    p: [
+      'The services covered are those itemised in the attached quote. Any work outside that scope — including ad hoc advice, additional filings, HMRC enquiries, or work arising from incomplete or late records — is not included and will be quoted for, or charged, separately. We will agree additional work with you before undertaking it wherever practicable.',
+    ],
+  },
+  {
+    h: 'Third-party software',
+    p: [
+      'Where the quote includes bookkeeping or other software subscriptions, these are provided by third parties and are subject to those providers’ own terms. Software charges are passed on at the amounts stated and may change if the provider’s pricing changes.',
+    ],
+  },
+  {
+    h: 'Commencement of the engagement',
+    p: [
+      'Acceptance of this quote confirms the services and fees. Work will begin once the engagement letter is signed, a Direct Debit is in place, and our anti-money-laundering identity and business verification checks are complete, as required by the Money Laundering Regulations 2017.',
+    ],
+  },
+  {
+    h: 'Your responsibilities',
+    p: [
+      'You are responsible for the completeness and accuracy of the records and information you provide, and for providing them in good time to allow us to meet filing deadlines. You remain responsible for maintaining proper accounting records. We cannot accept responsibility for penalties, interest or other losses arising from information supplied late, incomplete or incorrect.',
+    ],
+  },
+  {
+    h: 'Confidentiality and data protection',
+    p: [
+      'We treat your information as confidential and process personal data in accordance with the UK GDPR and the Data Protection Act 2018, using it only as necessary to provide the services and to meet our legal and regulatory obligations. Our privacy notice is available on request.',
+    ],
+  },
+  {
+    h: 'Limitation of liability',
+    p: [
+      'We will provide the services with reasonable care and skill. Our total liability to you arising from or in connection with the engagement is limited to the fees paid for the services in the twelve months preceding the event giving rise to the claim, except for liability that cannot be limited by law. We are not liable for indirect or consequential loss, nor for any loss arising from reliance on information that was incomplete, inaccurate or provided late. The precise liability terms are set out in the engagement letter.',
+    ],
+  },
+  {
+    h: 'Termination',
+    p: [
+      'Either party may end the engagement by giving 30 days’ written notice. Fees are payable for all work carried out up to the date of termination, including work in progress. On termination we will, subject to settlement of outstanding fees, provide reasonable assistance to hand over to a new adviser.',
+    ],
+  },
+  {
+    h: 'Professional and regulatory standards',
+    p: [
+      'We act in accordance with the standards of our professional body and applicable law, including the Money Laundering Regulations 2017. We may be required to make reports to the relevant authorities and are not always able to inform you that a report has been made.',
+    ],
+  },
+  {
+    h: 'Governing law',
+    p: [
+      'These terms, and the engagement to which they relate, are governed by the law of Scotland and are subject to the exclusive jurisdiction of the Scottish courts.',
+    ],
+  },
+];
+
+// Appends the standard terms and conditions to the quote PDF, starting on a
+// fresh page, wrapping and paginating as needed. Reused by every quote
+// generator so the terms always travel with the quote.
+function drawTermsPages(doc, pw, margin, cw) {
+  doc.addPage();
+  let y = margin;
+
+  const ensureRoom = (n) => {
+    if (y + n > 268) { drawFooter(doc, pw, margin, cw); doc.addPage(); y = margin; }
+  };
+
+  // Page heading
+  doc.setTextColor(...OCEAN_700);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Terms & Conditions', margin, y + 6);
+  y += 11;
+  doc.setDrawColor(...OCEAN_700);
+  doc.setLineWidth(0.4);
+  doc.line(margin, y, margin + cw, y);
+  y += 7;
+
+  QUOTE_TERMS.forEach((section, idx) => {
+    // Keep the section heading with at least its first line of body text.
+    ensureRoom(9);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...OCEAN_700);
+    doc.text(`${idx + 1}.  ${section.h}`, margin, y);
+    y += 4.5;
+
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...DARK);
+    section.p.forEach((para) => {
+      const lines = doc.splitTextToSize(para, cw);
+      lines.forEach((line) => {
+        ensureRoom(4);
+        doc.text(line, margin, y);
+        y += 3.6;
+      });
+      y += 1.5;
+    });
+    y += 2.5;
+  });
+
+  drawFooter(doc, pw, margin, cw);
+}
+
 export async function generateQuotePdf(quote, lineItems, options = {}) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF('p', 'mm', 'a4');
@@ -279,6 +413,9 @@ export async function generateQuotePdf(quote, lineItems, options = {}) {
 
   // ── Footer ──
   drawFooter(doc, pw, margin, cw);
+
+  // ── Standard terms & conditions ──
+  drawTermsPages(doc, pw, margin, cw);
 
   if (options.returnDoc) return doc;
   doc.save(`${quote.quote_ref || 'Quote'}.pdf`);
@@ -611,6 +748,9 @@ export async function generateGroupQuotePdf(group, quotes, entities, discounts =
   // ── Footer ──
   drawFooter(doc, pw, margin, cw);
 
+  // ── Standard terms & conditions ──
+  drawTermsPages(doc, pw, margin, cw);
+
   if (options.returnDoc) return doc;
   doc.save(`${group.name || 'Group_Quote'}.pdf`);
 }
@@ -663,6 +803,9 @@ export async function generateQuotePdfBase64(quote, lineItems) {
 
   // Footer
   drawFooter(doc, pw, margin, cw);
+
+  // Standard terms & conditions
+  drawTermsPages(doc, pw, margin, cw);
 
   return doc.output('datauristring').split(',')[1];
 }
