@@ -624,6 +624,11 @@ export default function BillingReviewPage() {
                       {s.review_reason && (
                         <div style={{ fontSize: 10, color: '#b45309', marginTop: 2 }}>⚠ {s.review_reason}</div>
                       )}
+                      {s.note && (
+                        <div style={{ fontSize: 10, color: '#0369a1', marginTop: 2, whiteSpace: 'normal' }} title={s.note}>
+                          💬 {s.note.length > 80 ? s.note.slice(0, 80) + '…' : s.note}
+                        </div>
+                      )}
                     </Td>
                     <Td>
                       <CadenceSegmented

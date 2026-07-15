@@ -954,7 +954,9 @@ function AddServiceModal({ services, entities, qboItems, defaults, onClose, onAp
   const [effectiveAt, setEffectiveAt] = useState('2026-06-01');
   const [reason, setReason] = useState('New service added on Change matrix');
 
-  const canApply = entityId && qboItemId && Number(amount) > 0;
+  // Amount may be £0 — a placeholder to be priced when the uplift is
+  // reviewed on Push. The reason/note explains why it's being raised.
+  const canApply = entityId && qboItemId && Number.isFinite(Number(amount)) && Number(amount) >= 0;
 
   return (
     <ModalShell title="Add service" onClose={onClose}>

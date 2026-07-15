@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
 import SearchInput from '../../components/SearchInput';
 import EmptyState from '../../components/EmptyState';
@@ -29,7 +28,6 @@ const SERVICE_BY_ID = Object.fromEntries(CANONICAL_SERVICES.map((s) => [s.id, s]
 
 export default function BillingAddNewPage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
 
   const [candidates, setCandidates] = useState([]);
   const [qboItems, setQboItems] = useState([]);
@@ -92,10 +90,9 @@ export default function BillingAddNewPage() {
     return c;
   }, [candidates]);
 
-  const addBilling = async ({ entityId, lines }) => {
+  const addBilling = async ({ entityId, lines, comment }) => {
     if (!entityId || lines.length === 0) return;
     setSaving(true);
-    const now = new Date().toISOString();
     const services = lines.map((l) => {
       const monthly = l.cadence === 'monthly' ? Number(l.amount) || 0 : 0;
       const annual = l.cadence === 'annual' ? Number(l.amount) || 0 : monthly * 12;
@@ -107,22 +104,26 @@ export default function BillingAddNewPage() {
         cadence_months: l.cadence === 'monthly' ? 1 : l.cadence === 'annual' ? 12 : 0,
         monthly_amount: l.cadence === 'annual' ? Math.round(annual / 12 * 100) / 100 : monthly,
         annual_amount: annual,
-        approval_status: 'approved',
-        approved_by: profile?.id || null,
-        approved_at: now,
+        // Team-created bills wait in Import / Review for approval — the
+        // partner sets or confirms the amount there. A £0 line is fine:
+        // it's a placeholder to be priced at approval. Nothing is billed
+        // until each line is approved.
+        approval_status: 'suggested',
         billing_type: l.cadence === 'monthly' ? 'recurring' : l.cadence,
+        ...(comment?.trim() ? { note: comment.trim() } : {}),
       };
     });
-    const rowMonthlyNet = services.reduce((s, sv) => sv.cadence === 'monthly' ? s + (Number(sv.monthly_amount) || 0) : s, 0);
-    const rowAnnualTotal = services.reduce((s, sv) => s + (Number(sv.annual_amount) || 0), 0);
+    const anyMonthly = services.some((sv) => sv.cadence === 'monthly');
 
     const { error } = await supabase.from('live_billing').insert({
       entity_id: entityId,
-      billing_type: rowMonthlyNet > 0 ? 'recurring' : 'annual',
-      monthly_net: Math.round(rowMonthlyNet * 100) / 100,
-      monthly_vat: Math.round(rowMonthlyNet * 0.2 * 100) / 100,
-      monthly_gross: Math.round(rowMonthlyNet * 1.2 * 100) / 100,
-      annual_total: Math.round(rowAnnualTotal * 100) / 100,
+      billing_type: anyMonthly ? 'recurring' : 'annual',
+      // Headline totals stay at zero until the lines are approved in
+      // Import / Review (which recomputes them from approved services).
+      monthly_net: 0,
+      monthly_vat: 0,
+      monthly_gross: 0,
+      annual_total: 0,
       services,
       status: 'active',
     });
@@ -141,7 +142,7 @@ export default function BillingAddNewPage() {
         Add new
       </h1>
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 760, marginBottom: 14 }}>
-        BrightManager clients with services switched on but no QuickBooks customer (and therefore no billing in Athena). Pick a client, set fee amounts per service, and add them to the billing book.
+        BrightManager clients with services switched on but no QuickBooks customer (and therefore no billing in Athena). Pick a client, set fee amounts per service (or leave at £0 to price later), add a comment, and send it to Import / Review for approval.
       </p>
 
       <BillingTabs active="addnew" />
@@ -230,7 +231,7 @@ export default function BillingAddNewPage() {
           candidate={adding}
           qboItems={qboItems}
           onClose={() => setAdding(null)}
-          onApply={(payload) => addBilling({ entityId: adding.id, lines: payload })}
+          onApply={(payload, comment) => addBilling({ entityId: adding.id, lines: payload, comment })}
           saving={saving}
         />
       )}
@@ -256,6 +257,7 @@ function AddBillingModal({ candidate, qboItems, onClose, onApply, saving }) {
   // the canonical cadence + a sensible default amount. Each line also
   // attempts to pre-match a QBO item so the dropdown lands on the
   // right line item ready for the future push to a recurring template.
+  const [comment, setComment] = useState('');
   const [lines, setLines] = useState(
     candidate.services.map((sid) => {
       const def = SERVICE_BY_ID[sid] || { cadence: 'monthly', defaultAmount: 0, label: sid };
@@ -312,7 +314,7 @@ function AddBillingModal({ candidate, qboItems, onClose, onApply, saving }) {
         </div>
         <div style={{ padding: 18 }}>
           <div style={{ fontSize: 11, color: '#64748b', marginBottom: 10 }}>
-            {candidate.type?.replace('_', ' ')} · BM Ref {candidate.bm_client_id || '—'}. Services pre-populated from the capacity planner — edit or remove any line.
+            {candidate.type?.replace('_', ' ')} · BM Ref {candidate.bm_client_id || '—'}. Services pre-populated from the capacity planner — edit or remove any line. Amounts can be left at £0 and set at approval — every line goes to <strong>Import / Review</strong> before it's billed.
           </div>
 
           <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
@@ -376,14 +378,27 @@ function AddBillingModal({ candidate, qboItems, onClose, onApply, saving }) {
             <Stat label="Annualised total" value={fmtGbp(annualised)} tone="info" />
           </div>
 
+          <div style={{ marginTop: 14 }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+              Comment / why this bill is being raised <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional — shown at approval)</span>
+            </label>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              rows={2}
+              placeholder="e.g. New client onboarded, awaiting fee confirmation — amount to be set at approval"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', resize: 'vertical' }}
+            />
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
             <button onClick={onClose} disabled={saving} style={modalBtnGhost}>Cancel</button>
             <button
-              onClick={() => onApply(lines.filter((l) => l.qboItemId && Number(l.amount) > 0))}
-              disabled={saving || lines.every((l) => !l.qboItemId || Number(l.amount) <= 0)}
+              onClick={() => onApply(lines.filter((l) => l.qboItemId && Number(l.amount) >= 0), comment)}
+              disabled={saving || lines.every((l) => !l.qboItemId)}
               style={modalBtnPrimary}
             >
-              {saving ? 'Adding…' : 'Add to billing book'}
+              {saving ? 'Sending…' : 'Send for review'}
             </button>
           </div>
         </div>
