@@ -115,7 +115,7 @@ export default function LoginPage() {
             <form onSubmit={sendCode}>
               <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6, color: t.text }}>Sign in</div>
               <p style={{ fontSize: 13.5, color: t.muted, margin: '0 0 16px', lineHeight: 1.55 }}>
-                Enter your email and we'll send you a 6-digit sign-in code — no password needed.
+                Enter your email and we'll send you a sign-in code — no password needed.
               </p>
               <input
                 style={input} type="email" placeholder="you@example.com" value={email}
@@ -131,12 +131,12 @@ export default function LoginPage() {
             <form onSubmit={verifyCode}>
               <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6, color: t.text }}>Check your email 📬</div>
               <p style={{ fontSize: 13.5, color: t.muted, margin: '0 0 16px', lineHeight: 1.55 }}>
-                We've emailed a 6-digit code to <strong style={{ color: t.text }}>{email}</strong>.
+                We've emailed a sign-in code to <strong style={{ color: t.text }}>{email}</strong>.
                 Enter it below — it's valid for one hour.
               </p>
               <input
-                style={{ ...input, textAlign: 'center', letterSpacing: 8, fontSize: 22, fontWeight: 600 }}
-                inputMode="numeric" autoComplete="one-time-code" placeholder="······" maxLength={6} value={code}
+                style={{ ...input, textAlign: 'center', letterSpacing: 6, fontSize: 20, fontWeight: 600 }}
+                inputMode="numeric" autoComplete="one-time-code" placeholder="········" maxLength={8} value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} autoFocus
               />
               <button style={{ ...button, marginTop: 12 }} disabled={busy || code.length < 6}>
