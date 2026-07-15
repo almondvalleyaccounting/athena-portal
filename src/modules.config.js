@@ -96,7 +96,7 @@ export const MODULES = [
   },
   {
     id: 'planning',
-    label: 'Planning',
+    label: 'Practice Planning',
     route: '/planning',
     icon: 'trending-up',
     permissions: ['can_manage_portal'],
