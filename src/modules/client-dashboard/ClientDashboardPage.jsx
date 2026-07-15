@@ -302,6 +302,17 @@ function FileHealthCard({ health, currency }) {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
+        {typeof health.unreconciled_count === 'number' && (
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '10px 12px', border: '1px solid rgba(0,0,0,0.04)' }}>
+            <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>Unreconciled bank items</div>
+            <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: '16px', fontWeight: 700, color: health.unreconciled_count > 0 ? c.text : '#0f172a' }}>
+              {health.unreconciled_count}
+              {health.unreconciled_count > 0 && (
+                <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}> · {money(health.unreconciled_total, currency)}</span>
+              )}
+            </div>
+          </div>
+        )}
         {rows.map(([label, val]) => (
           <div key={label} style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '10px 12px', border: '1px solid rgba(0,0,0,0.04)' }}>
             <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
@@ -311,6 +322,10 @@ function FileHealthCard({ health, currency }) {
           </div>
         ))}
       </div>
+
+      <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '11px', color: '#94a3b8', marginTop: '12px', marginBottom: 0 }}>
+        Note: transactions still sitting in QuickBooks' bank-feed “For Review” queue aren't counted — QuickBooks doesn't expose that queue to the API. This reflects what's posted to the books.
+      </p>
     </div>
   );
 }

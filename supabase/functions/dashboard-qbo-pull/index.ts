@@ -156,43 +156,123 @@ async function pullPlSummary(sb: any, realmId: string) {
   };
 }
 
-// Bookkeeping "file health" signals from the chart of accounts.
+// Bookkeeping "file health" signals.
+// NOTE on what QBO's API can and can't see:
+//  - Balance-sheet hygiene accounts (Undeposited Funds, Opening Balance Equity,
+//    Ask My Accountant, Reconciliation Discrepancies, Uncategorised ASSET) →
+//    read via Account.CurrentBalance (only meaningful for balance-sheet accounts).
+//  - Uncategorised INCOME/EXPENSE are P&L accounts whose CurrentBalance is ~0
+//    even when posted, so they're read from the P&L report instead.
+//  - Unreconciled bank transactions → TransactionList with cleared=Uncleared.
+//  - The bank-feed "For Review" queue (un-added imported transactions) is NOT
+//    exposed by the QBO API at all, so it cannot appear here.
 async function pullFileHealth(sb: any, realmId: string) {
   const j = await qboQuery(sb, realmId, "SELECT * FROM Account MAXRESULTS 1000");
   const accounts: any[] = j?.QueryResponse?.Account || [];
   const bal = (a: any) => Number(a.CurrentBalance || 0);
-
   const byName = (re: RegExp) => accounts.filter((a) => re.test(a.Name || ""));
   const bySub = (sub: string) => accounts.filter((a) => a.AccountSubType === sub);
-
   const sum = (arr: any[]) => arr.reduce((s, a) => s + bal(a), 0);
 
-  const uncategorised = byName(/uncategori[sz]ed/i);
-  const undeposited = bySub("UndepositedFunds");
-  const obe = accounts.filter((a) => a.AccountSubType === "OpeningBalanceEquity" || /opening balance equity/i.test(a.Name || ""));
-  const askMyAccountant = byName(/ask my accountant/i);
-  const reconDiscrepancy = byName(/reconciliation discrepanc/i);
+  const undeposited = sum(bySub("UndepositedFunds"));
+  const obe = sum(accounts.filter((a) => a.AccountSubType === "OpeningBalanceEquity" || /opening balance equity/i.test(a.Name || "")));
+  const askMyAccountant = sum(byName(/ask my accountant/i));
+  const reconDiscrepancy = sum(byName(/reconciliation discrepanc/i));
+  const uncatAsset = sum(accounts.filter((a) => /uncategori[sz]ed/i.test(a.Name || "") && a.Classification === "Asset"));
+  const bankAccounts = accounts.filter((a) => a.AccountType === "Bank" || a.AccountType === "Credit Card");
+
+  // Uncategorised income/expense from the P&L (last 12 months).
+  let uncatPL = 0;
+  try {
+    const now = new Date();
+    const start = fmt(new Date(now.getFullYear() - 1, now.getMonth(), 1));
+    const end = fmt(now);
+    const plResp = await qboFetch(sb, realmId, `reports/ProfitAndLoss?start_date=${start}&end_date=${end}&accounting_method=Accrual&minorversion=75`);
+    if (plResp.ok) {
+      const pl = await plResp.json();
+      const walk = (rs: any[]) => {
+        for (const r of rs || []) {
+          if (r.ColData && /uncategori[sz]ed/i.test(r.ColData[0]?.value || "")) {
+            const v = parseFloat(r.ColData[r.ColData.length - 1]?.value || "0");
+            if (!isNaN(v)) uncatPL += Math.abs(v);
+          }
+          if (r.Rows?.Row) walk(r.Rows.Row);
+        }
+      };
+      walk(pl?.Rows?.Row);
+    }
+  } catch { /* non-fatal */ }
+
+  const uncategorised_total = Math.abs(uncatAsset) + uncatPL;
+
+  // Unreconciled bank transactions via TransactionList (cleared=Uncleared).
+  let unreconciled_count = 0;
+  let unreconciled_total = 0;
+  let unrecError: string | undefined;
+  let tlColumns: string[] = [];
+  try {
+    const bankIds = bankAccounts.map((a) => a.Id).filter(Boolean);
+    const bankNames = new Set(bankAccounts.map((a) => a.Name));
+    const end = fmt(new Date());
+    let path = `reports/TransactionList?start_date=2018-01-01&end_date=${end}&cleared=Uncleared&minorversion=75`;
+    if (bankIds.length) path += `&account=${bankIds.join(",")}`;
+    const tlResp = await qboFetch(sb, realmId, path);
+    if (!tlResp.ok) {
+      unrecError = `TransactionList ${tlResp.status}`;
+    } else {
+      const tl = await tlResp.json();
+      const cols = tl?.Columns?.Column || [];
+      tlColumns = cols.map((c: any) => c.ColTitle || c.ColType);
+      let amtIdx = cols.findIndex((c: any) => /amount/i.test(c.ColTitle || "") || c.ColType === "Money");
+      const acctIdx = cols.findIndex((c: any) => /account/i.test(c.ColTitle || "") || c.ColType === "account_name");
+      if (amtIdx < 0) amtIdx = cols.length - 1;
+      const walk = (rs: any[]) => {
+        for (const r of rs || []) {
+          if (r.ColData && Array.isArray(r.ColData) && r.type !== "Section") {
+            const hasDate = (r.ColData[0]?.value || "").length > 0;
+            const acctName = acctIdx >= 0 ? (r.ColData[acctIdx]?.value || "") : "";
+            // If an account column is present, restrict to bank/CC accounts.
+            const okAcct = acctIdx < 0 || !acctName || bankNames.size === 0 || bankNames.has(acctName);
+            if (hasDate && okAcct) {
+              unreconciled_count++;
+              const amt = parseFloat(r.ColData[amtIdx]?.value || "0");
+              if (!isNaN(amt)) unreconciled_total += amt;
+            }
+          }
+          if (r.Rows?.Row) walk(r.Rows.Row);
+        }
+      };
+      walk(tl?.Rows?.Row);
+    }
+  } catch (e) {
+    unrecError = (e as Error).message;
+  }
 
   const signals = {
-    uncategorised_total: sum(uncategorised),
-    uncategorised_accounts: uncategorised.map((a) => ({ name: a.Name, balance: bal(a) })),
-    undeposited_funds: sum(undeposited),
-    opening_balance_equity: sum(obe),
-    ask_my_accountant: sum(askMyAccountant),
-    reconciliation_discrepancies: sum(reconDiscrepancy),
+    uncategorised_total,
+    uncategorised_asset: Math.abs(uncatAsset),
+    uncategorised_pl: uncatPL,
+    undeposited_funds: undeposited,
+    opening_balance_equity: obe,
+    ask_my_accountant: askMyAccountant,
+    reconciliation_discrepancies: reconDiscrepancy,
+    unreconciled_count,
+    unreconciled_total,
+    bank_account_count: bankAccounts.length,
     account_count: accounts.length,
   };
 
-  // Simple traffic-light: any nonzero hygiene balance = a flag.
   const flags: string[] = [];
-  if (Math.abs(signals.uncategorised_total) > 0.005) flags.push("Uncategorised balance");
-  if (Math.abs(signals.undeposited_funds) > 0.005) flags.push("Undeposited funds");
-  if (Math.abs(signals.opening_balance_equity) > 0.005) flags.push("Opening balance equity ≠ 0");
-  if (Math.abs(signals.ask_my_accountant) > 0.005) flags.push("Ask My Accountant balance");
-  if (Math.abs(signals.reconciliation_discrepancies) > 0.005) flags.push("Reconciliation discrepancies");
+  const nz = (v: number) => Math.abs(v) > 0.005;
+  if (nz(uncategorised_total)) flags.push("Uncategorised transactions");
+  if (nz(undeposited)) flags.push("Undeposited funds");
+  if (nz(obe)) flags.push("Opening balance equity ≠ 0");
+  if (nz(askMyAccountant)) flags.push("Ask My Accountant balance");
+  if (nz(reconDiscrepancy)) flags.push("Reconciliation discrepancies");
+  if (unreconciled_count > 0) flags.push(`Unreconciled bank items (${unreconciled_count})`);
 
   const score = flags.length === 0 ? "green" : flags.length <= 2 ? "amber" : "red";
-  return { ...signals, flags, score };
+  return { ...signals, flags, score, _debug: { unrecError, tlColumns } };
 }
 
 const METRICS: Record<string, (sb: any, realmId: string) => Promise<any>> = {
