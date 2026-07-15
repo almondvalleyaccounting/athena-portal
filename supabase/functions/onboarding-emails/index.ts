@@ -13,7 +13,9 @@
 //         onboardings.checkin_sent_at (internal per-area feedback lives in
 //         checkin_feedback, gathered in Athena before sending).
 //
-// Auth: active staff JWT (these are explicit button clicks, not automation).
+// Auth: active staff JWT (explicit button clicks) OR x-cron-secret matching
+// onboarding_chase_config.cron_secret (the automated 3-month check-in, sent by
+// the onboarding-checkin cron). Cron-authed calls act as the system (no actor).
 // Body: { onboarding_id: string, kind: "welcome" | "pause" | "checkin", to?: string }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -146,13 +148,22 @@ Deno.serve(async (req) => {
 
   const service = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return json({ success: false, error: "Missing authorization" }, 401);
-  const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
-  const { data: { user }, error: authErr } = await anon.auth.getUser();
-  if (authErr || !user) return json({ success: false, error: "Invalid token" }, 401);
-  const { data: prof } = await service.from("staff_profiles").select("is_active").eq("id", user.id).single();
-  if (!prof?.is_active) return json({ success: false, error: "Not authorised" }, 403);
+  // Either a valid cron secret (automation) or an active staff JWT (button click).
+  let actorId: string | null = null;
+  const { data: chaseCfg } = await service.from("onboarding_chase_config").select("cron_secret").eq("id", true).maybeSingle();
+  const cronSecret = (chaseCfg?.cron_secret as string) || "";
+  const gotSecret = req.headers.get("x-cron-secret") || "";
+  const cronAuthed = Boolean(cronSecret && gotSecret === cronSecret);
+  if (!cronAuthed) {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return json({ success: false, error: "Missing authorization" }, 401);
+    const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
+    const { data: { user }, error: authErr } = await anon.auth.getUser();
+    if (authErr || !user) return json({ success: false, error: "Invalid token" }, 401);
+    const { data: prof } = await service.from("staff_profiles").select("is_active").eq("id", user.id).single();
+    if (!prof?.is_active) return json({ success: false, error: "Not authorised" }, 403);
+    actorId = user.id;
+  }
 
   const body = await req.json().catch(() => ({}));
   const onboardingId: string | null = body.onboarding_id || null;
@@ -210,7 +221,7 @@ Deno.serve(async (req) => {
       await service.from("onboarding_activity").insert({
         onboarding_id: onboardingId, kind: "system",
         body: `Welcome email released ${toRelease.length} client step${toRelease.length === 1 ? "" : "s"} — now marked as requested (portal shows them as needed; chasers armed).`,
-        created_by: user.id,
+        created_by: actorId,
       });
     }
   }
@@ -219,14 +230,18 @@ Deno.serve(async (req) => {
     body: kind === "welcome"
       ? `Welcome email sent to ${to} (portal introduction + what we need)`
       : kind === "checkin"
-        ? `3-month check-in email sent to ${to}`
+        ? `3-month check-in email sent to ${to}${cronAuthed ? " (automated)" : ""}`
         : `Pause email sent to ${to} — chasing paused until the client re-engages`,
-    created_by: user.id,
+    created_by: actorId,
   });
-  await service.from("audit_log").insert({
-    user_id: user.id, action: `onboarding_${kind}_email_sent`, entity_type: "onboarding",
-    entity_id: onboardingId, detail: { to, resend_id: r.id },
-  });
+  // audit_log tracks staff actions; skip for automated (system) sends — the
+  // activity-log entry above is the trail for those.
+  if (actorId) {
+    await service.from("audit_log").insert({
+      user_id: actorId, action: `onboarding_${kind}_email_sent`, entity_type: "onboarding",
+      entity_id: onboardingId, detail: { to, resend_id: r.id },
+    });
+  }
 
   return json({ success: true, to, kind });
 });

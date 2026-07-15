@@ -28,7 +28,11 @@ export default function CheckinPanel({ ob, staff, onChanged }) {
   const areas = (ob.handovers || [])
     .filter((h) => !h.service_condition || conds.includes(h.service_condition))
     .map((h) => h.area);
-  const due = ob.checkin_due && !ob.checkin_sent_at && new Date(ob.checkin_due) <= new Date();
+  // Timezone-safe date-only comparison (see HandoverPanel) — avoids the
+  // UTC-vs-local off-by-one from new Date('YYYY-MM-DD').
+  const now = new Date();
+  const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const due = ob.checkin_due && !ob.checkin_sent_at && ob.checkin_due <= todayISO;
   const staffName = (id) => staff.find((s) => s.id === id)?.name;
 
   async function save(patch, logBody) {
@@ -87,7 +91,13 @@ export default function CheckinPanel({ ob, staff, onChanged }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
               {areas.map((area) => {
                 const owner = (ob.handovers || []).find((h) => h.area === area);
-                const ownerName = staffName(owner?.handover_to || owner?.owner_id);
+                // Attribute to whoever owns the area on the check-in date: the
+                // permanent team member only once the handover has actually
+                // completed (done_at set), otherwise the onboarding area owner.
+                // Previously always preferred handover_to (the ultimate owner),
+                // even before the handover happened.
+                const currentOwnerId = owner?.done_at ? (owner.handover_to || owner.owner_id) : owner?.owner_id;
+                const ownerName = staffName(currentOwnerId);
                 return (
                   <div key={area}>
                     <div style={{ fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>

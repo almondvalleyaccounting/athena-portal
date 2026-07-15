@@ -35,7 +35,12 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
   const conds = ob.service_conditions || [];
   const handovers = (ob.handovers || []).filter((h) => !h.service_condition || conds.includes(h.service_condition));
   const staffName = (id) => staff.find((s) => s.id === id)?.name || null;
-  const dueNow = (h) => h.due && !h.done_at && new Date(h.due) <= new Date();
+  // Compare date-only strings (YYYY-MM-DD). `new Date('YYYY-MM-DD')` parses as
+  // UTC midnight while `new Date()` is local, so the old comparison flipped a
+  // day early/late near midnight — string compare is timezone-safe.
+  const d = new Date();
+  const todayISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const dueNow = (h) => h.due && !h.done_at && h.due <= todayISO;
   const anyDue = handovers.some(dueNow);
   const allDone = handovers.length > 0 && handovers.every((h) => h.done_at);
 

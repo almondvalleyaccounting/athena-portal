@@ -105,10 +105,10 @@ function CommsChip({ r }) {
   return null;
 }
 
-function Btn({ icon: Icon, label, onClick, disabled, tone = 'info', solid = false }) {
+function Btn({ icon: Icon, label, onClick, disabled, tone = 'info', solid = false, title }) {
   const t = tones[tone] || tones.info;
   return (
-    <button onClick={(e) => { e.stopPropagation(); onClick(); }} disabled={disabled}
+    <button onClick={(e) => { e.stopPropagation(); onClick(); }} disabled={disabled} title={title}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: font, fontSize: 12, fontWeight: 600,
         padding: '5px 10px', borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer',
@@ -228,14 +228,30 @@ export default function PipelineView() {
     const stage = r.stage;
     const qbtns = QUEUE_BUTTONS[stage] || [];
     const chasing = stageMeta(stage).chasing;
+    const emailsSent = r.emails_sent || 0;
+
+    // Grey out queue buttons the chase ladder has moved past:
+    //  - offer: the first email IS the offer, so once anything has gone
+    //    (emails_sent >= 1) the offer has been made — next is a reminder.
+    //  - reminders: policy is offer + 2 reminders = 3 emails, then a call.
+    //    At 3 emails the reminder is greyed — the next action is a call
+    //    (surfaced on the Wednesday call list to Sophie).
+    const queueDisabled = (kind) => kind === 'offer' ? emailsSent >= 1 : emailsSent >= 3;
+    const queueTitle = (kind, disabled) => !disabled ? undefined
+      : kind === 'offer'
+        ? 'Offer already sent — the offer is the first email'
+        : '3 emails sent — a call is now required (see the Wednesday call list)';
 
     return (
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         {/* Queue emails for this stage */}
-        {qbtns.map(([kind, label, Icon, tone]) => (
-          <Btn key={kind} icon={Icon} label={label} tone={tone} disabled={busy}
-            onClick={() => act(r.id, () => queueEmail(r, kind, { actorId }), `${label} queued for ${r.person?.name || 'client'}.`)} />
-        ))}
+        {qbtns.map(([kind, label, Icon, tone]) => {
+          const qd = queueDisabled(kind);
+          return (
+            <Btn key={kind} icon={Icon} label={label} tone={tone} disabled={busy || qd} title={queueTitle(kind, qd)}
+              onClick={() => act(r.id, () => queueEmail(r, kind, { actorId }), `${label} queued for ${r.person?.name || 'client'}.`)} />
+          );
+        })}
 
         {/* Comms ladder: call + escalate for chasing stages */}
         {chasing && (
