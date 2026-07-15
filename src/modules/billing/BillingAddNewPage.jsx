@@ -142,7 +142,7 @@ export default function BillingAddNewPage() {
         Add new
       </h1>
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 760, marginBottom: 14 }}>
-        BrightManager clients with services switched on but no QuickBooks customer (and therefore no billing in Athena). Pick a client, set fee amounts per service (or leave at £0 to price later), add a comment, and send it to Import / Review for approval.
+        BrightManager clients with services switched on but no QuickBooks customer (and therefore no billing in Athena). Pick a client, set fee amounts per service (or leave at £0 to price later), add an internal note, and send it to Import / Review for approval. The service description is what appears on the client's invoice; notes stay internal.
       </p>
 
       <BillingTabs active="addnew" />
@@ -380,13 +380,13 @@ function AddBillingModal({ candidate, qboItems, onClose, onApply, saving }) {
 
           <div style={{ marginTop: 14 }}>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
-              Comment / why this bill is being raised <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional — shown at approval)</span>
+              Notes <span style={{ fontWeight: 400, color: '#94a3b8' }}>(internal only — not shown on the invoice; visible to you at approval)</span>
             </label>
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               rows={2}
-              placeholder="e.g. New client onboarded, awaiting fee confirmation — amount to be set at approval"
+              placeholder="Why this bill is being raised — e.g. new client onboarded, amount to be confirmed at approval"
               style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', resize: 'vertical' }}
             />
           </div>
