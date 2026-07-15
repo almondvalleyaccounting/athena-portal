@@ -126,7 +126,10 @@ export function getQboAuthUrl(userId) {
   return `${SUPABASE_URL}/functions/v1/qbo-auth?action=authorize&user_id=${encodeURIComponent(userId)}`;
 }
 
-/** Get the QBO OAuth authorization URL for reports (separate connection) */
-export function getReportsAuthUrl(userId) {
-  return `${SUPABASE_URL}/functions/v1/qbo-auth?action=authorize&user_id=${encodeURIComponent(userId)}&purpose=reports`;
+/** Get the QBO OAuth authorization URL for reports/dashboard (separate
+ *  connection). Pass returnTo (a relative app path, e.g. '/client-dashboard')
+ *  to land back there after the OAuth round-trip instead of the default /reports. */
+export function getReportsAuthUrl(userId, returnTo) {
+  const rt = returnTo ? `&return_to=${encodeURIComponent(returnTo)}` : '';
+  return `${SUPABASE_URL}/functions/v1/qbo-auth?action=authorize&user_id=${encodeURIComponent(userId)}&purpose=reports${rt}`;
 }

@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   RefreshCw, AlertCircle, CheckCircle, Loader, ShieldCheck,
-  ShieldAlert, TrendingUp, Link2Off,
+  ShieldAlert, TrendingUp, Link2Off, Plus, X,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getReportsAuthUrl } from '../../lib/qboApi';
+import { useAuth } from '../../shell/AppShell';
 
 /*
   Client Dashboard from QuickBooks — Phase A.
@@ -43,26 +46,49 @@ const HEALTH_COLORS = {
 
 /* ─── Page ─────────────────────────────────────────────────────── */
 export default function ClientDashboardPage() {
+  const { profile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [clients, setClients] = useState([]);
   const [clientsLoading, setClientsLoading] = useState(true);
   const [realmId, setRealmId] = useState('');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [flash, setFlash] = useState(null);
 
+  const loadClients = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('qbo_report_connections')
+        .select('realm_id, company_name')
+        .eq('status', 'active')
+        .order('company_name');
+      if (!error && data) setClients(data);
+    } catch { /* silent */ }
+    setClientsLoading(false);
+  };
+
+  useEffect(() => { loadClients(); }, []);
+
+  // Handle the OAuth return (?qbo=connected|error) after a Connect round-trip.
   useEffect(() => {
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('qbo_report_connections')
-          .select('realm_id, company_name')
-          .eq('status', 'active')
-          .order('company_name');
-        if (!error && data) setClients(data);
-      } catch { /* silent */ }
-      setClientsLoading(false);
-    })();
+    const qbo = searchParams.get('qbo');
+    if (qbo === 'connected') {
+      setFlash({ type: 'success', message: 'Client connected. Select them to pull live figures.' });
+      loadClients();
+    } else if (qbo === 'error') {
+      setFlash({ type: 'error', message: searchParams.get('message') || 'Connection failed.' });
+    }
+    if (qbo) {
+      searchParams.delete('qbo');
+      searchParams.delete('message');
+      setSearchParams(searchParams, { replace: true });
+    }
   }, []);
+
+  const handleConnect = () => {
+    window.location.href = getReportsAuthUrl(profile?.id || '', '/client-dashboard');
+  };
 
   const load = async (realm, refresh = false) => {
     if (!realm) return;
@@ -102,7 +128,27 @@ export default function ClientDashboardPage() {
         Live figures and bookkeeping health pulled from the client's QuickBooks.
       </p>
 
-      {/* Client selector + refresh */}
+      {/* Flash (OAuth return) */}
+      {flash && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px',
+          borderRadius: '10px', marginBottom: '16px',
+          backgroundColor: flash.type === 'success' ? '#f0fdf4' : '#fef2f2',
+          border: `1px solid ${flash.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
+        }}>
+          {flash.type === 'success'
+            ? <CheckCircle size={16} style={{ color: '#22c55e' }} />
+            : <AlertCircle size={16} style={{ color: '#ef4444' }} />}
+          <span style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', fontWeight: 500, flex: 1, color: flash.type === 'success' ? '#166534' : '#991b1b' }}>
+            {flash.message}
+          </span>
+          <button onClick={() => setFlash(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}>
+            <X size={14} style={{ color: '#94a3b8' }} />
+          </button>
+        </div>
+      )}
+
+      {/* Client selector + refresh + connect */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
         <select
           value={realmId}
@@ -131,6 +177,18 @@ export default function ClientDashboardPage() {
             Refresh
           </button>
         )}
+        <button
+          onClick={handleConnect}
+          title="Connect a QuickBooks client"
+          style={{
+            display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px',
+            border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
+            cursor: 'pointer', fontFamily: "'Outfit', sans-serif", fontSize: '13px',
+            fontWeight: 600, color: '#38bdf8', flexShrink: 0, whiteSpace: 'nowrap',
+          }}
+        >
+          <Plus size={14} /> Connect
+        </button>
       </div>
 
       {/* Loading */}

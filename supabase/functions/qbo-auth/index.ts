@@ -1,5 +1,11 @@
-import { getServiceClient, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Self-contained (inlines getServiceClient/jsonResponse/corsHeaders) so it
+// deploys as a single file — no _shared bundling. verify_jwt is FALSE: this is
+// an OAuth redirect endpoint hit by the browser and Intuit without a JWT.
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const QBO_CLIENT_ID = Deno.env.get("QBO_CLIENT_ID")!;
 const QBO_CLIENT_SECRET = Deno.env.get("QBO_CLIENT_SECRET")!;
 const QBO_REDIRECT_URI = Deno.env.get("QBO_REDIRECT_URI")!;
@@ -9,8 +15,30 @@ const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer
 const APPS_SCRIPT_URL = Deno.env.get("APPS_SCRIPT_REPORT_URL") || "";
 const PORTAL_SYNC_SECRET = Deno.env.get("PORTAL_SYNC_SECRET") || "";
 
+function getServiceClient() {
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+}
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  };
+}
+function jsonResponse(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders() },
+  });
+}
+
+// Only allow same-app relative return paths (defends against open redirect).
+function safeReturnTo(rt: string | null | undefined): string | null {
+  if (rt && rt.startsWith("/") && !rt.startsWith("//")) return rt;
+  return null;
+}
+
 Deno.serve(async (req) => {
-  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
@@ -19,18 +47,9 @@ Deno.serve(async (req) => {
   const action = url.searchParams.get("action");
 
   try {
-    if (action === "authorize") {
-      return handleAuthorize(url);
-    }
-
-    if (action === "callback") {
-      return await handleCallback(url);
-    }
-
-    if (action === "disconnect") {
-      return await handleDisconnect(req);
-    }
-
+    if (action === "authorize") return handleAuthorize(url);
+    if (action === "callback") return await handleCallback(url);
+    if (action === "disconnect") return await handleDisconnect(req);
     return jsonResponse({ success: false, error: "Invalid action. Use: authorize, callback, or disconnect" }, 400);
   } catch (err) {
     console.error("qbo-auth error:", err);
@@ -41,9 +60,10 @@ Deno.serve(async (req) => {
 function handleAuthorize(url: URL) {
   const userId = url.searchParams.get("user_id") || "";
   const purpose = url.searchParams.get("purpose") || "billing";
+  const returnTo = url.searchParams.get("return_to") || "";
 
-  // Build state with user ID and purpose for tracking through OAuth round-trip
-  const state = btoa(JSON.stringify({ user_id: userId, purpose, ts: Date.now() }));
+  // Carry user ID, purpose and return path through the OAuth round-trip.
+  const state = btoa(JSON.stringify({ user_id: userId, purpose, return_to: returnTo, ts: Date.now() }));
 
   const params = new URLSearchParams({
     client_id: QBO_CLIENT_ID,
@@ -53,12 +73,7 @@ function handleAuthorize(url: URL) {
     state,
   });
 
-  const authUrl = `${QBO_AUTH_URL}?${params.toString()}`;
-
-  return new Response(null, {
-    status: 302,
-    headers: { Location: authUrl },
-  });
+  return new Response(null, { status: 302, headers: { Location: `${QBO_AUTH_URL}?${params.toString()}` } });
 }
 
 async function handleCallback(url: URL) {
@@ -67,36 +82,34 @@ async function handleCallback(url: URL) {
   const state = url.searchParams.get("state");
   const error = url.searchParams.get("error");
 
-  // Parse state first — errorRedirectBase depends on purpose, and the
-  // early error paths below need a valid base URL. Previously this was
-  // read before declaration (TDZ ReferenceError on OAuth denial).
+  // Parse state FIRST — the redirect base depends on it (avoids a TDZ error on
+  // the early denial/missing-code paths).
   let userId: string | null = null;
   let purpose = "billing";
+  let returnTo = "";
   if (state) {
     try {
       const parsed = JSON.parse(atob(state));
       userId = parsed.user_id || null;
       purpose = parsed.purpose || "billing";
+      returnTo = parsed.return_to || "";
     } catch { /* ignore */ }
   }
 
   const isReports = purpose === "reports";
-  const errorRedirectBase = isReports ? "/reports" : "/manage/billing";
+  // A dashboard-initiated connect passes return_to=/client-dashboard so we land
+  // back where we started; otherwise fall back to the purpose default.
+  const base = safeReturnTo(returnTo) || (isReports ? "/reports" : "/manage/billing");
 
-  // Handle user denial
   if (error) {
-    const redirectUrl = `${PORTAL_URL}${errorRedirectBase}?qbo=error&message=${encodeURIComponent(error)}`;
-    return new Response(null, { status: 302, headers: { Location: redirectUrl } });
+    return redirect(`${PORTAL_URL}${base}?qbo=error&message=${encodeURIComponent(error)}`);
   }
-
   if (!code || !realmId) {
-    const redirectUrl = `${PORTAL_URL}${errorRedirectBase}?qbo=error&message=Missing+code+or+realmId`;
-    return new Response(null, { status: 302, headers: { Location: redirectUrl } });
+    return redirect(`${PORTAL_URL}${base}?qbo=error&message=Missing+code+or+realmId`);
   }
 
   // Exchange authorization code for tokens
   const basicAuth = btoa(`${QBO_CLIENT_ID}:${QBO_CLIENT_SECRET}`);
-
   const tokenResp = await fetch(QBO_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -104,18 +117,13 @@ async function handleCallback(url: URL) {
       "Content-Type": "application/x-www-form-urlencoded",
       "Accept": "application/json",
     },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: QBO_REDIRECT_URI,
-    }),
+    body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: QBO_REDIRECT_URI }),
   });
 
   if (!tokenResp.ok) {
     const errBody = await tokenResp.text();
     console.error("Token exchange failed:", errBody);
-    const redirectUrl = `${PORTAL_URL}${errorRedirectBase}?qbo=error&message=Token+exchange+failed`;
-    return new Response(null, { status: 302, headers: { Location: redirectUrl } });
+    return redirect(`${PORTAL_URL}${base}?qbo=error&message=Token+exchange+failed`);
   }
 
   const tokens = await tokenResp.json();
@@ -124,19 +132,13 @@ async function handleCallback(url: URL) {
     ? new Date(Date.now() + tokens.x_refresh_token_expires_in * 1000)
     : null;
 
-  // Fetch company info from QBO
+  // Company name
   let companyName = null;
   try {
     const apiBase = Deno.env.get("QBO_API_BASE") || "https://quickbooks.api.intuit.com";
-    const companyResp = await fetch(
-      `${apiBase}/v3/company/${realmId}/companyinfo/${realmId}`,
-      {
-        headers: {
-          "Authorization": `Bearer ${tokens.access_token}`,
-          "Accept": "application/json",
-        },
-      }
-    );
+    const companyResp = await fetch(`${apiBase}/v3/company/${realmId}/companyinfo/${realmId}`, {
+      headers: { "Authorization": `Bearer ${tokens.access_token}`, "Accept": "application/json" },
+    });
     if (companyResp.ok) {
       const companyData = await companyResp.json();
       companyName = companyData?.CompanyInfo?.CompanyName || null;
@@ -146,8 +148,8 @@ async function handleCallback(url: URL) {
   const sb = getServiceClient();
 
   if (isReports) {
-    // ── Reports mode: store only realm_id + company_name (no tokens) ──
-    // Upsert — if realm_id already exists, update the name and reactivate
+    // ── Reports/Dashboard mode ──
+    // Metadata row (staff-readable list shared by Reports + Client Dashboard).
     const { error: upsertErr } = await sb.from("qbo_report_connections").upsert(
       {
         realm_id: realmId,
@@ -156,20 +158,16 @@ async function handleCallback(url: URL) {
         connected_at: new Date().toISOString(),
         status: "active",
       },
-      { onConflict: "realm_id" }
+      { onConflict: "realm_id" },
     );
-
     if (upsertErr) {
       console.error("Failed to store report connection:", upsertErr);
-      const redirectUrl = `${PORTAL_URL}/reports?qbo=error&message=Failed+to+store+connection`;
-      return new Response(null, { status: 302, headers: { Location: redirectUrl } });
+      return redirect(`${PORTAL_URL}${base}?qbo=error&message=Failed+to+store+connection`);
     }
 
-    // Persist tokens for the in-app Client Dashboard. These go in a SEPARATE,
-    // service-role-only table (qbo_report_tokens) — never qbo_report_connections,
-    // which is staff-readable. This lets dashboard-qbo-pull read live data for
-    // this client directly (no Apps Script bridge). Existing report connections
-    // predate this, so they must reconnect once to capture tokens.
+    // Tokens go in a SEPARATE, service-role-only table (qbo_report_tokens) —
+    // NEVER qbo_report_connections, which is staff-readable. This is what lets
+    // dashboard-qbo-pull read live data for this client (no Apps Script bridge).
     const { error: tokenErr } = await sb.from("qbo_report_tokens").upsert(
       {
         realm_id: realmId,
@@ -187,7 +185,7 @@ async function handleCallback(url: URL) {
     );
     if (tokenErr) console.error("Failed to store report tokens:", tokenErr);
 
-    // Sync tokens to Apps Script Clients tab so it can run reports for this client
+    // Sync tokens to the Apps Script Clients tab (legacy Reports pull path).
     if (APPS_SCRIPT_URL && PORTAL_SYNC_SECRET) {
       try {
         const syncResp = await fetch(APPS_SCRIPT_URL, {
@@ -203,75 +201,61 @@ async function handleCallback(url: URL) {
           }),
           redirect: "follow",
         });
-        const syncResult = await syncResp.text();
-        console.log("Token sync to Apps Script:", syncResp.status, syncResult);
+        console.log("Token sync to Apps Script:", syncResp.status, await syncResp.text());
       } catch (syncErr) {
         console.error("Token sync to Apps Script failed:", syncErr);
       }
     }
 
-    const redirectUrl = `${PORTAL_URL}/reports?qbo=connected`;
-    return new Response(null, { status: 302, headers: { Location: redirectUrl } });
-
-  } else {
-    // ── Billing mode: full token storage (existing behaviour) ──
-
-    // Deactivate any existing connections
-    await sb.from("qbo_connections").update({
-      status: "disconnected",
-      updated_at: new Date().toISOString(),
-    }).eq("status", "active");
-
-    // Insert new connection
-    const { error: insertErr } = await sb.from("qbo_connections").insert({
-      realm_id: realmId,
-      company_name: companyName,
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      token_expires_at: expiresAt.toISOString(),
-      refresh_token_expires_at: refreshExpiresAt?.toISOString() || null,
-      scope: tokens.scope || "com.intuit.quickbooks.accounting",
-      connected_by: userId || null,
-      status: "active",
-    });
-
-    if (insertErr) {
-      console.error("Failed to store QBO connection:", insertErr);
-      const redirectUrl = `${PORTAL_URL}/manage/billing?qbo=error&message=Failed+to+store+connection`;
-      return new Response(null, { status: 302, headers: { Location: redirectUrl } });
-    }
-
-    // Log the connection
-    await sb.from("audit_log").insert({
-      action: "qbo_connected",
-      entity_type: "qbo_connection",
-      detail: { realm_id: realmId, company_name: companyName },
-      performed_by: userId || null,
-    });
-
-    const redirectUrl = `${PORTAL_URL}/manage/billing?qbo=connected`;
-    return new Response(null, { status: 302, headers: { Location: redirectUrl } });
+    return redirect(`${PORTAL_URL}${base}?qbo=connected`);
   }
+
+  // ── Billing mode: full token storage (existing behaviour) ──
+  await sb.from("qbo_connections").update({
+    status: "disconnected",
+    updated_at: new Date().toISOString(),
+  }).eq("status", "active");
+
+  const { error: insertErr } = await sb.from("qbo_connections").insert({
+    realm_id: realmId,
+    company_name: companyName,
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    token_expires_at: expiresAt.toISOString(),
+    refresh_token_expires_at: refreshExpiresAt?.toISOString() || null,
+    scope: tokens.scope || "com.intuit.quickbooks.accounting",
+    connected_by: userId || null,
+    status: "active",
+  });
+  if (insertErr) {
+    console.error("Failed to store QBO connection:", insertErr);
+    return redirect(`${PORTAL_URL}${base}?qbo=error&message=Failed+to+store+connection`);
+  }
+
+  await sb.from("audit_log").insert({
+    action: "qbo_connected",
+    entity_type: "qbo_connection",
+    detail: { realm_id: realmId, company_name: companyName },
+    performed_by: userId || null,
+  });
+
+  return redirect(`${PORTAL_URL}${base}?qbo=connected`);
+}
+
+function redirect(location: string) {
+  return new Response(null, { status: 302, headers: { Location: location } });
 }
 
 async function handleDisconnect(req: Request) {
-  // Verify the request has a valid auth header
   const authHeader = req.headers.get("authorization");
-  if (!authHeader) {
-    return jsonResponse({ success: false, error: "Unauthorized" }, 401);
-  }
+  if (!authHeader) return jsonResponse({ success: false, error: "Unauthorized" }, 401);
 
   const sb = getServiceClient();
-
-  // Mark all active connections as disconnected
   const { error } = await sb.from("qbo_connections").update({
     status: "disconnected",
     updated_at: new Date().toISOString(),
   }).eq("status", "active");
 
-  if (error) {
-    return jsonResponse({ success: false, error: "Failed to disconnect" }, 500);
-  }
-
+  if (error) return jsonResponse({ success: false, error: "Failed to disconnect" }, 500);
   return jsonResponse({ success: true, message: "Disconnected from QuickBooks" });
 }
