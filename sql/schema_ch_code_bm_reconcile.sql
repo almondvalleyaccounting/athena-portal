@@ -1,26 +1,26 @@
 -- ============================================================
 -- CH personal-code reconciliation on BM import (Stage 5).
 --
--- v2 (14/07/2026): the code must reach the person who HOLDS THE CHASE, not
--- just the BM primary contact. Root cause of the Iraj Ali mismatch: the same
--- human exists as separate people rows — a BrightManager primary-contact
--- record ("Iraj Ali") AND Companies-House officer/PSC records with the full
--- legal name ("Iraj Leo Kiryakos Keverian Ali"). CH-code requests are seeded
--- on the CH-officer/PSC records; the BM code was landing on the contact record,
--- so the chase never closed.
+-- v2 (14/07): the code must reach the person who HOLDS THE CHASE, not just the
+-- BM primary contact. Root cause of the Iraj Ali mismatch — the same human
+-- exists as separate people rows (a BrightManager primary-contact record AND
+-- Companies-House officer/PSC records with the full legal name). CH-code
+-- requests are seeded on the officer/PSC records; BM codes were landing on the
+-- contact record so the chase never closed. reconcile_ch_codes now matches the
+-- primary contact's first+last name to the officer/PSC request-holder(s) on
+-- the entity, lands the code, marks entered_bm and moves the request to Stage 5;
+-- a differing existing code raises bm_code_mismatch; falls back to the primary
+-- contact if there's no chase. Masked codes ('*') are ignored.
 --
--- reconcile_ch_codes now, for each {bm_client_id, code}: takes the primary
--- contact's first+last name tokens and applies the code to every OPEN request
--- on that entity held by the primary contact OR a same-first+last-name person
--- (the matching officer/PSC record) — setting the code, marking entered_bm and
--- moving the request to Stage 5 (code received). A differing existing real code
--- raises bm_code_mismatch. Falls back to the primary contact if no chase.
--- Ignores blank and masked placeholder codes (contains '*').
+-- v3 (15/07): also auto-clears "fix the code in BM" data-error to-dos
+-- (admin_tasks.source='bm_data_error', bad value stored in .value) once a
+-- valid, CHANGED code arrives for that client on a later import — the tester
+-- so Sophie's BM correction drops the to-do automatically.
 --
--- ⚠️ DATA-QUALITY CAVEAT: as of 14/07 492/495 people.ch_personal_code values
--- end in "-2223" — i.e. the stored codes are redacted/placeholder, not genuine
--- CH codes. Until real codes are sourced, this reconcile will "close" chases on
--- placeholder values. Do not rely on it for genuine codes yet.
+-- NOTE ON CODE FORMAT: for this client base the genuine CH personal codes all
+-- end "-2223" (confirmed by Bobby against the BM export) — that is NOT a
+-- redaction. Real codes were sourced from the BM client export column
+-- "Companies House Personal Code" (primary + "Secondary …").
 -- ============================================================
 
 create or replace function public.reconcile_ch_codes(p_pairs jsonb)
@@ -29,7 +29,7 @@ language plpgsql security definer set search_path = public
 as $$
 declare
   rec record; e_id uuid; pc_first text; pc_last text; pc_person uuid;
-  q record; v_landed int := 0; v_closed int := 0; v_flagged int := 0; v_targeted boolean;
+  q record; v_landed int := 0; v_closed int := 0; v_flagged int := 0; v_errors_cleared int := 0; v_targeted boolean;
 begin
   if not is_active_staff() then raise exception 'forbidden: staff only'; end if;
 
@@ -39,6 +39,14 @@ begin
 
     select id into e_id from entities where bm_client_id = rec.bm_client_id;
     if e_id is null then continue; end if;
+
+    -- Tester: clear a BM data-error to-do once a valid, changed code arrives.
+    update admin_tasks t set confirmed_at = now(), bm_value = btrim(rec.code)
+     where t.entity_id = e_id and t.source = 'bm_data_error'
+       and t.confirmed_at is null and t.dismissed_at is null
+       and btrim(rec.code) ~ '^[A-Za-z0-9]{3}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$'
+       and _norm_code(rec.code) <> _norm_code(coalesce(t.value,''));
+    if found then v_errors_cleared := v_errors_cleared + 1; end if;
 
     select ep.person_id, lower(split_part(p.name,' ',1)), lower(regexp_replace(p.name,'^.* ',''))
       into pc_person, pc_first, pc_last
@@ -82,7 +90,7 @@ begin
     end if;
   end loop;
 
-  return jsonb_build_object('codes_landed', v_landed, 'chases_closed', v_closed, 'flagged', v_flagged);
+  return jsonb_build_object('codes_landed', v_landed, 'chases_closed', v_closed, 'flagged', v_flagged, 'bm_errors_cleared', v_errors_cleared);
 end;
 $$;
 
