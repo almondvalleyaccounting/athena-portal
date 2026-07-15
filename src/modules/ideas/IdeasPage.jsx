@@ -7,10 +7,21 @@ const STATUS_OPTIONS = [
   { key: 'new',         label: 'New',          bg: '#f1f5f9', fg: '#475569' },
   { key: 'planned',     label: 'Planned',      bg: '#dbeafe', fg: '#1e40af' },
   { key: 'in_progress', label: 'In progress',  bg: '#fef3c7', fg: '#78350f' },
-  { key: 'done',        label: 'Done',         bg: '#dcfce7', fg: '#166534' },
-  { key: 'wont_do',     label: "Won't do",     bg: '#fee2e2', fg: '#991b1b' },
+  { key: 'more_info',   label: 'Needs info',   bg: '#ede9fe', fg: '#5b21b6' },
+  { key: 'implemented', label: 'Implemented',  bg: '#cffafe', fg: '#155e75' },
+  { key: 'completed',   label: 'Completed',    bg: '#dcfce7', fg: '#166534' },
+  { key: 'rejected',    label: 'Rejected',     bg: '#fee2e2', fg: '#991b1b' },
+  // Legacy values kept so pre-existing rows still render with a sensible label.
+  { key: 'done',        label: 'Completed',    bg: '#dcfce7', fg: '#166534', legacy: true },
+  { key: 'wont_do',     label: 'Rejected',     bg: '#fee2e2', fg: '#991b1b', legacy: true },
 ];
 const STATUS_MAP = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.key, s]));
+
+// Statuses that require the admin to attach a comment before saving.
+const COMMENT_STATUSES = {
+  rejected:  { label: 'Rejection reason', placeholder: 'Why is this being rejected? (visible to the submitter)' },
+  more_info: { label: 'Question for the submitter', placeholder: 'What do you need to know before deciding?' },
+};
 
 /* ─── Ideas module ─────────────────────────────────────────────── */
 export default function IdeasPage() {
@@ -21,6 +32,14 @@ export default function IdeasPage() {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
+  // Comment-required status change in progress: { ideaId, status }
+  const [pendingComment, setPendingComment] = useState(null);
+  const [commentText, setCommentText] = useState('');
+  const [savingComment, setSavingComment] = useState(false);
+  // Submitter replying to a "needs info" request
+  const [replyForId, setReplyForId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [savingReply, setSavingReply] = useState(false);
 
   // ── Load ideas ──
   useEffect(() => {
@@ -105,7 +124,15 @@ export default function IdeasPage() {
 
   // ── Change status ──
   const canManageStatus = profile?.can_manage_portal === true || profile?.is_portal_admin === true;
+  const adminName = profile?.full_name || profile?.name || profile?.email || 'Admin';
+
   const handleStatusChange = async (idea, newStatus) => {
+    // Rejection / info-request need a comment — open the inline editor first.
+    if (COMMENT_STATUSES[newStatus]) {
+      setPendingComment({ ideaId: idea.id, status: newStatus });
+      setCommentText(idea.admin_comment || '');
+      return;
+    }
     try {
       const { error } = await supabase
         .from('ideas')
@@ -115,6 +142,45 @@ export default function IdeasPage() {
         setIdeas((prev) => prev.map((i) => i.id === idea.id ? { ...i, status: newStatus } : i));
       }
     } catch { /* silent */ }
+  };
+
+  // Save a rejection reason / info request together with the status change.
+  const handleSaveComment = async (idea) => {
+    if (!pendingComment || !commentText.trim() || savingComment) return;
+    setSavingComment(true);
+    const nowIso = new Date().toISOString();
+    const patch = {
+      status: pendingComment.status,
+      admin_comment: commentText.trim(),
+      admin_comment_by: adminName,
+      admin_comment_at: nowIso,
+    };
+    try {
+      const { error } = await supabase.from('ideas').update(patch).eq('id', idea.id);
+      if (!error) {
+        setIdeas((prev) => prev.map((i) => i.id === idea.id ? { ...i, ...patch } : i));
+        setPendingComment(null);
+        setCommentText('');
+      }
+    } catch { /* silent */ }
+    setSavingComment(false);
+  };
+
+  // Submitter's reply to an information request.
+  const handleSaveReply = async (idea) => {
+    if (!replyText.trim() || savingReply) return;
+    setSavingReply(true);
+    const nowIso = new Date().toISOString();
+    const patch = { submitter_response: replyText.trim(), submitter_response_at: nowIso };
+    try {
+      const { error } = await supabase.from('ideas').update(patch).eq('id', idea.id);
+      if (!error) {
+        setIdeas((prev) => prev.map((i) => i.id === idea.id ? { ...i, ...patch } : i));
+        setReplyForId(null);
+        setReplyText('');
+      }
+    } catch { /* silent */ }
+    setSavingReply(false);
   };
 
   // ── Edit idea ──
@@ -358,6 +424,131 @@ export default function IdeasPage() {
                     onChange={(next) => handleStatusChange(idea, next)}
                   />
                 </div>
+
+                {/* Admin comment editor — shown while rejecting / requesting info */}
+                {canManageStatus && pendingComment?.ideaId === idea.id && (
+                  <div style={{ marginTop: 10 }}>
+                    <label style={{ display: 'block', fontFamily: "'Outfit', sans-serif", fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                      {COMMENT_STATUSES[pendingComment.status].label}
+                    </label>
+                    <textarea
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      autoFocus
+                      rows={3}
+                      placeholder={COMMENT_STATUSES[pendingComment.status].placeholder}
+                      style={{
+                        width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 13,
+                        fontFamily: "'Outfit', sans-serif", border: '1px solid #c4b5fd', borderRadius: 8,
+                        outline: 'none', resize: 'vertical',
+                      }}
+                    />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                      <button
+                        onClick={() => handleSaveComment(idea)}
+                        disabled={!commentText.trim() || savingComment}
+                        style={{
+                          fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 600,
+                          color: '#ffffff', background: !commentText.trim() || savingComment ? '#c7d2fe' : '#4f46e5',
+                          border: 'none', borderRadius: 8, padding: '6px 14px',
+                          cursor: !commentText.trim() || savingComment ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {savingComment ? 'Saving…' : pendingComment.status === 'rejected' ? 'Reject with comment' : 'Send request'}
+                      </button>
+                      <button
+                        onClick={() => { setPendingComment(null); setCommentText(''); }}
+                        style={{ fontFamily: "'Outfit', sans-serif", fontSize: 12, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Saved admin comment (rejection reason / info request) */}
+                {idea.admin_comment && !(pendingComment?.ideaId === idea.id) && (
+                  <div style={{
+                    marginTop: 10, padding: '8px 12px', borderRadius: 8,
+                    background: idea.status === 'rejected' ? '#fef2f2' : idea.status === 'more_info' ? '#f5f3ff' : '#f8fafc',
+                    border: `1px solid ${idea.status === 'rejected' ? '#fecaca' : idea.status === 'more_info' ? '#ddd6fe' : '#e5e7eb'}`,
+                  }}>
+                    <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: idea.status === 'rejected' ? '#991b1b' : idea.status === 'more_info' ? '#5b21b6' : '#475569', marginBottom: 3 }}>
+                      {idea.status === 'rejected' ? 'Rejection reason' : idea.status === 'more_info' ? 'Question for submitter' : 'Note'}
+                    </div>
+                    <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 13, color: '#0f172a', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>{idea.admin_comment}</p>
+                    {idea.admin_comment_by && (
+                      <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                        — {idea.admin_comment_by}{idea.admin_comment_at ? ` · ${new Date(idea.admin_comment_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Submitter's reply to an info request */}
+                {idea.submitter_response && (
+                  <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+                    <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#0369a1', marginBottom: 3 }}>
+                      Submitter's reply
+                    </div>
+                    <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 13, color: '#0f172a', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>{idea.submitter_response}</p>
+                    {idea.submitter_response_at && (
+                      <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                        {new Date(idea.submitter_response_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Reply affordance — only the submitter, only while info is being requested */}
+                {idea.status === 'more_info' && profile?.id === idea.submitted_by && (
+                  replyForId === idea.id ? (
+                    <div style={{ marginTop: 8 }}>
+                      <textarea
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        autoFocus
+                        rows={3}
+                        placeholder="Answer the question above…"
+                        style={{
+                          width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 13,
+                          fontFamily: "'Outfit', sans-serif", border: '1px solid #7dd3fc', borderRadius: 8,
+                          outline: 'none', resize: 'vertical',
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                        <button
+                          onClick={() => handleSaveReply(idea)}
+                          disabled={!replyText.trim() || savingReply}
+                          style={{
+                            fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 600, color: '#ffffff',
+                            background: !replyText.trim() || savingReply ? '#bae6fd' : '#0284c7',
+                            border: 'none', borderRadius: 8, padding: '6px 14px',
+                            cursor: !replyText.trim() || savingReply ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {savingReply ? 'Sending…' : 'Send reply'}
+                        </button>
+                        <button
+                          onClick={() => { setReplyForId(null); setReplyText(''); }}
+                          style={{ fontFamily: "'Outfit', sans-serif", fontSize: 12, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setReplyForId(idea.id); setReplyText(idea.submitter_response || ''); }}
+                      style={{
+                        marginTop: 8, fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 600,
+                        color: '#0369a1', background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      }}
+                    >
+                      {idea.submitter_response ? 'Edit your reply' : 'Reply to this request'}
+                    </button>
+                  )
+                )}
               </div>
 
               {/* Delete button */}
@@ -407,7 +598,7 @@ function StatusPill({ idea, canEdit, onChange }) {
         appearance: 'none', WebkitAppearance: 'none',
       }}
     >
-      {STATUS_OPTIONS.map((s) => (
+      {STATUS_OPTIONS.filter((s) => !s.legacy).map((s) => (
         <option key={s.key} value={s.key}>{s.label}</option>
       ))}
     </select>
