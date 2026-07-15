@@ -165,6 +165,28 @@ async function handleCallback(url: URL) {
       return new Response(null, { status: 302, headers: { Location: redirectUrl } });
     }
 
+    // Persist tokens for the in-app Client Dashboard. These go in a SEPARATE,
+    // service-role-only table (qbo_report_tokens) — never qbo_report_connections,
+    // which is staff-readable. This lets dashboard-qbo-pull read live data for
+    // this client directly (no Apps Script bridge). Existing report connections
+    // predate this, so they must reconnect once to capture tokens.
+    const { error: tokenErr } = await sb.from("qbo_report_tokens").upsert(
+      {
+        realm_id: realmId,
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_expires_at: expiresAt.toISOString(),
+        refresh_token_expires_at: refreshExpiresAt?.toISOString() || null,
+        scope: tokens.scope || "com.intuit.quickbooks.accounting",
+        status: "active",
+        error_message: null,
+        connected_by: userId || null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "realm_id" },
+    );
+    if (tokenErr) console.error("Failed to store report tokens:", tokenErr);
+
     // Sync tokens to Apps Script Clients tab so it can run reports for this client
     if (APPS_SCRIPT_URL && PORTAL_SYNC_SECRET) {
       try {

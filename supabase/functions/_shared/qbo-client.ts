@@ -12,35 +12,87 @@ export function getServiceClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 }
 
-// Get a valid access token, refreshing if needed
-export async function getValidToken(): Promise<{ accessToken: string; realmId: string }> {
-  const sb = getServiceClient();
+type SupaClient = ReturnType<typeof createClient>;
 
-  const { data: conn, error } = await sb
-    .from("qbo_connections")
-    .select("*")
-    .eq("status", "active")
-    .single();
+// A token-bearing row + which table it came from (so we refresh/write back
+// to the right place). Billing tokens live in `qbo_connections` (keyed by id,
+// one active row); per-client dashboard/report tokens live in
+// `qbo_report_tokens` (keyed by realm_id).
+type TokenSource = {
+  table: "qbo_connections" | "qbo_report_tokens";
+  keyCol: "id" | "realm_id";
+  conn: Record<string, unknown> & {
+    realm_id: string;
+    access_token: string;
+    refresh_token: string;
+    token_expires_at: string;
+    refresh_token_expires_at?: string | null;
+    id?: string;
+  };
+};
 
-  if (error || !conn) {
-    throw new Error("No active QBO connection found. Please connect to QuickBooks first.");
+// Resolve where a realm's tokens live.
+//  - No realmId  → the single active billing connection (existing behaviour).
+//  - With realmId → prefer qbo_report_tokens; fall back to a billing connection
+//    on the same realm (lets AVA's own books work before any reconnect).
+async function resolveTokenSource(sb: SupaClient, realmId?: string): Promise<TokenSource> {
+  if (!realmId) {
+    const { data, error } = await sb
+      .from("qbo_connections")
+      .select("*")
+      .eq("status", "active")
+      .single();
+    if (error || !data) {
+      throw new Error("No active QBO connection found. Please connect to QuickBooks first.");
+    }
+    return { table: "qbo_connections", keyCol: "id", conn: data as TokenSource["conn"] };
   }
 
-  const expiresAt = new Date(conn.token_expires_at);
+  const { data: rt } = await sb
+    .from("qbo_report_tokens")
+    .select("*")
+    .eq("realm_id", realmId)
+    .maybeSingle();
+  if (rt && (rt as Record<string, unknown>).refresh_token) {
+    return { table: "qbo_report_tokens", keyCol: "realm_id", conn: rt as TokenSource["conn"] };
+  }
+
+  const { data: bc } = await sb
+    .from("qbo_connections")
+    .select("*")
+    .eq("realm_id", realmId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (bc) {
+    return { table: "qbo_connections", keyCol: "id", conn: bc as TokenSource["conn"] };
+  }
+
+  throw new Error(
+    `No stored QBO tokens for realm ${realmId}. The client needs to reconnect QuickBooks.`,
+  );
+}
+
+// Get a valid access token, refreshing if within 5 min of expiry.
+// Pass a realmId to target a specific client; omit for the billing connection.
+export async function getValidToken(realmId?: string): Promise<{ accessToken: string; realmId: string }> {
+  const sb = getServiceClient();
+  const src = await resolveTokenSource(sb, realmId);
+
+  const expiresAt = new Date(src.conn.token_expires_at);
   const now = new Date();
   const fiveMinutes = 5 * 60 * 1000;
 
-  // Refresh if within 5 minutes of expiry
   if (expiresAt.getTime() - now.getTime() < fiveMinutes) {
-    const refreshed = await refreshToken(sb, conn);
-    return { accessToken: refreshed.access_token, realmId: conn.realm_id };
+    const refreshed = await refreshToken(sb, src);
+    return { accessToken: refreshed.access_token, realmId: src.conn.realm_id };
   }
 
-  return { accessToken: conn.access_token, realmId: conn.realm_id };
+  return { accessToken: src.conn.access_token, realmId: src.conn.realm_id };
 }
 
-// Refresh the OAuth token
-async function refreshToken(sb: ReturnType<typeof createClient>, conn: Record<string, unknown>) {
+// Refresh the OAuth token, writing new tokens back to whichever table they came from.
+async function refreshToken(sb: SupaClient, src: TokenSource) {
+  const { table, keyCol, conn } = src;
   const basicAuth = btoa(`${QBO_CLIENT_ID}:${QBO_CLIENT_SECRET}`);
 
   const resp = await fetch(QBO_TOKEN_URL, {
@@ -52,18 +104,19 @@ async function refreshToken(sb: ReturnType<typeof createClient>, conn: Record<st
     },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      refresh_token: conn.refresh_token as string,
+      refresh_token: conn.refresh_token,
     }),
   });
 
+  const keyVal = conn[keyCol] as string;
+
   if (!resp.ok) {
     const errBody = await resp.text();
-    // Mark connection as error
-    await sb.from("qbo_connections").update({
+    await sb.from(table).update({
       status: "error",
       error_message: `Token refresh failed: ${resp.status} ${errBody}`,
       updated_at: new Date().toISOString(),
-    }).eq("id", conn.id);
+    }).eq(keyCol, keyVal);
     throw new Error(`QBO token refresh failed: ${resp.status}`);
   }
 
@@ -73,7 +126,7 @@ async function refreshToken(sb: ReturnType<typeof createClient>, conn: Record<st
     ? new Date(Date.now() + tokens.x_refresh_token_expires_in * 1000)
     : null;
 
-  await sb.from("qbo_connections").update({
+  await sb.from(table).update({
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
     token_expires_at: expiresAt.toISOString(),
@@ -82,18 +135,19 @@ async function refreshToken(sb: ReturnType<typeof createClient>, conn: Record<st
     status: "active",
     error_message: null,
     updated_at: new Date().toISOString(),
-  }).eq("id", conn.id);
+  }).eq(keyCol, keyVal);
 
   return tokens;
 }
 
-// Make a QBO API call with automatic auth
+// Make a QBO API call with automatic auth. Pass realmId to target a client.
 export async function qboFetch(
   path: string,
   options: RequestInit = {},
+  realmId?: string,
 ): Promise<Response> {
-  const { accessToken, realmId } = await getValidToken();
-  const url = `${QBO_API_BASE}/v3/company/${realmId}/${path}`;
+  const { accessToken, realmId: resolvedRealm } = await getValidToken(realmId);
+  const url = `${QBO_API_BASE}/v3/company/${resolvedRealm}/${path}`;
 
   const headers = new Headers(options.headers || {});
   headers.set("Authorization", `Bearer ${accessToken}`);
@@ -107,21 +161,23 @@ export async function qboFetch(
   // If 401, try one token refresh and retry
   if (resp.status === 401) {
     const sb = getServiceClient();
-    const { data: conn } = await sb.from("qbo_connections").select("*").eq("status", "active").single();
-    if (conn) {
-      await refreshToken(sb, conn);
-      const { accessToken: newToken } = await getValidToken();
+    try {
+      const src = await resolveTokenSource(sb, realmId);
+      await refreshToken(sb, src);
+      const { accessToken: newToken } = await getValidToken(realmId);
       headers.set("Authorization", `Bearer ${newToken}`);
       return fetch(url, { ...options, headers });
+    } catch {
+      return resp;
     }
   }
 
   return resp;
 }
 
-// QBO query helper
-export async function qboQuery(query: string): Promise<unknown> {
-  const resp = await qboFetch(`query?query=${encodeURIComponent(query)}`);
+// QBO query helper. Pass realmId to target a client.
+export async function qboQuery(query: string, realmId?: string): Promise<unknown> {
+  const resp = await qboFetch(`query?query=${encodeURIComponent(query)}&minorversion=75`, {}, realmId);
   if (!resp.ok) {
     const err = await resp.text();
     throw new Error(`QBO query failed: ${resp.status} ${err}`);

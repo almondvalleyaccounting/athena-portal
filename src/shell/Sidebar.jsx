@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   TrendingUp,
   ClipboardCheck,
+  Gauge,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -38,6 +39,7 @@ const ICON_MAP = {
   'alert-triangle': AlertTriangle,
   'trending-up': TrendingUp,
   'clipboard-check': ClipboardCheck,
+  gauge: Gauge,
 };
 
 /* ─── Visibility rules ─────────────────────────────────────────── */

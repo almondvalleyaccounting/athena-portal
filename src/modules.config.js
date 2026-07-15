@@ -36,6 +36,15 @@ export const MODULES = [
     group: 'billing',
   },
   {
+    id: 'client-dashboard',
+    label: 'Client Dashboard',
+    route: '/client-dashboard',
+    icon: 'gauge',
+    permissions: ['can_view_reports'],
+    status: 'live',
+    group: 'data',
+  },
+  {
     id: 'reports',
     label: 'Reports',
     route: '/reports',
