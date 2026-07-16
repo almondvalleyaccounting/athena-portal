@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
 
     const { data: profile, error: profileError } = await serviceClient
       .from("staff_profiles")
-      .select("can_view_reports, name, email")
+      .select("can_view_reports, can_view_practice_financials, name, email")
       .eq("id", user.id)
       .single();
 
@@ -75,6 +75,17 @@ Deno.serve(async (req) => {
 
     if (!client_name || !realm_id || !report_type || !report_label) {
       return jsonResponse({ success: false, error: "Missing required fields" }, 400);
+    }
+
+    // Practice books (AVA's own QBO) need the dedicated flag — this function
+    // runs service-role, so the restrictive RLS doesn't apply here on its own.
+    const { data: connRow } = await serviceClient
+      .from("qbo_report_connections")
+      .select("is_practice")
+      .eq("realm_id", realm_id)
+      .maybeSingle();
+    if (connRow?.is_practice && !profile.can_view_practice_financials) {
+      return jsonResponse({ success: false, error: "Not authorised for practice financials" }, 403);
     }
 
     // 4. POST to Apps Script — must follow redirects (Apps Script returns 302)

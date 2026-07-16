@@ -156,6 +156,56 @@ async function pullPlSummary(sb: any, realmId: string) {
   };
 }
 
+// P&L headline for the company's own fiscal year to date (QBO resolves the
+// fiscal calendar from company settings — AVA's year starts 1 October).
+async function pullPlFytd(sb: any, realmId: string) {
+  const macro = encodeURIComponent("This Fiscal Year-to-date");
+  const resp = await qboFetch(sb, realmId, `reports/ProfitAndLoss?date_macro=${macro}&accounting_method=Accrual&minorversion=75`);
+  if (!resp.ok) throw new Error(`P&L FYTD ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const report = await resp.json();
+
+  const groups: Record<string, number> = {};
+  const walk = (rs: any[]) => {
+    for (const r of rs || []) {
+      if (r.group && r.Summary?.ColData) {
+        const v = parseFloat(r.Summary.ColData[r.Summary.ColData.length - 1]?.value || "0");
+        if (!isNaN(v)) groups[r.group] = v;
+      }
+      if (r.Rows?.Row) walk(r.Rows.Row);
+    }
+  };
+  walk(report?.Rows?.Row || []);
+
+  const num = (k: string) => (typeof groups[k] === "number" ? groups[k] : null);
+  return {
+    period: { start: report?.Header?.StartPeriod || null, end: report?.Header?.EndPeriod || null },
+    currency: report?.Header?.Currency || null,
+    income: num("Income"),
+    cogs: num("COGS"),
+    gross_profit: num("GrossProfit"),
+    expenses: num("Expenses"),
+    net_operating_income: num("NetOperatingIncome"),
+    net_income: num("NetIncome"),
+  };
+}
+
+// Balance snapshot from the Account list: cash in bank, debtors, creditors.
+// CurrentBalance is only meaningful on balance-sheet accounts, which is all
+// we read here.
+async function pullBalances(sb: any, realmId: string) {
+  const j = await qboQuery(sb, realmId, "SELECT * FROM Account MAXRESULTS 1000");
+  const accounts = j?.QueryResponse?.Account || [];
+  const ofType = (t: string) => accounts.filter((a: any) => a.AccountType === t);
+  const sum = (arr: any[]) => arr.reduce((s, a) => s + Number(a.CurrentBalance || 0), 0);
+  return {
+    cash: sum(ofType("Bank")),
+    debtors: sum(ofType("Accounts Receivable")),
+    creditors: sum(ofType("Accounts Payable")),
+    credit_cards: sum(ofType("Credit Card")),
+    bank_account_count: ofType("Bank").length,
+  };
+}
+
 // Bookkeeping "file health" signals.
 // NOTE on what QBO's API can and can't see:
 //  - Balance-sheet hygiene accounts (Undeposited Funds, Opening Balance Equity,
@@ -278,6 +328,8 @@ async function pullFileHealth(sb: any, realmId: string) {
 const METRICS: Record<string, (sb: any, realmId: string) => Promise<any>> = {
   company: pullCompany,
   pl_summary: pullPlSummary,
+  pl_fytd: pullPlFytd,
+  balances: pullBalances,
   file_health: pullFileHealth,
 };
 
@@ -296,13 +348,21 @@ Deno.serve(async (req) => {
     if (authErr || !user) return jr({ success: false, error: "Invalid token" }, 401);
 
     const sb = svc();
-    const { data: profile } = await sb.from("staff_profiles").select("can_view_reports").eq("id", user.id).single();
+    const { data: profile } = await sb.from("staff_profiles").select("can_view_reports, can_view_practice_financials").eq("id", user.id).single();
     if (!profile?.can_view_reports) return jr({ success: false, error: "Not authorised" }, 403);
 
     // 2. Body
     const body = await req.json().catch(() => ({}));
     const realmId = String(body.realmId || body.realm_id || "");
     if (!realmId) return jr({ success: false, error: "realmId required" }, 400);
+
+    // 2b. Practice books (AVA's own QBO) are locked behind a separate flag —
+    // this mirrors the restrictive RLS on qbo_report_connections/cache, and
+    // matters because this function reads with the service role.
+    const { data: connRow } = await sb.from("qbo_report_connections").select("is_practice").eq("realm_id", realmId).maybeSingle();
+    if (connRow?.is_practice && !profile?.can_view_practice_financials) {
+      return jr({ success: false, error: "Not authorised for practice financials" }, 403);
+    }
     const refresh = body.refresh === true;
     const maxAgeMin = Number(body.maxAgeMinutes || DEFAULT_MAX_AGE_MIN);
     const wanted: string[] = Array.isArray(body.metrics) && body.metrics.length

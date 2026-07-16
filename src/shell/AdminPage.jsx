@@ -21,6 +21,9 @@ const PERMISSION_COLS = [
   { key: 'can_view_onboarding', label: 'Onboarding' },
   { key: 'can_import_data', label: 'Data Import' },
   { key: 'can_manage_portal', label: 'Portal admin' },
+  // AVA's own QBO books — deliberately separate from Portal admin so practice
+  // financials stay director-only even among admins.
+  { key: 'can_view_practice_financials', label: 'Practice financials' },
 ];
 
 // Use select('*') to avoid failing on missing columns — the admin page

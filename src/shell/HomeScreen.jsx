@@ -10,7 +10,7 @@ import {
 import { MODULES } from '../modules.config';
 import { useAuth } from './AppShell';
 import JobReviewRadar from '../modules/job-review/DashboardRadar';
-import { useDirectorDashboard } from './homeDashboardData';
+import { useDirectorDashboard, usePracticePulse, daysLate } from './homeDashboardData';
 
 /* ─── Helpers ──────────────────────────────────────────────────── */
 function formatDate() {
@@ -375,24 +375,54 @@ function ModuleStatusDot({ mod }) {
 }
 
 /* ─── Attention queue assembly ─────────────────────────────────── */
+// BrightManager status labels that read like system codes → plain English.
+const BM_STATUS_LABELS = { 'No Latest Action': 'Not started' };
+const bmStatus = (s) => BM_STATUS_LABELS[s] || s || 'No status';
+
 // Priority order: things already late or broken (red), money waiting on Bobby
 // (green — accepted quotes to commit), then everything pending (amber/sky).
 function buildAttentionItems(data, navigate) {
   const items = [];
   const plural = (n, s) => `${n} ${s}${n === 1 ? '' : 's'}`;
 
-  if (data.ch.overdue > 0) {
-    const names = data.ch.overdueList
+  // One row per late CH filing — each names the client, how late, and the BM
+  // status, so the count on the deadline card is always reconcilable.
+  data.ch.overdueList.forEach((r) => {
+    const late = daysLate(r.bm_deadline);
+    const owner = r.owner?.name ? ` · ${r.owner.name.split(' ')[0]}` : '';
+    items.push({
+      id: `ch-${r.id}`,
+      accent: '#ef4444',
+      icon: AlertTriangle,
+      title: `${r.entity?.name || 'Unknown client'} — accounts ${late} day${late === 1 ? '' : 's'} late at Companies House`,
+      subtitle: `Due ${shortDate(r.bm_deadline)} · ${bmStatus(r.bm_status)}${owner}`,
+      onClick: () => (r.entity?.id ? navigate(`/clients/${r.entity.id}`) : navigate('/planner/ready')),
+    });
+  });
+  if (data.ch.overdue > data.ch.overdueList.length) {
+    items.push({
+      id: 'ch-overdue-more',
+      accent: '#ef4444',
+      icon: AlertTriangle,
+      title: `${plural(data.ch.overdue - data.ch.overdueList.length, 'more late Companies House filing')}`,
+      subtitle: 'Open the planner for the full list',
+      onClick: () => navigate('/planner/ready'),
+    });
+  }
+
+  // Late Self Assessment returns (past a 31 Jan) — penalties accruing.
+  if (data.sa.overdueList.length > 0) {
+    const names = data.sa.overdueList
       .map((r) => r.entity?.name)
       .filter(Boolean)
       .slice(0, 3)
       .join(', ');
     items.push({
-      id: 'ch-overdue',
+      id: 'sa-overdue',
       accent: '#ef4444',
       icon: AlertTriangle,
-      title: `${plural(data.ch.overdue, 'Companies House filing')} past deadline — penalty risk`,
-      subtitle: names + (data.ch.overdue > 3 ? '…' : ''),
+      title: `${plural(data.sa.overdueList.length, 'Self Assessment return')} past the filing deadline`,
+      subtitle: names + (data.sa.overdueList.length > 3 ? '…' : ''),
       onClick: () => navigate('/planner/ready'),
     });
   }
@@ -458,12 +488,12 @@ function buildAttentionItems(data, navigate) {
     });
   });
 
-  if (data.money.needsReview > 0) {
+  if (data.billingNeedsReview > 0) {
     items.push({
       id: 'billing-review',
       accent: '#f59e0b',
       icon: Clock,
-      title: `${plural(data.money.needsReview, 'live billing record')} flagged for review`,
+      title: `${plural(data.billingNeedsReview, 'live billing record')} flagged for review`,
       subtitle: 'Billing review',
       onClick: () => navigate('/manage/billing/review'),
     });
@@ -480,8 +510,12 @@ export default function HomeScreen() {
   const firstName = profile?.name?.split(' ')[0] || 'there';
   const isOwner = profile?.can_manage_portal === true;
   const canSeeAttention = profile?.can_approve_quotes === true || isOwner;
+  // AVA's own books — deliberately a separate flag from portal admin, so the
+  // practice's financials stay Bobby-only even among admins.
+  const canSeePulse = profile?.can_view_practice_financials === true;
 
   const { loading, data } = useDirectorDashboard(isOwner || canSeeAttention);
+  const { loading: pulseLoading, pulse, error: pulseError } = usePracticePulse(canSeePulse);
 
   const attentionItems = data ? buildAttentionItems(data, navigate) : [];
 
@@ -548,7 +582,7 @@ export default function HomeScreen() {
             </div>
           ) : (
             attentionItems
-              .slice(0, 8)
+              .slice(0, 12)
               .map((item) => (
                 <AttentionCard
                   key={item.id}
@@ -563,50 +597,86 @@ export default function HomeScreen() {
         </div>
       )}
 
-      {/* ── Practice pulse (owner only) ── */}
-      {isOwner && data && (
+      {/* ── Practice pulse — AVA actuals from QuickBooks (Bobby only) ── */}
+      {canSeePulse && (
         <div style={{ marginBottom: '36px' }}>
-          <SectionLabel>Practice pulse</SectionLabel>
-          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-            <StatCard
-              label="Recurring fees"
-              value={`${formatCurrency(data.money.mrrNet)}/mo`}
-              sub={`${formatCurrency(data.money.mrrNet * 12)}/yr net · ${
-                data.money.activeBillingCount
-              } live billing records`}
-              onClick={() => navigate('/planning')}
+          <SectionLabel
+            note={
+              pulse?.pulledAt
+                ? `Almond Valley actuals from QuickBooks · ${
+                    pulse.fromCache ? 'cached ' : 'pulled '
+                  }${shortDate(pulse.pulledAt)} · visible only to you`
+                : 'visible only to you'
+            }
+          >
+            Practice pulse
+          </SectionLabel>
+          {pulseLoading ? (
+            <p style={{ fontFamily: FONT, fontSize: '13px', color: '#94a3b8' }}>
+              Pulling the numbers from QuickBooks…
+            </p>
+          ) : pulseError === 'reconnect' || pulseError === 'no-connection' ? (
+            <AttentionCard
+              accent="#f59e0b"
+              icon={Clock}
+              title="QuickBooks needs reconnecting before the pulse can load"
+              subtitle="Open the Client Dashboard and reconnect Almond Valley Accounting"
+              onClick={() => navigate('/client-dashboard')}
             />
-            <StatCard
-              label={`Committed in ${thisMonthName}`}
-              value={
-                data.money.committedThisMonth > 0
-                  ? `+${formatCurrency(data.money.committedThisMonth)}/mo`
-                  : '—'
-              }
-              sub={
-                data.money.committedCount > 0
-                  ? `${data.money.committedCount} new billing record${
-                      data.money.committedCount === 1 ? '' : 's'
-                    }`
-                  : 'nothing committed yet this month'
-              }
-              onClick={() => navigate('/manage/billing/review')}
-            />
-            <StatCard
-              label="Quote pipeline"
-              value={formatCurrency(data.quotes.sentAnnual) + '/yr'}
-              sub={`${data.quotes.sent.length} quote${
-                data.quotes.sent.length === 1 ? '' : 's'
-              } out with clients`}
-              onClick={() => navigate('/manage/quotes')}
-            />
-            <StatCard
-              label="Active clients"
-              value={data.activeClients}
-              sub={`${data.money.activeBillingCount} on recurring billing`}
-              onClick={() => navigate('/clients')}
-            />
-          </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              <StatCard
+                label="Revenue — fiscal YTD"
+                value={
+                  pulse?.plFytd?.income != null ? formatCurrency(pulse.plFytd.income) : '—'
+                }
+                sub={
+                  pulse?.plFytd?.period?.start
+                    ? `since ${shortDate(pulse.plFytd.period.start)}`
+                    : null
+                }
+                onClick={() => navigate('/client-dashboard')}
+              />
+              <StatCard
+                label="Net profit — fiscal YTD"
+                value={
+                  pulse?.plFytd?.net_income != null
+                    ? formatCurrency(pulse.plFytd.net_income)
+                    : '—'
+                }
+                sub={
+                  pulse?.plFytd?.net_income != null && pulse?.plFytd?.income > 0
+                    ? `${Math.round((pulse.plFytd.net_income / pulse.plFytd.income) * 100)}% margin`
+                    : null
+                }
+                onClick={() => navigate('/client-dashboard')}
+              />
+              <StatCard
+                label="Cash at bank"
+                value={
+                  pulse?.balances?.cash != null ? formatCurrency(pulse.balances.cash) : '—'
+                }
+                sub={
+                  pulse?.balances?.bank_account_count
+                    ? `across ${pulse.balances.bank_account_count} bank account${
+                        pulse.balances.bank_account_count === 1 ? '' : 's'
+                      }`
+                    : null
+                }
+                onClick={() => navigate('/client-dashboard')}
+              />
+              <StatCard
+                label="Debtors"
+                value={
+                  pulse?.balances?.debtors != null
+                    ? formatCurrency(pulse.balances.debtors)
+                    : '—'
+                }
+                sub="owed to the practice"
+                onClick={() => navigate('/client-dashboard')}
+              />
+            </div>
+          )}
         </div>
       )}
 
