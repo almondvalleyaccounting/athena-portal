@@ -17,6 +17,13 @@ import {
 const font = "'Outfit', sans-serif";
 const isEmail = (e) => typeof e === 'string' && e.includes('@');
 
+// Stages 1–4 verify the PERSON's identity — that's a one-time thing
+// regardless of how many companies they direct, so a director chased on
+// two companies at once should show as ONE tile, not two. From Stage 5
+// on, the work (Inform Direct/BM entry, Confirmation Statement) is
+// genuinely per company, so those stay split.
+const PERSON_LEVEL_STAGES = new Set(['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_code']);
+
 // Split a person's name into surname/forename for sorting. Handles both
 // "First Middle Last" and BM's "Last, First" formats.
 function nameParts(r) {
@@ -31,11 +38,16 @@ function nameParts(r) {
     surname: (parts.length > 1 ? parts[parts.length - 1] : parts[0] || '').toLowerCase(),
   };
 }
-// Emails sent (desc) → surname → forename.
-function cmpRows(a, b) {
-  const d = (b.emails_sent || 0) - (a.emails_sent || 0);
+// The row within a group with the most chasing progress — used to represent
+// the whole group (comms ladder, email counter) with a single value.
+function repRow(group) {
+  return group.rows.reduce((best, r) => ((r.emails_sent || 0) > (best.emails_sent || 0) ? r : best), group.rows[0]);
+}
+// Emails sent (desc) → surname → forename, across tile groups.
+function cmpGroups(a, b) {
+  const d = (repRow(b).emails_sent || 0) - (repRow(a).emails_sent || 0);
   if (d) return d;
-  const na = nameParts(a), nb = nameParts(b);
+  const na = nameParts(a.rows[0]), nb = nameParts(b.rows[0]);
   return na.surname.localeCompare(nb.surname) || na.forename.localeCompare(nb.forename);
 }
 
@@ -45,8 +57,9 @@ function localNowValue() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function CallLogModal({ request, onConfirm, onCancel, busy }) {
+function CallLogModal({ group, onConfirm, onCancel, busy }) {
   const [dt, setDt] = useState(localNowValue);
+  const name = group.rows[0].person?.name || 'this person';
   return (
     <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, fontFamily: font }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, width: 360, maxWidth: '92vw', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
@@ -54,7 +67,7 @@ function CallLogModal({ request, onConfirm, onCancel, busy }) {
           <PhoneCall size={16} color={tones.accent.solid} />
           <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Log a call</div>
         </div>
-        <p style={{ margin: '0 0 14px', fontSize: 13, color: '#64748b' }}>When did you call {request.person?.name || 'this person'}?</p>
+        <p style={{ margin: '0 0 14px', fontSize: 13, color: '#64748b' }}>When did you call {name}?</p>
         <input autoFocus type="datetime-local" value={dt} onChange={(e) => setDt(e.target.value)}
           style={{ width: '100%', padding: '9px 11px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box' }} />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
@@ -179,57 +192,92 @@ export default function PipelineView() {
     });
   }, [rows, filter, search]);
 
+  // Group into tiles: one per person for the identity-verification stages
+  // (a director chased on N companies at once is still one conversation),
+  // one per request everywhere else (Entered/Submitted/Rejected are
+  // genuinely per-company work).
   const grouped = useMemo(() => {
-    const m = {};
-    for (const r of filtered) (m[r.stage] ||= []).push(r);
-    for (const k of Object.keys(m)) m[k].sort(cmpRows);
-    return m;
+    const byStage = {};
+    for (const r of filtered) (byStage[r.stage] ||= []).push(r);
+    const out = {};
+    for (const stage of Object.keys(byStage)) {
+      const rowsInStage = byStage[stage];
+      if (PERSON_LEVEL_STAGES.has(stage)) {
+        const byPerson = new Map();
+        for (const r of rowsInStage) {
+          const key = r.person_id || r.id;
+          if (!byPerson.has(key)) byPerson.set(key, { key: `p:${key}`, rows: [] });
+          byPerson.get(key).rows.push(r);
+        }
+        out[stage] = [...byPerson.values()];
+      } else {
+        out[stage] = rowsInStage.map((r) => ({ key: r.id, rows: [r] }));
+      }
+      out[stage].sort(cmpGroups);
+    }
+    return out;
   }, [filtered]);
 
-  // Chase-ladder summary across the open chasing stages (s1/s3a/s3b/s4).
+  // Chase-ladder summary across the open chasing stages (s1/s3a/s3b/s4) —
+  // counts PEOPLE, not requests, so a multi-company director isn't double-counted.
   const summary = useMemo(() => {
     const s = { not_started: 0, one_email: 0, two_emails: 0, three_emails: 0, called: 0, escalated: 0, total: 0 };
+    const byPerson = new Map();
     for (const r of rows || []) {
       if (!stageMeta(r.stage).chasing) continue;
+      const key = r.person_id || r.id;
+      const existing = byPerson.get(key);
+      if (!existing || (r.emails_sent || 0) > (existing.emails_sent || 0)) byPerson.set(key, r);
+    }
+    for (const r of byPerson.values()) {
       s[commsOf(r)] += 1;
       s.total += 1;
     }
     return s;
   }, [rows]);
 
-  async function act(id, fn, msg) {
-    setBusyId(id); setError(null); setFlash(null);
-    try { await fn(); await load(); if (msg) setFlash(msg); }
+  // Fan an action out across every request in a tile group (person-level
+  // groups can hold more than one company's request) and reload once done.
+  async function actGroup(group, fn, msg) {
+    setBusyId(group.key); setError(null); setFlash(null);
+    try { await Promise.all(group.rows.map((row) => fn(row))); await load(); if (msg) setFlash(msg); }
     catch (e) { setError(e.message); }
     setBusyId(null);
   }
 
   // Stage 3b guard: make sure we hold a client email before raising/sending the invoice.
-  async function decideWeDoIt(r) {
-    let email = r.person?.email;
+  // Raises one £20+VAT invoice per company in the group (billing is inherently
+  // per-client, so a director of two companies is invoiced on each).
+  async function decideWeDoIt(group) {
+    const rep = group.rows[0];
+    let email = rep.person?.email;
     if (!isEmail(email)) {
-      const entered = window.prompt(`No email on file for ${r.person?.name || 'this director'}. Enter their email so the £20+VAT invoice can be sent:`, '');
+      const entered = window.prompt(`No email on file for ${rep.person?.name || 'this director'}. Enter their email so the £20+VAT invoice can be sent:`, '');
       if (!entered || !entered.includes('@')) return;
       email = entered.trim();
-      await setPersonEmail(r.person_id, email);
+      await setPersonEmail(rep.person_id, email);
     }
-    if (!window.confirm(`Record “we do it” for ${r.person?.name || 'this director'}?\n\nThis raises a £20 + VAT ID-check invoice and sends it to ${email} now, and moves them to Stage 3b.`)) return;
-    await act(r.id, () => recordDecision({ ...r, person: { ...r.person, email } }, 'paid', { actorId }), `Decision recorded — invoice sent to ${email}.`);
+    const companies = group.rows.map((r) => r.entity?.name).filter(Boolean).join(', ');
+    if (!window.confirm(`Record “we do it” for ${rep.person?.name || 'this director'}?\n\nThis raises a £20 + VAT ID-check invoice for each company (${companies}) and sends it to ${email} now, and moves them to Stage 3b.`)) return;
+    await actGroup(group, (row) => recordDecision({ ...row, person: { ...row.person, email } }, 'paid', { actorId }), `Decision recorded — invoice sent to ${email}.`);
   }
 
-  function reject(r) {
+  function reject(group) {
     const reason = window.prompt('Reject / exit — reason (optional). This removes them from the active pipeline:', '');
     if (reason === null) return;
-    act(r.id, () => rejectRequest(r, reason, { actorId }), `${r.person?.name || 'Request'} moved to Rejected / exit.`);
+    actGroup(group, (row) => rejectRequest(row, reason, { actorId }), `${group.rows[0].person?.name || 'Request'} moved to Rejected / exit.`);
   }
 
-  // The stage-specific action row (used in both densities).
-  function StageControls({ r }) {
-    const busy = busyId === r.id;
-    const stage = r.stage;
+  // The stage-specific action row (used in both densities). Operates on a
+  // tile group — for person-level stages this may fan out across >1 company.
+  function StageControls({ group }) {
+    const rep = repRow(group);
+    const busy = busyId === group.key;
+    const stage = rep.stage;
     const qbtns = QUEUE_BUTTONS[stage] || [];
     const chasing = stageMeta(stage).chasing;
-    const emailsSent = r.emails_sent || 0;
+    const emailsSent = rep.emails_sent || 0;
+    const first = group.rows[0];
 
     // Grey out queue buttons the chase ladder has moved past:
     //  - offer: the first email IS the offer, so once anything has gone
@@ -245,143 +293,147 @@ export default function PipelineView() {
 
     return (
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* Queue emails for this stage */}
+        {/* Queue emails for this stage — one email covers every company in
+            the group, so this always targets the first request only. */}
         {qbtns.map(([kind, label, Icon, tone]) => {
-          // Already on the send queue → show it as queued and don't let us add it again.
-          if ((queuedKinds[r.id] || {})[kind]) {
+          if ((queuedKinds[first.id] || {})[kind]) {
             return <Btn key={kind} icon={Check} label="Queued" tone="success" disabled
               title="This email is already in the send queue — review it under Queue" />;
           }
           const qd = queueDisabled(kind);
           return (
             <Btn key={kind} icon={Icon} label={label} tone={tone} disabled={busy || qd} title={queueTitle(kind, qd)}
-              onClick={() => act(r.id, () => queueEmail(r, kind, { actorId }), `${label} queued for ${r.person?.name || 'client'}.`)} />
+              onClick={() => actGroup(group, () => queueEmail(first, kind, { actorId }), `${label} queued for ${first.person?.name || 'client'}.`)} />
           );
         })}
 
-        {/* Comms ladder: call + escalate for chasing stages */}
+        {/* Comms ladder: call + escalate for chasing stages — applies to every company at once */}
         {chasing && (
           <>
-            <Btn icon={PhoneCall} label="Log call" tone="accent" disabled={busy} onClick={() => setCallFor(r)} />
-            {r.escalation_status !== 'escalated_tracy'
-              ? <Btn icon={AlertTriangle} label="Escalate" tone="danger" disabled={busy} onClick={() => act(r.id, () => setComms(r, 'escalated', { actorId }))} />
-              : <Btn icon={RotateCcw} label="Clear flag" tone="neutral" disabled={busy} onClick={() => act(r.id, () => setComms(r, 'reset', { actorId }))} />}
+            <Btn icon={PhoneCall} label="Log call" tone="accent" disabled={busy} onClick={() => setCallFor(group)} />
+            {rep.escalation_status !== 'escalated_tracy'
+              ? <Btn icon={AlertTriangle} label="Escalate" tone="danger" disabled={busy} onClick={() => actGroup(group, (row) => setComms(row, 'escalated', { actorId }))} />
+              : <Btn icon={RotateCcw} label="Clear flag" tone="neutral" disabled={busy} onClick={() => actGroup(group, (row) => setComms(row, 'reset', { actorId }))} />}
           </>
         )}
 
         {/* Stage-specific advance controls */}
         {stage === 's1_offer' && (
-          <Btn icon={ArrowRight} label="Record decision" tone="info" solid disabled={busy} onClick={() => act(r.id, () => advanceStage(r, 's2_decision', { actorId }))} />
+          <Btn icon={ArrowRight} label="Record decision" tone="info" solid disabled={busy} onClick={() => actGroup(group, (row) => advanceStage(row, 's2_decision', { actorId }))} />
         )}
         {stage === 's2_decision' && (
           <>
-            <Btn icon={Check} label="Client is doing it" tone="info" solid disabled={busy} onClick={() => act(r.id, () => recordDecision(r, 'self', { actorId }), `${r.person?.name || 'Client'} → self-verifying (Stage 3a).`)} />
-            <Btn icon={FileText} label="We're doing it (£20+VAT)" tone="accent" solid disabled={busy} onClick={() => decideWeDoIt(r)} />
-            <Btn icon={RotateCcw} label="Back to Stage 1" tone="neutral" disabled={busy} onClick={() => act(r.id, () => advanceStage(r, 's1_offer', { actorId }))} />
+            <Btn icon={Check} label="Client is doing it" tone="info" solid disabled={busy} onClick={() => actGroup(group, (row) => recordDecision(row, 'self', { actorId }), `${first.person?.name || 'Client'} → self-verifying (Stage 3a).`)} />
+            <Btn icon={FileText} label="We're doing it (£20+VAT)" tone="accent" solid disabled={busy} onClick={() => decideWeDoIt(group)} />
+            <Btn icon={RotateCcw} label="Back to Stage 1" tone="neutral" disabled={busy} onClick={() => actGroup(group, (row) => advanceStage(row, 's1_offer', { actorId }))} />
           </>
         )}
         {stage === 's3a_client' && (
-          <Btn icon={ArrowRight} label="Move to awaiting code" tone="warning" solid disabled={busy} onClick={() => act(r.id, () => advanceStage(r, 's4_code', { actorId }), `${r.person?.name || 'Client'} → awaiting code (Stage 4).`)} />
+          <Btn icon={ArrowRight} label="Move to awaiting code" tone="warning" solid disabled={busy} onClick={() => actGroup(group, (row) => advanceStage(row, 's4_code', { actorId }), `${first.person?.name || 'Client'} → awaiting code (Stage 4).`)} />
         )}
         {stage === 's3b_us' && (
-          <Btn icon={ArrowRight} label="ID & POA received" tone="warning" solid disabled={busy} onClick={() => act(r.id, () => recordIdPoaReceived(r, { actorId }), `${r.person?.name || 'Client'} → awaiting code (Stage 4).`)} />
+          <Btn icon={ArrowRight} label="ID & POA received" tone="warning" solid disabled={busy} onClick={() => actGroup(group, (row) => recordIdPoaReceived(row, { actorId }), `${first.person?.name || 'Client'} → awaiting code (Stage 4).`)} />
         )}
         {stage === 's4_code' && (
           <span style={{ display: 'inline-flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
-            <input value={codeDraft[r.id] || ''} onChange={(e) => setCodeDraft((d) => ({ ...d, [r.id]: e.target.value }))}
+            <input value={codeDraft[group.key] || ''} onChange={(e) => setCodeDraft((d) => ({ ...d, [group.key]: e.target.value }))}
               placeholder="FT5-15ED-7JY5"
               style={{ padding: '5px 9px', fontSize: 12, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, width: 130 }} />
-            <Btn icon={Check} label="Save code" tone="success" solid disabled={busy || !(codeDraft[r.id] || '').trim()}
-              onClick={() => act(r.id, async () => { await recordCodeReceived(r, codeDraft[r.id], { actorId }); setCodeDraft((d) => ({ ...d, [r.id]: '' })); }, `Code saved for ${r.person?.name || 'client'} (Stage 5).`)} />
+            <Btn icon={Check} label="Save code" tone="success" solid disabled={busy || !(codeDraft[group.key] || '').trim()}
+              onClick={() => actGroup(group, (row) => recordCodeReceived(row, codeDraft[group.key], { actorId }), `Code saved for ${first.person?.name || 'client'} (Stage 5).`).then(() => setCodeDraft((d) => ({ ...d, [group.key]: '' })))} />
           </span>
         )}
         {stage === 's5_entered' && (
           <>
-            <Btn icon={Building2} label={r.entered_inform_direct_at ? 'Inform Direct ✓' : 'Inform Direct'} tone="info" solid={!!r.entered_inform_direct_at} disabled={busy}
-              onClick={() => act(r.id, () => markInformDirect(r, !r.entered_inform_direct_at, { actorId }))} />
-            <Btn icon={Building2} label={r.entered_bm_at ? 'BM ✓' : 'BM'} tone="info" solid={!!r.entered_bm_at} disabled={busy}
-              onClick={() => act(r.id, () => markEnteredBm(r, !r.entered_bm_at, { actorId }))} />
+            <Btn icon={Building2} label={rep.entered_inform_direct_at ? 'Inform Direct ✓' : 'Inform Direct'} tone="info" solid={!!rep.entered_inform_direct_at} disabled={busy}
+              onClick={() => actGroup(group, (row) => markInformDirect(row, !row.entered_inform_direct_at, { actorId }))} />
+            <Btn icon={Building2} label={rep.entered_bm_at ? 'BM ✓' : 'BM'} tone="info" solid={!!rep.entered_bm_at} disabled={busy}
+              onClick={() => actGroup(group, (row) => markEnteredBm(row, !row.entered_bm_at, { actorId }))} />
             <Btn icon={Check} label="Mark submitted" tone="success" solid
-              disabled={busy || !r.entered_inform_direct_at || !r.entered_bm_at}
-              onClick={() => act(r.id, () => submitRequest(r, { actorId }), `${r.person?.name || 'Request'} filed (Stage 6).`)} />
+              disabled={busy || !rep.entered_inform_direct_at || !rep.entered_bm_at}
+              onClick={() => actGroup(group, (row) => submitRequest(row, { actorId }), `${first.person?.name || 'Request'} filed (Stage 6).`)} />
           </>
         )}
         {stage === 's6_submitted' && (
           <>
             <span style={{ fontSize: 12, color: tones.success.fg, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Check size={13} /> Filed{r.submitted_at ? ` ${new Date(r.submitted_at).toLocaleDateString('en-GB')}` : ''}
+              <Check size={13} /> Filed{rep.submitted_at ? ` ${new Date(rep.submitted_at).toLocaleDateString('en-GB')}` : ''}
             </span>
-            <Btn icon={RotateCcw} label="Reopen" tone="neutral" disabled={busy} onClick={() => act(r.id, () => reopenRequest(r, { actorId }))} />
+            <Btn icon={RotateCcw} label="Reopen" tone="neutral" disabled={busy} onClick={() => actGroup(group, (row) => reopenRequest(row, { actorId }))} />
           </>
         )}
         {stage === 's7_rejected' && (
           <>
             <span style={{ fontSize: 12, color: tones.danger.fg, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Ban size={12} /> {r.rejected_reason || 'Rejected / exited'}
+              <Ban size={12} /> {rep.rejected_reason || 'Rejected / exited'}
             </span>
-            <Btn icon={RotateCcw} label="Reopen" tone="neutral" disabled={busy} onClick={() => act(r.id, () => reopenRequest(r, { actorId }))} />
+            <Btn icon={RotateCcw} label="Reopen" tone="neutral" disabled={busy} onClick={() => actGroup(group, (row) => reopenRequest(row, { actorId }))} />
           </>
         )}
 
         {/* Reject / exit — available from any live stage */}
         {!stageMeta(stage).terminal && (
-          <Btn icon={Ban} label="Reject / exit" tone="danger" disabled={busy} onClick={() => reject(r)} />
+          <Btn icon={Ban} label="Reject / exit" tone="danger" disabled={busy} onClick={() => reject(group)} />
         )}
       </div>
     );
   }
 
-  function Tile({ r }) {
-    const busy = busyId === r.id;
-    const queued = queuedCounts[r.id] || 0;
-    const chasing = stageMeta(r.stage).chasing;
-    const age = daysSince(r.requested_at);
+  function Tile({ group }) {
+    const rep = repRow(group);
+    const first = group.rows[0];
+    const busy = busyId === group.key;
+    const queued = group.rows.reduce((sum, row) => sum + (queuedCounts[row.id] || 0), 0);
+    const chasing = stageMeta(rep.stage).chasing;
+    const age = daysSince(rep.requested_at);
+    const entityLabel = group.rows.map((r) => r.entity?.name).filter(Boolean).join(', ') || '—';
 
     const badges = (
       <>
         {queued > 0 && <span style={chipStyle('info')}>{queued} queued</span>}
-        {chasing && <CommsChip r={r} />}
-        {r.stage === 's3b_us' && r.billing_item_id && <span style={chipStyle('accent')}>£20+VAT invoiced</span>}
-        {r.stage === 's5_entered' && r.bm_code_mismatch && <span style={chipStyle('danger')}>BM mismatch</span>}
-        {!isEmail(r.person?.email) && !stageMeta(r.stage).terminal && <span style={chipStyle('warning')}>no email</span>}
+        {chasing && <CommsChip r={rep} />}
+        {rep.stage === 's3b_us' && group.rows.some((r) => r.billing_item_id) && <span style={chipStyle('accent')}>£20+VAT invoiced</span>}
+        {rep.stage === 's5_entered' && rep.bm_code_mismatch && <span style={chipStyle('danger')}>BM mismatch</span>}
+        {!isEmail(first.person?.email) && !stageMeta(rep.stage).terminal && <span style={chipStyle('warning')}>no email</span>}
+        {group.rows.length > 1 && <span style={chipStyle('neutral')}>{group.rows.length} companies</span>}
       </>
     );
 
     if (compact) {
       return (
-        <div onClick={() => navigate(`/onboarding/ch-codes/${r.id}`)}
+        <div onClick={() => navigate(`/onboarding/ch-codes/${first.id}`)}
           style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '9px 14px', cursor: 'pointer', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 150, flex: '1 1 150px' }}>
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{r.person?.name || '—'}</span>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}> · {r.entity?.name || '—'}</span>
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{first.person?.name || '—'}</span>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}> · {entityLabel}</span>
           </div>
           {badges}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {chasing && <EmailCounter value={r.emails_sent} onSave={(v) => act(r.id, () => setEmailsSent(r.id, v))} />}
-            <StageControls r={r} />
+            {chasing && <EmailCounter value={rep.emails_sent} onSave={(v) => actGroup(group, (row) => setEmailsSent(row.id, v))} />}
+            <StageControls group={group} />
           </div>
         </div>
       );
     }
 
     return (
-      <div onClick={() => navigate(`/onboarding/ch-codes/${r.id}`)}
+      <div onClick={() => navigate(`/onboarding/ch-codes/${first.id}`)}
         style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px', cursor: 'pointer' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ minWidth: 180 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{r.person?.name || '—'}</div>
-            <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{r.entity?.name || '—'}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{first.person?.name || '—'}</div>
+            <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{entityLabel}</div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>{badges}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-          {chasing && <EmailCounter value={r.emails_sent} onSave={(v) => act(r.id, () => setEmailsSent(r.id, v))} />}
+          {chasing && <EmailCounter value={rep.emails_sent} onSave={(v) => actGroup(group, (row) => setEmailsSent(row.id, v))} />}
           <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
             {age != null ? `${age}d in stage` : ''}
           </span>
         </div>
         <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 12, paddingTop: 12 }}>
-          <StageControls r={r} />
+          <StageControls group={group} />
         </div>
       </div>
     );
@@ -458,9 +510,9 @@ export default function PipelineView() {
       {rows && filtered.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
           {CH_STAGES.map((g) => {
-            const groupRows = grouped[g.value] || [];
+            const groups = grouped[g.value] || [];
             const showEmpty = !g.terminal && filter !== 'submitted';
-            if (groupRows.length === 0 && !showEmpty) return null;
+            if (groups.length === 0 && !showEmpty) return null;
             const t = tones[g.tone] || tones.neutral;
             const isCollapsed = collapsed.has(g.value);
             return (
@@ -473,13 +525,13 @@ export default function PipelineView() {
                   <span style={{ width: 9, height: 9, borderRadius: 999, background: t.solid, flexShrink: 0 }} />
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.4 }}>{g.short}</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{g.label}</span>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{groupRows.length}</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{groups.length}</span>
                 </button>
-                {!isCollapsed && (groupRows.length === 0 ? (
+                {!isCollapsed && (groups.length === 0 ? (
                   <div style={{ fontSize: 12.5, color: '#cbd5e1', padding: '2px 2px 12px' }}>Nobody at this stage.</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 6 : 12 }}>
-                    {groupRows.map((r) => <Tile key={r.id} r={r} />)}
+                    {groups.map((group) => <Tile key={group.key} group={group} />)}
                   </div>
                 ))}
               </div>
@@ -489,9 +541,9 @@ export default function PipelineView() {
       )}
 
       {callFor && (
-        <CallLogModal request={callFor} busy={busyId === callFor.id}
+        <CallLogModal group={callFor} busy={busyId === callFor.key}
           onCancel={() => setCallFor(null)}
-          onConfirm={async (iso) => { const r = callFor; setCallFor(null); await act(r.id, () => setComms(r, 'called', { actorId, calledAt: iso }), `Call logged for ${r.person?.name || 'client'}.`); }} />
+          onConfirm={async (iso) => { const group = callFor; setCallFor(null); await actGroup(group, (row) => setComms(row, 'called', { actorId, calledAt: iso }), `Call logged for ${group.rows[0].person?.name || 'client'}.`); }} />
       )}
     </div>
   );
