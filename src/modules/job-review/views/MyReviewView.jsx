@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../shell/AppShell';
-import { fetchOpenCycle, fetchMyItems, fetchReasons, submitItemResponse } from '../api';
+import { fetchOpenCycle, fetchMyItems, fetchReasons, fetchNextActions, submitItemResponse } from '../api';
 
 const font = "'Outfit', sans-serif";
 
@@ -37,6 +37,7 @@ export default function MyReviewView() {
   const [cycle, setCycle] = useState(null);
   const [items, setItems] = useState([]);
   const [reasons, setReasons] = useState([]);
+  const [nextActions, setNextActions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -44,10 +45,11 @@ export default function MyReviewView() {
     let cancelled = false;
     (async () => {
       try {
-        const [c, r] = await Promise.all([fetchOpenCycle(), fetchReasons()]);
+        const [c, r, na] = await Promise.all([fetchOpenCycle(), fetchReasons(), fetchNextActions()]);
         if (cancelled) return;
         setCycle(c);
         setReasons(r);
+        setNextActions(na);
         if (c) {
           const its = await fetchMyItems(c.id, profile.id);
           if (!cancelled) setItems(its);
@@ -91,6 +93,7 @@ export default function MyReviewView() {
             key={item.id}
             item={item}
             reasons={reasons}
+            nextActions={nextActions}
             responder={profile}
             onSaved={(updated) => patchLocal(item.id, updated)}
             onLocalChange={(patch) => patchLocal(item.id, patch)}
@@ -101,7 +104,7 @@ export default function MyReviewView() {
   );
 }
 
-function ItemCard({ item, reasons, responder, onSaved, onLocalChange }) {
+function ItemCard({ item, reasons, nextActions, responder, onSaved, onLocalChange }) {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const answered = !!item.responded_at;
@@ -117,6 +120,8 @@ function ItemCard({ item, reasons, responder, onSaved, onLocalChange }) {
         confidence: item.confidence,
         needs_help: item.needs_help,
         note: item.note,
+        next_action_code: item.next_action_code,
+        next_action_note: item.next_action_note,
       }, responder);
       onSaved(updated);
       setDirty(false);
@@ -206,6 +211,31 @@ function ItemCard({ item, reasons, responder, onSaved, onLocalChange }) {
               background: item.needs_help ? '#fee2e2' : '#fff', color: item.needs_help ? '#b91c1c' : '#64748b',
             }}
           >{item.needs_help ? '🙋 Flagged' : 'Raise'}</button>
+        </Field>
+      </div>
+
+      {/* Row 3: next action — the step to progress the job */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12 }}>
+        <Field label="Next action">
+          <select
+            value={item.next_action_code || ''}
+            onChange={(e) => set({ next_action_code: e.target.value })}
+            style={{ ...inputStyle, minWidth: 260 }}
+          >
+            <option value="">— Select a next action —</option>
+            {nextActions.map((a) => (
+              <option key={a.code} value={a.code}>{a.label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Next action detail (optional)" grow>
+          <input
+            type="text"
+            value={item.next_action_note || ''}
+            onChange={(e) => set({ next_action_note: e.target.value })}
+            placeholder="Specifics — e.g. who to chase, which records"
+            style={{ ...inputStyle, width: '100%' }}
+          />
         </Field>
       </div>
 

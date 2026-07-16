@@ -145,7 +145,7 @@ const shell = (inner: string, athenaUrl: string) =>
       <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:28px;">
         ${inner}
         <tr><td style="padding:22px 0 4px;">
-          <a href="${esc(athenaUrl)}/planner" style="display:inline-block;background:#1E4560;color:#fff;text-decoration:none;padding:11px 20px;border-radius:10px;font-weight:600;font-size:14px;">Open the work planner</a>
+          <a href="${esc(athenaUrl)}/planner/ready" style="display:inline-block;background:#1E4560;color:#fff;text-decoration:none;padding:11px 20px;border-radius:10px;font-weight:600;font-size:14px;">Open Ready Now in the work planner</a>
         </td></tr>
         <tr><td style="padding-top:22px;border-top:1px solid #f1f5f9;font-size:11px;color:#94a3b8;text-align:center;">Almond Valley Accounting · Weekly deadline digest · figures from the work module (BrightManager)</td></tr>
       </table>

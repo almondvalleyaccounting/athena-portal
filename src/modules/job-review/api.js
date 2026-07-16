@@ -28,6 +28,18 @@ export async function fetchReasons() {
   return data || [];
 }
 
+// Suggested "next action" buttons (editable in the DB) — the step the team
+// will take to progress the job.
+export async function fetchNextActions() {
+  const { data, error } = await supabase
+    .from('job_review_next_action')
+    .select('code, label, sort')
+    .eq('active', true)
+    .order('sort');
+  if (error) throw error;
+  return data || [];
+}
+
 // All items for a cycle (manager view + dashboard radar). Embeds the primary
 // assignee's name via the assignee_id → staff_profiles FK.
 export async function fetchCycleItems(cycleId) {
@@ -103,6 +115,8 @@ export async function submitItemResponse(item, patch, responder) {
       confidence: patch.confidence || null,
       needs_help: !!patch.needs_help,
       note: patch.note || null,
+      next_action_code: patch.next_action_code || null,
+      next_action_note: patch.next_action_note || null,
       responded_at: new Date().toISOString(),
       responded_by: responder?.id || null,
       change_request_id: changeRequestId,

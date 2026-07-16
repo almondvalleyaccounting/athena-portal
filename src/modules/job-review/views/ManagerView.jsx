@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../shell/AppShell';
-import { fetchOpenCycle, fetchCycleItems, fetchReasons, openCurrentCycle, sendNudges } from '../api';
+import { fetchOpenCycle, fetchCycleItems, fetchReasons, fetchNextActions, openCurrentCycle, sendNudges } from '../api';
 
 const font = "'Outfit', sans-serif";
 
@@ -21,6 +21,7 @@ export default function ManagerView() {
   const [cycle, setCycle] = useState(null);
   const [items, setItems] = useState([]);
   const [reasons, setReasons] = useState([]);
+  const [nextActions, setNextActions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
   const [sending, setSending] = useState(false);
@@ -31,9 +32,10 @@ export default function ManagerView() {
   async function load() {
     setLoading(true);
     try {
-      const [c, r] = await Promise.all([fetchOpenCycle(), fetchReasons()]);
+      const [c, r, na] = await Promise.all([fetchOpenCycle(), fetchReasons(), fetchNextActions()]);
       setCycle(c);
       setReasons(r);
+      setNextActions(na);
       setItems(c ? await fetchCycleItems(c.id) : []);
       setError(null);
     } catch (e) {
@@ -95,6 +97,7 @@ export default function ManagerView() {
   }
 
   const reasonLabel = useMemo(() => Object.fromEntries(reasons.map((r) => [r.code, r.label])), [reasons]);
+  const nextActionLabel = useMemo(() => Object.fromEntries(nextActions.map((a) => [a.code, a.label])), [nextActions]);
 
   const stats = useMemo(() => {
     const total = items.length;
@@ -133,13 +136,15 @@ export default function ManagerView() {
   }, [items, reasonLabel]);
 
   function exportCsv() {
-    const header = ['Client', 'Service', 'Period end', 'Days past', 'BM status', 'Box', 'Movement', 'Done by', 'Reason', 'Confidence', 'Needs help', 'Note', 'Answered'];
+    const header = ['Client', 'Service', 'Period end', 'Days past', 'BM status', 'Box', 'Movement', 'Done by', 'Reason', 'Next action', 'Next action detail', 'Confidence', 'Needs help', 'Note', 'Answered'];
     const lines = [header.join(',')];
     const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
     for (const i of items) {
       lines.push([
         q(i.client_name), i.service, i.period_end, i.days_past, q(i.bm_status_snapshot), i.box, i.movement,
-        i.done_by || '', q(reasonLabel[i.reason_code] || ''), i.confidence || '', i.needs_help ? 'yes' : '',
+        i.done_by || '', q(reasonLabel[i.reason_code] || ''),
+        q(nextActionLabel[i.next_action_code] || ''), q(i.next_action_note || ''),
+        i.confidence || '', i.needs_help ? 'yes' : '',
         q(i.note || ''), i.responded_at ? 'yes' : 'no',
       ].join(','));
     }
@@ -234,7 +239,7 @@ export default function ManagerView() {
 
           <Section title="All jobs">
             <table style={table}>
-              <thead><tr>{['Client', 'Svc', 'Days past', 'BM status', 'Movement', 'Done by', 'Reason', 'Conf.', ''].map((h) => <Th key={h}>{h}</Th>)}</tr></thead>
+              <thead><tr>{['Client', 'Svc', 'Days past', 'BM status', 'Movement', 'Done by', 'Reason', 'Next action', 'Conf.', ''].map((h) => <Th key={h}>{h}</Th>)}</tr></thead>
               <tbody>
                 {items.map((i) => (
                   <tr key={i.id} style={{ borderTop: '1px solid #f1f5f9', background: i.responded_at ? 'transparent' : '#fffdf5' }}>
@@ -245,6 +250,10 @@ export default function ManagerView() {
                     <td style={td}>{MV[i.movement] && <span style={{ color: MV[i.movement].c, fontWeight: 600 }}>{MV[i.movement].l}</span>}</td>
                     <td style={td}>{i.done_by || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
                     <td style={{ ...td, color: '#475569' }}>{reasonLabel[i.reason_code] || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                    <td style={{ ...td, color: '#475569' }} title={i.next_action_note || ''}>
+                      {nextActionLabel[i.next_action_code] || <span style={{ color: '#cbd5e1' }}>—</span>}
+                      {i.next_action_note && <span style={{ color: '#94a3b8' }}> ·</span>}
+                    </td>
                     <td style={td}>{i.confidence ? <span style={{ color: CONF[i.confidence].c, fontWeight: 600 }}>{CONF[i.confidence].l}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
                     <td style={{ ...td, color: i.responded_at ? '#16a34a' : '#cbd5e1' }}>{i.responded_at ? '✓' : '·'}</td>
                   </tr>

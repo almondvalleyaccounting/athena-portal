@@ -89,6 +89,11 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
   const [normalCollapsed, setNormalCollapsed] = useState(false);
   const [depriDialog, setDepriDialog] = useState(null); // { entityId, client } | null
 
+  // Job Review feedback, pulled in and keyed by entity|service|period_end (with
+  // an entity|service fallback). Surfaced per-row via a "Feedback" popup.
+  const [feedbackByKey, setFeedbackByKey] = useState(new Map());
+  const [feedbackTarget, setFeedbackTarget] = useState(null); // { row, feedback } | null
+
   // Change-request queue (Grade / BM Target / Assignee edits awaiting BM update)
   const [pendingChanges, setPendingChanges] = useState([]);
   const [editTarget, setEditTarget] = useState(null); // row being edited | null
@@ -125,6 +130,55 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
       .catch((err) => console.warn('pending changes load failed', err));
     return () => { cancelled = true; };
   }, []);
+
+  // Pull answered Job Review feedback for these jobs. Ordered oldest-first so
+  // the latest response wins when we index by key. Both an exact
+  // entity|service|period_end key and an entity|service fallback are stored.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('job_review_item')
+          .select('entity_id, service, period_end, done_by, confidence, needs_help, note, next_action_note, bm_status_snapshot, movement, responded_at, assignee:assignee_id(name), cycle:cycle_id(period_month), reason:job_review_reason(label), action:job_review_next_action(label)')
+          .not('responded_at', 'is', null)
+          .order('responded_at', { ascending: true });
+        if (error) throw error;
+        if (cancelled) return;
+        const m = new Map();
+        for (const it of data || []) {
+          const fb = {
+            done_by: it.done_by,
+            confidence: it.confidence,
+            needs_help: it.needs_help,
+            note: it.note,
+            reason: it.reason?.label || null,
+            next_action: it.action?.label || null,
+            next_action_note: it.next_action_note || null,
+            bm_status_snapshot: it.bm_status_snapshot,
+            movement: it.movement,
+            responded_at: it.responded_at,
+            assignee: it.assignee?.name || null,
+            period_month: it.cycle?.period_month || null,
+          };
+          m.set(`${it.entity_id}|${it.service}|${it.period_end}`, fb);
+          m.set(`${it.entity_id}|${it.service}`, fb); // fallback (latest wins)
+        }
+        setFeedbackByKey(m);
+      } catch (err) {
+        console.warn('job review feedback load failed', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Latest feedback for a row: exact period match first, then entity|service.
+  function feedbackFor(r) {
+    const peIso = r.period_end ? isoDate(r.period_end) : '';
+    return feedbackByKey.get(`${r.entity_id}|${r.service}|${peIso}`)
+      || feedbackByKey.get(`${r.entity_id}|${r.service}`)
+      || null;
+  }
 
   // Key a change request by entity+service+period+field for lookup.
   const changesKey = (entityId, service, periodEndISO, field) =>
@@ -620,7 +674,9 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
             onDeprioritise={(entityId, client) => setDepriDialog({ entityId, client })}
             onEdit={(row) => setEditTarget(row)}
             pendingByKey={pendingByKey}
-            sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
+            feedbackFor={feedbackFor}
+        onOpenFeedback={(row, fb) => setFeedbackTarget({ row, feedback: fb })}
+        sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
             emptyText=""
             collapsible
             collapsed={impendingCollapsed}
@@ -642,6 +698,8 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
         actionKind="unexpedite"
         togglingId={togglingId}
         onUnexpedite={(entityId) => toggleExpedite(entityId, false)}
+        feedbackFor={feedbackFor}
+        onOpenFeedback={(row, fb) => setFeedbackTarget({ row, feedback: fb })}
         sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
         emptyText="No expedite clients with a passed period end."
         collapsible
@@ -667,7 +725,9 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
             showReason
             onEdit={(row) => setEditTarget(row)}
             pendingByKey={pendingByKey}
-            sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
+            feedbackFor={feedbackFor}
+        onOpenFeedback={(row, fb) => setFeedbackTarget({ row, feedback: fb })}
+        sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
             emptyText=""
             collapsible
             collapsed={deprioritisedCollapsed}
@@ -687,6 +747,8 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
         actionKind="expedite"
         togglingId={togglingId}
         onExpedite={(entityId) => toggleExpedite(entityId, true)}
+        feedbackFor={feedbackFor}
+        onOpenFeedback={(row, fb) => setFeedbackTarget({ row, feedback: fb })}
         sortKey={sortKey} sortDir={sortDir} toggleSort={toggleSort}
         emptyText="No normal-priority jobs match the current filters."
         collapsible
@@ -729,6 +791,14 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
         />
       )}
 
+      {feedbackTarget && (
+        <FeedbackModal
+          row={feedbackTarget.row}
+          feedback={feedbackTarget.feedback}
+          onClose={() => setFeedbackTarget(null)}
+        />
+      )}
+
       <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 14, lineHeight: 1.5 }}>
         Period end is derived: Annual Accounts = BM deadline − 9 months; Self Assessment = 5 April of the year before the BM deadline.
         Non-standard accounting periods (first-year, struck-off, overseas) may differ — spot-check anomalies.
@@ -743,6 +813,7 @@ function Box({
   rows, expedite, actionKind, togglingId,
   onExpedite, onUnexpedite, onDeprioritise, onReactivate,
   onEdit, pendingByKey,
+  feedbackFor, onOpenFeedback,
   showReason,
   sortKey, sortDir, toggleSort, emptyText,
   collapsible, collapsed, onToggleCollapse,
@@ -862,6 +933,26 @@ function Box({
               </td>
               <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                 <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+                  {onOpenFeedback && (() => {
+                    const fb = feedbackFor ? feedbackFor(r) : null;
+                    const conf = fb?.confidence;
+                    const dot = conf === 'red' ? '#dc2626' : conf === 'amber' ? '#f59e0b' : conf === 'green' ? '#16a34a' : null;
+                    return (
+                      <button
+                        onClick={() => onOpenFeedback(r, fb)}
+                        title={fb ? 'View Job Review feedback' : 'No Job Review feedback yet'}
+                        style={{
+                          fontSize: 11, padding: '3px 8px', fontFamily: font, cursor: 'pointer',
+                          borderRadius: 6, border: '1px solid ' + (fb ? '#0e7fe0' : '#e2e8f0'),
+                          background: fb ? '#eff6ff' : '#fff', color: fb ? '#0e7fe0' : '#94a3b8',
+                          fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5,
+                        }}
+                      >
+                        {dot && <span style={{ width: 7, height: 7, borderRadius: 999, background: dot, display: 'inline-block' }} />}
+                        {fb ? (fb.needs_help ? '🙋 Feedback' : 'Feedback') : 'Feedback'}
+                      </button>
+                    );
+                  })()}
                   {onEdit && (
                     <button
                       onClick={() => onEdit(r)}
@@ -1084,6 +1175,77 @@ function Field({ label, children }) {
       <div style={{ marginBottom: 4, fontWeight: 500 }}>{label}</div>
       {children}
     </label>
+  );
+}
+
+const CONF_STYLE = {
+  green: { label: 'On track', colour: '#166534', bg: '#dcfce7' },
+  amber: { label: 'At risk', colour: '#b45309', bg: '#fef3c7' },
+  red:   { label: 'Will miss', colour: '#b91c1c', bg: '#fee2e2' },
+};
+const MOVE_LABEL = { new: 'New', advanced: 'Advanced', unchanged: 'No change', slipped: 'Slipped' };
+
+// Read-only popup of the latest Job Review feedback for a Ready Now job.
+function FeedbackModal({ row, feedback: fb, onClose }) {
+  const fmtIso = (iso) => (iso ? fmt(parseISO(iso.slice(0, 10))) : '—');
+  const conf = fb?.confidence ? CONF_STYLE[fb.confidence] : null;
+  return (
+    <div onClick={onClose} style={modalBackdrop}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
+          Job Review feedback
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+          {row.client} · {row.service === 'Self Assessment' ? 'SA' : 'Annual Accs'} · PE {fmt(row.period_end)}
+        </div>
+
+        {!fb ? (
+          <div style={{ fontSize: 13, color: '#64748b', padding: '10px 0 4px', lineHeight: 1.5 }}>
+            No feedback captured for this job yet. It appears here once the assignee answers it in the
+            monthly Job Review (Work Planner → Review).
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <FbRow label="Next action">
+              {fb.next_action
+                ? <span style={{ color: '#0f172a', fontWeight: 600 }}>{fb.next_action}</span>
+                : <span style={{ color: '#cbd5e1' }}>—</span>}
+              {fb.next_action_note && (
+                <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>{fb.next_action_note}</div>
+              )}
+            </FbRow>
+            <FbRow label="Confidence">
+              {conf
+                ? <span style={{ fontSize: 12, fontWeight: 600, color: conf.colour, background: conf.bg, padding: '2px 8px', borderRadius: 999 }}>{conf.label}</span>
+                : <span style={{ color: '#cbd5e1' }}>—</span>}
+              {fb.needs_help && <span style={{ marginLeft: 8, fontSize: 12, color: '#b91c1c', fontWeight: 600 }}>🙋 Needs help</span>}
+            </FbRow>
+            <FbRow label="Expected done by">{fb.done_by ? fmtIso(fb.done_by) : <span style={{ color: '#cbd5e1' }}>—</span>}</FbRow>
+            <FbRow label="Blocker / reason">{fb.reason || <span style={{ color: '#cbd5e1' }}>—</span>}</FbRow>
+            {fb.note && <FbRow label="Note">{fb.note}</FbRow>}
+            <div style={{ fontSize: 11, color: '#94a3b8', borderTop: '1px solid #f1f5f9', paddingTop: 10, marginTop: 2 }}>
+              {fb.assignee ? `Answered by ${fb.assignee}` : 'Answered'}
+              {fb.responded_at ? ` on ${fmt(parseISO(fb.responded_at.slice(0, 10)))}` : ''}
+              {fb.period_month ? ` · ${parseISO(fb.period_month.slice(0, 10)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} cycle` : ''}
+              {fb.movement ? ` · ${MOVE_LABEL[fb.movement] || fb.movement} vs prior` : ''}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onClose} style={btnSecondary}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FbRow({ label, children }) {
+  return (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', width: 120, flexShrink: 0 }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#0f172a', flex: 1 }}>{children}</div>
+    </div>
   );
 }
 
