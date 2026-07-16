@@ -80,6 +80,18 @@ function shortMonthFromKey(key: string): string {
 function fmtDate(iso: string): string {
   return new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
 }
+function ownerFirstName(r: Row): string {
+  const full = ((r.owner as Row)?.name as string) || "";
+  return full.trim().split(/\s+/)[0] || "";
+}
+// Sort a month's jobs by owner first name (unassigned last), then client name.
+function byOwnerThenClient(a: Row, b: Row): number {
+  const oa = ownerFirstName(a), ob = ownerFirstName(b);
+  if (!!oa !== !!ob) return oa ? -1 : 1;
+  if (oa !== ob) return oa.localeCompare(ob);
+  const ca = ((a.entity as Row)?.name as string) || "", cb = ((b.entity as Row)?.name as string) || "";
+  return ca.localeCompare(cb);
+}
 
 // The next occurring 31 January (self-assessment filing deadline).
 function nextJanEnd(from: Date): { start: string; end: string; year: number } {
@@ -183,7 +195,7 @@ Deno.serve(async (req) => {
   //    plus the SA + Personal Tax rows landing in the target January ──
   const [{ data: chRows, error: chErr }, { data: saRows, error: saErr }] = await Promise.all([
     service.from("bm_task_schedule")
-      .select("bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(name)")
+      .select("bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(name), owner:staff_profiles!bm_task_schedule_assignee_id_fkey(name)")
       .ilike("bm_task_name", CH_FILING_NAME)
       .eq("state", "planned")
       .gte("bm_deadline", ymd(horizonStart))
@@ -245,23 +257,25 @@ Deno.serve(async (req) => {
   const monthColours = ["#dc2626", "#ea580c", "#ca8a04"]; // red / orange / amber
   const monthEmoji = ["🔴", "🟠", "🟡"];
   const chSections = listMonths.map((key, idx) => {
-    const items = (chByMonth.get(key) || []).slice();
+    const items = (chByMonth.get(key) || []).slice().sort(byOwnerThenClient);
     const daysLeft = idx === 0 ? Math.max(0, Math.ceil((monthEnd(today).getTime() - today.getTime()) / 86400000)) : null;
     const heading = `${monthEmoji[idx]} ${monthLabelFromKey(key)} deadlines`
       + (idx === 0 ? ` <span style="color:#94a3b8;font-weight:500;">· ${daysLeft} days left this month</span>` : "");
     const rows = items.length
       ? items.map((i) => `
         <tr>
+          <td style="padding:6px 12px;border-top:1px solid #f1f5f9;color:#475569;white-space:nowrap;">${esc(ownerFirstName(i) || "—")}</td>
           <td style="padding:6px 12px;border-top:1px solid #f1f5f9;color:#0f172a;">${esc((i.entity as Row)?.name || "—")}</td>
           <td style="padding:6px 12px;border-top:1px solid #f1f5f9;color:#64748b;white-space:nowrap;">${fmtDate(i.bm_deadline as string)}</td>
           <td style="padding:6px 12px;border-top:1px solid #f1f5f9;color:#64748b;text-align:right;white-space:nowrap;">${esc(HOUSE_STATUS[i.bm_status as string] || i.bm_status || "—")}</td>
         </tr>`).join("")
-      : `<tr><td colspan="3" style="padding:8px 12px;border-top:1px solid #f1f5f9;color:#94a3b8;">Nothing outstanding.</td></tr>`;
+      : `<tr><td colspan="4" style="padding:8px 12px;border-top:1px solid #f1f5f9;color:#94a3b8;">Nothing outstanding.</td></tr>`;
     return `
     <tr><td style="padding-top:18px;">
       <div style="font-size:14px;font-weight:700;color:${monthColours[idx]};padding-bottom:6px;">${heading}</div>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;font-size:13px;">
         <tr style="background:#f8fafc;">
+          <td style="padding:7px 12px;font-weight:600;color:#475569;">Owner</td>
           <td style="padding:7px 12px;font-weight:600;color:#475569;">Client</td>
           <td style="padding:7px 12px;font-weight:600;color:#475569;">Due</td>
           <td style="padding:7px 12px;font-weight:600;color:#475569;text-align:right;">Status</td>
@@ -372,9 +386,9 @@ Deno.serve(async (req) => {
     ``,
     `COMPANIES HOUSE ACCOUNTS — BY MONTH`,
     ...listMonths.map((key) => {
-      const items = chByMonth.get(key) || [];
+      const items = (chByMonth.get(key) || []).slice().sort(byOwnerThenClient);
       return `\n${monthLabelFromKey(key)} (${items.length}):\n` +
-        (items.length ? items.map((i) => `  - ${(i.entity as Row)?.name || "—"} — due ${fmtDate(i.bm_deadline as string)} (${HOUSE_STATUS[i.bm_status as string] || i.bm_status || "—"})`).join("\n") : "  Nothing outstanding.");
+        (items.length ? items.map((i) => `  - ${ownerFirstName(i) || "—"} · ${(i.entity as Row)?.name || "—"} — due ${fmtDate(i.bm_deadline as string)} (${HOUSE_STATUS[i.bm_status as string] || i.bm_status || "—"})`).join("\n") : "  Nothing outstanding.");
     }),
     ``,
     `SUBMISSIONS NEEDED — NEXT 6 MONTHS`,
