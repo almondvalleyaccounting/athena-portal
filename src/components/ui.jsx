@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export const fmt = (n) => {
   if (n == null || isNaN(n)) return '£0.00';
@@ -112,6 +112,27 @@ export function Btn({ children, onClick, variant = 'primary', disabled, classNam
     <button onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]} ${className}`}>
       {children}
     </button>
+  );
+}
+
+// Generic hover tooltip for field/tool-level help hints (Phase 2 of the help
+// system pulls its `text` from the help_content table by module/section key).
+export function Tooltip({ text, children }) {
+  const [show, setShow] = useState(false);
+  if (!text) return children;
+  return (
+    <span
+      className="relative inline-flex items-center"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      {children}
+      {show && (
+        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-max max-w-xs px-2.5 py-1.5 rounded-lg bg-gray-800 text-white text-xs leading-snug shadow-lg pointer-events-none">
+          {text}
+        </span>
+      )}
+    </span>
   );
 }
 

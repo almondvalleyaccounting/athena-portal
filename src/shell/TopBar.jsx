@@ -6,6 +6,7 @@ import { MODULES } from '../modules.config';
 import { useAuth } from './AppShell';
 import QuickSearch from './QuickSearch';
 import ActivityBell from './ActivityBell';
+import HelpButton from './HelpButton';
 
 /* ─── Known sub-page labels keyed by pathname prefix ──────────
  * These are detail/feature routes accessed via in-page buttons rather
@@ -152,6 +153,7 @@ export default function TopBar() {
 
       {/* ── Right: Bell + Avatar ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, marginLeft: 'auto' }}>
+        <HelpButton />
         <ActivityBell />
 
         {/* User avatar with dropdown */}

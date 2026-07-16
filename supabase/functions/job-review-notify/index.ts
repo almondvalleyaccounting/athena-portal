@@ -50,7 +50,7 @@ function monthLabel(iso: string): string {
   return new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 }
 
-function renderEmail(name: string, monthLbl: string, items: Array<Record<string, unknown>>, reminder: boolean): { html: string; text: string } {
+function renderEmail(name: string, monthLbl: string, items: Array<Record<string, unknown>>, reminder: boolean, footerText: string): { html: string; text: string } {
   const url = `${PORTAL_PUBLIC_URL}/planner/review`;
   const rows = items.slice(0, 20).map((i) => `
     <tr>
@@ -80,7 +80,7 @@ function renderEmail(name: string, monthLbl: string, items: Array<Record<string,
           ${more}
         </td></tr>
         <tr><td style="padding-top:24px;border-top:1px solid #f1f5f9;margin-top:20px;font-size:11px;color:#94a3b8;text-align:center;">
-          Almond Valley Accounting · BrightManager remains the record for job status.
+          ${esc(footerText)}
         </td></tr>
       </table>
     </td></tr></table>
@@ -155,6 +155,12 @@ Deno.serve(async (req) => {
     name: g.name, email: testRecipient || g.email, jobs: g.items.length,
   }));
 
+  // Footer blurb pulled from the help_content table (Athena's Help-button copy),
+  // reused here so the "why am I getting this" explanation lives in one place.
+  const { data: helpRow } = await service.from("help_content")
+    .select("body").eq("module_id", "wp-job-review").eq("section_key", "email-footer").maybeSingle();
+  const footerText = (helpRow?.body as string) || "Almond Valley Accounting · BrightManager remains the record for job status.";
+
   if (dryRun) {
     return json({ success: true, dry_run: true, cycle_month: cycle.period_month, recipients: plan.length, plan });
   }
@@ -172,7 +178,7 @@ Deno.serve(async (req) => {
   const results: Array<Record<string, unknown>> = [];
   for (const g of groups.values()) {
     const to = testRecipient || g.email;
-    const { html, text } = renderEmail(g.name, monthLbl, g.items, reminder);
+    const { html, text } = renderEmail(g.name, monthLbl, g.items, reminder, footerText);
     const subject = reminder
       ? `Reminder: ${g.items.length} job${g.items.length === 1 ? "" : "s"} to review — ${monthLbl}`
       : `${g.items.length} job${g.items.length === 1 ? "" : "s"} to review before the workflow meeting — ${monthLbl}`;
