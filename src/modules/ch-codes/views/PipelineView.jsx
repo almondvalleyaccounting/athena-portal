@@ -11,7 +11,7 @@ import {
   listChCodeRequests, CH_STAGES, stageMeta, commsOf, daysSince,
   advanceStage, setComms, setEmailsSent, recordDecision, recordIdPoaReceived,
   recordCodeReceived, markInformDirect, markEnteredBm, submitRequest, rejectRequest,
-  reopenRequest, setPersonEmail, queueEmail, queuedCountsByRequest,
+  reopenRequest, setPersonEmail, queueEmail, queuedCountsByRequest, queuedKindsByRequest,
 } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -134,6 +134,7 @@ export default function PipelineView() {
   const actorId = profile?.id;
   const [rows, setRows] = useState(null);
   const [queuedCounts, setQueuedCounts] = useState({});
+  const [queuedKinds, setQueuedKinds] = useState({});
   const [error, setError] = useState(null);
   const [flash, setFlash] = useState(null);
   const [busyId, setBusyId] = useState(null);
@@ -158,8 +159,8 @@ export default function PipelineView() {
   };
   const setAllCollapsed = (all) => persistCollapsed(all ? new Set(CH_STAGES.map((g) => g.value)) : new Set());
 
-  const load = () => Promise.all([listChCodeRequests(), queuedCountsByRequest()])
-    .then(([data, counts]) => { setRows(data); setQueuedCounts(counts); })
+  const load = () => Promise.all([listChCodeRequests(), queuedCountsByRequest(), queuedKindsByRequest()])
+    .then(([data, counts, kinds]) => { setRows(data); setQueuedCounts(counts); setQueuedKinds(kinds); })
     .catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
 
@@ -246,6 +247,11 @@ export default function PipelineView() {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         {/* Queue emails for this stage */}
         {qbtns.map(([kind, label, Icon, tone]) => {
+          // Already on the send queue → show it as queued and don't let us add it again.
+          if ((queuedKinds[r.id] || {})[kind]) {
+            return <Btn key={kind} icon={Check} label="Queued" tone="success" disabled
+              title="This email is already in the send queue — review it under Queue" />;
+          }
           const qd = queueDisabled(kind);
           return (
             <Btn key={kind} icon={Icon} label={label} tone={tone} disabled={busy || qd} title={queueTitle(kind, qd)}

@@ -369,6 +369,19 @@ export async function queuedCountsByRequest() {
   return map;
 }
 
+// Which email kinds are already queued per request — so a tile can show that
+// button as "Queued" and stop us dropping the same email on the queue twice.
+export async function queuedKindsByRequest() {
+  const { data, error } = await supabase.from('ch_code_email_queue').select('request_id, kind').eq('status', 'queued');
+  if (error) throw error;
+  const map = {};
+  for (const row of data || []) {
+    if (!map[row.request_id]) map[row.request_id] = {};
+    map[row.request_id][row.kind] = true;
+  }
+  return map;
+}
+
 export async function listQueue(status = 'queued') {
   const { data, error } = await supabase.from('ch_code_email_queue')
     .select(`
