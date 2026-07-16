@@ -411,12 +411,13 @@ function buildAttentionItems(data, navigate) {
   }
 
   // Late Self Assessment returns (past a 31 Jan) — penalties accruing.
+  // Names arrive as "Surname, Firstname", so separate with a dot not a comma.
   if (data.sa.overdueList.length > 0) {
     const names = data.sa.overdueList
       .map((r) => r.entity?.name)
       .filter(Boolean)
       .slice(0, 3)
-      .join(', ');
+      .join(' · ');
     items.push({
       id: 'sa-overdue',
       accent: '#ef4444',
