@@ -61,14 +61,14 @@ function renderEmail(name: string, monthLbl: string, items: Array<Record<string,
     </tr>`).join("");
   const more = items.length > 20 ? `<div style="font-size:12px;color:#94a3b8;margin-top:8px;">…and ${items.length - 20} more.</div>` : "";
   const lead = reminder
-    ? `This is a reminder — you still have <strong>${items.length}</strong> job${items.length === 1 ? "" : "s"} to review for the ${esc(monthLbl)} workflow meeting.`
-    : `You have <strong>${items.length}</strong> job${items.length === 1 ? "" : "s"} that could have progressed but haven’t, to review before the ${esc(monthLbl)} workflow meeting.`;
+    ? `This is a follow-up — you still have <strong>${items.length}</strong> job${items.length === 1 ? "" : "s"} on this list from the ${esc(monthLbl)} check-in.`
+    : `You have <strong>${items.length}</strong> job${items.length === 1 ? "" : "s"} more than 90 days past their year end. We're aiming to get everything filed within 6 months of year end, so this is just a check-in on whether this list is realistically fileable over the next few months.`;
 
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#fafafa;font-family:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1e293b;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;padding:32px 16px;"><tr><td align="center">
       <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px;">
         <tr><td style="font-size:15px;font-weight:600;color:#0f172a;padding-bottom:6px;">Hi ${esc(name || "there")},</td></tr>
-        <tr><td style="font-size:14px;line-height:1.6;color:#1e293b;">${lead} It only takes a moment per job — tell us when you’ll have it done, what’s blocking it, and how confident you are.</td></tr>
+        <tr><td style="font-size:14px;line-height:1.6;color:#1e293b;">${lead} Two minutes per job is all it takes — let us know when you expect it done, what's (if anything) in the way, and how confident you feel.</td></tr>
         <tr><td style="padding:20px 0 4px;">
           <a href="${esc(url)}" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;font-size:14px;">Open my review in Athena</a>
         </td></tr>
