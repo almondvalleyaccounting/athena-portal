@@ -152,7 +152,20 @@ export async function getChCodeRequest(id) {
   if (e1) throw e1;
   if (e2) throw e2;
   if (e3) throw e3;
-  return { ...req, activity: activity || [], documents: documents || [] };
+
+  // The request's entity_id is the CHASE ANCHOR (whichever company the chase
+  // was seeded against) — not necessarily the person's own client record. A
+  // director we chase via Company X may separately be their own client as a
+  // sole trader. Look that up so the UI can link the person's NAME to their
+  // own page, distinct from the anchor company's page.
+  let ownEntity = null;
+  if (req?.person_id) {
+    const { data: own } = await supabase.from('entities')
+      .select('id, name').eq('linked_person_id', req.person_id).limit(1).maybeSingle();
+    ownEntity = own || null;
+  }
+
+  return { ...req, activity: activity || [], documents: documents || [], ownEntity };
 }
 
 export async function listStaff() {

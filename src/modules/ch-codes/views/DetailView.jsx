@@ -83,11 +83,14 @@ export default function DetailView() {
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div>
+          {/* The person's own client page (e.g. their sole-trader record),
+              NOT the chase's anchor company — those can differ for a director
+              we're chasing via a company they aren't personally the client for. */}
           <h1
-            onClick={() => req.entity_id && navigate(`/clients/${req.entity_id}`)}
-            title={req.entity_id ? "Open this client's page" : undefined}
-            style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#0f172a', cursor: req.entity_id ? 'pointer' : 'default', display: 'inline-block' }}
-            onMouseEnter={(e) => { if (req.entity_id) e.currentTarget.style.textDecoration = 'underline'; }}
+            onClick={() => req.ownEntity?.id && navigate(`/clients/${req.ownEntity.id}`)}
+            title={req.ownEntity?.id ? "Open this client's page" : undefined}
+            style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#0f172a', cursor: req.ownEntity?.id ? 'pointer' : 'default', display: 'inline-block' }}
+            onMouseEnter={(e) => { if (req.ownEntity?.id) e.currentTarget.style.textDecoration = 'underline'; }}
             onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
           >
             {req.person?.name || 'Unknown'}
