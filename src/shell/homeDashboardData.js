@@ -134,12 +134,18 @@ export function useDirectorDashboard(enabled) {
           .lt('bm_deadline', todayIso)
           .order('bm_deadline')
           .limit(10),
-        // Everything planned that has slipped past its BM deadline, by service
+        // Everything planned that has slipped past its BM deadline — full
+        // detail, because the planner only covers SA/AA and the home screen is
+        // the only place overdue VAT / payroll / management accounts surface.
         supabase
           .from('bm_task_schedule')
-          .select('service')
+          .select(
+            'id, service, bm_task_name, bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(id, name), owner:staff_profiles!bm_task_schedule_assignee_id_fkey(name)',
+          )
           .eq('state', 'planned')
-          .lt('bm_deadline', todayIso),
+          .lt('bm_deadline', todayIso)
+          .order('bm_deadline')
+          .limit(300),
         supabase
           .from('live_billing')
           .select('id', { count: 'exact', head: true })
@@ -206,8 +212,9 @@ export function useDirectorDashboard(enabled) {
       const saRunRate = runRate(saCount, workingWeeksUntil(new Date(`${jan.end}T00:00:00Z`)));
 
       /* ── Overdue work by service ── */
+      const overdueJobs = overdueRes.data || [];
       const byService = {};
-      (overdueRes.data || []).forEach((r) => {
+      overdueJobs.forEach((r) => {
         const s = r.service || 'Other';
         byService[s] = (byService[s] || 0) + 1;
       });
@@ -279,7 +286,7 @@ export function useDirectorDashboard(enabled) {
             runRate: saRunRate,
             overdueList: saOverdueRes.data || [],
           },
-          overdueWork: { total: overdueTotal, byService: overdueByService },
+          overdueWork: { total: overdueTotal, byService: overdueByService, jobs: overdueJobs },
           billingNeedsReview: billingReviewRes.count ?? 0,
           quotes: {
             pendingApproval,
@@ -341,7 +348,7 @@ export function usePracticePulse(enabled) {
 
         const { data: payload, error: fnErr } = await supabase.functions.invoke(
           'dashboard-qbo-pull',
-          { body: { realmId: conn.realm_id, metrics: ['pl_fytd', 'balances'] } },
+          { body: { realmId: conn.realm_id, metrics: ['pl_fytd', 'pl_fytd_prior', 'balances'] } },
         );
         if (cancelled) return;
         if (fnErr) {
@@ -357,6 +364,7 @@ export function usePracticePulse(enabled) {
           pulse: {
             company: conn.company_name,
             plFytd: payload?.metrics?.pl_fytd || null,
+            plFytdPrior: payload?.metrics?.pl_fytd_prior || null,
             balances: payload?.metrics?.balances || null,
             pulledAt: payload?.pulled_at || null,
             fromCache: payload?.cached === true,

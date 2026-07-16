@@ -156,12 +156,13 @@ async function pullPlSummary(sb: any, realmId: string) {
   };
 }
 
-// P&L headline for the company's own fiscal year to date (QBO resolves the
-// fiscal calendar from company settings — AVA's year starts 1 October).
-async function pullPlFytd(sb: any, realmId: string) {
-  const macro = encodeURIComponent("This Fiscal Year-to-date");
-  const resp = await qboFetch(sb, realmId, `reports/ProfitAndLoss?date_macro=${macro}&accounting_method=Accrual&minorversion=75`);
-  if (!resp.ok) throw new Error(`P&L FYTD ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+// P&L headline for a QBO date macro (QBO resolves the fiscal calendar from
+// company settings — AVA's year starts 1 October). "This Fiscal Year-to-date"
+// = current FYTD; "Last Fiscal Year-to-date" = the same span a year earlier,
+// which is what the home-screen pulse compares against for YoY.
+async function pullPlMacro(sb: any, realmId: string, macro: string) {
+  const resp = await qboFetch(sb, realmId, `reports/ProfitAndLoss?date_macro=${encodeURIComponent(macro)}&accounting_method=Accrual&minorversion=75`);
+  if (!resp.ok) throw new Error(`P&L ${macro} ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   const report = await resp.json();
 
   const groups: Record<string, number> = {};
@@ -188,6 +189,8 @@ async function pullPlFytd(sb: any, realmId: string) {
     net_income: num("NetIncome"),
   };
 }
+const pullPlFytd = (sb: any, realmId: string) => pullPlMacro(sb, realmId, "This Fiscal Year-to-date");
+const pullPlFytdPrior = (sb: any, realmId: string) => pullPlMacro(sb, realmId, "Last Fiscal Year-to-date");
 
 // Balance snapshot from the Account list: cash in bank, debtors, creditors.
 // CurrentBalance is only meaningful on balance-sheet accounts, which is all
@@ -329,6 +332,7 @@ const METRICS: Record<string, (sb: any, realmId: string) => Promise<any>> = {
   company: pullCompany,
   pl_summary: pullPlSummary,
   pl_fytd: pullPlFytd,
+  pl_fytd_prior: pullPlFytdPrior,
   balances: pullBalances,
   file_health: pullFileHealth,
 };

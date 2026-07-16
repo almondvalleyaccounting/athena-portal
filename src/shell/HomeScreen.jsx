@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -64,13 +64,14 @@ const nextMonthName = new Date(
 const FONT = "'Outfit', sans-serif";
 
 /* ─── Section label ────────────────────────────────────────────── */
-function SectionLabel({ children, note }) {
+function SectionLabel({ children, note, action }) {
   return (
     <div
       style={{
         display: 'flex',
         alignItems: 'baseline',
         justifyContent: 'space-between',
+        gap: '12px',
         marginBottom: '16px',
       }}
     >
@@ -86,9 +87,12 @@ function SectionLabel({ children, note }) {
       >
         {children}
       </h2>
-      {note && (
-        <span style={{ fontFamily: FONT, fontSize: '12px', color: '#cbd5e1' }}>{note}</span>
-      )}
+      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '12px' }}>
+        {note && (
+          <span style={{ fontFamily: FONT, fontSize: '12px', color: '#cbd5e1' }}>{note}</span>
+        )}
+        {action}
+      </span>
     </div>
   );
 }
@@ -145,8 +149,39 @@ function AttentionCard({ accent, icon: Icon, title, subtitle, onClick }) {
   );
 }
 
+/* ─── Year-on-year chip (money: up = good = green) ─────────────── */
+function YoYChip({ current, prior }) {
+  if (typeof current !== 'number' || typeof prior !== 'number' || prior === 0) return null;
+  const pct = Math.round(((current - prior) / Math.abs(prior)) * 100);
+  const up = pct > 0;
+  const down = pct < 0;
+  const palette = up
+    ? { color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' }
+    : down
+      ? { color: '#b91c1c', bg: '#fef2f2', border: '#fecaca' }
+      : { color: '#94a3b8', bg: '#f8fafc', border: '#e5e7eb' };
+  return (
+    <span
+      title="vs the same fiscal period last year"
+      style={{
+        fontFamily: FONT,
+        fontSize: '12px',
+        fontWeight: 600,
+        color: palette.color,
+        backgroundColor: palette.bg,
+        border: `1px solid ${palette.border}`,
+        borderRadius: '999px',
+        padding: '2px 8px',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {up ? '▲' : down ? '▼' : '–'} {Math.abs(pct)}% YoY
+    </span>
+  );
+}
+
 /* ─── Stat card ────────────────────────────────────────────────── */
-function StatCard({ label, value, sub, onClick }) {
+function StatCard({ label, value, sub, chip, onClick }) {
   return (
     <div
       onClick={onClick}
@@ -183,9 +218,12 @@ function StatCard({ label, value, sub, onClick }) {
       >
         {label}
       </p>
-      <p style={{ fontFamily: FONT, fontSize: '26px', fontWeight: 700, color: '#0f172a' }}>
-        {value}
-      </p>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: FONT, fontSize: '26px', fontWeight: 700, color: '#0f172a' }}>
+          {value}
+        </span>
+        {chip}
+      </div>
       {sub && (
         <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
           {sub}
@@ -334,22 +372,140 @@ function DeadlineRow({ label, value, delta }) {
   );
 }
 
-function ServiceChip({ service, count }) {
+function ServiceChip({ service, count, active, onClick }) {
   return (
     <span
+      onClick={onClick}
       style={{
         fontFamily: FONT,
         fontSize: '12px',
-        color: '#475569',
-        backgroundColor: '#f8fafc',
-        border: '1px solid #e5e7eb',
+        color: active ? '#0c4a6e' : '#475569',
+        backgroundColor: active ? '#e0f2fe' : '#f8fafc',
+        border: `1px solid ${active ? '#7dd3fc' : '#e5e7eb'}`,
         borderRadius: '999px',
         padding: '3px 10px',
         whiteSpace: 'nowrap',
+        cursor: onClick ? 'pointer' : 'inherit',
       }}
     >
-      {service} <strong style={{ color: '#0f172a' }}>{count}</strong>
+      {service} <strong style={{ color: active ? '#0c4a6e' : '#0f172a' }}>{count}</strong>
     </span>
+  );
+}
+
+/* ─── Overdue-work drill-down ──────────────────────────────────── */
+// The planner's Ready Now deliberately covers only SA/AA, so this panel is
+// the one place overdue VAT / payroll / management accounts are listable.
+function OverduePanel({ jobs, byService, service, onService, onRow }) {
+  const shown = service === 'all' ? jobs : jobs.filter((j) => (j.service || 'Other') === service);
+  const th = {
+    fontFamily: FONT,
+    fontSize: '12px',
+    fontWeight: 600,
+    color: '#475569',
+    textAlign: 'left',
+    padding: '8px 12px',
+    backgroundColor: '#f8fafc',
+    whiteSpace: 'nowrap',
+  };
+  const td = {
+    fontFamily: FONT,
+    fontSize: '13px',
+    color: '#334155',
+    padding: '7px 12px',
+    borderTop: '1px solid #f1f5f9',
+    whiteSpace: 'nowrap',
+  };
+  return (
+    <div
+      style={{
+        marginTop: '16px',
+        backgroundColor: '#ffffff',
+        borderRadius: '12px',
+        border: '1px solid #e5e7eb',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '14px 16px',
+        }}
+      >
+        <ServiceChip
+          service="All"
+          count={jobs.length}
+          active={service === 'all'}
+          onClick={() => onService('all')}
+        />
+        {byService.map((r) => (
+          <ServiceChip
+            key={r.service}
+            service={r.service}
+            count={r.count}
+            active={service === r.service}
+            onClick={() => onService(r.service)}
+          />
+        ))}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={th}>Client</th>
+              <th style={th}>Service</th>
+              <th style={th}>Task</th>
+              <th style={th}>Owner</th>
+              <th style={th}>Due</th>
+              <th style={{ ...th, textAlign: 'right' }}>Days late</th>
+              <th style={{ ...th, textAlign: 'right' }}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((j) => (
+              <tr
+                key={j.id}
+                onClick={() => onRow(j)}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f8fafc';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                <td style={{ ...td, fontWeight: 500, color: '#0f172a' }}>
+                  {j.entity?.name || '—'}
+                </td>
+                <td style={td}>{j.service || 'Other'}</td>
+                <td
+                  style={{
+                    ...td,
+                    maxWidth: '260px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    color: '#64748b',
+                  }}
+                >
+                  {j.bm_task_name}
+                </td>
+                <td style={td}>{j.owner?.name ? j.owner.name.split(' ')[0] : '—'}</td>
+                <td style={td}>{shortDate(j.bm_deadline)}</td>
+                <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#b91c1c' }}>
+                  {daysLate(j.bm_deadline)}
+                </td>
+                <td style={{ ...td, textAlign: 'right', color: '#64748b' }}>
+                  {bmStatus(j.bm_status)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -634,6 +790,20 @@ export default function HomeScreen() {
 
   // Less is more: the attention queue opens collapsed, one summary line.
   const [attentionOpen, setAttentionOpen] = useState(false);
+  const attentionRef = useRef(null);
+  // Collapsing removes ~a screen of cards above the fold; snap back to the
+  // section header so the collapse is actually visible.
+  const collapseAttention = () => {
+    setAttentionOpen(false);
+    requestAnimationFrame(() =>
+      attentionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
+  };
+
+  // The 86-late-jobs list lives here, not in the planner — Ready Now only
+  // covers SA/AA by design, so overdue VAT/payroll/etc have no page of their own.
+  const [overdueOpen, setOverdueOpen] = useState(false);
+  const [overdueService, setOverdueService] = useState('all');
 
   const attentionItems = data ? buildAttentionItems(data, navigate) : [];
 
@@ -676,8 +846,43 @@ export default function HomeScreen() {
 
       {/* ── Needs attention ── */}
       {canSeeAttention && (
-        <div style={{ marginBottom: '36px' }}>
-          <SectionLabel>Needs attention</SectionLabel>
+        <div ref={attentionRef} style={{ marginBottom: '36px', scrollMarginTop: '24px' }}>
+          <SectionLabel
+            action={
+              !loading && attentionItems.length > 0 ? (
+                <button
+                  onClick={() =>
+                    attentionOpen ? collapseAttention() : setAttentionOpen(true)
+                  }
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontFamily: FONT,
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#38bdf8',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  {attentionOpen ? (
+                    <>
+                      Show less <ChevronUp size={14} />
+                    </>
+                  ) : (
+                    <>
+                      Show all {attentionItems.length} <ChevronDown size={14} />
+                    </>
+                  )}
+                </button>
+              ) : null
+            }
+          >
+            Needs attention
+          </SectionLabel>
           {loading ? (
             <p style={{ fontFamily: FONT, fontSize: '13px', color: '#94a3b8' }}>Checking…</p>
           ) : attentionItems.length === 0 ? (
@@ -717,7 +922,7 @@ export default function HomeScreen() {
                 />
               ))}
               <button
-                onClick={() => setAttentionOpen(false)}
+                onClick={collapseAttention}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -773,25 +978,46 @@ export default function HomeScreen() {
                 value={
                   pulse?.plFytd?.income != null ? formatCurrency(pulse.plFytd.income) : '—'
                 }
-                sub={
+                chip={
+                  <YoYChip current={pulse?.plFytd?.income} prior={pulse?.plFytdPrior?.income} />
+                }
+                sub={[
                   pulse?.plFytd?.period?.start
                     ? `since ${shortDate(pulse.plFytd.period.start)}`
-                    : null
-                }
+                    : null,
+                  pulse?.plFytdPrior?.income != null
+                    ? `${formatCurrency(pulse.plFytdPrior.income)} same period last year`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
                 onClick={() => navigate('/client-dashboard')}
               />
               <StatCard
-                label="Net profit — fiscal YTD"
+                label="Net operating income — fiscal YTD"
                 value={
-                  pulse?.plFytd?.net_income != null
-                    ? formatCurrency(pulse.plFytd.net_income)
+                  pulse?.plFytd?.net_operating_income != null
+                    ? formatCurrency(pulse.plFytd.net_operating_income)
                     : '—'
                 }
-                sub={
-                  pulse?.plFytd?.net_income != null && pulse?.plFytd?.income > 0
-                    ? `${Math.round((pulse.plFytd.net_income / pulse.plFytd.income) * 100)}% margin`
-                    : null
+                chip={
+                  <YoYChip
+                    current={pulse?.plFytd?.net_operating_income}
+                    prior={pulse?.plFytdPrior?.net_operating_income}
+                  />
                 }
+                sub={[
+                  pulse?.plFytd?.net_operating_income != null && pulse?.plFytd?.income > 0
+                    ? `${Math.round(
+                        (pulse.plFytd.net_operating_income / pulse.plFytd.income) * 100,
+                      )}% margin`
+                    : null,
+                  pulse?.plFytd?.net_income != null
+                    ? `${formatCurrency(pulse.plFytd.net_income)} net after dividends`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
                 onClick={() => navigate('/client-dashboard')}
               />
               <StatCard
@@ -857,7 +1083,7 @@ export default function HomeScreen() {
                 </>
               }
               footer={`~${data.ch.runRate} filings a week clears the 6-month pile`}
-              onClick={() => navigate('/planner/ready')}
+              onClick={() => navigate('/planner/ready?service=Acc')}
             />
             <DeadlineCard
               title="Self Assessment"
@@ -865,7 +1091,7 @@ export default function HomeScreen() {
               unit={`returns due 31 Jan ${data.sa.year}`}
               delta={data.wow?.sa}
               footer={`~${data.sa.runRate} a week from now stays on track`}
-              onClick={() => navigate('/planner/ready')}
+              onClick={() => navigate('/planner/ready?service=SA')}
             />
             <DeadlineCard
               title="Work past BM deadline"
@@ -890,10 +1116,19 @@ export default function HomeScreen() {
                   </div>
                 )
               }
-              footer="Open the planner to reprioritise"
-              onClick={() => navigate('/planner/ready')}
+              footer={overdueOpen ? 'Hide the list' : 'Click to list every late job'}
+              onClick={() => setOverdueOpen((o) => !o)}
             />
           </div>
+          {overdueOpen && data.overdueWork.jobs.length > 0 && (
+            <OverduePanel
+              jobs={data.overdueWork.jobs}
+              byService={data.overdueWork.byService}
+              service={overdueService}
+              onService={setOverdueService}
+              onRow={(j) => j.entity?.id && navigate(`/clients/${j.entity.id}`)}
+            />
+          )}
         </div>
       )}
 

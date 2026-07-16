@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../../lib/supabase';
 import ClientTypeAhead from '../components/ClientTypeAhead';
 import {
@@ -76,11 +77,20 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
   const [togglingId, setTogglingId] = useState(null);
 
   // Filters
-  const [serviceFilter, setServiceFilter] = useState('all');
+  // Deep-linkable filters: the home screen's deadline cards land here with
+  // ?service=SA|Acc (and optionally ?due=overdue|30|60|90) pre-applied.
+  const [searchParams] = useSearchParams();
+  const urlService = searchParams.get('service');
+  const urlDue = searchParams.get('due');
+  const [serviceFilter, setServiceFilter] = useState(
+    ['SA', 'Acc'].includes(urlService) ? urlService : 'all',
+  );
   const [statusFilter, setStatusFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [gradeFilter, setGradeFilter] = useState('all');
-  const [dueFilter, setDueFilter] = useState('all'); // all | overdue | 30 | 60 | 90
+  const [dueFilter, setDueFilter] = useState(
+    ['overdue', '30', '60', '90'].includes(urlDue) ? urlDue : 'all',
+  ); // all | overdue | 30 | 60 | 90
   const [normalDaysBuffer, setNormalDaysBuffer] = useState(90);
   const [impendingDays, setImpendingDays] = useState(14);
   const [impendingCollapsed, setImpendingCollapsed] = useState(false);
