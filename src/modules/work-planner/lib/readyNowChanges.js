@@ -4,6 +4,16 @@
 
 import { supabase } from '../../../lib/supabase';
 
+// Re-checks every pending bm_target request against BrightManager's live
+// target date and auto-marks it applied where they now match. Returns the
+// count resolved. Safe to call on every page load — it's a pure comparison,
+// never touches a request that doesn't already agree with BM.
+export async function reconcilePendingChangeRequests() {
+  const { data, error } = await supabase.rpc('reconcile_ready_now_change_requests');
+  if (error) throw error;
+  return data || 0;
+}
+
 export async function fetchPendingChangeRequests() {
   const { data, error } = await supabase
     .from('ready_now_change_requests')

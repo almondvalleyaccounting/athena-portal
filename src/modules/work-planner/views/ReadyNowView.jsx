@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import ClientTypeAhead from '../components/ClientTypeAhead';
 import {
   fetchPendingChangeRequests, upsertChangeRequest,
-  markChangeRequestApplied, cancelChangeRequest,
+  markChangeRequestApplied, cancelChangeRequest, reconcilePendingChangeRequests,
 } from '../lib/readyNowChanges';
 
 const font = "'Outfit', sans-serif";
@@ -125,9 +125,15 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
 
   useEffect(() => {
     let cancelled = false;
-    fetchPendingChangeRequests()
-      .then((data) => { if (!cancelled) setPendingChanges(data); })
-      .catch((err) => console.warn('pending changes load failed', err));
+    // Re-check pending BM Target requests against live BM data first — any
+    // that now agree get auto-marked applied before we fetch what's left.
+    reconcilePendingChangeRequests()
+      .catch((err) => console.warn('change request reconcile failed', err))
+      .finally(() => {
+        fetchPendingChangeRequests()
+          .then((data) => { if (!cancelled) setPendingChanges(data); })
+          .catch((err) => console.warn('pending changes load failed', err));
+      });
     return () => { cancelled = true; };
   }, []);
 
