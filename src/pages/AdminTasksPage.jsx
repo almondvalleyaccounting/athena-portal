@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../shell/AppShell';
+import { commitAllocationDraft } from '../modules/work-planner/lib/allocationsQueries';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
@@ -147,6 +148,16 @@ export default function AdminTasksPage() {
     if (err) { setError(err.message); load(); }
   }
 
+  async function completeRealloc(draft) {
+    setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+    try {
+      await commitAllocationDraft(draft.id, profile?.id);
+    } catch (e) {
+      setError(e.message);
+      load();
+    }
+  }
+
   async function addManual() {
     if (!newTitle.trim()) return;
     const { error: err } = await supabase.from('admin_tasks').insert({
@@ -234,34 +245,35 @@ export default function AdminTasksPage() {
   }, [open, drafts, onboardings]);
 
   return (
-    <div style={{ maxWidth: 880, margin: '0 auto', padding: '26px 24px', fontFamily: font }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-        <ClipboardList size={18} color="#0e7fe0" />
-        <h1 style={{ margin: 0, fontSize: 21, fontWeight: 700, color: '#0f172a' }}>Admin task list</h1>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+    <div style={{ maxWidth: 1240, margin: '0 auto', padding: '28px 32px 48px', fontFamily: font }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+        <ClipboardList size={20} color="#0e7fe0" />
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Admin task list</h1>
+
+        {/* Stat chips share the header row — width is better spent here than stacked below */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 20 }}>
+          <Chip label="To key in" value={stats.open} />
+          <Chip label="Overdue" value={stats.overdue} tone={stats.overdue ? 'red' : 'muted'} />
+          <Chip label="Escalated" value={stats.escalated} tone={stats.escalated ? 'amber' : 'muted'} />
+          <Chip label="Reallocations" value={stats.realloc} tone={stats.realloc ? 'blue' : 'muted'} />
+          <Chip label="Onboarding" value={stats.onboarding} tone={stats.onboarding ? 'blue' : 'muted'} />
+        </div>
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
           <button onClick={exportCsv} disabled={!open.length} style={btn('ghost')}><Download size={13} /> Export CSV</button>
           <button onClick={() => setAdding((v) => !v)} style={btn('primary')}><Plus size={13} /> Add task</button>
         </div>
       </div>
 
-      {/* Stat chips */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0 16px' }}>
-        <Chip label="To key in" value={stats.open} />
-        <Chip label="Overdue" value={stats.overdue} tone={stats.overdue ? 'red' : 'muted'} />
-        <Chip label="Escalated" value={stats.escalated} tone={stats.escalated ? 'amber' : 'muted'} />
-        <Chip label="Reallocations" value={stats.realloc} tone={stats.realloc ? 'blue' : 'muted'} />
-        <Chip label="Onboarding" value={stats.onboarding} tone={stats.onboarding ? 'blue' : 'muted'} />
-      </div>
-
       {confirmedNow > 0 && (
-        <div style={{ ...card, borderColor: '#bbf7d0', background: '#f0fdf4', padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#166534' }}>
+        <div style={{ ...card, borderColor: '#bbf7d0', background: '#f0fdf4', padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#166534' }}>
           ✓ {confirmedNow} task{confirmedNow === 1 ? '' : 's'} confirmed complete by the latest BrightManager data and removed.
         </div>
       )}
       {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
 
       {adding && (
-        <div style={{ ...card, padding: '12px 14px', marginBottom: 14, display: 'flex', gap: 8 }}>
+        <div style={{ ...card, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 8 }}>
           <input
             autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') addManual(); if (e.key === 'Escape') setAdding(false); }}
@@ -304,15 +316,18 @@ export default function AdminTasksPage() {
       >
         {drafts.length === 0 && <Empty>No reallocation proposals waiting.</Empty>}
         {drafts.map((d) => (
-          <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderTop: '1px solid #f8fafc', fontSize: 13 }}>
+          <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13 }}>
             <span style={{ fontWeight: 600, color: '#0f172a' }}>{entities[d.entity_id] || 'Client'}</span>
             <span style={{ color: '#64748b', flex: 1 }}>{String(d.canonical_service_id || '').replace(/_/g, ' ')}</span>
             <span style={{ color: '#475569', whiteSpace: 'nowrap' }}>→ {staffMap[d.proposed_fee_earner_id] || 'unassigned'}</span>
+            <button onClick={() => completeRealloc(d)} title="Mark applied in BM" style={completeBtn(false)}>
+              <CheckCircle2 size={13} /> Complete
+            </button>
           </div>
         ))}
         {drafts.length > 0 && (
           <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
-            These clear automatically once a BM upload shows the new assignee (managed in the capacity planner).
+            Marking one complete assumes you've made the change in BM. The next BM upload checks it — if the assignee still doesn't match, it reappears here.
           </div>
         )}
       </Section>
@@ -371,17 +386,7 @@ function TaskRow({
 
   return (
     <div style={{ borderTop: '1px solid #f8fafc', opacity: t.done_at ? 0.6 : 1 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px' }}>
-        <button
-          onClick={onToggleDone}
-          title={t.done_at ? 'Entered in BM — waiting for the next upload to confirm. Click to un-tick.' : 'Tick when entered in BM'}
-          style={{
-            width: 20, height: 20, borderRadius: 6, flexShrink: 0, cursor: 'pointer',
-            border: `2px solid ${t.done_at ? '#059669' : '#cbd5e1'}`, background: t.done_at ? '#059669' : '#fff',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', padding: 0,
-          }}
-        >{t.done_at && <CheckCircle2 size={13} />}</button>
-
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px' }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span
             onClick={onOpenClient || undefined}
@@ -424,6 +429,14 @@ function TaskRow({
 
         <button onClick={onEscalate} title="Escalate — ask someone to action this" style={{ ...iconBtn, color: '#b45309', borderColor: '#fde68a' }}>
           <AlertTriangle size={13} />
+        </button>
+
+        <button
+          onClick={onToggleDone}
+          title={t.done_at ? 'Entered in BM — waiting for the next upload to confirm. Click to undo.' : 'Mark as entered into BrightManager'}
+          style={completeBtn(!!t.done_at)}
+        >
+          <CheckCircle2 size={13} /> {t.done_at ? 'Entered' : 'Complete'}
         </button>
 
         <button onClick={onDismiss} title="Remove without completing" style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0 }}>
@@ -561,6 +574,14 @@ const iconBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 3, padding: '4px 7px', fontFamily: font,
   borderRadius: 7, cursor: 'pointer', background: '#fff', border: '1px solid #e5e7eb', flexShrink: 0,
 };
+function completeBtn(active) {
+  return {
+    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, fontWeight: 600,
+    fontFamily: font, borderRadius: 7, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+    background: active ? '#dcfce7' : '#fff', color: active ? '#166534' : '#475569',
+    border: `1px solid ${active ? '#bbf7d0' : '#e5e7eb'}`,
+  };
+}
 const modalBackdrop = {
   position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)',
   display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,

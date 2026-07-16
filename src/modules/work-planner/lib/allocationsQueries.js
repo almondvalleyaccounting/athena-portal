@@ -128,6 +128,17 @@ export async function discardAllocationDraft(id) {
   if (error) throw error;
 }
 
+// Marks a draft as applied in BM. Provisional, not final — the next BM
+// tasks import re-checks it (reconcile_allocation_changes) and reverts it
+// back to 'draft' if BM still shows a different assignee.
+export async function commitAllocationDraft(id, staffId) {
+  const { error } = await supabase
+    .from('allocation_changes')
+    .update({ status: 'committed', committed_at: new Date().toISOString(), committed_by: staffId ?? null })
+    .eq('id', id);
+  if (error) throw error;
+}
+
 // ── Service reviewers (independent of BM fee earners) ──
 // Two reviewer roles: vat_review, accounts_preparation. Sourced
 // from BM's "Monitor" columns at import time; users override in
