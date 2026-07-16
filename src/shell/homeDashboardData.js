@@ -95,6 +95,7 @@ export function useDirectorDashboard(enabled) {
         adminTasksRes,
         issuesRes,
         freshnessRes,
+        snapshotRes,
       ] = await Promise.all([
         // Every open CH filing up to the 6-month horizon (incl. already-late ones)
         supabase
@@ -179,6 +180,13 @@ export function useDirectorDashboard(enabled) {
           .select('last_seen_at')
           .order('last_seen_at', { ascending: false })
           .limit(1),
+        // Latest digest snapshot — the baseline for week-on-week deltas. The
+        // Monday digest writes one per send; the same definitions as above.
+        supabase
+          .from('deadline_digest_snapshots')
+          .select('snapshot_date, payload')
+          .order('snapshot_date', { ascending: false })
+          .limit(1),
       ]);
 
       if (cancelled) return;
@@ -227,6 +235,33 @@ export function useDirectorDashboard(enabled) {
       const chCodes = chCodesRes.data || [];
       const freshRow = (freshnessRes.data || [])[0];
 
+      /* ── Week-on-week vs the latest digest snapshot ── */
+      // Mirrors the digest's own delta maths: month totals compared by key
+      // (missing keys count 0, same as the email), scalars only when present.
+      const snap = (snapshotRes.data || [])[0];
+      const prev = snap?.payload || null;
+      let wow = null;
+      if (prev) {
+        const monthKeys = [];
+        for (let i = 0; i < CH_HORIZON_MONTHS; i++) monthKeys.push(monthKeyOf(ymd(addMonths(today, i))));
+        const prevCh = prev.ch || {};
+        const prevChTotal = monthKeys.reduce(
+          (s, k) => s + (typeof prevCh[k] === 'number' ? prevCh[k] : 0),
+          0,
+        );
+        wow = {
+          since: snap.snapshot_date,
+          chThisMonth:
+            typeof prevCh[thisKey] === 'number' ? chThisMonth - prevCh[thisKey] : null,
+          chSixMonths: chSixMonths - prevChTotal,
+          chOverdue:
+            typeof prev.ch_overdue === 'number' ? chOverdueCount - prev.ch_overdue : null,
+          sa: typeof prev.sa_jan === 'number' ? saCount - prev.sa_jan : null,
+          overdueTotal:
+            typeof prev.overdue_total === 'number' ? overdueTotal - prev.overdue_total : null,
+        };
+      }
+
       setState({
         loading: false,
         data: {
@@ -263,6 +298,7 @@ export function useDirectorDashboard(enabled) {
           adminTasksOpen: adminTasksRes.count ?? 0,
           issuesOpen: issuesRes.count ?? 0,
           bmDataAsOf: freshRow?.last_seen_at || null,
+          wow,
         },
       });
     })();

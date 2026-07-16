@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -6,6 +6,8 @@ import {
   CheckCircle,
   CheckCheck,
   Inbox,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { MODULES } from '../modules.config';
 import { useAuth } from './AppShell';
@@ -193,8 +195,39 @@ function StatCard({ label, value, sub, onClick }) {
   );
 }
 
+/* ─── Week-on-week delta chip ──────────────────────────────────── */
+// More outstanding work than the last digest = red; less = green.
+function DeltaChip({ delta }) {
+  if (delta === null || delta === undefined) return null;
+  const up = delta > 0;
+  const down = delta < 0;
+  const palette = up
+    ? { color: '#b91c1c', bg: '#fef2f2', border: '#fecaca' }
+    : down
+      ? { color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' }
+      : { color: '#94a3b8', bg: '#f8fafc', border: '#e5e7eb' };
+  const label = up ? `▲ ${delta}` : down ? `▼ ${Math.abs(delta)}` : '–';
+  return (
+    <span
+      title="change since the last deadline-digest snapshot"
+      style={{
+        fontFamily: FONT,
+        fontSize: '12px',
+        fontWeight: 600,
+        color: palette.color,
+        backgroundColor: palette.bg,
+        border: `1px solid ${palette.border}`,
+        borderRadius: '999px',
+        padding: '2px 8px',
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 /* ─── Deadline card ────────────────────────────────────────────── */
-function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, rows, footer, onClick }) {
+function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, delta, rows, footer, onClick }) {
   return (
     <div
       onClick={onClick}
@@ -253,6 +286,7 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, rows, foot
             {pill}
           </span>
         )}
+        <DeltaChip delta={delta} />
       </div>
       {rows && (
         <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -278,12 +312,23 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, rows, foot
   );
 }
 
-function DeadlineRow({ label, value }) {
+function DeadlineRow({ label, value, delta }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <span style={{ fontFamily: FONT, fontSize: '13px', color: '#64748b' }}>{label}</span>
-      <span style={{ fontFamily: FONT, fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+      <span
+        style={{
+          fontFamily: FONT,
+          fontSize: '13px',
+          fontWeight: 600,
+          color: '#0f172a',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}
+      >
         {value}
+        <DeltaChip delta={delta} />
       </span>
     </div>
   );
@@ -503,6 +548,75 @@ function buildAttentionItems(data, navigate) {
   return items;
 }
 
+// One-line summary for the collapsed state — counts by kind, worst first.
+function attentionSummary(data) {
+  const seg = [];
+  const p = (n, s) => `${n} ${s}${n === 1 ? '' : 's'}`;
+  if (data.ch.overdue > 0) seg.push(`${p(data.ch.overdue, 'CH filing')} late`);
+  if (data.sa.overdueList.length > 0) seg.push(`${p(data.sa.overdueList.length, 'SA return')} late`);
+  if (data.onboarding.issues.length > 0) seg.push(p(data.onboarding.issues.length, 'onboarding issue'));
+  if (data.quotes.accepted.length > 0) seg.push(`${p(data.quotes.accepted.length, 'quote')} to commit`);
+  if (data.quotes.pendingApproval.length > 0) seg.push(`${p(data.quotes.pendingApproval.length, 'approval')} waiting`);
+  if (data.quotes.expiring.length > 0) seg.push(`${p(data.quotes.expiring.length, 'quote')} expiring`);
+  if (data.serviceRequests.length > 0) seg.push(p(data.serviceRequests.length, 'service request'));
+  if (data.billingNeedsReview > 0) seg.push(p(data.billingNeedsReview, 'billing review'));
+  return seg;
+}
+
+/* ─── Collapsed attention summary card ─────────────────────────── */
+function AttentionSummaryCard({ items, segments, onExpand }) {
+  const hasRed = items.some((i) => i.accent === '#ef4444' || i.accent === '#f87171');
+  const accent = hasRed ? '#ef4444' : '#f59e0b';
+  const Icon = hasRed ? AlertTriangle : Clock;
+  return (
+    <button
+      onClick={onExpand}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '14px',
+        width: '100%',
+        backgroundColor: '#ffffff',
+        borderRadius: '12px',
+        border: '1px solid #e5e7eb',
+        borderLeft: `3px solid ${accent}`,
+        padding: '14px 18px',
+        cursor: 'pointer',
+        textAlign: 'left',
+        transition: 'all 0.2s ease',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = 'translateY(-1px)';
+        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'none';
+        e.currentTarget.style.boxShadow = 'none';
+      }}
+    >
+      <Icon size={18} style={{ color: accent, flexShrink: 0 }} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p
+          style={{
+            fontFamily: FONT,
+            fontSize: '14px',
+            fontWeight: 500,
+            color: '#0f172a',
+            marginBottom: '2px',
+          }}
+        >
+          {items.length} item{items.length === 1 ? '' : 's'} need{items.length === 1 ? 's' : ''} your
+          attention
+        </p>
+        <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>
+          {segments.join(' · ')}
+        </p>
+      </div>
+      <ChevronDown size={18} style={{ color: '#94a3b8', flexShrink: 0 }} />
+    </button>
+  );
+}
+
 /* ─── HomeScreen ───────────────────────────────────────────────── */
 export default function HomeScreen() {
   const { profile } = useAuth();
@@ -517,6 +631,9 @@ export default function HomeScreen() {
 
   const { loading, data } = useDirectorDashboard(isOwner || canSeeAttention);
   const { loading: pulseLoading, pulse, error: pulseError } = usePracticePulse(canSeePulse);
+
+  // Less is more: the attention queue opens collapsed, one summary line.
+  const [attentionOpen, setAttentionOpen] = useState(false);
 
   const attentionItems = data ? buildAttentionItems(data, navigate) : [];
 
@@ -581,10 +698,15 @@ export default function HomeScreen() {
                 Nothing needs your attention right now.
               </p>
             </div>
+          ) : !attentionOpen ? (
+            <AttentionSummaryCard
+              items={attentionItems}
+              segments={attentionSummary(data)}
+              onExpand={() => setAttentionOpen(true)}
+            />
           ) : (
-            attentionItems
-              .slice(0, 12)
-              .map((item) => (
+            <>
+              {attentionItems.slice(0, 12).map((item) => (
                 <AttentionCard
                   key={item.id}
                   accent={item.accent}
@@ -593,7 +715,27 @@ export default function HomeScreen() {
                   subtitle={item.subtitle}
                   onClick={item.onClick}
                 />
-              ))
+              ))}
+              <button
+                onClick={() => setAttentionOpen(false)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontFamily: FONT,
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: '#38bdf8',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px 0',
+                  marginTop: '4px',
+                }}
+              >
+                <ChevronUp size={16} /> Show less
+              </button>
+            </>
           )}
         </div>
       )}
@@ -684,7 +826,13 @@ export default function HomeScreen() {
       {/* ── Deadlines (owner only) — live view of the Monday digest ── */}
       {isOwner && data && (
         <div style={{ marginBottom: '36px' }}>
-          <SectionLabel note={bmNote}>Deadlines</SectionLabel>
+          <SectionLabel
+            note={[bmNote, data.wow ? `▲▼ vs digest ${shortDate(data.wow.since)}` : null]
+              .filter(Boolean)
+              .join(' · ')}
+          >
+            Deadlines
+          </SectionLabel>
           <div
             style={{
               display: 'grid',
@@ -697,10 +845,15 @@ export default function HomeScreen() {
               big={data.ch.thisMonth}
               unit={`due in ${thisMonthName}`}
               pill={data.ch.overdue > 0 ? `${data.ch.overdue} past deadline` : null}
+              delta={data.wow?.chThisMonth}
               rows={
                 <>
                   <DeadlineRow label={nextMonthName} value={data.ch.nextMonth} />
-                  <DeadlineRow label="Next 6 months" value={data.ch.sixMonths} />
+                  <DeadlineRow
+                    label="Next 6 months"
+                    value={data.ch.sixMonths}
+                    delta={data.wow?.chSixMonths}
+                  />
                 </>
               }
               footer={`~${data.ch.runRate} filings a week clears the 6-month pile`}
@@ -710,6 +863,7 @@ export default function HomeScreen() {
               title="Self Assessment"
               big={data.sa.count}
               unit={`returns due 31 Jan ${data.sa.year}`}
+              delta={data.wow?.sa}
               footer={`~${data.sa.runRate} a week from now stays on track`}
               onClick={() => navigate('/planner/ready')}
             />
@@ -718,6 +872,7 @@ export default function HomeScreen() {
               big={data.overdueWork.total}
               bigColor={data.overdueWork.total > 0 ? '#b91c1c' : '#0f172a'}
               unit="open jobs late"
+              delta={data.wow?.overdueTotal}
               rows={
                 data.overdueWork.byService.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>

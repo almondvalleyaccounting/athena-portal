@@ -1,26 +1,20 @@
 // deadline-digest — Athena Portal
-// Monday-morning email to Bobby + Tracy (cron: run_deadline_digest, Mon 07:00 UTC):
-//   1. Companies House ACCOUNTS filing deadlines grouped by calendar month —
-//      this month, next month, the month after — listed per client.
-//   2. Submissions needed for each of the next 6 calendar months (incl. current),
-//      with the week-on-week change.
-//   3. Self Assessment returns due 31 Jan, with the week-on-week change.
+// Monday-morning email to the team (cron: run_deadline_digest, Mon 07:30 UTC):
+//   1. Companies House filing deadlines grouped by calendar month, per client,
+//      with the owner's first name and sorted by owner.
+//   2. Submissions needed for each of the next 6 calendar months, w/w change.
+//   3. Self Assessment returns due 31 Jan, w/w change.
 //   4. A working-week run-rate target to clear each pile by its deadline.
-//
-// Data source: the work module (bm_task_schedule), ultimately from BrightManager.
+// Data source: bm_task_schedule (work module, from BrightManager).
 //   CH filing       = bm_task_name like 'Companies House Submission%'
 //   Self Assessment = bm_task_name like 'Self Assessment Submission%'
-//   (BM holds a separate 'Accounts Preparation …' task per job sharing the same
-//    deadline — that's the prep stage, NOT the CH filing, so it's excluded.)
-//   "not yet filed" = state = 'planned' (a 'completed' row has dropped out of
-//                     the BM open-tasks export, i.e. it's been filed).
-//
-// Week-on-week: compares to the most recent prior row in deadline_digest_snapshots,
-// then (on a real send) writes today's snapshot. First real send = baseline, no deltas.
-//
-// Auth: x-cron-secret matching deadline_digest_config.cron_secret, OR an active
-// staff JWT (manual test runs).
+//   "not yet filed" = state = 'planned'.
+// Auth: x-cron-secret matching deadline_digest_config.cron_secret, OR staff JWT.
 // Body: { dry_run?: boolean (default true), test_recipient?: string }
+//
+// The weekly snapshot (deadline_digest_snapshots) also carries overdue counts
+// (ch_overdue / overdue_total / overdue_by_service) — not shown in the email,
+// but the home-screen deadline cards read them for week-on-week deltas.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendEmail } from "../_shared/resend.ts";
@@ -32,9 +26,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 type Row = Record<string, unknown>;
 
 // The "Companies House filing" unit is the "Companies House Submission …" task,
-// NOT the sibling "Accounts Preparation …" task under the same Annual Accounts
-// job (both share the filing deadline; counting both double-counts the pile).
-// Self Assessment is counted on its "Self Assessment Submission …" task.
+// NOT the sibling "Accounts Preparation …" task under the same job.
 const CH_FILING_NAME = "Companies House Submission%";
 const SA_FILING_NAME = "Self Assessment Submission%";
 const HORIZON_MONTHS = 6;
@@ -46,29 +38,20 @@ function esc(s: unknown): string {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// ── Date helpers (all in UTC to keep month boundaries stable) ──
 function todayUTC(): Date {
   const n = new Date();
   return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()));
 }
-function ymd(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
+function ymd(d: Date): string { return d.toISOString().slice(0, 10); }
 function monthKey(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
-function monthKeyOf(iso: string): string {
-  return iso.slice(0, 7);
-}
+function monthKeyOf(iso: string): string { return iso.slice(0, 7); }
 function addMonths(d: Date, n: number): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1));
 }
-function monthStart(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
-}
-function monthEnd(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
-}
+function monthStart(d: Date): Date { return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)); }
+function monthEnd(d: Date): Date { return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)); }
 function monthLabelFromKey(key: string): string {
   const [y, m] = key.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
@@ -93,20 +76,14 @@ function byOwnerThenClient(a: Row, b: Row): number {
   return ca.localeCompare(cb);
 }
 
-// The next occurring 31 January (self-assessment filing deadline).
 function nextJanEnd(from: Date): { start: string; end: string; year: number } {
-  // If we're on/before 31 Jan of the current year, target this year; else next.
   const year = from.getUTCMonth() === 0 ? from.getUTCFullYear() : from.getUTCFullYear() + 1;
   return { start: `${year}-01-01`, end: `${year}-01-31`, year };
 }
 
-// England & Wales bank holidays from gov.uk, with a static fallback so the
-// run-rate never breaks if the fetch fails. Returns a Set of YYYY-MM-DD.
 const FALLBACK_BANK_HOLIDAYS = new Set<string>([
-  // 2026
   "2026-01-01", "2026-04-03", "2026-04-06", "2026-05-04", "2026-05-25",
   "2026-08-31", "2026-12-25", "2026-12-28",
-  // 2027
   "2027-01-01", "2027-03-26", "2027-03-29", "2027-05-03", "2027-05-31",
   "2027-08-30", "2027-12-27", "2027-12-28",
 ]);
@@ -122,13 +99,9 @@ async function bankHolidays(): Promise<Set<string>> {
     return FALLBACK_BANK_HOLIDAYS;
   }
 }
-
-// Working weeks between tomorrow and `to` inclusive, excluding weekends and
-// bank holidays. Returns whole working days too. Minimum 1 working day so the
-// run-rate stays finite even when a deadline is imminent/passed.
 function workingSpan(from: Date, to: Date, holidays: Set<string>): { days: number; weeks: number } {
   let days = 0;
-  const cur = new Date(from.getTime() + 86400000); // start tomorrow
+  const cur = new Date(from.getTime() + 86400000);
   while (cur <= to) {
     const dow = cur.getUTCDay();
     if (dow !== 0 && dow !== 6 && !holidays.has(ymd(cur))) days++;
@@ -147,9 +120,7 @@ function arrow(delta: number): string {
   return "–";
 }
 
-const HOUSE_STATUS: Record<string, string> = {
-  "No Latest Action": "Not started",
-};
+const HOUSE_STATUS: Record<string, string> = { "No Latest Action": "Not started" };
 
 const shell = (inner: string, athenaUrl: string) =>
   `<!doctype html><html><body style="margin:0;padding:0;background:#f6f8f9;font-family:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1e293b;">
@@ -168,7 +139,6 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ success: false, error: "POST required" }, 405);
   const service = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // ── Auth: cron secret OR active-staff JWT ──
   const { data: cfg } = await service.from("deadline_digest_config").select("*").eq("id", true).maybeSingle();
   const expected = (cfg?.cron_secret as string) || "";
   const got = req.headers.get("x-cron-secret") || "";
@@ -183,53 +153,60 @@ Deno.serve(async (req) => {
   }
 
   const body = await req.json().catch(() => ({}));
-  const dryRun = body.dry_run !== false; // default TRUE
+  const dryRun = body.dry_run !== false;
   const testRecipient: string | null = body.test_recipient || null;
 
   const today = todayUTC();
   const horizonStart = monthStart(today);
-  const horizonEnd = monthEnd(addMonths(today, HORIZON_MONTHS - 1)); // last day of 6th month
+  const horizonEnd = monthEnd(addMonths(today, HORIZON_MONTHS - 1));
   const jan = nextJanEnd(today);
 
-  // ── Pull the open (not-yet-filed) CH accounts rows across the 6-month window,
-  //    plus the SA + Personal Tax rows landing in the target January ──
   const [{ data: chRows, error: chErr }, { data: saRows, error: saErr }] = await Promise.all([
     service.from("bm_task_schedule")
       .select("bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(name), owner:staff_profiles!bm_task_schedule_assignee_id_fkey(name)")
-      .ilike("bm_task_name", CH_FILING_NAME)
-      .eq("state", "planned")
-      .gte("bm_deadline", ymd(horizonStart))
-      .lte("bm_deadline", ymd(horizonEnd))
+      .ilike("bm_task_name", CH_FILING_NAME).eq("state", "planned")
+      .gte("bm_deadline", ymd(horizonStart)).lte("bm_deadline", ymd(horizonEnd))
       .order("bm_deadline"),
     service.from("bm_task_schedule")
-      .select("service, bm_task_name")
-      .eq("state", "planned")
-      .gte("bm_deadline", jan.start)
-      .lte("bm_deadline", jan.end)
+      .select("service, bm_task_name").eq("state", "planned")
+      .gte("bm_deadline", jan.start).lte("bm_deadline", jan.end)
       .or(`bm_task_name.ilike.${SA_FILING_NAME},service.eq.Personal Tax`),
   ]);
   if (chErr) return json({ success: false, error: `CH query: ${chErr.message}` }, 500);
   if (saErr) return json({ success: false, error: `SA query: ${saErr.message}` }, 500);
 
-  // ── Aggregate CH by month ──
+  // Overdue counts — not rendered in the email, but snapshotted so the home
+  // screen's deadline cards can show week-on-week deltas on the same baseline.
+  const [{ count: chOverdueCount }, { data: overdueRows }] = await Promise.all([
+    service.from("bm_task_schedule")
+      .select("id", { count: "exact", head: true })
+      .ilike("bm_task_name", CH_FILING_NAME).eq("state", "planned")
+      .lt("bm_deadline", ymd(today)),
+    service.from("bm_task_schedule")
+      .select("service").eq("state", "planned").lt("bm_deadline", ymd(today)),
+  ]);
+  const overdueByService: Record<string, number> = {};
+  for (const r of (overdueRows || []) as Row[]) {
+    const s = (r.service as string) || "Other";
+    overdueByService[s] = (overdueByService[s] || 0) + 1;
+  }
+  const overdueTotal = (overdueRows || []).length;
+
   const chByMonth = new Map<string, Row[]>();
   for (const r of (chRows || []) as Row[]) {
     const key = monthKeyOf(r.bm_deadline as string);
     if (!chByMonth.has(key)) chByMonth.set(key, []);
     chByMonth.get(key)!.push(r);
   }
-  // Ordered list of the 6 month keys (incl. months with zero).
   const monthKeys: string[] = [];
   for (let i = 0; i < HORIZON_MONTHS; i++) monthKeys.push(monthKey(addMonths(today, i)));
   const chCounts: Record<string, number> = {};
   for (const k of monthKeys) chCounts[k] = (chByMonth.get(k) || []).length;
   const chTotal = monthKeys.reduce((s, k) => s + chCounts[k], 0);
 
-  // ── SA counts ──
   const saCount = (saRows || []).filter((r: Row) => /^self assessment submission/i.test(String(r.bm_task_name || ""))).length;
   const personalTaxCount = (saRows || []).filter((r: Row) => r.service === "Personal Tax").length;
 
-  // ── Week-on-week: most recent prior snapshot ──
   const { data: prevSnap } = await service.from("deadline_digest_snapshots")
     .select("snapshot_date, payload").lt("snapshot_date", ymd(today))
     .order("snapshot_date", { ascending: false }).limit(1).maybeSingle();
@@ -238,7 +215,6 @@ Deno.serve(async (req) => {
   const prevSa = (prev?.sa_jan as number | undefined);
   const hasPrev = Boolean(prev);
 
-  // ── Run-rate (working weeks) ──
   const holidays = await bankHolidays();
   const thisMonthKey = monthKeys[0];
   const spanThisMonth = workingSpan(today, monthEnd(today), holidays);
@@ -249,12 +225,10 @@ Deno.serve(async (req) => {
   const rrSa = runRate(saCount, spanJan.weeks);
   const rrCombined = rrHorizon + rrSa;
 
-  // ═══════════════════ Render ═══════════════════
   const wcLabel = today.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
-  // 1. Per-month CH lists (this month + next two)
   const listMonths = monthKeys.slice(0, 3);
-  const monthColours = ["#dc2626", "#ea580c", "#ca8a04"]; // red / orange / amber
+  const monthColours = ["#dc2626", "#ea580c", "#ca8a04"];
   const monthEmoji = ["🔴", "🟠", "🟡"];
   const chSections = listMonths.map((key, idx) => {
     const items = (chByMonth.get(key) || []).slice().sort(byOwnerThenClient);
@@ -286,7 +260,6 @@ Deno.serve(async (req) => {
     </td></tr>`;
   }).join("");
 
-  // 2. 6-month submission counts + w/w change
   const countRows = monthKeys.map((k) => {
     const now = chCounts[k];
     const then = prevCh[k];
@@ -301,7 +274,6 @@ Deno.serve(async (req) => {
   const totalPrev = hasPrev ? monthKeys.reduce((s, k) => s + (typeof prevCh[k] === "number" ? prevCh[k] : 0), 0) : null;
   const totalDelta = totalPrev === null ? null : chTotal - totalPrev;
 
-  // 3. SA
   const saDelta = hasPrev && typeof prevSa === "number" ? saCount - prevSa : null;
 
   const inner = `
@@ -338,7 +310,7 @@ Deno.serve(async (req) => {
         <tr>
           <td style="padding:14px 16px;font-size:28px;font-weight:800;color:#1E4560;">${saCount}</td>
           <td style="padding:14px 16px;font-size:13px;color:#64748b;">returns outstanding${
-            saDelta === null ? "" : ` &nbsp;·&nbsp; <span style="color:${saDelta > 0 ? "#dc2626" : saDelta < 0 ? "#16a34a" : "#94a3b8"};font-weight:600;">${arrow(saDelta)}</span> vs last week (${prevSa})`
+            saDelta === null ? "" : ` &nbsp;·&nbsp; <span style=\"color:${saDelta > 0 ? "#dc2626" : saDelta < 0 ? "#16a34a" : "#94a3b8"};font-weight:600;\">${arrow(saDelta)}</span> vs last week (${prevSa})`
           }</td>
         </tr>
       </table>
@@ -379,7 +351,6 @@ Deno.serve(async (req) => {
       </table>
     </td></tr>`;
 
-  // ── Plain-text fallback ──
   const text = [
     `WEEKLY DEADLINE DIGEST — w/c ${wcLabel}`,
     !hasPrev ? `(First run — baseline week, no week-on-week changes yet.)` : "",
@@ -407,9 +378,10 @@ Deno.serve(async (req) => {
     `  CH accounts next 6mo: ${chTotal} over ${spanHorizon.weeks.toFixed(1)}wk → ${rrHorizon}/wk`,
     `  Self Assessment: ${saCount} over ${spanJan.weeks.toFixed(1)}wk → ${rrSa}/wk`,
     `  Combined: ~${rrCombined}/wk`,
+    ``,
+    `Open Ready Now: ${Deno.env.get("PORTAL_PUBLIC_URL") || "https://portal.almondvalleyaccounting.co.uk"}/planner/ready`,
   ].filter((l) => l !== "").join("\n");
 
-  // Recipients: configured people (Bobby + Tracy) → emails; fall back to all active staff.
   const wantIds = (cfg?.recipient_ids as string[]) || [];
   const { data: staff } = await service.from("staff_profiles").select("id, email").eq("is_active", true);
   const emailOf = (list: Row[]) => list.map((s) => (s.email as string)?.trim()).filter((e: string) => e?.includes("@"));
@@ -428,12 +400,8 @@ Deno.serve(async (req) => {
     recipients: recipients.length,
   };
 
-  if (dryRun) {
-    return json({ success: true, dry_run: true, ...summary });
-  }
+  if (dryRun) return json({ success: true, dry_run: true, ...summary });
   if (!recipients.length) return json({ success: false, error: "no recipients" }, 400);
-
-  // Safety gate: real team-wide sends need sending_enabled. test_recipient always allowed.
   if (!testRecipient && !cfg?.sending_enabled) {
     return json({ success: false, error: "Team sending disabled (deadline_digest_config.sending_enabled=false). Use test_recipient, or enable once tested." }, 409);
   }
@@ -442,12 +410,16 @@ Deno.serve(async (req) => {
   const subject = `Deadlines: ${chCounts[thisMonthKey]} CH accounts due ${shortMonthFromKey(thisMonthKey)}, ${saCount} SA for Jan — w/c ${wcLabel}`;
   const r = await sendEmail({ to: recipients, subject, html: shell(inner, athenaUrl), text });
 
-  // Persist this week's snapshot (skip for one-off test sends so the baseline
-  // stays clean). One row per snapshot_date — upsert to be idempotent.
   if (!testRecipient) {
     await service.from("deadline_digest_snapshots").upsert({
       snapshot_date: ymd(today),
-      payload: { ch: chCounts, sa_jan: saCount, personal_tax_jan: personalTaxCount, generated_at: new Date().toISOString() },
+      payload: {
+        ch: chCounts, sa_jan: saCount, personal_tax_jan: personalTaxCount,
+        ch_overdue: chOverdueCount ?? 0,
+        overdue_total: overdueTotal,
+        overdue_by_service: overdueByService,
+        generated_at: new Date().toISOString(),
+      },
     }, { onConflict: "snapshot_date" });
   }
 
