@@ -1,10 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Clock, CheckCircle, CheckCheck } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import {
+  AlertTriangle,
+  Clock,
+  CheckCircle,
+  CheckCheck,
+  Inbox,
+} from 'lucide-react';
 import { MODULES } from '../modules.config';
 import { useAuth } from './AppShell';
 import JobReviewRadar from '../modules/job-review/DashboardRadar';
+import { useDirectorDashboard } from './homeDashboardData';
 
 /* ─── Helpers ──────────────────────────────────────────────────── */
 function formatDate() {
@@ -21,22 +27,6 @@ function getGreeting() {
   if (h < 12) return 'Good morning';
   if (h < 18) return 'Good afternoon';
   return 'Good evening';
-}
-
-function startOfWeek() {
-  const d = new Date();
-  const day = d.getDay(); // 0=Sun
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
-  const monday = new Date(d);
-  monday.setDate(diff);
-  monday.setHours(0, 0, 0, 0);
-  return monday.toISOString();
-}
-
-function threeDaysFromNow() {
-  const d = new Date();
-  d.setDate(d.getDate() + 3);
-  return d.toISOString();
 }
 
 function formatCurrency(n) {
@@ -57,190 +47,47 @@ function formatCurrency2dp(n) {
   }).format(n);
 }
 
-/* ─── Data hooks ───────────────────────────────────────────────── */
-function useAwaitingReview(enabled) {
-  // Accepted quotes that haven't been committed to Live yet. These are
-  // Bobby's post-client-accept review queue ahead of pushing to QBO.
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!enabled) {
-      setLoading(false);
-      return;
-    }
-
-    (async () => {
-      try {
-        const { data } = await supabase
-          .from('quotes')
-          .select(
-            'id, quote_ref, relationship_group, accepted_at, monthly_gross, annual_total',
-          )
-          .eq('status', 'accepted')
-          .order('accepted_at', { ascending: false })
-          .limit(10);
-
-        setItems(
-          (data || []).map((q) => ({
-            id: q.id,
-            quote_ref: q.quote_ref,
-            client: q.relationship_group || q.quote_ref,
-            accepted_at: q.accepted_at,
-            monthly_gross: q.monthly_gross,
-            annual_total: q.annual_total,
-            onClick: () => navigate(`/manage/quotes/${q.id}`),
-          })),
-        );
-      } catch {
-        setItems([]);
-      }
-      setLoading(false);
-    })();
-  }, [enabled, navigate]);
-
-  return { items, loading };
+function shortDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
-function useAttentionItems(enabled) {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+const thisMonthName = new Date().toLocaleDateString('en-GB', { month: 'long' });
+const nextMonthName = new Date(
+  new Date().getFullYear(),
+  new Date().getMonth() + 1,
+  1,
+).toLocaleDateString('en-GB', { month: 'long' });
 
-  useEffect(() => {
-    if (!enabled) {
-      setLoading(false);
-      return;
-    }
-
-    (async () => {
-      try {
-        // Quotes awaiting approval
-        const { data: pending } = await supabase
-          .from('quotes')
-          .select('id, quote_ref, relationship_group, created_at, status')
-          .in('status', ['pending_approval', 'awaiting_approval'])
-          .order('created_at', { ascending: false })
-          .limit(10);
-
-        // Accepted quotes expiring within 3 days
-        const { data: expiring } = await supabase
-          .from('quotes')
-          .select('id, quote_ref, relationship_group, valid_until, status')
-          .eq('status', 'accepted')
-          .not('valid_until', 'is', null)
-          .lte('valid_until', threeDaysFromNow())
-          .gte('valid_until', new Date().toISOString())
-          .order('valid_until', { ascending: true })
-          .limit(10);
-
-        const result = [];
-
-        (pending || []).forEach((q) => {
-          result.push({
-            id: q.id,
-            accent: '#f59e0b', // amber
-            icon: Clock,
-            title: `${q.relationship_group || q.quote_ref} — awaiting approval`,
-            subtitle: q.quote_ref,
-            onClick: () => navigate('/manage'),
-          });
-        });
-
-        (expiring || []).forEach((q) => {
-          const expiryDate = new Date(q.valid_until).toLocaleDateString('en-GB', {
-            day: 'numeric',
-            month: 'short',
-          });
-          result.push({
-            id: q.id,
-            accent: '#f87171', // red
-            icon: AlertTriangle,
-            title: `${q.relationship_group || q.quote_ref} — expires ${expiryDate}`,
-            subtitle: q.quote_ref,
-            onClick: () => navigate('/manage'),
-          });
-        });
-
-        setItems(result);
-      } catch {
-        setItems([]);
-      }
-      setLoading(false);
-    })();
-  }, [enabled, navigate]);
-
-  return { items, loading };
-}
-
-function useWeeklyStats(enabled) {
-  const [stats, setStats] = useState({
-    feesCommitted: null,
-    quotesCreated: null,
-    awaitingApproval: null,
-  });
-
-  useEffect(() => {
-    if (!enabled) return;
-
-    (async () => {
-      const weekStart = startOfWeek();
-
-      try {
-        // Fees committed this week — live_billing records created this week
-        const { data: billing } = await supabase
-          .from('live_billing')
-          .select('monthly_fee')
-          .gte('created_at', weekStart);
-
-        const totalFees = (billing || []).reduce(
-          (sum, r) => sum + (r.monthly_fee || 0) * 12,
-          0
-        );
-
-        // Quotes created this week
-        const { count: quotesCount } = await supabase
-          .from('quotes')
-          .select('id', { count: 'exact', head: true })
-          .gte('created_at', weekStart);
-
-        // Quotes awaiting approval (all time)
-        const { count: awaitingCount } = await supabase
-          .from('quotes')
-          .select('id', { count: 'exact', head: true })
-          .in('status', ['pending_approval', 'awaiting_approval']);
-
-        setStats({
-          feesCommitted: totalFees,
-          quotesCreated: quotesCount ?? 0,
-          awaitingApproval: awaitingCount ?? 0,
-        });
-      } catch {
-        // Leave as null on error — UI shows —
-      }
-    })();
-  }, [enabled]);
-
-  return stats;
-}
+const FONT = "'Outfit', sans-serif";
 
 /* ─── Section label ────────────────────────────────────────────── */
-function SectionLabel({ children }) {
+function SectionLabel({ children, note }) {
   return (
-    <h2
+    <div
       style={{
-        fontFamily: "'Outfit', sans-serif",
-        fontSize: '13px',
-        fontWeight: 600,
-        textTransform: 'uppercase',
-        color: '#94a3b8',
-        letterSpacing: '0.04em',
+        display: 'flex',
+        alignItems: 'baseline',
+        justifyContent: 'space-between',
         marginBottom: '16px',
       }}
     >
-      {children}
-    </h2>
+      <h2
+        style={{
+          fontFamily: FONT,
+          fontSize: '13px',
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          color: '#94a3b8',
+          letterSpacing: '0.04em',
+        }}
+      >
+        {children}
+      </h2>
+      {note && (
+        <span style={{ fontFamily: FONT, fontSize: '12px', color: '#cbd5e1' }}>{note}</span>
+      )}
+    </div>
   );
 }
 
@@ -279,101 +126,25 @@ function AttentionCard({ accent, icon: Icon, title, subtitle, onClick }) {
       <div style={{ minWidth: 0, flex: 1 }}>
         <p
           style={{
-            fontFamily: "'Outfit', sans-serif",
+            fontFamily: FONT,
             fontSize: '14px',
             fontWeight: 500,
             color: '#0f172a',
-            marginBottom: '2px',
+            marginBottom: subtitle ? '2px' : 0,
           }}
         >
           {title}
         </p>
         {subtitle && (
-          <p
-            style={{
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: '12px',
-              color: '#94a3b8',
-            }}
-          >
-            {subtitle}
-          </p>
+          <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>{subtitle}</p>
         )}
       </div>
     </button>
   );
 }
 
-/* ─── Review card (accepted quotes awaiting review) ─────────────── */
-function ReviewCard({ quote_ref, client, accepted_at, monthly_gross, annual_total, onClick }) {
-  const acceptedLabel = accepted_at
-    ? new Date(accepted_at).toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'short',
-      })
-    : '';
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '14px',
-        width: '100%',
-        backgroundColor: '#ffffff',
-        borderRadius: '12px',
-        border: '1px solid #e5e7eb',
-        borderLeft: '3px solid #22c55e',
-        padding: '14px 18px',
-        cursor: 'pointer',
-        textAlign: 'left',
-        marginBottom: '8px',
-        transition: 'all 0.2s ease',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'translateY(-1px)';
-        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'none';
-        e.currentTarget.style.boxShadow = 'none';
-      }}
-    >
-      <CheckCheck size={18} style={{ color: '#22c55e', flexShrink: 0 }} />
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <p
-          style={{
-            fontFamily: "'Outfit', sans-serif",
-            fontSize: '14px',
-            fontWeight: 500,
-            color: '#0f172a',
-            marginBottom: '2px',
-          }}
-        >
-          {client} accepted {quote_ref}
-          {acceptedLabel && (
-            <span style={{ color: '#94a3b8', fontWeight: 400 }}>
-              {' — '}
-              {acceptedLabel}
-            </span>
-          )}
-        </p>
-        <p
-          style={{
-            fontFamily: "'Outfit', sans-serif",
-            fontSize: '12px',
-            color: '#94a3b8',
-          }}
-        >
-          {formatCurrency2dp(monthly_gross || 0)}/mo · {formatCurrency2dp(annual_total || 0)}/yr inc VAT · Push to QBO
-        </p>
-      </div>
-    </button>
-  );
-}
-
 /* ─── Stat card ────────────────────────────────────────────────── */
-function StatCard({ label, value, onClick }) {
+function StatCard({ label, value, sub, onClick }) {
   return (
     <div
       onClick={onClick}
@@ -399,7 +170,7 @@ function StatCard({ label, value, onClick }) {
     >
       <p
         style={{
-          fontFamily: "'Outfit', sans-serif",
+          fontFamily: FONT,
           fontSize: '12px',
           fontWeight: 500,
           color: '#94a3b8',
@@ -410,44 +181,295 @@ function StatCard({ label, value, onClick }) {
       >
         {label}
       </p>
+      <p style={{ fontFamily: FONT, fontSize: '26px', fontWeight: 700, color: '#0f172a' }}>
+        {value}
+      </p>
+      {sub && (
+        <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+          {sub}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ─── Deadline card ────────────────────────────────────────────── */
+function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, rows, footer, onClick }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        backgroundColor: '#ffffff',
+        borderRadius: '12px',
+        border: '1px solid #e5e7eb',
+        padding: '20px 24px',
+        cursor: onClick ? 'pointer' : 'default',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'all 0.2s ease',
+      }}
+      onMouseEnter={(e) => {
+        if (onClick) {
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.05)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'none';
+        e.currentTarget.style.boxShadow = 'none';
+      }}
+    >
       <p
         style={{
-          fontFamily: "'Outfit', sans-serif",
-          fontSize: '28px',
-          fontWeight: 700,
-          color: '#0f172a',
+          fontFamily: FONT,
+          fontSize: '12px',
+          fontWeight: 500,
+          color: '#94a3b8',
+          textTransform: 'uppercase',
+          letterSpacing: '0.03em',
+          marginBottom: '10px',
         }}
       >
+        {title}
+      </p>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: FONT, fontSize: '32px', fontWeight: 700, color: bigColor }}>
+          {big}
+        </span>
+        <span style={{ fontFamily: FONT, fontSize: '13px', color: '#64748b' }}>{unit}</span>
+        {pill && (
+          <span
+            style={{
+              fontFamily: FONT,
+              fontSize: '12px',
+              fontWeight: 600,
+              color: '#b91c1c',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '999px',
+              padding: '2px 10px',
+            }}
+          >
+            {pill}
+          </span>
+        )}
+      </div>
+      {rows && (
+        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {rows}
+        </div>
+      )}
+      <div style={{ flex: 1 }} />
+      {footer && (
+        <p
+          style={{
+            fontFamily: FONT,
+            fontSize: '12px',
+            color: '#64748b',
+            marginTop: '14px',
+            paddingTop: '12px',
+            borderTop: '1px solid #f1f5f9',
+          }}
+        >
+          {footer}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function DeadlineRow({ label, value }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <span style={{ fontFamily: FONT, fontSize: '13px', color: '#64748b' }}>{label}</span>
+      <span style={{ fontFamily: FONT, fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
         {value}
+      </span>
+    </div>
+  );
+}
+
+function ServiceChip({ service, count }) {
+  return (
+    <span
+      style={{
+        fontFamily: FONT,
+        fontSize: '12px',
+        color: '#475569',
+        backgroundColor: '#f8fafc',
+        border: '1px solid #e5e7eb',
+        borderRadius: '999px',
+        padding: '3px 10px',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {service} <strong style={{ color: '#0f172a' }}>{count}</strong>
+    </span>
+  );
+}
+
+/* ─── Ops mini-stat ────────────────────────────────────────────── */
+function OpsStat({ label, value, detail, tone = 'default', onClick }) {
+  const valueColor = tone === 'warn' ? '#b45309' : tone === 'bad' ? '#b91c1c' : '#0f172a';
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        flex: 1,
+        minWidth: '150px',
+        backgroundColor: '#ffffff',
+        borderRadius: '12px',
+        border: '1px solid #e5e7eb',
+        padding: '14px 18px',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'all 0.2s ease',
+      }}
+      onMouseEnter={(e) => {
+        if (onClick) {
+          e.currentTarget.style.transform = 'translateY(-1px)';
+          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'none';
+        e.currentTarget.style.boxShadow = 'none';
+      }}
+    >
+      <p
+        style={{
+          fontFamily: FONT,
+          fontSize: '11px',
+          fontWeight: 500,
+          color: '#94a3b8',
+          textTransform: 'uppercase',
+          letterSpacing: '0.03em',
+          marginBottom: '4px',
+        }}
+      >
+        {label}
+      </p>
+      <p style={{ fontFamily: FONT, fontSize: '20px', fontWeight: 700, color: valueColor }}>
+        {value}
+        {detail && (
+          <span
+            style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8', marginLeft: '8px' }}
+          >
+            {detail}
+          </span>
+        )}
       </p>
     </div>
   );
 }
 
-/* ─── Module status dot ────────────────────────────────────────── */
+/* ─── Module status dot (staff view) ───────────────────────────── */
 function ModuleStatusDot({ mod }) {
-  const dotStyle = {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-  };
-
-  if (mod.status === 'live') {
-    return <span style={{ ...dotStyle, backgroundColor: '#38bdf8' }} />;
-  }
-  if (mod.status === 'beta') {
-    return <span style={{ ...dotStyle, backgroundColor: '#f59e0b' }} />;
-  }
-  // planned
+  const dotStyle = { width: '8px', height: '8px', borderRadius: '50%' };
+  if (mod.status === 'live') return <span style={{ ...dotStyle, backgroundColor: '#38bdf8' }} />;
+  if (mod.status === 'beta') return <span style={{ ...dotStyle, backgroundColor: '#f59e0b' }} />;
   return (
     <span
-      style={{
-        ...dotStyle,
-        backgroundColor: 'transparent',
-        border: '1.5px solid #94a3b8',
-      }}
+      style={{ ...dotStyle, backgroundColor: 'transparent', border: '1.5px solid #94a3b8' }}
     />
   );
+}
+
+/* ─── Attention queue assembly ─────────────────────────────────── */
+// Priority order: things already late or broken (red), money waiting on Bobby
+// (green — accepted quotes to commit), then everything pending (amber/sky).
+function buildAttentionItems(data, navigate) {
+  const items = [];
+  const plural = (n, s) => `${n} ${s}${n === 1 ? '' : 's'}`;
+
+  if (data.ch.overdue > 0) {
+    const names = data.ch.overdueList
+      .map((r) => r.entity?.name)
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(', ');
+    items.push({
+      id: 'ch-overdue',
+      accent: '#ef4444',
+      icon: AlertTriangle,
+      title: `${plural(data.ch.overdue, 'Companies House filing')} past deadline — penalty risk`,
+      subtitle: names + (data.ch.overdue > 3 ? '…' : ''),
+      onClick: () => navigate('/planner/ready'),
+    });
+  }
+
+  data.onboarding.issues.forEach((o) => {
+    items.push({
+      id: `onb-${o.id}`,
+      accent: '#ef4444',
+      icon: AlertTriangle,
+      title: `${o.entity?.name || 'Onboarding'} — flagged with issues`,
+      subtitle: 'Onboarding needs unblocking',
+      onClick: () => navigate('/onboarding'),
+    });
+  });
+
+  data.quotes.accepted.forEach((q) => {
+    items.push({
+      id: `acc-${q.id}`,
+      accent: '#22c55e',
+      icon: CheckCheck,
+      title: `${q.relationship_group || q.quote_ref} accepted ${q.quote_ref}${
+        q.accepted_at ? ` — ${shortDate(q.accepted_at)}` : ''
+      }`,
+      subtitle: `${formatCurrency2dp(q.monthly_gross || 0)}/mo · ${formatCurrency2dp(
+        q.annual_total || 0,
+      )}/yr inc VAT · review and push to QBO`,
+      onClick: () => navigate(`/manage/quotes/${q.id}`),
+    });
+  });
+
+  data.quotes.pendingApproval.forEach((q) => {
+    items.push({
+      id: `pend-${q.id}`,
+      accent: '#f59e0b',
+      icon: Clock,
+      title: `${q.relationship_group || q.quote_ref} — quote awaiting approval`,
+      subtitle: q.quote_ref,
+      onClick: () => navigate(`/manage/quotes/${q.id}`),
+    });
+  });
+
+  data.quotes.expiring.forEach((q) => {
+    items.push({
+      id: `exp-${q.id}`,
+      accent: '#f87171',
+      icon: AlertTriangle,
+      title: `${q.relationship_group || q.quote_ref} — accepted quote expires ${shortDate(
+        q.valid_until,
+      )}`,
+      subtitle: q.quote_ref,
+      onClick: () => navigate(`/manage/quotes/${q.id}`),
+    });
+  });
+
+  data.serviceRequests.forEach((r) => {
+    items.push({
+      id: `sr-${r.id}`,
+      accent: '#38bdf8',
+      icon: Inbox,
+      title: `${r.entity?.name || 'A client'} requested ${r.service_title || 'a new service'} via the portal`,
+      subtitle: `Raised ${shortDate(r.created_at)} — respond with a quote`,
+      onClick: () => (r.entity_id ? navigate(`/clients/${r.entity_id}`) : navigate('/onboarding')),
+    });
+  });
+
+  if (data.money.needsReview > 0) {
+    items.push({
+      id: 'billing-review',
+      accent: '#f59e0b',
+      icon: Clock,
+      title: `${plural(data.money.needsReview, 'live billing record')} flagged for review`,
+      subtitle: 'Billing review',
+      onClick: () => navigate('/manage/billing/review'),
+    });
+  }
+
+  return items;
 }
 
 /* ─── HomeScreen ───────────────────────────────────────────────── */
@@ -457,35 +479,22 @@ export default function HomeScreen() {
 
   const firstName = profile?.name?.split(' ')[0] || 'there';
   const isOwner = profile?.can_manage_portal === true;
-  const isManager = false;
-  const canSeeAttention = profile?.can_approve_quotes === true || isManager;
-  const canSeeStats = isOwner || isManager;
+  const canSeeAttention = profile?.can_approve_quotes === true || isOwner;
 
-  // Live data
-  const { items: reviewItems, loading: reviewLoading } =
-    useAwaitingReview(canSeeAttention);
-  const { items: attentionItems, loading: attentionLoading } =
-    useAttentionItems(canSeeAttention);
-  const stats = useWeeklyStats(canSeeStats);
+  const { loading, data } = useDirectorDashboard(isOwner || canSeeAttention);
 
-  // Determine which modules the user can see in the status strip
+  const attentionItems = data ? buildAttentionItems(data, navigate) : [];
+
+  // Staff (non-owner) keep the module strip as their orientation aid.
   const visibleModules = MODULES.filter((mod) => {
-    if (mod.status === 'live') {
-      if (!mod.permissions || mod.permissions.length === 0) return true;
-      return mod.permissions.every((p) => profile?.[p] === true);
-    }
-    if (mod.status === 'planned') {
-      return isOwner || isManager;
-    }
-    return false;
+    if (mod.status !== 'live') return false;
+    if (!mod.permissions || mod.permissions.length === 0) return true;
+    return mod.permissions.every((p) => profile?.[p] === true);
   });
 
-  // If owner, show ALL modules in status strip
-  const statusModules = isOwner ? MODULES : visibleModules;
-
-  // Show max 5 attention items
-  const displayItems = attentionItems.slice(0, 5);
-  const hasMore = attentionItems.length > 5;
+  const bmNote = data?.bmDataAsOf
+    ? `work data from BrightManager · refreshed ${shortDate(data.bmDataAsOf)}`
+    : null;
 
   return (
     <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '40px 24px' }}>
@@ -508,70 +517,18 @@ export default function HomeScreen() {
         >
           {getGreeting()}, {firstName}
         </h1>
-        <span
-          style={{
-            fontFamily: "'Outfit', sans-serif",
-            fontSize: '13px',
-            color: '#94a3b8',
-          }}
-        >
+        <span style={{ fontFamily: FONT, fontSize: '13px', color: '#94a3b8' }}>
           {formatDate()}
         </span>
       </div>
 
-      {/* ── Awaiting review (Bobby + Tracy only — accepted, not yet committed) ── */}
-      {canSeeAttention && !reviewLoading && reviewItems.length > 0 && (
-        <div style={{ marginBottom: '36px' }}>
-          <SectionLabel>Awaiting review</SectionLabel>
-          {reviewItems.slice(0, 5).map((item) => (
-            <ReviewCard
-              key={item.id}
-              quote_ref={item.quote_ref}
-              client={item.client}
-              accepted_at={item.accepted_at}
-              monthly_gross={item.monthly_gross}
-              annual_total={item.annual_total}
-              onClick={item.onClick}
-            />
-          ))}
-          {reviewItems.length > 5 && (
-            <button
-              onClick={() => navigate('/manage/quotes')}
-              style={{
-                fontFamily: "'Outfit', sans-serif",
-                fontSize: '13px',
-                fontWeight: 600,
-                color: '#38bdf8',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '4px 0',
-                marginTop: '4px',
-              }}
-            >
-              View all {reviewItems.length} accepted &rarr;
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── Needs attention (Bobby + Tracy only) ── */}
+      {/* ── Needs attention ── */}
       {canSeeAttention && (
         <div style={{ marginBottom: '36px' }}>
           <SectionLabel>Needs attention</SectionLabel>
-
-          {attentionLoading ? (
-            <p
-              style={{
-                fontFamily: "'Outfit', sans-serif",
-                fontSize: '13px',
-                color: '#94a3b8',
-              }}
-            >
-              Checking...
-            </p>
-          ) : displayItems.length === 0 ? (
-            /* All-clear state */
+          {loading ? (
+            <p style={{ fontFamily: FONT, fontSize: '13px', color: '#94a3b8' }}>Checking…</p>
+          ) : attentionItems.length === 0 ? (
             <div
               style={{
                 display: 'flex',
@@ -585,20 +542,14 @@ export default function HomeScreen() {
               }}
             >
               <CheckCircle size={18} style={{ color: '#22c55e', flexShrink: 0 }} />
-              <p
-                style={{
-                  fontFamily: "'Outfit', sans-serif",
-                  fontSize: '14px',
-                  fontWeight: 500,
-                  color: '#0f172a',
-                }}
-              >
+              <p style={{ fontFamily: FONT, fontSize: '14px', fontWeight: 500, color: '#0f172a' }}>
                 Nothing needs your attention right now.
               </p>
             </div>
           ) : (
-            <>
-              {displayItems.map((item) => (
+            attentionItems
+              .slice(0, 8)
+              .map((item) => (
                 <AttentionCard
                   key={item.id}
                   accent={item.accent}
@@ -607,101 +558,183 @@ export default function HomeScreen() {
                   subtitle={item.subtitle}
                   onClick={item.onClick}
                 />
-              ))}
-              {hasMore && (
-                <button
-                  onClick={() => navigate('/manage')}
-                  style={{
-                    fontFamily: "'Outfit', sans-serif",
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    color: '#38bdf8',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: '4px 0',
-                    marginTop: '4px',
-                  }}
-                >
-                  View all {attentionItems.length} pending &rarr;
-                </button>
-              )}
-            </>
+              ))
           )}
         </div>
       )}
 
-      {/* ── Stats row (Bobby + Tracy only) ── */}
-      {canSeeStats && (
+      {/* ── Practice pulse (owner only) ── */}
+      {isOwner && data && (
         <div style={{ marginBottom: '36px' }}>
-          <SectionLabel>This week</SectionLabel>
-          <div style={{ display: 'flex', gap: '16px' }}>
+          <SectionLabel>Practice pulse</SectionLabel>
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
             <StatCard
-              label="Fees committed"
+              label="Recurring fees"
+              value={`${formatCurrency(data.money.mrrNet)}/mo`}
+              sub={`${formatCurrency(data.money.mrrNet * 12)}/yr net · ${
+                data.money.activeBillingCount
+              } live billing records`}
+              onClick={() => navigate('/planning')}
+            />
+            <StatCard
+              label={`Committed in ${thisMonthName}`}
               value={
-                stats.feesCommitted !== null
-                  ? formatCurrency(stats.feesCommitted)
+                data.money.committedThisMonth > 0
+                  ? `+${formatCurrency(data.money.committedThisMonth)}/mo`
                   : '—'
               }
-            />
-            <StatCard
-              label="Quotes created"
-              value={stats.quotesCreated !== null ? stats.quotesCreated : '—'}
-            />
-            <StatCard
-              label="Awaiting approval"
-              value={
-                stats.awaitingApproval !== null ? stats.awaitingApproval : '—'
+              sub={
+                data.money.committedCount > 0
+                  ? `${data.money.committedCount} new billing record${
+                      data.money.committedCount === 1 ? '' : 's'
+                    }`
+                  : 'nothing committed yet this month'
               }
-              onClick={() => navigate('/manage')}
+              onClick={() => navigate('/manage/billing/review')}
+            />
+            <StatCard
+              label="Quote pipeline"
+              value={formatCurrency(data.quotes.sentAnnual) + '/yr'}
+              sub={`${data.quotes.sent.length} quote${
+                data.quotes.sent.length === 1 ? '' : 's'
+              } out with clients`}
+              onClick={() => navigate('/manage/quotes')}
+            />
+            <StatCard
+              label="Active clients"
+              value={data.activeClients}
+              sub={`${data.money.activeBillingCount} on recurring billing`}
+              onClick={() => navigate('/clients')}
             />
           </div>
         </div>
       )}
 
-      {/* ── Job review radar (Bobby + Tracy only) ── */}
-      {canSeeStats && (
+      {/* ── Deadlines (owner only) — live view of the Monday digest ── */}
+      {isOwner && data && (
         <div style={{ marginBottom: '36px' }}>
-          <SectionLabel>Job review</SectionLabel>
-          <JobReviewRadar />
+          <SectionLabel note={bmNote}>Deadlines</SectionLabel>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              gap: '16px',
+            }}
+          >
+            <DeadlineCard
+              title="Companies House accounts"
+              big={data.ch.thisMonth}
+              unit={`due in ${thisMonthName}`}
+              pill={data.ch.overdue > 0 ? `${data.ch.overdue} past deadline` : null}
+              rows={
+                <>
+                  <DeadlineRow label={nextMonthName} value={data.ch.nextMonth} />
+                  <DeadlineRow label="Next 6 months" value={data.ch.sixMonths} />
+                </>
+              }
+              footer={`~${data.ch.runRate} filings a week clears the 6-month pile`}
+              onClick={() => navigate('/planner/ready')}
+            />
+            <DeadlineCard
+              title="Self Assessment"
+              big={data.sa.count}
+              unit={`returns due 31 Jan ${data.sa.year}`}
+              footer={`~${data.sa.runRate} a week from now stays on track`}
+              onClick={() => navigate('/planner/ready')}
+            />
+            <DeadlineCard
+              title="Work past BM deadline"
+              big={data.overdueWork.total}
+              bigColor={data.overdueWork.total > 0 ? '#b91c1c' : '#0f172a'}
+              unit="open jobs late"
+              rows={
+                data.overdueWork.byService.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {data.overdueWork.byService.slice(0, 5).map((r) => (
+                      <ServiceChip key={r.service} service={r.service} count={r.count} />
+                    ))}
+                    {data.overdueWork.byService.length > 5 && (
+                      <ServiceChip
+                        service="other"
+                        count={data.overdueWork.byService
+                          .slice(5)
+                          .reduce((s, r) => s + r.count, 0)}
+                      />
+                    )}
+                  </div>
+                )
+              }
+              footer="Open the planner to reprioritise"
+              onClick={() => navigate('/planner/ready')}
+            />
+          </div>
         </div>
       )}
 
-      {/* ── Module status strip ── */}
-      <div>
-        <SectionLabel>Modules</SectionLabel>
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '20px',
-            alignItems: 'center',
-          }}
-        >
-          {statusModules.map((mod) => (
-            <div
-              key={mod.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-            >
-              <ModuleStatusDot mod={mod} />
-              <span
-                style={{
-                  fontFamily: "'Outfit', sans-serif",
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  color: mod.status === 'planned' ? '#94a3b8' : '#1e293b',
-                }}
-              >
-                {mod.label}
-              </span>
-            </div>
-          ))}
+      {/* ── Operations (owner only) ── */}
+      {isOwner && data && (
+        <div style={{ marginBottom: '36px' }}>
+          <SectionLabel>Operations</SectionLabel>
+          <JobReviewRadar />
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <OpsStat
+              label="Onboardings in flight"
+              value={data.onboarding.inFlight}
+              detail={
+                data.onboarding.issues.length > 0
+                  ? `${data.onboarding.issues.length} with issues`
+                  : null
+              }
+              tone={data.onboarding.issues.length > 0 ? 'warn' : 'default'}
+              onClick={() => navigate('/onboarding')}
+            />
+            <OpsStat
+              label="CH codes"
+              value={data.chCodes.awaiting + data.chCodes.stalled}
+              detail={data.chCodes.stalled > 0 ? `${data.chCodes.stalled} stalled` : 'in progress'}
+              tone={data.chCodes.stalled > 0 ? 'warn' : 'default'}
+              onClick={() => navigate('/onboarding/ch-codes')}
+            />
+            <OpsStat
+              label="Admin tasks"
+              value={data.adminTasksOpen}
+              detail="open"
+              onClick={() => navigate('/admin/tasks')}
+            />
+            <OpsStat
+              label="Issues log"
+              value={data.issuesOpen}
+              detail="open"
+              tone={data.issuesOpen > 0 ? 'warn' : 'default'}
+              onClick={() => navigate('/issues')}
+            />
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ── Module strip (staff orientation — owners know the sidebar) ── */}
+      {!isOwner && (
+        <div>
+          <SectionLabel>Modules</SectionLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center' }}>
+            {visibleModules.map((mod) => (
+              <div key={mod.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ModuleStatusDot mod={mod} />
+                <span
+                  style={{
+                    fontFamily: FONT,
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: '#1e293b',
+                  }}
+                >
+                  {mod.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
