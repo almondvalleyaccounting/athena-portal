@@ -170,9 +170,23 @@ Deno.serve(async (req) => {
           const dobYear = o.date_of_birth?.year ?? null;
           const dobMonth = o.date_of_birth?.month ?? null;
 
-          // Match person: by ch_officer_id, else by name + dob.
+          // Match person: per-appointment entity_people id first, then the
+          // legacy single id on people, else name + dob.
+          //
+          // Companies House assigns a DISTINCT officer id per company, so a
+          // multi-company director needs the entity-scoped id — the single
+          // (legacy) id on people can only hold one company's id and gets
+          // overwritten/lost if that person is ever merged with another of
+          // their own company appointments (see project-ch-code-data-quality
+          // memory, Lewis Mckechnie — a "Re-sync all" without this check
+          // would have silently recreated the duplicate it just fixed).
           let personId: string | null = null;
           if (officerId) {
+            const { data: byAppointment } = await service.from("entity_people")
+              .select("person_id").eq("entity_id", e.id).eq("ch_officer_id", officerId).maybeSingle();
+            if (byAppointment) personId = byAppointment.person_id;
+          }
+          if (!personId && officerId) {
             const { data: byOfficer } = await service.from("people").select("id").eq("ch_officer_id", officerId).maybeSingle();
             if (byOfficer) personId = byOfficer.id;
           }
@@ -212,6 +226,7 @@ Deno.serve(async (req) => {
             started_on: o.appointed_on ?? null,
             ended_on: null,
             source: "ch_officers",
+            ch_officer_id: officerId ?? null,
           }, { onConflict: "entity_id,person_id,role" });
         }
 
@@ -233,6 +248,11 @@ Deno.serve(async (req) => {
 
           let personId: string | null = null;
           if (pscId) {
+            const { data: byAppointment } = await service.from("entity_people")
+              .select("person_id").eq("entity_id", e.id).eq("ch_psc_id", pscId).maybeSingle();
+            if (byAppointment) personId = byAppointment.person_id;
+          }
+          if (!personId && pscId) {
             const { data: byPsc } = await service.from("people").select("id").eq("ch_psc_id", pscId).maybeSingle();
             if (byPsc) personId = byPsc.id;
           }
@@ -277,6 +297,7 @@ Deno.serve(async (req) => {
             started_on: psc.notified_on ?? null,
             ended_on: null,
             source: "ch_psc",
+            ch_psc_id: pscId ?? null,
           }, { onConflict: "entity_id,person_id,role" });
         }
 
