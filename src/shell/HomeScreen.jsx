@@ -4,6 +4,7 @@ import { AlertTriangle, Clock, CheckCircle, CheckCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { MODULES } from '../modules.config';
 import { useAuth } from './AppShell';
+import JobReviewRadar from '../modules/job-review/DashboardRadar';
 
 /* ─── Helpers ──────────────────────────────────────────────────── */
 function formatDate() {
@@ -655,6 +656,14 @@ export default function HomeScreen() {
               onClick={() => navigate('/manage')}
             />
           </div>
+        </div>
+      )}
+
+      {/* ── Job review radar (Bobby + Tracy only) ── */}
+      {canSeeStats && (
+        <div style={{ marginBottom: '36px' }}>
+          <SectionLabel>Job review</SectionLabel>
+          <JobReviewRadar />
         </div>
       )}
 
