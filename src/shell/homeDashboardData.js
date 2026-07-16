@@ -133,9 +133,11 @@ export function useDirectorDashboard(enabled) {
             'id, quote_ref, relationship_group, status, monthly_gross, annual_total, accepted_at, valid_until, created_at',
           )
           .in('status', ['pending_approval', 'awaiting_approval', 'sent', 'accepted']),
+        // Two FKs point at entities (entity_id, referred_by_entity_id) — the
+        // embed must name the constraint or PostgREST rejects it as ambiguous.
         supabase
           .from('onboardings')
-          .select('id, status, entity:entities(name)')
+          .select('id, status, entity:entities!onboardings_entity_id_fkey(name)')
           .in('status', ['active', 'issues']),
         supabase
           .from('portal_service_requests')
