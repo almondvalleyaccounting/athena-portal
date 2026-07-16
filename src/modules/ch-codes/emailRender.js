@@ -43,6 +43,8 @@ export function htmlToText(html) {
     .replace(/<li[^>]*>/gi, '\n • ')
     .replace(/<br\s*\/?>(?=)/gi, '\n')
     .replace(/<\/(p|div|tr|h[1-6]|ul|ol)>/gi, '\n')
+    // Keep link targets in plaintext: <a href="url">text</a> → "text (url)".
+    .replace(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)')
     .replace(/<[^>]+>/g, '')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
     .replace(/[ \t]+\n/g, '\n')
