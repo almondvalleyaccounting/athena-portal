@@ -314,7 +314,7 @@ export default function NewOnboardingView() {
         onClose={() => setShowNewClient(false)}
         initialName={search}
         onSave={async (fields) => {
-          const created = await createEntity({ name: fields.name, prospectEmail: fields.prospect_email, type: fields.type });
+          const created = await createEntity({ name: fields.name, prospectEmail: fields.prospect_email, prospectPhone: fields.prospect_phone, type: fields.type });
           setEntity(created);
           setShowNewClient(false);
           return created;

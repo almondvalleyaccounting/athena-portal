@@ -3,7 +3,8 @@ import { X } from 'lucide-react';
 
 /*
   Shared "Add new client" modal used across the portal.
-  Collects: name (required), email, entity type.
+  Collects: entity type, name (or first/middle/last for sole traders),
+  email, phone.
 
   Props:
     open        — boolean, controls visibility
@@ -21,39 +22,79 @@ const ENTITY_TYPES = [
 ];
 
 export default function NewClientModal({ open, onClose, onSave, initialName = '' }) {
-  const [name, setName] = useState(initialName);
-  const [email, setEmail] = useState('');
   const [entityType, setEntityType] = useState('limited_company');
+  const [name, setName] = useState(initialName);
+  const [firstName, setFirstName] = useState('');
+  const [middleName, setMiddleName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phoneCode, setPhoneCode] = useState('+44');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const nameRef = useRef(null);
+  const typeRef = useRef(null);
 
   // Reset fields when modal opens
   useEffect(() => {
     if (open) {
-      setName(initialName);
-      setEmail('');
       setEntityType('limited_company');
+      setName(initialName);
+      setFirstName('');
+      setMiddleName('');
+      setLastName('');
+      setEmail('');
+      setPhoneCode('+44');
+      setPhoneNumber('');
       setError('');
       setSaving(false);
-      // Focus name input after render
-      setTimeout(() => nameRef.current?.focus(), 50);
+      // Focus type select after render — it's the first decision to make
+      setTimeout(() => typeRef.current?.focus(), 50);
     }
   }, [open, initialName]);
 
   if (!open) return null;
 
-  const canSave = name.trim().length > 0 && !saving;
+  const isSoleTrader = entityType === 'sole_trader';
+
+  // Switching type shouldn't lose whatever the user already typed — best-effort
+  // split/recombine between the single name field and the first/middle/last split.
+  function handleTypeChange(newType) {
+    if (newType === 'sole_trader' && entityType !== 'sole_trader') {
+      if (!firstName && !lastName && name.trim()) {
+        const parts = name.trim().split(/\s+/);
+        setFirstName(parts[0] || '');
+        setLastName(parts.length > 1 ? parts[parts.length - 1] : '');
+        setMiddleName(parts.length > 2 ? parts.slice(1, -1).join(' ') : '');
+      }
+    } else if (newType !== 'sole_trader' && entityType === 'sole_trader') {
+      if (!name.trim()) {
+        setName([firstName, middleName, lastName].filter(Boolean).join(' '));
+      }
+    }
+    setEntityType(newType);
+  }
+
+  const fullName = isSoleTrader
+    ? [firstName.trim(), middleName.trim(), lastName.trim()].filter(Boolean).join(' ')
+    : name.trim();
+  const canSave = fullName.length > 0
+    && !saving
+    && (!isSoleTrader || (firstName.trim().length > 0 && lastName.trim().length > 0));
 
   async function handleSave() {
     if (!canSave) return;
     setSaving(true);
     setError('');
 
+    const phone = phoneNumber.trim()
+      ? `${phoneCode.trim() || '+44'} ${phoneNumber.trim()}`
+      : null;
+
     try {
       const result = await onSave({
-        name: name.trim(),
+        name: fullName,
         prospect_email: email.trim() || null,
+        prospect_phone: phone,
         type: entityType,
         entity_status: 'prospect',
       });
@@ -65,6 +106,8 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
     }
     setSaving(false);
   }
+
+  const onEnter = (e) => { if (e.key === 'Enter') handleSave(); };
 
   return (
     <div
@@ -123,39 +166,12 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
           Add a new client to Athena. BrightManager clients are synced separately.
         </p>
 
-        {/* Name */}
-        <label style={labelStyle}>Name *</label>
-        <input
-          ref={nameRef}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
-          placeholder="Client or business name"
-          disabled={saving}
-          style={inputStyle}
-          onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
-          onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
-        />
-
-        {/* Email */}
-        <label style={{ ...labelStyle, marginTop: '16px' }}>Email</label>
-        <input
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
-          placeholder="contact@example.com"
-          type="email"
-          disabled={saving}
-          style={inputStyle}
-          onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
-          onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
-        />
-
         {/* Entity type */}
-        <label style={{ ...labelStyle, marginTop: '16px' }}>Type</label>
+        <label style={labelStyle}>Type</label>
         <select
+          ref={typeRef}
           value={entityType}
-          onChange={(e) => setEntityType(e.target.value)}
+          onChange={(e) => handleTypeChange(e.target.value)}
           disabled={saving}
           style={{
             ...inputStyle,
@@ -167,6 +183,105 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
             <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
+
+        {/* Name */}
+        {isSoleTrader ? (
+          <>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>First name *</label>
+                <input
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  onKeyDown={onEnter}
+                  placeholder="First name"
+                  disabled={saving}
+                  style={inputStyle}
+                  onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+                  onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Middle name</label>
+                <input
+                  value={middleName}
+                  onChange={(e) => setMiddleName(e.target.value)}
+                  onKeyDown={onEnter}
+                  placeholder="Middle name"
+                  disabled={saving}
+                  style={inputStyle}
+                  onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+                  onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+                />
+              </div>
+            </div>
+            <label style={{ ...labelStyle, marginTop: '16px' }}>Last name *</label>
+            <input
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              onKeyDown={onEnter}
+              placeholder="Last name"
+              disabled={saving}
+              style={inputStyle}
+              onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+              onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+            />
+          </>
+        ) : (
+          <>
+            <label style={{ ...labelStyle, marginTop: '16px' }}>Name *</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={onEnter}
+              placeholder="Client or business name"
+              disabled={saving}
+              style={inputStyle}
+              onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+              onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+            />
+          </>
+        )}
+
+        {/* Email */}
+        <label style={{ ...labelStyle, marginTop: '16px' }}>Email</label>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={onEnter}
+          placeholder="contact@example.com"
+          type="email"
+          disabled={saving}
+          style={inputStyle}
+          onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+          onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+        />
+
+        {/* Phone */}
+        <label style={{ ...labelStyle, marginTop: '16px' }}>Phone</label>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input
+            value={phoneCode}
+            onChange={(e) => setPhoneCode(e.target.value)}
+            onKeyDown={onEnter}
+            placeholder="+44"
+            disabled={saving}
+            style={{ ...inputStyle, width: '72px', flex: 'none', textAlign: 'center' }}
+            onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+            onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+          />
+          <input
+            value={phoneNumber}
+            onChange={(e) => setPhoneNumber(e.target.value)}
+            onKeyDown={onEnter}
+            placeholder="7700 900000"
+            type="tel"
+            disabled={saving}
+            style={{ ...inputStyle, flex: 1 }}
+            onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
+            onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+          />
+        </div>
 
         {/* Error */}
         {error && (

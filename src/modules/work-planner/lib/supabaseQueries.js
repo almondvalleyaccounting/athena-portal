@@ -212,6 +212,7 @@ export async function insertEntity(fields) {
         entity_status: fields.entity_status || fields.status || 'prospect',
         source: 'athena',
         prospect_email: fields.prospect_email || fields.email || null,
+        prospect_phone: fields.prospect_phone || null,
       };
 
   const { data, error } = await supabase

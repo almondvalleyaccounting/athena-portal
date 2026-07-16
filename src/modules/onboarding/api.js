@@ -303,7 +303,7 @@ export async function searchEntities(term) {
 }
 
 // Mirrors the Clients page insert so prospects can be created mid-flow
-export async function createEntity({ name, prospectEmail, type }) {
+export async function createEntity({ name, prospectEmail, prospectPhone, type }) {
   const { data, error } = await supabase
     .from('entities')
     .insert({
@@ -311,6 +311,7 @@ export async function createEntity({ name, prospectEmail, type }) {
       type: type || 'limited_company',
       entity_status: 'prospect',
       prospect_email: prospectEmail || null,
+      prospect_phone: prospectPhone || null,
       source: 'athena',
     })
     .select('id, name, entity_status')

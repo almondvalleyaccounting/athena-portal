@@ -104,6 +104,7 @@ export default function ClientsPage() {
         type: fields.type || 'limited_company',
         entity_status: fields.entity_status || fields.status || 'prospect',
         prospect_email: fields.prospect_email || null,
+        prospect_phone: fields.prospect_phone || null,
         source: 'athena',
       })
       .select()
