@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, ClipboardList, Copy, Download, Plus, X,
-  ChevronDown, ChevronRight, MessageSquare, AlertTriangle, Send, CalendarDays,
+  ChevronDown, ChevronRight, MessageSquare, AlertTriangle, Send, CalendarDays, RotateCcw,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../shell/AppShell';
@@ -19,6 +19,12 @@ const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12
   - Reallocation proposals from the capacity planner (allocation_changes).
   - A live summary of in-flight onboardings.
   Sections collapse; tasks sort by deadline so the most urgent surface first.
+
+  Completing a task moves it off the open list onto the Completed tab, where
+  BM verification shows silently (awaiting check → confirmed) and a task can
+  be reopened. Reopening sets reopened_at, which holds off BM auto-confirm
+  until the task is completed again — otherwise a reopened task whose value
+  BM already holds would vanish straight back to Completed on the next load.
 */
 
 const FIELD_LABELS = { ch_auth_code: 'CH auth code', utr: 'UTR', vat_number: 'VAT number', paye_ref: 'PAYE ref' };
@@ -39,6 +45,8 @@ export default function AdminTasksPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const [tasks, setTasks] = useState(null);
+  const [completed, setCompleted] = useState(null);
+  const [view, setView] = useState('open');
   const [notesByTask, setNotesByTask] = useState({});
   const [drafts, setDrafts] = useState([]);
   const [onboardings, setOnboardings] = useState([]);
@@ -60,11 +68,17 @@ export default function AdminTasksPage() {
       const { data: confirmed } = await supabase.rpc('admin_tasks_confirm_from_bm');
       if (confirmed > 0) setConfirmedNow(confirmed);
 
-      const [{ data: t, error: e1 }, { data: d }, { data: st }, { data: obs }] = await Promise.all([
+      const [{ data: t, error: e1 }, { data: ct }, { data: d }, { data: st }, { data: obs }] = await Promise.all([
         supabase.from('admin_tasks')
           .select('*, entity:entities(id, name)')
-          .is('confirmed_at', null).is('dismissed_at', null)
+          .is('done_at', null).is('confirmed_at', null).is('dismissed_at', null)
           .order('created_at', { ascending: false }),
+        supabase.from('admin_tasks')
+          .select('*, entity:entities(id, name)')
+          .is('dismissed_at', null)
+          .or('done_at.not.is.null,confirmed_at.not.is.null')
+          .order('done_at', { ascending: false, nullsFirst: false })
+          .limit(150),
         supabase.from('allocation_changes').select('*').eq('status', 'draft'),
         supabase.from('staff_profiles').select('id, name, email, is_active'),
         supabase.from('onboardings')
@@ -73,6 +87,7 @@ export default function AdminTasksPage() {
       ]);
       if (e1) throw e1;
       setTasks(t || []);
+      setCompleted(ct || []);
       setDrafts(d || []);
       const st2 = (st || []);
       setStaffMap(Object.fromEntries(st2.map((s) => [s.id, s.name])));
@@ -121,14 +136,20 @@ export default function AdminTasksPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function toggleDone(task) {
-    const nowDone = !task.done_at;
-    const patch = nowDone
-      ? { done_at: new Date().toISOString(), ...(task.field ? {} : { confirmed_at: new Date().toISOString() }) }
-      : { done_at: null };
-    setTasks((prev) => prev
-      .map((t) => (t.id === task.id ? { ...t, ...patch } : t))
-      .filter((t) => !t.confirmed_at));
+  async function complete(task) {
+    const now = new Date().toISOString();
+    // Field-less tasks have nothing BM can verify, so they confirm immediately.
+    const patch = { done_at: now, ...(task.field ? {} : { confirmed_at: now }) };
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
+    setCompleted((prev) => [{ ...task, ...patch }, ...(prev || [])]);
+    const { error: err } = await supabase.from('admin_tasks').update(patch).eq('id', task.id);
+    if (err) { setError(err.message); load(); }
+  }
+
+  async function reopen(task) {
+    const patch = { done_at: null, confirmed_at: null, reopened_at: new Date().toISOString() };
+    setCompleted((prev) => (prev || []).filter((t) => t.id !== task.id));
+    setTasks((prev) => [{ ...task, ...patch }, ...(prev || [])]);
     const { error: err } = await supabase.from('admin_tasks').update(patch).eq('id', task.id);
     if (err) { setError(err.message); load(); }
   }
@@ -164,7 +185,7 @@ export default function AdminTasksPage() {
       kind: 'manual', title: newTitle.trim(), source: 'Added manually', created_by: profile?.id || null,
     });
     if (err) { setError(err.message); return; }
-    setNewTitle(''); setAdding(false); load();
+    setNewTitle(''); setAdding(false); setView('open'); load();
   }
 
   async function addNote(taskId, body) {
@@ -212,7 +233,7 @@ export default function AdminTasksPage() {
       Value: t.value || '', Deadline: t.deadline || '', Source: t.source || '',
       Added: new Date(t.created_at).toLocaleDateString('en-GB'),
       Escalated: t.escalated_to ? (staffMap[t.escalated_to] || 'yes') : '',
-      Status: t.done_at ? 'done — awaiting BM confirmation' : 'open',
+      Status: 'open',
     }));
     const headers = ['Client', 'Task', 'Field', 'Value', 'Deadline', 'Source', 'Added', 'Escalated', 'Status'];
     const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -225,7 +246,7 @@ export default function AdminTasksPage() {
   }
 
   const open = useMemo(() => {
-    const list = (tasks || []).filter((t) => !t.confirmed_at);
+    const list = (tasks || []).filter((t) => !t.done_at && !t.confirmed_at);
     return list.sort((a, b) => {
       const ad = a.deadline || '9999-12-31', bd = b.deadline || '9999-12-31';
       if (ad !== bd) return ad < bd ? -1 : 1;
@@ -237,7 +258,7 @@ export default function AdminTasksPage() {
     const today = isoToday();
     return {
       open: open.length,
-      overdue: open.filter((t) => t.deadline && t.deadline < today && !t.done_at).length,
+      overdue: open.filter((t) => t.deadline && t.deadline < today).length,
       escalated: open.filter((t) => t.escalated_to).length,
       realloc: drafts.length,
       onboarding: onboardings.length,
@@ -267,7 +288,7 @@ export default function AdminTasksPage() {
 
       {confirmedNow > 0 && (
         <div style={{ ...card, borderColor: '#bbf7d0', background: '#f0fdf4', padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#166534' }}>
-          ✓ {confirmedNow} task{confirmedNow === 1 ? '' : 's'} confirmed complete by the latest BrightManager data and removed.
+          ✓ {confirmedNow} task{confirmedNow === 1 ? '' : 's'} confirmed complete by the latest BrightManager data and moved to Completed.
         </div>
       )}
       {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
@@ -286,26 +307,45 @@ export default function AdminTasksPage() {
 
       {/* ── To key into BrightManager ── */}
       <Section
-        title="To key into BrightManager" count={open.length}
+        title="To key into BrightManager" count={view === 'open' ? open.length : (completed || []).length}
         collapsed={collapsed.bm} onToggle={() => setCollapsed((c) => ({ ...c, bm: !c.bm }))}
+        action={
+          <div style={{ display: 'flex', gap: 4 }}>
+            <TabBtn active={view === 'open'} onClick={() => setView('open')}>Open ({open.length})</TabBtn>
+            <TabBtn active={view === 'completed'} onClick={() => setView('completed')}>Completed ({(completed || []).length})</TabBtn>
+          </div>
+        }
       >
-        {tasks === null && <Empty>Loading…</Empty>}
-        {tasks !== null && open.length === 0 && <Empty>Nothing outstanding — Athena and BrightManager are in step. 🎉</Empty>}
-        {open.map((t) => (
-          <TaskRow
-            key={t.id} t={t}
-            notes={notesByTask[t.id] || []} notesOpen={openNotes.has(t.id)}
-            staffMap={staffMap} copied={copied === t.id}
-            onToggleDone={() => toggleDone(t)}
-            onCopy={() => copyValue(t)}
-            onDismiss={() => dismiss(t)}
-            onDeadline={(d) => setDeadline(t, d)}
-            onToggleNotes={() => toggleNotes(t.id)}
-            onAddNote={(body) => addNote(t.id, body)}
-            onEscalate={() => setEscalateTask(t)}
-            onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
-          />
-        ))}
+        {view === 'open' && <>
+          {tasks === null && <Empty>Loading…</Empty>}
+          {tasks !== null && open.length === 0 && <Empty>Nothing outstanding — Athena and BrightManager are in step. 🎉</Empty>}
+          {open.map((t) => (
+            <TaskRow
+              key={t.id} t={t}
+              notes={notesByTask[t.id] || []} notesOpen={openNotes.has(t.id)}
+              staffMap={staffMap} copied={copied === t.id}
+              onComplete={() => complete(t)}
+              onCopy={() => copyValue(t)}
+              onDismiss={() => dismiss(t)}
+              onDeadline={(d) => setDeadline(t, d)}
+              onToggleNotes={() => toggleNotes(t.id)}
+              onAddNote={(body) => addNote(t.id, body)}
+              onEscalate={() => setEscalateTask(t)}
+              onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
+            />
+          ))}
+        </>}
+        {view === 'completed' && <>
+          {completed === null && <Empty>Loading…</Empty>}
+          {completed !== null && completed.length === 0 && <Empty>Nothing completed yet.</Empty>}
+          {(completed || []).map((t) => (
+            <CompletedRow
+              key={t.id} t={t}
+              onReopen={() => reopen(t)}
+              onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
+            />
+          ))}
+        </>}
       </Section>
 
       {/* ── Reallocations (from capacity planner) ── */}
@@ -378,21 +418,21 @@ export default function AdminTasksPage() {
 
 function TaskRow({
   t, notes, notesOpen, staffMap, copied,
-  onToggleDone, onCopy, onDismiss, onDeadline, onToggleNotes, onAddNote, onEscalate, onOpenClient,
+  onComplete, onCopy, onDismiss, onDeadline, onToggleNotes, onAddNote, onEscalate, onOpenClient,
 }) {
   const [noteDraft, setNoteDraft] = useState('');
   const today = isoToday();
-  const overdue = t.deadline && t.deadline < today && !t.done_at;
+  const overdue = t.deadline && t.deadline < today;
 
   return (
-    <div style={{ borderTop: '1px solid #f8fafc', opacity: t.done_at ? 0.6 : 1 }}>
+    <div style={{ borderTop: '1px solid #f8fafc' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px' }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span
             onClick={onOpenClient || undefined}
             style={{
               fontSize: 13.5, fontWeight: 600, color: '#0f172a', cursor: onOpenClient ? 'pointer' : 'default',
-              textDecoration: t.done_at ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}
             title={t.title}
           >{t.title}</span>
@@ -432,11 +472,11 @@ function TaskRow({
         </button>
 
         <button
-          onClick={onToggleDone}
-          title={t.done_at ? 'Entered in BM — waiting for the next upload to confirm. Click to undo.' : 'Mark as entered into BrightManager'}
-          style={completeBtn(!!t.done_at)}
+          onClick={onComplete}
+          title="Mark as entered into BrightManager — moves to the Completed tab"
+          style={completeBtn(false)}
         >
-          <CheckCircle2 size={13} /> {t.done_at ? 'Entered' : 'Complete'}
+          <CheckCircle2 size={13} /> Complete
         </button>
 
         <button onClick={onDismiss} title="Remove without completing" style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0 }}>
@@ -474,6 +514,49 @@ function TaskRow({
         </div>
       )}
     </div>
+  );
+}
+
+function CompletedRow({ t, onReopen, onOpenClient }) {
+  // Verification status: BM checks tasks with a field silently on each import;
+  // field-less tasks confirm the moment they're completed.
+  const badge = !t.field
+    ? { text: 'Done', bg: '#dcfce7', fg: '#166534', hint: 'Completed — nothing for BrightManager to verify.' }
+    : t.confirmed_at
+      ? { text: '✓ Confirmed in BM', bg: '#dcfce7', fg: '#166534', hint: 'The BrightManager data now holds this value.' }
+      : { text: 'Awaiting BM check', bg: '#fef3c7', fg: '#b45309', hint: 'The next BrightManager upload verifies this silently.' };
+  const when = t.confirmed_at || t.done_at;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc' }}>
+      <CheckCircle2 size={14} color="#16a34a" style={{ flexShrink: 0 }} />
+      <span
+        onClick={onOpenClient || undefined} title={t.title}
+        style={{
+          flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: '#334155',
+          cursor: onOpenClient ? 'pointer' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}
+      >{t.title}</span>
+      {t.value && <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>{t.value}</span>}
+      <span title={badge.hint} style={{
+        fontSize: 10.5, padding: '2px 8px', borderRadius: 999, background: badge.bg, color: badge.fg,
+        fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',
+      }}>{badge.text}</span>
+      <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtShort(when)}</span>
+      <button onClick={onReopen} title="Move back to open tasks" style={{ ...btn('ghost'), padding: '5px 10px', fontSize: 12 }}>
+        <RotateCcw size={12} /> Reopen
+      </button>
+    </div>
+  );
+}
+
+function TabBtn({ active, onClick, children }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: '4px 11px', fontSize: 11.5, fontWeight: 600, fontFamily: font, borderRadius: 999, cursor: 'pointer',
+      background: active ? '#0f172a' : '#fff', color: active ? '#fff' : '#64748b',
+      border: `1px solid ${active ? '#0f172a' : '#e5e7eb'}`, whiteSpace: 'nowrap',
+    }}>{children}</button>
   );
 }
 
