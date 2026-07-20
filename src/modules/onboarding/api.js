@@ -374,17 +374,20 @@ export async function activeOnboardingsForEntity(entityId) {
 // still 'sent' (commit is the terminal billing step, at go-live), so we
 // take the most advanced non-deleted quote rather than requiring committed.
 const QUOTE_PRIORITY = { committed: 5, accepted: 4, sent: 3, approved: 2, pending_approval: 1, draft: 0 };
+// Reads via a names-only SECURITY DEFINER RPC rather than the quotes table:
+// quote/fee amounts are RLS-gated to can_view_client_fees, but onboarding
+// only needs ids/statuses/service ids — which any active staff may see.
 export async function findActiveQuote(entityId) {
-  const { data, error } = await supabase
-    .from('quotes')
-    .select('id, quote_ref, status, created_at, dd_mandate_status, line_items:quote_line_items(service_id)')
-    .eq('entity_id', entityId)
-    .neq('status', 'deleted');
+  const { data, error } = await supabase.rpc('onboarding_quote_for_entity', { p_entity_id: entityId });
   if (error) throw error;
-  const quote = (data || []).sort((a, b) =>
+  const rows = (data || []).sort((a, b) =>
     (QUOTE_PRIORITY[b.status] ?? 0) - (QUOTE_PRIORITY[a.status] ?? 0)
-    || new Date(b.created_at) - new Date(a.created_at))[0] || null;
-  const serviceIds = new Set((quote?.line_items || []).map((li) => li.service_id));
+    || new Date(b.created_at) - new Date(a.created_at));
+  const best = rows[0] || null;
+  const quote = best
+    ? { ...best, line_items: (best.service_ids || []).map((sid) => ({ service_id: sid })) }
+    : null;
+  const serviceIds = new Set(best?.service_ids || []);
   return { quote, serviceIds };
 }
 
@@ -392,14 +395,12 @@ export async function findActiveQuote(entityId) {
 // their live_billing row carries service names ("Bookkeeping & VAT Returns")
 // we can resolve conditions from.
 export async function findLiveBilling(entityId) {
-  const { data, error } = await supabase
-    .from('live_billing')
-    .select('id, status, services')
-    .eq('entity_id', entityId)
-    .eq('status', 'active');
+  // Names-only RPC — live_billing amounts are RLS-gated to
+  // can_view_client_fees; onboarding needs the service names alone.
+  const { data, error } = await supabase.rpc('onboarding_billing_names_for_entity', { p_entity_id: entityId });
   if (error) throw error;
   const rows = data || [];
-  const serviceNames = rows.flatMap((r) => (r.services || []).map((s) => s.service_id).filter(Boolean));
+  const serviceNames = rows.flatMap((r) => r.service_names || []);
   return { hasBilling: rows.length > 0, serviceNames };
 }
 
