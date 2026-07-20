@@ -2,17 +2,21 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import TimesheetView from './views/TimesheetView';
 import DashboardView from './views/DashboardView';
+import EntriesView from './views/EntriesView';
 
 const TABS = [
   { id: 'timesheet', label: 'Timesheet', path: '/timesheets' },
   { id: 'dashboard', label: 'Dashboard', path: '/timesheets/dashboard' },
+  { id: 'entries', label: 'All Entries', path: '/timesheets/entries' },
 ];
 
 export default function TimesheetModule() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const activeTab = location.pathname.includes('/dashboard') ? 'dashboard' : 'timesheet';
+  const activeTab = location.pathname.includes('/dashboard') ? 'dashboard'
+    : location.pathname.includes('/entries') ? 'entries'
+    : 'timesheet';
 
   return (
     <div style={{
@@ -46,6 +50,7 @@ export default function TimesheetModule() {
       <div style={{ flex: 1, overflow: 'auto' }}>
         {activeTab === 'timesheet' && <TimesheetView />}
         {activeTab === 'dashboard' && <DashboardView />}
+        {activeTab === 'entries' && <EntriesView />}
       </div>
     </div>
   );

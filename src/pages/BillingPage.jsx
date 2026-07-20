@@ -28,6 +28,7 @@ export default function BillingPage() {
   const [pushingId, setPushingId] = useState(null);
   const [syncLog, setSyncLog] = useState([]);
   const [showSyncLog, setShowSyncLog] = useState(false);
+  const [lastPull, setLastPull] = useState(null); // most recent direction='pull' row in qbo_sync_log
   const fileRef = useRef(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -118,12 +119,22 @@ export default function BillingPage() {
         .order('created_at', { ascending: false })
         .limit(20);
 
+      // Freshness of the catalog/customer mirror: latest pull event.
+      // Separate query — the 20-row window above can be all pushes.
+      const { data: pullRows } = await supabase
+        .from('qbo_sync_log')
+        .select('created_at, status')
+        .eq('direction', 'pull')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
       setBilling(billingData || []);
       setQuotes(acceptedQuotes || []);
       setEntities(ents || []);
       setGroupMembers(groupMemberRows || []);
       setIgnoredEntityIds(ignored);
       setSyncLog(logData || []);
+      setLastPull((pullRows && pullRows[0]) || null);
     } catch (e) {
       console.error('Failed to load billing data:', e);
     }
@@ -686,6 +697,17 @@ export default function BillingPage() {
           the dashboard leads with revenue and actions, not status. */}
       <div className="mb-4">
         <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
+        {/* Mirror freshness — most recent direction='pull' event in
+            qbo_sync_log (qbo-pull logs every pull via logSync). */}
+        <div className="text-xs text-gray-500 mt-1.5">
+          Last pulled from QBO:{' '}
+          {lastPull
+            ? <span className="font-medium text-gray-700">
+                {new Date(lastPull.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                {lastPull.status && lastPull.status !== 'success' ? ` (${lastPull.status})` : ''}
+              </span>
+            : <span className="font-medium text-gray-700">never</span>}
+        </div>
       </div>
 
       {/* Revenue by fee earner — uses service mapping + capacity-planner

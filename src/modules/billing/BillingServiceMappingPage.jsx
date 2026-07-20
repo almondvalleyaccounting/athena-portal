@@ -15,7 +15,9 @@ const font = "'Outfit', sans-serif";
 // allocations) or to a default fee earner that always handles it
 // (e.g. Payroll → Stephanie). Unmapped services fall back to the
 // accounts_submission assignee for that client.
-const CANONICAL_SERVICES = [
+// Exported: ProductMappingPage / StandardFeesPage reuse this as the
+// baseline list of Athena products.
+export const CANONICAL_SERVICES = [
   { id: 'bookkeeping',          label: 'Bookkeeping' },
   { id: 'vat_review',           label: 'VAT Reviews' },
   { id: 'accounts_preparation', label: 'Accounts Preparation' },

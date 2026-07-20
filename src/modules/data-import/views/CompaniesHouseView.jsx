@@ -43,14 +43,17 @@ export default function CompaniesHouseView() {
         total += r.processed || 0;
         setDone(total);
         setRemaining(r.total_remaining ?? 0);
-        if (r.errors && r.errors.length) {
-          setErrors((prev) => [...prev, ...r.errors]);
-          if (r.errors.some((e) => e.error === 'rate_limited')) {
-            setMessage('Rate-limited — pausing 60s before resuming…');
-            await new Promise((res) => setTimeout(res, 60000));
-            continue;
-          }
+        if (r.errors && r.errors.length) setErrors((prev) => [...prev, ...r.errors]);
+        // The function now waits out short Companies House penalties itself and
+        // reports longer ones as a warning; when a chunk made no progress we
+        // pause before retrying so we don't hammer the closed door.
+        const rateLimitHit = (r.warnings || []).some((w) => /rate limit|slow down/i.test(w));
+        if (rateLimitHit && !r.processed) {
+          setMessage('Companies House is temporarily limiting requests — waiting a minute before resuming…');
+          await new Promise((res) => setTimeout(res, 60000));
+          continue;
         }
+        if (rateLimitHit) setMessage('Companies House briefly limited requests — continuing…');
         if (!r.processed || (r.total_remaining ?? 0) === 0) break;
       }
       setMessage(stopRef.current ? 'Stopped.' : 'Done.');
@@ -68,9 +71,11 @@ export default function CompaniesHouseView() {
           Companies House sync
         </h2>
         <p style={{ fontSize: 13, color: '#64748b', margin: '8px 0 20px' }}>
-          Pulls active officers (directors, secretaries) and individual PSCs (shareholders ≥ 25%)
-          from Companies House for every limited-company client. Powers the client-group view in
-          the Allocations matrix. Requires <code>CH_API_KEY</code> set in Supabase function secrets.
+          Pulls active officers (directors, secretaries), individual PSCs (shareholders ≥ 25%),
+          company status (Active, In Liquidation, proposal to strike off…) and the Confirmation
+          Statement due date from Companies House for every limited-company client.
+          This also runs <strong>automatically every night</strong> (from ~2am), with a
+          confirmation email each morning — the buttons below are for on-demand runs.
         </p>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

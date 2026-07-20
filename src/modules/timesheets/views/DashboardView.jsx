@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Download, ChevronDown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Download, ChevronDown, Lock } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import { fetchAllCompletedForRange, fetchAllTimesheetEntriesForRange, fetchStaffList, fetchEntities } from '../lib/timesheetQueries';
+import { useAuth } from '../../../shell/AppShell';
+import {
+  fetchAllCompletedForRange, fetchAllTimesheetEntriesForRange, fetchStaffList, fetchEntities,
+  fetchTimesheetLocks, createTimesheetLock, removeTimesheetLock,
+} from '../lib/timesheetQueries';
 
 /* ─── Helpers ──────────────────────────────────────────────── */
 function startOfWeek(d) {
@@ -44,6 +49,9 @@ function periodDates(period) {
 }
 
 export default function DashboardView() {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+  const isAdmin = !!profile?.is_portal_admin;
   const [period, setPeriod] = useState('week');
   // Date inputs always shown — dropdown sets defaults, but user can override
   const [customFrom, setCustomFrom] = useState(() => formatISO(periodDates('week').from));
@@ -55,6 +63,13 @@ export default function DashboardView() {
   const [billingData, setBillingData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedSection, setExpandedSection] = useState(null); // 'staff:id', 'service:name', 'client:name'
+  const [expandedStat, setExpandedStat] = useState(null); // 'total' | 'staff' | 'services' | 'clients'
+  const [locks, setLocks] = useState([]);
+  const [lockFrom, setLockFrom] = useState('');
+  const [lockTo, setLockTo] = useState('');
+  const [lockNote, setLockNote] = useState('');
+  const [lockSaving, setLockSaving] = useState(false);
+  const [lockError, setLockError] = useState('');
 
   const dates = useMemo(() => {
     if (customFrom && customTo) {
@@ -70,8 +85,8 @@ export default function DashboardView() {
   useEffect(() => {
     (async () => {
       try {
-        const [staff, ents] = await Promise.all([fetchStaffList(), fetchEntities()]);
-        setStaffList(staff); setEntityList(ents);
+        const [staff, ents, lks] = await Promise.all([fetchStaffList(), fetchEntities(), fetchTimesheetLocks()]);
+        setStaffList(staff); setEntityList(ents); setLocks(lks);
       } catch (e) { console.error(e); }
     })();
   }, []);
@@ -145,6 +160,53 @@ export default function DashboardView() {
   const getTransactions = (filterFn) => allEntries.filter(filterFn).sort((a, b) => new Date(b.completed_at || b.work_date) - new Date(a.completed_at || a.work_date));
 
   const toggleExpand = (key) => setExpandedSection(expandedSection === key ? null : key);
+  const toggleStat = (key) => setExpandedStat(expandedStat === key ? null : key);
+
+  // Full transaction list for the expanded stat card, sorted for its dimension
+  const statTransactions = useMemo(() => {
+    if (!expandedStat) return [];
+    const all = [...allEntries];
+    if (expandedStat === 'staff') {
+      all.sort((a, b) => (staffMap[a._staff]?.name || '').localeCompare(staffMap[b._staff]?.name || '') || new Date(b.completed_at || b.work_date) - new Date(a.completed_at || a.work_date));
+    } else if (expandedStat === 'services') {
+      all.sort((a, b) => (a.service || 'Other').localeCompare(b.service || 'Other') || new Date(b.completed_at || b.work_date) - new Date(a.completed_at || a.work_date));
+    } else if (expandedStat === 'clients') {
+      const cn = (e) => (e._entity ? (entityMap[e._entity]?.name || 'Unknown') : 'No client');
+      all.sort((a, b) => cn(a).localeCompare(cn(b)) || new Date(b.completed_at || b.work_date) - new Date(a.completed_at || a.work_date));
+    } else {
+      all.sort((a, b) => new Date(b.completed_at || b.work_date) - new Date(a.completed_at || a.work_date));
+    }
+    return all;
+  }, [expandedStat, allEntries, staffMap, entityMap]);
+
+  // ── Lock period handlers (admin only) ──
+  const handleLock = async () => {
+    setLockError('');
+    if (!lockFrom || !lockTo) { setLockError('Both dates are required.'); return; }
+    if (lockFrom > lockTo) { setLockError('"From" must be on or before "To".'); return; }
+    setLockSaving(true);
+    try {
+      await createTimesheetLock({ periodStart: lockFrom, periodEnd: lockTo, note: lockNote.trim() || null, lockedBy: profile?.id });
+      setLocks(await fetchTimesheetLocks());
+      setLockFrom(''); setLockTo(''); setLockNote('');
+    } catch (e) {
+      console.error('[Timesheets] lock error:', e);
+      setLockError(e.message || 'Failed to create lock.');
+    }
+    setLockSaving(false);
+  };
+
+  const handleUnlock = async (lock) => {
+    if (!window.confirm(`Unlock ${lock.period_start} — ${lock.period_end}? Entries in this range will become editable again.`)) return;
+    try {
+      const removed = await removeTimesheetLock(lock.id);
+      if (removed === 0) window.alert('Nothing was unlocked — only portal admins can remove locks.');
+      setLocks(await fetchTimesheetLocks());
+    } catch (e) {
+      console.error('[Timesheets] unlock error:', e);
+      window.alert(`Unlock failed: ${e.message || e}`);
+    }
+  };
 
   // Export
   const handleExport = () => {
@@ -196,13 +258,31 @@ export default function DashboardView() {
       </div>
 
       {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading dashboard...</div> : (<>
-        {/* Summary cards */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: 28 }}>
-          <StatCard label="Total Time" value={minutesToDisplay(allMinutes)} accent="#0e7fe0" />
-          <StatCard label="Staff Active" value={byStaff.length} accent="#059669" />
-          <StatCard label="Services" value={byService.length} accent="#d97706" />
-          <StatCard label="Clients" value={byClient.length} accent="#7c3aed" />
+        {/* Summary cards — click to drill down */}
+        <div style={{ display: 'flex', gap: 16, marginBottom: expandedStat ? 12 : 28 }}>
+          <StatCard label="Total Time" value={minutesToDisplay(allMinutes)} accent="#0e7fe0" onClick={() => toggleStat('total')} active={expandedStat === 'total'} />
+          <StatCard label="Staff Active" value={byStaff.length} accent="#059669" onClick={() => toggleStat('staff')} active={expandedStat === 'staff'} />
+          <StatCard label="Services" value={byService.length} accent="#d97706" onClick={() => toggleStat('services')} active={expandedStat === 'services'} />
+          <StatCard label="Clients" value={byClient.length} accent="#7c3aed" onClick={() => toggleStat('clients')} active={expandedStat === 'clients'} />
         </div>
+
+        {/* Stat drilldown — full transaction list */}
+        {expandedStat && (
+          <div style={{ ...cardStyle, marginBottom: 28, padding: '14px 18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+              <h3 style={{ ...sectionTitle, marginBottom: 0 }}>
+                {expandedStat === 'total' && 'All Transactions'}
+                {expandedStat === 'staff' && 'All Transactions — by Staff'}
+                {expandedStat === 'services' && 'All Transactions — by Service'}
+                {expandedStat === 'clients' && 'All Transactions — by Client'}
+              </h3>
+              <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 10 }}>{statTransactions.length} entries</span>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => setExpandedStat(null)} style={{ ...navBtn, fontSize: 11, padding: '3px 8px', color: '#94a3b8' }}>Close</button>
+            </div>
+            <TransactionList items={statTransactions} entityMap={entityMap} staffMap={staffMap} />
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
           {/* Staff hours — clickable */}
@@ -263,7 +343,17 @@ export default function DashboardView() {
                     return (
                       <React.Fragment key={c.client}>
                         <tr onClick={() => toggleExpand(key)} style={{ cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: isOpen ? '#f8fafc' : 'transparent' }}>
-                          <td style={{ padding: '8px 10px', fontWeight: 500, color: '#0f172a' }}>{c.client}</td>
+                          <td style={{ padding: '8px 10px', fontWeight: 500 }}>
+                            {c.entityId ? (
+                              <span
+                                onClick={(e) => { e.stopPropagation(); navigate(`/clients/${c.entityId}`); }}
+                                title="Open client"
+                                style={{ color: '#0e7fe0', cursor: 'pointer' }}
+                              >{c.client}</span>
+                            ) : (
+                              <span style={{ color: '#0f172a' }}>{c.client}</span>
+                            )}
+                          </td>
                           <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: '#0f172a' }}>{minutesToDisplay(c.minutes)}</td>
                           <td style={{ padding: '8px 10px', textAlign: 'right', color: bill ? '#059669' : '#cbd5e1' }}>{bill ? fmt(bill.monthly) : '—'}</td>
                           <td style={{ padding: '8px 10px', textAlign: 'right', color: bill ? '#059669' : '#cbd5e1' }}>{bill ? fmt(bill.annual) : '—'}</td>
@@ -283,6 +373,80 @@ export default function DashboardView() {
               </table>
             )}
           </div>
+
+          {/* Locked periods */}
+          <div style={{ ...cardStyle, gridColumn: '1 / -1' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <Lock size={13} style={{ color: '#94a3b8' }} />
+              <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Locked Periods</h3>
+            </div>
+            <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 14 }}>
+              Time entries dated inside a locked period can't be added, edited or deleted by anyone.
+              {isAdmin ? ' Only portal admins can lock and unlock periods.' : ' Contact a portal admin to lock or unlock a period.'}
+            </div>
+
+            {locks.length === 0 ? (
+              <div style={{ ...emptyStyle, padding: 12 }}>No locked periods</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: isAdmin ? 14 : 0 }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                    <th style={thStyle}>Period</th>
+                    <th style={thStyle}>Note</th>
+                    <th style={thStyle}>Locked By</th>
+                    <th style={thStyle}>Locked At</th>
+                    {isAdmin && <th style={{ ...thStyle, width: 80 }}></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {locks.map((l) => (
+                    <tr key={l.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '8px 10px', fontWeight: 600, color: '#0f172a' }}>
+                        {new Date(l.period_start + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {' — '}
+                        {new Date(l.period_end + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: '#64748b' }}>{l.note || '—'}</td>
+                      <td style={{ padding: '8px 10px', color: '#64748b' }}>{staffMap[l.locked_by]?.name || '—'}</td>
+                      <td style={{ padding: '8px 10px', color: '#94a3b8' }}>{l.locked_at ? new Date(l.locked_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
+                      {isAdmin && (
+                        <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                          <button onClick={() => handleUnlock(l)} style={{ ...navBtn, fontSize: 11, padding: '3px 9px', color: '#b91c1c', borderColor: '#fecaca' }}>Unlock</button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {isAdmin && (
+              <div style={{ borderTop: locks.length > 0 ? '1px solid #f1f5f9' : 'none', paddingTop: locks.length > 0 ? 14 : 0 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={labelStyle}>Lock a period</span>
+                  <input type="date" value={lockFrom} onChange={(e) => setLockFrom(e.target.value)} style={{ ...selectStyle, width: 135 }} />
+                  <span style={{ color: '#94a3b8', fontSize: 12 }}>to</span>
+                  <input type="date" value={lockTo} onChange={(e) => setLockTo(e.target.value)} style={{ ...selectStyle, width: 135 }} />
+                  <input
+                    type="text" placeholder="Note (optional)" value={lockNote}
+                    onChange={(e) => setLockNote(e.target.value)}
+                    style={{ ...selectStyle, minWidth: 200, flex: 1 }}
+                  />
+                  <button
+                    onClick={handleLock}
+                    disabled={lockSaving || !lockFrom || !lockTo}
+                    style={{
+                      ...navBtn, gap: 5, color: '#fff', background: '#0e7fe0', borderColor: '#0e7fe0',
+                      opacity: (lockSaving || !lockFrom || !lockTo) ? 0.5 : 1,
+                    }}
+                  >
+                    <Lock size={12} /> {lockSaving ? 'Locking...' : 'Lock'}
+                  </button>
+                </div>
+                {lockError && <div style={{ fontSize: 11.5, color: '#b91c1c', marginTop: 8 }}>{lockError}</div>}
+              </div>
+            )}
+          </div>
         </div>
       </>)}
     </div>
@@ -293,8 +457,8 @@ export default function DashboardView() {
 function TransactionList({ items, entityMap, staffMap }) {
   if (items.length === 0) return <div style={{ padding: '8px 16px', fontSize: 11, color: '#cbd5e1' }}>No transactions</div>;
   return (
-    <div style={{ background: '#f8fafc', borderRadius: 6, margin: '4px 0 8px', padding: '6px 0', maxHeight: 200, overflowY: 'auto' }}>
-      {items.slice(0, 30).map((t, i) => (
+    <div style={{ background: '#f8fafc', borderRadius: 6, margin: '4px 0 8px', padding: '6px 0', maxHeight: 400, overflowY: 'auto' }}>
+      {items.map((t, i) => (
         <div key={i} style={{ display: 'flex', gap: 8, padding: '4px 12px', fontSize: 11, borderBottom: '1px solid #f1f5f9' }}>
           <span style={{ color: '#0f172a', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title || t.service || '—'}</span>
           <span style={{ color: '#64748b', flexShrink: 0 }}>{t._entity ? (entityMap[t._entity]?.name || '') : ''}</span>
@@ -303,15 +467,26 @@ function TransactionList({ items, entityMap, staffMap }) {
           <span style={{ color: '#cbd5e1', flexShrink: 0, width: 55, textAlign: 'right', fontSize: 10 }}>{new Date(t.completed_at || t.work_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
         </div>
       ))}
-      {items.length > 30 && <div style={{ padding: '4px 12px', fontSize: 10, color: '#94a3b8' }}>...and {items.length - 30} more</div>}
     </div>
   );
 }
 
-function StatCard({ label, value, accent }) {
+function StatCard({ label, value, accent, onClick, active }) {
   return (
-    <div style={{ flex: 1, background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: '16px 20px' }}>
-      <div style={{ fontSize: 11, fontWeight: 500, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 6 }}>{label}</div>
+    <div
+      onClick={onClick}
+      style={{
+        flex: 1, background: '#fff', borderRadius: 12,
+        border: active ? `1px solid ${accent}` : '1px solid #e5e7eb',
+        boxShadow: active ? `0 0 0 1px ${accent}` : 'none',
+        padding: '16px 20px', cursor: onClick ? 'pointer' : 'default',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 500, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</span>
+        {onClick && <ChevronDown size={11} style={{ color: '#cbd5e1', transform: active ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />}
+      </div>
       <div style={{ fontSize: 24, fontWeight: 700, color: accent, fontFamily: "'Outfit', sans-serif" }}>{value}</div>
     </div>
   );

@@ -6,6 +6,7 @@ import {
   fetchCompletedForWeek, fetchTimesheetEntries, upsertTimesheetEntry,
   deleteManualRow, fetchScheduledForStaff, fetchStaffList, fetchEntities,
   upsertCompletionOverride, clearCompletionOverride,
+  fetchTimesheetLocks, isDateLocked,
 } from '../lib/timesheetQueries';
 
 /* ─── Helpers ──────────────────────────────────────────────── */
@@ -49,6 +50,7 @@ export default function TimesheetView() {
   const [completedTasks, setCompletedTasks] = useState([]);
   const [manualEntries, setManualEntries] = useState([]);
   const [scheduledTasks, setScheduledTasks] = useState([]);
+  const [locks, setLocks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState('client');
   const [addingRow, setAddingRow] = useState(false);
@@ -64,12 +66,14 @@ export default function TimesheetView() {
   useEffect(() => {
     (async () => {
       try {
-        const [staff, ents] = await Promise.all([
+        const [staff, ents, lks] = await Promise.all([
           fetchStaffList().catch(() => []),
           fetchEntities().catch(() => []),
+          fetchTimesheetLocks().catch(() => []),
         ]);
         setStaffList(staff);
         setEntityList(ents);
+        setLocks(lks);
         // Default to logged-in user
         if (profile?.id) setSelectedStaff(profile.id);
       } catch (e) {
@@ -105,6 +109,13 @@ export default function TimesheetView() {
     entityList.forEach((e) => { m[e.id] = e; });
     return m;
   }, [entityList]);
+
+  // Which days of the displayed week fall inside a locked period
+  const lockedDayFlags = useMemo(
+    () => weekDays.map((d) => isDateLocked(locks, formatISO(d))),
+    [locks, weekDays],
+  );
+  const weekLocked = lockedDayFlags.some(Boolean);
 
   // ── Build rows ──
   const rows = useMemo(() => {
@@ -335,6 +346,21 @@ export default function TimesheetView() {
         <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading timesheet...</div>
       ) : (
         <>
+          {/* Locked-period banner */}
+          {weekLocked && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8,
+              padding: '8px 14px', marginBottom: 12, fontSize: 12.5, color: '#92400e',
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+                <rect x="5" y="11" width="14" height="9" rx="2" stroke="#d97706" strokeWidth="2"/>
+                <path d="M8 11V7a4 4 0 018 0v4" stroke="#d97706" strokeWidth="2"/>
+              </svg>
+              This week falls in a locked period — entries can't be added, edited or deleted.
+            </div>
+          )}
+
           {/* Grid */}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -380,6 +406,7 @@ export default function TimesheetView() {
                         const overridden = day.override != null && day.override !== day.completed;
                         // Completion cells are editable: edits create overrides.
                         // Manual-only rows continue to use the manual entry path.
+                        const dayLocked = lockedDayFlags[di];
                         if (row.isManual && !row.hasCompletion) {
                           return (
                             <td key={di} style={{ ...tdStyle, textAlign: 'center' }}>
@@ -387,12 +414,14 @@ export default function TimesheetView() {
                                 type="number"
                                 defaultValue={day.manual || ''}
                                 placeholder={day.completed > 0 ? minutesToDisplay(day.completed) : ''}
+                                disabled={dayLocked}
+                                title={dayLocked ? 'This date is in a locked period' : undefined}
                                 onBlur={(e) => {
                                   const mins = parseInt(e.target.value, 10) || 0;
                                   if (mins !== day.manual) handleCellEdit(row, di, e.target.value);
                                 }}
                                 onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                                style={cellInput}
+                                style={dayLocked ? { ...cellInput, background: '#f8fafc', color: '#94a3b8', cursor: 'not-allowed' } : cellInput}
                               />
                             </td>
                           );
@@ -405,15 +434,17 @@ export default function TimesheetView() {
                                   type="number"
                                   key={`${row.key}|${di}|${day.override}|${day.completed}`}
                                   defaultValue={shown > 0 ? shown : ''}
+                                  disabled={dayLocked}
                                   onBlur={(e) => handleOverrideEdit(row, di, e.target.value, day.completed)}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                                  title={overridden ? `Original: ${minutesToDisplay(day.completed) || '0m'} · overridden. Clear cell to revert.` : 'Editable — saves as override'}
+                                  title={dayLocked ? 'This date is in a locked period' : overridden ? `Original: ${minutesToDisplay(day.completed) || '0m'} · overridden. Clear cell to revert.` : 'Editable — saves as override'}
                                   style={{
                                     ...cellInput,
-                                    color: overridden ? '#0e7fe0' : '#0f172a',
+                                    color: dayLocked ? '#94a3b8' : overridden ? '#0e7fe0' : '#0f172a',
                                     fontWeight: overridden ? 600 : 500,
                                     borderColor: overridden ? '#bae6fd' : '#e5e7eb',
-                                    background: overridden ? '#f0f9ff' : '#fff',
+                                    background: dayLocked ? '#f8fafc' : overridden ? '#f0f9ff' : '#fff',
+                                    cursor: dayLocked ? 'not-allowed' : undefined,
                                   }}
                                 />
                               ) : isScheduled ? (
@@ -439,13 +470,14 @@ export default function TimesheetView() {
                         {row.isManual && (
                           <button
                             onClick={() => handleDeleteRow(row)}
-                            title="Delete manual row"
+                            disabled={weekLocked}
+                            title={weekLocked ? 'This week falls in a locked period' : 'Delete manual row'}
                             style={{
-                              background: 'none', border: 'none', cursor: 'pointer',
-                              padding: 2, opacity: 0.3, transition: 'opacity 0.15s',
+                              background: 'none', border: 'none', cursor: weekLocked ? 'not-allowed' : 'pointer',
+                              padding: 2, opacity: weekLocked ? 0.15 : 0.3, transition: 'opacity 0.15s',
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.3'; }}
+                            onMouseEnter={(e) => { if (!weekLocked) e.currentTarget.style.opacity = '1'; }}
+                            onMouseLeave={(e) => { if (!weekLocked) e.currentTarget.style.opacity = '0.3'; }}
                           >
                             <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
                               <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M11 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -474,7 +506,12 @@ export default function TimesheetView() {
           {/* Add row */}
           <div style={{ marginTop: 12 }}>
             {!addingRow ? (
-              <button onClick={() => setAddingRow(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0', fontFamily: "'Outfit', sans-serif" }}>
+              <button
+                onClick={() => setAddingRow(true)}
+                disabled={weekLocked}
+                title={weekLocked ? 'This week falls in a locked period' : undefined}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: weekLocked ? '#cbd5e1' : '#64748b', background: 'none', border: 'none', cursor: weekLocked ? 'not-allowed' : 'pointer', padding: '6px 0', fontFamily: "'Outfit', sans-serif" }}
+              >
                 <Plus size={14} /> Add manual row
               </button>
             ) : (

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../shell/AppShell';
 import { tones } from '../../lib/tokens';
 
 const font = "'Outfit', sans-serif";
@@ -16,6 +17,7 @@ const font = "'Outfit', sans-serif";
 // listener so they refresh when the tab regains focus.
 export default function BillingTabs({ active }) {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [counts, setCounts] = useState({ pending: 0, staged: 0, approved: 0, manualMonthly: 0, addNew: 0 });
 
   const refresh = async () => {
@@ -76,6 +78,12 @@ export default function BillingTabs({ active }) {
     { id: 'push',      label: 'Push',      route: '/manage/billing/uplifts', badge: counts.approved || null, tone: 'success' },
     { id: 'sources',   label: 'Sources',   route: '/manage/billing/sources', badge: counts.manualMonthly || null, tone: 'danger' },
     { id: 'mapping',   label: 'Mapping',   route: '/manage/billing/mapping', badge: null },
+    { id: 'products',  label: 'Products ↔ QBO', route: '/manage/billing/products', badge: null },
+    // Standard fees is confidential fee data — only fee admins see the tab
+    // (StandardFeesPage + RLS on standard_fees enforce the same gate).
+    ...(profile?.can_view_client_fees === true
+      ? [{ id: 'standard-fees', label: 'Standard fees', route: '/manage/billing/standard-fees', badge: null }]
+      : []),
     { id: 'emails',    label: 'Emails',    route: '/manage/billing/emails', badge: null },
   ];
 
