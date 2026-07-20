@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, ClipboardList, Copy, Download, Plus, X,
   ChevronDown, ChevronRight, MessageSquare, AlertTriangle, Send, CalendarDays, RotateCcw, Receipt,
+  Flame, Paperclip, ChevronsDownUp, ChevronsUpDown, KeyRound,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../shell/AppShell';
 import { commitAllocationDraft } from '../modules/work-planner/lib/allocationsQueries';
 import ClientTypeAhead from '../modules/work-planner/components/ClientTypeAhead';
+import { stageMeta } from '../modules/ch-codes/api';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
@@ -44,6 +46,12 @@ const GROUP_ORDER = [...TASK_GROUPS.map((g) => g.key), 'other'];
 function groupKeyFor(t) { return (TASK_GROUPS.find((g) => g.match(t)) || { key: 'other' }).key; }
 function groupLabelFor(key) { return (TASK_GROUPS.find((g) => g.key === key) || { label: 'Other' }).label; }
 
+// Fixed live-aggregation sections rendered after the task groups.
+const FIXED_SECTION_KEYS = ['chcodes', 'realloc', 'onboard'];
+const COLLAPSE_LS_KEY = 'athena_admin_tasks_collapsed';
+// In-flight CH code chases shown on this list (pre-"entered" stages).
+const CH_OPEN_STAGES = ['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_code'];
+
 function isoToday() { return new Date().toISOString().slice(0, 10); }
 function fmtShort(iso) {
   if (!iso) return '';
@@ -72,28 +80,43 @@ export default function AdminTasksPage() {
   const [error, setError] = useState(null);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [newClient, setNewClient] = useState('');
+  const [newDate, setNewDate] = useState('');
+  const [newNotes, setNewNotes] = useState('');
+  const [newUrgent, setNewUrgent] = useState(false);
+  const [newFiles, setNewFiles] = useState([]);
+  const [savingTask, setSavingTask] = useState(false);
   const [newBillable, setNewBillable] = useState(false);
-  const [newBillClient, setNewBillClient] = useState('');
   const [newBillAmount, setNewBillAmount] = useState('');
   const [allEntities, setAllEntities] = useState([]);
   const [copied, setCopied] = useState(null);
+  const [chCodes, setChCodes] = useState([]);
+  const [docsByTask, setDocsByTask] = useState({});
+  const [clientFilter, setClientFilter] = useState('');
 
   const [openNotes, setOpenNotes] = useState(() => new Set());
   const [escalateTask, setEscalateTask] = useState(null);
-  const [collapsed, setCollapsed] = useState({ realloc: false, onboard: false });
-  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
-  const toggleGroupCollapse = (key) => setCollapsedGroups((prev) => {
-    const n = new Set(prev);
-    n.has(key) ? n.delete(key) : n.add(key);
-    return n;
+  // One collapse set covers the task groups and the fixed sections; persisted
+  // so the page opens the way it was left.
+  const [collapsedSet, setCollapsedSet] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_LS_KEY) || '[]')); } catch { return new Set(); }
   });
+  const persistCollapsed = (n) => {
+    setCollapsedSet(n);
+    try { localStorage.setItem(COLLAPSE_LS_KEY, JSON.stringify([...n])); } catch { /* storage unavailable */ }
+  };
+  const toggleCollapse = (key) => {
+    const n = new Set(collapsedSet);
+    n.has(key) ? n.delete(key) : n.add(key);
+    persistCollapsed(n);
+  };
 
   const load = useCallback(async () => {
     try {
       const { data: confirmed } = await supabase.rpc('admin_tasks_confirm_from_bm');
       if (confirmed > 0) setConfirmedNow(confirmed);
 
-      const [{ data: t, error: e1 }, { data: ct }, { data: d }, { data: st }, { data: obs }, { data: ents }] = await Promise.all([
+      const [{ data: t, error: e1 }, { data: ct }, { data: d }, { data: st }, { data: obs }, { data: ents }, { data: ch }] = await Promise.all([
         supabase.from('admin_tasks')
           .select('*, entity:entities(id, name)')
           .is('done_at', null).is('confirmed_at', null).is('dismissed_at', null)
@@ -107,15 +130,22 @@ export default function AdminTasksPage() {
         supabase.from('allocation_changes').select('*').eq('status', 'draft'),
         supabase.from('staff_profiles').select('id, name, email, is_active'),
         supabase.from('onboardings')
-          .select('id, status, target_date, entity:entities(name), owner_id')
+          .select('id, status, target_date, entity:entities(id, name), owner_id')
           .in('status', ['active', 'issues']),
         supabase.from('entities').select('id, name').order('name'),
+        supabase.from('ch_code_requests')
+          .select(`id, stage, emails_sent, updated_at,
+            person:people(id, name),
+            entity:entities!ch_code_requests_entity_id_fkey(id, name)`)
+          .in('stage', CH_OPEN_STAGES)
+          .order('updated_at', { ascending: true }),
       ]);
       if (e1) throw e1;
       setTasks(t || []);
       setCompleted(ct || []);
       setDrafts(d || []);
       setAllEntities(ents || []);
+      setChCodes(ch || []);
       const st2 = (st || []);
       setStaffMap(Object.fromEntries(st2.map((s) => [s.id, s.name])));
       setStaffList(st2.filter((s) => s.is_active !== false && s.email).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
@@ -130,6 +160,18 @@ export default function AdminTasksPage() {
         setNotesByTask(grouped);
       } else {
         setNotesByTask({});
+      }
+
+      // Attachments (open + completed)
+      const allTaskIds = [...(t || []), ...(ct || [])].map((x) => x.id);
+      if (allTaskIds.length) {
+        const { data: docs } = await supabase.from('admin_task_documents')
+          .select('*').in('task_id', allTaskIds).order('created_at', { ascending: true });
+        const grouped = {};
+        for (const doc of docs || []) (grouped[doc.task_id] ||= []).push(doc);
+        setDocsByTask(grouped);
+      } else {
+        setDocsByTask({});
       }
 
       // Entity names for reallocation drafts
@@ -206,33 +248,91 @@ export default function AdminTasksPage() {
     }
   }
 
-  async function addManual() {
-    if (!newTitle.trim()) return;
-    if (newBillable && (!newBillClient || !(parseFloat(newBillAmount) > 0))) return;
-
-    const { data: inserted, error: err } = await supabase.from('admin_tasks').insert({
-      kind: 'manual', title: newTitle.trim(), source: 'Added manually', created_by: profile?.id || null,
-      billable: newBillable,
-    }).select('id').single();
-    if (err) { setError(err.message); return; }
-
-    if (newBillable) {
-      const net = parseFloat(newBillAmount) || 0;
-      const vat = Math.round(net * VAT_RATE * 100) / 100;
-      const gross = Math.round((net + vat) * 100) / 100;
-      const { data: bill, error: billErr } = await supabase.from('billing_items').insert({
-        entity_id: newBillClient, service: 'Admin', description: newTitle.trim(),
-        net_amount: net, vat_amount: vat, gross_amount: gross,
-        status: 'draft', created_by: profile?.id || null,
-      }).select('id').single();
-      if (billErr) { setError(billErr.message); }
-      else {
-        await supabase.from('admin_tasks').update({ billing_item_id: bill.id }).eq('id', inserted.id);
-      }
+  async function uploadTaskFiles(taskId, files) {
+    for (const file of files) {
+      const safe = (file.name || 'file').replace(/[^\w.\-]+/g, '_');
+      const path = `admin-tasks/${taskId}/${crypto.randomUUID()}-${safe}`;
+      const { error: upErr } = await supabase.storage.from('client-documents')
+        .upload(path, file, { contentType: file.type || undefined });
+      if (upErr) { setError(`Upload failed for ${file.name}: ${upErr.message}`); continue; }
+      const { error: rowErr } = await supabase.from('admin_task_documents').insert({
+        task_id: taskId, storage_path: path, original_name: file.name,
+        mime_type: file.type || null, size_bytes: file.size || null, uploaded_by: profile?.id || null,
+      });
+      if (rowErr) setError(rowErr.message);
     }
+  }
 
-    setNewTitle(''); setNewBillable(false); setNewBillClient(''); setNewBillAmount('');
-    setAdding(false); setView('open'); load();
+  async function refreshTaskDocs(taskId) {
+    const { data } = await supabase.from('admin_task_documents')
+      .select('*').eq('task_id', taskId).order('created_at', { ascending: true });
+    setDocsByTask((prev) => ({ ...prev, [taskId]: data || [] }));
+  }
+
+  async function attachToTask(taskId, fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    await uploadTaskFiles(taskId, files);
+    await refreshTaskDocs(taskId);
+  }
+
+  async function openDoc(doc) {
+    const { data, error: err } = await supabase.storage.from('client-documents')
+      .createSignedUrl(doc.storage_path, 3600);
+    if (err) { setError(err.message); return; }
+    window.open(data.signedUrl, '_blank', 'noopener');
+  }
+
+  async function deleteDoc(doc) {
+    if (!window.confirm(`Remove attachment "${doc.original_name}"?`)) return;
+    const { error: err } = await supabase.from('admin_task_documents').delete().eq('id', doc.id);
+    if (err) { setError(err.message); return; }
+    await supabase.storage.from('client-documents').remove([doc.storage_path]);
+    setDocsByTask((prev) => ({ ...prev, [doc.task_id]: (prev[doc.task_id] || []).filter((d) => d.id !== doc.id) }));
+  }
+
+  async function toggleUrgent(task) {
+    const urgent = !task.urgent;
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, urgent } : t)));
+    const { error: err } = await supabase.from('admin_tasks').update({ urgent }).eq('id', task.id);
+    if (err) { setError(err.message); load(); }
+  }
+
+  async function addManual() {
+    if (!newTitle.trim() || savingTask) return;
+    if (newBillable && (!newClient || !(parseFloat(newBillAmount) > 0))) return;
+    setSavingTask(true);
+    try {
+      const { data: inserted, error: err } = await supabase.from('admin_tasks').insert({
+        kind: 'manual', title: newTitle.trim(), detail: newNotes.trim() || null,
+        entity_id: newClient || null, deadline: newDate || null, urgent: newUrgent,
+        source: 'Added manually', created_by: profile?.id || null,
+        billable: newBillable,
+      }).select('id').single();
+      if (err) throw err;
+
+      if (newFiles.length) await uploadTaskFiles(inserted.id, newFiles);
+
+      if (newBillable) {
+        const net = parseFloat(newBillAmount) || 0;
+        const vat = Math.round(net * VAT_RATE * 100) / 100;
+        const gross = Math.round((net + vat) * 100) / 100;
+        const { data: bill, error: billErr } = await supabase.from('billing_items').insert({
+          entity_id: newClient, service: 'Admin', description: newTitle.trim(),
+          net_amount: net, vat_amount: vat, gross_amount: gross,
+          status: 'draft', created_by: profile?.id || null,
+        }).select('id').single();
+        if (billErr) { setError(billErr.message); }
+        else {
+          await supabase.from('admin_tasks').update({ billing_item_id: bill.id }).eq('id', inserted.id);
+        }
+      }
+
+      setNewTitle(''); setNewClient(''); setNewDate(''); setNewNotes(''); setNewUrgent(false); setNewFiles([]);
+      setNewBillable(false); setNewBillAmount('');
+      setAdding(false); setView('open'); load();
+    } catch (e) { setError(e.message); }
+    setSavingTask(false);
   }
 
   async function addNote(taskId, body) {
@@ -281,13 +381,14 @@ export default function AdminTasksPage() {
 
   function exportCsv() {
     const rows = (open).map((t) => ({
-      Client: t.entity?.name || '', Task: t.title, Field: FIELD_LABELS[t.field] || t.field || '',
+      Client: t.entity?.name || '', Task: t.title, Notes: t.detail || '',
+      Urgent: t.urgent ? 'yes' : '', Field: FIELD_LABELS[t.field] || t.field || '',
       Value: t.value || '', Deadline: t.deadline || '', Source: t.source || '',
       Added: new Date(t.created_at).toLocaleDateString('en-GB'),
       Escalated: t.escalated_to ? (staffMap[t.escalated_to] || 'yes') : '',
       Status: 'open',
     }));
-    const headers = ['Client', 'Task', 'Field', 'Value', 'Deadline', 'Source', 'Added', 'Escalated', 'Status'];
+    const headers = ['Client', 'Task', 'Notes', 'Urgent', 'Field', 'Value', 'Deadline', 'Source', 'Added', 'Escalated', 'Status'];
     const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const csv = [headers.join(','), ...rows.map((r) => headers.map((h) => cell(r[h])).join(','))].join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
@@ -298,24 +399,45 @@ export default function AdminTasksPage() {
   }
 
   const open = useMemo(() => {
-    const list = (tasks || []).filter((t) => !t.done_at && !t.confirmed_at);
+    let list = (tasks || []).filter((t) => !t.done_at && !t.confirmed_at);
+    if (clientFilter) list = list.filter((t) => t.entity_id === clientFilter);
     return list.sort((a, b) => {
+      if (!!a.urgent !== !!b.urgent) return a.urgent ? -1 : 1; // urgent first
       const ad = a.deadline || '9999-12-31', bd = b.deadline || '9999-12-31';
       if (ad !== bd) return ad < bd ? -1 : 1;
       return (b.created_at || '').localeCompare(a.created_at || '');
     });
-  }, [tasks]);
+  }, [tasks, clientFilter]);
+
+  const completedFiltered = useMemo(() => {
+    const list = completed || [];
+    return clientFilter ? list.filter((t) => t.entity_id === clientFilter) : list;
+  }, [completed, clientFilter]);
+  const filteredDrafts = useMemo(
+    () => (clientFilter ? drafts.filter((d) => d.entity_id === clientFilter) : drafts),
+    [drafts, clientFilter]
+  );
+  const filteredOnboardings = useMemo(
+    () => (clientFilter ? onboardings.filter((o) => o.entity?.id === clientFilter) : onboardings),
+    [onboardings, clientFilter]
+  );
+  const filteredChCodes = useMemo(
+    () => (clientFilter ? chCodes.filter((r) => r.entity?.id === clientFilter) : chCodes),
+    [chCodes, clientFilter]
+  );
 
   const stats = useMemo(() => {
     const today = isoToday();
     return {
       open: open.length,
+      urgent: open.filter((t) => t.urgent).length,
       overdue: open.filter((t) => t.deadline && t.deadline < today).length,
       escalated: open.filter((t) => t.escalated_to).length,
-      realloc: drafts.length,
-      onboarding: onboardings.length,
+      realloc: filteredDrafts.length,
+      onboarding: filteredOnboardings.length,
+      chcodes: filteredChCodes.length,
     };
-  }, [open, drafts, onboardings]);
+  }, [open, filteredDrafts, filteredOnboardings, filteredChCodes]);
 
   const groupedOpen = useMemo(() => {
     const buckets = {};
@@ -324,13 +446,18 @@ export default function AdminTasksPage() {
   }, [open]);
   const groupedCompleted = useMemo(() => {
     const buckets = {};
-    for (const t of (completed || [])) (buckets[groupKeyFor(t)] ||= []).push(t);
+    for (const t of completedFiltered) (buckets[groupKeyFor(t)] ||= []).push(t);
     return buckets;
-  }, [completed]);
+  }, [completedFiltered]);
   const visibleGroupKeys = useMemo(
     () => GROUP_ORDER.filter((k) => (groupedOpen[k]?.length || 0) > 0 || (groupedCompleted[k]?.length || 0) > 0),
     [groupedOpen, groupedCompleted]
   );
+
+  // Collapse-all treats every visible section (task groups + fixed) as one set.
+  const allSectionKeys = useMemo(() => [...visibleGroupKeys, ...FIXED_SECTION_KEYS], [visibleGroupKeys]);
+  const allCollapsed = allSectionKeys.length > 0 && allSectionKeys.every((k) => collapsedSet.has(k));
+  const toggleAllCollapsed = () => persistCollapsed(allCollapsed ? new Set() : new Set(allSectionKeys));
 
   return (
     <div style={{ maxWidth: 1240, margin: '0 auto', padding: '28px 32px 48px', fontFamily: font }}>
@@ -340,17 +467,33 @@ export default function AdminTasksPage() {
 
         {/* Stat chips share the header row — width is better spent here than stacked below */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 20 }}>
-          <Chip label="To key in" value={stats.open} />
+          <Chip label="Open" value={stats.open} />
+          <Chip label="Urgent" value={stats.urgent} tone={stats.urgent ? 'red' : 'muted'} />
           <Chip label="Overdue" value={stats.overdue} tone={stats.overdue ? 'red' : 'muted'} />
           <Chip label="Escalated" value={stats.escalated} tone={stats.escalated ? 'amber' : 'muted'} />
           <Chip label="Reallocations" value={stats.realloc} tone={stats.realloc ? 'blue' : 'muted'} />
           <Chip label="Onboarding" value={stats.onboarding} tone={stats.onboarding ? 'blue' : 'muted'} />
+          <Chip label="CH codes" value={stats.chcodes} tone={stats.chcodes ? 'blue' : 'muted'} />
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
           <button onClick={exportCsv} disabled={!open.length} style={btn('ghost')}><Download size={13} /> Export CSV</button>
           <button onClick={() => setAdding((v) => !v)} style={btn('primary')}><Plus size={13} /> Add task</button>
         </div>
+      </div>
+
+      {/* Filter + collapse toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Filter by client</span>
+        <ClientTypeAhead entityList={allEntities} value={clientFilter} onChange={setClientFilter} size="small" />
+        {clientFilter && (
+          <button onClick={() => setClientFilter('')} style={{ ...btn('ghost'), padding: '4px 9px', fontSize: 11.5 }}>
+            <X size={11} /> Clear
+          </button>
+        )}
+        <button onClick={toggleAllCollapsed} style={{ ...btn('ghost'), marginLeft: 'auto' }}>
+          {allCollapsed ? <><ChevronsUpDown size={13} /> Expand all</> : <><ChevronsDownUp size={13} /> Collapse all</>}
+        </button>
       </div>
 
       {confirmedNow > 0 && (
@@ -361,42 +504,75 @@ export default function AdminTasksPage() {
       {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
 
       {adding && (
-        <div style={{ ...card, padding: '12px 16px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ ...card, padding: '14px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <input
               autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !newBillable) addManual(); if (e.key === 'Escape') setAdding(false); }}
-              placeholder="e.g. Update year-end date on BM for Smith Ltd"
-              style={{ flex: 1, padding: '8px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
+              onKeyDown={(e) => { if (e.key === 'Escape') setAdding(false); }}
+              placeholder="Task description (required) — e.g. Update year-end date on BM"
+              style={{ flex: '2 1 320px', padding: '8px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
             />
-            <button
-              onClick={addManual}
-              disabled={!newTitle.trim() || (newBillable && (!newBillClient || !(parseFloat(newBillAmount) > 0)))}
-              style={btn('primary')}
-            >Add</button>
+            <div style={{ flex: '0 0 auto' }}>
+              <ClientTypeAhead entityList={allEntities} value={newClient} onChange={setNewClient} size="small" />
+            </div>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#64748b' }} title="Target date">
+              <CalendarDays size={13} color="#94a3b8" />
+              <input
+                type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)}
+                style={{ fontSize: 12, fontFamily: font, padding: '6px 8px', borderRadius: 8, border: '1px solid #cbd5e1', color: '#475569', outline: 'none' }}
+              />
+            </label>
           </div>
 
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12.5, color: '#475569', cursor: 'pointer' }}>
-            <input type="checkbox" checked={newBillable} onChange={(e) => setNewBillable(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#0e7fe0' }} />
-            <Receipt size={13} color="#64748b" /> Billable — raise a bill for this
-          </label>
+          <textarea
+            value={newNotes} onChange={(e) => setNewNotes(e.target.value)} rows={2}
+            placeholder="Notes (optional)"
+            style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, padding: '8px 12px', fontSize: 12.5, border: '1px solid #e2e8f0', borderRadius: 8, fontFamily: font, outline: 'none', resize: 'vertical' }}
+          />
 
-          {newBillable && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
-              <div style={{ flex: '1 1 240px', maxWidth: 300 }}>
-                <ClientTypeAhead entityList={allEntities} value={newBillClient} onChange={setNewBillClient} size="small" />
-              </div>
+          <div style={{ display: 'flex', gap: 16, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#475569', cursor: 'pointer' }}>
+              <input type="checkbox" checked={newUrgent} onChange={(e) => setNewUrgent(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#dc2626' }} />
+              <Flame size={13} color={newUrgent ? '#dc2626' : '#64748b'} /> Urgent
+            </label>
+
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#475569', cursor: 'pointer' }}>
+              <input type="checkbox" checked={newBillable} onChange={(e) => setNewBillable(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#0e7fe0' }} />
+              <Receipt size={13} color="#64748b" /> Billable — raise a bill
+            </label>
+
+            {newBillable && (
               <div style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#94a3b8' }}>£</span>
                 <input
                   type="number" step="0.01" value={newBillAmount} onChange={(e) => setNewBillAmount(e.target.value)}
                   placeholder="Net amount"
-                  style={{ width: 130, padding: '8px 10px 8px 20px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
+                  style={{ width: 120, padding: '7px 10px 7px 20px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
                 />
               </div>
-              <span style={{ fontSize: 11.5, color: '#94a3b8' }}>+ VAT — creates a draft bill in Billing</span>
+            )}
+
+            <label style={{ ...btn('ghost'), cursor: 'pointer' }}>
+              <Paperclip size={13} /> {newFiles.length ? `${newFiles.length} file${newFiles.length === 1 ? '' : 's'} attached` : 'Attach files'}
+              <input type="file" multiple style={{ display: 'none' }}
+                onChange={(e) => setNewFiles(Array.from(e.target.files || []))} />
+            </label>
+            {newFiles.length > 0 && (
+              <span style={{ fontSize: 11.5, color: '#94a3b8', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {newFiles.map((f) => f.name).join(', ')}
+              </span>
+            )}
+
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              {newBillable && !newClient && <span style={{ fontSize: 11.5, color: '#b45309' }}>Billable needs a client</span>}
+              <button onClick={() => setAdding(false)} style={btn('ghost')}>Cancel</button>
+              <button
+                onClick={addManual}
+                disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !(parseFloat(newBillAmount) > 0)))}
+                style={{ ...btn('primary'), opacity: (savingTask || !newTitle.trim()) ? 0.6 : 1 }}
+              >{savingTask ? 'Adding…' : 'Add task'}</button>
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -417,7 +593,7 @@ export default function AdminTasksPage() {
           <Section
             key={key}
             title={groupLabelFor(key)} count={view === 'open' ? groupOpen.length : groupCompleted.length}
-            collapsed={collapsedGroups.has(key)} onToggle={() => toggleGroupCollapse(key)}
+            collapsed={collapsedSet.has(key)} onToggle={() => toggleCollapse(key)}
             action={
               <div style={{ display: 'flex', gap: 4 }}>
                 <TabBtn active={view === 'open'} onClick={() => setView('open')}>Open ({groupOpen.length})</TabBtn>
@@ -430,6 +606,7 @@ export default function AdminTasksPage() {
               <TaskRow
                 key={t.id} t={t}
                 notes={notesByTask[t.id] || []} notesOpen={openNotes.has(t.id)}
+                docs={docsByTask[t.id] || []}
                 staffMap={staffMap} copied={copied === t.id}
                 onComplete={() => complete(t)}
                 onCopy={() => copyValue(t)}
@@ -438,6 +615,10 @@ export default function AdminTasksPage() {
                 onToggleNotes={() => toggleNotes(t.id)}
                 onAddNote={(body) => addNote(t.id, body)}
                 onEscalate={() => setEscalateTask(t)}
+                onToggleUrgent={() => toggleUrgent(t)}
+                onAttach={(files) => attachToTask(t.id, files)}
+                onOpenDoc={openDoc}
+                onDeleteDoc={deleteDoc}
                 onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
                 onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
               />
@@ -454,14 +635,44 @@ export default function AdminTasksPage() {
         );
       })}
 
+      {/* ── CH personal code chases (live from the ch-codes module) ── */}
+      <Section
+        title="CH personal code chases" count={filteredChCodes.length}
+        collapsed={collapsedSet.has('chcodes')} onToggle={() => toggleCollapse('chcodes')}
+        action={<button onClick={() => navigate('/onboarding/ch-codes')} style={btn('ghost')}>Open CH codes →</button>}
+      >
+        {filteredChCodes.length === 0 && <Empty>No code chases in flight.</Empty>}
+        {filteredChCodes.map((r) => {
+          const meta = stageMeta(r.stage);
+          return (
+            <div key={r.id} onClick={() => navigate(`/onboarding/ch-codes/${r.id}`)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13, cursor: 'pointer' }}>
+              <KeyRound size={13} color="#94a3b8" style={{ flexShrink: 0 }} />
+              <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 190px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {r.person?.name || 'Person'}
+              </span>
+              <span style={{ color: '#64748b', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {r.entity?.name || ''}
+              </span>
+              <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#e0f2fe', color: '#0369a1', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {meta.short} · {meta.label}
+              </span>
+              <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {r.emails_sent ? `${r.emails_sent} email${r.emails_sent === 1 ? '' : 's'} sent` : 'no emails yet'}
+              </span>
+            </div>
+          );
+        })}
+      </Section>
+
       {/* ── Reallocations (from capacity planner) ── */}
       <Section
-        title="Task reallocations to apply in BM" count={drafts.length}
-        collapsed={collapsed.realloc} onToggle={() => setCollapsed((c) => ({ ...c, realloc: !c.realloc }))}
+        title="Task reallocations to apply in BM" count={filteredDrafts.length}
+        collapsed={collapsedSet.has('realloc')} onToggle={() => toggleCollapse('realloc')}
         action={<button onClick={() => navigate('/planner/allocations')} style={btn('ghost')}>Open capacity planner →</button>}
       >
-        {drafts.length === 0 && <Empty>No reallocation proposals waiting.</Empty>}
-        {drafts.map((d) => (
+        {filteredDrafts.length === 0 && <Empty>No reallocation proposals waiting.</Empty>}
+        {filteredDrafts.map((d) => (
           <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13 }}>
             <span style={{ fontWeight: 600, color: '#0f172a' }}>{entities[d.entity_id] || 'Client'}</span>
             <span style={{ color: '#64748b', flex: 1 }}>{String(d.canonical_service_id || '').replace(/_/g, ' ')}</span>
@@ -471,7 +682,7 @@ export default function AdminTasksPage() {
             </button>
           </div>
         ))}
-        {drafts.length > 0 && (
+        {filteredDrafts.length > 0 && (
           <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
             Marking one complete assumes you've made the change in BM. The next BM upload checks it — if the assignee still doesn't match, it reappears here.
           </div>
@@ -480,12 +691,12 @@ export default function AdminTasksPage() {
 
       {/* ── Onboarding summary ── */}
       <Section
-        title="Onboarding in flight" count={onboardings.length}
-        collapsed={collapsed.onboard} onToggle={() => setCollapsed((c) => ({ ...c, onboard: !c.onboard }))}
+        title="Onboarding in flight" count={filteredOnboardings.length}
+        collapsed={collapsedSet.has('onboard')} onToggle={() => toggleCollapse('onboard')}
         action={<button onClick={() => navigate('/onboarding')} style={btn('ghost')}>Open onboarding →</button>}
       >
-        {onboardings.length === 0 && <Empty>No onboardings in progress.</Empty>}
-        {onboardings.map((o) => {
+        {filteredOnboardings.length === 0 && <Empty>No onboardings in progress.</Empty>}
+        {filteredOnboardings.map((o) => {
           const pct = o.total ? Math.round((o.done / o.total) * 100) : 0;
           return (
             <div key={o.id} onClick={() => navigate(`/onboarding/${o.id}`)}
@@ -523,17 +734,28 @@ export default function AdminTasksPage() {
 }
 
 function TaskRow({
-  t, notes, notesOpen, staffMap, copied,
-  onComplete, onCopy, onDismiss, onDeadline, onToggleNotes, onAddNote, onEscalate, onOpenClient, onReviewBill,
+  t, notes, notesOpen, docs, staffMap, copied,
+  onComplete, onCopy, onDismiss, onDeadline, onToggleNotes, onAddNote, onEscalate,
+  onToggleUrgent, onAttach, onOpenDoc, onDeleteDoc, onOpenClient, onReviewBill,
 }) {
   const [noteDraft, setNoteDraft] = useState('');
   const today = isoToday();
   const overdue = t.deadline && t.deadline < today;
+  const urgent = !!t.urgent;
 
   return (
-    <div style={{ borderTop: '1px solid #f8fafc' }}>
+    <div style={{
+      borderTop: '1px solid #f8fafc',
+      background: urgent ? '#fef2f2' : undefined,
+      boxShadow: urgent ? 'inset 3px 0 0 #dc2626' : undefined,
+    }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px' }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {urgent && (
+            <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 999, background: '#dc2626', color: '#fff', fontWeight: 700, letterSpacing: 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>
+              URGENT
+            </span>
+          )}
           <span
             onClick={onOpenClient || undefined}
             style={{
@@ -541,7 +763,7 @@ function TaskRow({
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}
             title={t.title}
-          >{t.title}</span>
+          >{t.entity?.name && !(t.title || '').toLowerCase().includes(t.entity.name.toLowerCase()) ? `${t.entity.name} — ` : ''}{t.title}</span>
           {t.escalated_to && (
             <span style={{ fontSize: 10.5, padding: '1px 6px', borderRadius: 999, background: '#fef3c7', color: '#b45309', fontWeight: 600, whiteSpace: 'nowrap' }}>
               → {staffMap[t.escalated_to] || 'escalated'}
@@ -581,6 +803,16 @@ function TaskRow({
           <MessageSquare size={13} />{notes.length > 0 && <span style={{ fontSize: 11, fontWeight: 700 }}>{notes.length}</span>}
         </button>
 
+        <button onClick={onToggleUrgent} title={urgent ? 'Remove urgent flag' : 'Mark as urgent'}
+          style={{ ...iconBtn, color: urgent ? '#dc2626' : '#94a3b8', borderColor: urgent ? '#fecaca' : '#e5e7eb', background: urgent ? '#fee2e2' : '#fff' }}>
+          <Flame size={13} />
+        </button>
+
+        <label title="Attach a file" style={{ ...iconBtn, color: docs.length ? '#0e7fe0' : '#94a3b8', borderColor: docs.length ? '#bae6fd' : '#e5e7eb', cursor: 'pointer' }}>
+          <Paperclip size={13} />{docs.length > 0 && <span style={{ fontSize: 11, fontWeight: 700 }}>{docs.length}</span>}
+          <input type="file" multiple style={{ display: 'none' }} onChange={(e) => { onAttach(e.target.files); e.target.value = ''; }} />
+        </label>
+
         <button onClick={onEscalate} title="Escalate — ask someone to action this" style={{ ...iconBtn, color: '#b45309', borderColor: '#fde68a' }}>
           <AlertTriangle size={13} />
         </button>
@@ -597,6 +829,24 @@ function TaskRow({
           <X size={14} />
         </button>
       </div>
+
+      {(t.detail || docs.length > 0) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '0 16px 8px 26px' }}>
+          {t.detail && <span style={{ fontSize: 12, color: '#64748b' }}>{t.detail}</span>}
+          {docs.map((d) => (
+            <span key={d.id} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5,
+              padding: '2px 8px', borderRadius: 999, background: '#eff6ff', color: '#0e7fe0', border: '1px solid #dbeafe',
+            }}>
+              <Paperclip size={11} />
+              <span onClick={() => onOpenDoc(d)} style={{ cursor: 'pointer', textDecoration: 'underline', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {d.original_name}
+              </span>
+              <X size={11} style={{ cursor: 'pointer', color: '#94a3b8' }} onClick={() => onDeleteDoc(d)} />
+            </span>
+          ))}
+        </div>
+      )}
 
       {notesOpen && (
         <div style={{ padding: '4px 16px 12px 46px', background: '#fafbfc' }}>
