@@ -6,7 +6,7 @@ import {
   fetchAllocationEntities, fetchInferredAllocations,
   fetchEffortDefaults, fetchEffortOverrides,
   upsertEffortOverride, deleteEffortOverride,
-  fetchServiceCadence,
+  fetchServiceCadence, fetchActualMinutes,
 } from '../lib/allocationsQueries';
 
 const SERVICE_COL_W = 200;
@@ -23,6 +23,7 @@ export default function EstimatesView() {
   const [defaults, setDefaults] = useState([]);
   const [overrides, setOverrides] = useState([]);
   const [cadence, setCadence] = useState([]);
+  const [actuals, setActuals] = useState(new Map()); // `${entity}__${service}` → logged mins, last 12mo
 
   const [editing, setEditing] = useState(null); // { entityId, serviceId }
   const [loading, setLoading] = useState(true);
@@ -36,12 +37,13 @@ export default function EstimatesView() {
     let cancelled = false;
     async function load() {
       try {
-        const [e, inf, dfs, ovs, cad] = await Promise.all([
+        const [e, inf, dfs, ovs, cad, act] = await Promise.all([
           fetchAllocationEntities(),
           fetchInferredAllocations(),
           fetchEffortDefaults(),
           fetchEffortOverrides(),
           fetchServiceCadence(),
+          fetchActualMinutes().catch(() => new Map()), // advisory — never blocks the grid
         ]);
         if (!cancelled) {
           setEntities(e);
@@ -49,6 +51,7 @@ export default function EstimatesView() {
           setDefaults(dfs);
           setOverrides(ovs);
           setCadence(cad);
+          setActuals(act);
         }
       } catch (err) {
         console.error('[Estimates] load failed:', err);
@@ -103,12 +106,18 @@ export default function EstimatesView() {
     const ov = overrideMap.get(`${entityId}__${serviceId}`);
     const cad = cadenceFor(entityId, serviceId);
     const def = defaultMap.get(`${serviceId}__${cad}`) ?? null;
+    // Advisory: what the last 12 months of logged time says one job takes
+    // (total logged ÷ cycles per year). Only shown with meaningful data.
+    const totalLogged = actuals.get(`${entityId}__${serviceId}`) || 0;
+    const factor = cad === 'monthly' ? 12 : cad === 'quarterly' ? 4 : 1;
+    const actualPerJob = totalLogged >= 30 ? Math.round(totalLogged / factor) : null;
     return {
       minutes: ov ?? def,
       status: ov != null ? 'override' : 'default',
       cadence: cad,
+      actualPerJob,
     };
-  }, [inferredMap, overrideMap, cadenceFor, defaultMap]);
+  }, [inferredMap, overrideMap, cadenceFor, defaultMap, actuals]);
 
   // Sort + filter
   const clientEntities = useMemo(() => {
@@ -355,9 +364,12 @@ export default function EstimatesView() {
 // ── Cell ──
 
 function Cell({ entityId, serviceId, info, isEditing, onStartEdit, onCancelEdit, onSave }) {
-  const { minutes, status, cadence } = info;
+  const { minutes, status, cadence, actualPerJob } = info;
   const isNa = status === 'na';
   const isOverride = status === 'override';
+  // Reality check: flag when logged actuals diverge >30% from the estimate.
+  const divergent = actualPerJob != null && minutes != null && minutes > 0
+    && Math.abs(actualPerJob - minutes) / minutes > 0.3;
 
   if (isEditing) {
     return (
@@ -410,11 +422,36 @@ function Cell({ entityId, serviceId, info, isEditing, onStartEdit, onCancelEdit,
       }}>
         {minutes} <span style={{ fontSize: 10, fontWeight: 400, color: '#64748b' }}>min</span>
       </span>
-      <span style={{
-        fontSize: 9, fontWeight: 600, color: '#94a3b8',
-        textTransform: 'uppercase', letterSpacing: 0.5,
-      }}>
-        / {CADENCE_LABEL[cadence] || cadence}
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        {actualPerJob != null && (
+          <span
+            onClick={divergent ? (e) => {
+              e.stopPropagation();
+              if (window.confirm(`Logged time says this job actually takes ~${actualPerJob} min (estimate: ${minutes}).\n\nAdopt ${actualPerJob} min as the override?`)) {
+                onSave(entityId, serviceId, String(actualPerJob));
+              }
+            } : undefined}
+            title={divergent
+              ? `Actuals diverge from the estimate — logged time (last 12mo) works out at ~${actualPerJob} min/job. Click to adopt.`
+              : `Logged time (last 12mo) works out at ~${actualPerJob} min/job — in line with the estimate.`}
+            style={{
+              fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+              background: divergent ? '#fef3c7' : '#f1f5f9',
+              color: divergent ? '#92400e' : '#94a3b8',
+              border: divergent ? '1px solid #fcd34d' : '1px solid transparent',
+              cursor: divergent ? 'pointer' : 'default',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            act {actualPerJob}
+          </span>
+        )}
+        <span style={{
+          fontSize: 9, fontWeight: 600, color: '#94a3b8',
+          textTransform: 'uppercase', letterSpacing: 0.5,
+        }}>
+          / {CADENCE_LABEL[cadence] || cadence}
+        </span>
       </span>
     </div>
   );

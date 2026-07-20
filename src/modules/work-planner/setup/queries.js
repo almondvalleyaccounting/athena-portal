@@ -148,7 +148,7 @@ export async function updateAlias(name, patch) {
 export async function listStaffProfiles() {
   const { data, error } = await supabase
     .from('staff_profiles')
-    .select('id, name, is_active, working_days, colour')
+    .select('id, name, is_active, working_days, colour, weekly_capacity_hours')
     .order('name');
   if (error) throw error;
   return data || [];

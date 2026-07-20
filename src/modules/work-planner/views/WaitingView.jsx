@@ -10,8 +10,11 @@ import { useAuth } from '../../../shell/AppShell';
 
 const font = "'Outfit', sans-serif";
 
-// Hours per working day — capacity assumption.
-const HOURS_PER_WORKING_DAY = 7.5;
+// Fallback hours per working day, used only when a staff member has no
+// configured weekly_capacity_hours. The configured number is the single
+// capacity truth everywhere (the Capacity heatmap uses it too) — two
+// different denominators used to give contradictory overload verdicts.
+const FALLBACK_HOURS_PER_WORKING_DAY = 7.5;
 
 // ── Zoom configurations ───────────────────────────────────────────
 const ZOOMS = [
@@ -335,7 +338,13 @@ export default function WaitingView() {
                 const draftCount = rowTasks.flat().filter((t) => t.status === 'draft').length;
                 const wdSet = workingDaysToSet(a.working_days || 'mon,tue,wed,thu,fri');
                 const wdCount = countWorkingDays(isoDate(rangeStart), isoDate(rangeEnd), wdSet);
-                const capHours = wdCount * HOURS_PER_WORKING_DAY;
+                // Per-working-day rate derived from the person's configured
+                // weekly hours (÷ their working days per week), so capacity
+                // means the same thing here as on the Capacity heatmap.
+                const hoursPerDay = a.weekly_capacity_hours && wdSet.size > 0
+                  ? Number(a.weekly_capacity_hours) / wdSet.size
+                  : FALLBACK_HOURS_PER_WORKING_DAY;
+                const capHours = wdCount * hoursPerDay;
                 const overCap = totalHours > capHours && capHours > 0;
                 return (
                   <tr key={aKey} style={{ borderTop: '1px solid #f1f5f9' }}>

@@ -14,6 +14,7 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
     quickTasks, scheduledTasks, overridesMap, completedKeys,
     staffMap, entityMap, profile,
     filters, highlightId, notesMap, addProgressNote, staffColours,
+    updateScheduledTask,
   } = useWorkPlanner();
 
   const [noteInput, setNoteInput] = useState(null);
@@ -102,8 +103,51 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
 
   const noteCount = (key) => (notesMap[key] || []).length;
 
+  // Stranded one-off scheduled tasks: the overdue sweep nulls planned_date
+  // after 2 working days, which used to make them vanish from every view.
+  // They surface here instead, with a one-click reschedule.
+  let stranded = scheduledTasks.filter((m) => !m.recurring && !m.planned_date);
+  if (filters.teamFilter) stranded = stranded.filter((t) => t.assignee_id === filters.teamFilter);
+  if (filters.clientFilter) stranded = stranded.filter((t) => t.entity_id === filters.clientFilter);
+  if (filters.serviceFilter) stranded = stranded.filter((t) => t.service === filters.serviceFilter);
+
   return (
     <div style={{ padding: 10, maxWidth: 960 }}>
+      {stranded.length > 0 && (
+        <div style={{
+          marginBottom: 12, border: '1px solid #fcd34d', background: '#fffbeb',
+          borderRadius: 10, padding: '10px 14px', fontFamily: "'Outfit', sans-serif",
+        }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>
+            Needs rescheduling — {stranded.length} task{stranded.length === 1 ? '' : 's'} slipped past their planned date
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {stranded.map((m) => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5 }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#0f172a' }}>
+                  <strong>{m.title}</strong>
+                  {m.entity_id && entityMap[m.entity_id] && <span style={{ color: '#64748b' }}> · {clientName(m.entity_id, entityMap)}</span>}
+                  {m.assignee_id && staffMap[m.assignee_id] && <span style={{ color: '#94a3b8' }}> · {staffMap[m.assignee_id].name?.split(' ')[0]}</span>}
+                </span>
+                <input
+                  type="date"
+                  onChange={(e) => {
+                    if (e.target.value) updateScheduledTask(m.id, { planned_date: e.target.value });
+                  }}
+                  title="Pick a new planned date"
+                  style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #fcd34d', borderRadius: 6, fontFamily: "'Outfit', sans-serif", background: '#fff' }}
+                />
+                <button
+                  onClick={() => updateScheduledTask(m.id, { planned_date: formatISO(addDays(now, 1)) })}
+                  style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: '#0f172a', cursor: 'pointer', fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap' }}
+                >
+                  Tomorrow
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {items.length === 0 && (
         <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 13, fontFamily: "'Outfit', sans-serif" }}>
           No tasks match your filters.

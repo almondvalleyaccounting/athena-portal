@@ -10,6 +10,44 @@ export const ALLOCATION_SERVICES = [
   { id: 'self_assessment',      label: 'Self Assessment',      cadence: 'annual'    },
 ];
 
+// ── Actuals (advisory) ──
+// Timesheet service labels → canonical estimate services. Corporation Tax,
+// Admin, Payroll and Company Secretarial have no estimate column, so they
+// deliberately don't map.
+const TIMESHEET_TO_CANONICAL = {
+  'Bookkeeping': 'bookkeeping',
+  'VAT': 'vat_review',
+  'Self Assessment': 'self_assessment',
+  'Accounts Production': 'accounts_preparation',
+};
+
+// Total LOGGED minutes per (entity, canonical service) over the last 12
+// months — timesheet entries plus completed-task minutes. Advisory input for
+// the Estimates screen: reality shown next to the hand-typed estimate.
+export async function fetchActualMinutes() {
+  const since = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  const [{ data: ts, error: e1 }, { data: ct, error: e2 }] = await Promise.all([
+    supabase.from('timesheet_entries')
+      .select('entity_id, service, minutes')
+      .gte('work_date', since).not('entity_id', 'is', null),
+    supabase.from('completed_tasks')
+      .select('entity_id, service, completion_mins')
+      .gte('completed_at', since).not('entity_id', 'is', null),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  const map = new Map(); // `${entity_id}__${canonical}` → total minutes
+  const add = (entityId, service, minutes) => {
+    const canonical = TIMESHEET_TO_CANONICAL[service];
+    if (!canonical || !minutes) return;
+    const key = `${entityId}__${canonical}`;
+    map.set(key, (map.get(key) || 0) + Number(minutes));
+  };
+  for (const r of ts || []) add(r.entity_id, r.service, r.minutes);
+  for (const r of ct || []) add(r.entity_id, r.service, r.completion_mins);
+  return map;
+}
+
 // ── Entities ──
 
 export async function fetchAllocationEntities() {
