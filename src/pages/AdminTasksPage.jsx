@@ -234,7 +234,7 @@ export default function AdminTasksPage() {
     // Bell notification alongside the email the edge function sends.
     supabase.rpc('notify_staff', {
       p_recipient: toStaffId, p_kind: 'admin_task_escalated',
-      p_title: `Admin task escalated to you: ${task.title}`, p_link: '/admin/tasks',
+      p_title: `Admin task escalated to you: ${task.title}`, p_link: '/planner/tasks',
     }).then(({ error: nErr }) => { if (nErr) console.error('[AdminTasks] notify', nErr); });
     setTasks((prev) => prev.map((t) => (t.id === task.id
       ? { ...t, escalated_to: toStaffId, escalated_at: new Date().toISOString(), escalation_note: note || null } : t)));

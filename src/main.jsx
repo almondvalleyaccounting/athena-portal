@@ -73,7 +73,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/client-dashboard" element={<ClientDashboardPage />} />
           <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />
           <Route path="/admin/staff" element={<AdminPage />} />
-          <Route path="/admin/tasks" element={<AdminTasksPage />} />
+          {/* Admin Task List moved under Work — it's practice admin (BM
+              task keying, escalations), not system admin. Old links/
+              notifications keep working via this redirect. */}
+          <Route path="/admin/tasks" element={<Navigate to="/planner/tasks" replace />} />
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/admin/import/*" element={<DataImportModule />} />
           {/* Legacy Workflow / Staging routes redirect to the new Waiting area. */}
@@ -97,6 +100,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/planner/setup/*" element={<SetupModule />} />
           {/* Job Review lives under Work — must precede the /planner/* wildcard. */}
           <Route path="/planner/review/*" element={<JobReviewModule />} />
+          {/* Admin Task List — must precede the /planner/* wildcard. */}
+          <Route path="/planner/tasks" element={<AdminTasksPage />} />
           <Route path="/planner/*" element={<WorkPlannerModule />} />
           <Route path="/review" element={<Navigate to="/planner/review" replace />} />
           <Route path="/review/*" element={<Navigate to="/planner/review" replace />} />

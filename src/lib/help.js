@@ -1,9 +1,11 @@
 import { MODULES } from '../modules.config';
 
-// Ad-hoc admin nav ids — not in MODULES (see src/shell/Sidebar.jsx adminChildren).
+// Ad-hoc nav ids — not in MODULES (see src/shell/Sidebar.jsx adminChildren
+// and the work-planner 'wp-tasks' injection). Keeping the 'admin-tasks'
+// help_content id stable even though the route moved under Work.
 const ADMIN_ROUTES = [
   { prefix: '/admin/staff', id: 'admin-staff' },
-  { prefix: '/admin/tasks', id: 'admin-tasks' },
+  { prefix: '/planner/tasks', id: 'admin-tasks' },
   { prefix: '/admin/import', id: 'admin-import' },
 ];
 

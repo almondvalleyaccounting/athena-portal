@@ -1318,7 +1318,7 @@ export default function HomeScreen() {
               label="Admin tasks"
               value={data.adminTasksOpen}
               detail="open"
-              onClick={() => navigate('/admin/tasks')}
+              onClick={() => navigate('/planner/tasks')}
             />
             <OpsStat
               label="Issues log"

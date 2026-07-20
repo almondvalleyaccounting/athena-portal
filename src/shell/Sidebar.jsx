@@ -111,10 +111,11 @@ export default function Sidebar() {
   const canAdminTasks = profile?.can_view_onboarding === true || profile?.is_portal_admin === true;
   const adminChildren = [
     isOwner && { id: 'admin-staff', label: 'Staff & Permissions', route: '/admin/staff' },
-    canAdminTasks && { id: 'admin-tasks', label: 'Admin Task List', route: '/admin/tasks' },
     canImport && { id: 'admin-import', label: 'Data Import', route: '/admin/import' },
     // Workflow consolidated into the Work Planner module's Setup area
     // (/planner/setup). Admins reach it from inside Work Planner now.
+    // Admin Task List moved into the Work module below — it's practice
+    // admin (BM task keying), not system admin.
   ].filter(Boolean);
   const showAdminGroup = adminChildren.length > 0;
   const [adminExpanded, setAdminExpanded] = useState(false);
@@ -266,7 +267,15 @@ export default function Sidebar() {
           const clickable = isModuleClickable(mod);
           const hasChildren = mod.children && mod.children.length > 0;
           const isExpanded = expandedModules[mod.id] && !collapsed;
-          const kids = visibleChildren(mod.children);
+          let kids = visibleChildren(mod.children);
+          // Admin Task List lives under Work now — it's practice admin (BM
+          // task keying, escalations), not system admin. Its OR-based
+          // permission (can_view_onboarding OR is_portal_admin) doesn't fit
+          // the AND-only modules.config model, so it's injected here rather
+          // than declared as a static child.
+          if (mod.id === 'work-planner' && canAdminTasks) {
+            kids = [...kids, { id: 'wp-tasks', label: 'Task List', route: '/planner/tasks' }];
+          }
           // Hide a parent group that has children defined but none visible to
           // this user (e.g. Client Work when they lack every child's permission).
           if (hasChildren && kids.length === 0) return null;
