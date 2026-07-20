@@ -35,6 +35,7 @@ export default function ClientDetailView() {
   const [allocations, setAllocations] = useState([]); // rows from client_service_allocations
   const [recon, setRecon] = useState(null); // v_email_reconciliation row for this entity
   const [onboardings, setOnboardings] = useState([]); // in-flight onboarding runs for the banner
+  const [bmJobs, setBmJobs] = useState([]); // open BrightManager jobs — the compliance strip
   const [loading, setLoading] = useState(true);
   const [timePeriod, setTimePeriod] = useState('12');
   const [changeTaskText, setChangeTaskText] = useState('');
@@ -68,6 +69,9 @@ export default function ClientDetailView() {
           supabase.from('admin_tasks')
             .select('field, value, bm_value')
             .eq('entity_id', id).eq('kind', 'bm_field').is('confirmed_at', null).is('dismissed_at', null),
+          supabase.from('bm_task_schedule')
+            .select('id, service, bm_task_name, bm_deadline, bm_status')
+            .eq('entity_id', id).eq('state', 'planned').order('bm_deadline'),
         ]);
         const get = (i) => results[i]?.value?.data;
         const ent = get(0);
@@ -87,6 +91,7 @@ export default function ClientDetailView() {
         const ov = {};
         for (const t of (get(12) || [])) ov[t.field] = { value: t.value, bm_value: t.bm_value };
         setFieldOverrides(ov);
+        setBmJobs(get(13) || []);
         // Default action assignee to client manager
         if (ent?.manager) {
           const mgr = staff.find((s) => s.name?.toLowerCase().includes(ent.manager.toLowerCase()));
@@ -414,6 +419,11 @@ export default function ClientDetailView() {
         <EmailReconPanel recon={recon} />
       )}
 
+      {/* Compliance & deadlines — open BrightManager jobs for this client.
+          The home-screen deadline alerts link here, so the thing that was
+          clicked must be visible on arrival. */}
+      <CompliancePanel jobs={bmJobs} navigate={navigate} />
+
       {/* Summary cards — all clickable */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
         <SummaryCard icon={Receipt} label="Monthly Billing" value={fmt(totalMonthly)} accent="#0e7fe0" onClick={() => toggleSection('billing')} active={activeSection === 'billing'} />
@@ -698,6 +708,87 @@ function EditableRow({ label, field, entity, setEntity, profile, placeholder, ov
 
 function Badge({ bg, color, children }) {
   return <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: bg, color, textTransform: 'capitalize', fontFamily: "'Outfit', sans-serif" }}>{children}</span>;
+}
+
+// Compliance & deadlines strip: every open (state='planned') BrightManager job
+// for this client, overdue first. SA / Annual Accounts rows deep-link to the
+// filtered Ready Now view; other services have no planner surface, so those
+// rows don't navigate. BM status labels come through verbatim.
+function CompliancePanel({ jobs, navigate }) {
+  const [showAll, setShowAll] = useState(false);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const daysLate = (iso) => Math.floor((today - new Date(iso)) / 86400000);
+  const overdue = jobs.filter((j) => j.bm_deadline && daysLate(j.bm_deadline) > 0);
+
+  // Only SA and Annual Accounts have a Ready Now page to land on.
+  const readyNowService = (name) => {
+    if (/^self assessment submission/i.test(name || '')) return 'SA';
+    if (/^companies house submission/i.test(name || '')) return 'Acc';
+    return null;
+  };
+
+  const visible = showAll ? jobs : jobs.slice(0, 8);
+
+  return (
+    <div style={{ ...cardStyle, marginBottom: 20, ...(overdue.length > 0 ? { border: '1px solid #fecaca' } : {}) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: jobs.length > 0 ? 12 : 0 }}>
+        <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Compliance &amp; Deadlines</h3>
+        {overdue.length > 0 && (
+          <Badge bg="#fef2f2" color="#dc2626">{overdue.length} overdue</Badge>
+        )}
+        {jobs.length > 0 && overdue.length === 0 && (
+          <Badge bg="#f0fdf4" color="#059669">on track</Badge>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#cbd5e1', fontFamily: "'Outfit', sans-serif" }}>
+          {jobs.length > 0 ? `${jobs.length} open BrightManager job${jobs.length === 1 ? '' : 's'}` : 'from BrightManager'}
+        </span>
+      </div>
+      {jobs.length === 0 && (
+        <p style={{ fontSize: 13, color: '#cbd5e1', margin: 0 }}>No open BrightManager jobs for this client.</p>
+      )}
+      {visible.map((j) => {
+        const late = j.bm_deadline ? daysLate(j.bm_deadline) : null;
+        const isLate = late !== null && late > 0;
+        const svc = readyNowService(j.bm_task_name);
+        return (
+          <div
+            key={j.id}
+            onClick={svc ? () => navigate(`/planner/ready?service=${svc}`) : undefined}
+            style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+              fontSize: 12, padding: '5px 0', borderBottom: '1px solid #f1f5f9',
+              cursor: svc ? 'pointer' : 'default',
+            }}
+            title={svc ? 'Open in the planner (Ready Now)' : undefined}
+          >
+            <span style={{ color: '#1e293b', fontWeight: isLate ? 600 : 400, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {j.bm_task_name}
+              {svc && <span style={{ marginLeft: 6, fontSize: 10, color: '#0e7fe0' }}>→ planner</span>}
+            </span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+              {j.service && <span style={{ color: '#94a3b8', fontSize: 11 }}>{j.service}</span>}
+              {j.bm_status && <Badge bg="#f1f5f9" color="#64748b">{j.bm_status}</Badge>}
+              <span style={{ color: isLate ? '#dc2626' : '#64748b', fontWeight: isLate ? 700 : 400, fontFamily: 'monospace', fontSize: 11 }}>
+                {j.bm_deadline
+                  ? isLate
+                    ? `${late}d late · due ${new Date(j.bm_deadline).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                    : `due ${new Date(j.bm_deadline).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                  : 'no deadline'}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+      {jobs.length > 8 && (
+        <button
+          onClick={() => setShowAll((v) => !v)}
+          style={{ marginTop: 8, fontSize: 12, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'Outfit', sans-serif" }}
+        >
+          {showAll ? 'Show fewer' : `Show all ${jobs.length}`}
+        </button>
+      )}
+    </div>
+  );
 }
 
 // Read-only reconciliation panel: BrightManager contact email vs QuickBooks

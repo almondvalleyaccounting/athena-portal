@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { MODULES } from '../modules.config';
 import { useAuth } from './AppShell';
+import { supabase } from '../lib/supabase';
 import JobReviewRadar from '../modules/job-review/DashboardRadar';
 import { useDirectorDashboard, usePracticePulse, daysLate } from './homeDashboardData';
 
@@ -98,10 +99,13 @@ function SectionLabel({ children, note, action }) {
 }
 
 /* ─── Attention card ───────────────────────────────────────────── */
-function AttentionCard({ accent, icon: Icon, title, subtitle, onClick }) {
+// Root is a div, not a button: cards can carry an inline action button
+// (nested <button> inside <button> is invalid HTML).
+function AttentionCard({ accent, icon: Icon, title, subtitle, onClick, action }) {
   return (
-    <button
+    <div
       onClick={onClick}
+      role={onClick ? 'button' : undefined}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -116,6 +120,7 @@ function AttentionCard({ accent, icon: Icon, title, subtitle, onClick }) {
         textAlign: 'left',
         marginBottom: '8px',
         transition: 'all 0.2s ease',
+        boxSizing: 'border-box',
       }}
       onMouseEnter={(e) => {
         if (onClick) {
@@ -145,7 +150,32 @@ function AttentionCard({ accent, icon: Icon, title, subtitle, onClick }) {
           <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>{subtitle}</p>
         )}
       </div>
-    </button>
+      {action && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (action.state === 'idle') action.onClick();
+          }}
+          disabled={action.state !== 'idle'}
+          title="Create a chase task in the Work Planner, assigned to the job owner"
+          style={{
+            fontFamily: FONT,
+            fontSize: '12px',
+            fontWeight: 600,
+            padding: '6px 12px',
+            borderRadius: '8px',
+            border: action.state === 'done' ? '1px solid #bbf7d0' : '1px solid #e5e7eb',
+            background: action.state === 'done' ? '#f0fdf4' : '#ffffff',
+            color: action.state === 'done' ? '#059669' : '#0f172a',
+            cursor: action.state === 'idle' ? 'pointer' : 'default',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          {action.state === 'done' ? '✓ Chase raised' : action.state === 'saving' ? 'Raising…' : 'Raise chase task'}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -597,7 +627,18 @@ function buildAttentionItems(data, navigate) {
       icon: AlertTriangle,
       title: `${r.entity?.name || 'Unknown client'} — accounts ${late} day${late === 1 ? '' : 's'} late at Companies House`,
       subtitle: `Due ${shortDate(r.bm_deadline)} · ${bmStatus(r.bm_status)}${owner}`,
-      onClick: () => (r.entity?.id ? navigate(`/clients/${r.entity.id}`) : navigate('/planner/ready')),
+      onClick: () => (r.entity?.id ? navigate(`/clients/${r.entity.id}`) : navigate('/planner/ready?service=Acc&due=overdue')),
+      // Payload for the inline "Raise chase task" verb — kept as plain data so
+      // this builder stays pure; the card wires it to the insert.
+      chase: r.entity?.id
+        ? {
+            entityId: r.entity.id,
+            entityName: r.entity.name,
+            taskName: r.bm_task_name || 'Companies House accounts',
+            deadline: r.bm_deadline,
+            ownerName: r.owner?.name || null,
+          }
+        : null,
     });
   });
   if (data.ch.overdue > data.ch.overdueList.length) {
@@ -607,7 +648,7 @@ function buildAttentionItems(data, navigate) {
       icon: AlertTriangle,
       title: `${plural(data.ch.overdue - data.ch.overdueList.length, 'more late Companies House filing')}`,
       subtitle: 'Open the planner for the full list',
-      onClick: () => navigate('/planner/ready'),
+      onClick: () => navigate('/planner/ready?service=Acc&due=overdue'),
     });
   }
 
@@ -625,7 +666,7 @@ function buildAttentionItems(data, navigate) {
       icon: AlertTriangle,
       title: `${plural(data.sa.overdueList.length, 'Self Assessment return')} past the filing deadline`,
       subtitle: names + (data.sa.overdueList.length > 3 ? '…' : ''),
-      onClick: () => navigate('/planner/ready'),
+      onClick: () => navigate('/planner/ready?service=SA&due=overdue'),
     });
   }
 
@@ -686,7 +727,8 @@ function buildAttentionItems(data, navigate) {
       icon: Inbox,
       title: `${r.entity?.name || 'A client'} requested ${r.service_title || 'a new service'} via the portal`,
       subtitle: `Raised ${shortDate(r.created_at)} — respond with a quote`,
-      onClick: () => (r.entity_id ? navigate(`/clients/${r.entity_id}`) : navigate('/onboarding')),
+      // The card's own copy says the remedy is a quote — link to the quote form.
+      onClick: () => (r.entity_id ? navigate(`/manage/quotes/new?entity=${r.entity_id}`) : navigate('/onboarding')),
     });
   });
 
@@ -805,6 +847,42 @@ export default function HomeScreen() {
   const [overdueOpen, setOverdueOpen] = useState(false);
   const [overdueService, setOverdueService] = useState('all');
 
+  // Inline verb on late-filing cards: one click creates a chase task in the
+  // Work Planner (same insert as the client page's Raise Action), assigned to
+  // the job owner, falling back to whoever clicked.
+  const [chaseState, setChaseState] = useState({}); // item.id -> 'saving' | 'done'
+  const raiseChase = async (itemId, chase) => {
+    setChaseState((s) => ({ ...s, [itemId]: 'saving' }));
+    try {
+      let assigneeId = profile?.id || null;
+      if (chase.ownerName) {
+        const { data: staff } = await supabase
+          .from('staff_profiles')
+          .select('id, name')
+          .ilike('name', `%${chase.ownerName.split(' ')[0]}%`)
+          .limit(1);
+        if (staff?.[0]?.id) assigneeId = staff[0].id;
+      }
+      const { error } = await supabase.from('quick_tasks').insert({
+        title: `Chase: ${chase.entityName} — ${chase.taskName} overdue since ${shortDate(chase.deadline)}`,
+        entity_id: chase.entityId,
+        service: 'Admin',
+        assignee_id: assigneeId,
+        due_date: new Date(Date.now() + 5 * 86400000).toISOString(),
+        planned_date: null,
+        duration: 15,
+        notes: 'Raised from the home dashboard attention queue',
+        sort_order: 0,
+        created_by: profile?.id,
+      });
+      if (error) throw error;
+      setChaseState((s) => ({ ...s, [itemId]: 'done' }));
+    } catch (e) {
+      console.error('[HomeScreen] raiseChase', e);
+      setChaseState((s) => { const next = { ...s }; delete next[itemId]; return next; });
+    }
+  };
+
   const attentionItems = data ? buildAttentionItems(data, navigate) : [];
 
   // Staff (non-owner) keep the module strip as their orientation aid.
@@ -919,6 +997,14 @@ export default function HomeScreen() {
                   title={item.title}
                   subtitle={item.subtitle}
                   onClick={item.onClick}
+                  action={
+                    item.chase
+                      ? {
+                          state: chaseState[item.id] || 'idle',
+                          onClick: () => raiseChase(item.id, item.chase),
+                        }
+                      : null
+                  }
                 />
               ))}
               <button
