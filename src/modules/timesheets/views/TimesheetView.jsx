@@ -226,11 +226,16 @@ export default function TimesheetView() {
   const handleDeleteRow = useCallback(async (row) => {
     if (!window.confirm(`Delete manual row "${row.entityId ? (entityList.find((e) => e.id === row.entityId)?.name || 'Unknown') : '—'} / ${row.service || '—'}"?`)) return;
     try {
-      await deleteManualRow(selectedStaff, row.entityId, row.service, weekStartISO, weekEndISO);
+      const deleted = await deleteManualRow(selectedStaff, row.entityId, row.service, weekStartISO, weekEndISO);
+      const hadEntries = (row.days || []).some((d) => (d?.manual || 0) > 0 || d?.override != null);
+      if (deleted === 0 && hadEntries) {
+        window.alert('Nothing was deleted — these entries belong to someone else or fall in a locked period.');
+      }
       const updated = await fetchTimesheetEntries(selectedStaff, weekStartISO, weekEndISO);
       setManualEntries(updated);
     } catch (e) {
       console.error('[Timesheets] delete error:', e);
+      window.alert(`Delete failed: ${e.message || e}`);
     }
   }, [selectedStaff, weekStartISO, weekEndISO, entityList]);
 

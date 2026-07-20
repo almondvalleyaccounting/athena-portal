@@ -364,17 +364,23 @@ export default function BillingPage() {
   const startEdit = (item) => {
     setEditingId(item.id); setShowAdd(false);
     setFormClient(item.entity_id || '');
+    // A stored VAT figure only counts as "manual" if it differs from the
+    // standard rate — otherwise editing Net must keep auto-recalculating VAT.
+    const isManualVat = (net, vat) => {
+      const netNum = parseFloat(net) || 0; const vatNum = parseFloat(vat) || 0;
+      return Math.abs(vatNum - Math.round(netNum * VAT_RATE * 100) / 100) > 0.005;
+    };
     // Load the stored lines, or build a single line from the legacy fields.
     const ls = Array.isArray(item.lines) && item.lines.length
       ? item.lines.map((l) => ({
           service: l.service || '', description: l.description || '',
           net: l.net != null ? String(l.net) : '', vat: l.vat != null ? String(l.vat) : '',
-          gross: l.gross != null ? String(l.gross) : '', vatManual: true,
+          gross: l.gross != null ? String(l.gross) : '', vatManual: isManualVat(l.net, l.vat),
         }))
       : [{
           service: item.service || '', description: item.description || '',
           net: String(item.net_amount || ''), vat: String(item.vat_amount || ''),
-          gross: String(item.gross_amount || ''), vatManual: true,
+          gross: String(item.gross_amount || ''), vatManual: isManualVat(item.net_amount, item.vat_amount),
         }];
     setFormLines(ls.length ? ls : [blankLine()]);
   };
@@ -561,7 +567,7 @@ export default function BillingPage() {
             if (compact) return (
               <div key={item.id} id={`billing-item-${item.id}`} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',background:isHighlighted?'#eff6ff':isSelected?'#eff6ff':'#fff',borderRadius:8,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,fontSize:12,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
                 <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:13,height:13,cursor:'pointer',accentColor:'#0e7fe0',flexShrink:0}}/>
-                <span style={{fontWeight:500,color:'#0f172a',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clientName} — {item.service}</span>
+                <span style={{fontWeight:500,color:'#0f172a',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clientName} — {[item.description, item.service].filter(Boolean).join(' · ') || item.service}</span>
                 <span style={{fontWeight:600,color:'#0f172a',flexShrink:0}}>{fmt(item.gross_amount)}</span>
                 <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 6px',borderRadius:4,flexShrink:0}}>{sc.label}</span>
                 <QboInvoiceTag item={item}/>
@@ -574,8 +580,11 @@ export default function BillingPage() {
               <div key={item.id} id={`billing-item-${item.id}`} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'14px 18px',background:isSelected?'#eff6ff':'#fff',borderRadius:12,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
                 <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0',marginTop:3,flexShrink:0}}/>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:500,color:'#0f172a',marginBottom:2}}>{clientName} — {item.service}</div>
-                  {item.description && <div style={{fontSize:12,color:'#64748b'}}>{item.description}</div>}
+                  <div style={{fontSize:14,fontWeight:500,color:'#0f172a',marginBottom:2}}>{clientName}</div>
+                  <div style={{fontSize:12,color:'#64748b'}}>
+                    {item.description || <span style={{fontStyle:'italic',color:'#cbd5e1'}}>No description</span>}
+                    {item.service && <span style={{color:'#0f172a',fontWeight:500}}> · {item.service}</span>}
+                  </div>
                   <div style={{fontSize:11,color:'#94a3b8',marginTop:4,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                     <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 8px',borderRadius:6}}>{sc.label}</span>
                     <QboInvoiceTag item={item}/>

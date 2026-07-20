@@ -33,8 +33,23 @@ export async function fetchTimesheetEntries(staffId, weekStart, weekEnd) {
 
 /* ─── Upsert a timesheet entry (create or update minutes for a cell) ── */
 export async function upsertTimesheetEntry({ staffId, entityId, service, workDate, minutes, notes, source = 'manual' }) {
-  // Skip the lookup — just insert directly. If it conflicts, update.
-  // The old check-then-insert pattern was fragile with RLS.
+  // Replace, don't accumulate: a cell edit sets the cell's value, so any
+  // existing rows for the same (staff, entity, service, date, source) cell
+  // are removed first. Requires the DELETE RLS policy (sql/119).
+  let del = supabase
+    .from('timesheet_entries')
+    .delete()
+    .eq('staff_id', staffId)
+    .eq('work_date', workDate)
+    .eq('source', source);
+  if (entityId) del = del.eq('entity_id', entityId); else del = del.is('entity_id', null);
+  if (service) del = del.eq('service', service); else del = del.is('service', null);
+  const { error: delError } = await del;
+  if (delError) {
+    console.error('[upsertTimesheetEntry] delete error:', delError.message, delError.code);
+    throw delError;
+  }
+
   const { data, error } = await supabase
     .from('timesheet_entries')
     .insert({
@@ -104,8 +119,45 @@ export async function deleteManualRow(staffId, entityId, service, weekStart, wee
   if (service) query = query.eq('service', service);
   else query = query.is('service', null);
 
-  const { error } = await query;
+  const { data, error } = await query.select('id');
   if (error) throw error;
+  // Zero deletions with no error means RLS blocked it (not your row, or the
+  // period is locked) — surface that instead of silently "succeeding".
+  return (data || []).length;
+}
+
+/* ─── Timesheet period locks (sql/119) ── */
+export async function fetchTimesheetLocks() {
+  const { data, error } = await supabase
+    .from('timesheet_locks')
+    .select('*')
+    .order('period_start', { ascending: false });
+  if (error) {
+    if (error.code === '42P01') return [];
+    console.error('[timesheetQueries] fetchTimesheetLocks error:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+export async function createTimesheetLock({ periodStart, periodEnd, note, lockedBy }) {
+  const { data, error } = await supabase
+    .from('timesheet_locks')
+    .insert({ period_start: periodStart, period_end: periodEnd, note: note || null, locked_by: lockedBy })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeTimesheetLock(id) {
+  const { data, error } = await supabase.from('timesheet_locks').delete().eq('id', id).select('id');
+  if (error) throw error;
+  return (data || []).length;
+}
+
+export function isDateLocked(locks, dateStr) {
+  return (locks || []).some((l) => dateStr >= l.period_start && dateStr <= l.period_end);
 }
 
 /* ─── Fetch all completed tasks within a date range (all staff, for dashboard) ── */
