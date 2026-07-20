@@ -68,7 +68,7 @@ export default function GmailConnectionPanel({ staffId }) {
         fontSize: 12, fontFamily: font, color: '#166534',
       }}>
         <span style={{ fontSize: 14 }}>✉</span>
-        <span>Gmail connected as <strong>{conn.account_email}</strong>. Drafts will land in this account's Drafts folder.</span>
+        <span>Gmail connected as <strong>{conn.account_email}</strong>. Athena uses this account to send client reminder emails, read replies, create draft emails, and archive processed messages.</span>
         <div style={{ flex: 1 }} />
         <button
           onClick={disconnect}
@@ -93,7 +93,7 @@ export default function GmailConnectionPanel({ staffId }) {
           Gmail not connected
         </div>
         <div style={{ fontSize: 12, color: '#78350f' }}>
-          Sign in once to let Athena create fee-raise drafts in your Gmail. We only request the "compose drafts" scope — no reading, no sending on your behalf.
+          Sign in once to connect the shared mailbox. Athena uses the connection to send client reminder emails, read replies, create draft emails, and archive processed messages. Changing what the connection is allowed to do means disconnecting and reconnecting.
         </div>
       </div>
       <a

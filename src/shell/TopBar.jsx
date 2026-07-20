@@ -23,6 +23,10 @@ const SUBPAGES = [
   { prefix: '/planner/setup', label: 'Setup' },
   { prefix: '/planner/tasks', label: 'Admin Task List' },
   { prefix: '/admin/staff', label: 'Staff & Permissions' },
+  { prefix: '/admin/portal-clients', label: 'Portal Clients' },
+  { prefix: '/admin/connections', label: 'Connections' },
+  { prefix: '/settings/me', label: 'My Settings' },
+  { prefix: '/settings/shortcuts', label: 'Keyboard shortcuts' },
 ];
 
 /* ─── Enhanced breadcrumb: returns array of segments ─────────── */
@@ -31,11 +35,10 @@ function useBreadcrumb() {
 
   if (pathname === '/home') return [{ label: 'Home' }];
 
-  // Admin routes: parent link to /admin/staff (or Data Import if that's
-  // the only one they have access to — both are accessible from the
-  // Admin group in the sidebar).
-  if (pathname.startsWith('/admin')) {
-    const segments = [{ label: 'Admin' }];
+  // Settings routes (the group formerly labelled "Admin") — covers both
+  // the admin-only /admin/* screens and the all-staff /settings/* pages.
+  if (pathname.startsWith('/admin') || pathname.startsWith('/settings')) {
+    const segments = [{ label: 'Settings' }];
     const sub = SUBPAGES.find((s) => pathname.startsWith(s.prefix));
     if (sub && sub.prefix !== pathname) segments.push({ label: sub.label });
     else if (sub) segments.push({ label: sub.label });
@@ -192,6 +195,20 @@ export default function TopBar() {
                   {profile?.email || ''}
                 </p>
               </div>
+              <button
+                onClick={() => { setMenuOpen(false); navigate('/settings/me'); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  width: '100%', padding: '8px 10px', background: 'none',
+                  border: 'none', borderRadius: 6, cursor: 'pointer',
+                  fontFamily: "'Outfit', sans-serif", fontSize: 13,
+                  fontWeight: 500, color: '#64748b', transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#64748b'; }}
+              >
+                My Settings
+              </button>
               <button
                 onClick={() => { setMenuOpen(false); navigate('/security'); }}
                 style={{

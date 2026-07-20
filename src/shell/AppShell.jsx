@@ -8,6 +8,8 @@ import MFAChallenge from './MFAChallenge';
 import SecurityPage from './SecurityPage';
 import { CinematicPanel } from './LoginPage';
 import { checkTrustedDevice } from '../lib/trustedDevice';
+import useGlobalShortcuts from './useGlobalShortcuts';
+import { ShortcutsModal } from './ShortcutsMap';
 
 /* ─── Auth context ─────────────────────────────────────────────── */
 const AuthContext = createContext(null);
@@ -25,6 +27,10 @@ export default function AppShell() {
   const [recovery, setRecovery] = useState(
     () => typeof window !== 'undefined' && sessionStorage.getItem('passwordRecovery') === '1'
   );
+
+  // Global keyboard shortcuts ("g then x" chords, "?" shortcuts map,
+  // "/" quick-search focus) — see src/shell/useGlobalShortcuts.js.
+  const { shortcutsOpen, setShortcutsOpen } = useGlobalShortcuts();
 
   // ── Listen for auth state ──
   useEffect(() => {
@@ -315,6 +321,9 @@ export default function AppShell() {
             <Outlet />
           </main>
         </div>
+
+        {/* Keyboard shortcuts map — toggled by "?" anywhere */}
+        {shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}
       </div>
     </AuthContext.Provider>
   );

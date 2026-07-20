@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -72,14 +72,14 @@ function SectionLabel({ children, note, action }) {
         display: 'flex',
         alignItems: 'baseline',
         justifyContent: 'space-between',
-        gap: '12px',
-        marginBottom: '16px',
+        gap: '10px',
+        marginBottom: '10px',
       }}
     >
       <h2
         style={{
           fontFamily: FONT,
-          fontSize: '13px',
+          fontSize: '12px',
           fontWeight: 600,
           textTransform: 'uppercase',
           color: '#94a3b8',
@@ -88,9 +88,9 @@ function SectionLabel({ children, note, action }) {
       >
         {children}
       </h2>
-      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '12px' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '10px', minWidth: 0 }}>
         {note && (
-          <span style={{ fontFamily: FONT, fontSize: '12px', color: '#cbd5e1' }}>{note}</span>
+          <span style={{ fontFamily: FONT, fontSize: '11px', color: '#cbd5e1' }}>{note}</span>
         )}
         {action}
       </span>
@@ -98,10 +98,10 @@ function SectionLabel({ children, note, action }) {
   );
 }
 
-/* ─── Attention card ───────────────────────────────────────────── */
+/* ─── Attention card (kept for one-off notices, e.g. QBO reconnect) ── */
 // Root is a div, not a button: cards can carry an inline action button
 // (nested <button> inside <button> is invalid HTML).
-function AttentionCard({ accent, icon: Icon, title, subtitle, onClick, action }) {
+function AttentionCard({ accent, icon: Icon, title, subtitle, onClick }) {
   return (
     <div
       onClick={onClick}
@@ -109,16 +109,16 @@ function AttentionCard({ accent, icon: Icon, title, subtitle, onClick, action })
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '14px',
+        gap: '12px',
         width: '100%',
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
+        borderRadius: '10px',
         border: '1px solid #e5e7eb',
         borderLeft: `3px solid ${accent}`,
-        padding: '14px 18px',
+        padding: '10px 14px',
         cursor: onClick ? 'pointer' : 'default',
         textAlign: 'left',
-        marginBottom: '8px',
+        marginBottom: '6px',
         transition: 'all 0.2s ease',
         boxSizing: 'border-box',
       }}
@@ -133,12 +133,12 @@ function AttentionCard({ accent, icon: Icon, title, subtitle, onClick, action })
         e.currentTarget.style.boxShadow = 'none';
       }}
     >
-      <Icon size={18} style={{ color: accent, flexShrink: 0 }} />
+      <Icon size={16} style={{ color: accent, flexShrink: 0 }} />
       <div style={{ minWidth: 0, flex: 1 }}>
         <p
           style={{
             fontFamily: FONT,
-            fontSize: '14px',
+            fontSize: '13px',
             fontWeight: 500,
             color: '#0f172a',
             marginBottom: subtitle ? '2px' : 0,
@@ -147,9 +147,64 @@ function AttentionCard({ accent, icon: Icon, title, subtitle, onClick, action })
           {title}
         </p>
         {subtitle && (
-          <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>{subtitle}</p>
+          <p style={{ fontFamily: FONT, fontSize: '11px', color: '#94a3b8' }}>{subtitle}</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ─── Compact attention row (the dense queue) ──────────────────── */
+// One line per issue: icon + title + inline detail + optional action verb.
+// Every issue on the page at once — the whole point of the rework.
+function AttentionRow({ accent, icon: Icon, title, subtitle, onClick, action }) {
+  return (
+    <div
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        width: '100%',
+        backgroundColor: '#ffffff',
+        borderRadius: '8px',
+        border: '1px solid #edf0f4',
+        borderLeft: `3px solid ${accent}`,
+        padding: '6px 12px',
+        cursor: onClick ? 'pointer' : 'default',
+        textAlign: 'left',
+        marginBottom: '4px',
+        boxSizing: 'border-box',
+        transition: 'background-color 0.15s ease',
+      }}
+      onMouseEnter={(e) => {
+        if (onClick) e.currentTarget.style.backgroundColor = '#f8fafc';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = '#ffffff';
+      }}
+    >
+      <Icon size={14} style={{ color: accent, flexShrink: 0 }} />
+      <p
+        style={{
+          fontFamily: FONT,
+          fontSize: '13px',
+          color: '#0f172a',
+          flex: 1,
+          minWidth: 0,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          margin: 0,
+        }}
+        title={subtitle ? `${title} — ${subtitle}` : title}
+      >
+        <span style={{ fontWeight: 500 }}>{title}</span>
+        {subtitle && (
+          <span style={{ fontSize: '12px', color: '#94a3b8' }}> · {subtitle}</span>
+        )}
+      </p>
       {action && (
         <button
           onClick={(e) => {
@@ -160,10 +215,10 @@ function AttentionCard({ accent, icon: Icon, title, subtitle, onClick, action })
           title="Create a chase task in the Work Planner, assigned to the job owner"
           style={{
             fontFamily: FONT,
-            fontSize: '12px',
+            fontSize: '11px',
             fontWeight: 600,
-            padding: '6px 12px',
-            borderRadius: '8px',
+            padding: '3px 9px',
+            borderRadius: '6px',
             border: action.state === 'done' ? '1px solid #bbf7d0' : '1px solid #e5e7eb',
             background: action.state === 'done' ? '#f0fdf4' : '#ffffff',
             color: action.state === 'done' ? '#059669' : '#0f172a',
@@ -195,13 +250,13 @@ function YoYChip({ current, prior }) {
       title="vs the same fiscal period last year"
       style={{
         fontFamily: FONT,
-        fontSize: '12px',
+        fontSize: '11px',
         fontWeight: 600,
         color: palette.color,
         backgroundColor: palette.bg,
         border: `1px solid ${palette.border}`,
         borderRadius: '999px',
-        padding: '2px 8px',
+        padding: '1px 7px',
         whiteSpace: 'nowrap',
       }}
     >
@@ -216,18 +271,17 @@ function StatCard({ label, value, sub, chip, onClick }) {
     <div
       onClick={onClick}
       style={{
-        flex: 1,
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
+        borderRadius: '10px',
         border: '1px solid #e5e7eb',
-        padding: '20px 24px',
+        padding: '12px 14px',
         cursor: onClick ? 'pointer' : 'default',
         transition: 'all 0.2s ease',
       }}
       onMouseEnter={(e) => {
         if (onClick) {
-          e.currentTarget.style.transform = 'translateY(-2px)';
-          e.currentTarget.style.boxShadow = '0 8px 24px rgba(56, 189, 248, 0.07)';
+          e.currentTarget.style.transform = 'translateY(-1px)';
+          e.currentTarget.style.boxShadow = '0 6px 18px rgba(56, 189, 248, 0.07)';
         }
       }}
       onMouseLeave={(e) => {
@@ -238,24 +292,24 @@ function StatCard({ label, value, sub, chip, onClick }) {
       <p
         style={{
           fontFamily: FONT,
-          fontSize: '12px',
+          fontSize: '11px',
           fontWeight: 500,
           color: '#94a3b8',
           textTransform: 'uppercase',
           letterSpacing: '0.03em',
-          marginBottom: '8px',
+          marginBottom: '5px',
         }}
       >
         {label}
       </p>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: FONT, fontSize: '26px', fontWeight: 700, color: '#0f172a' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: FONT, fontSize: '21px', fontWeight: 700, color: '#0f172a' }}>
           {value}
         </span>
         {chip}
       </div>
       {sub && (
-        <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+        <p style={{ fontFamily: FONT, fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
           {sub}
         </p>
       )}
@@ -280,13 +334,13 @@ function DeltaChip({ delta }) {
       title="change since the last deadline-digest snapshot"
       style={{
         fontFamily: FONT,
-        fontSize: '12px',
+        fontSize: '11px',
         fontWeight: 600,
         color: palette.color,
         backgroundColor: palette.bg,
         border: `1px solid ${palette.border}`,
         borderRadius: '999px',
-        padding: '2px 8px',
+        padding: '1px 7px',
       }}
     >
       {label}
@@ -301,9 +355,9 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, delta, row
       onClick={onClick}
       style={{
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
+        borderRadius: '10px',
         border: '1px solid #e5e7eb',
-        padding: '20px 24px',
+        padding: '12px 14px',
         cursor: onClick ? 'pointer' : 'default',
         display: 'flex',
         flexDirection: 'column',
@@ -311,8 +365,8 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, delta, row
       }}
       onMouseEnter={(e) => {
         if (onClick) {
-          e.currentTarget.style.transform = 'translateY(-2px)';
-          e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.05)';
+          e.currentTarget.style.transform = 'translateY(-1px)';
+          e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.05)';
         }
       }}
       onMouseLeave={(e) => {
@@ -323,32 +377,32 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, delta, row
       <p
         style={{
           fontFamily: FONT,
-          fontSize: '12px',
+          fontSize: '11px',
           fontWeight: 500,
           color: '#94a3b8',
           textTransform: 'uppercase',
           letterSpacing: '0.03em',
-          marginBottom: '10px',
+          marginBottom: '6px',
         }}
       >
         {title}
       </p>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: FONT, fontSize: '32px', fontWeight: 700, color: bigColor }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: FONT, fontSize: '25px', fontWeight: 700, color: bigColor }}>
           {big}
         </span>
-        <span style={{ fontFamily: FONT, fontSize: '13px', color: '#64748b' }}>{unit}</span>
+        <span style={{ fontFamily: FONT, fontSize: '12px', color: '#64748b' }}>{unit}</span>
         {pill && (
           <span
             style={{
               fontFamily: FONT,
-              fontSize: '12px',
+              fontSize: '11px',
               fontWeight: 600,
               color: '#b91c1c',
               backgroundColor: '#fef2f2',
               border: '1px solid #fecaca',
               borderRadius: '999px',
-              padding: '2px 10px',
+              padding: '1px 8px',
             }}
           >
             {pill}
@@ -357,7 +411,7 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, delta, row
         <DeltaChip delta={delta} />
       </div>
       {rows && (
-        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {rows}
         </div>
       )}
@@ -366,10 +420,10 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, delta, row
         <p
           style={{
             fontFamily: FONT,
-            fontSize: '12px',
+            fontSize: '11px',
             color: '#64748b',
-            marginTop: '14px',
-            paddingTop: '12px',
+            marginTop: '10px',
+            paddingTop: '8px',
             borderTop: '1px solid #f1f5f9',
           }}
         >
@@ -383,16 +437,16 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, delta, row
 function DeadlineRow({ label, value, delta }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontFamily: FONT, fontSize: '13px', color: '#64748b' }}>{label}</span>
+      <span style={{ fontFamily: FONT, fontSize: '12px', color: '#64748b' }}>{label}</span>
       <span
         style={{
           fontFamily: FONT,
-          fontSize: '13px',
+          fontSize: '12px',
           fontWeight: 600,
           color: '#0f172a',
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '6px',
+          gap: '5px',
         }}
       >
         {value}
@@ -408,12 +462,12 @@ function ServiceChip({ service, count, active, onClick }) {
       onClick={onClick}
       style={{
         fontFamily: FONT,
-        fontSize: '12px',
+        fontSize: '11px',
         color: active ? '#0c4a6e' : '#475569',
         backgroundColor: active ? '#e0f2fe' : '#f8fafc',
         border: `1px solid ${active ? '#7dd3fc' : '#e5e7eb'}`,
         borderRadius: '999px',
-        padding: '3px 10px',
+        padding: '2px 8px',
         whiteSpace: 'nowrap',
         cursor: onClick ? 'pointer' : 'inherit',
       }}
@@ -432,28 +486,28 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
   const backlog = shown.filter((j) => daysLate(j.bm_deadline) >= 180);
   const th = {
     fontFamily: FONT,
-    fontSize: '12px',
+    fontSize: '11px',
     fontWeight: 600,
     color: '#475569',
     textAlign: 'left',
-    padding: '8px 12px',
+    padding: '6px 10px',
     backgroundColor: '#f8fafc',
     whiteSpace: 'nowrap',
   };
   const td = {
     fontFamily: FONT,
-    fontSize: '13px',
+    fontSize: '12px',
     color: '#334155',
-    padding: '7px 12px',
+    padding: '5px 10px',
     borderTop: '1px solid #f1f5f9',
     whiteSpace: 'nowrap',
   };
   return (
     <div
       style={{
-        marginTop: '16px',
+        marginTop: '10px',
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
+        borderRadius: '10px',
         border: '1px solid #e5e7eb',
         overflow: 'hidden',
       }}
@@ -463,8 +517,8 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
           display: 'flex',
           flexWrap: 'wrap',
           alignItems: 'center',
-          gap: '6px',
-          padding: '14px 16px',
+          gap: '5px',
+          padding: '10px 12px',
         }}
       >
         <ServiceChip
@@ -487,8 +541,8 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
             onClick={() => onWontHappen(backlog)}
             title="Bulk-triage jobs 180+ days late: excludes them from every count and files the BrightManager cleanup on Sophie's admin list"
             style={{
-              marginLeft: 'auto', fontFamily: FONT, fontSize: '12px', fontWeight: 600,
-              padding: '6px 12px', borderRadius: '8px', border: '1px solid #fcd34d',
+              marginLeft: 'auto', fontFamily: FONT, fontSize: '11px', fontWeight: 600,
+              padding: '4px 10px', borderRadius: '7px', border: '1px solid #fcd34d',
               background: '#fef3c7', color: '#92400e', cursor: 'pointer', whiteSpace: 'nowrap',
             }}
           >
@@ -496,7 +550,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
           </button>
         )}
       </div>
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', maxHeight: '45vh', overflowY: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
@@ -530,7 +584,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
                 <td
                   style={{
                     ...td,
-                    maxWidth: '260px',
+                    maxWidth: '220px',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     color: '#64748b',
@@ -553,7 +607,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
                       title="This job is never going to be done — exclude it from every count and file the BrightManager cleanup on Sophie's admin list"
                       style={{
                         fontFamily: FONT, fontSize: '11px', fontWeight: 600,
-                        padding: '3px 8px', borderRadius: '6px', border: '1px solid #e5e7eb',
+                        padding: '2px 7px', borderRadius: '6px', border: '1px solid #e5e7eb',
                         background: '#fff', color: '#64748b', cursor: 'pointer', whiteSpace: 'nowrap',
                       }}
                     >
@@ -568,7 +622,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
       </div>
       {typeof total === 'number' && total > jobs.length && (
         <div style={{
-          padding: '8px 16px', fontFamily: FONT, fontSize: '12px', color: '#92400e',
+          padding: '6px 12px', fontFamily: FONT, fontSize: '11px', color: '#92400e',
           background: '#fffbeb', borderTop: '1px solid #fcd34d',
         }}>
           Showing the first {jobs.length} of {total} late jobs — the headline count is exact; use the
@@ -587,11 +641,11 @@ function OpsStat({ label, value, detail, tone = 'default', onClick }) {
       onClick={onClick}
       style={{
         flex: 1,
-        minWidth: '150px',
+        minWidth: '130px',
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
+        borderRadius: '10px',
         border: '1px solid #e5e7eb',
-        padding: '14px 18px',
+        padding: '10px 14px',
         cursor: onClick ? 'pointer' : 'default',
         transition: 'all 0.2s ease',
       }}
@@ -609,26 +663,66 @@ function OpsStat({ label, value, detail, tone = 'default', onClick }) {
       <p
         style={{
           fontFamily: FONT,
-          fontSize: '11px',
+          fontSize: '10px',
           fontWeight: 500,
           color: '#94a3b8',
           textTransform: 'uppercase',
           letterSpacing: '0.03em',
-          marginBottom: '4px',
+          marginBottom: '3px',
         }}
       >
         {label}
       </p>
-      <p style={{ fontFamily: FONT, fontSize: '20px', fontWeight: 700, color: valueColor }}>
+      <p style={{ fontFamily: FONT, fontSize: '18px', fontWeight: 700, color: valueColor }}>
         {value}
         {detail && (
           <span
-            style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8', marginLeft: '8px' }}
+            style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginLeft: '6px' }}
           >
             {detail}
           </span>
         )}
       </p>
+    </div>
+  );
+}
+
+/* ─── CH refresh health line (Operations) ──────────────────────── */
+// The overnight Companies House sweep is what feeds the strike-off triage —
+// so a run that failed or didn't happen is itself an operational signal.
+function ChRefreshLine({ run }) {
+  let text;
+  let tone = 'ok';
+  if (!run) {
+    text = 'CH refresh last night: did not run';
+    tone = 'warn';
+  } else {
+    const errCount = Array.isArray(run.errors)
+      ? run.errors.length
+      : run.errors && typeof run.errors === 'object'
+        ? Object.keys(run.errors).length
+        : 0;
+    const companies = run.processed ?? 0;
+    const changes = run.status_changes ?? 0;
+    text = `CH refresh last night: ${companies} compan${companies === 1 ? 'y' : 'ies'}, ${changes} status change${changes === 1 ? '' : 's'}, ${errCount} error${errCount === 1 ? '' : 's'}`;
+    if (errCount > 0) tone = 'warn';
+  }
+  const dot = tone === 'warn' ? '#f59e0b' : '#22c55e';
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        backgroundColor: '#ffffff',
+        borderRadius: '10px',
+        border: '1px solid #e5e7eb',
+        padding: '8px 14px',
+        marginTop: '8px',
+      }}
+    >
+      <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: dot, flexShrink: 0 }} />
+      <p style={{ fontFamily: FONT, fontSize: '12px', color: '#475569', margin: 0 }}>{text}</p>
     </div>
   );
 }
@@ -650,6 +744,14 @@ function ModuleStatusDot({ mod }) {
 const BM_STATUS_LABELS = { 'No Latest Action': 'Not started' };
 const bmStatus = (s) => BM_STATUS_LABELS[s] || s || 'No status';
 
+// Severity/type groups the dense queue renders under, in display order.
+const ATTENTION_GROUPS = [
+  { key: 'critical', label: 'Overdue & at risk' },
+  { key: 'action', label: 'Ready to action' },
+  { key: 'waiting', label: 'Waiting on you' },
+  { key: 'requests', label: 'Requests & triage' },
+];
+
 // Priority order: things already late or broken (red), money waiting on Bobby
 // (green — accepted quotes to commit), then everything pending (amber/sky).
 function buildAttentionItems(data, navigate) {
@@ -663,13 +765,14 @@ function buildAttentionItems(data, navigate) {
     const owner = r.owner?.name ? ` · ${r.owner.name.split(' ')[0]}` : '';
     items.push({
       id: `ch-${r.id}`,
+      group: 'critical',
       accent: '#ef4444',
       icon: AlertTriangle,
       title: `${r.entity?.name || 'Unknown client'} — accounts ${late} day${late === 1 ? '' : 's'} late at Companies House`,
       subtitle: `Due ${shortDate(r.bm_deadline)} · ${bmStatus(r.bm_status)}${owner}`,
       onClick: () => (r.entity?.id ? navigate(`/clients/${r.entity.id}`) : navigate('/planner/ready?service=Acc&due=overdue')),
       // Payload for the inline "Raise chase task" verb — kept as plain data so
-      // this builder stays pure; the card wires it to the insert.
+      // this builder stays pure; the row wires it to the insert.
       chase: r.entity?.id
         ? {
             entityId: r.entity.id,
@@ -684,6 +787,7 @@ function buildAttentionItems(data, navigate) {
   if (data.ch.overdue > data.ch.overdueList.length) {
     items.push({
       id: 'ch-overdue-more',
+      group: 'critical',
       accent: '#ef4444',
       icon: AlertTriangle,
       title: `${plural(data.ch.overdue - data.ch.overdueList.length, 'more late Companies House filing')}`,
@@ -702,6 +806,7 @@ function buildAttentionItems(data, navigate) {
       .join(' · ');
     items.push({
       id: 'sa-overdue',
+      group: 'critical',
       accent: '#ef4444',
       icon: AlertTriangle,
       title: `${plural(data.sa.overdueList.length, 'Self Assessment return')} past the filing deadline`,
@@ -710,9 +815,37 @@ function buildAttentionItems(data, navigate) {
     });
   }
 
+  // Triage: strike-off risk is critical (CH status changed under us); the
+  // rest are visibility items. All resolve on the triage page.
+  (data.triage || []).forEach((t) => {
+    const name = t.entity?.name || 'Unknown client';
+    if (t.category === 'strike_off') {
+      items.push({
+        id: `triage-${t.id}`,
+        group: 'critical',
+        accent: '#ef4444',
+        icon: AlertTriangle,
+        title: `${name} — strike-off risk (Companies House status changed)`,
+        subtitle: 'Resolve in triage',
+        onClick: () => navigate('/triage'),
+      });
+    } else {
+      items.push({
+        id: `triage-${t.id}`,
+        group: 'requests',
+        accent: '#38bdf8',
+        icon: Inbox,
+        title: t.category === 'on_hold' ? `${name} — on hold` : `${name} — in triage`,
+        subtitle: 'Open triage',
+        onClick: () => navigate('/triage'),
+      });
+    }
+  });
+
   data.onboarding.issues.forEach((o) => {
     items.push({
       id: `onb-${o.id}`,
+      group: 'critical',
       accent: '#ef4444',
       icon: AlertTriangle,
       title: `${o.entity?.name || 'Onboarding'} — flagged with issues`,
@@ -721,9 +854,24 @@ function buildAttentionItems(data, navigate) {
     });
   });
 
+  data.quotes.expiring.forEach((q) => {
+    items.push({
+      id: `exp-${q.id}`,
+      group: 'critical',
+      accent: '#f87171',
+      icon: AlertTriangle,
+      title: `${q.relationship_group || q.quote_ref} — accepted quote expires ${shortDate(
+        q.valid_until,
+      )}`,
+      subtitle: q.quote_ref,
+      onClick: () => navigate(`/manage/quotes/${q.id}`),
+    });
+  });
+
   data.quotes.accepted.forEach((q) => {
     items.push({
       id: `acc-${q.id}`,
+      group: 'action',
       accent: '#22c55e',
       icon: CheckCheck,
       title: `${q.relationship_group || q.quote_ref} accepted ${q.quote_ref}${
@@ -739,6 +887,7 @@ function buildAttentionItems(data, navigate) {
   data.quotes.pendingApproval.forEach((q) => {
     items.push({
       id: `pend-${q.id}`,
+      group: 'waiting',
       accent: '#f59e0b',
       icon: Clock,
       title: `${q.relationship_group || q.quote_ref} — quote awaiting approval`,
@@ -747,34 +896,10 @@ function buildAttentionItems(data, navigate) {
     });
   });
 
-  data.quotes.expiring.forEach((q) => {
-    items.push({
-      id: `exp-${q.id}`,
-      accent: '#f87171',
-      icon: AlertTriangle,
-      title: `${q.relationship_group || q.quote_ref} — accepted quote expires ${shortDate(
-        q.valid_until,
-      )}`,
-      subtitle: q.quote_ref,
-      onClick: () => navigate(`/manage/quotes/${q.id}`),
-    });
-  });
-
-  data.serviceRequests.forEach((r) => {
-    items.push({
-      id: `sr-${r.id}`,
-      accent: '#38bdf8',
-      icon: Inbox,
-      title: `${r.entity?.name || 'A client'} requested ${r.service_title || 'a new service'} via the portal`,
-      subtitle: `Raised ${shortDate(r.created_at)} — respond with a quote`,
-      // The card's own copy says the remedy is a quote — link to the quote form.
-      onClick: () => (r.entity_id ? navigate(`/manage/quotes/new?entity=${r.entity_id}`) : navigate('/onboarding')),
-    });
-  });
-
   if (data.billingNeedsReview > 0) {
     items.push({
       id: 'billing-review',
+      group: 'waiting',
       accent: '#f59e0b',
       icon: Clock,
       title: `${plural(data.billingNeedsReview, 'live billing record')} flagged for review`,
@@ -783,22 +908,75 @@ function buildAttentionItems(data, navigate) {
     });
   }
 
+  // QBO customers the nightly ~5am pull found with no client mapping yet.
+  if (data.qboUnmapped > 0) {
+    items.push({
+      id: 'qbo-mapping',
+      group: 'waiting',
+      accent: '#f59e0b',
+      icon: Clock,
+      title: `${plural(data.qboUnmapped, 'QuickBooks customer')} need${data.qboUnmapped === 1 ? 's' : ''} mapping`,
+      subtitle: 'From the nightly QBO pull — map to clients',
+      onClick: () => navigate('/manage/billing/qbo-mapping'),
+    });
+  }
+
+  data.serviceRequests.forEach((r) => {
+    items.push({
+      id: `sr-${r.id}`,
+      group: 'requests',
+      accent: '#38bdf8',
+      icon: Inbox,
+      title: `${r.entity?.name || 'A client'} requested ${r.service_title || 'a new service'} via the portal`,
+      subtitle: `Raised ${shortDate(r.created_at)} — respond with a quote`,
+      // The row's own copy says the remedy is a quote — link to the quote form.
+      onClick: () => (r.entity_id ? navigate(`/manage/quotes/new?entity=${r.entity_id}`) : navigate('/onboarding')),
+    });
+  });
+
   return items;
 }
 
-// One-line summary for the collapsed state — counts by kind, worst first.
+// One-line summary chips — counts by kind, worst first. Shown collapsed AND
+// as the chip row above the expanded queue.
 function attentionSummary(data) {
   const seg = [];
   const p = (n, s) => `${n} ${s}${n === 1 ? '' : 's'}`;
+  const strikeOff = (data.triage || []).filter((t) => t.category === 'strike_off').length;
+  const otherTriage = (data.triage || []).length - strikeOff;
   if (data.ch.overdue > 0) seg.push(`${p(data.ch.overdue, 'CH filing')} late`);
   if (data.sa.overdueList.length > 0) seg.push(`${p(data.sa.overdueList.length, 'SA return')} late`);
+  if (strikeOff > 0) seg.push(p(strikeOff, 'strike-off risk'));
   if (data.onboarding.issues.length > 0) seg.push(p(data.onboarding.issues.length, 'onboarding issue'));
   if (data.quotes.accepted.length > 0) seg.push(`${p(data.quotes.accepted.length, 'quote')} to commit`);
   if (data.quotes.pendingApproval.length > 0) seg.push(`${p(data.quotes.pendingApproval.length, 'approval')} waiting`);
   if (data.quotes.expiring.length > 0) seg.push(`${p(data.quotes.expiring.length, 'quote')} expiring`);
-  if (data.serviceRequests.length > 0) seg.push(p(data.serviceRequests.length, 'service request'));
   if (data.billingNeedsReview > 0) seg.push(p(data.billingNeedsReview, 'billing review'));
+  if (data.qboUnmapped > 0) seg.push(`${data.qboUnmapped} QBO unmapped`);
+  if (data.serviceRequests.length > 0) seg.push(p(data.serviceRequests.length, 'service request'));
+  if (otherTriage > 0) seg.push(p(otherTriage, 'triage case'));
   return seg;
+}
+
+/* ─── Summary chip (top of the queue, and the collapsed card) ──── */
+function SummaryChip({ children }) {
+  return (
+    <span
+      style={{
+        fontFamily: FONT,
+        fontSize: '11px',
+        fontWeight: 500,
+        color: '#475569',
+        backgroundColor: '#f8fafc',
+        border: '1px solid #e5e7eb',
+        borderRadius: '999px',
+        padding: '2px 9px',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {children}
+    </span>
+  );
 }
 
 /* ─── Collapsed attention summary card ─────────────────────────── */
@@ -812,13 +990,13 @@ function AttentionSummaryCard({ items, segments, onExpand }) {
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '14px',
+        gap: '12px',
         width: '100%',
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
+        borderRadius: '10px',
         border: '1px solid #e5e7eb',
         borderLeft: `3px solid ${accent}`,
-        padding: '14px 18px',
+        padding: '10px 14px',
         cursor: 'pointer',
         textAlign: 'left',
         transition: 'all 0.2s ease',
@@ -832,12 +1010,12 @@ function AttentionSummaryCard({ items, segments, onExpand }) {
         e.currentTarget.style.boxShadow = 'none';
       }}
     >
-      <Icon size={18} style={{ color: accent, flexShrink: 0 }} />
+      <Icon size={16} style={{ color: accent, flexShrink: 0 }} />
       <div style={{ minWidth: 0, flex: 1 }}>
         <p
           style={{
             fontFamily: FONT,
-            fontSize: '14px',
+            fontSize: '13px',
             fontWeight: 500,
             color: '#0f172a',
             marginBottom: '2px',
@@ -846,11 +1024,11 @@ function AttentionSummaryCard({ items, segments, onExpand }) {
           {items.length} item{items.length === 1 ? '' : 's'} need{items.length === 1 ? 's' : ''} your
           attention
         </p>
-        <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>
+        <p style={{ fontFamily: FONT, fontSize: '11px', color: '#94a3b8' }}>
           {segments.join(' · ')}
         </p>
       </div>
-      <ChevronDown size={18} style={{ color: '#94a3b8', flexShrink: 0 }} />
+      <ChevronDown size={16} style={{ color: '#94a3b8', flexShrink: 0 }} />
     </button>
   );
 }
@@ -870,16 +1048,26 @@ export default function HomeScreen() {
   const { loading, data } = useDirectorDashboard(isOwner || canSeeAttention);
   const { loading: pulseLoading, pulse, error: pulseError } = usePracticePulse(canSeePulse);
 
-  // Less is more: the attention queue opens collapsed, one summary line.
-  const [attentionOpen, setAttentionOpen] = useState(false);
+  // The queue opens EXPANDED for the owner — the page's job is getting every
+  // issue in front of Bobby, not hiding them behind a summary line. The
+  // effect covers the profile arriving after first render; once the user
+  // toggles by hand we stop overriding.
+  const [attentionOpen, setAttentionOpen] = useState(isOwner);
+  const attentionToggledRef = useRef(false);
+  useEffect(() => {
+    if (isOwner && !attentionToggledRef.current) setAttentionOpen(true);
+  }, [isOwner]);
   const attentionRef = useRef(null);
-  // Collapsing removes ~a screen of cards above the fold; snap back to the
-  // section header so the collapse is actually visible.
   const collapseAttention = () => {
+    attentionToggledRef.current = true;
     setAttentionOpen(false);
     requestAnimationFrame(() =>
       attentionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
     );
+  };
+  const expandAttention = () => {
+    attentionToggledRef.current = true;
+    setAttentionOpen(true);
   };
 
   // The 86-late-jobs list lives here, not in the planner — Ready Now only
@@ -887,7 +1075,7 @@ export default function HomeScreen() {
   const [overdueOpen, setOverdueOpen] = useState(false);
   const [overdueService, setOverdueService] = useState('all');
 
-  // Inline verb on late-filing cards: one click creates a chase task in the
+  // Inline verb on late-filing rows: one click creates a chase task in the
   // Work Planner (same insert as the client page's Raise Action), assigned to
   // the job owner, falling back to whoever clicked.
   const [chaseState, setChaseState] = useState({}); // item.id -> 'saving' | 'done'
@@ -954,6 +1142,10 @@ export default function HomeScreen() {
   const visibleOverdueTotal = Math.max(0, (data?.overdueWork.total || 0) - wontHappenIds.size);
 
   const attentionItems = data ? buildAttentionItems(data, navigate) : [];
+  const attentionGroups = ATTENTION_GROUPS.map((g) => ({
+    ...g,
+    items: attentionItems.filter((i) => (i.group || 'waiting') === g.key),
+  })).filter((g) => g.items.length > 0);
 
   // Staff (non-owner) keep the module strip as their orientation aid.
   const visibleModules = MODULES.filter((mod) => {
@@ -966,378 +1158,414 @@ export default function HomeScreen() {
     ? `work data from BrightManager · refreshed ${shortDate(data.bmDataAsOf)}`
     : null;
 
+  // Anything to put in the right-hand column? (Pulse is Bobby-only; deadlines
+  // and ops are owner-only — quote approvers get a full-width queue instead.)
+  const hasRightColumn = canSeePulse || isOwner;
+
+  /* ── Section renderers (shared between one- and two-column layouts) ── */
+
+  const attentionSection = canSeeAttention && (
+    <div ref={attentionRef} style={{ scrollMarginTop: '20px' }}>
+      <SectionLabel
+        action={
+          !loading && attentionItems.length > 0 ? (
+            <button
+              onClick={() => (attentionOpen ? collapseAttention() : expandAttention())}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontFamily: FONT,
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#38bdf8',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              {attentionOpen ? (
+                <>
+                  Collapse <ChevronUp size={13} />
+                </>
+              ) : (
+                <>
+                  Show all {attentionItems.length} <ChevronDown size={13} />
+                </>
+              )}
+            </button>
+          ) : null
+        }
+      >
+        Needs attention{!loading && attentionItems.length > 0 ? ` — ${attentionItems.length}` : ''}
+      </SectionLabel>
+      {loading ? (
+        <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>Checking…</p>
+      ) : attentionItems.length === 0 ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            backgroundColor: '#ffffff',
+            borderRadius: '10px',
+            border: '1px solid #e5e7eb',
+            borderLeft: '3px solid #22c55e',
+            padding: '10px 14px',
+          }}
+        >
+          <CheckCircle size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
+          <p style={{ fontFamily: FONT, fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+            Nothing needs your attention right now.
+          </p>
+        </div>
+      ) : !attentionOpen ? (
+        <AttentionSummaryCard
+          items={attentionItems}
+          segments={attentionSummary(data)}
+          onExpand={expandAttention}
+        />
+      ) : (
+        <>
+          {/* Summary chip row stays on top so the shape of the queue is
+              readable before the detail. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '8px' }}>
+            {attentionSummary(data).map((s) => (
+              <SummaryChip key={s}>{s}</SummaryChip>
+            ))}
+          </div>
+          {/* Every item, no cap — dense rows in a scrollable well. */}
+          <div style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '2px' }}>
+            {attentionGroups.map((g) => (
+              <div key={g.key} style={{ marginBottom: '8px' }}>
+                <p
+                  style={{
+                    fontFamily: FONT,
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    color: '#94a3b8',
+                    margin: '0 0 4px 2px',
+                  }}
+                >
+                  {g.label} · {g.items.length}
+                </p>
+                {g.items.map((item) => (
+                  <AttentionRow
+                    key={item.id}
+                    accent={item.accent}
+                    icon={item.icon}
+                    title={item.title}
+                    subtitle={item.subtitle}
+                    onClick={item.onClick}
+                    action={
+                      item.chase
+                        ? {
+                            state: chaseState[item.id] || 'idle',
+                            onClick: () => raiseChase(item.id, item.chase),
+                          }
+                        : null
+                    }
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  const pulseSection = canSeePulse && (
+    <div>
+      <SectionLabel
+        note={
+          pulse?.pulledAt
+            ? `QuickBooks · ${pulse.fromCache ? 'cached ' : 'pulled '}${shortDate(
+                pulse.pulledAt,
+              )} · only you`
+            : 'visible only to you'
+        }
+      >
+        Practice pulse
+      </SectionLabel>
+      {pulseLoading ? (
+        <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>
+          Pulling the numbers from QuickBooks…
+        </p>
+      ) : pulseError === 'reconnect' || pulseError === 'no-connection' ? (
+        <AttentionCard
+          accent="#f59e0b"
+          icon={Clock}
+          title="QuickBooks needs reconnecting before the pulse can load"
+          subtitle="Open the Client Dashboard and reconnect Almond Valley Accounting"
+          onClick={() => navigate('/client-dashboard')}
+        />
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '10px',
+          }}
+        >
+          <StatCard
+            label="Revenue — fiscal YTD"
+            value={pulse?.plFytd?.income != null ? formatCurrency(pulse.plFytd.income) : '—'}
+            chip={<YoYChip current={pulse?.plFytd?.income} prior={pulse?.plFytdPrior?.income} />}
+            sub={[
+              pulse?.plFytd?.period?.start
+                ? `since ${shortDate(pulse.plFytd.period.start)}`
+                : null,
+              pulse?.plFytdPrior?.income != null
+                ? `${formatCurrency(pulse.plFytdPrior.income)} last year`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+            onClick={() => navigate('/client-dashboard')}
+          />
+          <StatCard
+            label="Net operating — fiscal YTD"
+            value={
+              pulse?.plFytd?.net_operating_income != null
+                ? formatCurrency(pulse.plFytd.net_operating_income)
+                : '—'
+            }
+            chip={
+              <YoYChip
+                current={pulse?.plFytd?.net_operating_income}
+                prior={pulse?.plFytdPrior?.net_operating_income}
+              />
+            }
+            sub={[
+              pulse?.plFytd?.net_operating_income != null && pulse?.plFytd?.income > 0
+                ? `${Math.round(
+                    (pulse.plFytd.net_operating_income / pulse.plFytd.income) * 100,
+                  )}% margin`
+                : null,
+              pulse?.plFytd?.net_income != null
+                ? `${formatCurrency(pulse.plFytd.net_income)} net after dividends`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+            onClick={() => navigate('/client-dashboard')}
+          />
+          <StatCard
+            label="Cash at bank"
+            value={pulse?.balances?.cash != null ? formatCurrency(pulse.balances.cash) : '—'}
+            sub={
+              pulse?.balances?.bank_account_count
+                ? `across ${pulse.balances.bank_account_count} bank account${
+                    pulse.balances.bank_account_count === 1 ? '' : 's'
+                  }`
+                : null
+            }
+            onClick={() => navigate('/client-dashboard')}
+          />
+          <StatCard
+            label="Debtors"
+            value={
+              pulse?.balances?.debtors != null ? formatCurrency(pulse.balances.debtors) : '—'
+            }
+            sub="owed to the practice"
+            onClick={() => navigate('/client-dashboard')}
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  const deadlinesSection = isOwner && data && (
+    <div>
+      <SectionLabel
+        note={[bmNote, data.wow ? `▲▼ vs digest ${shortDate(data.wow.since)}` : null]
+          .filter(Boolean)
+          .join(' · ')}
+      >
+        Deadlines
+      </SectionLabel>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '10px',
+        }}
+      >
+        <DeadlineCard
+          title="Companies House accounts"
+          big={data.ch.thisMonth}
+          unit={`due in ${thisMonthName}`}
+          pill={data.ch.overdue > 0 ? `${data.ch.overdue} past deadline` : null}
+          delta={data.wow?.chThisMonth}
+          rows={
+            <>
+              <DeadlineRow label={nextMonthName} value={data.ch.nextMonth} />
+              <DeadlineRow
+                label="Next 6 months"
+                value={data.ch.sixMonths}
+                delta={data.wow?.chSixMonths}
+              />
+            </>
+          }
+          footer={`~${data.ch.runRate} filings a week clears the 6-month pile`}
+          onClick={() => navigate('/planner/ready?service=Acc')}
+        />
+        <DeadlineCard
+          title="Self Assessment"
+          big={data.sa.count}
+          unit={`returns due 31 Jan ${data.sa.year}`}
+          delta={data.wow?.sa}
+          footer={`~${data.sa.runRate} a week from now stays on track`}
+          onClick={() => navigate('/planner/ready?service=SA')}
+        />
+        <DeadlineCard
+          title="Work past BM deadline"
+          big={visibleOverdueTotal}
+          bigColor={visibleOverdueTotal > 0 ? '#b91c1c' : '#0f172a'}
+          unit="open jobs late"
+          delta={data.wow?.overdueTotal}
+          rows={
+            data.overdueWork.byService.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                {data.overdueWork.byService.slice(0, 5).map((r) => (
+                  <ServiceChip key={r.service} service={r.service} count={r.count} />
+                ))}
+                {data.overdueWork.byService.length > 5 && (
+                  <ServiceChip
+                    service="other"
+                    count={data.overdueWork.byService
+                      .slice(5)
+                      .reduce((s, r) => s + r.count, 0)}
+                  />
+                )}
+              </div>
+            )
+          }
+          footer={overdueOpen ? 'Hide the list' : 'Click to list every late job'}
+          onClick={() => setOverdueOpen((o) => !o)}
+        />
+      </div>
+      {overdueOpen && visibleOverdueJobs.length > 0 && (
+        <OverduePanel
+          jobs={visibleOverdueJobs}
+          byService={data.overdueWork.byService}
+          service={overdueService}
+          onService={setOverdueService}
+          onRow={(j) => j.entity?.id && navigate(`/clients/${j.entity.id}`)}
+          onWontHappen={markWontHappen}
+          total={visibleOverdueTotal}
+        />
+      )}
+    </div>
+  );
+
+  const opsSection = isOwner && data && (
+    <div>
+      <SectionLabel>Operations</SectionLabel>
+      <JobReviewRadar />
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <OpsStat
+          label="Onboardings in flight"
+          value={data.onboarding.inFlight}
+          detail={
+            data.onboarding.issues.length > 0
+              ? `${data.onboarding.issues.length} with issues`
+              : null
+          }
+          tone={data.onboarding.issues.length > 0 ? 'warn' : 'default'}
+          onClick={() => navigate('/onboarding')}
+        />
+        <OpsStat
+          label="CH codes"
+          value={data.chCodes.awaiting + data.chCodes.stalled}
+          detail={data.chCodes.stalled > 0 ? `${data.chCodes.stalled} stalled` : 'in progress'}
+          tone={data.chCodes.stalled > 0 ? 'warn' : 'default'}
+          onClick={() => navigate('/onboarding/ch-codes')}
+        />
+        <OpsStat
+          label="Admin tasks"
+          value={data.adminTasksOpen}
+          detail="open"
+          onClick={() => navigate('/planner/tasks')}
+        />
+        <OpsStat
+          label="Issues log"
+          value={data.issuesOpen}
+          detail="open"
+          tone={data.issuesOpen > 0 ? 'warn' : 'default'}
+          onClick={() => navigate('/issues')}
+        />
+      </div>
+      {/* Last night's Companies House sweep — the feed behind strike-off triage. */}
+      <ChRefreshLine run={data.chRefresh} />
+    </div>
+  );
+
   return (
-    <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '40px 24px' }}>
+    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '24px 24px 40px' }}>
       {/* ── Header row ── */}
       <div
         style={{
           display: 'flex',
           alignItems: 'baseline',
           justifyContent: 'space-between',
-          marginBottom: '36px',
+          marginBottom: '20px',
         }}
       >
         <h1
           style={{
             fontFamily: "'Playfair Display', serif",
-            fontSize: '28px',
+            fontSize: '25px',
             fontWeight: 500,
             color: '#0f172a',
           }}
         >
           {getGreeting()}, {firstName}
         </h1>
-        <span style={{ fontFamily: FONT, fontSize: '13px', color: '#94a3b8' }}>
+        <span style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>
           {formatDate()}
         </span>
       </div>
 
-      {/* ── Needs attention ── */}
-      {canSeeAttention && (
-        <div ref={attentionRef} style={{ marginBottom: '36px', scrollMarginTop: '24px' }}>
-          <SectionLabel
-            action={
-              !loading && attentionItems.length > 0 ? (
-                <button
-                  onClick={() =>
-                    attentionOpen ? collapseAttention() : setAttentionOpen(true)
-                  }
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    fontFamily: FONT,
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: '#38bdf8',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                >
-                  {attentionOpen ? (
-                    <>
-                      Show less <ChevronUp size={14} />
-                    </>
-                  ) : (
-                    <>
-                      Show all {attentionItems.length} <ChevronDown size={14} />
-                    </>
-                  )}
-                </button>
-              ) : null
-            }
-          >
-            Needs attention
-          </SectionLabel>
-          {loading ? (
-            <p style={{ fontFamily: FONT, fontSize: '13px', color: '#94a3b8' }}>Checking…</p>
-          ) : attentionItems.length === 0 ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '14px',
-                backgroundColor: '#ffffff',
-                borderRadius: '12px',
-                border: '1px solid #e5e7eb',
-                borderLeft: '3px solid #22c55e',
-                padding: '14px 18px',
-              }}
-            >
-              <CheckCircle size={18} style={{ color: '#22c55e', flexShrink: 0 }} />
-              <p style={{ fontFamily: FONT, fontSize: '14px', fontWeight: 500, color: '#0f172a' }}>
-                Nothing needs your attention right now.
-              </p>
-            </div>
-          ) : !attentionOpen ? (
-            <AttentionSummaryCard
-              items={attentionItems}
-              segments={attentionSummary(data)}
-              onExpand={() => setAttentionOpen(true)}
-            />
-          ) : (
-            <>
-              {attentionItems.slice(0, 12).map((item) => (
-                <AttentionCard
-                  key={item.id}
-                  accent={item.accent}
-                  icon={item.icon}
-                  title={item.title}
-                  subtitle={item.subtitle}
-                  onClick={item.onClick}
-                  action={
-                    item.chase
-                      ? {
-                          state: chaseState[item.id] || 'idle',
-                          onClick: () => raiseChase(item.id, item.chase),
-                        }
-                      : null
-                  }
-                />
-              ))}
-              <button
-                onClick={collapseAttention}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontFamily: FONT,
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  color: '#38bdf8',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '4px 0',
-                  marginTop: '4px',
-                }}
-              >
-                <ChevronUp size={16} /> Show less
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ── Practice pulse — AVA actuals from QuickBooks (Bobby only) ── */}
-      {canSeePulse && (
-        <div style={{ marginBottom: '36px' }}>
-          <SectionLabel
-            note={
-              pulse?.pulledAt
-                ? `Almond Valley actuals from QuickBooks · ${
-                    pulse.fromCache ? 'cached ' : 'pulled '
-                  }${shortDate(pulse.pulledAt)} · visible only to you`
-                : 'visible only to you'
-            }
-          >
-            Practice pulse
-          </SectionLabel>
-          {pulseLoading ? (
-            <p style={{ fontFamily: FONT, fontSize: '13px', color: '#94a3b8' }}>
-              Pulling the numbers from QuickBooks…
-            </p>
-          ) : pulseError === 'reconnect' || pulseError === 'no-connection' ? (
-            <AttentionCard
-              accent="#f59e0b"
-              icon={Clock}
-              title="QuickBooks needs reconnecting before the pulse can load"
-              subtitle="Open the Client Dashboard and reconnect Almond Valley Accounting"
-              onClick={() => navigate('/client-dashboard')}
-            />
-          ) : (
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-              <StatCard
-                label="Revenue — fiscal YTD"
-                value={
-                  pulse?.plFytd?.income != null ? formatCurrency(pulse.plFytd.income) : '—'
-                }
-                chip={
-                  <YoYChip current={pulse?.plFytd?.income} prior={pulse?.plFytdPrior?.income} />
-                }
-                sub={[
-                  pulse?.plFytd?.period?.start
-                    ? `since ${shortDate(pulse.plFytd.period.start)}`
-                    : null,
-                  pulse?.plFytdPrior?.income != null
-                    ? `${formatCurrency(pulse.plFytdPrior.income)} same period last year`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-                onClick={() => navigate('/client-dashboard')}
-              />
-              <StatCard
-                label="Net operating income — fiscal YTD"
-                value={
-                  pulse?.plFytd?.net_operating_income != null
-                    ? formatCurrency(pulse.plFytd.net_operating_income)
-                    : '—'
-                }
-                chip={
-                  <YoYChip
-                    current={pulse?.plFytd?.net_operating_income}
-                    prior={pulse?.plFytdPrior?.net_operating_income}
-                  />
-                }
-                sub={[
-                  pulse?.plFytd?.net_operating_income != null && pulse?.plFytd?.income > 0
-                    ? `${Math.round(
-                        (pulse.plFytd.net_operating_income / pulse.plFytd.income) * 100,
-                      )}% margin`
-                    : null,
-                  pulse?.plFytd?.net_income != null
-                    ? `${formatCurrency(pulse.plFytd.net_income)} net after dividends`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-                onClick={() => navigate('/client-dashboard')}
-              />
-              <StatCard
-                label="Cash at bank"
-                value={
-                  pulse?.balances?.cash != null ? formatCurrency(pulse.balances.cash) : '—'
-                }
-                sub={
-                  pulse?.balances?.bank_account_count
-                    ? `across ${pulse.balances.bank_account_count} bank account${
-                        pulse.balances.bank_account_count === 1 ? '' : 's'
-                      }`
-                    : null
-                }
-                onClick={() => navigate('/client-dashboard')}
-              />
-              <StatCard
-                label="Debtors"
-                value={
-                  pulse?.balances?.debtors != null
-                    ? formatCurrency(pulse.balances.debtors)
-                    : '—'
-                }
-                sub="owed to the practice"
-                onClick={() => navigate('/client-dashboard')}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Deadlines (owner only) — live view of the Monday digest ── */}
-      {isOwner && data && (
-        <div style={{ marginBottom: '36px' }}>
-          <SectionLabel
-            note={[bmNote, data.wow ? `▲▼ vs digest ${shortDate(data.wow.since)}` : null]
-              .filter(Boolean)
-              .join(' · ')}
-          >
-            Deadlines
-          </SectionLabel>
+      {/* ── Director layout: attention queue left, pulse/deadlines/ops right.
+             flex-wrap collapses it to a single column on narrow screens. ── */}
+      {canSeeAttention && hasRightColumn ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start' }}>
+          <div style={{ flex: '1 1 600px', minWidth: 0 }}>{attentionSection}</div>
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-              gap: '16px',
+              flex: '1 1 400px',
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
             }}
           >
-            <DeadlineCard
-              title="Companies House accounts"
-              big={data.ch.thisMonth}
-              unit={`due in ${thisMonthName}`}
-              pill={data.ch.overdue > 0 ? `${data.ch.overdue} past deadline` : null}
-              delta={data.wow?.chThisMonth}
-              rows={
-                <>
-                  <DeadlineRow label={nextMonthName} value={data.ch.nextMonth} />
-                  <DeadlineRow
-                    label="Next 6 months"
-                    value={data.ch.sixMonths}
-                    delta={data.wow?.chSixMonths}
-                  />
-                </>
-              }
-              footer={`~${data.ch.runRate} filings a week clears the 6-month pile`}
-              onClick={() => navigate('/planner/ready?service=Acc')}
-            />
-            <DeadlineCard
-              title="Self Assessment"
-              big={data.sa.count}
-              unit={`returns due 31 Jan ${data.sa.year}`}
-              delta={data.wow?.sa}
-              footer={`~${data.sa.runRate} a week from now stays on track`}
-              onClick={() => navigate('/planner/ready?service=SA')}
-            />
-            <DeadlineCard
-              title="Work past BM deadline"
-              big={visibleOverdueTotal}
-              bigColor={visibleOverdueTotal > 0 ? '#b91c1c' : '#0f172a'}
-              unit="open jobs late"
-              delta={data.wow?.overdueTotal}
-              rows={
-                data.overdueWork.byService.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {data.overdueWork.byService.slice(0, 5).map((r) => (
-                      <ServiceChip key={r.service} service={r.service} count={r.count} />
-                    ))}
-                    {data.overdueWork.byService.length > 5 && (
-                      <ServiceChip
-                        service="other"
-                        count={data.overdueWork.byService
-                          .slice(5)
-                          .reduce((s, r) => s + r.count, 0)}
-                      />
-                    )}
-                  </div>
-                )
-              }
-              footer={overdueOpen ? 'Hide the list' : 'Click to list every late job'}
-              onClick={() => setOverdueOpen((o) => !o)}
-            />
+            {pulseSection}
+            {deadlinesSection}
+            {opsSection}
           </div>
-          {overdueOpen && visibleOverdueJobs.length > 0 && (
-            <OverduePanel
-              jobs={visibleOverdueJobs}
-              byService={data.overdueWork.byService}
-              service={overdueService}
-              onService={setOverdueService}
-              onRow={(j) => j.entity?.id && navigate(`/clients/${j.entity.id}`)}
-              onWontHappen={markWontHappen}
-              total={visibleOverdueTotal}
-            />
-          )}
         </div>
-      )}
-
-      {/* ── Operations (owner only) ── */}
-      {isOwner && data && (
-        <div style={{ marginBottom: '36px' }}>
-          <SectionLabel>Operations</SectionLabel>
-          <JobReviewRadar />
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <OpsStat
-              label="Onboardings in flight"
-              value={data.onboarding.inFlight}
-              detail={
-                data.onboarding.issues.length > 0
-                  ? `${data.onboarding.issues.length} with issues`
-                  : null
-              }
-              tone={data.onboarding.issues.length > 0 ? 'warn' : 'default'}
-              onClick={() => navigate('/onboarding')}
-            />
-            <OpsStat
-              label="CH codes"
-              value={data.chCodes.awaiting + data.chCodes.stalled}
-              detail={data.chCodes.stalled > 0 ? `${data.chCodes.stalled} stalled` : 'in progress'}
-              tone={data.chCodes.stalled > 0 ? 'warn' : 'default'}
-              onClick={() => navigate('/onboarding/ch-codes')}
-            />
-            <OpsStat
-              label="Admin tasks"
-              value={data.adminTasksOpen}
-              detail="open"
-              onClick={() => navigate('/planner/tasks')}
-            />
-            <OpsStat
-              label="Issues log"
-              value={data.issuesOpen}
-              detail="open"
-              tone={data.issuesOpen > 0 ? 'warn' : 'default'}
-              onClick={() => navigate('/issues')}
-            />
-          </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {attentionSection}
+          {pulseSection}
+          {deadlinesSection}
+          {opsSection}
         </div>
       )}
 
       {/* ── Module strip (staff orientation — owners know the sidebar) ── */}
       {!isOwner && (
-        <div>
+        <div style={{ marginTop: canSeeAttention ? '24px' : 0 }}>
           <SectionLabel>Modules</SectionLabel>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px 18px', alignItems: 'center' }}>
             {visibleModules.map((mod) => (
-              <div key={mod.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div key={mod.id} style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                 <ModuleStatusDot mod={mod} />
                 <span
                   style={{

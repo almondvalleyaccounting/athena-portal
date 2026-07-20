@@ -93,6 +93,9 @@ export function useDirectorDashboard(enabled) {
         issuesRes,
         freshnessRes,
         snapshotRes,
+        qboMappingRes,
+        triageRes,
+        chRefreshRes,
       ] = await Promise.all([
         // ONE definition of every deadline number — v_deadline_buckets is
         // shared with the Monday digest, so the two can never drift again.
@@ -182,6 +185,27 @@ export function useDirectorDashboard(enabled) {
           .from('deadline_digest_snapshots')
           .select('snapshot_date, payload')
           .order('snapshot_date', { ascending: false })
+          .limit(1),
+        // QBO customers pulled nightly (~5am) that aren't mapped to a client
+        // yet. "role is distinct from 'not_a_client'" — a plain .neq() would
+        // drop NULL roles, so the OR keeps them in the count.
+        supabase
+          .from('qbo_customer_mappings')
+          .select('id', { count: 'exact', head: true })
+          .is('entity_id', null)
+          .or('role.is.null,role.neq.not_a_client'),
+        // Open triage cases — strike_off is critical (CH status changed under
+        // us), on_hold / general are visibility items. Staff-readable via RLS.
+        supabase
+          .from('triage_cases')
+          .select('*, entity:entities(id, name)')
+          .eq('status', 'open')
+          .order('created_at', { ascending: false }),
+        // Did last night's Companies House refresh actually run, and cleanly?
+        supabase
+          .from('ch_refresh_runs')
+          .select('run_date, processed, chunks, errors, status_changes')
+          .eq('run_date', todayIso)
           .limit(1),
       ]);
 
@@ -288,6 +312,10 @@ export function useDirectorDashboard(enabled) {
           serviceRequests: serviceReqRes.data || [],
           adminTasksOpen: adminTasksRes.count ?? 0,
           issuesOpen: issuesRes.count ?? 0,
+          qboUnmapped: qboMappingRes.count ?? 0,
+          triage: triageRes.data || [],
+          // null = the nightly refresh has no row for today (did not run)
+          chRefresh: (chRefreshRes.data || [])[0] || null,
           bmDataAsOf: freshRow?.last_seen_at || null,
           wow,
         },

@@ -109,8 +109,14 @@ export default function Sidebar() {
   const isOwner = profile?.can_manage_portal === true;
   const canImport = profile?.can_import_data === true || profile?.is_portal_admin === true;
   const canAdminTasks = profile?.can_view_onboarding === true || profile?.is_portal_admin === true;
+  // Settings group (formerly "Admin") — personal settings for everyone,
+  // admin-only screens gated per child. /admin/* routes stay as-is.
   const adminChildren = [
+    { id: 'settings-me', label: 'My Settings', route: '/settings/me' },
+    { id: 'settings-shortcuts', label: 'Keyboard shortcuts', route: '/settings/shortcuts' },
     isOwner && { id: 'admin-staff', label: 'Staff & Permissions', route: '/admin/staff' },
+    isOwner && { id: 'admin-portal-clients', label: 'Portal Clients', route: '/admin/portal-clients' },
+    isOwner && { id: 'admin-connections', label: 'Connections', route: '/admin/connections' },
     canImport && { id: 'admin-import', label: 'Data Import', route: '/admin/import' },
     // Workflow consolidated into the Work Planner module's Setup area
     // (/planner/setup). Admins reach it from inside Work Planner now.
@@ -120,7 +126,9 @@ export default function Sidebar() {
   const showAdminGroup = adminChildren.length > 0;
   const [adminExpanded, setAdminExpanded] = useState(false);
   useEffect(() => {
-    if (location.pathname.startsWith('/admin')) setAdminExpanded(true);
+    if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/settings')) {
+      setAdminExpanded(true);
+    }
   }, [location.pathname]);
   const initials = profile?.name
     ? profile.name.trim().charAt(0).toUpperCase()
@@ -396,8 +404,8 @@ export default function Sidebar() {
             />
             <NavItem
               icon={Settings}
-              label="Admin"
-              active={isActive('/admin')}
+              label="Settings"
+              active={isActive('/admin') || isActive('/settings')}
               collapsed={collapsed}
               clickable
               hasChevron={!collapsed && adminChildren.length > 0}

@@ -7,8 +7,14 @@ import HomeScreen from './shell/HomeScreen';
 import IdeasPage from './modules/ideas/IdeasPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import ClientDashboardPage from './modules/client-dashboard/ClientDashboardPage';
+import TriageBoardPage from './modules/triage/TriageBoardPage';
+import ClientRemindersPage from './modules/reminders/ClientRemindersPage';
 import AdminPage from './shell/AdminPage';
 import SecurityPage from './shell/SecurityPage';
+import UserSettingsPage from './shell/UserSettingsPage';
+import PortalClientsPage from './shell/PortalClientsPage';
+import ConnectionsPage from './shell/ConnectionsPage';
+import ShortcutsPage from './shell/ShortcutsMap';
 import DataImportModule from './modules/data-import/DataImportModule';
 import SetupModule from './modules/work-planner/setup/SetupModule';
 import QboMappingPage from './modules/qbo-mapping/QboMappingPage';
@@ -73,8 +79,16 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/bugs" element={<Navigate to="/issues" replace />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/client-dashboard" element={<ClientDashboardPage />} />
+          <Route path="/triage" element={<TriageBoardPage />} />
+          <Route path="/reminders" element={<ClientRemindersPage />} />
           <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />
           <Route path="/admin/staff" element={<AdminPage />} />
+          <Route path="/admin/portal-clients" element={<PortalClientsPage />} />
+          <Route path="/admin/connections" element={<ConnectionsPage />} />
+          {/* Settings — personal pages, available to all staff */}
+          <Route path="/settings" element={<Navigate to="/settings/me" replace />} />
+          <Route path="/settings/me" element={<UserSettingsPage />} />
+          <Route path="/settings/shortcuts" element={<ShortcutsPage />} />
           {/* Admin Task List moved under Work — it's practice admin (BM
               task keying, escalations), not system admin. Old links/
               notifications keep working via this redirect. */}

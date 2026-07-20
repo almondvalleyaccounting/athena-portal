@@ -2,7 +2,7 @@
 // Polls the connected Gmail inbox (info@) every 15 minutes and matches
 // senders against open chases, so nobody is ever chased after they replied.
 //
-// On a match it does exactly three things — and never sends anything:
+// On a match it stamps, logs, and notifies — it never sends anything:
 //   * CH-code chase:  stamps ch_code_requests.client_replied_at + logs an
 //     email_in activity ("chase paused — process and advance the stage").
 //   * Onboarding:     stamps onboardings.client_replied_at + logs a
@@ -10,6 +10,14 @@
 //     (mirroring how portal replies reset the ladder). 'paused' is left
 //     for a human — the pause email said we'd stop, so resuming is a
 //     deliberate decision.
+//   * Client reminders: a message whose Gmail thread matches a sent
+//     reminder_emails row (last 30 days) stamps reply_seen_at and
+//     notifies portal staff (kind 'reminder_reply'). These matched
+//     reminder-thread messages are the ONE mailbox mutation this
+//     function makes: they're archived (INBOX label removed) so a human
+//     never has to clear them. General chase replies are left in the
+//     inbox untouched. Archiving fails soft if the token lacks the
+//     gmail.modify scope.
 //   * Both chase engines HOLD reminders while the reply is newer than the
 //     last outbound email (see ch-code-queue-fill / onboarding-chase).
 //
@@ -142,6 +150,34 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Client-reminder emails sent in the last 30 days — matched by Gmail
+  // THREAD id rather than sender address, so a reply from any of the
+  // client's addresses still lands.
+  const remSince = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+  const { data: remRows } = await service.from("reminder_emails")
+    .select("id, entity_id, kind, comm_type, gmail_thread_id, reply_seen_at")
+    .not("gmail_thread_id", "is", null)
+    .not("sent_at", "is", null)
+    .gte("sent_at", remSince);
+  const remByThread = new Map<string, Row[]>();
+  for (const r of (remRows || []) as Row[]) {
+    const tid = r.gmail_thread_id as string;
+    if (!remByThread.has(tid)) remByThread.set(tid, []);
+    remByThread.get(tid)!.push(r);
+  }
+
+  // Reminder replies have no per-row owner — notify the portal staff who
+  // run the Client Reminders page instead.
+  let reminderStaffIds: string[] = [];
+  if (remByThread.size) {
+    const { data: staffRows } = await service.from("staff_profiles")
+      .select("id, is_active, is_portal_admin, can_manage_portal")
+      .eq("is_active", true);
+    reminderStaffIds = ((staffRows || []) as Row[])
+      .filter((s) => s.is_portal_admin || s.can_manage_portal)
+      .map((s) => s.id as string);
+  }
+
   // ── Process fresh messages ──
   let matchedCount = 0;
   const details: Row[] = [];
@@ -162,7 +198,8 @@ Deno.serve(async (req) => {
 
     const chMatches = chByEmail.get(from) || [];
     const obMatches = obByEmail.get(from) || [];
-    if (!chMatches.length && !obMatches.length) continue;
+    const remMatches = remByThread.get((msg.threadId as string) || "") || [];
+    if (!chMatches.length && !obMatches.length && !remMatches.length) continue;
 
     // Insert-first dedupe: a unique violation means another run got here.
     const { error: logErr } = await service.from("chase_inbound_log").insert({
@@ -204,7 +241,43 @@ Deno.serve(async (req) => {
         });
       }
     }
-    details.push({ from, subject, ch: chMatches.length, onboarding: obMatches.length });
+    if (remMatches.length) {
+      for (const r of remMatches) {
+        if (!r.reply_seen_at) {
+          await service.from("reminder_emails")
+            .update({ reply_seen_at: receivedAt })
+            .eq("id", r.id as string)
+            .is("reply_seen_at", null);
+        }
+      }
+      for (const staffId of reminderStaffIds) {
+        await service.from("notifications").insert({
+          recipient_id: staffId, kind: "reminder_reply",
+          title: `Client replied to a tax-reminder email: ${from}`,
+          link_path: "/reminders",
+        });
+      }
+      // Archive matched reminder-thread messages ONLY — the reply is
+      // recorded above, so nobody needs to clear it from the inbox by
+      // hand. Fails soft (e.g. 403 if the connection pre-dates the
+      // gmail.modify scope) — the scan itself must never die here.
+      try {
+        const archResp = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}/modify`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token.accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ removeLabelIds: ["INBOX"] }),
+          },
+        );
+        if (!archResp.ok) {
+          console.log(`reminder archive skipped for ${id}: ${archResp.status} ${await archResp.text()}`);
+        }
+      } catch (e) {
+        console.log(`reminder archive error for ${id}: ${(e as Error).message}`);
+      }
+    }
+    details.push({ from, subject, ch: chMatches.length, onboarding: obMatches.length, reminder: remMatches.length });
   }
 
   return json({ success: true, scanned: fresh.length, matched: matchedCount, details });

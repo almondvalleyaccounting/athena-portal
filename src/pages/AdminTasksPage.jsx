@@ -39,6 +39,7 @@ const FIELD_LABELS = { ch_auth_code: 'CH auth code', utr: 'UTR', vat_number: 'VA
 const TASK_GROUPS = [
   { key: 'bm_keying', label: 'To key into BrightManager', match: (t) => t.kind === 'bm_code' },
   { key: 'bm_data_error', label: 'BM Data Errors', match: (t) => t.source === 'bm_data_error' },
+  { key: 'person_dedup', label: 'Data quality — possible duplicate people', match: (t) => t.source === 'person_dedup' },
   { key: 'nlac_bm_mirror', label: 'Offboarding', match: (t) => t.source === 'nlac_bm_mirror' },
   { key: 'manually_added', label: 'Manually Added', match: (t) => t.source === 'Added manually' || t.source === 'sophie_workplan_import' },
 ];
@@ -48,7 +49,7 @@ function groupLabelFor(key) { return (TASK_GROUPS.find((g) => g.key === key) || 
 
 // Fixed live-aggregation sections rendered after the task groups.
 const FIXED_SECTION_KEYS = ['chcodes', 'realloc', 'onboard'];
-const COLLAPSE_LS_KEY = 'athena_admin_tasks_collapsed';
+const COLLAPSE_LS_KEY = 'athena_admin_tasks_expanded';
 // In-flight CH code chases shown on this list (pre-"entered" stages).
 const CH_OPEN_STAGES = ['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_code'];
 
@@ -96,19 +97,20 @@ export default function AdminTasksPage() {
 
   const [openNotes, setOpenNotes] = useState(() => new Set());
   const [escalateTask, setEscalateTask] = useState(null);
-  // One collapse set covers the task groups and the fixed sections; persisted
-  // so the page opens the way it was left.
-  const [collapsedSet, setCollapsedSet] = useState(() => {
+  const [completeTask, setCompleteTask] = useState(null);
+  // Sections default COLLAPSED — we persist which ones are expanded, so a
+  // fresh load always opens with everything folded to the counts.
+  const [expandedSet, setExpandedSet] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_LS_KEY) || '[]')); } catch { return new Set(); }
   });
-  const persistCollapsed = (n) => {
-    setCollapsedSet(n);
+  const persistExpanded = (n) => {
+    setExpandedSet(n);
     try { localStorage.setItem(COLLAPSE_LS_KEY, JSON.stringify([...n])); } catch { /* storage unavailable */ }
   };
   const toggleCollapse = (key) => {
-    const n = new Set(collapsedSet);
+    const n = new Set(expandedSet);
     n.has(key) ? n.delete(key) : n.add(key);
-    persistCollapsed(n);
+    persistExpanded(n);
   };
 
   const load = useCallback(async () => {
@@ -205,10 +207,15 @@ export default function AdminTasksPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function complete(task) {
+  async function complete(task, { doneBy, minutes } = {}) {
     const now = new Date().toISOString();
     // Field-less tasks have nothing BM can verify, so they confirm immediately.
-    const patch = { done_at: now, ...(task.field ? {} : { confirmed_at: now }) };
+    const patch = {
+      done_at: now,
+      done_by: doneBy || profile?.id || null,
+      done_minutes: Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : null,
+      ...(task.field ? {} : { confirmed_at: now }),
+    };
     setTasks((prev) => prev.filter((t) => t.id !== task.id));
     setCompleted((prev) => [{ ...task, ...patch }, ...(prev || [])]);
     const { error: err } = await supabase.from('admin_tasks').update(patch).eq('id', task.id);
@@ -421,10 +428,19 @@ export default function AdminTasksPage() {
     () => (clientFilter ? onboardings.filter((o) => o.entity?.id === clientFilter) : onboardings),
     [onboardings, clientFilter]
   );
-  const filteredChCodes = useMemo(
-    () => (clientFilter ? chCodes.filter((r) => r.entity?.id === clientFilter) : chCodes),
-    [chCodes, clientFilter]
-  );
+  // One entry per PERSON (a person needs one code across all their companies),
+  // matching how the CH codes pipeline counts its tiles.
+  const filteredChCodes = useMemo(() => {
+    const source = clientFilter ? chCodes.filter((r) => r.entity?.id === clientFilter) : chCodes;
+    const byPerson = new Map();
+    for (const r of source) {
+      const key = r.person?.id || r.id;
+      if (!byPerson.has(key)) byPerson.set(key, { ...r, entities: [] });
+      const g = byPerson.get(key);
+      if (r.entity?.name && !g.entities.includes(r.entity.name)) g.entities.push(r.entity.name);
+    }
+    return [...byPerson.values()];
+  }, [chCodes, clientFilter]);
 
   const stats = useMemo(() => {
     const today = isoToday();
@@ -454,10 +470,33 @@ export default function AdminTasksPage() {
     [groupedOpen, groupedCompleted]
   );
 
+  // Where admin time goes: minutes recorded on completed tasks, by task type
+  // and by client. Groundwork for feeding admin fees charged to clients.
+  const timeSummary = useMemo(() => {
+    const timed = completedFiltered.filter((t) => t.done_minutes > 0);
+    if (!timed.length) return null;
+    const total = timed.reduce((s, t) => s + t.done_minutes, 0);
+    const agg = (keyFn, labelFn) => {
+      const m = new Map();
+      for (const t of timed) {
+        const k = keyFn(t);
+        if (!k) continue;
+        m.set(k, (m.get(k) || 0) + t.done_minutes);
+      }
+      return [...m.entries()].map(([k, v]) => ({ label: labelFn ? labelFn(k) : k, minutes: v }))
+        .sort((a, b) => b.minutes - a.minutes);
+    };
+    return {
+      total, count: timed.length,
+      byType: agg((t) => groupKeyFor(t), (k) => groupLabelFor(k)),
+      byClient: agg((t) => t.entity?.name).slice(0, 8),
+    };
+  }, [completedFiltered]);
+
   // Collapse-all treats every visible section (task groups + fixed) as one set.
   const allSectionKeys = useMemo(() => [...visibleGroupKeys, ...FIXED_SECTION_KEYS], [visibleGroupKeys]);
-  const allCollapsed = allSectionKeys.length > 0 && allSectionKeys.every((k) => collapsedSet.has(k));
-  const toggleAllCollapsed = () => persistCollapsed(allCollapsed ? new Set() : new Set(allSectionKeys));
+  const allCollapsed = !allSectionKeys.some((k) => expandedSet.has(k));
+  const toggleAllCollapsed = () => persistExpanded(allCollapsed ? new Set(allSectionKeys) : new Set());
 
   return (
     <div style={{ maxWidth: 1240, margin: '0 auto', padding: '28px 32px 48px', fontFamily: font }}>
@@ -491,9 +530,13 @@ export default function AdminTasksPage() {
             <X size={11} /> Clear
           </button>
         )}
-        <button onClick={toggleAllCollapsed} style={{ ...btn('ghost'), marginLeft: 'auto' }}>
-          {allCollapsed ? <><ChevronsUpDown size={13} /> Expand all</> : <><ChevronsDownUp size={13} /> Collapse all</>}
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <TabBtn active={view === 'open'} onClick={() => setView('open')}>Open</TabBtn>
+          <TabBtn active={view === 'completed'} onClick={() => setView('completed')}>Completed</TabBtn>
+          <button onClick={toggleAllCollapsed} style={btn('ghost')}>
+            {allCollapsed ? <><ChevronsUpDown size={13} /> Expand all</> : <><ChevronsDownUp size={13} /> Collapse all</>}
+          </button>
+        </div>
       </div>
 
       {confirmedNow > 0 && (
@@ -576,6 +619,36 @@ export default function AdminTasksPage() {
         </div>
       )}
 
+      {/* ── Where admin time goes (completed view) ── */}
+      {view === 'completed' && timeSummary && (
+        <div style={{ ...card, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+            Where admin time is going · {Math.round(timeSummary.total / 6) / 10}h recorded across {timeSummary.count} task{timeSummary.count === 1 ? '' : 's'}
+          </div>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 260px' }}>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>By task type</div>
+              {timeSummary.byType.map((r) => (
+                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#334155', padding: '2px 0' }}>
+                  <span>{r.label}</span>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', color: '#0f172a', fontWeight: 600 }}>{r.minutes}m</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ flex: '1 1 260px' }}>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>By client</div>
+              {timeSummary.byClient.length === 0 && <div style={{ fontSize: 12, color: '#cbd5e1' }}>No client-linked time yet.</div>}
+              {timeSummary.byClient.map((r) => (
+                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#334155', padding: '2px 0' }}>
+                  <span>{r.label}</span>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', color: '#0f172a', fontWeight: 600 }}>{r.minutes}m</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Tasks, grouped by the module that generated them ── */}
       {tasks === null && (
         <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Loading…</div>
@@ -608,7 +681,7 @@ export default function AdminTasksPage() {
                 notes={notesByTask[t.id] || []} notesOpen={openNotes.has(t.id)}
                 docs={docsByTask[t.id] || []}
                 staffMap={staffMap} copied={copied === t.id}
-                onComplete={() => complete(t)}
+                onComplete={() => setCompleteTask(t)}
                 onCopy={() => copyValue(t)}
                 onDismiss={() => dismiss(t)}
                 onDeadline={(d) => setDeadline(t, d)}
@@ -625,7 +698,7 @@ export default function AdminTasksPage() {
             ))}
             {view === 'completed' && items.map((t) => (
               <CompletedRow
-                key={t.id} t={t}
+                key={t.id} t={t} staffMap={staffMap}
                 onReopen={() => reopen(t)}
                 onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
                 onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
@@ -652,7 +725,7 @@ export default function AdminTasksPage() {
                 {r.person?.name || 'Person'}
               </span>
               <span style={{ color: '#64748b', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {r.entity?.name || ''}
+                {(r.entities && r.entities.length ? r.entities.join(', ') : r.entity?.name) || ''}
               </span>
               <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#e0f2fe', color: '#0369a1', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 {meta.short} · {meta.label}
@@ -729,6 +802,71 @@ export default function AdminTasksPage() {
           onSend={submitEscalation}
         />
       )}
+
+      {completeTask && (
+        <CompleteModal
+          task={completeTask}
+          staffList={staffList}
+          defaultStaffId={profile?.id || ''}
+          onClose={() => setCompleteTask(null)}
+          onConfirm={(doneBy, minutes) => { complete(completeTask, { doneBy, minutes }); setCompleteTask(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+const MINUTE_PRESETS = [5, 10, 15, 30, 45, 60];
+
+function CompleteModal({ task, staffList, defaultStaffId, onClose, onConfirm }) {
+  const [doneBy, setDoneBy] = useState(defaultStaffId);
+  const [minutes, setMinutes] = useState(null);
+  const [custom, setCustom] = useState('');
+
+  const effectiveMinutes = custom !== '' ? parseInt(custom, 10) || 0 : minutes;
+
+  return (
+    <div onClick={onClose} style={modalBackdrop}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 420 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <CheckCircle2 size={16} color="#16a34a" /> Complete task
+        </div>
+        <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 14 }}>{task.title}</div>
+
+        <label style={fieldLabel}>Who did it?</label>
+        <select value={doneBy} onChange={(e) => setDoneBy(e.target.value)} style={selectInput}>
+          {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+
+        <label style={{ ...fieldLabel, marginTop: 12 }}>How long did it take?</label>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {MINUTE_PRESETS.map((m) => (
+            <button key={m} onClick={() => { setMinutes(m); setCustom(''); }}
+              style={{
+                padding: '6px 12px', fontSize: 12.5, fontWeight: 600, fontFamily: font, borderRadius: 8, cursor: 'pointer',
+                background: minutes === m && custom === '' ? '#0f172a' : '#fff',
+                color: minutes === m && custom === '' ? '#fff' : '#475569',
+                border: `1px solid ${minutes === m && custom === '' ? '#0f172a' : '#e5e7eb'}`,
+              }}>{m}m</button>
+          ))}
+          <input
+            type="number" min="1" value={custom} placeholder="Other"
+            onChange={(e) => { setCustom(e.target.value); setMinutes(null); }}
+            style={{ width: 70, padding: '6px 8px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
+          />
+        </div>
+        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 8 }}>
+          Recorded against the task — builds the picture of where admin time goes, by task type and client.
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button onClick={onClose} style={btn('ghost')}>Cancel</button>
+          <button onClick={() => onConfirm(doneBy, effectiveMinutes)} disabled={!doneBy || !effectiveMinutes}
+            style={{ ...btn('primary'), opacity: (!doneBy || !effectiveMinutes) ? 0.6 : 1 }}>
+            <CheckCircle2 size={13} /> Complete
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -764,6 +902,17 @@ function TaskRow({
             }}
             title={t.title}
           >{t.entity?.name && !(t.title || '').toLowerCase().includes(t.entity.name.toLowerCase()) ? `${t.entity.name} — ` : ''}{t.title}</span>
+          {t.detail && (
+            <span
+              onClick={onToggleNotes}
+              title={t.detail}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                width: 16, height: 16, borderRadius: 999, background: '#eef2ff', color: '#4338ca',
+                fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+              }}
+            >i</span>
+          )}
           {t.escalated_to && (
             <span style={{ fontSize: 10.5, padding: '1px 6px', borderRadius: 999, background: '#fef3c7', color: '#b45309', fontWeight: 600, whiteSpace: 'nowrap' }}>
               → {staffMap[t.escalated_to] || 'escalated'}
@@ -830,9 +979,8 @@ function TaskRow({
         </button>
       </div>
 
-      {(t.detail || docs.length > 0) && (
+      {docs.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '0 16px 8px 26px' }}>
-          {t.detail && <span style={{ fontSize: 12, color: '#64748b' }}>{t.detail}</span>}
           {docs.map((d) => (
             <span key={d.id} style={{
               display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5,
@@ -850,6 +998,11 @@ function TaskRow({
 
       {notesOpen && (
         <div style={{ padding: '4px 16px 12px 46px', background: '#fafbfc' }}>
+          {t.detail && (
+            <div style={{ fontSize: 12.5, color: '#475569', padding: '6px 0', borderBottom: '1px solid #f1f5f9', whiteSpace: 'pre-wrap' }}>
+              {t.detail}
+            </div>
+          )}
           {notes.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8', padding: '4px 0' }}>No notes yet.</div>}
           {notes.map((n) => (
             <div key={n.id} style={{ fontSize: 12.5, color: '#334155', padding: '4px 0', display: 'flex', gap: 8 }}>
@@ -881,7 +1034,7 @@ function TaskRow({
   );
 }
 
-function CompletedRow({ t, onReopen, onOpenClient, onReviewBill }) {
+function CompletedRow({ t, staffMap, onReopen, onOpenClient, onReviewBill }) {
   // Verification status: BM checks tasks with a field silently on each import;
   // field-less tasks confirm the moment they're completed.
   const badge = !t.field
@@ -902,6 +1055,11 @@ function CompletedRow({ t, onReopen, onOpenClient, onReviewBill }) {
         }}
       >{t.title}</span>
       {t.value && <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>{t.value}</span>}
+      {(t.done_by || t.done_minutes) && (
+        <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {t.done_by ? ((staffMap && staffMap[t.done_by]) || 'staff') : ''}{t.done_minutes ? ` · ${t.done_minutes}m` : ''}
+        </span>
+      )}
       <span title={badge.hint} style={{
         fontSize: 10.5, padding: '2px 8px', borderRadius: 999, background: badge.bg, color: badge.fg,
         fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',

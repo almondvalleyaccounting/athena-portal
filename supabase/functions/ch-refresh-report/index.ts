@@ -83,7 +83,15 @@ Deno.serve(async (req) => {
       THREAT_RE.test(c.new_status || "") || THREAT_RE.test(c.new_detail || ""));
 
     const errors: { name: string; error: string }[] = (run?.errors || []);
-    const warnings: string[] = [...new Set(run?.warnings || [])];
+    const warnings: string[] = [...new Set(run?.warnings || [])] as string[];
+
+    // Daily data-quality sweep: raise admin tasks for suspected duplicate
+    // people (same client, same surname + DOB — sql/128). Non-fatal.
+    let dupTasksRaised = 0;
+    try {
+      const { data: dupCount } = await service.rpc("raise_person_dedup_tasks");
+      dupTasksRaised = Number(dupCount) || 0;
+    } catch (_) { /* scan is best-effort */ }
 
     // Recipients: configured ids, else portal admins. Threats widen to all staff.
     const { data: staff } = await service.from("staff_profiles")
@@ -147,6 +155,11 @@ Deno.serve(async (req) => {
     ${errors.slice(0, 30).map((er) => `<div style="${rowStyle}"><strong>${er.name}</strong>: ${er.error}</div>`).join("")}
     ${errors.length > 30 ? `<div style="${rowStyle}">…and ${errors.length - 30} more.</div>` : ""}
   </div>` : ""}
+
+  ${dupTasksRaised ? `
+  <p style="font-size:13px;color:#334155;margin-top:12px;">
+    ${dupTasksRaised} possible duplicate ${dupTasksRaised === 1 ? "person was" : "people were"} flagged to the admin task list (Data quality section).
+  </p>` : ""}
 
   ${warnings.length ? `
   <p style="font-size:12px;color:#64748b;margin-top:12px;">${warnings.join("<br/>")}</p>` : ""}

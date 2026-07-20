@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Palette, UserPlus, Pencil, Check, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { fetchPortalClientIdentifiers } from './portalAccessApi';
 
 /*
   Permission columns on staff_profiles that map to module access.
@@ -19,6 +21,8 @@ const PERMISSION_COLS = [
   { key: 'can_approve_billing', label: 'Approve billing' },
   { key: 'can_view_pd_tracker', label: 'CPD Tracker' },
   { key: 'can_view_onboarding', label: 'Onboarding' },
+  { key: 'can_view_job_review', label: 'Job Review' },
+  { key: 'can_view_ch_codes', label: 'CH Codes' },
   { key: 'can_import_data', label: 'Data Import' },
   { key: 'can_manage_portal', label: 'Portal admin' },
   // AVA's own QBO books — deliberately separate from Portal admin so practice
@@ -46,8 +50,12 @@ const COLOUR_SWATCHES = [
 ];
 
 export default function AdminPage() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [authUsers, setAuthUsers] = useState([]);
+  // Portal-client auth accounts (public.users rows / claimed invites) —
+  // excluded from the "Accounts without profiles" warning below.
+  const [portalClients, setPortalClients] = useState({ ids: new Set(), emails: new Set() });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
   const [deleting, setDeleting] = useState(null); // user id while deleting
@@ -84,6 +92,11 @@ export default function AdminPage() {
     } catch {
       // Function may not exist yet — silently skip
     }
+
+    // Client portal sign-ins also live in auth.users — load their ids and
+    // invite emails so they don't pollute the "Accounts without profiles"
+    // warning (they're clients, not staff missing a profile).
+    setPortalClients(await fetchPortalClientIdentifiers());
 
     setLoading(false);
   };
@@ -268,9 +281,16 @@ export default function AdminPage() {
     setSaving(null);
   };
 
-  // Find auth users without a staff profile
+  // Find auth users without a staff profile — excluding client portal
+  // users (they have a public.users row or a claimed/pending invite;
+  // they're managed on /admin/portal-clients, not here).
   const profileIds = new Set(users.map((u) => u.id));
-  const unlinkedUsers = authUsers.filter((u) => !profileIds.has(u.id));
+  const unlinkedUsers = authUsers.filter(
+    (u) =>
+      !profileIds.has(u.id) &&
+      !portalClients.ids.has(u.id) &&
+      !portalClients.emails.has((u.email || '').toLowerCase())
+  );
 
   const displayName = (u) => u.name || u.email || 'Unknown';
 
@@ -445,6 +465,17 @@ export default function AdminPage() {
             </h3>
             <p style={{ fontFamily: font, fontSize: '13px', color: '#a16207', marginBottom: '12px' }}>
               These users have login accounts but no staff profile. They see "Access pending" when they sign in.
+              Client portal sign-ins are excluded — manage those on{' '}
+              <button
+                onClick={() => navigate('/admin/portal-clients')}
+                style={{
+                  fontFamily: font, fontSize: '13px', fontWeight: 600, color: '#0e7fe0',
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                  textDecoration: 'underline',
+                }}
+              >
+                Portal Clients
+              </button>.
             </p>
             {unlinkedUsers.map((authUser) => (
               <div
@@ -804,8 +835,9 @@ export default function AdminPage() {
   );
 }
 
-/* ─── Colour picker: palette icon → popover with swatches ── */
-function ColourPicker({ colour, onChange }) {
+/* ─── Colour picker: palette icon → popover with swatches ──
+   Exported for reuse on /settings/me (UserSettingsPage). ── */
+export function ColourPicker({ colour, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -891,7 +923,8 @@ const ALL_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DAY_LABELS = { mon: 'M', tue: 'T', wed: 'W', thu: 'T', fri: 'F', sat: 'S', sun: 'S' };
 const DAY_FULL = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
 
-function WorkingDaysEditor({ value, onChange }) {
+// Exported for reuse on /settings/me (UserSettingsPage).
+export function WorkingDaysEditor({ value, onChange }) {
   const active = new Set((value || 'mon,tue,wed,thu,fri').split(',').map((d) => d.trim()));
 
   const toggle = (day) => {
