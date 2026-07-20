@@ -112,6 +112,13 @@ export default function IssuesPage() {
         entity_id: formCategory === 'Client' ? formClient : null,
       });
       if (!error) {
+        // Assignment is only real if the assignee finds out.
+        if (formAssignee && formAssignee !== profile?.id) {
+          supabase.rpc('notify_staff', {
+            p_recipient: formAssignee, p_kind: 'issue_assigned',
+            p_title: `Issue assigned to you: ${formTitle.trim()}`, p_link: '/issues',
+          }).then(({ error: nErr }) => { if (nErr) console.error('[Issues] notify', nErr); });
+        }
         setFormTitle(''); setFormDesc(''); setFormPriority('medium'); setFormCategory('Other'); setFormAssignee(''); setFormClient('');
         setShowAdd(false);
         await loadData();
@@ -126,6 +133,14 @@ export default function IssuesPage() {
       if (patch.status === 'resolved') update.resolved_at = new Date().toISOString();
       if (patch.status === 'closed') update.closed_at = new Date().toISOString();
       await supabase.from('issues_log').update(update).eq('id', id);
+      // Reassignment notifies the new assignee (not yourself).
+      const issue = issues.find((i) => i.id === id);
+      if (patch.assignee_id && patch.assignee_id !== issue?.assignee_id && patch.assignee_id !== profile?.id) {
+        supabase.rpc('notify_staff', {
+          p_recipient: patch.assignee_id, p_kind: 'issue_assigned',
+          p_title: `Issue assigned to you: ${issue?.title || 'an issue'}`, p_link: '/issues',
+        }).then(({ error: nErr }) => { if (nErr) console.error('[Issues] notify', nErr); });
+      }
       setIssues((prev) => prev.map((i) => i.id === id ? { ...i, ...update } : i));
     } catch (e) { console.error(e); }
   };

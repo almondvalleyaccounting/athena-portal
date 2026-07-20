@@ -203,6 +203,11 @@ export default function AdminTasksPage() {
       body: { task_id: task.id, to_staff_id: toStaffId, note },
     });
     if (err || !data?.success) { setError((err?.message) || data?.error || 'Escalation failed'); return false; }
+    // Bell notification alongside the email the edge function sends.
+    supabase.rpc('notify_staff', {
+      p_recipient: toStaffId, p_kind: 'admin_task_escalated',
+      p_title: `Admin task escalated to you: ${task.title}`, p_link: '/admin/tasks',
+    }).then(({ error: nErr }) => { if (nErr) console.error('[AdminTasks] notify', nErr); });
     setTasks((prev) => prev.map((t) => (t.id === task.id
       ? { ...t, escalated_to: toStaffId, escalated_at: new Date().toISOString(), escalation_note: note || null } : t)));
     // Pull the escalation note the function wrote onto the thread.

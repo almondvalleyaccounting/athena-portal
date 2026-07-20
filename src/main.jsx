@@ -5,7 +5,6 @@ import AppShell from './shell/AppShell';
 import LoginPage from './shell/LoginPage';
 import HomeScreen from './shell/HomeScreen';
 import IdeasPage from './modules/ideas/IdeasPage';
-import BugReportPage from './modules/bugs/BugReportPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import ClientDashboardPage from './modules/client-dashboard/ClientDashboardPage';
 import AdminPage from './shell/AdminPage';
@@ -68,7 +67,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route element={<AppShell />}>
           <Route path="/home" element={<HomeScreen />} />
           <Route path="/ideas" element={<IdeasPage />} />
-          <Route path="/bugs" element={<BugReportPage />} />
+          {/* Bugs folded into Issues (category Software) — sql/110. */}
+          <Route path="/bugs" element={<Navigate to="/issues" replace />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/client-dashboard" element={<ClientDashboardPage />} />
           <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />

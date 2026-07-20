@@ -158,6 +158,14 @@ export default function IdeasPage() {
     try {
       const { error } = await supabase.from('ideas').update(patch).eq('id', idea.id);
       if (!error) {
+        // Tell the submitter — a question they never see is a dead idea.
+        if (idea.submitted_by) {
+          const label = pendingComment.status === 'rejected' ? 'was declined' : 'has a question for you';
+          supabase.rpc('notify_staff', {
+            p_recipient: idea.submitted_by, p_kind: 'idea_reply',
+            p_title: `Your idea ${label}: ${(idea.text || '').slice(0, 80)}`, p_link: '/ideas',
+          }).then(({ error: nErr }) => { if (nErr) console.error('[Ideas] notify', nErr); });
+        }
         setIdeas((prev) => prev.map((i) => i.id === idea.id ? { ...i, ...patch } : i));
         setPendingComment(null);
         setCommentText('');
@@ -175,6 +183,18 @@ export default function IdeasPage() {
     try {
       const { error } = await supabase.from('ideas').update(patch).eq('id', idea.id);
       if (!error) {
+        // admin_comment_by is a name, not an id — notify the admins group.
+        supabase.from('staff_profiles').select('id')
+          .or('can_manage_portal.eq.true,is_portal_admin.eq.true')
+          .then(({ data: admins }) => {
+            for (const a of admins || []) {
+              supabase.rpc('notify_staff', {
+                p_recipient: a.id, p_kind: 'idea_reply',
+                p_title: `${idea.submitted_by_name || 'A submitter'} replied on an idea: ${(idea.text || '').slice(0, 80)}`,
+                p_link: '/ideas',
+              }).then(({ error: nErr }) => { if (nErr) console.error('[Ideas] notify', nErr); });
+            }
+          });
         setIdeas((prev) => prev.map((i) => i.id === idea.id ? { ...i, ...patch } : i));
         setReplyForId(null);
         setReplyText('');

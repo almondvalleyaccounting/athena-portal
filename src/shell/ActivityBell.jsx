@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-const LS_KEY = 'athena_activity_last_seen';
+// The bell is YOUR notifications (the notifications table — assignments,
+// replies, stuck-state nudges from the nightly sweep), not a generic activity
+// feed. Read state is server-side (read_at), so it follows you across
+// devices; opening the panel marks everything read.
 
 function timeAgo(dateStr) {
   const d = new Date(dateStr);
@@ -22,8 +25,8 @@ export default function ActivityBell() {
   const ref = useRef(null);
 
   useEffect(() => {
-    loadActivity();
-    const interval = setInterval(loadActivity, 60000); // refresh every minute
+    load();
+    const interval = setInterval(load, 60000); // refresh every minute
     return () => clearInterval(interval);
   }, []);
 
@@ -35,62 +38,31 @@ export default function ActivityBell() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  async function loadActivity() {
+  async function load() {
     try {
-      const twentyFourHoursAgo = new Date(Date.now() - 86400000).toISOString();
-
-      const [{ data: quotes }, { data: completed }] = await Promise.all([
-        supabase.from('quotes')
-          .select('id, quote_ref, status, relationship_group, updated_at')
-          .gte('updated_at', twentyFourHoursAgo)
-          .order('updated_at', { ascending: false })
-          .limit(5),
-        supabase.from('completed_tasks')
-          .select('id, title, service, completed_at')
-          .gte('completed_at', twentyFourHoursAgo)
-          .order('completed_at', { ascending: false })
-          .limit(5),
-      ]);
-
-      const all = [
-        ...(quotes || []).map((q) => ({
-          id: `q-${q.id}`,
-          text: `${q.quote_ref} — ${q.status}`,
-          sub: q.relationship_group,
-          time: q.updated_at,
-          path: `/manage/quotes/${q.id}`,
-          type: 'quote',
-        })),
-        ...(completed || []).map((t) => ({
-          id: `c-${t.id}`,
-          text: `Completed: ${t.title}`,
-          sub: t.service,
-          time: t.completed_at,
-          path: '/planner/completed',
-          type: 'task',
-        })),
-      ].sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 10);
-
-      setItems(all);
-
-      // Unread count
-      const lastSeen = localStorage.getItem(LS_KEY);
-      if (lastSeen) {
-        const count = all.filter((i) => new Date(i.time) > new Date(lastSeen)).length;
-        setUnread(count);
-      } else {
-        setUnread(all.length);
-      }
+      // RLS scopes this to the signed-in user's rows.
+      const { data } = await supabase
+        .from('notifications')
+        .select('id, kind, title, link_path, created_at, read_at')
+        .order('created_at', { ascending: false })
+        .limit(15);
+      setItems(data || []);
+      setUnread((data || []).filter((n) => !n.read_at).length);
     } catch (e) {
       console.error('[ActivityBell]', e);
     }
   }
 
-  function handleOpen() {
-    setOpen(!open);
-    if (!open) {
-      localStorage.setItem(LS_KEY, new Date().toISOString());
+  async function handleOpen() {
+    const opening = !open;
+    setOpen(opening);
+    if (opening && unread > 0) {
       setUnread(0);
+      const now = new Date().toISOString();
+      setItems((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || now })));
+      try {
+        await supabase.rpc('mark_notifications_read');
+      } catch (e) { console.error('[ActivityBell] mark read', e); }
     }
   }
 
@@ -109,7 +81,7 @@ export default function ActivityBell() {
           <span style={{
             position: 'absolute', top: 2, right: 2,
             width: 16, height: 16, borderRadius: '50%',
-            background: '#38bdf8', color: '#fff',
+            background: '#0e7fe0', color: '#fff',
             fontSize: 9, fontWeight: 700, display: 'flex',
             alignItems: 'center', justifyContent: 'center',
             fontFamily: "'Outfit', sans-serif",
@@ -122,7 +94,7 @@ export default function ActivityBell() {
       {open && (
         <div style={{
           position: 'absolute', top: '100%', right: 0, marginTop: 8,
-          width: 320, maxHeight: 400, overflowY: 'auto',
+          width: 340, maxHeight: 420, overflowY: 'auto',
           background: '#fff', border: '1px solid #e5e7eb',
           borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
           zIndex: 200, fontFamily: "'Outfit', sans-serif",
@@ -131,32 +103,36 @@ export default function ActivityBell() {
             padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#0f172a',
             borderBottom: '1px solid #f1f5f9',
           }}>
-            Recent Activity
+            Notifications
           </div>
 
           {items.length === 0 ? (
             <div style={{ padding: '20px 16px', fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>
-              No recent activity
+              Nothing for you right now
             </div>
           ) : (
-            items.map((item) => (
+            items.map((n) => (
               <div
-                key={item.id}
-                onClick={() => { navigate(item.path); setOpen(false); }}
+                key={n.id}
+                onClick={() => { if (n.link_path) navigate(n.link_path); setOpen(false); }}
                 style={{
-                  padding: '10px 16px', cursor: 'pointer',
+                  padding: '10px 16px', cursor: n.link_path ? 'pointer' : 'default',
                   borderBottom: '1px solid #f1f5f9',
                   transition: 'background 0.1s',
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = '#f8fafc'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
-                <div style={{ fontSize: 12, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
-                  {item.text}
-                </div>
-                <div style={{ fontSize: 11, color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{item.sub}</span>
-                  <span>{timeAgo(item.time)}</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  {!n.read_at && (
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#0e7fe0', flexShrink: 0, marginTop: 5 }} />
+                  )}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: n.read_at ? 400 : 600, color: '#0f172a', marginBottom: 2 }}>
+                      {n.title}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{timeAgo(n.created_at)}</div>
+                  </div>
                 </div>
               </div>
             ))

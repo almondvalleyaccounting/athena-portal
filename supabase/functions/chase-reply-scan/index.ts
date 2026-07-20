@@ -99,10 +99,10 @@ Deno.serve(async (req) => {
   // ── Build the match universe ──
   const [{ data: chReqs }, { data: obs }] = await Promise.all([
     service.from("ch_code_requests")
-      .select("id, stage, client_replied_at, person:people(id, name, email), entity:entities!ch_code_requests_entity_id_fkey(id, name)")
+      .select("id, stage, client_replied_at, owner_id, person:people(id, name, email), entity:entities!ch_code_requests_entity_id_fkey(id, name)")
       .in("stage", ["s1_offer", "s2_decision", "s3a_client", "s3b_us", "s4_code", "s5_entered"]),
     service.from("onboardings")
-      .select("id, status, escalation_status, client_replied_at, entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email)")
+      .select("id, status, escalation_status, client_replied_at, owner_id, entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email)")
       .eq("status", "active"),
   ]);
 
@@ -179,6 +179,13 @@ Deno.serve(async (req) => {
         request_id: r.id as string, kind: "email_in",
         body: `Reply received from ${from}${subject ? ` — “${subject}”` : ""}. Reminders held — process it and advance the stage.`,
       });
+      if (r.owner_id) {
+        await service.from("notifications").insert({
+          recipient_id: r.owner_id as string, kind: "chase_reply",
+          title: `${(r.person as Row)?.name || from} replied on their CH code chase`,
+          link_path: `/onboarding/ch-codes/${r.id}`,
+        });
+      }
     }
     for (const o of obMatches) {
       await service.from("onboardings").update({ client_replied_at: receivedAt }).eq("id", o.id as string);
@@ -188,6 +195,13 @@ Deno.serve(async (req) => {
       });
       if ((o.escalation_status as string) === "call_needed") {
         await service.from("onboardings").update({ escalation_status: "none", escalated_at: null }).eq("id", o.id as string);
+      }
+      if (o.owner_id) {
+        await service.from("notifications").insert({
+          recipient_id: o.owner_id as string, kind: "chase_reply",
+          title: `${(o.entity as Row)?.name || from} replied on their onboarding`,
+          link_path: `/onboarding/${o.id}`,
+        });
       }
     }
     details.push({ from, subject, ch: chMatches.length, onboarding: obMatches.length });
