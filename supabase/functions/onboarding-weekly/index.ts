@@ -3,7 +3,9 @@
 //   1. "What moved last week" — high-level onboarding milestones from
 //      v_onboarding_updates (codes/numbers received, quotes accepted,
 //      QuickBooks/payroll set up, service requests, starts/completions).
-//      Sent to ALL active team members. Always sends (quiet weeks say so).
+//      Sent to onboarding_chase_config.weekly_recipient_ids (Bobby, Tracy,
+//      Stephanie; empty list = all active staff). Always sends (quiet weeks
+//      say so).
 //   2. "Needs attention" — issues only when there are any: codes /
 //      registrations overdue with HMRC & co, and unresponsive clients
 //      (escalated or chase-capped).
@@ -109,17 +111,25 @@ Deno.serve(async (req) => {
   const testRecipient: string | null = body.test_recipient || null;
 
   const since = new Date(Date.now() - 7 * 86400000).toISOString();
-  const [{ data: updates }, { data: staff }, { data: obs }] = await Promise.all([
+  const [{ data: updates }, { data: staff }, { data: obs }, { data: wcfg }] = await Promise.all([
     service.from("v_onboarding_updates").select("*").gte("happened_at", since).order("happened_at"),
-    service.from("staff_profiles").select("email").eq("is_active", true),
+    service.from("staff_profiles").select("id, email").eq("is_active", true),
     service.from("onboardings")
       .select("id, status, escalation_status, entity:entities!onboardings_entity_id_fkey(name), steps:onboarding_steps(name, client_label, status, owner_type, requested_at, expected_days, chase_count)")
       .eq("status", "active"),
+    service.from("onboarding_chase_config").select("weekly_recipient_ids").eq("id", true).maybeSingle(),
   ]);
 
+  // Both weekly emails go to the configured recipients
+  // (onboarding_chase_config.weekly_recipient_ids — same pattern as the CH
+  // weekly); an empty list falls back to all active staff.
+  const wantedIds: string[] = Array.isArray(wcfg?.weekly_recipient_ids) ? (wcfg.weekly_recipient_ids as string[]) : [];
+  const pool = wantedIds.length
+    ? (staff || []).filter((s: Row) => wantedIds.includes(s.id as string))
+    : (staff || []);
   const recipients = testRecipient
     ? [testRecipient]
-    : (staff || []).map((s: Row) => (s.email as string)?.trim()).filter((e: string) => e?.includes("@"));
+    : pool.map((s: Row) => (s.email as string)?.trim()).filter((e: string) => e?.includes("@"));
 
   // ── Email 1: what moved last week ──
   const byEntity = new Map<string, Row[]>();
