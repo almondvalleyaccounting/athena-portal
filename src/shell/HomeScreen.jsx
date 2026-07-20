@@ -426,7 +426,7 @@ function ServiceChip({ service, count, active, onClick }) {
 /* ─── Overdue-work drill-down ──────────────────────────────────── */
 // The planner's Ready Now deliberately covers only SA/AA, so this panel is
 // the one place overdue VAT / payroll / management accounts are listable.
-function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen }) {
+function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen, total }) {
   const shown = service === 'all' ? jobs : jobs.filter((j) => (j.service || 'Other') === service);
   // Zombie backlog: jobs so late they're almost certainly never happening.
   const backlog = shown.filter((j) => daysLate(j.bm_deadline) >= 180);
@@ -566,6 +566,15 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
           </tbody>
         </table>
       </div>
+      {typeof total === 'number' && total > jobs.length && (
+        <div style={{
+          padding: '8px 16px', fontFamily: FONT, fontSize: '12px', color: '#92400e',
+          background: '#fffbeb', borderTop: '1px solid #fcd34d',
+        }}>
+          Showing the first {jobs.length} of {total} late jobs — the headline count is exact; use the
+          service chips or triage to narrow the list.
+        </div>
+      )}
     </div>
   );
 }
@@ -1275,6 +1284,7 @@ export default function HomeScreen() {
               onService={setOverdueService}
               onRow={(j) => j.entity?.id && navigate(`/clients/${j.entity.id}`)}
               onWontHappen={markWontHappen}
+              total={visibleOverdueTotal}
             />
           )}
         </div>

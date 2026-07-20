@@ -77,14 +77,11 @@ export function useDirectorDashboard(enabled) {
     (async () => {
       const today = todayUTC();
       const todayIso = ymd(today);
-      const monthStartIso = `${monthKeyOf(todayIso)}-01`;
-      const horizonEndIso = ymd(monthEnd(addMonths(today, CH_HORIZON_MONTHS - 1)));
       const jan = nextJanEnd(today);
 
       const [
-        chDatesRes,
+        bucketsRes,
         chOverdueRes,
-        saRes,
         saOverdueRes,
         overdueRes,
         billingReviewRes,
@@ -97,15 +94,12 @@ export function useDirectorDashboard(enabled) {
         freshnessRes,
         snapshotRes,
       ] = await Promise.all([
-        // Every open CH filing up to the 6-month horizon (incl. already-late ones)
-        supabase
-          .from('bm_task_schedule')
-          .select('bm_deadline')
-          .ilike('bm_task_name', CH_FILING)
-          .eq('state', 'planned')
-          .is('excluded_at', null)
-          .lte('bm_deadline', horizonEndIso),
-        // The late ones, named, for the attention queue
+        // ONE definition of every deadline number — v_deadline_buckets is
+        // shared with the Monday digest, so the two can never drift again.
+        // Buckets are disjoint (this month excludes overdue) and exact (no
+        // silent row caps).
+        supabase.from('v_deadline_buckets').select('*').single(),
+        // The late CH filings, named, for the attention queue
         supabase
           .from('bm_task_schedule')
           .select(
@@ -117,15 +111,6 @@ export function useDirectorDashboard(enabled) {
           .lt('bm_deadline', todayIso)
           .order('bm_deadline')
           .limit(10),
-        // SA returns landing on the next 31 Jan
-        supabase
-          .from('bm_task_schedule')
-          .select('id', { count: 'exact', head: true })
-          .ilike('bm_task_name', SA_FILING)
-          .eq('state', 'planned')
-          .is('excluded_at', null)
-          .gte('bm_deadline', jan.start)
-          .lte('bm_deadline', jan.end),
         // SA returns already past a 31 Jan (late — penalties accruing)
         supabase
           .from('bm_task_schedule')
@@ -202,31 +187,25 @@ export function useDirectorDashboard(enabled) {
 
       if (cancelled) return;
 
-      /* ── Companies House buckets ── */
-      const chDates = (chDatesRes.data || []).map((r) => r.bm_deadline);
+      /* ── Deadline buckets — all counts come from v_deadline_buckets ── */
+      const buckets = bucketsRes.data || {};
       const thisKey = monthKeyOf(todayIso);
-      const nextKey = monthKeyOf(ymd(addMonths(today, 1)));
-      const chOverdueCount = chDates.filter((d) => d < todayIso).length;
-      const chThisMonth = chDates.filter((d) => monthKeyOf(d) === thisKey).length;
-      const chNextMonth = chDates.filter((d) => monthKeyOf(d) === nextKey).length;
-      const chSixMonths = chDates.filter((d) => d >= monthStartIso).length;
+      const chOverdueCount = buckets.ch_overdue ?? 0;
+      const chThisMonth = buckets.ch_this_month ?? 0;
+      const chNextMonth = buckets.ch_next_month ?? 0;
+      const chSixMonths = buckets.ch_six_months ?? 0;
       const chRunRate = runRate(chSixMonths, workingWeeksUntil(monthEnd(addMonths(today, CH_HORIZON_MONTHS - 1))));
 
       /* ── Self Assessment ── */
-      const saCount = saRes.count ?? 0;
+      const saCount = buckets.sa_next_jan ?? 0;
       const saRunRate = runRate(saCount, workingWeeksUntil(new Date(`${jan.end}T00:00:00Z`)));
 
-      /* ── Overdue work by service ── */
+      /* ── Overdue work: exact total from the view; 300-row detail list ── */
       const overdueJobs = overdueRes.data || [];
-      const byService = {};
-      overdueJobs.forEach((r) => {
-        const s = r.service || 'Other';
-        byService[s] = (byService[s] || 0) + 1;
-      });
-      const overdueByService = Object.entries(byService)
+      const overdueByService = Object.entries(buckets.overdue_by_service || {})
         .map(([service, count]) => ({ service, count }))
         .sort((a, b) => b.count - a.count);
-      const overdueTotal = overdueByService.reduce((s, r) => s + r.count, 0);
+      const overdueTotal = buckets.overdue_total ?? 0;
 
       /* ── Quotes ── */
       const quotes = quotesRes.data || [];

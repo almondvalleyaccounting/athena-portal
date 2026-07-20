@@ -367,6 +367,18 @@ export function buildNarrative({
   const findings = [];
   const { y1, y2, months, waterfall } = projection;
 
+  // ── Unfed-model guard. A plan with revenue but no cost lines produces a
+  // "100% EBITDA margin — Strong" and top-quartile benchmark verdicts that
+  // are pure garbage-in-confident-out. Say so, loudly, and skip every
+  // margin/benchmark-flavoured finding until the model is fed.
+  const modelFed = (y1.staffCost || 0) > 0 || (y1.overheads || 0) > 0 || (y1.ownerComp || 0) > 0;
+  if (!modelFed && y1.revenue > 0) {
+    findings.push({
+      severity: 'critical', priority: 99,
+      text: 'This plan has no staff, overhead, or owner-comp lines yet — every margin and benchmark below would be meaningless, so they are hidden. Add costs on the Staff, Overheads and Owner comp tabs first.',
+    });
+  }
+
   // ── Overall profit trajectory
   const profitDeltaPct = y1.profit === 0 ? 0 : (y2.profit - y1.profit) / Math.abs(y1.profit);
   if (y2.profit > 0 && y1.profit > 0) {
@@ -381,11 +393,11 @@ export function buildNarrative({
     findings.push({ severity: 'critical', priority: 95, text: `Y2 shows a loss of ${fmtGBP(Math.abs(y2.profit))}. Something fundamental needs re-working — start with the sensitivity tornado.` });
   }
 
-  // ── EBITDA margin vs benchmark
+  // ── EBITDA margin vs benchmark (only when the model has cost lines)
   const margin = y1.margin;
-  if (margin < 0.15 && y1.revenue > 0) {
+  if (modelFed && margin < 0.15 && y1.revenue > 0) {
     findings.push({ severity: 'warning', priority: 70, text: `Y1 EBITDA margin is ${fmtPct(margin)} — well below the 20-30% UK practice benchmark. Check overheads and staff cost ratios.` });
-  } else if (margin > 0.35) {
+  } else if (modelFed && margin > 0.35) {
     findings.push({ severity: 'positive', priority: 20, text: `Y1 EBITDA margin is ${fmtPct(margin)} — above top-quartile UK benchmark (~32%). Strong.` });
   }
 

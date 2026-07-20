@@ -227,6 +227,25 @@ function BenchmarkCard({ projection, staffLines }) {
   const { y1 } = projection;
   const feeEarners = staffLines.filter((s) => s.is_fee_earner !== false).length;
 
+  // Unfed-model honesty: with no cost lines every ratio here is meaningless
+  // (revenue = EBITDA = profit reads as "100% margin, top quartile"). Say
+  // what's missing instead of celebrating garbage.
+  const modelFed = (y1.staffCost || 0) > 0 || (y1.overheads || 0) > 0 || (y1.ownerComp || 0) > 0;
+  if (!modelFed) {
+    return (
+      <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+        <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#92400e', margin: '0 0 6px' }}>
+          UK practice benchmarks — needs setup
+        </h3>
+        <p style={{ fontSize: 12.5, color: '#92400e', margin: 0, lineHeight: 1.6 }}>
+          This scenario has no staff, overhead, or owner-comp lines yet, so margin and cost-ratio
+          benchmarks would be meaningless. Add costs on the <strong>Staff</strong>, <strong>Overheads</strong> and{' '}
+          <strong>Owner comp</strong> tabs and the benchmarks will appear.
+        </p>
+      </div>
+    );
+  }
+
   const metrics = [
     {
       key: 'ebitda_margin',

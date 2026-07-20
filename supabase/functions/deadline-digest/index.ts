@@ -175,22 +175,14 @@ Deno.serve(async (req) => {
   if (chErr) return json({ success: false, error: `CH query: ${chErr.message}` }, 500);
   if (saErr) return json({ success: false, error: `SA query: ${saErr.message}` }, 500);
 
-  // Overdue counts — not rendered in the email, but snapshotted so the home
-  // screen's deadline cards can show week-on-week deltas on the same baseline.
-  const [{ count: chOverdueCount }, { data: overdueRows }] = await Promise.all([
-    service.from("bm_task_schedule")
-      .select("id", { count: "exact", head: true })
-      .ilike("bm_task_name", CH_FILING_NAME).eq("state", "planned").is("excluded_at", null)
-      .lt("bm_deadline", ymd(today)),
-    service.from("bm_task_schedule")
-      .select("service").eq("state", "planned").is("excluded_at", null).lt("bm_deadline", ymd(today)),
-  ]);
-  const overdueByService: Record<string, number> = {};
-  for (const r of (overdueRows || []) as Row[]) {
-    const s = (r.service as string) || "Other";
-    overdueByService[s] = (overdueByService[s] || 0) + 1;
-  }
-  const overdueTotal = (overdueRows || []).length;
+  // All COUNTS come from v_deadline_buckets — the same view the home
+  // dashboard reads, so the two can never drift again. Rows above are only
+  // for the email's per-month tables.
+  const { data: buckets, error: bErr } = await service.from("v_deadline_buckets").select("*").single();
+  if (bErr) return json({ success: false, error: `buckets view: ${bErr.message}` }, 500);
+  const chOverdueCount = (buckets.ch_overdue as number) ?? 0;
+  const overdueByService: Record<string, number> = (buckets.overdue_by_service as Record<string, number>) || {};
+  const overdueTotal = (buckets.overdue_total as number) ?? 0;
 
   const chByMonth = new Map<string, Row[]>();
   for (const r of (chRows || []) as Row[]) {
@@ -202,9 +194,14 @@ Deno.serve(async (req) => {
   for (let i = 0; i < HORIZON_MONTHS; i++) monthKeys.push(monthKey(addMonths(today, i)));
   const chCounts: Record<string, number> = {};
   for (const k of monthKeys) chCounts[k] = (chByMonth.get(k) || []).length;
+  // The current month's HEADLINE is disjoint from overdue (view definition);
+  // the month table below still lists every row incl. already-late ones.
+  chCounts[monthKeys[0]] = (buckets.ch_this_month as number) ?? chCounts[monthKeys[0]];
   const chTotal = monthKeys.reduce((s, k) => s + chCounts[k], 0);
 
-  const saCount = (saRows || []).filter((r: Row) => /^self assessment submission/i.test(String(r.bm_task_name || ""))).length;
+  // Headline = the shared definition (SA name-match OR Personal Tax, due by
+  // next 31 Jan). The PT sub-line stays as a breakdown of what's included.
+  const saCount = (buckets.sa_next_jan as number) ?? 0;
   const personalTaxCount = (saRows || []).filter((r: Row) => r.service === "Personal Tax").length;
 
   const { data: prevSnap } = await service.from("deadline_digest_snapshots")
@@ -314,7 +311,7 @@ Deno.serve(async (req) => {
           }</td>
         </tr>
       </table>
-      <div style="font-size:11px;color:#94a3b8;padding-top:5px;">Plus ${personalTaxCount} tagged &ldquo;Personal Tax&rdquo; in BM with the same 31 Jan deadline — tell me if you want those folded into the headline.</div>
+      <div style="font-size:11px;color:#94a3b8;padding-top:5px;">Includes ${personalTaxCount} tagged &ldquo;Personal Tax&rdquo; in BM with the same 31 Jan deadline.</div>
     </td></tr>
 
     <tr><td style="padding-top:26px;font-size:13px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;">🎯 Run-rate targets <span style="font-weight:500;color:#94a3b8;">(working weeks, excl. weekends &amp; bank holidays)</span></td></tr>
@@ -371,7 +368,7 @@ Deno.serve(async (req) => {
     `  TOTAL: ${chTotal}${totalDelta === null ? "" : ` (${arrow(totalDelta)})`}`,
     ``,
     `SELF ASSESSMENT — due 31 Jan ${jan.year}: ${saCount}${saDelta === null ? "" : ` (${arrow(saDelta)} vs last week)`}`,
-    `  (+${personalTaxCount} tagged "Personal Tax" same deadline)`,
+    `  (includes ${personalTaxCount} tagged "Personal Tax" same deadline)`,
     ``,
     `RUN-RATE TARGETS (working weeks)`,
     `  CH accounts ${shortMonthFromKey(thisMonthKey)}: ${chCounts[thisMonthKey]} over ${spanThisMonth.weeks.toFixed(1)}wk → ${rrThisMonth}/wk`,
