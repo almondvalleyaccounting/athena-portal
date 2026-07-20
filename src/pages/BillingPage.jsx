@@ -461,22 +461,8 @@ export default function BillingPage() {
           continue;
         }
 
-        // Insert entity_fees if we have entity match
-        if (entityId) {
-          for (const svc of services) {
-            await supabase.from('entity_fees').upsert(
-              {
-                entity_id: entityId,
-                service_id: svc.service_id || svc.description,
-                description: svc.description,
-                annual_amount: svc.annual_amount,
-                monthly_amount: svc.monthly_amount,
-                source: 'csv_import',
-              },
-              { onConflict: 'entity_id,service_id' }
-            );
-          }
-        }
+        // (entity_fees is no longer written — live_billing.services is the
+        // single fee store.)
         created++;
       }
 

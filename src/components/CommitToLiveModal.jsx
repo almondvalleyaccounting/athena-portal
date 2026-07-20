@@ -102,7 +102,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
     detail: l.detail || null,
   }));
 
-  // Persist the commit: live_billing + entity_fees + allocations + quote
+  // Persist the commit: live_billing + allocations + quote
   // status + audit log. No QBO writes. Returns the new live_billing row.
   // Called only from a terminal action — never optimistically.
   const persistCommit = async () => {
@@ -131,23 +131,8 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
 
       if (billingErr) throw billingErr;
 
-      // 3. Upsert into entity_fees -- one row per line item
-      const feeRows = recurring.map((l) => ({
-        entity_id: quote.entity_id || quote.primary_entity_id,
-        service_id: l.service_id,
-        description: l.description,
-        annual_amount: Number(l.annual_amount) || 0,
-        monthly_amount: Number(l.monthly_amount) || 0,
-        source: 'committed_quote',
-        source_quote_id: quote.id,
-      }));
-
-      if (feeRows.length > 0) {
-        const { error: feesErr } = await supabase.from('entity_fees').upsert(feeRows, {
-          onConflict: 'entity_id,service_id',
-        });
-        if (feesErr) throw feesErr;
-      }
+      // (entity_fees is no longer written — live_billing.services is the
+      // single fee store; the old shadow table diverged on every uplift.)
 
       // 3b. Upsert fee earner allocations for any line the user chose.
       //     Lines left blank are skipped — they can be set later from the

@@ -227,19 +227,8 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           continue;
         }
 
-        // 4. Push succeeded → now record the commit.
-        const feeRows = recurring.map((l) => ({
-          entity_id: entityId,
-          service_id: l.service_id,
-          description: l.description,
-          annual_amount: Number(l.annual_amount) || 0,
-          monthly_amount: Number(l.monthly_amount) || 0,
-          source: 'committed_quote',
-          source_quote_id: q.id,
-        }));
-        if (feeRows.length) {
-          await supabase.from('entity_fees').upsert(feeRows, { onConflict: 'entity_id,service_id' });
-        }
+        // 4. Push succeeded → now record the commit. (entity_fees is no
+        // longer written — live_billing.services is the single fee store.)
         await supabase.from('quotes').update({
           committed_at: new Date().toISOString(),
           committed_by: profile.id,

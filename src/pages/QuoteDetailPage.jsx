@@ -214,22 +214,8 @@ export default function QuoteDetailPage() {
       });
       if (billingErr) throw billingErr;
 
-      const feeRows = recurringLines.map((l) => ({
-        entity_id: entityId,
-        service_id: l.service_id,
-        description: l.description,
-        annual_amount: Number(l.annual_amount) || 0,
-        monthly_amount: Number(l.monthly_amount) || 0,
-        source: 'committed_quote',
-        source_quote_id: quote.id,
-      }));
-      if (feeRows.length > 0) {
-        const { error: feesErr } = await supabase
-          .from('entity_fees')
-          .upsert(feeRows, { onConflict: 'entity_id,service_id' });
-        if (feesErr) throw feesErr;
-      }
-
+      // entity_fees is no longer written — live_billing.services is the
+      // single fee store (it was a write-only shadow that diverged on uplift).
       const updates = { status: 'committed', committed_at: new Date().toISOString(), committed_by: profile.id };
       const { error: quoteErr } = await supabase.from('quotes').update(updates).eq('id', quote.id);
       if (quoteErr) throw quoteErr;
