@@ -78,7 +78,7 @@ export default function ClientDetailView() {
             .eq('entity_id', id).eq('kind', 'bm_field').is('confirmed_at', null).is('dismissed_at', null),
           supabase.from('bm_task_schedule')
             .select('id, service, bm_task_name, bm_deadline, bm_status')
-            .eq('entity_id', id).eq('state', 'planned').order('bm_deadline'),
+            .eq('entity_id', id).eq('state', 'planned').is('excluded_at', null).order('bm_deadline'),
         ]);
         const get = (i) => results[i]?.value?.data;
         const ent = get(0);

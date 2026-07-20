@@ -426,8 +426,10 @@ function ServiceChip({ service, count, active, onClick }) {
 /* ─── Overdue-work drill-down ──────────────────────────────────── */
 // The planner's Ready Now deliberately covers only SA/AA, so this panel is
 // the one place overdue VAT / payroll / management accounts are listable.
-function OverduePanel({ jobs, byService, service, onService, onRow }) {
+function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen }) {
   const shown = service === 'all' ? jobs : jobs.filter((j) => (j.service || 'Other') === service);
+  // Zombie backlog: jobs so late they're almost certainly never happening.
+  const backlog = shown.filter((j) => daysLate(j.bm_deadline) >= 180);
   const th = {
     fontFamily: FONT,
     fontSize: '12px',
@@ -480,6 +482,19 @@ function OverduePanel({ jobs, byService, service, onService, onRow }) {
             onClick={() => onService(r.service)}
           />
         ))}
+        {onWontHappen && backlog.length > 0 && (
+          <button
+            onClick={() => onWontHappen(backlog)}
+            title="Bulk-triage jobs 180+ days late: excludes them from every count and files the BrightManager cleanup on Sophie's admin list"
+            style={{
+              marginLeft: 'auto', fontFamily: FONT, fontSize: '12px', fontWeight: 600,
+              padding: '6px 12px', borderRadius: '8px', border: '1px solid #fcd34d',
+              background: '#fef3c7', color: '#92400e', cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            Triage backlog — {backlog.length} job{backlog.length === 1 ? '' : 's'} 180d+ late
+          </button>
+        )}
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -492,6 +507,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow }) {
               <th style={th}>Due</th>
               <th style={{ ...th, textAlign: 'right' }}>Days late</th>
               <th style={{ ...th, textAlign: 'right' }}>Status</th>
+              {onWontHappen && <th style={th} aria-label="actions" />}
             </tr>
           </thead>
           <tbody>
@@ -530,6 +546,21 @@ function OverduePanel({ jobs, byService, service, onService, onRow }) {
                 <td style={{ ...td, textAlign: 'right', color: '#64748b' }}>
                   {bmStatus(j.bm_status)}
                 </td>
+                {onWontHappen && (
+                  <td style={{ ...td, textAlign: 'right' }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onWontHappen([j]); }}
+                      title="This job is never going to be done — exclude it from every count and file the BrightManager cleanup on Sophie's admin list"
+                      style={{
+                        fontFamily: FONT, fontSize: '11px', fontWeight: 600,
+                        padding: '3px 8px', borderRadius: '6px', border: '1px solid #e5e7eb',
+                        background: '#fff', color: '#64748b', cursor: 'pointer', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Won't happen
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -883,6 +914,36 @@ export default function HomeScreen() {
     }
   };
 
+  // "Won't happen" triage: exclude zombie jobs from every count and file the
+  // BM cleanup on Sophie's admin list (auto-confirmed when the job leaves the
+  // next BM export). Owner-only — the RPC enforces can_manage_portal too.
+  const [wontHappenIds, setWontHappenIds] = useState(() => new Set());
+  const markWontHappen = async (jobsToMark) => {
+    const names = jobsToMark.slice(0, 6).map((j) => `• ${j.entity?.name || '?'} — ${j.bm_task_name}`).join('\n');
+    const more = jobsToMark.length > 6 ? `\n…and ${jobsToMark.length - 6} more` : '';
+    if (!window.confirm(
+      `Mark ${jobsToMark.length} job${jobsToMark.length === 1 ? '' : 's'} as "won't happen"?\n\n${names}${more}\n\nThey leave every count now; Sophie gets one BrightManager cleanup task each. Nothing is deleted.`,
+    )) return;
+    const reason = window.prompt('Why won\'t this happen? (optional — goes on Sophie\'s task)', '');
+    if (reason === null) return;
+    const { data: res, error } = await supabase.rpc('mark_bm_tasks_wont_happen', {
+      p_ids: jobsToMark.map((j) => j.id),
+      p_reason: reason || null,
+    });
+    if (error) { alert('Could not mark: ' + error.message); return; }
+    setWontHappenIds((prev) => {
+      const next = new Set(prev);
+      jobsToMark.forEach((j) => next.add(j.id));
+      return next;
+    });
+    if (res?.marked != null) console.info(`[HomeScreen] won't-happen: ${res.marked} marked, ${res.admin_tasks_created} admin tasks filed`);
+  };
+
+  // Jobs marked this session disappear immediately (the next load excludes
+  // them server-side); the headline count follows.
+  const visibleOverdueJobs = (data?.overdueWork.jobs || []).filter((j) => !wontHappenIds.has(j.id));
+  const visibleOverdueTotal = Math.max(0, (data?.overdueWork.total || 0) - wontHappenIds.size);
+
   const attentionItems = data ? buildAttentionItems(data, navigate) : [];
 
   // Staff (non-owner) keep the module strip as their orientation aid.
@@ -1181,8 +1242,8 @@ export default function HomeScreen() {
             />
             <DeadlineCard
               title="Work past BM deadline"
-              big={data.overdueWork.total}
-              bigColor={data.overdueWork.total > 0 ? '#b91c1c' : '#0f172a'}
+              big={visibleOverdueTotal}
+              bigColor={visibleOverdueTotal > 0 ? '#b91c1c' : '#0f172a'}
               unit="open jobs late"
               delta={data.wow?.overdueTotal}
               rows={
@@ -1206,13 +1267,14 @@ export default function HomeScreen() {
               onClick={() => setOverdueOpen((o) => !o)}
             />
           </div>
-          {overdueOpen && data.overdueWork.jobs.length > 0 && (
+          {overdueOpen && visibleOverdueJobs.length > 0 && (
             <OverduePanel
-              jobs={data.overdueWork.jobs}
+              jobs={visibleOverdueJobs}
               byService={data.overdueWork.byService}
               service={overdueService}
               onService={setOverdueService}
               onRow={(j) => j.entity?.id && navigate(`/clients/${j.entity.id}`)}
+              onWontHappen={markWontHappen}
             />
           )}
         </div>

@@ -164,11 +164,11 @@ Deno.serve(async (req) => {
   const [{ data: chRows, error: chErr }, { data: saRows, error: saErr }] = await Promise.all([
     service.from("bm_task_schedule")
       .select("bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(name), owner:staff_profiles!bm_task_schedule_assignee_id_fkey(name)")
-      .ilike("bm_task_name", CH_FILING_NAME).eq("state", "planned")
+      .ilike("bm_task_name", CH_FILING_NAME).eq("state", "planned").is("excluded_at", null)
       .gte("bm_deadline", ymd(horizonStart)).lte("bm_deadline", ymd(horizonEnd))
       .order("bm_deadline"),
     service.from("bm_task_schedule")
-      .select("service, bm_task_name").eq("state", "planned")
+      .select("service, bm_task_name").eq("state", "planned").is("excluded_at", null)
       .gte("bm_deadline", jan.start).lte("bm_deadline", jan.end)
       .or(`bm_task_name.ilike.${SA_FILING_NAME},service.eq.Personal Tax`),
   ]);
@@ -180,10 +180,10 @@ Deno.serve(async (req) => {
   const [{ count: chOverdueCount }, { data: overdueRows }] = await Promise.all([
     service.from("bm_task_schedule")
       .select("id", { count: "exact", head: true })
-      .ilike("bm_task_name", CH_FILING_NAME).eq("state", "planned")
+      .ilike("bm_task_name", CH_FILING_NAME).eq("state", "planned").is("excluded_at", null)
       .lt("bm_deadline", ymd(today)),
     service.from("bm_task_schedule")
-      .select("service").eq("state", "planned").lt("bm_deadline", ymd(today)),
+      .select("service").eq("state", "planned").is("excluded_at", null).lt("bm_deadline", ymd(today)),
   ]);
   const overdueByService: Record<string, number> = {};
   for (const r of (overdueRows || []) as Row[]) {

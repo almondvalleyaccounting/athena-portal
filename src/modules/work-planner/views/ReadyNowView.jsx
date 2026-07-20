@@ -119,7 +119,8 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
           .from('bm_task_schedule')
           .select('id, service, bm_task_name, bm_status, bm_deadline, bm_target_date, entity_id, assignee_id, entities(name, grade, expedite, deprioritise_reason), staff_profiles:assignee_id(id, name)')
           .in('service', ['Self Assessment', 'Annual Accounts'])
-          .eq('state', 'planned');
+          .eq('state', 'planned')
+          .is('excluded_at', null);
         if (error) throw error;
         if (cancelled) return;
         setRows(data || []);

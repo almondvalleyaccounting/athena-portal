@@ -152,9 +152,19 @@ export async function writeBmTasks(runId, parsedRows, seenTaskIds = []) {
     run_id: runId, payload,
   });
   if (error) throw error;
+
+  // Silent verification: "won't happen" cleanup tasks confirm themselves once
+  // the job has left the BM export (the sweep above flips it off 'planned').
+  let wontHappenConfirmed = 0;
+  try {
+    const { data: confirmed } = await supabase.rpc('confirm_wont_happen_tasks');
+    wontHappenConfirmed = confirmed || 0;
+  } catch { /* non-fatal — tasks stay open until the next import */ }
+
   return {
     ...(data || {}),
     nst_upserted: nstResult.upserted,
     nst_removed: nstResult.removed,
+    wont_happen_confirmed: wontHappenConfirmed,
   };
 }

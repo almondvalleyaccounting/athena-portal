@@ -103,6 +103,7 @@ export function useDirectorDashboard(enabled) {
           .select('bm_deadline')
           .ilike('bm_task_name', CH_FILING)
           .eq('state', 'planned')
+          .is('excluded_at', null)
           .lte('bm_deadline', horizonEndIso),
         // The late ones, named, for the attention queue
         supabase
@@ -112,6 +113,7 @@ export function useDirectorDashboard(enabled) {
           )
           .ilike('bm_task_name', CH_FILING)
           .eq('state', 'planned')
+          .is('excluded_at', null)
           .lt('bm_deadline', todayIso)
           .order('bm_deadline')
           .limit(10),
@@ -121,6 +123,7 @@ export function useDirectorDashboard(enabled) {
           .select('id', { count: 'exact', head: true })
           .ilike('bm_task_name', SA_FILING)
           .eq('state', 'planned')
+          .is('excluded_at', null)
           .gte('bm_deadline', jan.start)
           .lte('bm_deadline', jan.end),
         // SA returns already past a 31 Jan (late — penalties accruing)
@@ -131,6 +134,7 @@ export function useDirectorDashboard(enabled) {
           )
           .ilike('bm_task_name', SA_FILING)
           .eq('state', 'planned')
+          .is('excluded_at', null)
           .lt('bm_deadline', todayIso)
           .order('bm_deadline')
           .limit(10),
@@ -143,6 +147,7 @@ export function useDirectorDashboard(enabled) {
             'id, service, bm_task_name, bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(id, name), owner:staff_profiles!bm_task_schedule_assignee_id_fkey(name)',
           )
           .eq('state', 'planned')
+          .is('excluded_at', null)
           .lt('bm_deadline', todayIso)
           .order('bm_deadline')
           .limit(300),
