@@ -10,6 +10,13 @@
 //   message.finalized → stamp delivery outcome on the matching outbound row.
 //
 // Always answers 200 so Telnyx doesn't retry storms; problems are logged.
+//
+// RELAY: this function is the PRIMARY webhook on the Telnyx messaging
+// profile; Clerk SMS (MS Teams) used to be. So Teams keeps working, every
+// event is re-posted VERBATIM (raw body + Telnyx signature headers) to
+// telnyx_config.relay_url — Clerk's endpoint. Clerk is also the profile's
+// failover URL, so if this function is ever down Telnyx delivers to Clerk
+// directly. The relay must never block or fail the main handling.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -32,12 +39,31 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const secret = url.searchParams.get("secret") || "";
 
-  const { data: cfg } = await service.from("telnyx_config").select("webhook_secret").eq("id", true).maybeSingle();
+  const { data: cfg } = await service.from("telnyx_config").select("webhook_secret, relay_url").eq("id", true).maybeSingle();
   if (!cfg || !secret || secret !== cfg.webhook_secret) {
     return new Response(JSON.stringify({ error: "bad secret" }), { status: 401 });
   }
 
-  const body = await req.json().catch(() => null);
+  const rawBody = await req.text().catch(() => "");
+
+  // Relay to Clerk SMS FIRST (verbatim body + Telnyx signature headers so
+  // Clerk's own verification still passes) — Teams delivery must not depend
+  // on anything below succeeding.
+  if (cfg.relay_url) {
+    try {
+      const relayHeaders: Record<string, string> = { "Content-Type": req.headers.get("Content-Type") || "application/json" };
+      for (const h of ["telnyx-signature-ed25519", "telnyx-timestamp"]) {
+        const v = req.headers.get(h);
+        if (v) relayHeaders[h] = v;
+      }
+      await fetch(cfg.relay_url, { method: "POST", headers: relayHeaders, body: rawBody });
+    } catch (e) {
+      console.log(`relay to clerk failed: ${(e as Error).message}`);
+    }
+  }
+
+  let body: any = null;
+  try { body = JSON.parse(rawBody); } catch { /* ignore */ }
   const eventType: string = body?.data?.event_type || "";
   const payload = body?.data?.payload || {};
 

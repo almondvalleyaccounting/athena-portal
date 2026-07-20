@@ -14,6 +14,10 @@ create table if not exists public.telnyx_config (
   from_number text,                -- E.164, e.g. +447700900123
   messaging_profile_id text,
   webhook_secret text not null default encode(gen_random_bytes(18), 'hex'),
+  -- Clerk SMS's original webhook endpoint. telnyx-inbound re-posts every
+  -- event here verbatim so MS Teams keeps receiving texts (Athena is the
+  -- profile's primary webhook; Clerk is also the Telnyx failover URL).
+  relay_url text,
   enabled boolean not null default true,
   updated_at timestamptz not null default now()
 );
