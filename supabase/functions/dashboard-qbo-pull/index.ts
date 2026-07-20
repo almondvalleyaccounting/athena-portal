@@ -328,6 +328,168 @@ async function pullFileHealth(sb: any, realmId: string) {
   return { ...signals, flags, score, _debug: { unrecError, tlColumns } };
 }
 
+/* ── Dashboard v2 metrics ─────────────────────────────────────────── */
+
+// Monthly P&L, last 12 months INCLUDING the current month, one column per
+// month (summarize_column_by=Month). Stores the raw report (the UI renders
+// expandable section→account rows from it) plus pre-parsed per-month series
+// for the trend chart and portfolio sparklines.
+// period_end = end of the current month → the snapshot upserts in place all
+// month, then a new row starts each month (monthly history, not daily).
+async function pullPnlMonthly(sb: any, realmId: string) {
+  const now = new Date();
+  const start = fmt(new Date(now.getFullYear(), now.getMonth() - 11, 1));
+  const end = fmt(lastDay(now.getFullYear(), now.getMonth()));
+  const resp = await qboFetch(sb, realmId, `reports/ProfitAndLoss?start_date=${start}&end_date=${end}&summarize_column_by=Month&accounting_method=Accrual&minorversion=75`);
+  if (!resp.ok) throw new Error(`P&L monthly ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const report = await resp.json();
+
+  const cols = (report?.Columns?.Column || []).map((c: any) => c.ColTitle ?? "");
+  // Value columns = everything after the account-name column; the trailing
+  // "Total" column is excluded from the month series.
+  const months = cols.slice(1).filter((t: string) => !/^total$/i.test(t));
+  const nMonths = months.length;
+
+  const series: Record<string, number[]> = {};
+  const walk = (rs: any[]) => {
+    for (const r of rs || []) {
+      const cd = r.Summary?.ColData;
+      if (r.group && cd) {
+        series[r.group] = cd.slice(1, 1 + nMonths).map((c: any) => {
+          const v = parseFloat(c?.value ?? "");
+          return isNaN(v) ? 0 : v;
+        });
+      }
+      if (r.Rows?.Row) walk(r.Rows.Row);
+    }
+  };
+  walk(report?.Rows?.Row || []);
+
+  return {
+    period: { start, end },
+    currency: report?.Header?.Currency || null,
+    months,
+    series: {
+      income: series.Income || null,
+      cogs: series.COGS || null,
+      gross_profit: series.GrossProfit || null,
+      expenses: series.Expenses || null,
+      net_income: series.NetIncome || null,
+    },
+    report,
+  };
+}
+
+// Balance sheet as of today. Collects every section-group total the report
+// exposes (group names vary a little between files) and stores the raw report
+// for the expandable account-level view.
+// period_end = today → daily snapshot history via upsert.
+async function pullBalanceSheet(sb: any, realmId: string) {
+  const end = fmt(new Date());
+  const resp = await qboFetch(sb, realmId, `reports/BalanceSheet?end_date=${end}&accounting_method=Accrual&minorversion=75`);
+  if (!resp.ok) throw new Error(`BalanceSheet ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const report = await resp.json();
+
+  const groups: Record<string, number> = {};
+  const walk = (rs: any[]) => {
+    for (const r of rs || []) {
+      if (r.group && r.Summary?.ColData) {
+        const v = parseFloat(r.Summary.ColData[r.Summary.ColData.length - 1]?.value || "0");
+        if (!isNaN(v)) groups[r.group] = v;
+      }
+      if (r.Rows?.Row) walk(r.Rows.Row);
+    }
+  };
+  walk(report?.Rows?.Row || []);
+
+  const pick = (...keys: string[]) => {
+    for (const k of keys) if (typeof groups[k] === "number") return groups[k];
+    return null;
+  };
+  return {
+    period: { start: null, end },
+    currency: report?.Header?.Currency || null,
+    total_assets: pick("TotalAssets", "Asset", "Assets"),
+    total_liabilities: pick("Liabilities", "TotalLiabilities", "Liability"),
+    equity: pick("Equity", "TotalEquity", "ShareholdersEquity"),
+    current_assets: pick("CurrentAssets", "TotalCurrentAssets"),
+    current_liabilities: pick("CurrentLiabilities", "TotalCurrentLiabilities"),
+    groups,
+    report,
+  };
+}
+
+// Aged receivables / payables summary — rows are customers/suppliers, columns
+// are ageing buckets. Parses buckets + per-name balances; keeps the raw report
+// too. period_end = today → daily snapshots, month-on-month change in the UI.
+function parseAged(report: any) {
+  const cols = (report?.Columns?.Column || []).map((c: any) => c.ColTitle ?? "");
+  const idx: Record<string, number> = {};
+  cols.forEach((t: string, i: number) => {
+    if (/^current$/i.test(t)) idx.current = i;
+    else if (/^1\s*[-–]\s*30/.test(t)) idx.b1_30 = i;
+    else if (/^31\s*[-–]\s*60/.test(t)) idx.b31_60 = i;
+    else if (/^61\s*[-–]\s*90/.test(t)) idx.b61_90 = i;
+    else if (/91/.test(t)) idx.b91_plus = i;
+    else if (/^total$/i.test(t)) idx.total = i;
+  });
+  const num = (cd: any[], i?: number) => {
+    if (i === undefined || !cd?.[i]) return 0;
+    const v = parseFloat(cd[i].value || "0");
+    return isNaN(v) ? 0 : v;
+  };
+  const mk = (cd: any[]) => ({
+    name: cd?.[0]?.value || "",
+    current: num(cd, idx.current),
+    b1_30: num(cd, idx.b1_30),
+    b31_60: num(cd, idx.b31_60),
+    b61_90: num(cd, idx.b61_90),
+    b91_plus: num(cd, idx.b91_plus),
+    total: num(cd, idx.total),
+  });
+
+  const dataRows: any[] = [];
+  let totalRow: any[] | null = null;
+  const walk = (rs: any[]) => {
+    for (const r of rs || []) {
+      if (r.Summary?.ColData && (r.group === "GrandTotal" || /^total$/i.test(r.Summary.ColData[0]?.value || ""))) {
+        totalRow = r.Summary.ColData;
+      } else if (r.ColData && (r.ColData[0]?.value || "").length) {
+        dataRows.push(r.ColData);
+      }
+      if (r.Rows?.Row) walk(r.Rows.Row);
+    }
+  };
+  walk(report?.Rows?.Row || []);
+
+  const rows = dataRows.map(mk).filter((r) => Math.abs(r.total) > 0.004);
+  rows.sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+  const sumKey = (k: string) => rows.reduce((s, r) => s + (r as any)[k], 0);
+  const buckets = totalRow ? mk(totalRow) : {
+    name: "TOTAL",
+    current: sumKey("current"), b1_30: sumKey("b1_30"), b31_60: sumKey("b31_60"),
+    b61_90: sumKey("b61_90"), b91_plus: sumKey("b91_plus"), total: sumKey("total"),
+  };
+  return { buckets, rows: rows.slice(0, 25) };
+}
+
+async function pullAged(sb: any, realmId: string, endpoint: "AgedReceivables" | "AgedPayables") {
+  const end = fmt(new Date());
+  const resp = await qboFetch(sb, realmId, `reports/${endpoint}?report_date=${end}&minorversion=75`);
+  if (!resp.ok) throw new Error(`${endpoint} ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const report = await resp.json();
+  const parsed = parseAged(report);
+  return {
+    period: { start: null, end },
+    currency: report?.Header?.Currency || null,
+    buckets: parsed.buckets,
+    top: parsed.rows, // largest balances first, capped at 25 (UI shows top 10)
+    report,
+  };
+}
+const pullAgedReceivables = (sb: any, realmId: string) => pullAged(sb, realmId, "AgedReceivables");
+const pullAgedPayables = (sb: any, realmId: string) => pullAged(sb, realmId, "AgedPayables");
+
 const METRICS: Record<string, (sb: any, realmId: string) => Promise<any>> = {
   company: pullCompany,
   pl_summary: pullPlSummary,
@@ -335,6 +497,11 @@ const METRICS: Record<string, (sb: any, realmId: string) => Promise<any>> = {
   pl_fytd_prior: pullPlFytdPrior,
   balances: pullBalances,
   file_health: pullFileHealth,
+  // Dashboard v2
+  pnl_monthly: pullPnlMonthly,
+  balance_sheet: pullBalanceSheet,
+  aged_receivables: pullAgedReceivables,
+  aged_payables: pullAgedPayables,
 };
 
 /* ── Handler ──────────────────────────────────────────────────────── */
@@ -373,10 +540,12 @@ Deno.serve(async (req) => {
       ? body.metrics.filter((m: string) => m in METRICS)
       : Object.keys(METRICS);
 
-    // 3. Cache read
-    const { data: cacheRows } = await sb.from("qbo_dashboard_cache").select("*").eq("realm_id", realmId);
+    // 3. Cache read — snapshots accumulate per (realm, metric, period_end),
+    // so take the LATEST row per metric for freshness checks / fallbacks.
+    const { data: cacheRows } = await sb.from("qbo_dashboard_cache").select("*")
+      .eq("realm_id", realmId).order("pulled_at", { ascending: false });
     const cacheByKey: Record<string, any> = {};
-    for (const row of cacheRows || []) cacheByKey[row.metric_key] = row;
+    for (const row of cacheRows || []) if (!cacheByKey[row.metric_key]) cacheByKey[row.metric_key] = row;
 
     const cutoff = Date.now() - maxAgeMin * 60 * 1000;
     const isFresh = (row: any) => row && new Date(row.pulled_at).getTime() >= cutoff;
@@ -395,14 +564,28 @@ Deno.serve(async (req) => {
         const data = await METRICS[key](sb, realmId);
         metrics[key] = data;
         anyPulled = true;
-        // upsert cache (one row per realm+metric)
-        await sb.from("qbo_dashboard_cache").delete().eq("realm_id", realmId).eq("metric_key", key);
-        await sb.from("qbo_dashboard_cache").insert({
+        // Snapshot upsert — one row per (realm, metric, period_end). Old
+        // snapshots are KEPT so the UI can compare month-on-month (aged debt,
+        // balances). period_end always non-null (falls back to the pull date
+        // for point-in-time metrics) so the unique index (sql/131) is hit.
+        const periodEnd = data?.period?.end || fmt(new Date());
+        const row = {
           realm_id: realmId, metric_key: key,
           period_start: data?.period?.start || null,
-          period_end: data?.period?.end || null,
+          period_end: periodEnd,
           data, pulled_at: new Date().toISOString(),
-        });
+        };
+        const { error: upErr } = await sb.from("qbo_dashboard_cache")
+          .upsert(row, { onConflict: "realm_id,metric_key,period_end" });
+        if (upErr) {
+          // Unique index not applied yet (pre-sql/131) → emulate the upsert.
+          await sb.from("qbo_dashboard_cache").delete()
+            .eq("realm_id", realmId).eq("metric_key", key).eq("period_end", periodEnd);
+          await sb.from("qbo_dashboard_cache").insert(row);
+        }
+        // Tidy legacy rows written before period_end was mandatory.
+        await sb.from("qbo_dashboard_cache").delete()
+          .eq("realm_id", realmId).eq("metric_key", key).is("period_end", null);
       } catch (e) {
         errors[key] = (e as Error).message;
         if (cached) metrics[key] = cached.data; // fall back to stale cache

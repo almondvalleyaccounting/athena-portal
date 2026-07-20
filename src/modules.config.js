@@ -90,6 +90,7 @@ export const MODULES = [
     group: 'data',
     children: [
       { id: 'cw-dashboard', label: 'Client Dashboard', route: '/client-dashboard', permissions: ['can_view_reports'] },
+      { id: 'cw-portfolio', label: 'Portfolio', route: '/portfolio', permissions: ['can_view_reports'] },
       { id: 'cw-triage', label: 'Triage Board', route: '/triage' },
       { id: 'cw-reminders', label: 'Client Reminders', route: '/reminders', permissions: ['can_manage_portal'] },
       { id: 'cw-reports', label: 'Client Reports', route: '/reports', permissions: ['can_view_reports'] },

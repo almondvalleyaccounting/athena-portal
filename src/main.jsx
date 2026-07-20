@@ -7,6 +7,7 @@ import HomeScreen from './shell/HomeScreen';
 import IdeasPage from './modules/ideas/IdeasPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import ClientDashboardPage from './modules/client-dashboard/ClientDashboardPage';
+import PortfolioDashboardPage from './modules/client-dashboard/PortfolioDashboardPage';
 import TriageBoardPage from './modules/triage/TriageBoardPage';
 import ClientRemindersPage from './modules/reminders/ClientRemindersPage';
 import AdminPage from './shell/AdminPage';
@@ -79,6 +80,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/bugs" element={<Navigate to="/issues" replace />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/client-dashboard" element={<ClientDashboardPage />} />
+          <Route path="/portfolio" element={<PortfolioDashboardPage />} />
           <Route path="/triage" element={<TriageBoardPage />} />
           <Route path="/reminders" element={<ClientRemindersPage />} />
           <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />
