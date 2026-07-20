@@ -37,11 +37,11 @@ const FIELD_LABELS = { ch_auth_code: 'CH auth code', utr: 'UTR', vat_number: 'VA
 // bulk-imported or manually-typed tasks don't get lost among the BM
 // code-verification queue, which is what "To key into BrightManager" is for.
 const TASK_GROUPS = [
+  { key: 'manually_added', label: 'Manually Added', match: (t) => t.source === 'Added manually' || t.source === 'sophie_workplan_import' },
   { key: 'bm_keying', label: 'To key into BrightManager', match: (t) => t.kind === 'bm_code' },
   { key: 'bm_data_error', label: 'BM Data Errors', match: (t) => t.source === 'bm_data_error' },
   { key: 'person_dedup', label: 'Data quality — possible duplicate people', match: (t) => t.source === 'person_dedup' },
   { key: 'nlac_bm_mirror', label: 'Offboarding', match: (t) => t.source === 'nlac_bm_mirror' },
-  { key: 'manually_added', label: 'Manually Added', match: (t) => t.source === 'Added manually' || t.source === 'sophie_workplan_import' },
 ];
 const GROUP_ORDER = [...TASK_GROUPS.map((g) => g.key), 'other'];
 function groupKeyFor(t) { return (TASK_GROUPS.find((g) => g.match(t)) || { key: 'other' }).key; }
@@ -914,7 +914,9 @@ function TaskRow({
           )}
         </div>
 
-        {t.value && (
+        {/* Copy chip is for values Sophie keys into BM (codes, UTRs) — internal
+            bookkeeping values like the dedup pair ids stay hidden. */}
+        {t.value && t.source !== 'person_dedup' && (
           <button onClick={onCopy} title="Copy the value to paste into BM" style={{ ...btn('ghost'), fontFamily: 'monospace', fontSize: 12, flexShrink: 0 }}>
             {copied ? '✓ copied' : <>{t.value} <Copy size={11} /></>}
           </button>
