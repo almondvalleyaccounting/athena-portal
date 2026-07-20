@@ -666,13 +666,7 @@ export default function AdminTasksPage() {
           <Section
             key={key}
             title={groupLabelFor(key)} count={view === 'open' ? groupOpen.length : groupCompleted.length}
-            collapsed={collapsedSet.has(key)} onToggle={() => toggleCollapse(key)}
-            action={
-              <div style={{ display: 'flex', gap: 4 }}>
-                <TabBtn active={view === 'open'} onClick={() => setView('open')}>Open ({groupOpen.length})</TabBtn>
-                <TabBtn active={view === 'completed'} onClick={() => setView('completed')}>Completed ({groupCompleted.length})</TabBtn>
-              </div>
-            }
+            collapsed={!expandedSet.has(key)} onToggle={() => toggleCollapse(key)}
           >
             {items.length === 0 && <Empty>{view === 'open' ? 'Nothing outstanding here.' : 'Nothing completed here yet.'}</Empty>}
             {view === 'open' && items.map((t) => (
@@ -711,7 +705,7 @@ export default function AdminTasksPage() {
       {/* ── CH personal code chases (live from the ch-codes module) ── */}
       <Section
         title="CH personal code chases" count={filteredChCodes.length}
-        collapsed={collapsedSet.has('chcodes')} onToggle={() => toggleCollapse('chcodes')}
+        collapsed={!expandedSet.has('chcodes')} onToggle={() => toggleCollapse('chcodes')}
         action={<button onClick={() => navigate('/onboarding/ch-codes')} style={btn('ghost')}>Open CH codes →</button>}
       >
         {filteredChCodes.length === 0 && <Empty>No code chases in flight.</Empty>}
@@ -741,7 +735,7 @@ export default function AdminTasksPage() {
       {/* ── Reallocations (from capacity planner) ── */}
       <Section
         title="Task reallocations to apply in BM" count={filteredDrafts.length}
-        collapsed={collapsedSet.has('realloc')} onToggle={() => toggleCollapse('realloc')}
+        collapsed={!expandedSet.has('realloc')} onToggle={() => toggleCollapse('realloc')}
         action={<button onClick={() => navigate('/planner/allocations')} style={btn('ghost')}>Open capacity planner →</button>}
       >
         {filteredDrafts.length === 0 && <Empty>No reallocation proposals waiting.</Empty>}
@@ -765,7 +759,7 @@ export default function AdminTasksPage() {
       {/* ── Onboarding summary ── */}
       <Section
         title="Onboarding in flight" count={filteredOnboardings.length}
-        collapsed={collapsedSet.has('onboard')} onToggle={() => toggleCollapse('onboard')}
+        collapsed={!expandedSet.has('onboard')} onToggle={() => toggleCollapse('onboard')}
         action={<button onClick={() => navigate('/onboarding')} style={btn('ghost')}>Open onboarding →</button>}
       >
         {filteredOnboardings.length === 0 && <Empty>No onboardings in progress.</Empty>}
