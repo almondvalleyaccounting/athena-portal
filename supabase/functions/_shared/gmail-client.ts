@@ -11,9 +11,11 @@ export const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 export const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 export const GMAIL_REDIRECT_URI = `${SUPABASE_URL}/functions/v1/gmail-auth-callback`;
 
-// Composing drafts only — we never read mail, never send on the user's
-// behalf, never modify mailbox state beyond drafts.
-export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.compose openid email";
+// Compose (draft creation) + read-only (the chase-reply-scan poller matches
+// inbound replies against open chases — it never modifies mailbox state).
+// We never send on the user's behalf. Adding readonly means reconnecting the
+// account re-consents with both scopes.
+export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.readonly openid email";
 
 export const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";

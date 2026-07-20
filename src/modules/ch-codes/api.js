@@ -51,7 +51,7 @@ const STAGE_STATUS = {
   s3a_client: 'awaiting_code', s3b_us: 'awaiting_id_poa', s4_code: 'awaiting_code',
   s5_entered: 'code_received', s6_submitted: 'entered_on_bm', s7_rejected: 'stalled',
 };
-const RESET_COMMS = { emails_sent: 0, escalation_status: 'none', escalated_at: null, called_at: null };
+const RESET_COMMS = { emails_sent: 0, escalation_status: 'none', escalated_at: null, called_at: null, client_replied_at: null };
 
 // ── Comms ladder WITHIN a chasing stage: no emails → 1/2/3 emails → called →
 // escalated. Resets every time the stage advances. Derived, not stored. ──

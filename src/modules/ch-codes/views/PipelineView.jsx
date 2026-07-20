@@ -109,6 +109,12 @@ function EmailCounter({ value, onSave }) {
 // Chip for the escalation states only — the coloured email counter already
 // conveys the 0/1/2/3 email progress, so we don't duplicate it here.
 function CommsChip({ r }) {
+  // Reply hold takes precedence — they answered; process it before chasing.
+  if (r.client_replied_at) {
+    return <span style={{ ...chipStyle('success'), display: 'inline-flex', alignItems: 'center', gap: 3 }}
+      title={`Email reply received ${new Date(r.client_replied_at).toLocaleString('en-GB')} — reminders held until the stage moves`}>
+      📩 Replied</span>;
+  }
   const c = commsOf(r);
   if (c === 'called') {
     return <span style={{ ...chipStyle('accent'), display: 'inline-flex', alignItems: 'center', gap: 3 }} title={r.called_at ? `Called ${new Date(r.called_at).toLocaleString('en-GB')}` : 'Call needed'}>

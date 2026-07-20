@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
 
   const [{ data: reqs, error: reqErr }, { data: queueRows }, { data: tpls }] = await Promise.all([
     service.from("ch_code_requests")
-      .select("id, stage, status, emails_sent, escalation_status, requested_at, person:people(id, name, email), entity:entities!ch_code_requests_entity_id_fkey(id, name)")
+      .select("id, stage, status, emails_sent, escalation_status, requested_at, client_replied_at, person:people(id, name, email), entity:entities!ch_code_requests_entity_id_fkey(id, name)")
       .in("stage", Object.keys(KIND_BY_STAGE)),
     service.from("ch_code_email_queue").select("request_id, status, sent_at"),
     service.from("ch_code_email_templates").select("*"),
@@ -163,8 +163,9 @@ Deno.serve(async (req) => {
   }
 
   const toQueue: Array<{ req: Row; kind: string; to: string; daysSince: number }> = [];
-  const skipped = { first_email_is_human: 0, capped: 0, escalated: 0, no_email: 0, already_queued: 0, no_anchor: 0, future_anchor: 0, not_due_yet: 0, no_template: 0 };
+  const skipped = { first_email_is_human: 0, capped: 0, escalated: 0, replied: 0, no_email: 0, already_queued: 0, no_anchor: 0, future_anchor: 0, not_due_yet: 0, no_template: 0 };
   const anomalies: Array<Row> = [];
+  const repliedHolds: Array<Row> = [];
 
   for (const r of (reqs || []) as Row[]) {
     const sent = (r.emails_sent as number) || 0;
@@ -177,6 +178,16 @@ Deno.serve(async (req) => {
     if (!to) { skipped.no_email++; continue; }
 
     const anchor = lastSentByReq.get(r.id as string) || (r.requested_at as string) || null;
+
+    // Reply hold: they answered since our last email — a human processes the
+    // reply (and advances the stage, which clears the flag) before any more
+    // reminders go out.
+    const replied = r.client_replied_at ? String(r.client_replied_at) : null;
+    if (replied && (!anchor || replied > String(anchor))) {
+      skipped.replied++;
+      repliedHolds.push({ person: (r.person as Row)?.name, entity: (r.entity as Row)?.name, replied_at: replied });
+      continue;
+    }
     const waited = daysSince(anchor);
     if (waited == null) {
       skipped.no_anchor++;
@@ -202,7 +213,7 @@ Deno.serve(async (req) => {
   }));
 
   if (dryRun) {
-    return json({ success: true, dry_run: true, would_queue: plan, skipped, anomalies });
+    return json({ success: true, dry_run: true, would_queue: plan, skipped, anomalies, replied_holds: repliedHolds });
   }
 
   let queued = 0;
@@ -226,8 +237,8 @@ Deno.serve(async (req) => {
 
   await service.from("audit_log").insert({
     action: "ch_code_queue_filled", entity_type: "ch_code_email_queue", entity_id: null,
-    detail: { queued, plan, skipped, anomalies },
+    detail: { queued, plan, skipped, anomalies, replied_holds: repliedHolds },
   });
 
-  return json({ success: true, dry_run: false, queued, plan, skipped, anomalies });
+  return json({ success: true, dry_run: false, queued, plan, skipped, anomalies, replied_holds: repliedHolds });
 });

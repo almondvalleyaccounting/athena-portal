@@ -232,6 +232,14 @@ export default function PipelineView() {
                 {r.checkin_due && !r.checkin_sent_at && new Date(r.checkin_due) <= new Date() && (
                   <span style={chipStyle('info')}>check-in due</span>
                 )}
+                {r.client_replied_at && (
+                  <span
+                    style={chipStyle('success')}
+                    title={`Email reply received ${new Date(r.client_replied_at).toLocaleString('en-GB')} — chasing held until it's processed`}
+                  >
+                    replied 📩
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 12, color: '#64748b', textAlign: 'right' }}>
                 {age != null ? `${age}d in` : ''}

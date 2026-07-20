@@ -245,7 +245,7 @@ Deno.serve(async (req) => {
     .from("onboardings")
     .select(`
       id, status, entity_id, owner_id, quote_id, escalation_status, escalated_at, paused_at,
-      started_at, checkin_due, checkin_sent_at,
+      started_at, checkin_due, checkin_sent_at, client_replied_at,
       service_handovers:onboarding_handovers(area, due, done_at, to:staff_profiles!onboarding_handovers_handover_to_fkey(name)),
       entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email, ch_auth_code, vat_number, utr, paye_ref),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name, email, is_active),
@@ -376,6 +376,7 @@ Deno.serve(async (req) => {
   // ── Classify steps ──
   const today = new Date().toISOString().slice(0, 10);
   const chases: Array<{ ob: Ob; entity: string; to: string | null; steps: Step[] }> = [];
+  const repliedHolds: Array<{ entity: string; replied_at: string; steps: number }> = [];
   const offboardDue: Ob[] = [];
   const perOwner = new Map<string, {
     name: string; email: string | null;
@@ -471,6 +472,18 @@ Deno.serve(async (req) => {
       if (waited != null && waited >= threshold) due.push(s);
     }
     if (due.length) {
+      // Reply hold: the client answered since we last asked — a human reads
+      // the reply (chase-reply-scan stamped client_replied_at) before any
+      // further chaser goes out. Updating a step or the flag releases it.
+      const lastOutbound = due
+        .map((s) => (s.last_chased_at as string) || (s.requested_at as string) || "")
+        .sort()
+        .pop() || "";
+      const replied = o.client_replied_at ? String(o.client_replied_at).slice(0, 10) : null;
+      if (replied && replied >= lastOutbound) {
+        repliedHolds.push({ entity: entityName, replied_at: String(o.client_replied_at), steps: due.length });
+        continue;
+      }
       const to = resolveEmail(o);
       if (to) {
         chases.push({ ob: o, entity: entityName, to, steps: due });
@@ -499,6 +512,7 @@ Deno.serve(async (req) => {
         offboard_due: b.offboard.length, handovers_due: b.handovers.length,
         checkins_due: b.checkins.length,
       })),
+      replied_holds: repliedHolds,
     });
   }
 

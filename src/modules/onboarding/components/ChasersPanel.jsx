@@ -167,6 +167,11 @@ export default function ChasersPanel() {
                   {busy ? 'Sending…' : `Send ${Object.values(selected).filter(Boolean).length} selected now`}
                 </button>
               )}
+              {plan.replied_holds?.map((h, i) => (
+                <div key={`rh-${i}`} style={{ color: tones.success.fg }}>
+                  📩 {h.entity} replied {new Date(h.replied_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — {h.steps} item{h.steps === 1 ? '' : 's'} held until the reply is processed
+                </div>
+              ))}
               {plan.digests?.map((d, i) => (
                 <div key={i} style={{ color: '#64748b' }}>
                   Digest → {d.owner} ({d.to || 'no email'}): {d.chasers} chasers, {d.overdue_external} overdue external, {d.non_responsive} non-responsive, {d.no_email} missing email
