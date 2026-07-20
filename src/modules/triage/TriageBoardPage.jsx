@@ -7,16 +7,20 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
-
-const font = "'Outfit', sans-serif";
-const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
+import ActionPlanSection from './ActionPlanSection';
+import TemplateManagerModal from './TemplateManagerModal';
+import {
+  font, card, btn, iconBtn, backdrop, modal, fieldLabel, input, fmtDate, fmtDateShort,
+  ACTION_TYPE_MAP, sortActions, nextOpenAction, isOverdueAction,
+} from './triageShared';
 
 /*
   Triage Board — clients with an active problem, in three lanes:
   strike-off watch (auto-fed by nightly Companies House status changes),
   on hold (do no work for this client), and general. Tiles open a case
-  drawer with timestamped notes, next action and target date. Automation
-  to move clients out of triage comes later.
+  drawer with timestamped notes, a typed action plan (email / call / meeting,
+  who and when — template-driven or manual) and a target date. Automation
+  of the actions themselves (email sends, diary invites) comes later.
 */
 
 const CATEGORIES = [
@@ -37,11 +41,6 @@ const CATEGORIES = [
   },
 ];
 
-function fmtDate(iso) {
-  if (!iso) return '';
-  const d = new Date(iso.length === 10 ? iso + 'T00:00:00' : iso);
-  return isNaN(d) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
 function fmtNoteTime(iso) {
   const d = new Date(iso);
   return isNaN(d) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' +
@@ -57,12 +56,16 @@ export default function TriageBoardPage() {
   const { profile } = useAuth();
   const [cases, setCases] = useState(null);
   const [notesByCase, setNotesByCase] = useState({});
+  const [actionsByCase, setActionsByCase] = useState({});
   const [staffMap, setStaffMap] = useState({});
+  const [staffList, setStaffList] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [allEntities, setAllEntities] = useState([]);
   const [error, setError] = useState(null);
   const [showResolved, setShowResolved] = useState(false);
   const [openCaseId, setOpenCaseId] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [managingTemplates, setManagingTemplates] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -70,28 +73,47 @@ export default function TriageBoardPage() {
         supabase.from('triage_cases')
           .select('*, entity:entities(id, name, company_status, company_status_detail)')
           .order('created_at', { ascending: false }),
-        supabase.from('staff_profiles').select('id, name'),
+        supabase.from('staff_profiles').select('id, name, is_active'),
         supabase.from('entities').select('id, name').order('name'),
       ]);
       if (e1) throw e1;
       setCases(cs || []);
       setStaffMap(Object.fromEntries((st || []).map((s) => [s.id, s.name])));
+      setStaffList((st || []).filter((s) => s.is_active).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
       setAllEntities(ents || []);
 
       const ids = (cs || []).map((c) => c.id);
       if (ids.length) {
-        const { data: notes } = await supabase.from('triage_case_notes')
-          .select('*').in('case_id', ids).order('created_at', { ascending: true });
+        const [{ data: notes }, { data: acts }] = await Promise.all([
+          supabase.from('triage_case_notes')
+            .select('*').in('case_id', ids).order('created_at', { ascending: true }),
+          supabase.from('triage_actions').select('*').in('case_id', ids),
+        ]);
         const grouped = {};
         for (const n of notes || []) (grouped[n.case_id] ||= []).push(n);
         setNotesByCase(grouped);
+        const acted = {};
+        for (const a of acts || []) (acted[a.case_id] ||= []).push(a);
+        for (const k of Object.keys(acted)) acted[k] = sortActions(acted[k]);
+        setActionsByCase(acted);
       } else {
         setNotesByCase({});
+        setActionsByCase({});
       }
     } catch (e) { setError(e.message); }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadTemplates = useCallback(async () => {
+    const { data, error: err } = await supabase.from('triage_action_templates')
+      .select('*, steps:triage_action_template_steps(*)')
+      .order('name');
+    if (err) { setError(err.message); return; }
+    setTemplates((data || []).map((t) => ({
+      ...t, steps: [...(t.steps || [])].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)),
+    })));
+  }, []);
+
+  useEffect(() => { load(); loadTemplates(); }, [load, loadTemplates]);
 
   async function addCase({ entityId, category, description }) {
     const { data, error: err } = await supabase.from('triage_cases').insert({
@@ -132,6 +154,22 @@ export default function TriageBoardPage() {
     setNotesByCase((prev) => ({ ...prev, [caseId]: [...(prev[caseId] || []), data] }));
   }
 
+  async function addActions(caseId, rows) {
+    const payload = rows.map((r) => ({ ...r, case_id: caseId, created_by: profile?.id || null }));
+    const { data, error: err } = await supabase.from('triage_actions').insert(payload).select('*');
+    if (err) { setError(err.message); return; }
+    setActionsByCase((prev) => ({ ...prev, [caseId]: sortActions([...(prev[caseId] || []), ...(data || [])]) }));
+  }
+
+  async function patchAction(caseId, actionId, patch) {
+    setActionsByCase((prev) => ({
+      ...prev,
+      [caseId]: sortActions((prev[caseId] || []).map((a) => (a.id === actionId ? { ...a, ...patch } : a))),
+    }));
+    const { error: err } = await supabase.from('triage_actions').update(patch).eq('id', actionId);
+    if (err) { setError(err.message); load(); }
+  }
+
   const visible = useMemo(() => {
     const list = cases || [];
     return list.filter((c) => (showResolved ? true : c.status === 'open'));
@@ -153,6 +191,13 @@ export default function TriageBoardPage() {
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Triage Board</h1>
         <span style={{ fontSize: 13, color: '#64748b' }}>{openCount} open case{openCount === 1 ? '' : 's'}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button onClick={() => setManagingTemplates(true)}
+            style={{
+              background: 'none', border: 'none', color: '#0e7fe0', fontSize: 12.5, fontWeight: 600,
+              fontFamily: font, cursor: 'pointer', padding: '0 4px',
+            }}>
+            Manage templates
+          </button>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#64748b', cursor: 'pointer' }}>
             <input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)}
               style={{ width: 13, height: 13, accentColor: '#0e7fe0' }} />
@@ -190,6 +235,11 @@ export default function TriageBoardPage() {
                   {items.map((c) => {
                     const notes = notesByCase[c.id] || [];
                     const overdue = c.target_date && c.target_date < new Date().toISOString().slice(0, 10);
+                    const acts = actionsByCase[c.id] || [];
+                    const activeActs = acts.filter((a) => a.status !== 'cancelled');
+                    const doneActs = activeActs.filter((a) => a.status === 'done').length;
+                    const nextAct = nextOpenAction(acts);
+                    const NextIcon = nextAct ? (ACTION_TYPE_MAP[nextAct.action_type] || ACTION_TYPE_MAP.other).icon : null;
                     return (
                       <div key={c.id} onClick={() => setOpenCaseId(c.id)}
                         style={{
@@ -209,8 +259,28 @@ export default function TriageBoardPage() {
                         <div style={{ fontSize: 12, color: '#64748b', marginTop: 3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                           {c.description}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11, color: '#94a3b8' }}>
-                          {c.next_action && <span style={{ color: '#475569' }}>Next: {c.next_action}</span>}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11, color: '#94a3b8', flexWrap: 'wrap' }}>
+                          {nextAct ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#475569', minWidth: 0 }}>
+                              <NextIcon size={11} style={{ flexShrink: 0 }} />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
+                                Next: {nextAct.title}
+                              </span>
+                              {nextAct.target_date && (
+                                <span style={{ color: isOverdueAction(nextAct) ? '#dc2626' : '#94a3b8', whiteSpace: 'nowrap' }}>
+                                  · {fmtDateShort(nextAct.target_date)}
+                                </span>
+                              )}
+                              {nextAct.assigned_to && staffMap[nextAct.assigned_to] && (
+                                <span style={{ whiteSpace: 'nowrap' }}>· {staffMap[nextAct.assigned_to].split(' ')[0]}</span>
+                              )}
+                            </span>
+                          ) : acts.length === 0 && c.next_action ? (
+                            <span style={{ color: '#475569' }}>Next: {c.next_action}</span>
+                          ) : null}
+                          {activeActs.length > 0 && (
+                            <span>{doneActs}/{activeActs.length} action{activeActs.length === 1 ? '' : 's'} done</span>
+                          )}
                           {c.target_date && (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: overdue ? '#dc2626' : '#94a3b8' }}>
                               <CalendarDays size={11} /> {fmtDate(c.target_date)}
@@ -240,13 +310,27 @@ export default function TriageBoardPage() {
         <CaseDrawer
           c={openCase}
           notes={notesByCase[openCase.id] || []}
+          actions={actionsByCase[openCase.id] || []}
           staffMap={staffMap}
+          staffList={staffList}
+          templates={templates.filter((t) => t.active)}
           onClose={() => setOpenCaseId(null)}
           onPatch={(patch) => patchCase(openCase.id, patch)}
           onResolve={() => resolveCase(openCase)}
           onReopen={() => reopenCase(openCase)}
           onAddNote={(body) => addNote(openCase.id, body)}
+          onAddActions={(rows) => addActions(openCase.id, rows)}
+          onPatchAction={(actionId, patch) => patchAction(openCase.id, actionId, patch)}
           onOpenClient={() => navigate(`/clients/${openCase.entity_id}`)}
+        />
+      )}
+
+      {managingTemplates && (
+        <TemplateManagerModal
+          templates={templates}
+          staffList={staffList}
+          onClose={() => setManagingTemplates(false)}
+          onReload={loadTemplates}
         />
       )}
     </div>
@@ -306,9 +390,8 @@ function AddCaseModal({ entityList, onClose, onAdd }) {
   );
 }
 
-function CaseDrawer({ c, notes, staffMap, onClose, onPatch, onResolve, onReopen, onAddNote, onOpenClient }) {
+function CaseDrawer({ c, notes, actions, staffMap, staffList, templates, onClose, onPatch, onResolve, onReopen, onAddNote, onAddActions, onPatchAction, onOpenClient }) {
   const [noteDraft, setNoteDraft] = useState('');
-  const [nextAction, setNextAction] = useState(c.next_action || '');
   const cat = CATEGORIES.find((x) => x.key === c.category) || CATEGORIES[2];
 
   function submitNote() {
@@ -359,20 +442,22 @@ function CaseDrawer({ c, notes, staffMap, onClose, onPatch, onResolve, onReopen,
             {c.status === 'resolved' && ` · resolved ${fmtDate(c.resolved_at)}`}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 150px', gap: 10, marginTop: 16 }}>
-            <div>
-              <label style={fieldLabel}>Next action</label>
-              <input value={nextAction} onChange={(e) => setNextAction(e.target.value)}
-                onBlur={() => { if ((c.next_action || '') !== nextAction) onPatch({ next_action: nextAction || null }); }}
-                placeholder="What happens next?"
-                style={input} />
-            </div>
-            <div>
-              <label style={fieldLabel}>Target date</label>
-              <input type="date" value={c.target_date || ''} onChange={(e) => onPatch({ target_date: e.target.value || null })}
-                style={input} />
-            </div>
+          <div style={{ marginTop: 16, width: 170 }}>
+            <label style={fieldLabel}>Case target date</label>
+            <input type="date" value={c.target_date || ''} onChange={(e) => onPatch({ target_date: e.target.value || null })}
+              style={input} />
           </div>
+
+          <ActionPlanSection
+            c={c}
+            actions={actions}
+            staffList={staffList}
+            staffMap={staffMap}
+            templates={templates}
+            onAddActions={onAddActions}
+            onPatchAction={onPatchAction}
+            onPatchCase={onPatch}
+          />
 
           <div style={{ marginTop: 18 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
@@ -410,26 +495,3 @@ function CaseDrawer({ c, notes, staffMap, onClose, onPatch, onResolve, onReopen,
   );
 }
 
-function btn(kind) {
-  return {
-    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', fontSize: 12.5, fontWeight: 600,
-    fontFamily: font, borderRadius: 8, cursor: 'pointer',
-    background: kind === 'primary' ? '#0f172a' : '#fff',
-    color: kind === 'primary' ? '#fff' : '#475569',
-    border: kind === 'primary' ? 'none' : '1px solid #e5e7eb',
-  };
-}
-const iconBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 3, padding: '4px 7px', fontFamily: font,
-  borderRadius: 7, cursor: 'pointer', background: '#fff', border: '1px solid #e5e7eb', flexShrink: 0,
-};
-const backdrop = {
-  position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 1000,
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-};
-const modal = { background: '#fff', borderRadius: 12, padding: '20px 22px', fontFamily: font, boxShadow: '0 20px 60px rgba(15,23,42,0.25)' };
-const fieldLabel = { display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 };
-const input = {
-  width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1',
-  borderRadius: 8, background: '#fff', color: '#0f172a', boxSizing: 'border-box', outline: 'none',
-};

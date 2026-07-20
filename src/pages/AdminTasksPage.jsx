@@ -94,6 +94,10 @@ export default function AdminTasksPage() {
   const [chCodes, setChCodes] = useState([]);
   const [docsByTask, setDocsByTask] = useState({});
   const [clientFilter, setClientFilter] = useState('');
+  // Report tab data — completions + creations over the last 14 days,
+  // loaded lazily the first time the Report view opens.
+  const [reportRows, setReportRows] = useState(null);
+  const [reportCreated, setReportCreated] = useState(null);
 
   const [openNotes, setOpenNotes] = useState(() => new Set());
   const [escalateTask, setEscalateTask] = useState(null);
@@ -206,6 +210,32 @@ export default function AdminTasksPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load report data the first time the Report tab opens.
+  useEffect(() => {
+    if (view !== 'report' || reportRows !== null) return;
+    (async () => {
+      try {
+        const since = new Date();
+        since.setHours(0, 0, 0, 0);
+        since.setDate(since.getDate() - 13);
+        const sinceIso = since.toISOString();
+        const [{ data: doneRows, error: e1 }, { data: createdRows, error: e2 }] = await Promise.all([
+          supabase.from('admin_tasks')
+            .select('done_at, done_by, done_minutes, source, kind, entity_id, entity:entities(id, name)')
+            .gte('done_at', sinceIso)
+            .order('done_at', { ascending: true }),
+          supabase.from('admin_tasks')
+            .select('id, created_at, entity_id')
+            .gte('created_at', sinceIso),
+        ]);
+        if (e1) throw e1;
+        if (e2) throw e2;
+        setReportRows(doneRows || []);
+        setReportCreated(createdRows || []);
+      } catch (e) { setError(e.message); }
+    })();
+  }, [view, reportRows]);
 
   async function complete(task, { doneBy, minutes } = {}) {
     const now = new Date().toISOString();
@@ -420,6 +450,14 @@ export default function AdminTasksPage() {
     const list = completed || [];
     return clientFilter ? list.filter((t) => t.entity_id === clientFilter) : list;
   }, [completed, clientFilter]);
+  const reportCompletions = useMemo(() => {
+    const list = reportRows || [];
+    return clientFilter ? list.filter((t) => t.entity_id === clientFilter) : list;
+  }, [reportRows, clientFilter]);
+  const reportCreatedFiltered = useMemo(() => {
+    const list = reportCreated || [];
+    return clientFilter ? list.filter((t) => t.entity_id === clientFilter) : list;
+  }, [reportCreated, clientFilter]);
   const filteredDrafts = useMemo(
     () => (clientFilter ? drafts.filter((d) => d.entity_id === clientFilter) : drafts),
     [drafts, clientFilter]
@@ -533,6 +571,9 @@ export default function AdminTasksPage() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <TabBtn active={view === 'open'} onClick={() => setView('open')}>Open</TabBtn>
           <TabBtn active={view === 'completed'} onClick={() => setView('completed')}>Completed</TabBtn>
+          {profile?.can_view_admin_report && (
+            <TabBtn active={view === 'report'} onClick={() => setView('report')}>Report</TabBtn>
+          )}
           <button onClick={toggleAllCollapsed} style={btn('ghost')}>
             {allCollapsed ? <><ChevronsUpDown size={13} /> Expand all</> : <><ChevronsDownUp size={13} /> Collapse all</>}
           </button>
@@ -649,6 +690,17 @@ export default function AdminTasksPage() {
         </div>
       )}
 
+      {/* ── Report: what's being done each day (replaces the section list) ── */}
+      {view === 'report' && (
+        <ReportPanel
+          completions={reportCompletions}
+          created={reportCreatedFiltered}
+          loading={reportRows === null}
+          staffMap={staffMap}
+        />
+      )}
+
+      {view !== 'report' && (<>
       {/* ── Tasks, grouped by the module that generated them ── */}
       {tasks === null && (
         <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Loading…</div>
@@ -787,6 +839,7 @@ export default function AdminTasksPage() {
           );
         })}
       </Section>
+      </>)}
 
       {escalateTask && (
         <EscalateModal
@@ -1072,6 +1125,236 @@ function CompletedRow({ t, staffMap, onReopen, onOpenClient, onReviewBill }) {
     </div>
   );
 }
+
+/* ── Report: activity across the admin list, last two weeks ──
+   Bars = tasks completed per day; the thin bar beside each is tasks
+   created that day, so a growing backlog shows up at a glance. */
+function localDayKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function ReportPanel({ completions, created, loading, staffMap }) {
+  const days = useMemo(() => {
+    const out = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - i);
+      out.push({
+        key: localDayKey(d),
+        label: `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${d.getDate()}`,
+        isToday: i === 0,
+        done: 0,
+        added: 0,
+      });
+    }
+    const byKey = Object.fromEntries(out.map((d) => [d.key, d]));
+    for (const t of completions) {
+      const k = t.done_at && byKey[localDayKey(new Date(t.done_at))];
+      if (k) k.done += 1;
+    }
+    for (const t of created) {
+      const k = t.created_at && byKey[localDayKey(new Date(t.created_at))];
+      if (k) k.added += 1;
+    }
+    return out;
+  }, [completions, created]);
+
+  const summary = useMemo(() => {
+    const thisWeek = days.slice(7).reduce((s, d) => s + d.done, 0);
+    const lastWeek = days.slice(0, 7).reduce((s, d) => s + d.done, 0);
+    const weekKeys = new Set(days.slice(7).map((d) => d.key));
+    const minutesThisWeek = completions.reduce((s, t) => (
+      t.done_at && weekKeys.has(localDayKey(new Date(t.done_at))) ? s + (t.done_minutes || 0) : s
+    ), 0);
+    let busiest = null;
+    for (const d of days) if (d.done > 0 && d.done > (busiest?.done || 0)) busiest = d;
+    return { thisWeek, lastWeek, delta: thisWeek - lastWeek, minutesThisWeek, busiest };
+  }, [days, completions]);
+
+  const byPerson = useMemo(() => {
+    const m = new Map();
+    for (const t of completions) {
+      const k = t.done_by || 'unknown';
+      const r = m.get(k) || { id: k, count: 0, minutes: 0, timed: 0 };
+      r.count += 1;
+      if (t.done_minutes > 0) { r.minutes += t.done_minutes; r.timed += 1; }
+      m.set(k, r);
+    }
+    return [...m.values()].sort((a, b) => b.count - a.count);
+  }, [completions]);
+
+  const byType = useMemo(() => {
+    const m = new Map();
+    for (const t of completions) {
+      const k = groupKeyFor(t);
+      const r = m.get(k) || { key: k, count: 0, minutes: 0 };
+      r.count += 1;
+      r.minutes += t.done_minutes || 0;
+      m.set(k, r);
+    }
+    return [...m.values()].sort((a, b) => b.count - a.count);
+  }, [completions]);
+
+  if (loading) {
+    return <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Building report…</div>;
+  }
+
+  // Chart geometry — one slot per day, main bar (completions) + thin bar (created).
+  const slotW = 58, barArea = 110, topPad = 18, bottomPad = 24;
+  const chartW = days.length * slotW;
+  const chartH = topPad + barArea + bottomPad;
+  const baseY = topPad + barArea;
+  const maxVal = Math.max(1, ...days.map((d) => Math.max(d.done, d.added)));
+  const deltaTone = summary.delta > 0 ? '#166534' : summary.delta < 0 ? '#b91c1c' : '#64748b';
+  const deltaText = summary.delta === 0
+    ? 'level with last week'
+    : `${summary.delta > 0 ? '▲' : '▼'} ${Math.abs(summary.delta)} vs last week (${summary.lastWeek})`;
+
+  return (
+    <>
+      <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 12 }}>
+        What's being done each day across the admin list — last two weeks.
+      </div>
+
+      {/* Summary tiles */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div style={{ ...card, padding: '12px 18px', flex: '1 1 180px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>Completed this week</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{summary.thisWeek}</div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: deltaTone }}>{deltaText}</div>
+        </div>
+        <div style={{ ...card, padding: '12px 18px', flex: '1 1 180px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>Minutes recorded this week</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{summary.minutesThisWeek}m</div>
+          <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{Math.round(summary.minutesThisWeek / 6) / 10}h across timed tasks</div>
+        </div>
+        <div style={{ ...card, padding: '12px 18px', flex: '1 1 180px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>Busiest day</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a' }}>{summary.busiest ? summary.busiest.label : '—'}</div>
+          <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{summary.busiest ? `${summary.busiest.done} completion${summary.busiest.done === 1 ? '' : 's'}` : 'nothing completed yet'}</div>
+        </div>
+      </div>
+
+      {/* Actions per day chart */}
+      <div style={{ ...card, padding: '14px 16px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Actions taken per day
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#64748b' }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: '#93c5fd', display: 'inline-block' }} /> completed
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#64748b' }}>
+            <span style={{ width: 5, height: 10, borderRadius: 2, background: '#cbd5e1', display: 'inline-block' }} /> added
+          </span>
+        </div>
+        <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`} style={{ display: 'block' }}>
+          <line x1={0} x2={chartW} y1={baseY} y2={baseY} stroke="#e5e7eb" strokeWidth={1} />
+          {days.map((d, i) => {
+            const x = i * slotW;
+            const dh = Math.round((d.done / maxVal) * barArea);
+            const ah = Math.round((d.added / maxVal) * barArea);
+            return (
+              <g key={d.key}>
+                {d.done > 0 && (
+                  <rect x={x + 9} y={baseY - dh} width={26} height={dh} rx={3}
+                    fill={d.isToday ? '#0e7fe0' : '#93c5fd'} />
+                )}
+                {d.added > 0 && (
+                  <rect x={x + 39} y={baseY - ah} width={7} height={ah} rx={2} fill="#cbd5e1" />
+                )}
+                {d.done > 0 && (
+                  <text x={x + 22} y={baseY - dh - 5} textAnchor="middle" fontSize={10.5}
+                    fontFamily={font} fontWeight={d.isToday ? 700 : 600} fill="#475569">
+                    {d.done}
+                  </text>
+                )}
+                <text x={x + 27} y={baseY + 16} textAnchor="middle" fontSize={10.5}
+                  fontFamily={font} fontWeight={d.isToday ? 700 : 500}
+                  fill={d.isToday ? '#0f172a' : '#94a3b8'}>
+                  {d.label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      {completions.length === 0 && (
+        <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+          Nothing completed in the last two weeks{created.length ? ` — though ${created.length} task${created.length === 1 ? ' was' : 's were'} added` : ''}.
+        </div>
+      )}
+
+      {/* By person + by type */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div style={{ ...card, flex: '1 1 340px', overflow: 'hidden' }}>
+          <div style={{ padding: '10px 16px', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
+            By person
+          </div>
+          {byPerson.length === 0 && <Empty>No completions to show.</Empty>}
+          {byPerson.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr>
+                  <th style={reportTh}>Person</th>
+                  <th style={{ ...reportTh, textAlign: 'right' }}>Completions</th>
+                  <th style={{ ...reportTh, textAlign: 'right' }}>Minutes</th>
+                  <th style={{ ...reportTh, textAlign: 'right' }}>Avg</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byPerson.map((r) => (
+                  <tr key={r.id}>
+                    <td style={reportTd}>{r.id === 'unknown' ? 'Not recorded' : (staffMap[r.id] || 'Staff')}</td>
+                    <td style={{ ...reportTd, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{r.count}</td>
+                    <td style={{ ...reportTd, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.minutes ? `${r.minutes}m` : '—'}</td>
+                    <td style={{ ...reportTd, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.timed ? `${Math.round(r.minutes / r.timed)}m` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div style={{ ...card, flex: '1 1 340px', overflow: 'hidden' }}>
+          <div style={{ padding: '10px 16px', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
+            By task type
+          </div>
+          {byType.length === 0 && <Empty>No completions to show.</Empty>}
+          {byType.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr>
+                  <th style={reportTh}>Type</th>
+                  <th style={{ ...reportTh, textAlign: 'right' }}>Completions</th>
+                  <th style={{ ...reportTh, textAlign: 'right' }}>Minutes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byType.map((r) => (
+                  <tr key={r.key}>
+                    <td style={reportTd}>{groupLabelFor(r.key)}</td>
+                    <td style={{ ...reportTd, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{r.count}</td>
+                    <td style={{ ...reportTd, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.minutes ? `${r.minutes}m` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+const reportTh = {
+  padding: '7px 16px', fontSize: 11, fontWeight: 600, color: '#64748b',
+  textAlign: 'left', textTransform: 'uppercase', letterSpacing: 0.4,
+  borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap',
+};
+const reportTd = { padding: '7px 16px', color: '#334155', borderBottom: '1px solid #f8fafc' };
 
 function TabBtn({ active, onClick, children }) {
   return (

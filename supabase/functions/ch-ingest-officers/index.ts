@@ -39,6 +39,9 @@ function jsonResponse(data: unknown, status = 200) {
 }
 
 const CH_BASE = "https://api.company-information.service.gov.uk";
+// A company whose FIRST fetched status is already threatening still needs a
+// status event (→ Triage Board), even though nothing "changed" in our data.
+const THREAT_RE = /(strike|liquidat|administrat|insolven|dissolv|receiver)/i;
 const PACE_MS = 1400;          // per-company budget: 3 CH calls + breathing room
 const NIGHTLY_CHUNK = 35;      // ~50s per 5-min cron tick
 const RATE_WAIT_CAP_MS = 45000; // wait for Retry-After up to this, else stop the chunk
@@ -196,7 +199,8 @@ Deno.serve(async (req) => {
           const newStatus: string | null = profileRes.body?.company_status ?? null;
           const newDetail: string | null = profileRes.body?.company_status_detail ?? null;
           if (newStatus && (newStatus !== e.company_status || (newDetail || null) !== (e.company_status_detail || null))) {
-            if (e.company_status != null) {
+            const firstFetchThreat = e.company_status == null && THREAT_RE.test(`${newStatus} ${newDetail || ""}`);
+            if (e.company_status != null || firstFetchThreat) {
               await service.from("ch_status_events").insert({
                 entity_id: e.id, old_status: e.company_status, new_status: newStatus,
                 old_detail: e.company_status_detail, new_detail: newDetail, run_date: runDate,
