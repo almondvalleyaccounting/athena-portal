@@ -1,7 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { Mail, ChevronDown, ChevronRight, Play, FlaskConical } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
+import { supabase } from '../../../lib/supabase';
 import { getChaseConfig, setChaseConfig, runChaseDryRun, runChaseTestSend } from '../api';
+
+// Reviewed release: send the client chasers for the specific onboardings the
+// admin has just reviewed in the dry-run panel. The explicit selection is the
+// safety gate — sending_enabled stays off, digests are skipped. (Lives here
+// rather than api.js while that file is mid-flight in another workstream.)
+async function runChaseSendSelected(onboardingIds) {
+  const { data, error } = await supabase.functions.invoke('onboarding-chase', {
+    body: { dry_run: false, send_onboarding_ids: onboardingIds },
+  });
+  if (error) throw error;
+  if (data && data.success === false) throw new Error(data.error || 'Send failed');
+  return data;
+}
 
 const font = "'Outfit', sans-serif";
 
@@ -17,6 +31,7 @@ export default function ChasersPanel() {
   const [busy, setBusy] = useState(false);
   const [testEmail, setTestEmail] = useState('');
   const [msg, setMsg] = useState(null);
+  const [selected, setSelected] = useState({}); // onboarding_id -> true (reviewed-release picks)
 
   useEffect(() => {
     getChaseConfig().then(setCfg).catch((e) => setMsg({ tone: 'danger', text: e.message }));
@@ -36,12 +51,31 @@ export default function ChasersPanel() {
   }
 
   async function dryRun() {
-    setBusy(true); setMsg(null);
+    setBusy(true); setMsg(null); setSelected({});
     try {
       const data = await runChaseDryRun();
       setPlan(data);
       const n = (data.client_chases || []).length;
-      setMsg({ tone: 'info', text: n === 0 ? 'Nothing due to chase today.' : `${n} client chaser${n === 1 ? '' : 's'} would go out.` });
+      setMsg({ tone: 'info', text: n === 0 ? 'Nothing due to chase today.' : `${n} client chaser${n === 1 ? '' : 's'} would go out — tick the ones to send now.` });
+    } catch (e) { setMsg({ tone: 'danger', text: e.message }); }
+    setBusy(false);
+  }
+
+  // Reviewed release: send exactly the ticked chasers, right now. The review
+  // + explicit selection is the safety gate; the ARMED toggle stays off.
+  async function sendSelected() {
+    const ids = Object.keys(selected).filter((k) => selected[k]);
+    if (!ids.length) return;
+    const names = (plan?.client_chases || []).filter((c) => selected[c.onboarding_id]).map((c) => c.entity);
+    if (!window.confirm(`Send ${ids.length} chaser email${ids.length === 1 ? '' : 's'} to client${ids.length === 1 ? '' : 's'} now?\n\n${names.join('\n')}`)) return;
+    setBusy(true); setMsg(null);
+    try {
+      const data = await runChaseSendSelected(ids);
+      const sent = (data.results || []).filter((r) => r.ok && r.kind === 'client_chase').length;
+      setMsg({ tone: sent > 0 ? 'success' : 'warning', text: sent > 0 ? `Sent ${sent} chaser${sent === 1 ? '' : 's'}.` : 'Nothing sent — the selected chasers may no longer be due.' });
+      setSelected({});
+      const refreshed = await runChaseDryRun();
+      setPlan(refreshed);
     } catch (e) { setMsg({ tone: 'danger', text: e.message }); }
     setBusy(false);
   }
@@ -108,13 +142,31 @@ export default function ChasersPanel() {
           {plan && (plan.client_chases?.length > 0 || plan.digests?.length > 0) && (
             <div style={{ fontSize: 12.5, color: '#334155', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {plan.client_chases?.map((c, i) => (
-                <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px' }}>
-                  <strong>{c.entity}</strong> → {c.to || <span style={{ color: tones.danger.fg }}>no email on file</span>}
-                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-                    {c.steps.map((s, j) => <li key={j}>{s.ask} <span style={{ color: '#94a3b8' }}>(chase #{s.chase_number})</span></li>)}
-                  </ul>
-                </div>
+                <label key={c.onboarding_id || i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', cursor: c.onboarding_id && c.to ? 'pointer' : 'default' }}>
+                  {c.onboarding_id && c.to && (
+                    <input
+                      type="checkbox"
+                      checked={!!selected[c.onboarding_id]}
+                      onChange={(e) => setSelected((s) => ({ ...s, [c.onboarding_id]: e.target.checked }))}
+                      style={{ marginTop: 2, flexShrink: 0 }}
+                    />
+                  )}
+                  <div>
+                    <strong>{c.entity}</strong> → {c.to || <span style={{ color: tones.danger.fg }}>no email on file</span>}
+                    <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                      {c.steps.map((s, j) => <li key={j}>{s.ask} <span style={{ color: '#94a3b8' }}>(chase #{s.chase_number})</span></li>)}
+                    </ul>
+                  </div>
+                </label>
               ))}
+              {Object.values(selected).some(Boolean) && (
+                <button
+                  onClick={sendSelected} disabled={busy}
+                  style={{ alignSelf: 'flex-start', padding: '7px 14px', fontSize: 12.5, fontWeight: 700, fontFamily: font, background: tones.success.solid, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+                >
+                  {busy ? 'Sending…' : `Send ${Object.values(selected).filter(Boolean).length} selected now`}
+                </button>
+              )}
               {plan.digests?.map((d, i) => (
                 <div key={i} style={{ color: '#64748b' }}>
                   Digest → {d.owner} ({d.to || 'no email'}): {d.chasers} chasers, {d.overdue_external} overdue external, {d.non_responsive} non-responsive, {d.no_email} missing email

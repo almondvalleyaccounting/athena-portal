@@ -20,10 +20,16 @@
 // onboarding_chase_config.sending_enabled = true (test_recipient bypasses
 // the gate and routes every email to one address).
 //
+// REVIEWED RELEASE: send_onboarding_ids lets a signed-in admin send the
+// client chasers for SPECIFIC onboardings they have just reviewed in the
+// dry-run panel — the human review is the gate, so sending_enabled is not
+// required. Cron runs cannot use it, digests are skipped, and only the
+// selected onboardings' chasers go out.
+//
 // Auth: portal-admin JWT, OR x-cron-secret matching
 // ONBOARDING_CHASE_CRON_SECRET env / onboarding_chase_config.cron_secret.
 //
-// Body: { dry_run?: boolean, test_recipient?: string }
+// Body: { dry_run?: boolean, test_recipient?: string, send_onboarding_ids?: string[] }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -226,6 +232,13 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const dryRun = body.dry_run !== false; // default TRUE
   const testRecipient: string | null = body.test_recipient || null;
+  // Reviewed release: a human picked specific onboardings from the dry-run
+  // panel. Requires a signed-in staff reviewer — the cron path cannot use it.
+  const sendIds: string[] | null =
+    Array.isArray(body.send_onboarding_ids) && body.send_onboarding_ids.length ? body.send_onboarding_ids : null;
+  if (sendIds && !callerId) {
+    return json({ success: false, error: "send_onboarding_ids requires a signed-in staff reviewer, not a cron run" }, 403);
+  }
 
   // ── Load active onboardings with steps + contact candidates ──
   const { data: obs, error: obsErr } = await service
@@ -475,7 +488,7 @@ Deno.serve(async (req) => {
     return json({
       success: true, dry_run: true, sending_enabled: cfg.sending_enabled, auto_verified: autoVerified, conditions_healed: healed,
       client_chases: chases.map((c) => ({
-        entity: c.entity, to: testRecipient || c.to,
+        onboarding_id: (c.ob as Ob).id, entity: c.entity, to: testRecipient || c.to,
         steps: c.steps.map((s) => ({ name: s.name, ask: s.client_label || s.name, chase_number: ((s.chase_count as number) || 0) + 1 })),
       })),
       digests: digests.map((b) => ({
@@ -489,15 +502,20 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Safety gate: real sends require sending_enabled (test sends exempt)
-  if (!testRecipient && !cfg.sending_enabled) {
-    return json({ success: false, error: "Sending is disabled (onboarding_chase_config.sending_enabled = false). Use test_recipient, or enable sending once tested." }, 409);
+  // Safety gate: real sends require sending_enabled — except a reviewed
+  // release (send_onboarding_ids), where the admin's explicit selection after
+  // seeing the dry-run plan IS the gate. Test sends are also exempt.
+  if (!testRecipient && !cfg.sending_enabled && !sendIds) {
+    return json({ success: false, error: "Sending is disabled (onboarding_chase_config.sending_enabled = false). Use test_recipient, review-and-release specific onboardings, or enable sending once tested." }, 409);
   }
 
   const results: Array<Record<string, unknown>> = [];
 
+  // Reviewed release: only the selected onboardings' chasers go out.
+  const chasesToSend = sendIds ? chases.filter((c) => sendIds.includes((c.ob as Ob).id as string)) : chases;
+
   // ── Send client chasers ──
-  for (const c of chases) {
+  for (const c of chasesToSend) {
     const to = testRecipient || c.to!;
     const anyReminder = c.steps.some((s) => ((s.chase_count as number) || 0) > 0);
     const { html, text, subject } = clientEmailHtml(c.entity, c.steps, anyReminder);
@@ -535,7 +553,8 @@ Deno.serve(async (req) => {
   }
 
   // ── Persist offboard-due flags (paused past the configurable window) ──
-  if (!testRecipient) {
+  // Daily-run bookkeeping — not part of a reviewed release.
+  if (!testRecipient && !sendIds) {
     for (const o of offboardDue) {
       await service.from("onboardings").update({ escalation_status: "offboard_due" }).eq("id", o.id);
       await service.from("onboarding_activity").insert({
@@ -545,8 +564,9 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── Send internal digests ──
-  if (cfg.internal_digest_enabled) {
+  // ── Send internal digests ── (skipped on a reviewed release: the reviewer
+  // just saw the full plan on screen.)
+  if (cfg.internal_digest_enabled && !sendIds) {
     for (const b of digests) {
       const to = testRecipient || b.email;
       if (!to) { results.push({ kind: "digest", owner: b.name, ok: false, error: "owner has no email" }); continue; }
