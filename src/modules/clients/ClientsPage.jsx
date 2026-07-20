@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Building2, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../shell/AppShell';
 import NewClientModal from '../../components/NewClientModal';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import { fmtGbp } from '../../lib/money';
@@ -9,6 +10,10 @@ import { fmtGbp } from '../../lib/money';
 /* ─── Clients list page ────────────────────────────────────── */
 export default function ClientsPage() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  // Client fees are confidential — RLS returns no live_billing rows without
+  // the flag, and we hide the column rather than show a misleading "—".
+  const canSeeFees = profile?.can_view_client_fees === true;
   const [entities, setEntities] = useState([]);
   const [billingByEntity, setBillingByEntity] = useState({}); // entity_id → { monthly, annual, hasTemplate }
   const [search, setSearch] = useState('');
@@ -210,7 +215,7 @@ export default function ClientsPage() {
           {e.manager && ` · ${e.manager}`}
         </div>
       </div>
-      <FeesBlock fees={billingByEntity[e.id]} />
+      {canSeeFees && <FeesBlock fees={billingByEntity[e.id]} />}
       {statusBadge(e.entity_status)}
     </div>
   );

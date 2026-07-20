@@ -23,6 +23,12 @@ export default function ClientDetailView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
+  // Client fees are confidential: money renders only for staff with the
+  // fee-visibility flags (RLS enforces the same at the data layer, so this
+  // gate is presentation — without it the tiles would show misleading £0s).
+  const canSeeFees = profile?.can_view_client_fees === true;
+  const canSeeQuotes = profile?.can_view_quotes === true || canSeeFees;
+  const canSeeBillingQueue = profile?.can_view_billing === true || canSeeFees;
   const [entity, setEntity] = useState(null);
   const [billing, setBilling] = useState([]);
   const [quotes, setQuotes] = useState([]);
@@ -424,17 +430,17 @@ export default function ClientDetailView() {
           clicked must be visible on arrival. */}
       <CompliancePanel jobs={bmJobs} navigate={navigate} />
 
-      {/* Summary cards — all clickable */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
-        <SummaryCard icon={Receipt} label="Monthly Billing" value={fmt(totalMonthly)} accent="#0e7fe0" onClick={() => toggleSection('billing')} active={activeSection === 'billing'} />
-        <SummaryCard icon={FileText} label="Quotes" value={`${quotes.length} (${activeQuotes.length} active)`} accent="#059669" onClick={() => toggleSection('quotes')} active={activeSection === 'quotes'} />
+      {/* Summary cards — all clickable. Money tiles are permission-gated. */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${3 + (canSeeFees ? 1 : 0) + (canSeeQuotes ? 1 : 0)}, 1fr)`, gap: 12, marginBottom: 24 }}>
+        {canSeeFees && <SummaryCard icon={Receipt} label="Monthly Billing" value={fmt(totalMonthly)} accent="#0e7fe0" onClick={() => toggleSection('billing')} active={activeSection === 'billing'} />}
+        {canSeeQuotes && <SummaryCard icon={FileText} label="Quotes" value={`${quotes.length} (${activeQuotes.length} active)`} accent="#059669" onClick={() => toggleSection('quotes')} active={activeSection === 'quotes'} />}
         <SummaryCard icon={Clock} label="Time Logged" value={durFmt(totalCompleted)} accent="#d97706" onClick={() => toggleSection('time')} active={activeSection === 'time'} />
         <SummaryCard icon={AlertTriangle} label="Open Issues" value={openIssues.length} accent={openIssues.length > 0 ? '#dc2626' : '#059669'} onClick={() => toggleSection('issues')} active={activeSection === 'issues'} />
         <SummaryCard icon={Clipboard} label="Outstanding Actions" value={tasks.length} accent={tasks.length > 0 ? '#d97706' : '#059669'} onClick={() => toggleSection('actions')} active={activeSection === 'actions'} />
       </div>
 
       {/* Expandable detail sections — shown when tile clicked */}
-      {activeSection === 'billing' && (
+      {activeSection === 'billing' && canSeeFees && (
         <div style={{ ...cardStyle, marginBottom: 20 }}>
           <h3 style={sectionTitle}>Active Billing</h3>
           {approvedServices.length > 0 ? (
@@ -473,7 +479,7 @@ export default function ClientDetailView() {
         </div>
       )}
 
-      {activeSection === 'quotes' && (
+      {activeSection === 'quotes' && canSeeQuotes && (
         <div style={{ ...cardStyle, marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Quotes ({quotes.length})</h3>
@@ -584,7 +590,7 @@ export default function ClientDetailView() {
             <WorkStat icon={Clipboard} label="Quick tasks" count={tasks.length} onClick={() => navigate('/planner')} />
             <WorkStat icon={Clock} label="Scheduled tasks" count={scheduledTasks.length} onClick={() => navigate('/planner/scheduled')} />
             <WorkStat icon={CheckCircle} label="Completed" count={filteredCompleted.length} sub={durFmt(totalCompleted)} onClick={() => navigate('/planner/completed')} />
-            {pendingBilling.length > 0 && (
+            {canSeeBillingQueue && pendingBilling.length > 0 && (
               <WorkStat icon={Receipt} label="Pending billing" count={pendingBilling.length} sub={fmt(pendingBilling.reduce((s, b) => s + (b.gross_amount || 0), 0))} onClick={() => navigate('/billing')} />
             )}
           </div>
