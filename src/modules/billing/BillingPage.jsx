@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw, History, Ban, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { pushBillingItems, refreshBillingItems, fetchClientInvoices, fetchQboSettings } from '../../lib/qboApi';
@@ -18,6 +19,9 @@ const SERVICES = ['Admin','Accounts Production','Corporation Tax','Self Assessme
 
 export default function BillingPage() {
   const { profile } = useAuth();
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('highlight');
+  const [highlightActive, setHighlightActive] = useState(!!highlightId);
   const [items, setItems] = useState([]);
   const [entities, setEntities] = useState([]);
   const [staffList, setStaffList] = useState([]);
@@ -57,6 +61,22 @@ export default function BillingPage() {
   const [customTxn, setCustomTxn] = useState(null); // QBO custom-transaction-numbers: null=unknown
 
   useEffect(() => { loadData(); }, []);
+
+  // Deep link from "Review bill" (e.g. an admin task just raised this one) —
+  // make sure it's visible regardless of status, then scroll + flash it.
+  useEffect(() => {
+    if (!highlightId) return;
+    setFilter('all');
+  }, [highlightId]);
+
+  useEffect(() => {
+    if (!highlightId || loading) return;
+    const scrollTimer = setTimeout(() => {
+      document.getElementById(`billing-item-${highlightId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+    const fadeTimer = setTimeout(() => setHighlightActive(false), 3000);
+    return () => { clearTimeout(scrollTimer); clearTimeout(fadeTimer); };
+  }, [highlightId, loading]);
 
   const loadData = async () => {
     try {
@@ -536,9 +556,10 @@ export default function BillingPage() {
             const addedBy = staffMap[item.created_by]?.name || 'Unknown';
             const dateStr = new Date(item.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
             const isSelected = selected.has(item.id);
+            const isHighlighted = highlightActive && item.id === highlightId;
 
             if (compact) return (
-              <div key={item.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',background:isSelected?'#eff6ff':'#fff',borderRadius:8,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,fontSize:12}}>
+              <div key={item.id} id={`billing-item-${item.id}`} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',background:isHighlighted?'#eff6ff':isSelected?'#eff6ff':'#fff',borderRadius:8,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,fontSize:12,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
                 <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:13,height:13,cursor:'pointer',accentColor:'#0e7fe0',flexShrink:0}}/>
                 <span style={{fontWeight:500,color:'#0f172a',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clientName} — {item.service}</span>
                 <span style={{fontWeight:600,color:'#0f172a',flexShrink:0}}>{fmt(item.gross_amount)}</span>
@@ -550,7 +571,7 @@ export default function BillingPage() {
             );
 
             return (
-              <div key={item.id} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'14px 18px',background:isSelected?'#eff6ff':'#fff',borderRadius:12,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`}}>
+              <div key={item.id} id={`billing-item-${item.id}`} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'14px 18px',background:isSelected?'#eff6ff':'#fff',borderRadius:12,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
                 <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0',marginTop:3,flexShrink:0}}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:14,fontWeight:500,color:'#0f172a',marginBottom:2}}>{clientName} — {item.service}</div>

@@ -2,14 +2,16 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, ClipboardList, Copy, Download, Plus, X,
-  ChevronDown, ChevronRight, MessageSquare, AlertTriangle, Send, CalendarDays, RotateCcw,
+  ChevronDown, ChevronRight, MessageSquare, AlertTriangle, Send, CalendarDays, RotateCcw, Receipt,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../shell/AppShell';
 import { commitAllocationDraft } from '../modules/work-planner/lib/allocationsQueries';
+import ClientTypeAhead from '../modules/work-planner/components/ClientTypeAhead';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
+const VAT_RATE = 0.20;
 
 /*
   Sophie's workspace — everything from her world on one page:
@@ -57,6 +59,10 @@ export default function AdminTasksPage() {
   const [error, setError] = useState(null);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [newBillable, setNewBillable] = useState(false);
+  const [newBillClient, setNewBillClient] = useState('');
+  const [newBillAmount, setNewBillAmount] = useState('');
+  const [allEntities, setAllEntities] = useState([]);
   const [copied, setCopied] = useState(null);
 
   const [openNotes, setOpenNotes] = useState(() => new Set());
@@ -68,7 +74,7 @@ export default function AdminTasksPage() {
       const { data: confirmed } = await supabase.rpc('admin_tasks_confirm_from_bm');
       if (confirmed > 0) setConfirmedNow(confirmed);
 
-      const [{ data: t, error: e1 }, { data: ct }, { data: d }, { data: st }, { data: obs }] = await Promise.all([
+      const [{ data: t, error: e1 }, { data: ct }, { data: d }, { data: st }, { data: obs }, { data: ents }] = await Promise.all([
         supabase.from('admin_tasks')
           .select('*, entity:entities(id, name)')
           .is('done_at', null).is('confirmed_at', null).is('dismissed_at', null)
@@ -84,11 +90,13 @@ export default function AdminTasksPage() {
         supabase.from('onboardings')
           .select('id, status, target_date, entity:entities(name), owner_id')
           .in('status', ['active', 'issues']),
+        supabase.from('entities').select('id, name').order('name'),
       ]);
       if (e1) throw e1;
       setTasks(t || []);
       setCompleted(ct || []);
       setDrafts(d || []);
+      setAllEntities(ents || []);
       const st2 = (st || []);
       setStaffMap(Object.fromEntries(st2.map((s) => [s.id, s.name])));
       setStaffList(st2.filter((s) => s.is_active !== false && s.email).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
@@ -181,11 +189,31 @@ export default function AdminTasksPage() {
 
   async function addManual() {
     if (!newTitle.trim()) return;
-    const { error: err } = await supabase.from('admin_tasks').insert({
+    if (newBillable && (!newBillClient || !(parseFloat(newBillAmount) > 0))) return;
+
+    const { data: inserted, error: err } = await supabase.from('admin_tasks').insert({
       kind: 'manual', title: newTitle.trim(), source: 'Added manually', created_by: profile?.id || null,
-    });
+      billable: newBillable,
+    }).select('id').single();
     if (err) { setError(err.message); return; }
-    setNewTitle(''); setAdding(false); setView('open'); load();
+
+    if (newBillable) {
+      const net = parseFloat(newBillAmount) || 0;
+      const vat = Math.round(net * VAT_RATE * 100) / 100;
+      const gross = Math.round((net + vat) * 100) / 100;
+      const { data: bill, error: billErr } = await supabase.from('billing_items').insert({
+        entity_id: newBillClient, service: 'Admin', description: newTitle.trim(),
+        net_amount: net, vat_amount: vat, gross_amount: gross,
+        status: 'draft', created_by: profile?.id || null,
+      }).select('id').single();
+      if (billErr) { setError(billErr.message); }
+      else {
+        await supabase.from('admin_tasks').update({ billing_item_id: bill.id }).eq('id', inserted.id);
+      }
+    }
+
+    setNewTitle(''); setNewBillable(false); setNewBillClient(''); setNewBillAmount('');
+    setAdding(false); setView('open'); load();
   }
 
   async function addNote(taskId, body) {
@@ -299,14 +327,42 @@ export default function AdminTasksPage() {
       {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
 
       {adding && (
-        <div style={{ ...card, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 8 }}>
-          <input
-            autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') addManual(); if (e.key === 'Escape') setAdding(false); }}
-            placeholder="e.g. Update year-end date on BM for Smith Ltd"
-            style={{ flex: 1, padding: '8px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
-          />
-          <button onClick={addManual} disabled={!newTitle.trim()} style={btn('primary')}>Add</button>
+        <div style={{ ...card, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !newBillable) addManual(); if (e.key === 'Escape') setAdding(false); }}
+              placeholder="e.g. Update year-end date on BM for Smith Ltd"
+              style={{ flex: 1, padding: '8px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
+            />
+            <button
+              onClick={addManual}
+              disabled={!newTitle.trim() || (newBillable && (!newBillClient || !(parseFloat(newBillAmount) > 0)))}
+              style={btn('primary')}
+            >Add</button>
+          </div>
+
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12.5, color: '#475569', cursor: 'pointer' }}>
+            <input type="checkbox" checked={newBillable} onChange={(e) => setNewBillable(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#0e7fe0' }} />
+            <Receipt size={13} color="#64748b" /> Billable — raise a bill for this
+          </label>
+
+          {newBillable && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+              <div style={{ flex: '1 1 240px', maxWidth: 300 }}>
+                <ClientTypeAhead entityList={allEntities} value={newBillClient} onChange={setNewBillClient} size="small" />
+              </div>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#94a3b8' }}>£</span>
+                <input
+                  type="number" step="0.01" value={newBillAmount} onChange={(e) => setNewBillAmount(e.target.value)}
+                  placeholder="Net amount"
+                  style={{ width: 130, padding: '8px 10px 8px 20px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
+                />
+              </div>
+              <span style={{ fontSize: 11.5, color: '#94a3b8' }}>+ VAT — creates a draft bill in Billing</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -337,6 +393,7 @@ export default function AdminTasksPage() {
               onAddNote={(body) => addNote(t.id, body)}
               onEscalate={() => setEscalateTask(t)}
               onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
+              onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
             />
           ))}
         </>}
@@ -348,6 +405,7 @@ export default function AdminTasksPage() {
               key={t.id} t={t}
               onReopen={() => reopen(t)}
               onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
+              onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
             />
           ))}
         </>}
@@ -423,7 +481,7 @@ export default function AdminTasksPage() {
 
 function TaskRow({
   t, notes, notesOpen, staffMap, copied,
-  onComplete, onCopy, onDismiss, onDeadline, onToggleNotes, onAddNote, onEscalate, onOpenClient,
+  onComplete, onCopy, onDismiss, onDeadline, onToggleNotes, onAddNote, onEscalate, onOpenClient, onReviewBill,
 }) {
   const [noteDraft, setNoteDraft] = useState('');
   const today = isoToday();
@@ -464,6 +522,12 @@ function TaskRow({
         {t.value && (
           <button onClick={onCopy} title="Copy the value to paste into BM" style={{ ...btn('ghost'), fontFamily: 'monospace', fontSize: 12, flexShrink: 0 }}>
             {copied ? '✓ copied' : <>{t.value} <Copy size={11} /></>}
+          </button>
+        )}
+
+        {onReviewBill && (
+          <button onClick={onReviewBill} title="Open the bill raised for this task" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', flexShrink: 0 }}>
+            <Receipt size={12} /> Review bill
           </button>
         )}
 
@@ -522,7 +586,7 @@ function TaskRow({
   );
 }
 
-function CompletedRow({ t, onReopen, onOpenClient }) {
+function CompletedRow({ t, onReopen, onOpenClient, onReviewBill }) {
   // Verification status: BM checks tasks with a field silently on each import;
   // field-less tasks confirm the moment they're completed.
   const badge = !t.field
@@ -548,6 +612,11 @@ function CompletedRow({ t, onReopen, onOpenClient }) {
         fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',
       }}>{badge.text}</span>
       <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtShort(when)}</span>
+      {onReviewBill && (
+        <button onClick={onReviewBill} title="Open the bill raised for this task" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', padding: '5px 10px', fontSize: 12 }}>
+          <Receipt size={12} /> Review bill
+        </button>
+      )}
       <button onClick={onReopen} title="Move back to open tasks" style={{ ...btn('ghost'), padding: '5px 10px', fontSize: 12 }}>
         <RotateCcw size={12} /> Reopen
       </button>
