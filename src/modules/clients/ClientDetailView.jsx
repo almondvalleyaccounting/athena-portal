@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, CheckCircle, Clock, AlertTriangle, FileText, Receipt, Clipboard } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
-import { approvedServicesOf, feeTotals } from './feeRollup';
+import { approvedServicesOf, feeTotals, underBillingOf } from './feeRollup';
 
 const TIME_PERIODS = [
   { value: '1', label: 'Last month' },
@@ -233,7 +233,7 @@ export default function ClientDetailView() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 6 }}>{entity.name}</h1>
+          <EditableName entity={entity} setEntity={setEntity} profile={profile} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#64748b', flexWrap: 'wrap' }}>
             <span style={{ textTransform: 'capitalize' }}>{entity.type?.replace('_', ' ')}</span>
             {entity.company_number && <span>· {entity.company_number}</span>}
@@ -421,7 +421,16 @@ export default function ClientDetailView() {
       {/* Expandable detail sections — shown when tile clicked */}
       {activeSection === 'billing' && canSeeFees && (
         <div style={{ ...cardStyle, marginBottom: 20 }}>
-          <h3 style={sectionTitle}>Active Billing</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={sectionTitle}>Active Billing</h3>
+            <button
+              onClick={() => navigate(`/manage/billing/change?client=${encodeURIComponent(entity.name)}`)}
+              style={{ fontSize: 12, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0e7fe0', cursor: 'pointer', fontFamily: "'Outfit', sans-serif", fontWeight: 600 }}
+              title="Open this client in the billing Change matrix"
+            >
+              Manage billing
+            </button>
+          </div>
           {approvedServices.length > 0 ? (
             <>
               <div style={{ display: 'flex', gap: 20, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -434,6 +443,17 @@ export default function ClientDetailView() {
                   <span style={{ color: '#1e293b' }}>
                     {s.service_id || s.description || 'Service'}
                     {s.fromTemplate && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600, padding: '1px 5px', borderRadius: 4, background: '#ccfbf1', color: '#115e59' }}>QBO TEMPLATE</span>}
+                    {(() => {
+                      const ub = underBillingOf(s);
+                      return ub && (
+                        <span
+                          style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
+                          title={`Below the standard minimum of ${fmt(ub.min)}/yr — under by ${fmt(ub.under)}/yr`}
+                        >
+                          Under {fmt(ub.under)}/yr
+                        </span>
+                      );
+                    })()}
                   </span>
                   <span style={{ fontWeight: 500, fontFamily: 'monospace' }}>
                     {s.cadence === 'annual'
@@ -593,6 +613,60 @@ export default function ClientDetailView() {
         {taskCreated && <div style={{ marginTop: 8, fontSize: 12, color: '#059669', fontWeight: 500 }}>✓ Action created in Work Planner</div>}
       </div>
     </div>
+  );
+}
+
+// Click-to-edit client name (ported from the retired fee-engine client page).
+// Note: for BM-sourced entities a rename here is overwritten by the next BM
+// import ("BM is truth") — it's mainly for Athena-created prospects.
+function EditableName({ entity, setEntity, profile }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    const next = draft.trim();
+    if (!next || next === entity.name) { setEditing(false); return; }
+    setSaving(true);
+    const prev = entity.name;
+    const { error } = await supabase.from('entities').update({ name: next }).eq('id', entity.id);
+    if (error) {
+      alert('Could not rename client: ' + error.message);
+    } else {
+      setEntity({ ...entity, name: next });
+      await supabase.from('audit_log').insert({
+        user_id: profile?.id || null, action: 'entity_field_edit', entity_type: 'entity',
+        entity_id: entity.id, detail: { field: 'name', from: prev, to: next },
+      });
+    }
+    setSaving(false);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
+          autoFocus
+          disabled={saving}
+          style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 500, color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 8, padding: '2px 10px', minWidth: 320 }}
+        />
+        <button onClick={save} disabled={saving} style={{ fontSize: 12, padding: '5px 10px', border: 'none', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>{saving ? '…' : 'Save'}</button>
+        <button onClick={() => setEditing(false)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Cancel</button>
+      </div>
+    );
+  }
+  return (
+    <h1
+      onClick={() => { setDraft(entity.name); setEditing(true); }}
+      title="Click to rename"
+      style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 6, cursor: 'pointer' }}
+    >
+      {entity.name}
+    </h1>
   );
 }
 

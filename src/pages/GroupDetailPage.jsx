@@ -369,7 +369,7 @@ export default function GroupDetailPage() {
                   {/* Client */}
                   <div className="min-w-0">
                     <button
-                      onClick={(e) => { e.stopPropagation(); navigate('/manage/clients/' + ent.id); }}
+                      onClick={(e) => { e.stopPropagation(); navigate('/clients/' + ent.id); }}
                       className="text-sm font-medium text-ocean-600 hover:text-ocean-800 hover:underline truncate"
                     >
                       {ent.name}

@@ -661,9 +661,9 @@ export default function BillingReviewAndChangePage() {
                           {entity.excluded ? <EyeOff size={13} /> : <Eye size={13} />}
                         </button>
                         <a
-                          href={`/manage/clients/${entity.id}`}
+                          href={`/clients/${entity.id}`}
                           style={{ color: 'inherit', textDecoration: entity.excluded ? 'line-through' : 'none' }}
-                          onClick={(ev) => { ev.preventDefault(); navigate(`/manage/clients/${entity.id}`); }}
+                          onClick={(ev) => { ev.preventDefault(); navigate(`/clients/${entity.id}`); }}
                         >
                           {entity.name}
                         </a>

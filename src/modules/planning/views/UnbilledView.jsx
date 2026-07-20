@@ -176,7 +176,7 @@ export default function UnbilledView() {
                     <BlurInput value={c.notes} onChange={(v) => setNotes(c, v)} placeholder="Notes…" />
                   </td>
                   <td style={td}>
-                    <a href={`/manage/clients/${c.entity_id}`} target="_blank" rel="noreferrer"
+                    <a href={`/clients/${c.entity_id}`} target="_blank" rel="noreferrer"
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0e7fe0', textDecoration: 'none' }}>
                       Open client <ExternalLink size={11} />
                     </a>

@@ -188,7 +188,7 @@ export default function BillingSourcesPage() {
                   {visible.map((r) => (
                     <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                       <Td>
-                        <a href={`/manage/clients/${r.entityId}`} onClick={(e) => { e.preventDefault(); navigate(`/manage/clients/${r.entityId}`); }} style={{ color: '#0f172a', textDecoration: 'none', fontWeight: 500 }}>
+                        <a href={`/clients/${r.entityId}`} onClick={(e) => { e.preventDefault(); navigate(`/clients/${r.entityId}`); }} style={{ color: '#0f172a', textDecoration: 'none', fontWeight: 500 }}>
                           {r.entityName}
                         </a>
                       </Td>

@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import AppShell from './shell/AppShell';
 import LoginPage from './shell/LoginPage';
 import HomeScreen from './shell/HomeScreen';
@@ -46,10 +46,15 @@ import PricingDefaultsPage from './pages/PricingDefaultsPage';
 import GroupDetailPage from './pages/GroupDetailPage';
 import GroupsPage from './pages/GroupsPage';
 import GroupQuoteInputPage from './pages/GroupQuoteInputPage';
-import ClientDetailPage from './pages/ClientDetailPage';
 import AnalysisPage from './pages/AnalysisPage';
 import FEBillingPage from './pages/BillingPage';
 import './index.css';
+
+// /manage/clients/:id merged into /clients/:id — preserve old links/bookmarks.
+function LegacyClientRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/clients/${id}`} replace />;
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -110,7 +115,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route element={<FeeEngineLayout />}>
             <Route path="/manage" element={<DashboardPage />} />
             <Route path="/manage/clients" element={<EntitiesPage />} />
-            <Route path="/manage/clients/:id" element={<ClientDetailPage />} />
+            {/* The fee-engine client page merged into /clients/:id (its
+                under-billing flags, Manage-billing link and rename moved
+                there). Old links and bookmarks keep working. */}
+            <Route path="/manage/clients/:id" element={<LegacyClientRedirect />} />
             <Route path="/manage/quotes" element={<QuotesPage />} />
             <Route path="/manage/quotes/new" element={<QuoteFormPage mode="new" />} />
             <Route path="/manage/quotes/pricing" element={<PricingDefaultsPage />} />

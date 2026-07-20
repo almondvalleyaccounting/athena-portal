@@ -25,6 +25,34 @@ export function approvedServicesOf(rows) {
   return out;
 }
 
+// Standard minimum annual fee for flat-rate services with a clear minimum
+// (mirrors quote_defaults). Variable/turnover-banded services (accounts,
+// payroll, bookkeeping…) have no single minimum, so they're not flagged.
+// Matched loosely against both naming regimes in live_billing.services
+// (Athena slugs + QBO-pulled labels). Ported from the retired fee-engine
+// client page.
+const STANDARD_MIN_ANNUAL = [
+  { test: /confirmation/i, min: 110, label: 'Confirmation statement' },
+  { test: /registered.?office/i, min: 180, label: 'Registered office' },
+  { test: /review.?meeting/i, min: 210, label: 'Annual review meeting' },
+  { test: /dormant/i, min: 150, label: 'Dormant accounts' },
+  { test: /auto.?enrol/i, min: 60, label: 'Auto enrolment' },
+];
+
+// Under-billing check for one approved service line: returns
+// { min, under } when the line's annualised fee sits below a known standard
+// minimum, else null. Annualised = monthly_amount ×12 for monthly cadence;
+// for annual cadence monthly_amount IS the yearly fee.
+export function underBillingOf(service) {
+  const hay = `${service.service_id || ''} ${service.description || ''}`;
+  const rule = STANDARD_MIN_ANNUAL.find((r) => r.test.test(hay));
+  if (!rule) return null;
+  const amount = Number(service.monthly_amount) || 0;
+  const annualised = service.cadence === 'annual' ? amount : amount * 12;
+  if (annualised <= 0 || annualised >= rule.min) return null;
+  return { min: rule.min, under: Math.round((rule.min - annualised) * 100) / 100 };
+}
+
 // { monthly, annual, hasTemplate } for one entity's live_billing rows.
 export function feeTotals(rows) {
   const services = approvedServicesOf(rows);
