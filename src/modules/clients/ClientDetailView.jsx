@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, CheckCircle, Clock, AlertTriangle, FileText, Receipt, Clipboard } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
+import { approvedServicesOf, feeTotals } from './feeRollup';
 
 const TIME_PERIODS = [
   { value: '1', label: 'Last month' },
@@ -210,31 +211,9 @@ export default function ClientDetailView() {
   if (loading) return <div style={wrapStyle}><p style={{ color: '#94a3b8', fontSize: 13 }}>Loading client...</p></div>;
   if (!entity) return <div style={wrapStyle}><p style={{ color: '#ef4444', fontSize: 13 }}>Client not found.</p></div>;
 
-  // Compute totals from the services[] jsonb (the post-2026 schema).
-  // monthly_fee on the row was the pre-Athena schema; falling back to
-  // the new approval-aware aggregation here.
-  const approvedServices = (() => {
-    const out = [];
-    for (const b of billing || []) {
-      if (b.status && b.status !== 'active') continue;
-      const services = Array.isArray(b.services) ? b.services : [];
-      for (const s of services) {
-        if (s.recurring_status === 'ending') continue;
-        const status = s.approval_status || (b.qbo_recurring_txn_id ? 'approved' : 'suggested');
-        if (status !== 'approved') continue;
-        out.push({ ...s, row_id: b.id, fromTemplate: !!b.qbo_recurring_txn_id });
-      }
-    }
-    return out;
-  })();
-  const totalMonthly = approvedServices
-    .filter((s) => s.cadence === 'monthly')
-    .reduce((sum, s) => sum + (Number(s.monthly_amount) || 0), 0);
-  // For annual lines, monthly_amount is the once-per-year fee
-  // (annual_amount in storage is monthly_amount × 12 and would inflate).
-  const totalAnnualFees = approvedServices
-    .filter((s) => s.cadence === 'annual')
-    .reduce((sum, s) => sum + (Number(s.monthly_amount) || 0), 0);
+  // Approved-fee roll-up — shared rules live in feeRollup.js.
+  const approvedServices = approvedServicesOf(billing);
+  const { monthly: totalMonthly, annual: totalAnnualFees } = feeTotals(billing);
   const totalAnnual = totalMonthly * 12 + totalAnnualFees;
   const activeQuotes = quotes.filter((q) => ['accepted', 'sent', 'approved'].includes(q.status));
   const openIssues = issues.filter((i) => !['resolved', 'closed'].includes(i.status));

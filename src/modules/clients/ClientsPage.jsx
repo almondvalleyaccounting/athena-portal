@@ -6,6 +6,7 @@ import { useAuth } from '../../shell/AppShell';
 import NewClientModal from '../../components/NewClientModal';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import { fmtGbp } from '../../lib/money';
+import { feeTotals } from './feeRollup';
 
 /* ─── Clients list page ────────────────────────────────────── */
 export default function ClientsPage() {
@@ -41,33 +42,14 @@ export default function ClientsPage() {
         setEntities(entitiesResp.data || []);
       }
 
-      // Aggregate approved fees per entity from live_billing.services.
-      // Convention: monthly_amount is the actual per-cycle charge.
-      // Monthly = sum of monthly_amount for cadence=monthly lines.
-      // Annual  = sum of monthly_amount for cadence=annual lines
-      //           (annual_amount in storage is monthly_amount × 12,
-      //            so it would inflate by 12x — don't use it here).
-      const map = {};
+      // Aggregate approved fees per entity — shared rules live in feeRollup.js.
+      const rowsByEntity = {};
       for (const r of billingResp.data || []) {
-        const id = r.entity_id;
-        if (!id) continue;
-        const entry = map[id] || { monthly: 0, annual: 0, hasTemplate: false };
-        if (r.qbo_recurring_txn_id) entry.hasTemplate = true;
-        const services = Array.isArray(r.services) ? r.services : [];
-        for (const s of services) {
-          if (s.recurring_status === 'ending') continue;
-          const status = s.approval_status || (r.qbo_recurring_txn_id ? 'approved' : 'suggested');
-          if (status !== 'approved') continue;
-          if (s.cadence === 'monthly') entry.monthly += Number(s.monthly_amount) || 0;
-          else if (s.cadence === 'annual') entry.annual += Number(s.monthly_amount) || 0;
-        }
-        map[id] = entry;
+        if (!r.entity_id) continue;
+        (rowsByEntity[r.entity_id] = rowsByEntity[r.entity_id] || []).push(r);
       }
-      // Round to pennies once at the end.
-      for (const id of Object.keys(map)) {
-        map[id].monthly = Math.round(map[id].monthly * 100) / 100;
-        map[id].annual  = Math.round(map[id].annual  * 100) / 100;
-      }
+      const map = {};
+      for (const [id, rows] of Object.entries(rowsByEntity)) map[id] = feeTotals(rows);
       setBillingByEntity(map);
     } catch (e) {
       console.error('[Clients] load threw:', e);
