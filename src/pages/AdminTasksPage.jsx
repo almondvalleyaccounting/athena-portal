@@ -31,6 +31,19 @@ const VAT_RATE = 0.20;
 
 const FIELD_LABELS = { ch_auth_code: 'CH auth code', utr: 'UTR', vat_number: 'VAT number', paye_ref: 'PAYE ref' };
 
+// Sections group by the module that generated the task (kind/source) so
+// bulk-imported or manually-typed tasks don't get lost among the BM
+// code-verification queue, which is what "To key into BrightManager" is for.
+const TASK_GROUPS = [
+  { key: 'bm_keying', label: 'To key into BrightManager', match: (t) => t.kind === 'bm_code' },
+  { key: 'bm_data_error', label: 'BM Data Errors', match: (t) => t.source === 'bm_data_error' },
+  { key: 'nlac_bm_mirror', label: 'Offboarding', match: (t) => t.source === 'nlac_bm_mirror' },
+  { key: 'manually_added', label: 'Manually Added', match: (t) => t.source === 'Added manually' || t.source === 'sophie_workplan_import' },
+];
+const GROUP_ORDER = [...TASK_GROUPS.map((g) => g.key), 'other'];
+function groupKeyFor(t) { return (TASK_GROUPS.find((g) => g.match(t)) || { key: 'other' }).key; }
+function groupLabelFor(key) { return (TASK_GROUPS.find((g) => g.key === key) || { label: 'Other' }).label; }
+
 function isoToday() { return new Date().toISOString().slice(0, 10); }
 function fmtShort(iso) {
   if (!iso) return '';
@@ -67,7 +80,13 @@ export default function AdminTasksPage() {
 
   const [openNotes, setOpenNotes] = useState(() => new Set());
   const [escalateTask, setEscalateTask] = useState(null);
-  const [collapsed, setCollapsed] = useState({ bm: false, realloc: false, onboard: false });
+  const [collapsed, setCollapsed] = useState({ realloc: false, onboard: false });
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
+  const toggleGroupCollapse = (key) => setCollapsedGroups((prev) => {
+    const n = new Set(prev);
+    n.has(key) ? n.delete(key) : n.add(key);
+    return n;
+  });
 
   const load = useCallback(async () => {
     try {
@@ -298,6 +317,21 @@ export default function AdminTasksPage() {
     };
   }, [open, drafts, onboardings]);
 
+  const groupedOpen = useMemo(() => {
+    const buckets = {};
+    for (const t of open) (buckets[groupKeyFor(t)] ||= []).push(t);
+    return buckets;
+  }, [open]);
+  const groupedCompleted = useMemo(() => {
+    const buckets = {};
+    for (const t of (completed || [])) (buckets[groupKeyFor(t)] ||= []).push(t);
+    return buckets;
+  }, [completed]);
+  const visibleGroupKeys = useMemo(
+    () => GROUP_ORDER.filter((k) => (groupedOpen[k]?.length || 0) > 0 || (groupedCompleted[k]?.length || 0) > 0),
+    [groupedOpen, groupedCompleted]
+  );
+
   return (
     <div style={{ maxWidth: 1240, margin: '0 auto', padding: '28px 32px 48px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
@@ -366,50 +400,59 @@ export default function AdminTasksPage() {
         </div>
       )}
 
-      {/* ── To key into BrightManager ── */}
-      <Section
-        title="To key into BrightManager" count={view === 'open' ? open.length : (completed || []).length}
-        collapsed={collapsed.bm} onToggle={() => setCollapsed((c) => ({ ...c, bm: !c.bm }))}
-        action={
-          <div style={{ display: 'flex', gap: 4 }}>
-            <TabBtn active={view === 'open'} onClick={() => setView('open')}>Open ({open.length})</TabBtn>
-            <TabBtn active={view === 'completed'} onClick={() => setView('completed')}>Completed ({(completed || []).length})</TabBtn>
-          </div>
-        }
-      >
-        {view === 'open' && <>
-          {tasks === null && <Empty>Loading…</Empty>}
-          {tasks !== null && open.length === 0 && <Empty>Nothing outstanding — Athena and BrightManager are in step. 🎉</Empty>}
-          {open.map((t) => (
-            <TaskRow
-              key={t.id} t={t}
-              notes={notesByTask[t.id] || []} notesOpen={openNotes.has(t.id)}
-              staffMap={staffMap} copied={copied === t.id}
-              onComplete={() => complete(t)}
-              onCopy={() => copyValue(t)}
-              onDismiss={() => dismiss(t)}
-              onDeadline={(d) => setDeadline(t, d)}
-              onToggleNotes={() => toggleNotes(t.id)}
-              onAddNote={(body) => addNote(t.id, body)}
-              onEscalate={() => setEscalateTask(t)}
-              onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
-              onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
-            />
-          ))}
-        </>}
-        {view === 'completed' && <>
-          {completed === null && <Empty>Loading…</Empty>}
-          {completed !== null && completed.length === 0 && <Empty>Nothing completed yet.</Empty>}
-          {(completed || []).map((t) => (
-            <CompletedRow
-              key={t.id} t={t}
-              onReopen={() => reopen(t)}
-              onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
-              onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
-            />
-          ))}
-        </>}
-      </Section>
+      {/* ── Tasks, grouped by the module that generated them ── */}
+      {tasks === null && (
+        <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Loading…</div>
+      )}
+      {tasks !== null && visibleGroupKeys.length === 0 && (
+        <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+          Nothing outstanding — Athena and BrightManager are in step. 🎉
+        </div>
+      )}
+      {visibleGroupKeys.map((key) => {
+        const groupOpen = groupedOpen[key] || [];
+        const groupCompleted = groupedCompleted[key] || [];
+        const items = view === 'open' ? groupOpen : groupCompleted;
+        return (
+          <Section
+            key={key}
+            title={groupLabelFor(key)} count={view === 'open' ? groupOpen.length : groupCompleted.length}
+            collapsed={collapsedGroups.has(key)} onToggle={() => toggleGroupCollapse(key)}
+            action={
+              <div style={{ display: 'flex', gap: 4 }}>
+                <TabBtn active={view === 'open'} onClick={() => setView('open')}>Open ({groupOpen.length})</TabBtn>
+                <TabBtn active={view === 'completed'} onClick={() => setView('completed')}>Completed ({groupCompleted.length})</TabBtn>
+              </div>
+            }
+          >
+            {items.length === 0 && <Empty>{view === 'open' ? 'Nothing outstanding here.' : 'Nothing completed here yet.'}</Empty>}
+            {view === 'open' && items.map((t) => (
+              <TaskRow
+                key={t.id} t={t}
+                notes={notesByTask[t.id] || []} notesOpen={openNotes.has(t.id)}
+                staffMap={staffMap} copied={copied === t.id}
+                onComplete={() => complete(t)}
+                onCopy={() => copyValue(t)}
+                onDismiss={() => dismiss(t)}
+                onDeadline={(d) => setDeadline(t, d)}
+                onToggleNotes={() => toggleNotes(t.id)}
+                onAddNote={(body) => addNote(t.id, body)}
+                onEscalate={() => setEscalateTask(t)}
+                onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
+                onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
+              />
+            ))}
+            {view === 'completed' && items.map((t) => (
+              <CompletedRow
+                key={t.id} t={t}
+                onReopen={() => reopen(t)}
+                onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
+                onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
+              />
+            ))}
+          </Section>
+        );
+      })}
 
       {/* ── Reallocations (from capacity planner) ── */}
       <Section
@@ -506,19 +549,6 @@ function TaskRow({
           )}
         </div>
 
-        {/* Deadline */}
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }} title="Set a deadline">
-          <CalendarDays size={13} color={overdue ? '#dc2626' : '#94a3b8'} />
-          <input
-            type="date" value={t.deadline || ''} onChange={(e) => onDeadline(e.target.value)}
-            style={{
-              fontSize: 11.5, fontFamily: font, padding: '3px 6px', borderRadius: 6,
-              border: `1px solid ${overdue ? '#fca5a5' : '#e2e8f0'}`, color: overdue ? '#dc2626' : '#475569',
-              background: overdue ? '#fef2f2' : '#fff', outline: 'none',
-            }}
-          />
-        </label>
-
         {t.value && (
           <button onClick={onCopy} title="Copy the value to paste into BM" style={{ ...btn('ghost'), fontFamily: 'monospace', fontSize: 12, flexShrink: 0 }}>
             {copied ? '✓ copied' : <>{t.value} <Copy size={11} /></>}
@@ -530,6 +560,21 @@ function TaskRow({
             <Receipt size={12} /> Review bill
           </button>
         )}
+
+        {/* Deadline — kept directly next to the comments button below, so the
+            date column stays aligned across rows regardless of whether the
+            copy-value / Review bill buttons above are present. */}
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }} title="Set a deadline">
+          <CalendarDays size={13} color={overdue ? '#dc2626' : '#94a3b8'} />
+          <input
+            type="date" value={t.deadline || ''} onChange={(e) => onDeadline(e.target.value)}
+            style={{
+              fontSize: 11.5, fontFamily: font, padding: '3px 6px', borderRadius: 6,
+              border: `1px solid ${overdue ? '#fca5a5' : '#e2e8f0'}`, color: overdue ? '#dc2626' : '#475569',
+              background: overdue ? '#fef2f2' : '#fff', outline: 'none',
+            }}
+          />
+        </label>
 
         <button onClick={onToggleNotes} title="Notes & responses"
           style={{ ...iconBtn, color: notes.length ? '#0e7fe0' : '#94a3b8', borderColor: notes.length ? '#bae6fd' : '#e5e7eb' }}>

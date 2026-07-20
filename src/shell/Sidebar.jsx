@@ -274,7 +274,7 @@ export default function Sidebar() {
           // the AND-only modules.config model, so it's injected here rather
           // than declared as a static child.
           if (mod.id === 'work-planner' && canAdminTasks) {
-            kids = [...kids, { id: 'wp-tasks', label: 'Task List', route: '/planner/tasks' }];
+            kids = [...kids, { id: 'wp-tasks', label: 'Admin Task List', route: '/planner/tasks' }];
           }
           // Hide a parent group that has children defined but none visible to
           // this user (e.g. Client Work when they lack every child's permission).
