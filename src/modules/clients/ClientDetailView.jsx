@@ -54,6 +54,8 @@ export default function ClientDetailView() {
   const [offboarding, setOffboarding] = useState(false);
   const [offboardResult, setOffboardResult] = useState(null);
   const [fieldOverrides, setFieldOverrides] = useState({}); // field -> { value, bm_value } pending BM sync
+  const [people, setPeople] = useState([]); // entity_people (directors / PSCs / contacts)
+  const [activeTab, setActiveTab] = useState('details');
 
   useEffect(() => {
     (async () => {
@@ -79,6 +81,9 @@ export default function ClientDetailView() {
           supabase.from('bm_task_schedule')
             .select('id, service, bm_task_name, bm_deadline, bm_status')
             .eq('entity_id', id).eq('state', 'planned').is('excluded_at', null).order('bm_deadline'),
+          supabase.from('entity_people')
+            .select('role, role_pct, started_on, source, is_primary_contact, person:people(id, name, dob_year, dob_month, ch_personal_code, ch_officer_id, ch_psc_id)')
+            .eq('entity_id', id),
         ]);
         const get = (i) => results[i]?.value?.data;
         const ent = get(0);
@@ -99,6 +104,7 @@ export default function ClientDetailView() {
         for (const t of (get(12) || [])) ov[t.field] = { value: t.value, bm_value: t.bm_value };
         setFieldOverrides(ov);
         setBmJobs(get(13) || []);
+        setPeople(get(14) || []);
         // Default action assignee to client manager
         if (ent?.manager) {
           const mgr = staff.find((s) => s.name?.toLowerCase().includes(ent.manager.toLowerCase()));
@@ -224,6 +230,19 @@ export default function ClientDetailView() {
 
   const toggleSection = (s) => setActiveSection(activeSection === s ? null : s);
 
+  // Limited companies get tabbed views (Full Details / Directors / PSCs /
+  // Communications). Directors = officer links; PSCs = the ch_psc links.
+  const isLtd = entity?.type === 'limited_company';
+  const directors = useMemo(() => people.filter((p) => p.role === 'director'), [people]);
+  const pscs = useMemo(() => people.filter((p) => p.source === 'ch_psc'), [people]);
+  const detailsVisible = !isLtd || activeTab === 'details';
+  const CLIENT_TABS = [
+    { id: 'details', label: 'Full Details' },
+    { id: 'directors', label: `Directors${directors.length ? ` (${directors.length})` : ''}` },
+    { id: 'pscs', label: `PSCs${pscs.length ? ` (${pscs.length})` : ''}` },
+    { id: 'comms', label: 'Communications' },
+  ];
+
   return (
     <div style={wrapStyle}>
       <button onClick={() => navigate('/clients')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 13, fontFamily: "'Outfit', sans-serif", marginBottom: 16, padding: 0 }}>
@@ -347,6 +366,33 @@ export default function ClientDetailView() {
           </button>
         </div>
       </div>
+
+      {/* Tabs — limited companies only */}
+      {isLtd && (
+        <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb', marginBottom: 20, flexWrap: 'wrap' }}>
+          {CLIENT_TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              style={{
+                padding: '9px 16px', border: 'none', background: 'none', cursor: 'pointer',
+                fontFamily: "'Outfit', sans-serif", fontSize: 13.5, fontWeight: activeTab === t.id ? 700 : 500,
+                color: activeTab === t.id ? '#0f172a' : '#64748b',
+                borderBottom: activeTab === t.id ? '2px solid #0e7fe0' : '2px solid transparent',
+                marginBottom: -1,
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isLtd && activeTab === 'directors' && <PeopleList people={directors} kind="director" />}
+      {isLtd && activeTab === 'pscs' && <PeopleList people={pscs} kind="psc" />}
+      {isLtd && activeTab === 'comms' && <CommsPlaceholder />}
+
+      {detailsVisible && (<>
 
       {offboardResult && (
         <div style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 12, padding: '12px 16px', marginBottom: 20, fontFamily: "'Outfit', sans-serif" }}>
@@ -611,6 +657,72 @@ export default function ClientDetailView() {
           </button>
         </div>
         {taskCreated && <div style={{ marginTop: 8, fontSize: 12, color: '#059669', fontWeight: 500 }}>✓ Action created in Work Planner</div>}
+      </div>
+      </>)}
+    </div>
+  );
+}
+
+// Months only from Companies House (never the day) — show "Apr 1975".
+const MONTHS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function dobLabel(y, m) {
+  if (!y) return null;
+  return `${m ? MONTHS[m] + ' ' : ''}${y}`;
+}
+
+// Directors / PSCs list for the client tabs. Rows come from entity_people
+// joined to people. A code is genuine unless it's a "…-2223" placeholder.
+function PeopleList({ people, kind }) {
+  if (!people || people.length === 0) {
+    return (
+      <div style={{ ...cardStyle, textAlign: 'center', padding: '40px 24px', color: '#94a3b8', fontSize: 13 }}>
+        {kind === 'psc'
+          ? 'No persons with significant control recorded. These come from the Companies House refresh.'
+          : 'No directors recorded. These come from the Companies House refresh.'}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {people.map((p, i) => {
+        const person = p.person || {};
+        const dob = dobLabel(person.dob_year, person.dob_month);
+        const code = person.ch_personal_code;
+        const placeholder = code && /-?2223$/.test(String(code).replace(/[^a-z0-9]/gi, '').slice(-4));
+        return (
+          <div key={person.id || i} style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{person.name || 'Unnamed'}</div>
+              <div style={{ fontSize: 12, color: '#64748b', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
+                <span style={{ textTransform: 'capitalize' }}>{p.role || (kind === 'psc' ? 'PSC' : 'officer')}</span>
+                {kind === 'psc' && p.role_pct != null && <span>· {p.role_pct}%+ control</span>}
+                {dob && <span>· b. {dob}</span>}
+                {p.started_on && <span>· appointed {new Date(p.started_on).toLocaleDateString('en-GB')}</span>}
+                {p.is_primary_contact && <Badge bg="#dbeafe" color="#0e7fe0">Primary contact</Badge>}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 10, color: '#94a3b8' }}>CH personal code</div>
+              {code
+                ? <div style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 600, color: placeholder ? '#b45309' : '#0f172a' }}>
+                    {code}{placeholder ? ' ⚠' : ''}
+                  </div>
+                : <div style={{ fontSize: 12.5, color: '#cbd5e1' }}>none on file</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CommsPlaceholder() {
+  return (
+    <div style={{ ...cardStyle, textAlign: 'center', padding: '44px 24px' }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Communications</div>
+      <div style={{ fontSize: 13, color: '#64748b', maxWidth: 460, margin: '0 auto' }}>
+        Emails, text messages and WhatsApp with this client will appear here once the
+        Communications module is linked to client records.
       </div>
     </div>
   );
