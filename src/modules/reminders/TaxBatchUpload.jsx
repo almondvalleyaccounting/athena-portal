@@ -238,13 +238,20 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
             {parsed.length} row{parsed.length === 1 ? '' : 's'} with a POA amount will import
             {mapping.reference >= 0 && mapping.surname >= 0 && (
               <> — <strong style={{ color: '#166534' }}>{stats.ok} matched</strong> by UTR + surname
-                {unmatchedTotal > 0 && <>, {unmatchedTotal} to resolve by hand (
+                {unmatchedTotal > 0 && <>, {unmatchedTotal} unmatched (
                   {Object.entries(stats.byReason).map(([r, n], i) => (
                     <span key={r}>{i > 0 ? ', ' : ''}{n} {REASON_LABEL[r] || r}</span>
                   ))})</>}
               </>
             )}.
           </div>
+          {unmatchedTotal > 0 && (
+            <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 6 }}>
+              Unmatched rows still import. After saving, open <strong>Client Reminders</strong> to match
+              each to a client (per-row picker) or mark it <strong>Excluded</strong> — e.g. someone whose
+              tax return you file but who isn’t a practice client. Only matched, opted-in clients are emailed.
+            </div>
+          )}
 
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 14, maxHeight: 440, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
