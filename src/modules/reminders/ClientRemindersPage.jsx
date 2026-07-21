@@ -8,6 +8,7 @@ import {
   greetingName, taxPaymentRef, buildEmailPreview, PAY_URL, PTA_URL,
 } from './lib';
 import EmailTemplatesModal from './EmailTemplatesModal';
+import ReminderQueueModal from './ReminderQueueModal';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
@@ -150,11 +151,12 @@ function ConfirmSendModal({ mode, targets, dueDate, template, profile, onClose, 
     }
   };
 
-  const sendAll = async () => {
+  const queueAll = async () => {
     setSending(true);
     setErr(null);
     try {
       const data = await invoke({
+        mode: 'queue',
         targets: targets.map((t) => ({ entity_id: t.entityId, payment_id: t.paymentId })),
       });
       onDone(data);
@@ -169,7 +171,7 @@ function ConfirmSendModal({ mode, targets, dueDate, template, profile, onClose, 
       <div style={{ ...card, width: 760, maxWidth: '94vw', maxHeight: '88vh', overflowY: 'auto', padding: 20, fontFamily: font }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
-            {isPromo ? 'Send opt-in invitation' : 'Send payment reminders'}
+            {isPromo ? 'Queue opt-in invitation' : 'Queue payment reminders'}
           </div>
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer', fontFamily: font }}>×</button>
@@ -214,10 +216,10 @@ function ConfirmSendModal({ mode, targets, dueDate, template, profile, onClose, 
           </button>
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={btnGhost}>Cancel</button>
-          <button onClick={sendAll} disabled={sending || !targets.length} style={btnPrimary(!sending && targets.length > 0)}>
+          <button onClick={queueAll} disabled={sending || !targets.length} style={btnPrimary(!sending && targets.length > 0)}>
             {sending
-              ? 'Sending…'
-              : `Send ${targets.length} email${targets.length === 1 ? '' : 's'}`}
+              ? 'Adding…'
+              : `Add ${targets.length} to queue`}
           </button>
         </div>
       </div>
@@ -246,6 +248,8 @@ export default function ClientRemindersPage() {
   const [rowResults, setRowResults] = useState({}); // entity_id -> { ok, text }
   const [templatesByKind, setTemplatesByKind] = useState({}); // 'promo'|'reminder' -> template row
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showQueue, setShowQueue] = useState(false);
+  const [queuedCount, setQueuedCount] = useState(0);
   const [bmEmailByEntity, setBmEmailByEntity] = useState({}); // entity_id -> BM contact email fallback
 
   const entityById = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e])), [entities]);
@@ -298,6 +302,13 @@ export default function ClientRemindersPage() {
         }
       }
       setBmEmailByEntity(bmMap);
+
+      // How many emails are waiting in the review queue.
+      const { count: qCount } = await supabase
+        .from('reminder_emails')
+        .select('id', { count: 'exact', head: true })
+        .eq('comm_type', COMM_TYPE).eq('status', 'queued');
+      setQueuedCount(qCount || 0);
 
       // Gmail pill — reminders go out from the practice-default mailbox.
       // v_gmail_connections is the staff-safe view (no token columns).
@@ -424,19 +435,22 @@ export default function ClientRemindersPage() {
     .map(toTarget);
 
   const onSendDone = (result) => {
-    // result: { sent, skipped: [{entity_id, reason}], errors: [{entity_id, error}] }
+    // result: { queued?, sent?, skipped: [{entity_id, reason}], errors: [{entity_id, error}] }
+    const queuedMode = result?.queued != null;
+    const okWord = queuedMode ? 'queued' : 'sent';
     const map = {};
     const targetIds = (confirm ? confirm.targets : []).map((t) => t.entityId);
-    for (const eid of targetIds) map[eid] = { ok: true, text: 'sent' };
+    for (const eid of targetIds) map[eid] = { ok: true, text: okWord };
     for (const s of result?.skipped || []) map[s.entity_id] = { ok: false, text: s.reason };
     for (const e of result?.errors || []) map[e.entity_id] = { ok: false, text: e.error };
     setRowResults(map);
     setConfirm(null);
     setSelected(new Set());
-    const bits = [`${result?.sent ?? 0} sent`];
+    const n = queuedMode ? result.queued : (result?.sent ?? 0);
+    const bits = [`${n} ${okWord}`];
     if (result?.skipped?.length) bits.push(`${result.skipped.length} skipped`);
     if (result?.errors?.length) bits.push(`${result.errors.length} failed`);
-    setNotice(bits.join(', ') + '.');
+    setNotice(bits.join(', ') + (queuedMode ? ' — open Review queue to check and release.' : '.'));
     loadShared();
     loadRows(batchId);
   };
@@ -509,6 +523,9 @@ export default function ClientRemindersPage() {
           </span>
         )}
         <div style={{ flex: 1 }} />
+        <button onClick={() => setShowQueue(true)} style={btnGhost}>
+          Review queue{queuedCount ? ` (${queuedCount})` : ''}
+        </button>
         <button onClick={() => setShowTemplates(true)} style={btnGhost}>
           Email templates
         </button>
@@ -684,17 +701,17 @@ export default function ClientRemindersPage() {
               onClick={() => inviteTargets.length && setConfirm({ mode: 'promo', targets: inviteTargets })}
               disabled={!inviteTargets.length}
               style={btnPrimary(inviteTargets.length > 0)}
-              title="Asks selected clients (not yet opted in/out) whether they want tax reminders"
+              title="Queues an opt-in invitation for selected clients (not yet opted in/out) — review and release from the queue"
             >
-              Send opt-in invitation{inviteTargets.length ? ` (${inviteTargets.length})` : ''}
+              Queue opt-in invitation{inviteTargets.length ? ` (${inviteTargets.length})` : ''}
             </button>
             <button
               onClick={() => reminderTargets.length && setConfirm({ mode: 'reminder', targets: reminderTargets })}
               disabled={!reminderTargets.length}
               style={btnPrimary(reminderTargets.length > 0)}
-              title="Sends the payment reminder to selected clients who are opted in and unpaid"
+              title="Queues the payment reminder for selected clients who are opted in and unpaid — review and release from the queue"
             >
-              Send reminders{reminderTargets.length ? ` (${reminderTargets.length})` : ''}
+              Queue reminders{reminderTargets.length ? ` (${reminderTargets.length})` : ''}
             </button>
           </div>
         </div>
@@ -723,6 +740,16 @@ export default function ClientRemindersPage() {
         <EmailTemplatesModal
           commType={COMM_TYPE}
           onClose={() => { setShowTemplates(false); loadShared(); }}
+        />
+      )}
+
+      {showQueue && (
+        <ReminderQueueModal
+          commType={COMM_TYPE}
+          entityById={entityById}
+          profile={profile}
+          onClose={() => setShowQueue(false)}
+          onChanged={() => { loadShared(); loadRows(batchId); }}
         />
       )}
     </div>
