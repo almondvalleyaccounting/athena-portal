@@ -56,6 +56,8 @@ export const MODULES = [
       { id: 'comms-email', label: 'Email', route: '/comms/email' },
       { id: 'comms-sms', label: 'Text Messages', route: '/comms/sms' },
       { id: 'comms-whatsapp', label: 'WhatsApp', route: '/comms/whatsapp' },
+      { id: 'comms-reminders', label: 'Client Reminders', route: '/comms/reminders', permissions: ['can_manage_portal'] },
+      { id: 'comms-preferences', label: 'Client Preferences', route: '/comms/preferences' },
     ],
   },
   {
@@ -106,7 +108,6 @@ export const MODULES = [
       { id: 'cw-dashboard', label: 'Client Dashboard', route: '/client-dashboard', permissions: ['can_view_reports'] },
       { id: 'cw-portfolio', label: 'Portfolio', route: '/portfolio', permissions: ['can_view_reports'] },
       { id: 'cw-triage', label: 'Triage Board', route: '/triage' },
-      { id: 'cw-reminders', label: 'Client Reminders', route: '/reminders', permissions: ['can_manage_portal'] },
       { id: 'cw-reports', label: 'Client Reports', route: '/reports', permissions: ['can_view_reports'] },
       { id: 'cw-forecast', label: 'Client Forecast', route: '/forecast', permissions: ['can_manage_portal'] },
     ],

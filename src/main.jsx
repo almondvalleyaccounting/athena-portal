@@ -9,7 +9,6 @@ import ReportsPage from './modules/reports/ReportsPage';
 import ClientDashboardPage from './modules/client-dashboard/ClientDashboardPage';
 import PortfolioDashboardPage from './modules/client-dashboard/PortfolioDashboardPage';
 import TriageBoardPage from './modules/triage/TriageBoardPage';
-import ClientRemindersPage from './modules/reminders/ClientRemindersPage';
 import AdminPage from './shell/AdminPage';
 import SecurityPage from './shell/SecurityPage';
 import UserSettingsPage from './shell/UserSettingsPage';
@@ -84,7 +83,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/client-dashboard" element={<ClientDashboardPage />} />
           <Route path="/portfolio" element={<PortfolioDashboardPage />} />
           <Route path="/triage" element={<TriageBoardPage />} />
-          <Route path="/reminders" element={<ClientRemindersPage />} />
+          {/* Client Reminders moved under Communications (/comms/reminders).
+              Keep old links, digest emails and bookmarks working. */}
+          <Route path="/reminders" element={<Navigate to="/comms/reminders" replace />} />
           <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />
           <Route path="/admin/staff" element={<AdminPage />} />
           <Route path="/admin/portal-clients" element={<PortalClientsPage />} />
