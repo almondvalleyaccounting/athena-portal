@@ -54,7 +54,7 @@ insert into public.comm_templates (comm_type, kind, subject, body_html, body_tex
 values
   (
     'tax_reminders', 'promo',
-    'Your July self assessment payment — a quick heads-up',
+    'Your July Self Assessment Tax Payment',
     $html$<p style="margin:0 0 14px;">Hi {{first_name}},</p>
 <p style="margin:0 0 14px;">If you make Self Assessment payments on account, your next one is due by <strong>31 July</strong>. You can review your tax position &mdash; your current balance and the payments you&rsquo;ve made &mdash; in your HMRC personal tax account at <a href="{{pta_url}}" style="color:#0e7fe0;">{{pta_url}}</a>.</p>
 <p style="margin:0 0 14px;">We can also email you the payment amount from your tax return, along with HMRC&rsquo;s bank details and your payment reference. Because that includes your personal tax figures, we&rsquo;d like your OK first.</p>
