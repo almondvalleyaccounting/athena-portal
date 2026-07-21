@@ -150,7 +150,13 @@ export function greetingName(name) {
   const n = String(name ?? '').trim();
   if (!n) return 'there';
   if (/\b(ltd|limited|llp|plc|lp|partnership|associates|company|co\.)\b/i.test(n)) return n;
-  return n.split(/\s+/)[0];
+  // Names are often stored "Surname, Forename" — take the forename part.
+  let base = n;
+  if (n.includes(',')) {
+    const after = n.split(',')[1];
+    if (after && after.trim()) base = after.trim();
+  }
+  return base.split(/\s+/)[0];
 }
 
 const SHELL_OPEN = `<div style="max-width:640px;padding:14px 6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#222222;background:#ffffff;">`;

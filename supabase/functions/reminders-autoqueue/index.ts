@@ -42,7 +42,13 @@ function greetingName(name: string | null | undefined): string {
   const n = String(name ?? "").trim();
   if (!n) return "there";
   if (/\b(ltd|limited|llp|plc|lp|partnership|associates|company|co\.)\b/i.test(n)) return n;
-  return n.split(/\s+/)[0];
+  // Names are often stored "Surname, Forename" — take the forename part.
+  let base = n;
+  if (n.includes(",")) {
+    const after = n.split(",")[1];
+    if (after && after.trim()) base = after.trim();
+  }
+  return base.split(/\s+/)[0];
 }
 function wrapShell(innerHtml: string): string {
   return `<!doctype html><html><body style="margin:0;padding:0;background:#ffffff;">
