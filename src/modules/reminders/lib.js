@@ -111,7 +111,10 @@ export function fmtDateTimeShort(iso) {
     d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
-// ── Email previews (mirror reminders-send) ───────────────────────────
+// ── Email templates (render + preview) ───────────────────────────────
+// The reminders-send edge function is the single source of the copy; it
+// renders the comm_templates row for (comm_type, kind). These helpers
+// mirror that rendering so the on-screen preview matches what is sent.
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -124,40 +127,44 @@ export function greetingName(name) {
 }
 
 const SHELL_OPEN = `<div style="max-width:640px;padding:14px 6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#222222;background:#ffffff;">`;
-const P = `style="margin:0 0 14px;"`;
-const SIGN_OFF = `<p style="margin:18px 0 0;">Thanks,<br/>Almond Valley Accounting</p>`;
 
-// Preview of the opt-in invitation. Buttons render but point nowhere —
-// the real per-recipient token links are minted inside reminders-send.
-export function promoEmailPreviewHtml(name) {
-  const hi = esc(greetingName(name));
-  return `${SHELL_OPEN}
-    <p ${P}>Hi ${hi},</p>
-    <p ${P}>We're setting up payment reminders for personal tax &mdash; a short email before each deadline (31 July payments on account, 31 January balancing payments) so nothing gets missed.</p>
-    <p ${P}>Because those reminders include your personal tax figures, we'd like your OK first &mdash; we understand not everyone wants tax amounts arriving by email.</p>
-    <div style="margin:18px 0;">
-      <span style="display:inline-block;padding:10px 20px;background:#0e7fe0;color:#ffffff;border-radius:6px;font-size:14px;">Yes &mdash; send me reminders</span>
-      <span style="display:inline-block;padding:10px 20px;background:#ffffff;color:#444444;border:1px solid #cccccc;border-radius:6px;font-size:14px;margin-left:10px;">No thanks</span>
-    </div>
-    <p ${P}>If the buttons don't work, just reply to this email with yes or no and we'll set it for you.</p>
-    ${SIGN_OFF}
-  </div>`;
+export const PAY_URL = 'https://www.gov.uk/pay-self-assessment-tax-bill';
+
+// UTR → Self Assessment payment reference: the 10-digit UTR followed by
+// 'K'. Mirrors reminders-send; '' when no 10-digit UTR is present.
+export function taxPaymentRef(raw) {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  return digits.length >= 10 ? `${digits.slice(0, 10)}K` : '';
 }
 
-export function reminderEmailPreviewHtml(name, amount, dueDateIso) {
-  const hi = esc(greetingName(name));
-  const due = esc(fmtDateLong(dueDateIso));
-  return `${SHELL_OPEN}
-    <p ${P}>Hi ${hi},</p>
-    <p ${P}>A quick reminder that your personal tax payment on account of <strong>&pound;${fmtMoney(amount)}</strong> is due by ${due}.</p>
-    <p ${P}>You can pay HMRC at <a href="https://www.gov.uk/pay-self-assessment-tax-bill" style="color:#0e7fe0;">https://www.gov.uk/pay-self-assessment-tax-bill</a> &mdash; use your UTR as the payment reference.</p>
-    <p ${P}>If you've already paid, you can ignore this. If anything looks wrong or you'd like to talk it through, just reply.</p>
-    ${SIGN_OFF}
-  </div>`;
+// {{token}} substitution. Values destined for HTML are pre-escaped by the
+// caller (buildEmailPreview); text/subject render raw.
+export function renderTemplate(s, vars) {
+  return String(s ?? '').replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => (k in vars ? String(vars[k] ?? '') : ''));
 }
 
-export const PROMO_SUBJECT = 'Tax payment reminders — yes or no?';
-export function reminderSubject(dueDateIso) {
-  // Matches the edge function: long date with the year trimmed.
-  return `Reminder: personal tax payment due ${fmtDateLong(dueDateIso).replace(/\s\d{4}$/, '')}`;
+// Render a comm_templates row for on-screen preview. body_html is the
+// inner HTML (wrapped in the plain email shell, matching the sender).
+export function buildEmailPreview(template, vars) {
+  if (!template) {
+    return { subject: '(no template configured)', html: `${SHELL_OPEN}<p style="color:#b91c1c;">No template found.</p></div>` };
+  }
+  const htmlVars = Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, esc(v)]));
+  return {
+    subject: renderTemplate(template.subject || '', vars),
+    html: `${SHELL_OPEN}${renderTemplate(template.body_html || '', htmlVars)}</div>`,
+  };
+}
+
+// Placeholder values for the template editor's live preview.
+export function sampleTemplateVars() {
+  return {
+    first_name: 'Alex',
+    amount: '2,450.00',
+    due_date: '31 July 2026',
+    payment_ref: '1234567890K',
+    opt_in_url: '#opt-in',
+    opt_out_url: '#opt-out',
+    pay_url: PAY_URL,
+  };
 }

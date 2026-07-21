@@ -1,10 +1,16 @@
 // reminders-send — Athena Portal
 // Sends client-communication emails as REAL Gmail messages through the
 // connected info@ mailbox (Client Reminders module). Two kinds:
-//   * promo    — "can we send you tax reminders?" opt-in invitation with
-//                yes/no buttons that hit the public comm-optin function
-//   * reminder — "your payment on account of £X is due 31 July" for
-//                clients who opted in
+//   * promo    — opt-in invitation with yes/no buttons that hit the
+//                public comm-optin function (no tax figures)
+//   * reminder — the payment figure + HMRC bank details + payment
+//                reference (UTR + K) for clients who opted in
+//
+// Copy is NOT hardcoded here: both kinds render from the comm_templates
+// row for (comm_type, kind) via {{token}} substitution — edit it in
+// Communications → Client Reminders → "Email templates". A reminder is
+// skipped if the payment row has no readable UTR (we never send bank
+// details without a reference).
 //
 // Deployed with verify_jwt OFF, so it verifies the caller itself:
 // a staff JWT whose staff_profiles row has can_manage_portal (or
@@ -68,10 +74,6 @@ function wrapShell(innerHtml: string): string {
   </body></html>`;
 }
 
-const P = `style="margin:0 0 14px;"`;
-const SIGN_OFF_HTML = `<p style="margin:18px 0 0;">Thanks,<br/>Almond Valley Accounting</p>`;
-const SIGN_OFF_TEXT = "Thanks,\nAlmond Valley Accounting";
-
 function fmtMoney(amount: number): string {
   return Number(amount).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -84,60 +86,22 @@ function fmtDateLong(iso: string | null | undefined): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
-function promoEmail(name: string, optInUrl: string, optOutUrl: string): { subject: string; html: string; text: string } {
-  const subject = "Tax payment reminders — yes or no?";
-  const hi = esc(greetingName(name));
-  const html = wrapShell(`
-    <p ${P}>Hi ${hi},</p>
-    <p ${P}>We're setting up payment reminders for personal tax &mdash; a short email before each deadline (31 July payments on account, 31 January balancing payments) so nothing gets missed.</p>
-    <p ${P}>Because those reminders include your personal tax figures, we'd like your OK first &mdash; we understand not everyone wants tax amounts arriving by email.</p>
-    <div style="margin:18px 0;">
-      <a href="${esc(optInUrl)}" style="display:inline-block;padding:10px 20px;background:#0e7fe0;color:#ffffff;text-decoration:none;border-radius:6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;">Yes &mdash; send me reminders</a>
-      <a href="${esc(optOutUrl)}" style="display:inline-block;padding:10px 20px;background:#ffffff;color:#444444;border:1px solid #cccccc;text-decoration:none;border-radius:6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;margin-left:10px;">No thanks</a>
-    </div>
-    <p ${P}>If the buttons don't work, just reply to this email with yes or no and we'll set it for you.</p>
-    ${SIGN_OFF_HTML}
-  `);
-  const text = [
-    `Hi ${greetingName(name)},`,
-    "",
-    "We're setting up payment reminders for personal tax — a short email before each deadline (31 July payments on account, 31 January balancing payments) so nothing gets missed.",
-    "",
-    "Because those reminders include your personal tax figures, we'd like your OK first — we understand not everyone wants tax amounts arriving by email.",
-    "",
-    `Yes — send me reminders: ${optInUrl}`,
-    `No thanks: ${optOutUrl}`,
-    "",
-    "If the links don't work, just reply to this email with yes or no and we'll set it for you.",
-    "",
-    SIGN_OFF_TEXT,
-  ].join("\n");
-  return { subject, html, text };
+const PAY_URL = "https://www.gov.uk/pay-self-assessment-tax-bill";
+
+// UTR → Self Assessment payment reference: the 10-digit UTR followed by
+// 'K'. Strips spaces/formatting and is idempotent if a trailing 'K' is
+// already present. Returns '' when no 10-digit UTR can be read — the
+// caller skips the reminder rather than send bank details without a ref.
+function taxPaymentRef(raw: string | null | undefined): string {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  if (digits.length >= 10) return `${digits.slice(0, 10)}K`;
+  return "";
 }
 
-function reminderEmail(name: string, amount: number, dueDateIso: string): { subject: string; html: string; text: string } {
-  const due = fmtDateLong(dueDateIso);
-  const subject = `Reminder: personal tax payment due ${due.replace(/\s\d{4}$/, "")}`;
-  const hi = esc(greetingName(name));
-  const html = wrapShell(`
-    <p ${P}>Hi ${hi},</p>
-    <p ${P}>A quick reminder that your personal tax payment on account of <strong>&pound;${fmtMoney(amount)}</strong> is due by ${esc(due)}.</p>
-    <p ${P}>You can pay HMRC at <a href="https://www.gov.uk/pay-self-assessment-tax-bill" style="color:#0e7fe0;">https://www.gov.uk/pay-self-assessment-tax-bill</a> &mdash; use your UTR as the payment reference.</p>
-    <p ${P}>If you've already paid, you can ignore this. If anything looks wrong or you'd like to talk it through, just reply.</p>
-    ${SIGN_OFF_HTML}
-  `);
-  const text = [
-    `Hi ${greetingName(name)},`,
-    "",
-    `A quick reminder that your personal tax payment on account of £${fmtMoney(amount)} is due by ${due}.`,
-    "",
-    "You can pay HMRC at https://www.gov.uk/pay-self-assessment-tax-bill — use your UTR as the payment reference.",
-    "",
-    "If you've already paid, you can ignore this. If anything looks wrong or you'd like to talk it through, just reply.",
-    "",
-    SIGN_OFF_TEXT,
-  ].join("\n");
-  return { subject, html, text };
+// {{token}} substitution. Values must be pre-escaped by the caller when
+// rendering into HTML; the plain-text/subject renders take them raw.
+function renderStr(s: string, vars: Record<string, string>): string {
+  return String(s ?? "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, k) => (k in vars ? String(vars[k] ?? "") : ""));
 }
 
 // ── MIME (mirrors gmail-create-draft) ────────────────────────────────
@@ -211,6 +175,13 @@ Deno.serve(async (req) => {
   const testRecipient = (body.test_recipient || "").trim() || null;
   const isTest = !!testRecipient;
 
+  // ── Template (single source of the copy — no hardcoded fallback) ──
+  const { data: tmpl, error: tErr } = await service.from("comm_templates")
+    .select("subject, body_html, body_text")
+    .eq("comm_type", commType).eq("kind", kind).maybeSingle();
+  if (tErr) return json({ success: false, error: `Template lookup failed: ${tErr.message}` }, 500);
+  if (!tmpl) return json({ success: false, error: `No ${kind} template configured for '${commType}'` }, 400);
+
   // ── Gmail connection ──
   let token: { accessToken: string; accountEmail: string };
   try {
@@ -245,21 +216,35 @@ Deno.serve(async (req) => {
     // Payment details for reminders.
     let payment: { id: string; batch_id: string; amount: number } | null = null;
     let dueDate = body.due_date || null;
+    let paymentRef = "";
     if (kind === "reminder") {
       if (!target.payment_id) { skipped.push({ entity_id: entityId, reason: "payment_id required for reminders" }); continue; }
       const { data: pay } = await service.from("tax_payments_due")
-        .select("id, batch_id, amount, status, batch:tax_payment_batches(id, due_date)")
+        .select("id, batch_id, amount, status, reference_raw, batch:tax_payment_batches(id, due_date)")
         .eq("id", target.payment_id).maybeSingle();
       if (!pay) { skipped.push({ entity_id: entityId, reason: "payment row not found" }); continue; }
       if (pay.amount == null) { skipped.push({ entity_id: entityId, reason: "payment has no amount" }); continue; }
       payment = { id: pay.id, batch_id: pay.batch_id, amount: Number(pay.amount) };
       dueDate = (pay.batch as { due_date?: string } | null)?.due_date || dueDate;
       if (!dueDate) { skipped.push({ entity_id: entityId, reason: "no due date on batch" }); continue; }
+      // The email carries HMRC bank details, so it MUST carry the payment
+      // reference — never send instructions to pay without one.
+      paymentRef = taxPaymentRef(pay.reference_raw as string | null);
+      if (!paymentRef) { skipped.push({ entity_id: entityId, reason: "no UTR / payment reference on record" }); continue; }
     }
 
-    const subject = kind === "promo"
-      ? "Tax payment reminders — yes or no?"
-      : reminderEmail(ent.name, payment!.amount, dueDate!).subject;
+    // Merge values. opt-in URLs need the token, so they're filled in after
+    // the tracking row is minted; the subject never references them.
+    const vars: Record<string, string> = {
+      first_name: greetingName(ent.name),
+      amount: payment ? fmtMoney(payment.amount) : "",
+      due_date: dueDate ? fmtDateLong(dueDate) : "",
+      payment_ref: paymentRef,
+      pay_url: PAY_URL,
+      opt_in_url: "",
+      opt_out_url: "",
+    };
+    const subject = renderStr(tmpl.subject, vars);
 
     // Insert the reminder_emails row FIRST — its token goes into the email.
     const { data: emailRow, error: insErr } = await service.from("reminder_emails")
@@ -280,14 +265,19 @@ Deno.serve(async (req) => {
       continue;
     }
 
-    // Compose.
-    let content: { subject: string; html: string; text: string };
+    // Compose from the template. opt-in URLs carry the freshly-minted token.
     if (kind === "promo") {
       const base = `${SUPABASE_URL}/functions/v1/comm-optin?token=${encodeURIComponent(emailRow.token)}`;
-      content = promoEmail(ent.name, `${base}&choice=in`, `${base}&choice=out`);
-    } else {
-      content = reminderEmail(ent.name, payment!.amount, dueDate!);
+      vars.opt_in_url = `${base}&choice=in`;
+      vars.opt_out_url = `${base}&choice=out`;
     }
+    const htmlVars: Record<string, string> = {};
+    for (const [k, v] of Object.entries(vars)) htmlVars[k] = esc(v);
+    const content = {
+      subject,
+      html: wrapShell(renderStr(tmpl.body_html, htmlVars)),
+      text: renderStr(tmpl.body_text, vars),
+    };
 
     // Space the sends out a little (skip the delay before the first one).
     if (!first) await sleep(300);

@@ -5,8 +5,9 @@ import { useAuth } from '../../shell/AppShell';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import {
   fmtMoney, fmtDateLong, fmtDateTimeShort,
-  promoEmailPreviewHtml, reminderEmailPreviewHtml, PROMO_SUBJECT, reminderSubject,
+  greetingName, taxPaymentRef, buildEmailPreview, PAY_URL,
 } from './lib';
+import EmailTemplatesModal from './EmailTemplatesModal';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
@@ -99,17 +100,25 @@ const overlayStyle = {
 };
 
 // ── Confirm-send modal ────────────────────────────────────────────────
-function ConfirmSendModal({ mode, targets, dueDate, profile, onClose, onDone }) {
-  // targets: [{ paymentId, entityId, name, email, amount }]
+function ConfirmSendModal({ mode, targets, dueDate, template, profile, onClose, onDone }) {
+  // targets: [{ paymentId, entityId, name, email, amount, ref }]
   const [sending, setSending] = useState(false);
   const [testState, setTestState] = useState(null); // null | 'sending' | 'ok' | error string
   const [err, setErr] = useState(null);
   const isPromo = mode === 'promo';
   const first = targets[0];
 
-  const previewHtml = isPromo
-    ? promoEmailPreviewHtml(first ? first.name : 'Client')
-    : reminderEmailPreviewHtml(first ? first.name : 'Client', first ? first.amount : 0, dueDate);
+  // Preview renders the real template (what the edge function sends), with
+  // the first recipient's actual values substituted in.
+  const preview = buildEmailPreview(template, {
+    first_name: greetingName(first ? first.name : 'Client'),
+    amount: fmtMoney(first ? first.amount : 0),
+    due_date: fmtDateLong(dueDate),
+    payment_ref: (first && first.ref) || '1234567890K',
+    opt_in_url: '#opt-in',
+    opt_out_url: '#opt-out',
+    pay_url: PAY_URL,
+  });
 
   const invoke = async (extra) => {
     const body = {
@@ -169,7 +178,7 @@ function ConfirmSendModal({ mode, targets, dueDate, profile, onClose, onDone }) 
         {testState === 'ok' && <Banner tone="ok">Test email sent to {profile?.email}. Note: the opt-in links in a test email still act on the real client's preference — don't click them unless you mean it.</Banner>}
 
         <div style={{ fontSize: 12.5, color: '#334155', marginBottom: 8 }}>
-          Subject: <strong>{isPromo ? PROMO_SUBJECT : reminderSubject(dueDate)}</strong>
+          Subject: <strong>{preview.subject}</strong>
         </div>
 
         <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
@@ -190,7 +199,7 @@ function ConfirmSendModal({ mode, targets, dueDate, profile, onClose, onDone }) 
         </div>
         <div
           style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 10px', marginBottom: 16, background: '#fff' }}
-          dangerouslySetInnerHTML={{ __html: previewHtml }}
+          dangerouslySetInnerHTML={{ __html: preview.html }}
         />
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -234,6 +243,8 @@ export default function ClientRemindersPage() {
   const [selected, setSelected] = useState(() => new Set());
   const [confirm, setConfirm] = useState(null); // { mode, targets }
   const [rowResults, setRowResults] = useState({}); // entity_id -> { ok, text }
+  const [templatesByKind, setTemplatesByKind] = useState({}); // 'promo'|'reminder' -> template row
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const entityById = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e])), [entities]);
   const batch = batches.find((b) => b.id === batchId) || null;
@@ -268,6 +279,11 @@ export default function ClientRemindersPage() {
         if (em.entity_id && !latest[em.entity_id]) latest[em.entity_id] = em; // sorted desc — first wins
       }
       setLastEmailByEntity(latest);
+
+      // Email copy — the send preview renders these exact templates.
+      const { data: tmpls } = await supabase
+        .from('comm_templates').select('kind, subject, body_html, body_text').eq('comm_type', COMM_TYPE);
+      setTemplatesByKind(Object.fromEntries((tmpls || []).map((t) => [t.kind, t])));
 
       // Gmail pill — reminders go out from the practice-default mailbox.
       // v_gmail_connections is the staff-safe view (no token columns).
@@ -382,7 +398,7 @@ export default function ClientRemindersPage() {
   const isFormerClient = (r) => ['nlac', 'archived'].includes(entityById[r.entity_id]?.entity_status);
   const toTarget = (r) => {
     const ent = entityById[r.entity_id];
-    return { paymentId: r.id, entityId: r.entity_id, name: ent ? ent.name : r.client_name_raw, email: emailOf(r), amount: r.amount };
+    return { paymentId: r.id, entityId: r.entity_id, name: ent ? ent.name : r.client_name_raw, email: emailOf(r), amount: r.amount, ref: taxPaymentRef(r.reference_raw) };
   };
   const inviteTargets = selRows
     .filter((r) => r.entity_id && !isFormerClient(r) && emailOf(r) && !['opted_in', 'opted_out'].includes(prefStatusOf(r)))
@@ -477,6 +493,9 @@ export default function ClientRemindersPage() {
           </span>
         )}
         <div style={{ flex: 1 }} />
+        <button onClick={() => setShowTemplates(true)} style={btnGhost}>
+          Email templates
+        </button>
         <button onClick={() => navigate('/admin/import/taxcalc')} style={btnGhost}>
           Import TaxCalc data →
         </button>
@@ -677,9 +696,17 @@ export default function ClientRemindersPage() {
           mode={confirm.mode}
           targets={confirm.targets}
           dueDate={batch ? batch.due_date : null}
+          template={templatesByKind[confirm.mode]}
           profile={profile}
           onClose={() => setConfirm(null)}
           onDone={onSendDone}
+        />
+      )}
+
+      {showTemplates && (
+        <EmailTemplatesModal
+          commType={COMM_TYPE}
+          onClose={() => { setShowTemplates(false); loadShared(); }}
         />
       )}
     </div>
