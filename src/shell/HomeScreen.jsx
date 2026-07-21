@@ -1278,6 +1278,16 @@ export default function HomeScreen() {
     </div>
   );
 
+  // Each pulse figure deep-links straight through to AVA's matching report tab
+  // on the Client Dashboard (revenue/profit → P&L, cash → balance sheet,
+  // debtors → debtors & creditors), not just the dashboard landing.
+  const openPulse = (tab) =>
+    navigate(
+      pulse?.realmId
+        ? `/client-dashboard?realm=${encodeURIComponent(pulse.realmId)}&tab=${tab}`
+        : '/client-dashboard',
+    );
+
   const pulseSection = canSeePulse && (
     <div>
       <SectionLabel
@@ -1325,7 +1335,7 @@ export default function HomeScreen() {
             ]
               .filter(Boolean)
               .join(' · ')}
-            onClick={() => navigate('/client-dashboard')}
+            onClick={() => openPulse('pnl')}
           />
           <StatCard
             label="Net operating — fiscal YTD"
@@ -1352,7 +1362,7 @@ export default function HomeScreen() {
             ]
               .filter(Boolean)
               .join(' · ')}
-            onClick={() => navigate('/client-dashboard')}
+            onClick={() => openPulse('pnl')}
           />
           <StatCard
             label="Cash at bank"
@@ -1364,7 +1374,7 @@ export default function HomeScreen() {
                   }`
                 : null
             }
-            onClick={() => navigate('/client-dashboard')}
+            onClick={() => openPulse('balance')}
           />
           <StatCard
             label="Debtors"
@@ -1372,7 +1382,7 @@ export default function HomeScreen() {
               pulse?.balances?.debtors != null ? formatCurrency(pulse.balances.debtors) : '—'
             }
             sub="owed to the practice"
-            onClick={() => navigate('/client-dashboard')}
+            onClick={() => openPulse('aged')}
           />
         </div>
       )}

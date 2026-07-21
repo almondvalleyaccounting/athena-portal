@@ -380,6 +380,7 @@ export function usePracticePulse(enabled) {
           error: needsReconnect ? 'reconnect' : null,
           pulse: {
             company: conn.company_name,
+            realmId: conn.realm_id,
             plFytd: payload?.metrics?.pl_fytd || null,
             plFytdPrior: payload?.metrics?.pl_fytd_prior || null,
             balances: payload?.metrics?.balances || null,

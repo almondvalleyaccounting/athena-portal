@@ -98,14 +98,18 @@ export default function ClientDashboardPage() {
     }
   }, []);
 
-  // ?realm=… deep link (portfolio cards land here pre-selected).
+  // ?realm=…&tab=… deep link (portfolio cards + the home-screen Practice Pulse
+  // land here pre-selected, optionally on a specific tab).
   useEffect(() => {
     if (clientsLoading) return;
     const r = searchParams.get('realm');
+    const t = searchParams.get('tab');
     if (r && clients.some((c) => c.realm_id === r)) {
       searchParams.delete('realm');
+      searchParams.delete('tab');
       setSearchParams(searchParams, { replace: true });
       onSelect(r);
+      if (t && TABS.some((x) => x.id === t)) setTab(t);
     }
   }, [clientsLoading]);
 
