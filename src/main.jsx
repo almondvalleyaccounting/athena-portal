@@ -44,6 +44,7 @@ import ClientDetailView from './modules/clients/ClientDetailView';
 import FeeEngineLayout from './contexts/FeeEngineContext';
 import AcceptQuotePage from './pages/AcceptQuotePage';
 import AdminTasksPage from './pages/AdminTasksPage';
+import AdminTaskDetailPage from './pages/AdminTaskDetailPage';
 
 // Fee Engine pages (now render inside AppShell via FeeEngineLayout)
 import DashboardPage from './pages/DashboardPage';
@@ -124,6 +125,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/planner/review/*" element={<JobReviewModule />} />
           {/* Admin Task List — must precede the /planner/* wildcard. */}
           <Route path="/planner/tasks" element={<AdminTasksPage />} />
+          <Route path="/planner/tasks/:id" element={<AdminTaskDetailPage />} />
           <Route path="/planner/*" element={<WorkPlannerModule />} />
           <Route path="/review" element={<Navigate to="/planner/review" replace />} />
           <Route path="/review/*" element={<Navigate to="/planner/review" replace />} />

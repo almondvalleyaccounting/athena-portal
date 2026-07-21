@@ -94,7 +94,17 @@ export default function AdminTasksPage() {
   const [chCodes, setChCodes] = useState([]);
   const [docsByTask, setDocsByTask] = useState({});
   const [billingById, setBillingById] = useState({}); // billing_items status for pipeline stages
+  const [fees, setFees] = useState([]); // standard_fees price book (service → standard net)
+  const [newService, setNewService] = useState('');
   const canPipeline = !!profile?.can_manage_task_pipeline;
+
+  // Distinct services from the price book + the standard net for each.
+  const serviceOptions = useMemo(() => {
+    const m = new Map();
+    for (const f of fees) if (f.service_id && !m.has(f.service_id)) m.set(f.service_id, Number(f.standard_net) || 0);
+    return [...m.entries()].map(([id, net]) => ({ id, net })).sort((a, b) => a.id.localeCompare(b.id));
+  }, [fees]);
+  const feeFor = (serviceId) => { const f = fees.find((x) => x.service_id === serviceId); return f ? Number(f.standard_net) : null; };
   const [clientFilter, setClientFilter] = useState('');
   // Report tab data — completions + creations over the last 14 days,
   // loaded lazily the first time the Report view opens.
@@ -124,7 +134,7 @@ export default function AdminTasksPage() {
       const { data: confirmed } = await supabase.rpc('admin_tasks_confirm_from_bm');
       if (confirmed > 0) setConfirmedNow(confirmed);
 
-      const [{ data: t, error: e1 }, { data: ct }, { data: d }, { data: st }, { data: obs }, { data: ents }, { data: ch }] = await Promise.all([
+      const [{ data: t, error: e1 }, { data: ct }, { data: d }, { data: st }, { data: obs }, { data: ents }, { data: ch }, { data: sf }] = await Promise.all([
         supabase.from('admin_tasks')
           .select('*, entity:entities(id, name)')
           .is('done_at', null).is('confirmed_at', null).is('dismissed_at', null)
@@ -147,6 +157,7 @@ export default function AdminTasksPage() {
             entity:entities!ch_code_requests_entity_id_fkey(id, name)`)
           .in('stage', CH_OPEN_STAGES)
           .order('updated_at', { ascending: true }),
+        supabase.from('standard_fees').select('task_name, service_id, standard_net'),
       ]);
       if (e1) throw e1;
       setTasks(t || []);
@@ -165,6 +176,7 @@ export default function AdminTasksPage() {
       }
       setAllEntities(ents || []);
       setChCodes(ch || []);
+      setFees(sf || []);
       const st2 = (st || []);
       setStaffMap(Object.fromEntries(st2.map((s) => [s.id, s.name])));
       setStaffList(st2.filter((s) => s.is_active !== false && s.email).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
@@ -350,7 +362,7 @@ export default function AdminTasksPage() {
 
   async function addManual(asDraft = false) {
     if (!newTitle.trim() || savingTask) return;
-    if (newBillable && (!newClient || !(parseFloat(newBillAmount) > 0))) return;
+    if (newBillable && (!newClient || !((parseFloat(newBillAmount) > 0) || (feeFor(newService) > 0)))) return;
     setSavingTask(true);
     try {
       // Draft → held off the live list. Otherwise a billable task starts in
@@ -360,18 +372,19 @@ export default function AdminTasksPage() {
         kind: 'manual', title: newTitle.trim(), detail: newNotes.trim() || null,
         entity_id: newClient || null, deadline: newDate || null, urgent: newUrgent,
         source: 'Added manually', created_by: profile?.id || null,
-        billable: newBillable, stage,
+        billable: newBillable, stage, service_id: newService || null,
       }).select('id').single();
       if (err) throw err;
 
       if (newFiles.length) await uploadTaskFiles(inserted.id, newFiles);
 
       if (newBillable) {
-        const net = parseFloat(newBillAmount) || 0;
+        // Standard fee from the price book if the amount was left blank.
+        const net = parseFloat(newBillAmount) || feeFor(newService) || 0;
         const vat = Math.round(net * VAT_RATE * 100) / 100;
         const gross = Math.round((net + vat) * 100) / 100;
         const { data: bill, error: billErr } = await supabase.from('billing_items').insert({
-          entity_id: newClient, service: 'Admin', description: newTitle.trim(),
+          entity_id: newClient, service: newService || 'Admin', description: newTitle.trim(),
           net_amount: net, vat_amount: vat, gross_amount: gross,
           status: 'draft', created_by: profile?.id || null,
         }).select('id').single();
@@ -382,7 +395,7 @@ export default function AdminTasksPage() {
       }
 
       setNewTitle(''); setNewClient(''); setNewDate(''); setNewNotes(''); setNewUrgent(false); setNewFiles([]);
-      setNewBillable(false); setNewBillAmount('');
+      setNewBillable(false); setNewBillAmount(''); setNewService('');
       setAdding(false); setView('open'); load();
     } catch (e) { setError(e.message); }
     setSavingTask(false);
@@ -392,14 +405,15 @@ export default function AdminTasksPage() {
   // the Billing Module for accept/send) and moves the task to Bill & Hold.
   async function addBillToTask(t) {
     if (!t.entity_id) { setError('Add a client to the task before billing it.'); return; }
-    const raw = window.prompt(`Net amount to bill for "${t.title}" (excl. VAT):`, '');
+    const std = feeFor(t.service_id);
+    const raw = window.prompt(`Net amount to bill for "${t.title}" (excl. VAT):`, std != null ? String(std) : '');
     if (raw === null) return;
     const net = parseFloat(raw);
     if (!(net > 0)) { setError('Enter a valid net amount.'); return; }
     const vat = Math.round(net * VAT_RATE * 100) / 100;
     const gross = Math.round((net + vat) * 100) / 100;
     const { data: bill, error: be } = await supabase.from('billing_items').insert({
-      entity_id: t.entity_id, service: 'Admin', description: t.title,
+      entity_id: t.entity_id, service: t.service_id || 'Admin', description: t.title,
       net_amount: net, vat_amount: vat, gross_amount: gross,
       status: 'draft', created_by: profile?.id || null,
     }).select('id').single();
@@ -645,6 +659,7 @@ export default function AdminTasksPage() {
       onOpenDoc={openDoc}
       onDeleteDoc={deleteDoc}
       onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
+      onOpen={() => navigate(`/planner/tasks/${t.id}`)}
       onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
       onSetStage={(stage) => setTaskStage(t, stage)}
       {...extra}
@@ -735,6 +750,15 @@ export default function AdminTasksPage() {
               <Flame size={13} color={newUrgent ? '#dc2626' : '#64748b'} /> Urgent
             </label>
 
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#475569' }} title="Fee-engine service — sets the standard fee and the QBO product on any bill">
+              Service
+              <select value={newService} onChange={(e) => setNewService(e.target.value)}
+                style={{ fontSize: 12.5, fontFamily: font, padding: '6px 8px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none' }}>
+                <option value="">— none —</option>
+                {serviceOptions.map((s) => <option key={s.id} value={s.id}>{s.id}{s.net ? ` (£${s.net})` : ''}</option>)}
+              </select>
+            </label>
+
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#475569', cursor: 'pointer' }}>
               <input type="checkbox" checked={newBillable} onChange={(e) => setNewBillable(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#0e7fe0' }} />
               <Receipt size={13} color="#64748b" /> Billable — raise a bill
@@ -768,14 +792,14 @@ export default function AdminTasksPage() {
               {canPipeline && (
                 <button
                   onClick={() => addManual(true)}
-                  disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !(parseFloat(newBillAmount) > 0)))}
+                  disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !((parseFloat(newBillAmount) > 0) || (feeFor(newService) > 0))))}
                   title="Save as a draft — held off the live list until you release it"
                   style={{ ...btn('ghost'), opacity: (savingTask || !newTitle.trim()) ? 0.6 : 1 }}
                 >Save as draft</button>
               )}
               <button
                 onClick={() => addManual(false)}
-                disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !(parseFloat(newBillAmount) > 0)))}
+                disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !((parseFloat(newBillAmount) > 0) || (feeFor(newService) > 0))))}
                 style={{ ...btn('primary'), opacity: (savingTask || !newTitle.trim()) ? 0.6 : 1 }}
               >{savingTask ? 'Adding…' : (newBillable ? 'Add & bill' : 'Add task')}</button>
             </div>
@@ -1075,7 +1099,7 @@ function TaskRow({
   t, notes, notesOpen, docs, staffMap, copied,
   onComplete, onCopy, onDismiss, onDeadline, onToggleNotes, onAddNote, onEscalate,
   onToggleUrgent, onAttach, onOpenDoc, onDeleteDoc, onOpenClient, onReviewBill,
-  onAddBill, onRelease, releaseLabel, onSetStage, stageSelect,
+  onAddBill, onRelease, releaseLabel, onSetStage, stageSelect, onOpen,
 }) {
   const [noteDraft, setNoteDraft] = useState('');
   const today = isoToday();
@@ -1096,12 +1120,12 @@ function TaskRow({
             </span>
           )}
           <span
-            onClick={onOpenClient || undefined}
+            onClick={onOpen || undefined}
             style={{
-              fontSize: 13.5, fontWeight: 600, color: '#0f172a', cursor: onOpenClient ? 'pointer' : 'default',
+              fontSize: 13.5, fontWeight: 600, color: '#0f172a', cursor: onOpen ? 'pointer' : 'default',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}
-            title={t.title}
+            title={onOpen ? 'Open task detail' : t.title}
           >{t.entity?.name && !(t.title || '').toLowerCase().includes(t.entity.name.toLowerCase()) ? `${t.entity.name} — ` : ''}{t.title}</span>
           {t.detail && (
             <span
