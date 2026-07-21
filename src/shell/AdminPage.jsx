@@ -30,6 +30,8 @@ const PERMISSION_COLS = [
   // AVA's own QBO books — deliberately separate from Portal admin so practice
   // financials stay director-only even among admins.
   { key: 'can_view_practice_financials', label: 'Practice financials' },
+  // See Draft admin tasks + release Billed → To Do in the admin-task pipeline.
+  { key: 'can_manage_task_pipeline', label: 'Task pipeline' },
 ];
 
 // Use select('*') to avoid failing on missing columns — the admin page

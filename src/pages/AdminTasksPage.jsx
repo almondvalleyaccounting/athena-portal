@@ -93,6 +93,8 @@ export default function AdminTasksPage() {
   const [copied, setCopied] = useState(null);
   const [chCodes, setChCodes] = useState([]);
   const [docsByTask, setDocsByTask] = useState({});
+  const [billingById, setBillingById] = useState({}); // billing_items status for pipeline stages
+  const canPipeline = !!profile?.can_manage_task_pipeline;
   const [clientFilter, setClientFilter] = useState('');
   // Report tab data — completions + creations over the last 14 days,
   // loaded lazily the first time the Report view opens.
@@ -150,6 +152,17 @@ export default function AdminTasksPage() {
       setTasks(t || []);
       setCompleted(ct || []);
       setDrafts(d || []);
+
+      // Billing-item status for tasks in the billing pipeline (Bill & Hold vs
+      // Billed is derived from whether the linked invoice has been pushed).
+      const billIds = [...new Set([...(t || []), ...(ct || [])].map((x) => x.billing_item_id).filter(Boolean))];
+      if (billIds.length) {
+        const { data: bills } = await supabase.from('billing_items')
+          .select('id, status, qbo_invoice_id, net_amount, gross_amount').in('id', billIds);
+        setBillingById(Object.fromEntries((bills || []).map((b) => [b.id, b])));
+      } else {
+        setBillingById({});
+      }
       setAllEntities(ents || []);
       setChCodes(ch || []);
       const st2 = (st || []);
@@ -335,16 +348,19 @@ export default function AdminTasksPage() {
     if (err) { setError(err.message); load(); }
   }
 
-  async function addManual() {
+  async function addManual(asDraft = false) {
     if (!newTitle.trim() || savingTask) return;
     if (newBillable && (!newClient || !(parseFloat(newBillAmount) > 0))) return;
     setSavingTask(true);
     try {
+      // Draft → held off the live list. Otherwise a billable task starts in
+      // Bill & Hold (a bill needs raising); everything else is live (To Do).
+      const stage = asDraft ? 'draft' : (newBillable ? 'bill_hold' : 'todo');
       const { data: inserted, error: err } = await supabase.from('admin_tasks').insert({
         kind: 'manual', title: newTitle.trim(), detail: newNotes.trim() || null,
         entity_id: newClient || null, deadline: newDate || null, urgent: newUrgent,
         source: 'Added manually', created_by: profile?.id || null,
-        billable: newBillable,
+        billable: newBillable, stage,
       }).select('id').single();
       if (err) throw err;
 
@@ -370,6 +386,43 @@ export default function AdminTasksPage() {
       setAdding(false); setView('open'); load();
     } catch (e) { setError(e.message); }
     setSavingTask(false);
+  }
+
+  // Add a bill to an existing task → creates a draft billing_items row (into
+  // the Billing Module for accept/send) and moves the task to Bill & Hold.
+  async function addBillToTask(t) {
+    if (!t.entity_id) { setError('Add a client to the task before billing it.'); return; }
+    const raw = window.prompt(`Net amount to bill for "${t.title}" (excl. VAT):`, '');
+    if (raw === null) return;
+    const net = parseFloat(raw);
+    if (!(net > 0)) { setError('Enter a valid net amount.'); return; }
+    const vat = Math.round(net * VAT_RATE * 100) / 100;
+    const gross = Math.round((net + vat) * 100) / 100;
+    const { data: bill, error: be } = await supabase.from('billing_items').insert({
+      entity_id: t.entity_id, service: 'Admin', description: t.title,
+      net_amount: net, vat_amount: vat, gross_amount: gross,
+      status: 'draft', created_by: profile?.id || null,
+    }).select('id').single();
+    if (be) { setError(be.message); return; }
+    const { error: ue } = await supabase.from('admin_tasks')
+      .update({ billable: true, billing_item_id: bill.id, stage: 'bill_hold' }).eq('id', t.id);
+    if (ue) { setError(ue.message); return; }
+    load();
+  }
+
+  // Release Billed → To Do (RPC enforces can_manage_task_pipeline).
+  async function releaseTask(t) {
+    const { error: e } = await supabase.rpc('release_admin_task', { p_task_id: t.id });
+    if (e) { setError(e.message); return; }
+    load();
+  }
+
+  // Publish a Draft: onto the live list, or into Bill & Hold if it carries a bill.
+  async function publishDraft(t) {
+    const { error: e } = await supabase.from('admin_tasks')
+      .update({ stage: t.billing_item_id ? 'bill_hold' : 'todo' }).eq('id', t.id);
+    if (e) { setError(e.message); return; }
+    load();
   }
 
   async function addNote(taskId, body) {
@@ -493,11 +546,26 @@ export default function AdminTasksPage() {
     };
   }, [open, filteredDrafts, filteredOnboardings, filteredChCodes]);
 
+  // ── Pipeline stage split ──
+  // Bill & Hold vs Billed is derived from whether the linked invoice is pushed.
+  const billPushed = useCallback((t) => {
+    const b = billingById[t.billing_item_id];
+    return !!b && (!!b.qbo_invoice_id || ['pushed', 'sent', 'paid'].includes(b.status));
+  }, [billingById]);
+  const stageOf = (t) => t.stage || 'todo';
+  const isBilling = (t) => stageOf(t) === 'bill_hold' || stageOf(t) === 'billed';
+  const todoOpen = useMemo(() => open.filter((t) => stageOf(t) === 'todo'), [open]);
+  const draftOpen = useMemo(() => open.filter((t) => stageOf(t) === 'draft'), [open]);
+  const billHoldOpen = useMemo(() => open.filter((t) => isBilling(t) && !billPushed(t)), [open, billPushed]);
+  const billedOpen = useMemo(() => open.filter((t) => isBilling(t) && billPushed(t)), [open, billPushed]);
+
+  // To Do tasks keep the existing source-group layout; pipeline stages render
+  // in their own boxes below.
   const groupedOpen = useMemo(() => {
     const buckets = {};
-    for (const t of open) (buckets[groupKeyFor(t)] ||= []).push(t);
+    for (const t of todoOpen) (buckets[groupKeyFor(t)] ||= []).push(t);
     return buckets;
-  }, [open]);
+  }, [todoOpen]);
   const groupedCompleted = useMemo(() => {
     const buckets = {};
     for (const t of completedFiltered) (buckets[groupKeyFor(t)] ||= []).push(t);
@@ -532,9 +600,34 @@ export default function AdminTasksPage() {
   }, [completedFiltered]);
 
   // Collapse-all treats every visible section (task groups + fixed) as one set.
-  const allSectionKeys = useMemo(() => [...visibleGroupKeys, ...FIXED_SECTION_KEYS], [visibleGroupKeys]);
+  const PIPELINE_KEYS = ['bill_hold', 'billed', 'draft'];
+  const allSectionKeys = useMemo(() => [...visibleGroupKeys, ...PIPELINE_KEYS, ...FIXED_SECTION_KEYS], [visibleGroupKeys]);
   const allCollapsed = !allSectionKeys.some((k) => expandedSet.has(k));
   const toggleAllCollapsed = () => persistExpanded(allCollapsed ? new Set(allSectionKeys) : new Set());
+
+  // Shared open-task row — `extra` adds stage actions (add bill / release).
+  const taskRow = (t, extra = {}) => (
+    <TaskRow
+      key={t.id} t={t}
+      notes={notesByTask[t.id] || []} notesOpen={openNotes.has(t.id)}
+      docs={docsByTask[t.id] || []}
+      staffMap={staffMap} copied={copied === t.id}
+      onComplete={() => setCompleteTask(t)}
+      onCopy={() => copyValue(t)}
+      onDismiss={() => dismiss(t)}
+      onDeadline={(d) => setDeadline(t, d)}
+      onToggleNotes={() => toggleNotes(t.id)}
+      onAddNote={(body) => addNote(t.id, body)}
+      onEscalate={() => setEscalateTask(t)}
+      onToggleUrgent={() => toggleUrgent(t)}
+      onAttach={(files) => attachToTask(t.id, files)}
+      onOpenDoc={openDoc}
+      onDeleteDoc={deleteDoc}
+      onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
+      onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
+      {...extra}
+    />
+  );
 
   return (
     <div style={{ maxWidth: 1240, margin: '0 auto', padding: '28px 32px 48px', fontFamily: font }}>
@@ -650,11 +743,19 @@ export default function AdminTasksPage() {
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
               {newBillable && !newClient && <span style={{ fontSize: 11.5, color: '#b45309' }}>Billable needs a client</span>}
               <button onClick={() => setAdding(false)} style={btn('ghost')}>Cancel</button>
+              {canPipeline && (
+                <button
+                  onClick={() => addManual(true)}
+                  disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !(parseFloat(newBillAmount) > 0)))}
+                  title="Save as a draft — held off the live list until you release it"
+                  style={{ ...btn('ghost'), opacity: (savingTask || !newTitle.trim()) ? 0.6 : 1 }}
+                >Save as draft</button>
+              )}
               <button
-                onClick={addManual}
+                onClick={() => addManual(false)}
                 disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !(parseFloat(newBillAmount) > 0)))}
                 style={{ ...btn('primary'), opacity: (savingTask || !newTitle.trim()) ? 0.6 : 1 }}
-              >{savingTask ? 'Adding…' : 'Add task'}</button>
+              >{savingTask ? 'Adding…' : (newBillable ? 'Add & bill' : 'Add task')}</button>
             </div>
           </div>
         </div>
@@ -721,27 +822,9 @@ export default function AdminTasksPage() {
             collapsed={!expandedSet.has(key)} onToggle={() => toggleCollapse(key)}
           >
             {items.length === 0 && <Empty>{view === 'open' ? 'Nothing outstanding here.' : 'Nothing completed here yet.'}</Empty>}
-            {view === 'open' && items.map((t) => (
-              <TaskRow
-                key={t.id} t={t}
-                notes={notesByTask[t.id] || []} notesOpen={openNotes.has(t.id)}
-                docs={docsByTask[t.id] || []}
-                staffMap={staffMap} copied={copied === t.id}
-                onComplete={() => setCompleteTask(t)}
-                onCopy={() => copyValue(t)}
-                onDismiss={() => dismiss(t)}
-                onDeadline={(d) => setDeadline(t, d)}
-                onToggleNotes={() => toggleNotes(t.id)}
-                onAddNote={(body) => addNote(t.id, body)}
-                onEscalate={() => setEscalateTask(t)}
-                onToggleUrgent={() => toggleUrgent(t)}
-                onAttach={(files) => attachToTask(t.id, files)}
-                onOpenDoc={openDoc}
-                onDeleteDoc={deleteDoc}
-                onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
-                onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
-              />
-            ))}
+            {view === 'open' && items.map((t) => taskRow(t, {
+              onAddBill: (!t.billing_item_id && t.entity_id) ? () => addBillToTask(t) : null,
+            }))}
             {view === 'completed' && items.map((t) => (
               <CompletedRow
                 key={t.id} t={t} staffMap={staffMap}
@@ -753,6 +836,38 @@ export default function AdminTasksPage() {
           </Section>
         );
       })}
+
+      {/* ── Billing pipeline: Bill & Hold → Billed → Draft (below To Do) ── */}
+      {view === 'open' && (
+        <>
+          <Section
+            title="Bill & Hold" count={billHoldOpen.length}
+            collapsed={!expandedSet.has('bill_hold')} onToggle={() => toggleCollapse('bill_hold')}
+          >
+            {billHoldOpen.length === 0 && <Empty>Nothing waiting on a bill to be raised.</Empty>}
+            {billHoldOpen.map((t) => taskRow(t))}
+          </Section>
+          <Section
+            title="Billed — held until paid or released" count={billedOpen.length}
+            collapsed={!expandedSet.has('billed')} onToggle={() => toggleCollapse('billed')}
+          >
+            {billedOpen.length === 0 && <Empty>Nothing billed and awaiting release.</Empty>}
+            {billedOpen.map((t) => taskRow(t, canPipeline ? { onRelease: () => releaseTask(t), releaseLabel: 'Release to To Do' } : {}))}
+          </Section>
+          {canPipeline && (
+            <Section
+              title="Draft — not on the live list" count={draftOpen.length}
+              collapsed={!expandedSet.has('draft')} onToggle={() => toggleCollapse('draft')}
+            >
+              {draftOpen.length === 0 && <Empty>No drafts.</Empty>}
+              {draftOpen.map((t) => taskRow(t, {
+                onAddBill: !t.billing_item_id ? () => addBillToTask(t) : null,
+                onRelease: () => publishDraft(t), releaseLabel: 'Publish',
+              }))}
+            </Section>
+          )}
+        </>
+      )}
 
       {/* ── CH personal code chases (live from the ch-codes module) ── */}
       <Section
@@ -922,6 +1037,7 @@ function TaskRow({
   t, notes, notesOpen, docs, staffMap, copied,
   onComplete, onCopy, onDismiss, onDeadline, onToggleNotes, onAddNote, onEscalate,
   onToggleUrgent, onAttach, onOpenDoc, onDeleteDoc, onOpenClient, onReviewBill,
+  onAddBill, onRelease, releaseLabel,
 }) {
   const [noteDraft, setNoteDraft] = useState('');
   const today = isoToday();
@@ -978,6 +1094,18 @@ function TaskRow({
         {onReviewBill && (
           <button onClick={onReviewBill} title="Open the bill raised for this task" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', flexShrink: 0 }}>
             <Receipt size={12} /> Review bill
+          </button>
+        )}
+
+        {onAddBill && (
+          <button onClick={onAddBill} title="Raise a bill for this task (creates a draft in the Billing Module) and move it to Bill & Hold" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', flexShrink: 0 }}>
+            <Receipt size={12} /> Add bill
+          </button>
+        )}
+
+        {onRelease && (
+          <button onClick={onRelease} title={releaseLabel || 'Release to To Do'} style={{ ...btn('ghost'), color: '#166534', borderColor: '#bbf7d0', flexShrink: 0, whiteSpace: 'nowrap' }}>
+            {releaseLabel || 'Release'} →
           </button>
         )}
 
