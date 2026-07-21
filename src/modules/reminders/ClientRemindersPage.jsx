@@ -5,7 +5,7 @@ import { useAuth } from '../../shell/AppShell';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import {
   fmtMoney, fmtDateLong, fmtDateTimeShort,
-  greetingName, taxPaymentRef, buildEmailPreview, PAY_URL,
+  greetingName, taxPaymentRef, buildEmailPreview, PAY_URL, PTA_URL,
 } from './lib';
 import EmailTemplatesModal from './EmailTemplatesModal';
 
@@ -118,6 +118,7 @@ function ConfirmSendModal({ mode, targets, dueDate, template, profile, onClose, 
     opt_in_url: '#opt-in',
     opt_out_url: '#opt-out',
     pay_url: PAY_URL,
+    pta_url: PTA_URL,
   });
 
   const invoke = async (extra) => {

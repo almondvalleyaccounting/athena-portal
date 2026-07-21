@@ -35,7 +35,7 @@ const KINDS = [
   { key: 'promo', label: 'Email 1 · opt-in invitation' },
   { key: 'reminder', label: 'Email 2 · payment details' },
 ];
-const TOKENS = ['{{first_name}}', '{{amount}}', '{{due_date}}', '{{payment_ref}}', '{{opt_in_url}}', '{{opt_out_url}}', '{{pay_url}}'];
+const TOKENS = ['{{first_name}}', '{{amount}}', '{{due_date}}', '{{payment_ref}}', '{{opt_in_url}}', '{{opt_out_url}}', '{{pay_url}}', '{{pta_url}}'];
 
 export default function EmailTemplatesModal({ commType = 'tax_reminders', onClose }) {
   const { profile } = useAuth();

@@ -86,7 +86,8 @@ function fmtDateLong(iso: string | null | undefined): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
-const PAY_URL = "https://www.gov.uk/pay-self-assessment-tax-bill";
+const PAY_URL = "https://www.gov.uk/pay-self-assessment-tax-bill";       // how to pay
+const PTA_URL = "https://www.gov.uk/personal-tax-account";               // view balance/payments
 
 // UTR → Self Assessment payment reference: the 10-digit UTR followed by
 // 'K'. Strips spaces/formatting and is idempotent if a trailing 'K' is
@@ -249,6 +250,7 @@ Deno.serve(async (req) => {
       due_date: dueDate ? fmtDateLong(dueDate) : "",
       payment_ref: paymentRef,
       pay_url: PAY_URL,
+      pta_url: PTA_URL,
       opt_in_url: "",
       opt_out_url: "",
     };

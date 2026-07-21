@@ -148,7 +148,8 @@ export function greetingName(name) {
 
 const SHELL_OPEN = `<div style="max-width:640px;padding:14px 6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#222222;background:#ffffff;">`;
 
-export const PAY_URL = 'https://www.gov.uk/pay-self-assessment-tax-bill';
+export const PAY_URL = 'https://www.gov.uk/pay-self-assessment-tax-bill'; // how to pay
+export const PTA_URL = 'https://www.gov.uk/personal-tax-account';          // view balance/payments
 
 // UTR → Self Assessment payment reference: the 10-digit UTR followed by
 // 'K'. Mirrors reminders-send; '' when no 10-digit UTR is present.
@@ -186,5 +187,6 @@ export function sampleTemplateVars() {
     opt_in_url: '#opt-in',
     opt_out_url: '#opt-out',
     pay_url: PAY_URL,
+    pta_url: PTA_URL,
   };
 }
