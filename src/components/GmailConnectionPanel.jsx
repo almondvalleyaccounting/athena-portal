@@ -4,10 +4,16 @@ import { supabase } from '../lib/supabase';
 const font = "'Outfit', sans-serif";
 
 // Bare-bones connection panel for the Gmail OAuth flow. Shown above
-// the Push uplifts table when no active gmail_connections row exists,
-// and as a compact "connected as accounts@…" banner once we're wired
-// up. Reload after a redirect-back from gmail-auth-callback picks up
-// the new row automatically.
+// the Push uplifts table when no active practice-default connection
+// exists, and as a compact "connected as accounts@…" banner once we're
+// wired up. Reload after a redirect-back from gmail-auth-callback picks
+// up the new row automatically.
+//
+// Multi-mailbox era: this panel manages only the PRACTICE DEFAULT
+// mailbox (the one automations send from). Personal/shared inboxes are
+// connected from the Communications module. Reads go through
+// v_gmail_connections — the base table (with OAuth tokens) is no longer
+// staff-readable.
 export default function GmailConnectionPanel({ staffId }) {
   const [conn, setConn] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -15,9 +21,10 @@ export default function GmailConnectionPanel({ staffId }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase
-      .from('gmail_connections')
+      .from('v_gmail_connections')
       .select('id, account_email, status, connected_at, last_refreshed_at, error_message')
       .eq('status', 'active')
+      .eq('is_practice_default', true)
       .maybeSingle();
     setConn(data || null);
     setLoading(false);

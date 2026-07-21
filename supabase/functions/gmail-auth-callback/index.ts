@@ -1,8 +1,9 @@
 // gmail-auth-callback — Athena Portal
 // Google redirects here with ?code=…&state=… after the user grants
 // consent. We exchange the code for tokens, fetch the user's email
-// via the OpenID userinfo endpoint, and upsert the single
-// gmail_connections row. Then 302 the user back to the portal.
+// via the OpenID userinfo endpoint, and upsert the mailbox's
+// gmail_connections row (one row per address — COMMS_INTEGRATIONS.md
+// Option A). Then 302 the user back to the portal.
 import {
   GOOGLE_TOKEN_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_REDIRECT_URI, GMAIL_SCOPE,
   getServiceClient, corsHeaders,
@@ -15,7 +16,7 @@ function htmlResponse(body: string, status = 200) {
 }
 
 function errPage(message: string, status = 400) {
-  return htmlResponse(`<!DOCTYPE html><html><body style="font-family:system-ui;padding:32px;color:#0f172a"><h1 style="font-weight:500">Gmail connection failed</h1><p>${message.replace(/</g, "&lt;")}</p><p><a href="${PORTAL_BASE}/manage/billing/uplifts">Back to Push uplifts</a></p></body></html>`, status);
+  return htmlResponse(`<!DOCTYPE html><html><body style="font-family:system-ui;padding:32px;color:#0f172a"><h1 style="font-weight:500">Gmail connection failed</h1><p>${message.replace(/</g, "&lt;")}</p><p><a href="${PORTAL_BASE}/comms/email">Back to Communications</a></p></body></html>`, status);
 }
 
 Deno.serve(async (req) => {
@@ -32,6 +33,9 @@ Deno.serve(async (req) => {
   // Decode state (best-effort — failures don't block the connection).
   let staffId: string | null = null;
   let returnTo = "/manage/billing/uplifts";
+  let kind: "personal" | "shared" | null = null;
+  let displayName: string | null = null;
+  let setDefault = true; // legacy states carry no flags → default-mailbox connect
   if (stateRaw) {
     try {
       // base64url → base64
@@ -39,6 +43,9 @@ Deno.serve(async (req) => {
       const decoded = JSON.parse(atob(padded));
       if (decoded.staff_id) staffId = decoded.staff_id;
       if (decoded.return_to) returnTo = decoded.return_to;
+      if (decoded.kind === "personal" || decoded.kind === "shared") kind = decoded.kind;
+      if (decoded.display_name) displayName = String(decoded.display_name).slice(0, 80);
+      if (typeof decoded.set_default === "boolean") setDefault = decoded.set_default;
     } catch { /* tolerate malformed state */ }
   }
 
@@ -73,37 +80,74 @@ Deno.serve(async (req) => {
     return errPage(`userinfo failed: ${userinfoResp.status} ${txt}`);
   }
   const userinfo = await userinfoResp.json();
-  const accountEmail = userinfo.email as string;
+  const accountEmail = (userinfo.email as string || "").toLowerCase();
   if (!accountEmail) return errPage("userinfo returned no email.");
 
   const sb = getServiceClient();
 
-  // Mark any existing active connection as revoked, then insert the new one.
-  // Partial-unique index gmail_connections_one_active_idx enforces single-active.
-  await sb.from("gmail_connections")
-    .update({ status: "revoked", updated_at: new Date().toISOString() })
-    .eq("status", "active");
+  // One row per mailbox address: reuse the address's existing row if there is
+  // one (prefer an active row, else the most recent), otherwise insert.
+  // Identity fields (kind/owner) are only set on insert — a re-consent must
+  // never flip a shared mailbox to personal or vice versa.
+  const { data: activeRow } = await sb.from("gmail_connections").select("id, kind, display_name, is_practice_default")
+    .eq("status", "active").ilike("account_email", accountEmail).maybeSingle();
+  let existing = activeRow;
+  if (!existing) {
+    const { data: oldRows } = await sb.from("gmail_connections").select("id, kind, display_name, is_practice_default")
+      .ilike("account_email", accountEmail).order("connected_at", { ascending: false }).limit(1);
+    existing = oldRows?.[0] || null;
+  }
 
+  const nowIso = new Date().toISOString();
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
-  const { error: insertErr } = await sb.from("gmail_connections").insert({
-    account_email: accountEmail,
+  const tokenFields = {
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
     token_expires_at: expiresAt.toISOString(),
     scope: tokens.scope || GMAIL_SCOPE,
     connected_by: staffId,
-    connected_at: new Date().toISOString(),
-    last_refreshed_at: new Date().toISOString(),
+    connected_at: nowIso,
+    last_refreshed_at: nowIso,
     status: "active",
-  });
-  if (insertErr) return errPage(`Could not store connection: ${insertErr.message}`);
+    error_message: null,
+    updated_at: nowIso,
+  };
+
+  let connectionId: string;
+  if (existing) {
+    const { error: updErr } = await sb.from("gmail_connections").update({
+      ...tokenFields,
+      ...(displayName && !existing.display_name ? { display_name: displayName } : {}),
+    }).eq("id", existing.id);
+    if (updErr) return errPage(`Could not store connection: ${updErr.message}`);
+    connectionId = existing.id;
+  } else {
+    const { data: inserted, error: insertErr } = await sb.from("gmail_connections").insert({
+      account_email: accountEmail,
+      ...tokenFields,
+      kind: kind || "shared",
+      owner_staff_id: kind === "personal" ? staffId : null,
+      display_name: displayName || accountEmail.split("@")[0],
+      is_practice_default: false, // flipped below so the old default is cleared first
+    }).select("id").single();
+    if (insertErr || !inserted) return errPage(`Could not store connection: ${insertErr?.message || "insert failed"}`);
+    connectionId = inserted.id;
+  }
+
+  // Practice-default handover (legacy panel flow, or an explicit set_default).
+  if (setDefault) {
+    await sb.from("gmail_connections").update({ is_practice_default: false, updated_at: nowIso })
+      .eq("is_practice_default", true).neq("id", connectionId);
+    await sb.from("gmail_connections").update({ is_practice_default: true, updated_at: nowIso })
+      .eq("id", connectionId);
+  }
 
   // Audit trail.
   await sb.from("audit_log").insert({
     user_id: staffId,
     action: "gmail_connection_established",
     entity_type: "gmail_connections",
-    detail: { account_email: accountEmail, scope: tokens.scope },
+    detail: { account_email: accountEmail, scope: tokens.scope, kind: existing?.kind || kind || "shared", set_default: setDefault },
   });
 
   // Redirect back to the portal.

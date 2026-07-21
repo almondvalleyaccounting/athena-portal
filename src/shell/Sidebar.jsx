@@ -16,6 +16,7 @@ import {
   ClipboardCheck,
   Gauge,
   Briefcase,
+  Inbox,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -42,6 +43,7 @@ const ICON_MAP = {
   'clipboard-check': ClipboardCheck,
   gauge: Gauge,
   briefcase: Briefcase,
+  inbox: Inbox,
 };
 
 /* ─── Visibility rules ─────────────────────────────────────────── */

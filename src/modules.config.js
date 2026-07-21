@@ -45,6 +45,20 @@ export const MODULES = [
     group: 'billing',
   },
   {
+    id: 'communications',
+    label: 'Communications',
+    route: '/comms',
+    icon: 'inbox',
+    permissions: [],
+    status: 'live',
+    group: 'billing',
+    children: [
+      { id: 'comms-email', label: 'Email', route: '/comms/email' },
+      { id: 'comms-sms', label: 'Text Messages', route: '/comms/sms' },
+      { id: 'comms-whatsapp', label: 'WhatsApp', route: '/comms/whatsapp' },
+    ],
+  },
+  {
     id: 'work-planner',
     label: 'Work',
     route: '/planner',

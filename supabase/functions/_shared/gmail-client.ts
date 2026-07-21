@@ -1,7 +1,12 @@
-// Shared helpers for the three Gmail edge functions.
+// Shared helpers for the Gmail edge functions.
 // OAuth pattern mirrors qbo-client.ts — refresh access tokens when
 // they're within 5 minutes of expiry, surface errors back to the
 // gmail_connections row so the UI can show an "auth broken" banner.
+//
+// Multi-mailbox (COMMS_INTEGRATIONS.md Option A): gmail_connections holds one
+// row per mailbox. getValidGmailToken(mailbox?) targets a specific address;
+// with no argument it uses the practice-default row, so the existing senders
+// (reminders-send, chase-reply-scan, gmail-create-draft) behave as before.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -38,24 +43,58 @@ export function jsonResponse(data: unknown, status = 200) {
   });
 }
 
-// Pulls the single active gmail_connections row and refreshes the
-// access token if it's about to expire. Throws if no connection
-// exists or the refresh fails — callers should catch and surface.
-export async function getValidGmailToken(): Promise<{ accessToken: string; accountEmail: string; connectionId: string }> {
+export interface GmailTokenInfo {
+  accessToken: string;
+  accountEmail: string;
+  connectionId: string;
+  kind: string;
+  ownerStaffId: string | null;
+  scope: string | null;
+}
+
+// Resolves a mailbox's active gmail_connections row and refreshes the
+// access token if it's about to expire. mailbox = account email address;
+// omitted → the practice-default row (legacy single-mailbox behaviour).
+// Throws if no usable connection exists — callers should catch and surface.
+export async function getValidGmailToken(mailbox?: string): Promise<GmailTokenInfo> {
   const sb = getServiceClient();
-  const { data: conn, error } = await sb
-    .from("gmail_connections")
-    .select("*")
-    .eq("status", "active")
-    .maybeSingle();
+
+  let query = sb.from("gmail_connections").select("*").eq("status", "active");
+  if (mailbox) {
+    // ilike with no wildcards = case-insensitive equality.
+    query = query.ilike("account_email", mailbox.replace(/[%_]/g, ""));
+  } else {
+    query = query.eq("is_practice_default", true);
+  }
+  let { data: conn, error } = await query.maybeSingle();
   if (error) throw new Error(`gmail_connections lookup failed: ${error.message}`);
-  if (!conn) throw new Error("No active Gmail connection. Sign in via the connection panel first.");
+
+  // Fallback for a default request when no row carries the flag yet.
+  if (!conn && !mailbox) {
+    const { data: rows } = await sb.from("gmail_connections").select("*")
+      .eq("status", "active").order("connected_at", { ascending: true }).limit(1);
+    conn = rows?.[0] || null;
+  }
+  if (!conn) {
+    throw new Error(mailbox
+      ? `No active Gmail connection for ${mailbox}. Connect it in Communications.`
+      : "No active Gmail connection. Sign in via the connection panel first.");
+  }
+
+  const info = (c: Record<string, unknown>, accessToken: string): GmailTokenInfo => ({
+    accessToken,
+    accountEmail: c.account_email as string,
+    connectionId: c.id as string,
+    kind: (c.kind as string) || "shared",
+    ownerStaffId: (c.owner_staff_id as string) || null,
+    scope: (c.scope as string) || null,
+  });
 
   const expiresAt = new Date(conn.token_expires_at);
   const now = new Date();
   const fiveMinutes = 5 * 60 * 1000;
   if (expiresAt.getTime() - now.getTime() > fiveMinutes) {
-    return { accessToken: conn.access_token, accountEmail: conn.account_email, connectionId: conn.id };
+    return info(conn, conn.access_token);
   }
 
   // Refresh.
@@ -89,7 +128,7 @@ export async function getValidGmailToken(): Promise<{ accessToken: string; accou
     updated_at: new Date().toISOString(),
   }).eq("id", conn.id);
 
-  return { accessToken: tokens.access_token, accountEmail: conn.account_email, connectionId: conn.id };
+  return info(conn, tokens.access_token);
 }
 
 // Base64url, used for both the MIME body and the OAuth state.

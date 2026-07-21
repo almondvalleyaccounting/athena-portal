@@ -73,6 +73,9 @@ Deno.serve(async (req) => {
       const from: string = payload?.from?.phone_number || "";
       const to: string = payload?.to?.[0]?.phone_number || "";
       const text: string = payload?.text || "";
+      // Telnyx sends SMS and WhatsApp through the same webhook; the payload
+      // type tells them apart (e.g. "SMS", "MMS", "whatsapp").
+      const channel = String(payload?.type || "").toLowerCase().includes("whatsapp") ? "whatsapp" : "sms";
       if (!from || !text) return ok();
 
       // Match a client by number suffix (prospect_phone formats vary).
@@ -89,7 +92,7 @@ Deno.serve(async (req) => {
 
       const { error: insErr } = await service.from("sms_messages").insert({
         direction: "in", entity_id: entityId, to_number: to, from_number: from,
-        body: text, telnyx_message_id: telnyxId, status: "received",
+        body: text, telnyx_message_id: telnyxId, status: "received", channel,
       });
       if (insErr) return ok({ received: true, dedup: true }); // unique violation = retry already handled
 
@@ -100,7 +103,7 @@ Deno.serve(async (req) => {
         if (openCase) {
           await service.from("triage_case_notes").insert({
             case_id: openCase.id,
-            body: `SMS received from ${from}: "${text.slice(0, 300)}${text.length > 300 ? "…" : ""}"`,
+            body: `${channel === "whatsapp" ? "WhatsApp" : "SMS"} received from ${from}: "${text.slice(0, 300)}${text.length > 300 ? "…" : ""}"`,
           });
         }
       }
@@ -112,8 +115,8 @@ Deno.serve(async (req) => {
       for (const s of recipients) {
         await service.from("notifications").insert({
           recipient_id: s.id, kind: "sms_received",
-          title: `Text from ${entityName || from}: ${text.slice(0, 80)}`,
-          link_path: entityId ? `/clients/${entityId}` : "/home",
+          title: `${channel === "whatsapp" ? "WhatsApp" : "Text"} from ${entityName || from}: ${text.slice(0, 80)}`,
+          link_path: `/comms/${channel}`,
         });
       }
       return ok({ received: true, matched: !!entityId });

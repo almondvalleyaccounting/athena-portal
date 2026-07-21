@@ -1,5 +1,6 @@
 import React from 'react';
-import { Plug } from 'lucide-react';
+import { Inbox } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from './AppShell';
 import GmailConnectionPanel from '../components/GmailConnectionPanel';
 
@@ -7,9 +8,10 @@ const font = "'Outfit', sans-serif";
 
 /*
   Connections — /admin/connections (can_manage_portal only).
-  Central home for external service connections. Gmail today (the same
-  panel also appears above the Push uplifts table on the billing
-  uplift review page); mailboxes / SMS / WhatsApp to follow.
+  Central home for external service connections. The Gmail panel here
+  manages the PRACTICE DEFAULT mailbox (automation sender); the same
+  panel also appears above the Push uplifts table. Personal and shared
+  inboxes (plus SMS / WhatsApp) live in the Communications module.
 */
 export default function ConnectionsPage() {
   const { profile } = useAuth();
@@ -49,11 +51,11 @@ export default function ConnectionsPage() {
         <GmailConnectionPanel staffId={profile?.id} />
       </div>
 
-      {/* Coming soon */}
+      {/* Team + shared mailboxes, SMS, WhatsApp — the Communications module */}
       <div
         style={{
           background: '#fff',
-          border: '1px dashed #e5e7eb',
+          border: '1px solid #e5e7eb',
           borderRadius: 12,
           padding: '20px 24px',
           display: 'flex',
@@ -61,15 +63,22 @@ export default function ConnectionsPage() {
           gap: 12,
         }}
       >
-        <Plug size={18} color="#cbd5e1" />
-        <div>
-          <p style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 2 }}>
-            More connections coming soon
+        <Inbox size={18} color="#64748b" />
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
+            Team inboxes, SMS &amp; WhatsApp
           </p>
-          <p style={{ fontSize: 13, color: '#cbd5e1' }}>
-            Email mailboxes, SMS / WhatsApp.
+          <p style={{ fontSize: 13, color: '#64748b' }}>
+            Personal and shared mailboxes (info@, payroll@) are connected from the
+            Communications module; texts and WhatsApp ride the practice Telnyx number.
           </p>
         </div>
+        <Link
+          to="/comms/email"
+          style={{ padding: '8px 14px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', borderRadius: 8, textDecoration: 'none' }}
+        >
+          Open Communications
+        </Link>
       </div>
     </div>
   );

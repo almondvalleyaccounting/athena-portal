@@ -243,7 +243,7 @@ export default function ClientRemindersPage() {
     try {
       const [{ data: b, error: e1 }, { data: ents, error: e2 }] = await Promise.all([
         supabase.from('tax_payment_batches').select('id, label, due_date, source_filename, created_at').order('created_at', { ascending: false }),
-        supabase.from('entities').select('id, name, billing_email, prospect_email, type').order('name'),
+        supabase.from('entities').select('id, name, billing_email, prospect_email, type, entity_status').order('name'),
       ]);
       if (e1) throw e1;
       if (e2) throw e2;
@@ -269,12 +269,14 @@ export default function ClientRemindersPage() {
       }
       setLastEmailByEntity(latest);
 
-      // Gmail pill — RLS may block staff reads of gmail_connections; hide gracefully.
+      // Gmail pill — reminders go out from the practice-default mailbox.
+      // v_gmail_connections is the staff-safe view (no token columns).
       try {
         const { data: conn, error: gErr } = await supabase
-          .from('gmail_connections')
+          .from('v_gmail_connections')
           .select('status, account_email')
           .eq('status', 'active')
+          .eq('is_practice_default', true)
           .maybeSingle();
         setGmailConn(gErr ? 'hidden' : (conn || null));
       } catch {
@@ -374,15 +376,19 @@ export default function ClientRemindersPage() {
   };
 
   const selRows = (rows || []).filter((r) => selected.has(r.id));
+  // Never send to a former client (nlac/archived), even if a stale TaxCalc row
+  // has them opted-in and unpaid. reminders-send enforces this too; we filter
+  // here so they don't show as selectable targets in the first place.
+  const isFormerClient = (r) => ['nlac', 'archived'].includes(entityById[r.entity_id]?.entity_status);
   const toTarget = (r) => {
     const ent = entityById[r.entity_id];
     return { paymentId: r.id, entityId: r.entity_id, name: ent ? ent.name : r.client_name_raw, email: emailOf(r), amount: r.amount };
   };
   const inviteTargets = selRows
-    .filter((r) => r.entity_id && emailOf(r) && !['opted_in', 'opted_out'].includes(prefStatusOf(r)))
+    .filter((r) => r.entity_id && !isFormerClient(r) && emailOf(r) && !['opted_in', 'opted_out'].includes(prefStatusOf(r)))
     .map(toTarget);
   const reminderTargets = selRows
-    .filter((r) => r.entity_id && emailOf(r) && prefStatusOf(r) === 'opted_in' && r.status === 'unpaid' && r.amount != null)
+    .filter((r) => r.entity_id && !isFormerClient(r) && emailOf(r) && prefStatusOf(r) === 'opted_in' && r.status === 'unpaid' && r.amount != null)
     .map(toTarget);
 
   const onSendDone = (result) => {

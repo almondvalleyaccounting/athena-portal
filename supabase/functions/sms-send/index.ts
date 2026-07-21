@@ -1,12 +1,16 @@
 // sms-send — Athena Portal
-// Sends an SMS through Telnyx from the practice number. Deployed with
-// verify_jwt OFF; verifies a staff JWT itself (can_manage_portal or
-// is_portal_admin). The Telnyx API key lives in telnyx_config (service-role
-// only — no RLS policies), never in the browser.
+// Sends an SMS (or WhatsApp message) through Telnyx from the practice number.
+// Deployed with verify_jwt OFF; verifies a staff JWT itself (any active staff
+// member — the Communications module is the whole team's). The Telnyx API key
+// lives in telnyx_config (service-role only — no RLS policies), never in the
+// browser.
 //
-// Body: { body: string, to?: "+44...", entity_id?: uuid, triage_case_id?: uuid }
+// Body: { body: string, to?: "+44...", entity_id?: uuid, triage_case_id?: uuid,
+//         channel?: 'sms' | 'whatsapp' }
 //   to falls back to the entity's prospect_phone. UK numbers are normalised
-//   to E.164 (07… → +447…).
+//   to E.164 (07… → +447…). channel 'whatsapp' rides the same Telnyx Messages
+//   API with type WHATSAPP — outside a 24h session window Telnyx will reject
+//   non-template sends; the error lands on the sms_messages row.
 //
 // Every send is logged to sms_messages; a triage_case_id also drops a note
 // on the case — this is the send primitive the escalation ladder will call.
@@ -49,10 +53,11 @@ Deno.serve(async (req) => {
   const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
   const { data: { user }, error: authErr } = await anon.auth.getUser();
   if (authErr || !user) return json({ success: false, error: "Invalid token" }, 401);
-  const { data: prof } = await service.from("staff_profiles").select("is_portal_admin, can_manage_portal").eq("id", user.id).single();
-  if (!prof || !(prof.is_portal_admin || prof.can_manage_portal)) return json({ success: false, error: "Not authorised" }, 403);
+  const { data: prof } = await service.from("staff_profiles").select("is_active").eq("id", user.id).single();
+  if (!prof?.is_active) return json({ success: false, error: "Not authorised" }, 403);
 
   const body = await req.json().catch(() => ({}));
+  const channel = body.channel === "whatsapp" ? "whatsapp" : "sms";
   const text = String(body.body || "").trim();
   if (!text) return json({ success: false, error: "body (message text) required" }, 400);
   if (text.length > 1200) return json({ success: false, error: "Message too long" }, 400);
@@ -76,7 +81,7 @@ Deno.serve(async (req) => {
   // Log first, then send.
   const { data: row, error: insErr } = await service.from("sms_messages").insert({
     direction: "out", entity_id: entityId, to_number: to, from_number: cfg.from_number,
-    body: text, triage_case_id: body.triage_case_id || null, sent_by: user.id,
+    body: text, triage_case_id: body.triage_case_id || null, sent_by: user.id, channel,
   }).select("id").single();
   if (insErr) return json({ success: false, error: `Could not log message: ${insErr.message}` }, 500);
 
@@ -85,6 +90,7 @@ Deno.serve(async (req) => {
     headers: { "Authorization": `Bearer ${cfg.api_key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       from: cfg.from_number, to, text,
+      ...(channel === "whatsapp" ? { type: "WHATSAPP" } : {}),
       ...(cfg.messaging_profile_id ? { messaging_profile_id: cfg.messaging_profile_id } : {}),
     }),
   });
@@ -103,12 +109,12 @@ Deno.serve(async (req) => {
   if (body.triage_case_id) {
     await service.from("triage_case_notes").insert({
       case_id: body.triage_case_id, author_id: user.id,
-      body: `SMS sent to ${to}: "${text.slice(0, 200)}${text.length > 200 ? "…" : ""}"`,
+      body: `${channel === "whatsapp" ? "WhatsApp" : "SMS"} sent to ${to}: "${text.slice(0, 200)}${text.length > 200 ? "…" : ""}"`,
     });
   }
   await service.from("audit_log").insert({
     user_id: user.id, action: "sms_sent", entity_type: "entity", entity_id: entityId,
-    detail: { to, chars: text.length, sms_id: row.id, telnyx_id: tj?.data?.id || null },
+    detail: { to, chars: text.length, sms_id: row.id, telnyx_id: tj?.data?.id || null, channel },
   });
 
   return json({ success: true, id: row.id, telnyx_id: tj?.data?.id || null });
