@@ -738,7 +738,7 @@ export default function BillingPage() {
                 return (
                   <div key={item.id} onClick={()=>setContactIndex(idx)} style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,alignItems:'center',padding:'7px 4px',borderBottom:'1px solid #f1f5f9',fontSize:12,cursor:'pointer',background:isCurrent?'#eff6ff':'transparent',borderRadius:6}}>
                     <span style={ellip} title={entityMap[item.entity_id]?.name}>{!ready && <span style={{color:'#b45309'}} title="Needs email + address">⚠ </span>}{entityMap[item.entity_id]?.name||'—'}</span>
-                    <span style={{...ellip,color:'#475569'}} title={item.description||item.service}>{item.service}</span>
+                    <span style={{...ellip,color:(p?.unmapped?.length>0)?'#b45309':'#475569'}} title={(p?.unmapped?.length>0)?`No QuickBooks product mapped for: ${p.unmapped.join(', ')} — map it (qbo_service_items) before pushing or this line will error`:(item.description||item.service)}>{(p?.unmapped?.length>0)?<span title="Service not mapped to a QuickBooks product">⚠ </span>:null}{item.service}</span>
                     <span style={{color:'#64748b'}}>One-off</span>
                     <span style={{color:p?.customer_action==='create'?'#b45309':'#475569',fontWeight:500}}>{!p?'…':p.customer_action==='create'?'New':'Existing'}</span>
                     <span style={{...ellip,color:sendColor}} title={liveEmail||sendText}>{sendText}</span>

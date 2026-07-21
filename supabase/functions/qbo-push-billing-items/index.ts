@@ -1,8 +1,9 @@
 import { getServiceClient, qboFetch, qboQuery, logSync, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
 
 // Push one-off Billing module items (billing_items) to QBO as real
-// invoices. For each approved item we ensure the QBO customer + item
-// exist, ensure the customer carries an email + billing address, build a
+// invoices. For each approved item we ensure the QBO customer exists, map
+// every line's service to a real QBO item (via qbo_service_items — never a
+// silent auto-create), ensure the customer carries an email + billing address, build a
 // single line at the net amount with the company's configured sales VAT
 // code, create the invoice (stamped with the billing address), then
 // either email it immediately or leave it as a draft for the team to send
@@ -218,6 +219,12 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "No sales VAT tax code configured. Set qbo_connections.default_tax_code_id or QBO_STANDARD_TAX_CODE_ID." }, 500);
   }
 
+  // Service → QBO item map (qbo_service_items). Every billing line resolves
+  // its product through this, so an ad-hoc service like "Admin" points at a
+  // real QBO item + income account instead of silently auto-creating a
+  // catch-all. Loaded once; used by both the dry-run plan and the push.
+  const serviceMap = await loadServiceItemMap(sb);
+
   // Dry run: read-only plan for the confirmation summary. No QBO or DB
   // writes. Reports per item whether the customer/item already exist, and
   // the resolved billing contact (email + address) with picker options.
@@ -238,12 +245,14 @@ Deno.serve(async (req) => {
         contactCache.set(cacheKey, contact);
       }
 
-      // Each distinct line service maps to a QBO item; the invoice exists
-      // as "create" unless every one of them already exists.
+      // Each distinct line service must resolve to a QBO item — via the map
+      // first, else an existing item of the same name. Anything left over is
+      // UNMAPPED and would block the push, so surface it in the plan.
       const lineServices = [...new Set(normalizeLines(item).map((l) => l.service))];
-      let itemExists = true;
+      const unmapped: string[] = [];
       for (const s of lineServices) {
-        if (!(await qboRecordExists("Item", "Name", s.substring(0, 100)))) { itemExists = false; break; }
+        if (serviceMap.has(s.toLowerCase().trim())) continue;
+        if (!(await qboRecordExists("Item", "Name", s.substring(0, 100)))) unmapped.push(s);
       }
 
       plan.push({
@@ -252,7 +261,8 @@ Deno.serve(async (req) => {
         service: serviceName,
         approved: item.status === "approved",
         customer_action: contact.customer_exists ? "existing" : "create",
-        item_action: itemExists ? "existing" : "create",
+        item_action: unmapped.length ? "unmapped" : "existing",
+        unmapped,
         // Resolved contact + picker options (mirrors qbo-push contact block).
         has_email: contact.has_email,
         email: contact.email,
@@ -272,14 +282,6 @@ Deno.serve(async (req) => {
       });
     }
     return jsonResponse({ success: true, dry_run: true, plan });
-  }
-
-  // Resolve a valid income account for any QBO items we need to create.
-  let incomeAccountId: string | null = null;
-  try {
-    incomeAccountId = await resolveIncomeAccount();
-  } catch (err) {
-    return jsonResponse({ success: false, error: `Could not resolve an income account: ${(err as Error).message}` }, 500);
   }
 
   // Resolve (or create) the QBO Term matching the due-date offset so each
@@ -346,7 +348,7 @@ Deno.serve(async (req) => {
       for (const l of lines) {
         let qboItemId = itemCache.get(l.service);
         if (!qboItemId) {
-          qboItemId = await ensureQboItem(l.service, l.description || l.service, incomeAccountId);
+          qboItemId = await resolveQboItemId(l.service, serviceMap);
           itemCache.set(l.service, qboItemId);
         }
         lineItems.push({
@@ -655,23 +657,6 @@ async function ensureSalesTermId(dueDays: number): Promise<string | null> {
   }
 }
 
-// Resolve a valid income account for new Service items. Env override
-// wins; else pick an active Income-classified account (prefer a sales /
-// services account name, then any income account).
-async function resolveIncomeAccount(): Promise<string | null> {
-  const override = Deno.env.get("QBO_INCOME_ACCOUNT_ID");
-  if (override) return override;
-
-  const result = await qboQuery("SELECT Id, Name, AccountType, Classification, Active FROM Account WHERE Classification = 'Revenue'") as Record<string, unknown>;
-  const qr = (result?.QueryResponse as Record<string, unknown>) || {};
-  const accounts = ((qr.Account as Array<Record<string, unknown>>) || []).filter((a) => a.Active !== false);
-  if (accounts.length === 0) return null;
-
-  const preferred = accounts.find((a) => /sales|service|income|fees/i.test(String(a.Name || "")))
-    || accounts.find((a) => a.AccountType === "Income");
-  return String((preferred || accounts[0]).Id);
-}
-
 async function findCustomerByName(entityName: string): Promise<string | null> {
   const escaped = entityName.replace(/'/g, "\\'");
   const result = (await qboQuery(`SELECT Id FROM Customer WHERE DisplayName = '${escaped}'`)) as Record<string, unknown>;
@@ -841,29 +826,34 @@ async function ensureQboCustomer(
   return qboId;
 }
 
-async function ensureQboItem(serviceName: string, description: string, incomeAccountId: string | null): Promise<string> {
-  const name = serviceName.substring(0, 100);
-  const escapedName = name.replace(/'/g, "\\'");
-  const result = await qboQuery(`SELECT * FROM Item WHERE Name = '${escapedName}'`) as Record<string, unknown>;
+// Load the service → QBO item map (qbo_service_items) once per push. Keyed
+// by BOTH service_id and qbo_item_name (lowercased) so a billing line's
+// service — whether a canonical slug or a product name — finds its item id.
+async function loadServiceItemMap(sb: ReturnType<typeof getServiceClient>): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const { data } = await sb.from("qbo_service_items").select("service_id, qbo_item_id, qbo_item_name");
+  for (const r of (data as Array<Record<string, unknown>>) || []) {
+    const id = r.qbo_item_id != null ? String(r.qbo_item_id) : "";
+    if (!id) continue;
+    if (r.service_id) map.set(String(r.service_id).toLowerCase().trim(), id);
+    if (r.qbo_item_name) map.set(String(r.qbo_item_name).toLowerCase().trim(), id);
+  }
+  return map;
+}
+
+// Resolve a billing line's service to a real QBO item id: the explicit map
+// first, then an exact QBO Item.Name match, otherwise ERROR. We deliberately
+// never auto-create an item — a silent "Admin"-style catch-all with no proper
+// income account is exactly the mis-mapping this replaced. The error names
+// the service so the fix (add a qbo_service_items row) is obvious.
+async function resolveQboItemId(service: string, serviceMap: Map<string, string>): Promise<string> {
+  const mapped = serviceMap.get(service.toLowerCase().trim());
+  if (mapped) return mapped;
+  const name = service.substring(0, 100);
+  const escaped = name.replace(/'/g, "\\'");
+  const result = await qboQuery(`SELECT Id FROM Item WHERE Name = '${escaped}'`) as Record<string, unknown>;
   const qr = (result?.QueryResponse as Record<string, unknown>) || {};
   const items = (qr.Item as Array<Record<string, unknown>>) || [];
   if (items.length > 0) return String(items[0].Id);
-
-  if (!incomeAccountId) {
-    throw new Error(`cannot create item '${name}': no income account available. Set QBO_INCOME_ACCOUNT_ID.`);
-  }
-  const resp = await qboFetch("item", {
-    method: "POST",
-    body: JSON.stringify({
-      Name: name,
-      Description: description,
-      Type: "Service",
-      IncomeAccountRef: { value: incomeAccountId },
-    }),
-  });
-  if (!resp.ok) {
-    throw new Error(`create item '${name}' failed: ${resp.status} ${await resp.text()}`);
-  }
-  const createdI = await resp.json();
-  return String(createdI.Item.Id);
+  throw new Error(`No QuickBooks product mapped for service "${service}". Add a mapping in qbo_service_items before billing — nothing was created in QuickBooks.`);
 }
