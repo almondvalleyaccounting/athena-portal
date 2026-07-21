@@ -212,181 +212,185 @@ export default function ClientDashboardPage() {
   const pull = () => load(realmId, true);
   const emptyProps = { needsReconnect, selectedName, onPull: pull, loading };
 
+  const btnBase = {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+    border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
+    fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#38bdf8',
+  };
+
   return (
-    <div style={{ maxWidth: '1060px', margin: '0 auto', padding: '40px 24px' }}>
-      <h1 style={{ fontFamily: PLAYFAIR, fontSize: '28px', fontWeight: 500, color: '#0f172a', marginBottom: '8px' }}>
-        Client Dashboard
-      </h1>
-      <p style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#64748b', marginBottom: '28px' }}>
-        Live figures, trends and bookkeeping health pulled from the client's QuickBooks.
-        Star a client to pin them to your <a href="/portfolio" style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 600 }}>Portfolio</a>.
-      </p>
-
-      {/* Flash (OAuth return) */}
-      {flash && (
+    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '28px 24px 40px' }}>
+      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+        {/* ── Left rail: title, client picker, actions, freshness ── */}
         <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px',
-          borderRadius: '10px', marginBottom: '16px',
-          backgroundColor: flash.type === 'success' ? '#f0fdf4' : '#fef2f2',
-          border: `1px solid ${flash.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
+          width: '250px', flexShrink: 0, position: 'sticky', top: '20px',
+          display: 'flex', flexDirection: 'column', gap: '12px',
         }}>
-          {flash.type === 'success'
-            ? <CheckCircle size={16} style={{ color: '#22c55e' }} />
-            : <AlertCircle size={16} style={{ color: '#ef4444' }} />}
-          <span style={{ fontFamily: OUTFIT, fontSize: '13px', fontWeight: 500, flex: 1, color: flash.type === 'success' ? '#166534' : '#991b1b' }}>
-            {flash.message}
-          </span>
-          <button onClick={() => setFlash(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}>
-            <X size={14} style={{ color: '#94a3b8' }} />
-          </button>
-        </div>
-      )}
+          <div>
+            <h1 style={{ fontFamily: PLAYFAIR, fontSize: '22px', fontWeight: 500, color: '#0f172a', margin: '0 0 4px' }}>
+              Client Dashboard
+            </h1>
+            <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
+              Live QuickBooks figures. Star a client to pin them to your{' '}
+              <a href="/portfolio" style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 600 }}>Portfolio</a>.
+            </p>
+          </div>
 
-      {/* Client selector + star + refresh + connect */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-        <select
-          value={realmId}
-          onChange={(e) => onSelect(e.target.value)}
-          disabled={clientsLoading}
-          style={{ ...inputStyle, flex: 1, appearance: 'auto' }}
-        >
-          <option value="">{clientsLoading ? 'Loading clients…' : 'Select a client…'}</option>
-          {clients.map((c) => (
-            <option key={c.realm_id} value={c.realm_id}>{c.company_name}</option>
-          ))}
-        </select>
-        {realmId && (
-          <button
-            onClick={toggleFavourite}
-            title={isFavourite ? 'Remove from your Portfolio' : 'Star — add to your Portfolio'}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', width: '42px',
-              border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
-              cursor: 'pointer', flexShrink: 0,
-            }}
+          <select
+            value={realmId}
+            onChange={(e) => onSelect(e.target.value)}
+            disabled={clientsLoading}
+            style={{ ...inputStyle, width: '100%', appearance: 'auto' }}
           >
-            <Star size={17} style={{ color: isFavourite ? '#f59e0b' : '#cbd5e1', fill: isFavourite ? '#f59e0b' : 'none' }} />
-          </button>
-        )}
-        {realmId && (
-          <button
-            onClick={pull}
-            disabled={loading}
-            title="Refresh from QuickBooks"
-            style={{
-              display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px',
-              border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
-              cursor: loading ? 'not-allowed' : 'pointer', fontFamily: OUTFIT,
-              fontSize: '13px', fontWeight: 600, color: '#38bdf8', flexShrink: 0, whiteSpace: 'nowrap',
-            }}
-          >
-            <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} />
-            Refresh
-          </button>
-        )}
-        <button
-          onClick={handleConnect}
-          title="Connect a QuickBooks client"
-          style={{
-            display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px',
-            border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
-            cursor: 'pointer', fontFamily: OUTFIT, fontSize: '13px',
-            fontWeight: 600, color: '#38bdf8', flexShrink: 0, whiteSpace: 'nowrap',
-          }}
-        >
-          <Plus size={14} /> Connect
-        </button>
-      </div>
-
-      {/* Hard error (auth / network) */}
-      {error && (
-        <div style={{ ...cardStyle, backgroundColor: '#fef2f2', border: '1px solid #fecaca', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991b1b', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600 }}>
-            <AlertCircle size={16} /> {error}
-          </div>
-        </div>
-      )}
-
-      {/* Reconnect banner — cached data (if any) still renders below */}
-      {realmId && needsReconnect && (
-        <div style={{ ...cardStyle, backgroundColor: '#fffbeb', border: '1px solid #fde68a', marginBottom: '16px', padding: '14px 18px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-            <Link2Off size={18} style={{ color: '#d97706', flexShrink: 0, marginTop: '1px' }} />
-            <div>
-              <div style={{ fontFamily: OUTFIT, fontSize: '14px', fontWeight: 700, color: '#92400e', marginBottom: '2px' }}>
-                {selectedName} needs to reconnect QuickBooks
-              </div>
-              <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#92400e' }}>
-                Live pulls are failing because no usable access tokens are stored for this client.
-                Reconnect them (Reports → Connect).
-                {hasCache ? ` Showing cached figures from ${timeAgo(lastPulled)}.` : ''}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* No client selected */}
-      {!realmId && !clientsLoading && (
-        <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
-          <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#64748b' }}>
-            Select a connected client above to see their dashboard, or connect a new QuickBooks file.
-          </div>
-        </div>
-      )}
-
-      {realmId && (
-        <>
-          {/* Company line + freshness */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-            <div style={{ fontFamily: PLAYFAIR, fontSize: '20px', color: '#0f172a' }}>
-              {ctx.company?.name || selectedName}
-              {ctx.company?.country && (
-                <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: '8px' }}>
-                  {ctx.company.country}
-                </span>
-              )}
-            </div>
-            <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {loading && <Loader size={12} style={{ animation: 'spin 1s linear infinite' }} />}
-              {lastPulled ? `Last pulled ${timeAgo(lastPulled)}` : loading ? 'Pulling from QuickBooks…' : 'No cached data yet'}
-            </span>
-          </div>
-
-          {/* Tabs */}
-          <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid #e5e7eb', marginBottom: '20px' }}>
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                style={{
-                  padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',
-                  fontFamily: OUTFIT, fontSize: '13.5px', fontWeight: tab === t.id ? 700 : 500,
-                  color: tab === t.id ? '#0f172a' : '#64748b',
-                  borderBottom: tab === t.id ? '2px solid #38bdf8' : '2px solid transparent',
-                  marginBottom: '-1px',
-                }}
-              >
-                {t.label}
-              </button>
+            <option value="">{clientsLoading ? 'Loading clients…' : 'Select a client…'}</option>
+            {clients.map((c) => (
+              <option key={c.realm_id} value={c.realm_id}>{c.company_name}</option>
             ))}
+          </select>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {realmId && (
+              <button
+                onClick={toggleFavourite}
+                title={isFavourite ? 'Remove from your Portfolio' : 'Star — add to your Portfolio'}
+                style={{ ...btnBase, width: '42px', flexShrink: 0, padding: '9px 0' }}
+              >
+                <Star size={17} style={{ color: isFavourite ? '#f59e0b' : '#cbd5e1', fill: isFavourite ? '#f59e0b' : 'none' }} />
+              </button>
+            )}
+            {realmId && (
+              <button
+                onClick={pull}
+                disabled={loading}
+                title="Refresh from QuickBooks"
+                style={{ ...btnBase, flex: '1 1 auto', padding: '9px 10px', cursor: loading ? 'not-allowed' : 'pointer' }}
+              >
+                <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} />
+                Refresh
+              </button>
+            )}
+            <button
+              onClick={handleConnect}
+              title="Connect a QuickBooks client"
+              style={{ ...btnBase, flex: '1 1 auto', padding: '9px 10px', cursor: 'pointer' }}
+            >
+              <Plus size={14} /> Connect
+            </button>
           </div>
 
-          {/* Tab body */}
-          {tab === 'overview' && <OverviewTab ctx={ctx} currency={currency} empty={emptyProps} />}
-          {tab === 'pnl' && <PnlTab pnlMonthly={ctx.pnlMonthly} currency={currency} empty={emptyProps} />}
-          {tab === 'balance' && <BalanceSheetTab balanceSheet={ctx.balanceSheet} currency={currency} empty={emptyProps} />}
-          {tab === 'aged' && <AgedTab ctx={ctx} currency={currency} empty={emptyProps} />}
-          {tab === 'health' && <HealthTab health={ctx.fileHealth} currency={currency} empty={emptyProps} />}
-
-          {/* Per-metric errors (partial pull) */}
-          {partialErrors && (
-            <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#b45309', marginTop: '14px' }}>
-              Some figures couldn't be pulled: {Object.entries(partialErrors).map(([k, v]) => `${k} (${v})`).join('; ')}
+          {realmId && (
+            <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+              <div style={{ fontFamily: PLAYFAIR, fontSize: '17px', color: '#0f172a', lineHeight: 1.25 }}>
+                {ctx.company?.name || selectedName}
+              </div>
+              {ctx.company?.country && (
+                <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>{ctx.company.country}</div>
+              )}
+              <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                {loading && <Loader size={11} style={{ animation: 'spin 1s linear infinite' }} />}
+                {lastPulled ? `Last pulled ${timeAgo(lastPulled)}` : loading ? 'Pulling…' : 'No cached data yet'}
+              </div>
             </div>
           )}
-        </>
-      )}
+        </div>
+
+        {/* ── Right content ── */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Flash (OAuth return) */}
+          {flash && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px',
+              borderRadius: '10px', marginBottom: '16px',
+              backgroundColor: flash.type === 'success' ? '#f0fdf4' : '#fef2f2',
+              border: `1px solid ${flash.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
+            }}>
+              {flash.type === 'success'
+                ? <CheckCircle size={16} style={{ color: '#22c55e' }} />
+                : <AlertCircle size={16} style={{ color: '#ef4444' }} />}
+              <span style={{ fontFamily: OUTFIT, fontSize: '13px', fontWeight: 500, flex: 1, color: flash.type === 'success' ? '#166534' : '#991b1b' }}>
+                {flash.message}
+              </span>
+              <button onClick={() => setFlash(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}>
+                <X size={14} style={{ color: '#94a3b8' }} />
+              </button>
+            </div>
+          )}
+
+          {/* Hard error (auth / network) */}
+          {error && (
+            <div style={{ ...cardStyle, backgroundColor: '#fef2f2', border: '1px solid #fecaca', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991b1b', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600 }}>
+                <AlertCircle size={16} /> {error}
+              </div>
+            </div>
+          )}
+
+          {/* Reconnect banner — cached data (if any) still renders below */}
+          {realmId && needsReconnect && (
+            <div style={{ ...cardStyle, backgroundColor: '#fffbeb', border: '1px solid #fde68a', marginBottom: '16px', padding: '14px 18px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                <Link2Off size={18} style={{ color: '#d97706', flexShrink: 0, marginTop: '1px' }} />
+                <div>
+                  <div style={{ fontFamily: OUTFIT, fontSize: '14px', fontWeight: 700, color: '#92400e', marginBottom: '2px' }}>
+                    {selectedName} needs to reconnect QuickBooks
+                  </div>
+                  <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#92400e' }}>
+                    Live pulls are failing because no usable access tokens are stored for this client.
+                    Reconnect them (Reports → Connect).
+                    {hasCache ? ` Showing cached figures from ${timeAgo(lastPulled)}.` : ''}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* No client selected */}
+          {!realmId && !clientsLoading && (
+            <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
+              <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#64748b' }}>
+                Select a connected client on the left to see their dashboard, or connect a new QuickBooks file.
+              </div>
+            </div>
+          )}
+
+          {realmId && (
+            <>
+              {/* Tabs */}
+              <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid #e5e7eb', marginBottom: '20px', flexWrap: 'wrap' }}>
+                {TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    style={{
+                      padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',
+                      fontFamily: OUTFIT, fontSize: '13.5px', fontWeight: tab === t.id ? 700 : 500,
+                      color: tab === t.id ? '#0f172a' : '#64748b',
+                      borderBottom: tab === t.id ? '2px solid #38bdf8' : '2px solid transparent',
+                      marginBottom: '-1px',
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab body */}
+              {tab === 'overview' && <OverviewTab ctx={ctx} currency={currency} empty={emptyProps} goTab={setTab} />}
+              {tab === 'pnl' && <PnlTab pnlMonthly={ctx.pnlMonthly} currency={currency} empty={emptyProps} />}
+              {tab === 'balance' && <BalanceSheetTab balanceSheet={ctx.balanceSheet} currency={currency} empty={emptyProps} />}
+              {tab === 'aged' && <AgedTab ctx={ctx} currency={currency} empty={emptyProps} />}
+              {tab === 'health' && <HealthTab health={ctx.fileHealth} currency={currency} empty={emptyProps} />}
+
+              {/* Per-metric errors (partial pull) */}
+              {partialErrors && (
+                <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#b45309', marginTop: '14px' }}>
+                  Some figures couldn't be pulled: {Object.entries(partialErrors).map(([k, v]) => `${k} (${v})`).join('; ')}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
@@ -443,9 +447,18 @@ function Delta({ now, prev, currency, upIsGood = true, label = 'vs last month' }
   );
 }
 
-function MetricTile({ label, value, currency, sub, delta }) {
+function MetricTile({ label, value, currency, sub, delta, onClick }) {
   return (
-    <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '14px 16px' }}>
+    <div
+      onClick={onClick}
+      title={onClick ? 'Open the full report' : undefined}
+      style={{
+        backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '14px 16px',
+        cursor: onClick ? 'pointer' : 'default', transition: 'all 0.15s ease',
+      }}
+      onMouseEnter={(e) => { if (onClick) { e.currentTarget.style.borderColor = '#7dd3fc'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(56,189,248,0.08)'; } }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = 'none'; }}
+    >
       <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>{label}</div>
       <div style={{ fontFamily: OUTFIT, fontSize: '22px', fontWeight: 700, color: (value ?? 0) < 0 ? '#991b1b' : '#0f172a' }}>
         {money(value, currency)}
@@ -459,7 +472,7 @@ function MetricTile({ label, value, currency, sub, delta }) {
 }
 
 /* ─── Overview tab ─────────────────────────────────────────────── */
-function OverviewTab({ ctx, currency, empty }) {
+function OverviewTab({ ctx, currency, empty, goTab }) {
   const { plFytd, plFytdPrior, balances, balancesPrior, agedAR, agedAP, pnlMonthly } = ctx;
   const hasAnything = plFytd || balances || pnlMonthly || agedAR || agedAP;
   if (!hasAnything) return <EmptyState label="overview figures" {...empty} />;
@@ -481,22 +494,27 @@ function OverviewTab({ ctx, currency, empty }) {
           label="Revenue — fiscal YTD" value={plFytd?.income} currency={currency}
           sub={plFytd?.period?.end ? `to ${shortDate(plFytd.period.end)}` : null}
           delta={<Delta now={plFytd?.income} prev={plFytdPrior?.income} currency={currency} label="vs last FYTD" />}
+          onClick={goTab ? () => goTab('pnl') : undefined}
         />
         <MetricTile
           label="Net profit — fiscal YTD" value={plFytd?.net_income} currency={currency}
           delta={<Delta now={plFytd?.net_income} prev={plFytdPrior?.net_income} currency={currency} label="vs last FYTD" />}
+          onClick={goTab ? () => goTab('pnl') : undefined}
         />
         <MetricTile
           label="Cash at bank" value={balances?.cash} currency={currency}
           delta={<Delta now={balances?.cash} prev={balancesPrior?.cash} currency={currency} />}
+          onClick={goTab ? () => goTab('balance') : undefined}
         />
         <MetricTile
           label="Debtors" value={debtors} currency={currency}
           delta={<Delta now={debtors} prev={debtorsPrev} currency={currency} upIsGood={false} />}
+          onClick={goTab ? () => goTab('aged') : undefined}
         />
         <MetricTile
           label="Creditors" value={creditors} currency={currency}
           delta={<Delta now={creditors} prev={creditorsPrev} currency={currency} upIsGood={false} />}
+          onClick={goTab ? () => goTab('aged') : undefined}
         />
       </div>
 
