@@ -80,7 +80,7 @@ Almond Valley Accounting$txt$
   ),
   (
     'tax_reminders', 'reminder',
-    'Your July self assessment payment — amount and how to pay',
+    'Your July Self Assessment Tax Payment — Amount and How to Pay',
     $html$<p style="margin:0 0 14px;">Hi {{first_name}},</p>
 <p style="margin:0 0 14px;">Based on your latest tax return, your payment on account due by <strong>{{due_date}}</strong> is <strong>&pound;{{amount}}</strong>.</p>
 <p style="margin:0 0 14px;">Please note this is the figure from your return. What HMRC actually shows can differ if you have overdue amounts, penalties or interest from late payments &mdash; you can review your balance in your HMRC personal tax account at <a href="{{pta_url}}" style="color:#0e7fe0;">{{pta_url}}</a>.</p>
