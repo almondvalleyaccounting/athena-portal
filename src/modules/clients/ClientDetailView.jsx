@@ -318,14 +318,8 @@ export default function ClientDetailView() {
             )}
           </div>
         </div>
-        {/* Time period filter + archive */}
+        {/* Client actions (the time-period control moved to the Time Logged panel) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>Time</span>
-            <select value={timePeriod} onChange={(e) => setTimePeriod(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
-              {TIME_PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-            </select>
-          </div>
           {entity.entity_status === 'nlac' ? (
             <button
               onClick={handleReinstate}
@@ -561,8 +555,16 @@ export default function ClientDetailView() {
 
       {activeSection === 'time' && (
         <div style={{ ...cardStyle, marginBottom: 20 }}>
-          <h3 style={sectionTitle}>Time Logged — {TIME_PERIODS.find((p) => p.value === timePeriod)?.label}</h3>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#d97706', marginBottom: 12 }}>{durFmt(totalCompleted)}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Time Logged</h3>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#64748b' }}>
+              Period
+              <select value={timePeriod} onChange={(e) => setTimePeriod(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
+                {TIME_PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#d97706', marginTop: 12, marginBottom: 12 }}>{durFmt(totalCompleted)}</div>
           {filteredCompleted.length > 0 ? filteredCompleted.slice(0, 20).map((t) => (
             <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
               <span style={{ color: '#1e293b' }}>{t.title}</span>
