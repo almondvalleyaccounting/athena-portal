@@ -70,6 +70,7 @@ async function callGmail(action, payload = {}) {
 
 export const gmail = {
   listLabels: (mailbox) => callGmail('list_labels', { mailbox }),
+  createLabel: (mailbox, name) => callGmail('create_label', { mailbox, name }),
   listThreads: (mailbox, { labelIds, q, pageToken } = {}) =>
     callGmail('list_threads', { mailbox, labelIds, q, pageToken }),
   getThread: (mailbox, threadId) => callGmail('get_thread', { mailbox, threadId }),
@@ -79,6 +80,86 @@ export const gmail = {
   getAttachment: (mailbox, messageId, attachmentId) =>
     callGmail('get_attachment', { mailbox, messageId, attachmentId }),
 };
+
+// ── Google Contacts (synced into comms_contacts) ─────────────────────
+
+export async function syncContacts(mailbox) {
+  const { data, error } = await supabase.functions.invoke('comms-contacts-sync', {
+    body: { mailbox },
+  });
+  if (error) {
+    let detail = error.message;
+    let code = null;
+    try {
+      const b = await error.context?.json();
+      if (b?.error) detail = b.error;
+      if (b?.code) code = b.code;
+    } catch { /* keep generic message */ }
+    const err = new Error(detail);
+    err.code = code;
+    throw err;
+  }
+  if (data && data.success === false) {
+    const err = new Error(data.error || 'Sync failed');
+    err.code = data.code || null;
+    throw err;
+  }
+  return data;
+}
+
+export async function loadContacts() {
+  const { data, error } = await supabase
+    .from('comms_contacts')
+    .select('id, display_name, emails, phones, phone_suffixes, organisation')
+    .limit(8000);
+  if (error) throw error;
+  return data || [];
+}
+
+// suffix (last 9 digits) → contact, for SMS/WhatsApp name matching.
+export function contactsByPhoneSuffix(contacts) {
+  const map = new Map();
+  for (const c of contacts) {
+    for (const s of c.phone_suffixes || []) {
+      if (!map.has(s)) map.set(s, c);
+    }
+  }
+  return map;
+}
+
+export function phoneSuffix(raw, n = 9) {
+  const d = String(raw || '').replace(/\D/g, '');
+  return d.slice(-n);
+}
+
+// ── Signatures ────────────────────────────────────────────────────────
+
+// Effective signature for a mailbox: exact match wins, '*' (all my
+// mailboxes) is the fallback.
+export async function loadSignatures(staffId) {
+  const { data, error } = await supabase
+    .from('comms_signatures')
+    .select('mailbox_email, body')
+    .eq('staff_id', staffId);
+  if (error) throw error;
+  return data || [];
+}
+
+export function effectiveSignature(signatures, mailbox) {
+  const exact = signatures.find((s) => s.mailbox_email === mailbox);
+  if (exact) return exact.body;
+  return signatures.find((s) => s.mailbox_email === '*')?.body || '';
+}
+
+export async function saveSignature(staffId, mailboxEmail, body) {
+  const { error } = await supabase.from('comms_signatures').upsert({
+    staff_id: staffId,
+    mailbox_email: mailboxEmail, // '*' = all my mailboxes
+    body,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
 
 // Trigger a browser download from a Gmail attachment (base64url payload).
 export function downloadAttachment({ data, filename, mimeType }) {

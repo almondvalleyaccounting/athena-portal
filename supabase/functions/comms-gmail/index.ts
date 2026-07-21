@@ -225,6 +225,16 @@ Deno.serve(async (req) => {
         return jsonResponse({ success: true, labels: data.labels || [] });
       }
 
+      case "create_label": {
+        const name = String(body.name || "").trim();
+        if (!name) return jsonResponse({ success: false, error: "name required" }, 400);
+        const label = await gmailFetch(tok.accessToken, "/labels", {
+          method: "POST",
+          body: JSON.stringify({ name, labelListVisibility: "labelShow", messageListVisibility: "show" }),
+        });
+        return jsonResponse({ success: true, label });
+      }
+
       case "list_threads": {
         const params = new URLSearchParams();
         for (const l of body.labelIds || []) params.append("labelIds", String(l));

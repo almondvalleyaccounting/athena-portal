@@ -19,9 +19,17 @@ export const GMAIL_REDIRECT_URI = `${SUPABASE_URL}/functions/v1/gmail-auth-callb
 // gmail.modify: read the inbox (chase-reply-scan), create drafts (uplift
 // emails), SEND (client reminders go out as genuine Gmail messages), and
 // archive processed messages (remove the INBOX label) — everything except
-// permanent deletion. Upgrading from compose+readonly means the mailbox
-// must be reconnected once to re-consent.
-export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.modify openid email";
+// permanent deletion. contacts(.other).readonly: the Communications
+// module syncs Google Contacts for composer autocomplete + SMS/WhatsApp
+// name matching (comms-contacts-sync). Scope additions mean existing
+// mailboxes must reconnect once to re-consent.
+export const GMAIL_SCOPE = [
+  "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/contacts.readonly",
+  "https://www.googleapis.com/auth/contacts.other.readonly",
+  "openid",
+  "email",
+].join(" ");
 
 export const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";

@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom';
 import { MessageSquare, Phone, Plus, RefreshCw, Send, X } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
-import { counterpartNumber, fmtTime, listMessages, resolveEntityNames, sendMessage } from '../api';
+import {
+  contactsByPhoneSuffix, counterpartNumber, fmtTime, listMessages,
+  loadContacts, phoneSuffix, resolveEntityNames, sendMessage,
+} from '../api';
 
 const font = "'Outfit', sans-serif";
 
@@ -14,6 +17,7 @@ export default function MessagesView({ channel }) {
   const { profile } = useAuth();
   const [messages, setMessages] = useState(null);
   const [names, setNames] = useState({});
+  const [contactMap, setContactMap] = useState(() => new Map());
   const [active, setActive] = useState(null); // counterpart number
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -40,6 +44,18 @@ export default function MessagesView({ channel }) {
     const iv = setInterval(() => load(true), 30000);
     return () => clearInterval(iv);
   }, [load]);
+
+  // Google Contacts (synced in the Email tab) — second source for
+  // matching numbers to names, after the client record.
+  useEffect(() => {
+    loadContacts().then((c) => setContactMap(contactsByPhoneSuffix(c))).catch(() => {});
+  }, []);
+
+  const displayName = (conv) => {
+    if (conv.entityId && names[conv.entityId]) return names[conv.entityId];
+    const contact = contactMap.get(phoneSuffix(conv.number));
+    return contact?.display_name || conv.number;
+  };
 
   // Group into conversations by counterpart number, newest first.
   const conversations = useMemo(() => {
@@ -120,11 +136,11 @@ export default function MessagesView({ channel }) {
             >
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                  {c.entityId ? (names[c.entityId] || c.number) : c.number}
+                  {displayName(c)}
                 </span>
                 <span style={{ fontSize: 10.5, color: '#94a3b8', flexShrink: 0 }}>{fmtTime(c.last.created_at)}</span>
               </div>
-              {c.entityId && <div style={{ fontSize: 11, color: '#64748b' }}>{c.number}</div>}
+              {displayName(c) !== c.number && <div style={{ fontSize: 11, color: '#64748b' }}>{c.number}</div>}
               <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
                 {c.last.direction === 'out' ? 'You: ' : ''}{c.last.body}
               </div>
@@ -181,7 +197,7 @@ export default function MessagesView({ channel }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <MessageSquare size={15} color="#64748b" />
               <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
-                {activeConv.entityId ? (names[activeConv.entityId] || activeConv.number) : activeConv.number}
+                {displayName(activeConv)}
               </span>
               <span style={{ fontSize: 12, color: '#94a3b8' }}>{activeConv.number}</span>
               {activeConv.entityId && (
