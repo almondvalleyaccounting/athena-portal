@@ -159,9 +159,13 @@ Deno.serve(async (req) => {
 
   let body: {
     mode?: string; kind?: string; comm_type?: string; targets?: Target[];
-    ids?: string[]; due_date?: string; test_recipient?: string;
+    ids?: string[]; due_date?: string; test_recipient?: string; mailbox?: string;
   };
   try { body = await req.json(); } catch { return json({ success: false, error: "Invalid JSON" }, 400); }
+
+  // Which connected mailbox to send from (account email). Omitted → the
+  // practice-default (info@). getValidGmailToken resolves + validates it.
+  const mailbox = (body.mailbox || "").trim() || undefined;
 
   const mode = body.mode === "queue" || body.mode === "release" ? body.mode : "send";
   const commType = body.comm_type || "tax_reminders";
@@ -172,7 +176,7 @@ Deno.serve(async (req) => {
     if (!ids.length) return json({ success: false, error: "ids required" }, 400);
 
     let token: { accessToken: string; accountEmail: string };
-    try { token = await getValidGmailToken(); }
+    try { token = await getValidGmailToken(mailbox); }
     catch (e) { return json({ success: false, error: `No usable Gmail connection: ${(e as Error).message}`, code: "no_gmail_connection" }, 400); }
 
     const { data: rows } = await service.from("reminder_emails")
@@ -252,7 +256,7 @@ Deno.serve(async (req) => {
   // Gmail is only needed when we actually send now (mode 'send').
   let token: { accessToken: string; accountEmail: string } | null = null;
   if (mode === "send") {
-    try { token = await getValidGmailToken(); }
+    try { token = await getValidGmailToken(mailbox); }
     catch (e) { return json({ success: false, error: `No usable Gmail connection: ${(e as Error).message}`, code: "no_gmail_connection" }, 400); }
   }
 
