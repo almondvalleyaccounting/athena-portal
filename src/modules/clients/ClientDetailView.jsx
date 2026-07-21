@@ -232,9 +232,11 @@ export default function ClientDetailView() {
 
   // Limited companies get tabbed views (Full Details / Directors / PSCs /
   // Communications). Directors = officer links; PSCs = the ch_psc links.
+  // Plain consts (NOT hooks) — this is below the loading/!entity early returns,
+  // so a useMemo here would break the Rules of Hooks (blank page).
   const isLtd = entity?.type === 'limited_company';
-  const directors = useMemo(() => people.filter((p) => p.role === 'director'), [people]);
-  const pscs = useMemo(() => people.filter((p) => p.source === 'ch_psc'), [people]);
+  const directors = people.filter((p) => p.role === 'director');
+  const pscs = people.filter((p) => p.source === 'ch_psc');
   const detailsVisible = !isLtd || activeTab === 'details';
   const CLIENT_TABS = [
     { id: 'details', label: 'Full Details' },
