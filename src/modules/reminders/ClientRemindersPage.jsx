@@ -245,6 +245,7 @@ export default function ClientRemindersPage() {
   const [rowResults, setRowResults] = useState({}); // entity_id -> { ok, text }
   const [templatesByKind, setTemplatesByKind] = useState({}); // 'promo'|'reminder' -> template row
   const [showTemplates, setShowTemplates] = useState(false);
+  const [bmEmailByEntity, setBmEmailByEntity] = useState({}); // entity_id -> BM contact email fallback
 
   const entityById = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e])), [entities]);
   const batch = batches.find((b) => b.id === batchId) || null;
@@ -254,7 +255,7 @@ export default function ClientRemindersPage() {
     try {
       const [{ data: b, error: e1 }, { data: ents, error: e2 }] = await Promise.all([
         supabase.from('tax_payment_batches').select('id, label, due_date, source_filename, created_at').order('created_at', { ascending: false }),
-        supabase.from('entities').select('id, name, billing_email, prospect_email, type, entity_status').order('name'),
+        supabase.from('entities').select('id, name, utr, billing_email, prospect_email, type, entity_status').order('name'),
       ]);
       if (e1) throw e1;
       if (e2) throw e2;
@@ -284,6 +285,18 @@ export default function ClientRemindersPage() {
       const { data: tmpls } = await supabase
         .from('comm_templates').select('kind, subject, body_html, body_text').eq('comm_type', COMM_TYPE);
       setTemplatesByKind(Object.fromEntries((tmpls || []).map((t) => [t.kind, t])));
+
+      // BM contact email — the send-to fallback when a client has no
+      // billing/prospect email on the entity (most personal-tax clients).
+      const { data: bmRows } = await supabase
+        .from('v_email_reconciliation').select('entity_id, bm_contact_email');
+      const bmMap = {};
+      for (const b of bmRows || []) {
+        if (b.entity_id && !bmMap[b.entity_id] && (b.bm_contact_email || '').trim()) {
+          bmMap[b.entity_id] = b.bm_contact_email.trim();
+        }
+      }
+      setBmEmailByEntity(bmMap);
 
       // Gmail pill — reminders go out from the practice-default mailbox.
       // v_gmail_connections is the staff-safe view (no token columns).
@@ -322,9 +335,11 @@ export default function ClientRemindersPage() {
 
   // ── row helpers ──
   const emailOf = (row) => {
-    const ent = row.entity_id ? entityById[row.entity_id] : null;
+    if (!row.entity_id) return null;
+    const ent = entityById[row.entity_id];
     if (!ent) return null;
-    return (ent.billing_email || '').trim() || (ent.prospect_email || '').trim() || null;
+    return (ent.billing_email || '').trim() || (ent.prospect_email || '').trim()
+      || (bmEmailByEntity[row.entity_id] || '').trim() || null;
   };
   const prefStatusOf = (row) => {
     if (!row.entity_id) return 'not_asked';

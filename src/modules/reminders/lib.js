@@ -49,10 +49,12 @@ export function guessColumns(headers) {
     }
     return -1;
   };
+  const forename = find([/fore\s*name/, /first\s*name/, /^first$/, /given/]);
+  const surname = find([/sur\s*name/, /last\s*name/, /^last$/, /family/]);
   const name = find([/client\s*name/, /taxpayer/, /^client$/, /client/, /\bname\b/]);
-  const amount = find([/amount\s*due/, /payment\s*on\s*account/, /\bpoa\b/, /amount/, /\bdue\b/, /total/, /£/]);
-  const reference = find([/\butr\b/, /reference/, /\bref\b/]);
-  return { name, amount, reference };
+  const amount = find([/payment[s]?\s*on\s*account/, /amount\s*due/, /\bpoa\b/, /amount/, /\bdue\b/, /total/, /£/]);
+  const reference = find([/unique\s*tax\s*reference/, /\butr\b/, /reference/, /\bref\b/]);
+  return { name, forename, surname, amount, reference };
 }
 
 // '£1,234.50 ' → 1234.5; returns null when unparseable.
@@ -87,6 +89,24 @@ export function matchEntityByName(rawName, entities) {
     return n && (n.includes(target) || target.includes(n));
   });
   return contains.length === 1 ? contains[0].id : null;
+}
+
+// Safe match for tax-payment emails (data protection): the UTR must match
+// EXACTLY one active client, and that client's name must contain the
+// surname as a cross-check. Anything else returns no match with a reason
+// so the row is skipped, never mis-delivered. entities need { id, name, utr }.
+// Returns { id: string|null, reason: 'ok'|'no-utr'|'utr-not-found'|'utr-ambiguous'|'surname-mismatch' }.
+const utrDigits = (v) => String(v ?? '').replace(/\D/g, '').slice(0, 10);
+export function matchEntityByUtrSurname(utrRaw, surnameRaw, entities) {
+  const u = utrDigits(utrRaw);
+  if (u.length < 10) return { id: null, reason: 'no-utr' };
+  const cands = entities.filter((e) => utrDigits(e.utr) === u);
+  if (cands.length === 0) return { id: null, reason: 'utr-not-found' };
+  if (cands.length > 1) return { id: null, reason: 'utr-ambiguous' };
+  const ent = cands[0];
+  const sur = normaliseName(surnameRaw);
+  if (sur && !normaliseName(ent.name).includes(sur)) return { id: null, reason: 'surname-mismatch' };
+  return { id: ent.id, reason: 'ok' };
 }
 
 // ── Formatting ───────────────────────────────────────────────────────

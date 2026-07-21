@@ -25,7 +25,7 @@ export default function TaxCalcView() {
     (async () => {
       const { data, error: e } = await supabase
         .from('entities')
-        .select('id, name')
+        .select('id, name, utr')
         .order('name');
       if (e) { setError(`Could not load clients: ${e.message}`); return; }
       setEntities(data || []);
@@ -39,9 +39,11 @@ export default function TaxCalcView() {
           TaxCalc import
         </h2>
         <p style={{ fontSize: 13, color: '#64748b', margin: '8px 0 20px' }}>
-          Upload a TaxCalc report (CSV) of personal-tax payments due — e.g. July payments on
-          account. Rows auto-match to clients by name; the saved batch then appears in{' '}
-          <strong>Client Reminders</strong>, where opt-in invitations and payment reminders are sent.
+          Upload a TaxCalc / POA report (.xlsx or .csv) of personal-tax payments due — e.g. July
+          payments on account. Only rows with a payment-on-account amount import, and each is matched
+          to a client by <strong>UTR + surname</strong> (anything unmatched is resolved by hand). The
+          saved batch then appears in <strong>Client Reminders</strong>, where opt-in invitations and
+          payment reminders are sent.
         </p>
 
         {error && (
@@ -62,7 +64,7 @@ export default function TaxCalcView() {
             <span style={{ flex: 1 }}>
               Batch saved —{' '}
               <button
-                onClick={() => navigate('/reminders')}
+                onClick={() => navigate('/comms/reminders')}
                 style={{
                   background: 'none', border: 'none', padding: 0, cursor: 'pointer',
                   fontFamily: font, fontSize: 12.5, fontWeight: 600, color: '#166534',

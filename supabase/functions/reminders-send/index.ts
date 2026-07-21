@@ -210,7 +210,15 @@ Deno.serve(async (req) => {
     if (["nlac", "archived"].includes(ent.entity_status as string)) {
       skipped.push({ entity_id: entityId, reason: "no longer a client" }); continue;
     }
-    const to = testRecipient || (ent.billing_email || "").trim() || (ent.prospect_email || "").trim();
+    // Recipient: entity billing/prospect first, then the BM contact email
+    // (where most personal-tax clients' addresses live). A test send
+    // overrides all of these.
+    let to = testRecipient || (ent.billing_email || "").trim() || (ent.prospect_email || "").trim();
+    if (!to) {
+      const { data: rec } = await service.from("v_email_reconciliation")
+        .select("bm_contact_email").eq("entity_id", entityId).limit(1);
+      to = (rec?.[0]?.bm_contact_email || "").trim();
+    }
     if (!to || !to.includes("@")) { skipped.push({ entity_id: entityId, reason: "no email address on file" }); continue; }
 
     // Payment details for reminders.

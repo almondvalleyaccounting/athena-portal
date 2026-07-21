@@ -1,21 +1,28 @@
 import React, { useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
-import { parseCsv, guessColumns, parseAmount, matchEntityByName, fmtMoney } from './lib';
+import { parseCsv, guessColumns, parseAmount, matchEntityByUtrSurname, fmtMoney } from './lib';
 
 const font = "'Outfit', sans-serif";
 
 /*
-  TaxBatchUpload — the TaxCalc CSV upload flow, shared between the Data
-  Import area (where it renders as a page section) and anywhere else that
-  needs to create a payment batch.
+  TaxBatchUpload — upload a TaxCalc / POA report (.xlsx or .csv) of
+  personal-tax payments on account.
 
-  Flow: choose a CSV → robust parse + column-mapping guesses (lib.js) →
-  live preview with auto-matching to entities by name → save as a
-  tax_payment_batches row plus tax_payments_due items. Calls onSaved(batchId)
-  after a successful save and resets itself for the next file.
+  Flow: choose a file → parse (SheetJS for xlsx, robust CSV parser
+  otherwise) → auto-find the header row (reports often carry a couple of
+  title rows first) → map Forename / Surname / UTR / Amount → live preview
+  with SAFE matching to clients by UTR + surname → save a
+  tax_payment_batches row plus tax_payments_due items. Only rows that
+  carry a payment-on-account amount are imported.
+
+  Matching is deliberately strict (data protection): a row matches only
+  when its UTR hits exactly one active client whose name contains the
+  surname. Anything else imports unmatched, to be resolved by hand in
+  Client Reminders — it is never mis-delivered.
 
   Props:
-    entities  — [{ id, name, … }] used for name matching
+    entities  — [{ id, name, utr }] used for UTR + surname matching
     profileId — staff id recorded as uploaded_by
     onSaved   — (batchId) => void
 */
@@ -37,58 +44,104 @@ const th = {
 };
 const td = { padding: '7px 10px', fontSize: 12.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
 
+const REASON_LABEL = {
+  'no-utr': 'no UTR in file',
+  'utr-not-found': 'UTR not on any client',
+  'utr-ambiguous': 'UTR matches >1 client',
+  'surname-mismatch': 'surname ≠ UTR client',
+};
+
+// Find the header row: the first row (within the first 15) that looks like
+// it holds a surname/name column plus a UTR/reference column. Falls back
+// to row 0 so a plain header-first file still works.
+function findHeaderRow(rows) {
+  const limit = Math.min(rows.length, 15);
+  for (let i = 0; i < limit; i++) {
+    const g = guessColumns((rows[i] || []).map((c) => String(c ?? '')));
+    if (g.reference >= 0 && (g.surname >= 0 || g.name >= 0 || g.forename >= 0)) return i;
+  }
+  return 0;
+}
+
 export default function TaxBatchUpload({ entities, profileId, onSaved }) {
   const year = new Date().getFullYear();
   const [fileName, setFileName] = useState('');
   const [headers, setHeaders] = useState([]);
   const [dataRows, setDataRows] = useState([]);
-  const [mapping, setMapping] = useState({ name: -1, amount: -1, reference: -1 });
+  const [mapping, setMapping] = useState({ forename: -1, surname: -1, amount: -1, reference: -1 });
   const [label, setLabel] = useState(`July ${year} payments on account`);
   const [dueDate, setDueDate] = useState(`${year}-07-31`);
   const [err, setErr] = useState(null);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef(null);
 
+  const ingestRows = (rows) => {
+    const clean = (rows || []).filter((r) => Array.isArray(r) && r.some((c) => String(c ?? '').trim() !== ''));
+    if (clean.length < 2) { setErr('That file has no data rows — expected a header row plus at least one client.'); return; }
+    const hIdx = findHeaderRow(clean);
+    const hdr = (clean[hIdx] || []).map((h) => String(h ?? '').trim());
+    setHeaders(hdr);
+    setDataRows(clean.slice(hIdx + 1));
+    setMapping(guessColumns(hdr));
+  };
+
   const onFile = (e) => {
     setErr(null);
     const f = e.target.files && e.target.files[0];
     if (!f) return;
+    const isExcel = /\.(xlsx|xls)$/i.test(f.name);
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const rows = parseCsv(String(reader.result || ''));
-        if (rows.length < 2) { setErr('That file has no data rows — expected a header row plus at least one client.'); return; }
-        const hdr = rows[0].map((h) => String(h).trim());
         setFileName(f.name);
-        setHeaders(hdr);
-        setDataRows(rows.slice(1));
-        setMapping(guessColumns(hdr));
+        if (isExcel) {
+          const wb = XLSX.read(reader.result, { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: null });
+          ingestRows(rows);
+        } else {
+          ingestRows(parseCsv(String(reader.result || '')));
+        }
       } catch (ex) {
         setErr(`Could not read that file: ${ex.message}`);
       }
     };
     reader.onerror = () => setErr('Could not read that file.');
-    reader.readAsText(f);
+    if (isExcel) reader.readAsArrayBuffer(f); else reader.readAsText(f);
   };
 
-  // Live preview of how the mapped rows will import.
+  const cell = (r, idx) => (idx >= 0 ? String(r[idx] ?? '').trim() : '');
+
+  // Live preview — only rows carrying a POA amount are importable.
   const parsed = useMemo(() => {
-    if (mapping.name < 0) return [];
+    if (mapping.amount < 0) return [];
     return dataRows
-      .map((r) => ({
-        client_name_raw: String(r[mapping.name] ?? '').trim(),
-        amount: mapping.amount >= 0 ? parseAmount(r[mapping.amount]) : null,
-        reference_raw: mapping.reference >= 0 ? String(r[mapping.reference] ?? '').trim() || null : null,
-      }))
-      .filter((r) => r.client_name_raw);
+      .map((r) => {
+        const forename = cell(r, mapping.forename);
+        const surname = cell(r, mapping.surname);
+        const name = [forename, surname].filter(Boolean).join(' ').trim();
+        return {
+          client_name_raw: name,
+          surname,
+          amount: parseAmount(r[mapping.amount]),
+          reference_raw: cell(r, mapping.reference) || null,
+        };
+      })
+      .filter((r) => r.amount != null && (r.client_name_raw || r.reference_raw));
   }, [dataRows, mapping]);
 
-  const matchedCount = useMemo(
-    () => parsed.filter((r) => matchEntityByName(r.client_name_raw, entities)).length,
-    [parsed, entities],
-  );
+  const stats = useMemo(() => {
+    const s = { ok: 0, byReason: {} };
+    for (const r of parsed) {
+      const m = matchEntityByUtrSurname(r.reference_raw, r.surname, entities);
+      if (m.reason === 'ok') s.ok += 1;
+      else s.byReason[m.reason] = (s.byReason[m.reason] || 0) + 1;
+    }
+    return s;
+  }, [parsed, entities]);
 
-  const canSave = fileName && mapping.name >= 0 && mapping.amount >= 0 && label.trim() && dueDate && parsed.length > 0 && !saving;
+  const canSave = fileName && mapping.surname >= 0 && mapping.reference >= 0 && mapping.amount >= 0
+    && label.trim() && dueDate && parsed.length > 0 && !saving;
 
   const save = async () => {
     if (!canSave) return;
@@ -103,7 +156,7 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
       if (bErr) throw bErr;
       const items = parsed.map((r) => ({
         batch_id: batch.id,
-        entity_id: matchEntityByName(r.client_name_raw, entities),
+        entity_id: matchEntityByUtrSurname(r.reference_raw, r.surname, entities).id,
         client_name_raw: r.client_name_raw,
         reference_raw: r.reference_raw,
         amount: r.amount,
@@ -113,11 +166,10 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
         const { error: iErr } = await supabase.from('tax_payments_due').insert(items.slice(i, i + 500));
         if (iErr) throw iErr;
       }
-      // Reset so another file can go straight in.
       setFileName('');
       setHeaders([]);
       setDataRows([]);
-      setMapping({ name: -1, amount: -1, reference: -1 });
+      setMapping({ forename: -1, surname: -1, amount: -1, reference: -1 });
       setSaving(false);
       onSaved(batch.id);
     } catch (ex) {
@@ -131,6 +183,8 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
     borderRadius: 6, background: '#fff', color: '#1e293b',
   };
   const lbl = { fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 3, display: 'block' };
+
+  const unmatchedTotal = parsed.length - stats.ok;
 
   return (
     <div style={{ fontFamily: font }}>
@@ -146,18 +200,18 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
       )}
 
       <div style={{ marginBottom: 14 }}>
-        <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: 'none' }} />
+        <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,text/csv" onChange={onFile} style={{ display: 'none' }} />
         <button onClick={() => fileRef.current && fileRef.current.click()} style={btnGhost}>
-          {fileName ? `File: ${fileName} — choose another` : 'Choose CSV file…'}
+          {fileName ? `File: ${fileName} — choose another` : 'Choose file (.xlsx or .csv)…'}
         </button>
       </div>
 
       {headers.length > 0 && (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-            {[['name', 'Client name'], ['amount', 'Amount'], ['reference', 'Reference']].map(([key, title]) => (
+            {[['forename', 'Forename', false], ['surname', 'Surname', true], ['reference', 'UTR', true], ['amount', 'POA amount', true]].map(([key, title, req]) => (
               <div key={key}>
-                <span style={lbl}>{title}{key !== 'reference' ? ' *' : ' (optional)'}</span>
+                <span style={lbl}>{title}{req ? ' *' : ' (optional)'}</span>
                 <select
                   value={mapping[key]}
                   onChange={(e) => setMapping({ ...mapping, [key]: Number(e.target.value) })}
@@ -179,35 +233,45 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
           </div>
 
           <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
-            {parsed.length} row{parsed.length === 1 ? '' : 's'} will import
-            {mapping.name >= 0 && <> — <strong style={{ color: '#166534' }}>{matchedCount} matched</strong> to clients by name, {parsed.length - matchedCount} to match by hand afterwards</>}.
+            {parsed.length} row{parsed.length === 1 ? '' : 's'} with a POA amount will import
+            {mapping.reference >= 0 && mapping.surname >= 0 && (
+              <> — <strong style={{ color: '#166534' }}>{stats.ok} matched</strong> by UTR + surname
+                {unmatchedTotal > 0 && <>, {unmatchedTotal} to resolve by hand (
+                  {Object.entries(stats.byReason).map(([r, n], i) => (
+                    <span key={r}>{i > 0 ? ', ' : ''}{n} {REASON_LABEL[r] || r}</span>
+                  ))})</>}
+              </>
+            )}.
           </div>
 
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={th}>Client name</th>
+                  <th style={th}>Client</th>
                   <th style={th}>Amount</th>
-                  <th style={th}>Reference</th>
+                  <th style={th}>UTR</th>
                   <th style={th}>Match</th>
                 </tr>
               </thead>
               <tbody>
-                {parsed.slice(0, 8).map((r, i) => {
-                  const m = matchEntityByName(r.client_name_raw, entities);
-                  const ent = m ? entities.find((e) => e.id === m) : null;
+                {parsed.slice(0, 10).map((r, i) => {
+                  const m = matchEntityByUtrSurname(r.reference_raw, r.surname, entities);
+                  const ent = m.id ? entities.find((e) => e.id === m.id) : null;
                   return (
                     <tr key={i}>
-                      <td style={td}>{r.client_name_raw}</td>
+                      <td style={td}>{r.client_name_raw || '—'}</td>
                       <td style={td}>{r.amount != null ? `£${fmtMoney(r.amount)}` : <span style={{ color: '#b91c1c' }}>no amount</span>}</td>
                       <td style={td}>{r.reference_raw || '—'}</td>
-                      <td style={td}>{ent ? <span style={{ color: '#166534' }}>{ent.name}</span> : <span style={{ color: '#94a3b8' }}>unmatched</span>}</td>
+                      <td style={td}>{ent
+                        ? <span style={{ color: '#166534' }}>{ent.name}</span>
+                        : <span style={{ color: '#b91c1c' }}>{REASON_LABEL[m.reason] || 'unmatched'}</span>}
+                      </td>
                     </tr>
                   );
                 })}
-                {parsed.length > 8 && (
-                  <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={4}>…and {parsed.length - 8} more</td></tr>
+                {parsed.length > 10 && (
+                  <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={4}>…and {parsed.length - 10} more</td></tr>
                 )}
               </tbody>
             </table>
