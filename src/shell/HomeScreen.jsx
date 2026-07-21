@@ -908,6 +908,22 @@ function buildAttentionItems(data, navigate) {
     });
   }
 
+  // Clients doing chargeable work with no fee mapped in the engine. Only the
+  // priority tier (companies + recurring services) reaches the queue; the
+  // noisy SA-individual tail lives on the review page. Count is 0 for non-fee
+  // viewers (RLS), so this row simply doesn't appear for them.
+  if (data.feeGaps?.priority > 0) {
+    items.push({
+      id: 'fee-gaps',
+      group: 'waiting',
+      accent: '#f59e0b',
+      icon: Clock,
+      title: `${plural(data.feeGaps.priority, 'client')} doing work with no fee mapped`,
+      subtitle: 'Companies & recurring services — set up fees in the engine',
+      onClick: () => navigate('/manage/billing/gaps'),
+    });
+  }
+
   // QBO customers the nightly ~5am pull found with no client mapping yet.
   if (data.qboUnmapped > 0) {
     items.push({
@@ -952,6 +968,7 @@ function attentionSummary(data) {
   if (data.quotes.pendingApproval.length > 0) seg.push(`${p(data.quotes.pendingApproval.length, 'approval')} waiting`);
   if (data.quotes.expiring.length > 0) seg.push(`${p(data.quotes.expiring.length, 'quote')} expiring`);
   if (data.billingNeedsReview > 0) seg.push(p(data.billingNeedsReview, 'billing review'));
+  if (data.feeGaps?.priority > 0) seg.push(`${data.feeGaps.priority} fee gap${data.feeGaps.priority === 1 ? '' : 's'}`);
   if (data.qboUnmapped > 0) seg.push(`${data.qboUnmapped} QBO unmapped`);
   if (data.serviceRequests.length > 0) seg.push(p(data.serviceRequests.length, 'service request'));
   if (otherTriage > 0) seg.push(p(otherTriage, 'triage case'));
@@ -1044,6 +1061,9 @@ export default function HomeScreen() {
   // AVA's own books — deliberately a separate flag from portal admin, so the
   // practice's financials stay Bobby-only even among admins.
   const canSeePulse = profile?.can_view_practice_financials === true;
+  // Fee-engine gaps are confidential (the view reads live_billing) — only fee
+  // admins get a real count, so only they see the counter tile.
+  const canViewFees = profile?.can_view_client_fees === true;
 
   const { loading, data } = useDirectorDashboard(isOwner || canSeeAttention);
   const { loading: pulseLoading, pulse, error: pulseError } = usePracticePulse(canSeePulse);
@@ -1495,6 +1515,19 @@ export default function HomeScreen() {
           tone={strikeOffCount > 0 ? 'bad' : triageCount > 0 ? 'warn' : 'default'}
           onClick={() => navigate('/triage')}
         />
+        {canViewFees && (
+          <OpsStat
+            label="Fee engine gaps"
+            value={data.feeGaps?.priority ?? 0}
+            detail={
+              data.feeGaps?.individuals
+                ? `+${data.feeGaps.individuals} individuals`
+                : 'work with no fee'
+            }
+            tone={data.feeGaps?.priority > 0 ? 'bad' : 'default'}
+            onClick={() => navigate('/manage/billing/gaps')}
+          />
+        )}
       </div>
     </div>
   );

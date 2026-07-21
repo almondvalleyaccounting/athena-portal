@@ -96,6 +96,8 @@ export function useDirectorDashboard(enabled) {
         qboMappingRes,
         triageRes,
         chRefreshRes,
+        feeGapsPriorityRes,
+        feeGapsIndividualsRes,
       ] = await Promise.all([
         // ONE definition of every deadline number — v_deadline_buckets is
         // shared with the Monday digest, so the two can never drift again.
@@ -207,6 +209,21 @@ export function useDirectorDashboard(enabled) {
           .select('run_date, processed, chunks, errors, status_changes')
           .eq('run_date', todayIso)
           .limit(1),
+        // Fee-engine gaps — active clients doing chargeable work with no fee
+        // mapped (sql/144 v_fee_engine_gaps). The view reads live_billing, so
+        // it's RLS-gated to can_view_client_fees: a non-fee viewer gets 0 and
+        // the tile/row simply don't render. Priority = companies + recurring
+        // services (tiers 1–2); individuals (tier 3) are the noisy SA tail.
+        supabase
+          .from('v_fee_engine_gaps')
+          .select('entity_id', { count: 'exact', head: true })
+          .in('tier', [1, 2])
+          .eq('review_status', 'pending'),
+        supabase
+          .from('v_fee_engine_gaps')
+          .select('entity_id', { count: 'exact', head: true })
+          .eq('tier', 3)
+          .eq('review_status', 'pending'),
       ]);
 
       if (cancelled) return;
@@ -318,6 +335,10 @@ export function useDirectorDashboard(enabled) {
           adminTasksOpen: adminTasksRes.count ?? 0,
           issuesOpen: issuesRes.count ?? 0,
           qboUnmapped: qboMappingRes.count ?? 0,
+          feeGaps: {
+            priority: feeGapsPriorityRes.count ?? 0,
+            individuals: feeGapsIndividualsRes.count ?? 0,
+          },
           triage: (triageRes.data || []).filter(notFormer),
           // null = the nightly refresh has no row for today (did not run)
           chRefresh: (chRefreshRes.data || [])[0] || null,

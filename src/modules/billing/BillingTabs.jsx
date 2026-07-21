@@ -18,9 +18,20 @@ const font = "'Outfit', sans-serif";
 export default function BillingTabs({ active }) {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const [counts, setCounts] = useState({ pending: 0, staged: 0, approved: 0, manualMonthly: 0, addNew: 0 });
+  const [counts, setCounts] = useState({ pending: 0, staged: 0, approved: 0, manualMonthly: 0, addNew: 0, gaps: 0 });
+  const canViewFees = profile?.can_view_client_fees === true;
 
   const refresh = async () => {
+    // Priority fee-engine gaps (tiers 1–2, still pending) — fee-gated view, so
+    // only fetch for fee admins; RLS returns nothing for anyone else anyway.
+    if (canViewFees) {
+      const { count } = await supabase
+        .from('v_fee_engine_gaps')
+        .select('entity_id', { count: 'exact', head: true })
+        .in('tier', [1, 2])
+        .eq('review_status', 'pending');
+      setCounts((c) => ({ ...c, gaps: count || 0 }));
+    }
     const [billingResp, addNewResp] = await Promise.all([
       supabase
         .from('live_billing')
@@ -59,7 +70,7 @@ export default function BillingTabs({ active }) {
         if (r.uplift_review_status === 'approved') approved++;
       }
     }
-    setCounts({ pending, staged, approved, manualMonthly, addNew });
+    setCounts((c) => ({ ...c, pending, staged, approved, manualMonthly, addNew }));
   };
 
   useEffect(() => {
@@ -77,6 +88,10 @@ export default function BillingTabs({ active }) {
     { id: 'addnew',    label: 'Add new',   route: '/manage/billing/add-new', badge: counts.addNew   || null, tone: 'info'    },
     { id: 'push',      label: 'Push',      route: '/manage/billing/uplifts', badge: counts.approved || null, tone: 'success' },
     { id: 'sources',   label: 'Sources',   route: '/manage/billing/sources', badge: counts.manualMonthly || null, tone: 'danger' },
+    // Clients with live work but no mapped fee — confidential (reads fees).
+    ...(canViewFees
+      ? [{ id: 'gaps', label: 'Gaps', route: '/manage/billing/gaps', badge: counts.gaps || null, tone: 'danger' }]
+      : []),
     { id: 'mapping',   label: 'Mapping',   route: '/manage/billing/mapping', badge: null },
     { id: 'products',  label: 'Products ↔ QBO', route: '/manage/billing/products', badge: null },
     // Standard fees is confidential fee data — only fee admins see the tab

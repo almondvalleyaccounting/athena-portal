@@ -28,6 +28,7 @@ import StandardFeesPage from './modules/billing/StandardFeesPage';
 import BillingEmailReconciliationPage from './modules/billing/BillingEmailReconciliationPage';
 import BillingAddNewPage from './modules/billing/BillingAddNewPage';
 import FeeEarnerBookPage from './modules/billing/FeeEarnerBookPage';
+import FeeEngineGapsPage from './modules/billing/FeeEngineGapsPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
 import JobReviewModule from './modules/job-review/JobReviewModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
@@ -123,6 +124,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/manage/billing/emails" element={<BillingEmailReconciliationPage />} />
           <Route path="/manage/billing/add-new" element={<BillingAddNewPage />} />
           <Route path="/manage/billing/fee-earners" element={<FeeEarnerBookPage />} />
+          {/* Clients with live work but no mapped fee — self-gates on can_view_client_fees. */}
+          <Route path="/manage/billing/gaps" element={<FeeEngineGapsPage />} />
           <Route path="/clients/:id" element={<ClientDetailView />} />
           {/* Setup must come before /planner/* wildcard so it matches first. */}
           <Route path="/planner/setup/*" element={<SetupModule />} />
