@@ -68,11 +68,14 @@ export default function ClientDashboardPage() {
   const loadFavourites = async () => {
     if (!profile?.id) return;
     try {
+      // Favourites are keyed on realm_id — the connection's natural key. (The
+      // entity_id link is null on every connection, which is why the old
+      // entity-keyed star was always disabled.)
       const { data } = await supabase
         .from('staff_client_favourites')
-        .select('entity_id')
+        .select('realm_id')
         .eq('staff_id', profile.id);
-      setFavourites(new Set((data || []).map((r) => r.entity_id)));
+      setFavourites(new Set((data || []).map((r) => r.realm_id).filter(Boolean)));
     } catch { /* silent */ }
   };
 
@@ -153,22 +156,24 @@ export default function ClientDashboardPage() {
   const selected = clients.find((c) => c.realm_id === realmId);
   const selectedName = selected?.company_name || '';
   const entityId = selected?.entity_id || null;
-  const isFavourite = entityId ? favourites.has(entityId) : false;
+  const isFavourite = realmId ? favourites.has(realmId) : false;
 
   const toggleFavourite = async () => {
-    if (!entityId || !profile?.id) return;
+    if (!realmId || !profile?.id) return;
     const next = new Set(favourites);
     try {
       if (isFavourite) {
-        next.delete(entityId);
+        next.delete(realmId);
         setFavourites(next);
         await supabase.from('staff_client_favourites').delete()
-          .eq('staff_id', profile.id).eq('entity_id', entityId);
+          .eq('staff_id', profile.id).eq('realm_id', realmId);
       } else {
-        next.add(entityId);
+        next.add(realmId);
         setFavourites(next);
+        // entity_id carried when known (null today) so the Portfolio can show
+        // Companies House status once realms are linked to entities.
         await supabase.from('staff_client_favourites')
-          .insert({ staff_id: profile.id, entity_id: entityId });
+          .insert({ staff_id: profile.id, realm_id: realmId, entity_id: entityId });
       }
     } catch { loadFavourites(); }
   };
@@ -249,14 +254,11 @@ export default function ClientDashboardPage() {
         {realmId && (
           <button
             onClick={toggleFavourite}
-            disabled={!entityId}
-            title={!entityId
-              ? 'This connection is not linked to a client record yet'
-              : isFavourite ? 'Remove from your Portfolio' : 'Star — add to your Portfolio'}
+            title={isFavourite ? 'Remove from your Portfolio' : 'Star — add to your Portfolio'}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', width: '42px',
               border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
-              cursor: entityId ? 'pointer' : 'not-allowed', flexShrink: 0,
+              cursor: 'pointer', flexShrink: 0,
             }}
           >
             <Star size={17} style={{ color: isFavourite ? '#f59e0b' : '#cbd5e1', fill: isFavourite ? '#f59e0b' : 'none' }} />
@@ -670,22 +672,73 @@ function BalanceSheetTab({ balanceSheet, currency, empty }) {
     [balanceSheet],
   );
   if (!balanceSheet) return <EmptyState label="balance sheet" {...empty} />;
+  const bs = balanceSheet;
+  const within = bs.creditors_within_1yr;
+  const after = bs.creditors_after_1yr;
+  const liabSub = (within != null || after != null)
+    ? `${money(within || 0, currency)} < 1yr · ${money(after || 0, currency)} > 1yr`
+    : null;
+  const comp = bs.comparatives;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-        <MetricTile label="Total assets" value={balanceSheet.total_assets} currency={currency}
-          sub={balanceSheet.period?.end ? `as at ${shortDate(balanceSheet.period.end)}` : null} />
-        <MetricTile label="Total liabilities" value={balanceSheet.total_liabilities} currency={currency}
-          sub={balanceSheet.current_liabilities != null ? `${money(balanceSheet.current_liabilities, currency)} current` : null} />
-        <MetricTile label="Reserves / equity" value={balanceSheet.equity} currency={currency} />
+        <MetricTile label="Total assets" value={bs.total_assets} currency={currency}
+          sub={bs.period?.end ? `as at ${shortDate(bs.period.end)}` : null} />
+        <MetricTile label="Total liabilities" value={bs.total_liabilities} currency={currency}
+          sub={liabSub} />
+        <MetricTile label="Net assets" value={bs.net_assets ?? bs.equity} currency={currency} />
       </div>
+
+      {/* Comparatives — this month vs last month / 3 months / 12 months ago */}
+      {comp?.columns?.length > 0 && (
+        <div style={cardStyle}>
+          <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+            Comparatives
+          </div>
+          <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: 0, marginBottom: '12px' }}>
+            Month-end balances. Total liabilities = creditors falling due within one year plus after more than one year.
+          </p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: `${200 + comp.columns.length * 96}px` }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                  <th style={{ ...compTh, textAlign: 'left' }} />
+                  {comp.columns.map((c) => (
+                    <th key={c.key} style={compTh}>
+                      <div style={{ color: '#334155', fontWeight: 700 }}>{c.label}</div>
+                      <div style={{ color: '#94a3b8', fontWeight: 500, fontSize: '10.5px' }}>{shortMonth(c.date)}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {comp.rows.map((r) => {
+                  const bold = /total liabilities|net assets/i.test(r.label);
+                  return (
+                    <tr key={r.label} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ ...compTd, textAlign: 'left', color: '#0f172a', fontWeight: bold ? 700 : 500 }}>{r.label}</td>
+                      {r.values.map((v, i) => (
+                        <td key={i} style={{ ...compTd, fontWeight: bold ? 700 : 400, color: v != null && v < 0 ? '#991b1b' : '#475569' }}>
+                          {v === null || v === undefined ? '—' : moneyCompact(v, currency)}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {parsed && (
         <div style={cardStyle}>
           <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '10px' }}>
             Balance sheet detail
           </div>
           <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: 0, marginBottom: '10px' }}>
-            Click a section to expand it to account level.
+            Click a section to expand it to account level. Latest position.
           </p>
           <ReportTable columns={parsed.columns} rows={parsed.rows} monthLabels={false} />
         </div>
@@ -693,6 +746,8 @@ function BalanceSheetTab({ balanceSheet, currency, empty }) {
     </div>
   );
 }
+const compTh = { fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', fontWeight: 600, textAlign: 'right', padding: '6px 12px', whiteSpace: 'nowrap' };
+const compTd = { fontFamily: OUTFIT, fontSize: '13px', textAlign: 'right', padding: '8px 12px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' };
 
 /* ─── Debtors & Creditors tab ──────────────────────────────────── */
 const BUCKET_DEFS = [
@@ -703,11 +758,12 @@ const BUCKET_DEFS = [
   ['b91_plus', '91+ days'],
 ];
 
-function AgedSection({ title, data, priorRow, currency }) {
+function AgedSection({ title, data, priorRow, currency, sameLabel }) {
   if (!data) return null;
   const prior = priorRow?.data;
   const priorDate = priorRow ? (priorRow.period_end || priorRow.pulled_at) : null;
   const top = (data.top || []).slice(0, 10);
+  const sc = data.same_clients;
   return (
     <div style={cardStyle}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '4px' }}>
@@ -725,6 +781,29 @@ function AgedSection({ title, data, priorRow, currency }) {
           <Delta now={data.buckets?.total} prev={prior?.buckets?.total} currency={currency} upIsGood={false} />
         </span>
       </div>
+
+      {/* Same-client comparison — the CURRENT list's balances back in time
+          (no new names introduced). */}
+      {sc && (sc.last_month?.total != null || sc.three_months?.total != null) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '16px' }}>
+          {[
+            ['Now', sc.current_total, data.period?.end],
+            ['Last month', sc.last_month?.total, sc.last_month?.date],
+            ['3 months ago', sc.three_months?.total, sc.three_months?.date],
+          ].map(([label, val, date]) => (
+            <div key={label} style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '10px 12px' }}>
+              <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
+              <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
+                {val == null ? '—' : money(val, currency)}
+              </div>
+              <div style={{ fontFamily: OUTFIT, fontSize: '10.5px', color: '#cbd5e1' }}>{date ? shortDate(date) : ''}</div>
+            </div>
+          ))}
+          <div style={{ gridColumn: '1 / -1', fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginTop: '-4px' }}>
+            {sameLabel} on the current file ({sc.names}) — their combined balance at each date. Names on the file now only.
+          </div>
+        </div>
+      )}
 
       {/* Ageing buckets */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '16px' }}>
@@ -779,15 +858,16 @@ function AgedTab({ ctx, currency, empty }) {
   if (!agedAR && !agedAP) return <EmptyState label="aged debtors / creditors" {...empty} />;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <AgedSection title="Aged debtors (receivables)" data={agedAR} priorRow={agedARPriorRow} currency={currency} />
-      <AgedSection title="Aged creditors (payables)" data={agedAP} priorRow={agedAPPriorRow} currency={currency} />
+      <AgedSection title="Aged debtors (receivables)" data={agedAR} priorRow={agedARPriorRow} currency={currency} sameLabel="Same debtors" />
+      <AgedSection title="Aged creditors (payables)" data={agedAP} priorRow={agedAPPriorRow} currency={currency} sameLabel="Same suppliers" />
     </div>
   );
 }
 
-/* ─── Bookkeeping Health tab (collapsible, collapsed by default) ── */
+/* ─── Bookkeeping Health tab ────────────────────────────────────── */
+// White card, always expanded — same shell as the other tabs (no coloured
+// box). The traffic-light shows only as a small status pill.
 function HealthTab({ health, currency, empty }) {
-  const [open, setOpen] = useState(false);
   if (!health) return <EmptyState label="bookkeeping health" {...empty} />;
   const c = HEALTH_COLORS[health.score] || HEALTH_COLORS.amber;
   const rows = [
@@ -798,72 +878,61 @@ function HealthTab({ health, currency, empty }) {
     ['Reconciliation discrepancies', health.reconciliation_discrepancies],
   ];
   return (
-    <div style={{ ...cardStyle, backgroundColor: c.bg, border: `1px solid ${c.border}`, padding: 0 }}>
-      {/* Always-visible header — click to expand */}
-      <button
-        onClick={() => setOpen(!open)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '10px', width: '100%',
-          padding: '16px 24px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-        }}
-      >
+    <div style={cardStyle}>
+      {/* Header: title + status pill (no coloured background) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
         {health.score === 'green'
           ? <ShieldCheck size={20} style={{ color: c.dot, flexShrink: 0 }} />
           : <ShieldAlert size={20} style={{ color: c.dot, flexShrink: 0 }} />}
-        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: c.text }}>
-          Bookkeeping health — {c.label}
+        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+          Bookkeeping health
         </span>
-        {!open && health.flags?.length > 0 && (
-          <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: c.text, opacity: 0.85 }}>
-            {health.flags.length} flag{health.flags.length === 1 ? '' : 's'}
-          </span>
-        )}
-        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: c.dot }} />
-          {open ? <ChevronDown size={16} style={{ color: c.text }} /> : <ChevronRight size={16} style={{ color: c.text }} />}
+        <span style={{
+          marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px',
+          fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: c.text,
+          backgroundColor: c.bg, border: `1px solid ${c.border}`, borderRadius: '999px', padding: '3px 10px',
+        }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: c.dot }} />
+          {c.label}
         </span>
-      </button>
+      </div>
 
-      {open && (
-        <div style={{ padding: '0 24px 20px' }}>
-          {health.flags?.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
-              {health.flags.map((f) => (
-                <span key={f} style={{
-                  fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: c.text,
-                  backgroundColor: '#ffffff', border: `1px solid ${c.border}`, borderRadius: '8px', padding: '3px 10px',
-                }}>{f}</span>
-              ))}
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
-            {typeof health.unreconciled_count === 'number' && (
-              <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '10px 12px', border: '1px solid rgba(0,0,0,0.04)' }}>
-                <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>Unreconciled bank items</div>
-                <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: health.unreconciled_count > 0 ? c.text : '#0f172a' }}>
-                  {health.unreconciled_count}
-                  {health.unreconciled_count > 0 && (
-                    <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}> · {money(health.unreconciled_total, currency)}</span>
-                  )}
-                </div>
-              </div>
-            )}
-            {rows.map(([label, val]) => (
-              <div key={label} style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '10px 12px', border: '1px solid rgba(0,0,0,0.04)' }}>
-                <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
-                <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: Math.abs(val || 0) > 0.005 ? c.text : '#0f172a' }}>
-                  {money(val, currency)}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <p style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginTop: '12px', marginBottom: 0 }}>
-            Note: transactions still sitting in QuickBooks' bank-feed “For Review” queue aren't counted — QuickBooks doesn't expose that queue to the API. This reflects what's posted to the books.
-          </p>
+      {health.flags?.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
+          {health.flags.map((f) => (
+            <span key={f} style={{
+              fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: '#475569',
+              backgroundColor: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '3px 10px',
+            }}>{f}</span>
+          ))}
         </div>
       )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
+        {typeof health.unreconciled_count === 'number' && (
+          <div style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '10px 12px' }}>
+            <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>Unreconciled bank items</div>
+            <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: health.unreconciled_count > 0 ? c.text : '#0f172a' }}>
+              {health.unreconciled_count}
+              {health.unreconciled_count > 0 && (
+                <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}> · {money(health.unreconciled_total, currency)}</span>
+              )}
+            </div>
+          </div>
+        )}
+        {rows.map(([label, val]) => (
+          <div key={label} style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '10px 12px' }}>
+            <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
+            <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: Math.abs(val || 0) > 0.005 ? c.text : '#0f172a' }}>
+              {money(val, currency)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginTop: '12px', marginBottom: 0 }}>
+        Note: transactions still sitting in QuickBooks' bank-feed “For Review” queue aren't counted — QuickBooks doesn't expose that queue to the API. This reflects what's posted to the books.
+      </p>
     </div>
   );
 }

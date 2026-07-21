@@ -100,6 +100,9 @@ async function qboQuery(sb: any, realmId: string, query: string): Promise<any> {
 /* ── Date helpers ─────────────────────────────────────────────────── */
 function fmt(d: Date) { return d.toISOString().slice(0, 10); }
 function lastDay(y: number, m: number) { return new Date(y, m + 1, 0); }
+// Last day of the month `n` calendar months before `base` (n=0 → this month
+// end, n=1 → last month end, n=3 → three months ago, …). Handles year rollover.
+function monthEndOffset(base: Date, n: number) { return new Date(base.getFullYear(), base.getMonth() - n + 1, 0); }
 
 /* ── Metric pulls ─────────────────────────────────────────────────── */
 
@@ -380,40 +383,150 @@ async function pullPnlMonthly(sb: any, realmId: string) {
   };
 }
 
-// Balance sheet as of today. Collects every section-group total the report
-// exposes (group names vary a little between files) and stores the raw report
-// for the expandable account-level view.
+// Named balance-sheet lines from a group map. Works for both the UK
+// "net assets" format (AVA and clients — Fixed Assets / Current Assets /
+// Creditors <1yr = CurrentLiabilities / Creditors >1yr = LongTermLiabilities /
+// Net Assets) and the US "TotalAssets / Liabilities" format.
+//   * Total liabilities = Creditors falling due within one year + Creditors
+//     falling due after more than one year (Bobby's rule). The UK report has
+//     NO single "Liabilities" group total, so it must be summed — the old code
+//     picked a non-existent key and showed nothing.
+function bsLines(groups: Record<string, number>) {
+  const pick = (...keys: string[]) => {
+    for (const k of keys) if (typeof groups[k] === "number") return groups[k];
+    return null;
+  };
+  const within1yr = pick("CurrentLiabilities", "TotalCurrentLiabilities");
+  const after1yr = pick("LongTermLiabilities", "TotalLongTermLiabilities", "LongTermLiability");
+  const total_liabilities = (within1yr != null || after1yr != null)
+    ? (within1yr || 0) + (after1yr || 0)
+    : pick("Liabilities", "TotalLiabilities", "Liability");
+  const fixed_assets = pick("FixedAssets", "TotalFixedAssets");
+  const other_assets = pick("OtherAssets");
+  const current_assets = pick("totCurAsset", "TotalCurrentAssets", "CurrentAssets");
+  // Meaningful total assets: UK "TotalAssets" is only NON-current, so sum the
+  // parts when we have current assets; otherwise trust a US "TotalAssets".
+  const total_assets = current_assets != null
+    ? (fixed_assets || 0) + (other_assets || 0) + current_assets
+    : pick("TotalAssets", "Asset", "Assets");
+  const equity = pick("NetAssets", "Equity", "TotalEquity", "ShareholdersEquity");
+  return {
+    total_assets,
+    fixed_assets,
+    other_assets,
+    current_assets,
+    cash: pick("BankAccounts", "TotalBankAccounts"),
+    debtors: pick("AR"),
+    creditors_within_1yr: within1yr,
+    creditors_after_1yr: after1yr,
+    total_liabilities,
+    net_assets: pick("NetAssets"),
+    equity,
+    current_liabilities: within1yr, // alias kept for the current-ratio
+  };
+}
+
+// Balance sheet: current snapshot (headline + expandable detail) PLUS monthly
+// comparatives (this month / last month / 3 months ago / 12 months ago).
 // period_end = today → daily snapshot history via upsert.
 async function pullBalanceSheet(sb: any, realmId: string) {
-  const end = fmt(new Date());
+  const now = new Date();
+  const end = fmt(now);
+
+  // 1. Current single-period report — powers the expandable account detail and
+  //    the headline figures.
   const resp = await qboFetch(sb, realmId, `reports/BalanceSheet?end_date=${end}&accounting_method=Accrual&minorversion=75`);
   if (!resp.ok) throw new Error(`BalanceSheet ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   const report = await resp.json();
-
   const groups: Record<string, number> = {};
-  const walk = (rs: any[]) => {
+  const walkCur = (rs: any[]) => {
     for (const r of rs || []) {
       if (r.group && r.Summary?.ColData) {
         const v = parseFloat(r.Summary.ColData[r.Summary.ColData.length - 1]?.value || "0");
         if (!isNaN(v)) groups[r.group] = v;
       }
-      if (r.Rows?.Row) walk(r.Rows.Row);
+      if (r.Rows?.Row) walkCur(r.Rows.Row);
     }
   };
-  walk(report?.Rows?.Row || []);
+  walkCur(report?.Rows?.Row || []);
+  const lines = bsLines(groups);
 
-  const pick = (...keys: string[]) => {
-    for (const k of keys) if (typeof groups[k] === "number") return groups[k];
-    return null;
-  };
+  // 2. Monthly comparatives — 13 month-end columns (current + 12 prior).
+  let comparatives: any = null;
+  try {
+    const startM = fmt(new Date(now.getFullYear(), now.getMonth() - 12, 1));
+    const endM = fmt(lastDay(now.getFullYear(), now.getMonth()));
+    const mResp = await qboFetch(sb, realmId, `reports/BalanceSheet?start_date=${startM}&end_date=${endM}&summarize_column_by=Month&accounting_method=Accrual&minorversion=75`);
+    if (mResp.ok) {
+      const mRep = await mResp.json();
+      const cols = (mRep?.Columns?.Column || []).map((c: any) => c.ColTitle ?? "");
+      // Value columns after the account-name column, excluding a trailing Total.
+      const monthIdx: number[] = [];
+      const monthLabels: string[] = [];
+      cols.forEach((t: string, i: number) => {
+        if (i === 0) return;
+        if (/^total$/i.test(t)) return;
+        monthIdx.push(i); monthLabels.push(t);
+      });
+      const series: Record<string, (number | null)[]> = {};
+      const walkM = (rs: any[]) => {
+        for (const r of rs || []) {
+          const cd = r.Summary?.ColData;
+          if (r.group && cd) {
+            series[r.group] = monthIdx.map((ci) => {
+              const v = parseFloat(cd[ci]?.value ?? "");
+              return isNaN(v) ? null : v;
+            });
+          }
+          if (r.Rows?.Row) walkM(r.Rows.Row);
+        }
+      };
+      walkM(mRep?.Rows?.Row || []);
+
+      const n = monthIdx.length;
+      // now = last column; then 1 / 3 / 12 months back by position.
+      const offsets = [
+        { key: "now", label: "This month", back: 0 },
+        { key: "m1", label: "Last month", back: 1 },
+        { key: "m3", label: "3 months ago", back: 3 },
+        { key: "m12", label: "12 months ago", back: 12 },
+      ];
+      const columns = offsets
+        .map((o) => ({ ...o, idx: n - 1 - o.back }))
+        .filter((o) => o.idx >= 0)
+        .map((o) => ({ key: o.key, label: o.label, date: monthLabels[o.idx], _idx: o.idx }));
+
+      const groupsAt = (idx: number) => {
+        const g: Record<string, number> = {};
+        for (const k in series) { const v = series[k][idx]; if (v != null) g[k] = v; }
+        return g;
+      };
+      const perCol = columns.map((c) => ({ col: c, lines: bsLines(groupsAt(c._idx)) }));
+      const lineDefs: [string, keyof ReturnType<typeof bsLines>][] = [
+        ["Fixed assets", "fixed_assets"],
+        ["Current assets", "current_assets"],
+        ["Cash at bank", "cash"],
+        ["Debtors", "debtors"],
+        ["Creditors < 1 year", "creditors_within_1yr"],
+        ["Creditors > 1 year", "creditors_after_1yr"],
+        ["Total liabilities", "total_liabilities"],
+        ["Net assets", "net_assets"],
+      ];
+      comparatives = {
+        columns: columns.map((c) => ({ key: c.key, label: c.label, date: c.date })),
+        rows: lineDefs.map(([label, key]) => ({
+          label,
+          values: perCol.map((pc) => pc.lines[key] ?? null),
+        })),
+      };
+    }
+  } catch { /* comparatives are best-effort; headline+detail still render */ }
+
   return {
     period: { start: null, end },
     currency: report?.Header?.Currency || null,
-    total_assets: pick("TotalAssets", "Asset", "Assets"),
-    total_liabilities: pick("Liabilities", "TotalLiabilities", "Liability"),
-    equity: pick("Equity", "TotalEquity", "ShareholdersEquity"),
-    current_assets: pick("CurrentAssets", "TotalCurrentAssets"),
-    current_liabilities: pick("CurrentLiabilities", "TotalCurrentLiabilities"),
+    ...lines,
+    comparatives,
     groups,
     report,
   };
@@ -470,20 +583,53 @@ function parseAged(report: any) {
     current: sumKey("current"), b1_30: sumKey("b1_30"), b31_60: sumKey("b31_60"),
     b61_90: sumKey("b61_90"), b91_plus: sumKey("b91_plus"), total: sumKey("total"),
   };
-  return { buckets, rows: rows.slice(0, 25) };
+  return { buckets, rows, top: rows.slice(0, 25) };
+}
+
+// Aged report as at a given date → { name: total } over ALL named rows.
+async function agedByName(sb: any, realmId: string, endpoint: string, reportDate: string): Promise<Record<string, number>> {
+  const resp = await qboFetch(sb, realmId, `reports/${endpoint}?report_date=${reportDate}&minorversion=75`);
+  if (!resp.ok) throw new Error(`${endpoint} @${reportDate} ${resp.status}`);
+  const parsed = parseAged(await resp.json());
+  const map: Record<string, number> = {};
+  for (const r of parsed.rows) map[r.name] = r.total;
+  return map;
 }
 
 async function pullAged(sb: any, realmId: string, endpoint: "AgedReceivables" | "AgedPayables") {
-  const end = fmt(new Date());
+  const now = new Date();
+  const end = fmt(now);
   const resp = await qboFetch(sb, realmId, `reports/${endpoint}?report_date=${end}&minorversion=75`);
   if (!resp.ok) throw new Error(`${endpoint} ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   const report = await resp.json();
   const parsed = parseAged(report);
+
+  // Same-client comparison: take the customers/suppliers on the CURRENT report
+  // and total THEIR balances as at last month-end and three months ago. We do
+  // NOT introduce names that weren't on the file this month (Bobby's rule).
+  const currentNames = parsed.rows.map((r) => r.name);
+  const currentTotal = parsed.rows.reduce((s, r) => s + r.total, 0);
+  const m1Date = fmt(monthEndOffset(now, 1));
+  const m3Date = fmt(monthEndOffset(now, 3));
+  const sameTotal = async (dateStr: string) => {
+    try {
+      const map = await agedByName(sb, realmId, endpoint, dateStr);
+      return currentNames.reduce((s, n) => s + (map[n] || 0), 0);
+    } catch { return null; }
+  };
+  const [m1Total, m3Total] = await Promise.all([sameTotal(m1Date), sameTotal(m3Date)]);
+
   return {
     period: { start: null, end },
     currency: report?.Header?.Currency || null,
     buckets: parsed.buckets,
-    top: parsed.rows, // largest balances first, capped at 25 (UI shows top 10)
+    top: parsed.top, // largest balances first, capped at 25 (UI shows top 10)
+    same_clients: {
+      names: currentNames.length,
+      current_total: currentTotal,
+      last_month: { date: m1Date, total: m1Total },
+      three_months: { date: m3Date, total: m3Total },
+    },
     report,
   };
 }

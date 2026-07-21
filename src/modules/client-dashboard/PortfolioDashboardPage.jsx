@@ -30,34 +30,31 @@ export default function PortfolioDashboardPage() {
     if (!profile?.id) return;
     setLoading(true);
     try {
-      // 1. My starred clients (+ CH status from entities)
+      // 1. My starred clients (realm-keyed; CH status via the optional entity link)
       const { data: favs } = await supabase
         .from('staff_client_favourites')
-        .select('entity_id, created_at, entity:entities(id, name, company_status, company_status_detail)')
+        .select('realm_id, entity_id, created_at, entity:entities(id, name, company_status, company_status_detail)')
         .eq('staff_id', profile.id)
         .order('created_at', { ascending: true });
-      const favourites = favs || [];
+      const favourites = (favs || []).filter((f) => f.realm_id);
       if (!favourites.length) { setCards([]); setLoading(false); return; }
 
-      // 2. QBO report connections for those entities
-      const entityIds = favourites.map((f) => f.entity_id);
+      // 2. QBO report connections for those realms
+      const realmIds = favourites.map((f) => f.realm_id);
       const { data: conns } = await supabase
         .from('qbo_report_connections')
         .select('realm_id, company_name, entity_id, status')
-        .in('entity_id', entityIds);
-      const connByEntity = {};
-      for (const c of conns || []) {
-        if (!connByEntity[c.entity_id] || c.status === 'active') connByEntity[c.entity_id] = c;
-      }
+        .in('realm_id', realmIds);
+      const connByRealm = {};
+      for (const c of conns || []) connByRealm[c.realm_id] = c;
 
       // 3. Latest cached headline metrics per realm
-      const realms = Object.values(connByEntity).map((c) => c.realm_id).filter(Boolean);
       let cacheByRealm = {};
-      if (realms.length) {
+      if (realmIds.length) {
         const { data: rows } = await supabase
           .from('qbo_dashboard_cache')
           .select('realm_id, metric_key, period_end, data, pulled_at')
-          .in('realm_id', realms)
+          .in('realm_id', realmIds)
           .in('metric_key', ['pl_fytd', 'balances', 'pnl_monthly', 'aged_receivables', 'file_health'])
           .order('pulled_at', { ascending: false });
         for (const r of rows || []) {
@@ -67,14 +64,15 @@ export default function PortfolioDashboardPage() {
       }
 
       setCards(favourites.map((f) => {
-        const conn = connByEntity[f.entity_id] || null;
-        const latest = conn ? latestByMetric(cacheByRealm[conn.realm_id] || []) : {};
+        const conn = connByRealm[f.realm_id] || null;
+        const latest = latestByMetric(cacheByRealm[f.realm_id] || []);
         return {
+          realmKey: f.realm_id,
           entityId: f.entity_id,
           name: conn?.company_name || f.entity?.name || 'Unknown client',
           chStatus: f.entity?.company_status || null,
           chDetail: f.entity?.company_status_detail || null,
-          realmId: conn?.realm_id || null,
+          realmId: f.realm_id || conn?.realm_id || null,
           plFytd: latest.pl_fytd?.data || null,
           balances: latest.balances?.data || null,
           pnlMonthly: latest.pnl_monthly?.data || null,
@@ -89,11 +87,11 @@ export default function PortfolioDashboardPage() {
 
   useEffect(() => { load(); }, [profile?.id]);
 
-  const unstar = async (entityId) => {
-    setCards((prev) => prev.filter((c) => c.entityId !== entityId));
+  const unstar = async (realmId) => {
+    setCards((prev) => prev.filter((c) => c.realmKey !== realmId));
     try {
       await supabase.from('staff_client_favourites').delete()
-        .eq('staff_id', profile.id).eq('entity_id', entityId);
+        .eq('staff_id', profile.id).eq('realm_id', realmId);
     } catch { load(); }
   };
 
@@ -137,7 +135,7 @@ export default function PortfolioDashboardPage() {
 
       {!loading && cards.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
-          {cards.map((c) => <PortfolioCard key={c.entityId} card={c} navigate={navigate} unstar={unstar} />)}
+          {cards.map((c) => <PortfolioCard key={c.realmKey} card={c} navigate={navigate} unstar={unstar} />)}
         </div>
       )}
 
@@ -195,7 +193,7 @@ function PortfolioCard({ card, navigate, unstar }) {
             style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: healthColor, marginTop: '5px', flexShrink: 0 }} />
         )}
         <button
-          onClick={() => unstar(card.entityId)}
+          onClick={() => unstar(card.realmKey)}
           title="Remove from Portfolio"
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', flexShrink: 0 }}
         >
