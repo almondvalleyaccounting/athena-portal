@@ -660,63 +660,69 @@ export default function ClientRemindersPage() {
                         <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleRow(row.id)} />
                       </td>
                       <td style={td}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: 600 }}>{row.client_name_raw}</span>
-                          {row.reference_raw && <span style={{ fontSize: 11, color: '#94a3b8' }}>{row.reference_raw}</span>}
-                          <ClientTypeAhead
-                            entityList={entities}
-                            value={row.entity_id || ''}
-                            onChange={(id) => setEntityMatch(row, id)}
-                            onAddNew={async () => null}
-                            size="small"
-                            metaOf={(e) => [
-                              e.utr && `UTR ${e.utr}`,
-                              e.bm_client_id && `ref ${e.bm_client_id}`,
-                              (e.qbo_customer_name && e.qbo_customer_name !== e.name) ? e.qbo_customer_name : null,
-                            ].filter(Boolean).join(' · ')}
-                          />
-                          {!row.entity_id && !rowIgnored && (
-                            <span style={{ fontSize: 10.5, color: '#b91c1c', fontWeight: 600 }}>unmatched</span>
-                          )}
-                          {res && (
-                            <span style={{
-                              fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
-                              background: res.ok ? '#f0fdf4' : '#fef2f2',
-                              color: res.ok ? '#166534' : '#b91c1c',
-                              border: `1px solid ${res.ok ? '#bbf7d0' : '#fecaca'}`,
-                            }} title={res.text}>
-                              {res.ok ? '✓ sent' : `✗ ${res.text}`}
-                            </span>
-                          )}
-                          {row.reference_raw && (rowIgnored
-                            ? (
-                              <>
-                                <span style={{
-                                  fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
-                                  background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
-                                }}>ignored — not a client</span>
-                                {canManage && (
-                                  <button
-                                    onClick={() => removeIgnore(row)}
-                                    title="This UTR is a client after all — remove it from the never-remind list"
-                                    style={{
-                                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                      fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#0e7fe0', textDecoration: 'underline',
-                                    }}
-                                  >revert to client</button>
-                                )}
-                              </>
-                            )
-                            : canManage && (
-                              <button
-                                onClick={() => addIgnore(row)}
-                                title="Never send tax reminders to this UTR (someone whose return you file but who isn't a practice client)"
-                                style={{
-                                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                  fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#94a3b8', textDecoration: 'underline',
-                                }}
-                              >never remind</button>
-                            ))}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-start' }}>
+                          {/* Line 1 — CSV name + reference + send result */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 600 }}>{row.client_name_raw}</span>
+                            {row.reference_raw && <span style={{ fontSize: 11, color: '#94a3b8' }}>{row.reference_raw}</span>}
+                            {res && (
+                              <span style={{
+                                fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
+                                background: res.ok ? '#f0fdf4' : '#fef2f2',
+                                color: res.ok ? '#166534' : '#b91c1c',
+                                border: `1px solid ${res.ok ? '#bbf7d0' : '#fecaca'}`,
+                              }} title={res.text}>
+                                {res.ok ? '✓ sent' : `✗ ${res.text}`}
+                              </span>
+                            )}
+                          </div>
+                          {/* Line 2 — match picker (aligned left) + match status */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <ClientTypeAhead
+                              entityList={entities}
+                              value={row.entity_id || ''}
+                              onChange={(id) => setEntityMatch(row, id)}
+                              onAddNew={async () => null}
+                              size="small"
+                              metaOf={(e) => [
+                                e.utr && `UTR ${e.utr}`,
+                                e.bm_client_id && `ref ${e.bm_client_id}`,
+                                (e.qbo_customer_name && e.qbo_customer_name !== e.name) ? e.qbo_customer_name : null,
+                              ].filter(Boolean).join(' · ')}
+                            />
+                            {!row.entity_id && !rowIgnored && (
+                              <span style={{ fontSize: 10.5, color: '#b91c1c', fontWeight: 600 }}>unmatched</span>
+                            )}
+                            {row.reference_raw && (rowIgnored
+                              ? (
+                                <>
+                                  <span style={{
+                                    fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
+                                    background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
+                                  }}>ignored — not a client</span>
+                                  {canManage && (
+                                    <button
+                                      onClick={() => removeIgnore(row)}
+                                      title="This UTR is a client after all — remove it from the never-remind list"
+                                      style={{
+                                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                        fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#0e7fe0', textDecoration: 'underline',
+                                      }}
+                                    >revert to client</button>
+                                  )}
+                                </>
+                              )
+                              : canManage && (
+                                <button
+                                  onClick={() => addIgnore(row)}
+                                  title="Never send tax reminders to this UTR (someone whose return you file but who isn't a practice client)"
+                                  style={{
+                                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                    fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#94a3b8', textDecoration: 'underline',
+                                  }}
+                                >never remind</button>
+                              ))}
+                          </div>
                         </div>
                       </td>
                       <td style={td}>
