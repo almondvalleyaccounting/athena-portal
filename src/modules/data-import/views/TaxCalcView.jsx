@@ -18,17 +18,19 @@ export default function TaxCalcView() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const [entities, setEntities] = useState(null);
+  const [ignoreUtrs, setIgnoreUtrs] = useState([]);
   const [error, setError] = useState(null);
   const [savedBatchId, setSavedBatchId] = useState(null);
 
   useEffect(() => {
     (async () => {
-      const { data, error: e } = await supabase
-        .from('entities')
-        .select('id, name, utr')
-        .order('name');
+      const [{ data, error: e }, { data: ign }] = await Promise.all([
+        supabase.from('entities').select('id, name, utr').order('name'),
+        supabase.from('tax_reminder_ignore').select('utr'),
+      ]);
       if (e) { setError(`Could not load clients: ${e.message}`); return; }
       setEntities(data || []);
+      setIgnoreUtrs((ign || []).map((r) => r.utr));
     })();
   }, []);
 
@@ -83,6 +85,7 @@ export default function TaxCalcView() {
         {entities !== null && (
           <TaxBatchUpload
             entities={entities}
+            ignoreUtrs={ignoreUtrs}
             profileId={profile?.id}
             onSaved={(id) => setSavedBatchId(id)}
           />

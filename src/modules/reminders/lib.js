@@ -97,6 +97,13 @@ export function matchEntityByName(rawName, entities) {
 // so the row is skipped, never mis-delivered. entities need { id, name, utr }.
 // Returns { id: string|null, reason: 'ok'|'no-utr'|'utr-not-found'|'utr-ambiguous'|'surname-mismatch' }.
 const utrDigits = (v) => String(v ?? '').replace(/\D/g, '').slice(0, 10);
+
+// The bare 10-digit UTR (ignore-list key), or '' if fewer than 10 digits.
+export function utr10(raw) {
+  const d = String(raw ?? '').replace(/\D/g, '');
+  return d.length >= 10 ? d.slice(0, 10) : '';
+}
+
 export function matchEntityByUtrSurname(utrRaw, surnameRaw, entities) {
   const u = utrDigits(utrRaw);
   if (u.length < 10) return { id: null, reason: 'no-utr' };

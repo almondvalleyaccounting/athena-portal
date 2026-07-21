@@ -5,7 +5,7 @@ import { useAuth } from '../../shell/AppShell';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import {
   fmtMoney, fmtDateLong, fmtDateTimeShort,
-  greetingName, taxPaymentRef, buildEmailPreview, PAY_URL, PTA_URL,
+  greetingName, taxPaymentRef, buildEmailPreview, PAY_URL, PTA_URL, utr10,
 } from './lib';
 import EmailTemplatesModal from './EmailTemplatesModal';
 import ReminderQueueModal from './ReminderQueueModal';
@@ -252,6 +252,7 @@ export default function ClientRemindersPage() {
   const [queuedCount, setQueuedCount] = useState(0);
   const [autoQueue, setAutoQueue] = useState(null); // { enabled, last_run_at } | null
   const [bmEmailByEntity, setBmEmailByEntity] = useState({}); // entity_id -> BM contact email fallback
+  const [ignoreUtrs, setIgnoreUtrs] = useState(() => new Set()); // UTRs never to remind (not clients)
 
   const entityById = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e])), [entities]);
   const batch = batches.find((b) => b.id === batchId) || null;
@@ -314,6 +315,10 @@ export default function ClientRemindersPage() {
       // Auto-queue (Jan/Jul cron) on/off state.
       const { data: aq } = await supabase.from('v_reminder_autoqueue').select('enabled, last_run_at').maybeSingle();
       setAutoQueue(aq || null);
+
+      // "Never remind" ignore-list (non-client UTRs).
+      const { data: ign } = await supabase.from('tax_reminder_ignore').select('utr');
+      setIgnoreUtrs(new Set((ign || []).map((r) => r.utr)));
 
       // Gmail pill — reminders go out from the practice-default mailbox.
       // v_gmail_connections is the staff-safe view (no token columns).
@@ -409,6 +414,24 @@ export default function ClientRemindersPage() {
     setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, status: next } : r)));
   };
 
+  // Durably ignore a UTR — for people whose return the practice files but
+  // who aren't clients. Adds to tax_reminder_ignore (auto-excludes them on
+  // every future import) and excludes this row now.
+  const addIgnore = async (row) => {
+    if (!(profile?.can_manage_portal || profile?.is_portal_admin)) return;
+    const u = utr10(row.reference_raw);
+    if (!u) { setError('That row has no 10-digit UTR to ignore.'); return; }
+    if (!window.confirm(`Never send tax reminders to UTR ${u}?\n\nUse this for someone whose return you file but who isn’t a practice client. Future TaxCalc uploads will auto-exclude this UTR. This row will be excluded now.`)) return;
+    const { error: e1 } = await supabase.from('tax_reminder_ignore')
+      .upsert({ utr: u, created_by: profile?.id || null }, { onConflict: 'utr', ignoreDuplicates: true });
+    if (e1) { setError(`Could not add to ignore list: ${e1.message}`); return; }
+    const { error: e2 } = await supabase.from('tax_payments_due').update({ status: 'excluded' }).eq('id', row.id);
+    if (e2) { setError(`Added to ignore list, but could not exclude the row: ${e2.message}`); }
+    setIgnoreUtrs((s) => { const n = new Set(s); n.add(u); return n; });
+    setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, status: 'excluded' } : r)));
+    setNotice(`UTR ${u} added to the never-remind list.`);
+  };
+
   // ── selection + action-bar eligibility ──
   const toggleRow = (id) => {
     setSelected((s) => {
@@ -432,11 +455,12 @@ export default function ClientRemindersPage() {
     const ent = entityById[r.entity_id];
     return { paymentId: r.id, entityId: r.entity_id, name: ent ? ent.name : r.client_name_raw, email: emailOf(r), amount: r.amount, ref: taxPaymentRef(r.reference_raw) };
   };
+  const isIgnored = (r) => r.reference_raw && ignoreUtrs.has(utr10(r.reference_raw));
   const inviteTargets = selRows
-    .filter((r) => r.entity_id && !isFormerClient(r) && emailOf(r) && !['opted_in', 'opted_out'].includes(prefStatusOf(r)))
+    .filter((r) => r.entity_id && !isFormerClient(r) && !isIgnored(r) && emailOf(r) && !['opted_in', 'opted_out'].includes(prefStatusOf(r)))
     .map(toTarget);
   const reminderTargets = selRows
-    .filter((r) => r.entity_id && !isFormerClient(r) && emailOf(r) && prefStatusOf(r) === 'opted_in' && r.status === 'unpaid' && r.amount != null)
+    .filter((r) => r.entity_id && !isFormerClient(r) && !isIgnored(r) && emailOf(r) && prefStatusOf(r) === 'opted_in' && r.status === 'unpaid' && r.amount != null)
     .map(toTarget);
 
   const onSendDone = (result) => {
@@ -643,6 +667,23 @@ export default function ClientRemindersPage() {
                               {res.ok ? '✓ sent' : `✗ ${res.text}`}
                             </span>
                           )}
+                          {row.reference_raw && (ignoreUtrs.has(utr10(row.reference_raw))
+                            ? (
+                              <span style={{
+                                fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
+                                background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
+                              }}>ignored — not a client</span>
+                            )
+                            : canManage && (
+                              <button
+                                onClick={() => addIgnore(row)}
+                                title="Never send tax reminders to this UTR (someone whose return you file but who isn't a practice client)"
+                                style={{
+                                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                  fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#94a3b8', textDecoration: 'underline',
+                                }}
+                              >never remind</button>
+                            ))}
                         </div>
                       </td>
                       <td style={td}>

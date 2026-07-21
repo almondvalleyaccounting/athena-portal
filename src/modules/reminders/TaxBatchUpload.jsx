@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
-import { parseCsv, guessColumns, parseAmount, matchEntityByUtrSurname, fmtMoney } from './lib';
+import { parseCsv, guessColumns, parseAmount, matchEntityByUtrSurname, fmtMoney, utr10 } from './lib';
 
 const font = "'Outfit', sans-serif";
 
@@ -65,8 +65,10 @@ function findHeaderRow(rows) {
   return 0;
 }
 
-export default function TaxBatchUpload({ entities, profileId, onSaved }) {
+export default function TaxBatchUpload({ entities, ignoreUtrs = [], profileId, onSaved }) {
   const year = new Date().getFullYear();
+  const ignoreSet = useMemo(() => new Set((ignoreUtrs || []).map(String)), [ignoreUtrs]);
+  const isIgnored = (r) => { const u = utr10(r.reference_raw); return !!u && ignoreSet.has(u); };
   const [fileName, setFileName] = useState('');
   const [headers, setHeaders] = useState([]);
   const [dataRows, setDataRows] = useState([]);
@@ -133,14 +135,15 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
   }, [dataRows, mapping]);
 
   const stats = useMemo(() => {
-    const s = { ok: 0, byReason: {} };
+    const s = { ok: 0, ignored: 0, byReason: {} };
     for (const r of parsed) {
+      if (isIgnored(r)) { s.ignored += 1; continue; }
       const m = matchEntityByUtrSurname(r.reference_raw, r.surname, entities);
       if (m.reason === 'ok') s.ok += 1;
       else s.byReason[m.reason] = (s.byReason[m.reason] || 0) + 1;
     }
     return s;
-  }, [parsed, entities]);
+  }, [parsed, entities, ignoreSet]);
 
   const canSave = fileName && mapping.surname >= 0 && mapping.reference >= 0 && mapping.amount >= 0
     && label.trim() && dueDate && parsed.length > 0 && !saving;
@@ -156,14 +159,17 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
         .select('id')
         .single();
       if (bErr) throw bErr;
-      const items = parsed.map((r) => ({
-        batch_id: batch.id,
-        entity_id: matchEntityByUtrSurname(r.reference_raw, r.surname, entities).id,
-        client_name_raw: r.client_name_raw,
-        reference_raw: r.reference_raw,
-        amount: r.amount,
-        status: 'unpaid',
-      }));
+      const items = parsed.map((r) => {
+        const ignored = isIgnored(r);
+        return {
+          batch_id: batch.id,
+          entity_id: ignored ? null : matchEntityByUtrSurname(r.reference_raw, r.surname, entities).id,
+          client_name_raw: r.client_name_raw,
+          reference_raw: r.reference_raw,
+          amount: r.amount,
+          status: ignored ? 'excluded' : 'unpaid',
+        };
+      });
       for (let i = 0; i < items.length; i += 500) {
         const { error: iErr } = await supabase.from('tax_payments_due').insert(items.slice(i, i + 500));
         if (iErr) throw iErr;
@@ -186,7 +192,7 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
   };
   const lbl = { fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 3, display: 'block' };
 
-  const unmatchedTotal = parsed.length - stats.ok;
+  const unmatchedTotal = parsed.length - stats.ok - stats.ignored;
 
   return (
     <div style={{ fontFamily: font }}>
@@ -238,6 +244,7 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
             {parsed.length} row{parsed.length === 1 ? '' : 's'} with a POA amount will import
             {mapping.reference >= 0 && mapping.surname >= 0 && (
               <> — <strong style={{ color: '#166534' }}>{stats.ok} matched</strong> by UTR + surname
+                {stats.ignored > 0 && <>, {stats.ignored} ignored (not clients)</>}
                 {unmatchedTotal > 0 && <>, {unmatchedTotal} unmatched (
                   {Object.entries(stats.byReason).map(([r, n], i) => (
                     <span key={r}>{i > 0 ? ', ' : ''}{n} {REASON_LABEL[r] || r}</span>
@@ -265,16 +272,19 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
               </thead>
               <tbody>
                 {parsed.map((r, i) => {
-                  const m = matchEntityByUtrSurname(r.reference_raw, r.surname, entities);
-                  const ent = m.id ? entities.find((e) => e.id === m.id) : null;
+                  const ignored = isIgnored(r);
+                  const m = ignored ? null : matchEntityByUtrSurname(r.reference_raw, r.surname, entities);
+                  const ent = m && m.id ? entities.find((e) => e.id === m.id) : null;
                   return (
                     <tr key={i}>
                       <td style={td}>{r.client_name_raw || '—'}</td>
                       <td style={td}>{r.amount != null ? `£${fmtMoney(r.amount)}` : <span style={{ color: '#b91c1c' }}>no amount</span>}</td>
                       <td style={td}>{r.reference_raw || '—'}</td>
-                      <td style={td}>{ent
-                        ? <span style={{ color: '#166534' }}>{ent.name}</span>
-                        : <span style={{ color: '#b91c1c' }}>{REASON_LABEL[m.reason] || 'unmatched'}</span>}
+                      <td style={td}>{ignored
+                        ? <span style={{ color: '#94a3b8' }}>not a client (ignored)</span>
+                        : ent
+                          ? <span style={{ color: '#166534' }}>{ent.name}</span>
+                          : <span style={{ color: '#b91c1c' }}>{REASON_LABEL[m.reason] || 'unmatched'}</span>}
                       </td>
                     </tr>
                   );
