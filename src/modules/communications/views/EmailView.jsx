@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive, ArchiveRestore, ChevronLeft, CornerUpLeft, CornerUpRight, Forward as ForwardIcon,
-  Inbox as InboxIcon, Mail, Paperclip, PenSquare, RefreshCw, Search, Send, Tag, X,
+  Inbox as InboxIcon, Mail, Paperclip, PenSquare, Plus, RefreshCw, Search, Send, Tag, X,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { chipStyle, tones } from '../../../lib/tokens';
@@ -131,6 +131,7 @@ export default function EmailView() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const selected = useMemo(
     () => (mailboxes || []).find((m) => m.account_email === mailbox) || null,
@@ -336,6 +337,38 @@ export default function EmailView() {
         </select>
         <div style={{ fontSize: 11, color: '#94a3b8', marginTop: -4, paddingLeft: 2 }}>{selected?.account_email}</div>
 
+        {(!myPersonal || isAdmin) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <button
+              onClick={() => setAddOpen((o) => !o)}
+              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 10px', fontSize: 12.5, fontWeight: 600, background: '#fff', color: '#334155', border: '1px dashed #94a3b8', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
+            >
+              <Plus size={13} /> Add mailbox
+            </button>
+            {addOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, border: '1px solid #e2e8f0', borderRadius: 8, background: '#f8fafc' }}>
+                {!myPersonal && (
+                  <a href={connectPersonalUrl} style={addOptionStyle}>
+                    <Mail size={13} /> Connect my inbox
+                  </a>
+                )}
+                {isAdmin && (
+                  <a
+                    href={connectSharedUrl}
+                    onClick={(e) => { if (!window.confirm('You’ll be sent to Google — sign in as the SHARED mailbox you want to add (e.g. accounts@ or payroll@), not your own account. Continue?')) e.preventDefault(); }}
+                    style={addOptionStyle}
+                  >
+                    <InboxIcon size={13} /> Add shared mailbox
+                  </a>
+                )}
+                <div style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.4 }}>
+                  Shared = the whole team sees it (info@, accounts@…). You&apos;ll sign into that Google account once.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <button
           onClick={() => startComposer('new')}
           style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
@@ -377,18 +410,6 @@ export default function EmailView() {
           ))}
         </div>
 
-        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10 }}>
-          {!myPersonal && (
-            <a href={connectPersonalUrl} style={{ fontSize: 12, color: '#0e7fe0', textDecoration: 'none', fontWeight: 600 }}>+ Connect my inbox</a>
-          )}
-          {isAdmin && (
-            <a
-              href={connectSharedUrl}
-              onClick={(e) => { if (!window.confirm('You’ll be sent to Google — sign in as the SHARED mailbox you want to add (e.g. info@ or payroll@), not your own account. Continue?')) e.preventDefault(); }}
-              style={{ fontSize: 12, color: '#0e7fe0', textDecoration: 'none', fontWeight: 600 }}
-            >+ Add shared mailbox</a>
-          )}
-        </div>
       </div>
 
       {/* ── Middle/right ── */}
@@ -533,4 +554,10 @@ const btnIcon = {
   display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', fontSize: 12, fontWeight: 600,
   border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, cursor: 'pointer',
   fontFamily: font, color: '#334155',
+};
+
+const addOptionStyle = {
+  display: 'flex', alignItems: 'center', gap: 7, padding: '7px 10px', fontSize: 12.5, fontWeight: 600,
+  background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 7,
+  textDecoration: 'none', fontFamily: font,
 };
