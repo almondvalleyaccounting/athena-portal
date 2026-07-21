@@ -8,7 +8,7 @@ function firstChar(name) {
   return /[0-9]/.test(c) ? '#' : /[A-Z]/.test(c) ? c : '#';
 }
 
-export default function ClientTypeAhead({ entityList, value, onChange, onAddNew, size = 'normal' }) {
+export default function ClientTypeAhead({ entityList, value, onChange, onAddNew, size = 'normal', metaOf }) {
   const [query, setQuery] = useState('');
   const [letter, setLetter] = useState(null); // null = all, '#' = digits/symbols, 'A'..'Z'
   const [open, setOpen] = useState(false);
@@ -37,7 +37,8 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
     if (letter) out = out.filter((e) => firstChar(e.name) === letter);
     if (query.trim()) {
       const q = query.toLowerCase();
-      out = out.filter((e) => e.name.toLowerCase().includes(q));
+      out = out.filter((e) => e.name.toLowerCase().includes(q)
+        || (metaOf ? String(metaOf(e) || '').toLowerCase().includes(q) : false));
     }
     return out;
   }, [entityList, letter, query]);
@@ -146,6 +147,9 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
                 onMouseLeave={hoverOut}
               >
                 {entity.name}
+                {metaOf && metaOf(entity) && (
+                  <div style={{ fontSize: 9.5, color: '#94a3b8', fontWeight: 400 }}>{metaOf(entity)}</div>
+                )}
               </div>
             ))}
 

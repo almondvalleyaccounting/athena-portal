@@ -262,7 +262,7 @@ export default function ClientRemindersPage() {
     try {
       const [{ data: b, error: e1 }, { data: ents, error: e2 }] = await Promise.all([
         supabase.from('tax_payment_batches').select('id, label, due_date, source_filename, created_at').order('created_at', { ascending: false }),
-        supabase.from('entities').select('id, name, utr, billing_email, prospect_email, type, entity_status').order('name'),
+        supabase.from('entities').select('id, name, utr, bm_client_id, qbo_customer_name, billing_email, prospect_email, type, entity_status').order('name'),
       ]);
       if (e1) throw e1;
       if (e2) throw e2;
@@ -430,6 +430,21 @@ export default function ClientRemindersPage() {
     setIgnoreUtrs((s) => { const n = new Set(s); n.add(u); return n; });
     setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, status: 'excluded' } : r)));
     setNotice(`UTR ${u} added to the never-remind list.`);
+  };
+
+  // Undo an ignore — this UTR is a client after all. Removes it from the
+  // ignore-list and un-excludes the row so it can be matched/reminded.
+  const removeIgnore = async (row) => {
+    if (!(profile?.can_manage_portal || profile?.is_portal_admin)) return;
+    const u = utr10(row.reference_raw);
+    if (!u) return;
+    const { error: e1 } = await supabase.from('tax_reminder_ignore').delete().eq('utr', u);
+    if (e1) { setError(`Could not revert: ${e1.message}`); return; }
+    const { error: e2 } = await supabase.from('tax_payments_due').update({ status: 'unpaid' }).eq('id', row.id);
+    if (e2) { setError(`Removed from ignore list, but could not restore the row: ${e2.message}`); }
+    setIgnoreUtrs((s) => { const n = new Set(s); n.delete(u); return n; });
+    setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, status: 'unpaid' } : r)));
+    setNotice(`UTR ${u} reverted to client — match it below to send reminders.`);
   };
 
   // ── selection + action-bar eligibility ──
@@ -638,6 +653,7 @@ export default function ClientRemindersPage() {
                   const lastEm = row.entity_id ? lastEmailByEntity[row.entity_id] : null;
                   const paidMeta = PAID_META[row.status] || PAID_META.unpaid;
                   const res = row.entity_id ? rowResults[row.entity_id] : null;
+                  const rowIgnored = isIgnored(row);
                   return (
                     <tr key={row.id} style={{ background: selected.has(row.id) ? '#f8fbff' : 'transparent' }}>
                       <td style={td}>
@@ -653,8 +669,13 @@ export default function ClientRemindersPage() {
                             onChange={(id) => setEntityMatch(row, id)}
                             onAddNew={async () => null}
                             size="small"
+                            metaOf={(e) => [
+                              e.utr && `UTR ${e.utr}`,
+                              e.bm_client_id && `ref ${e.bm_client_id}`,
+                              (e.qbo_customer_name && e.qbo_customer_name !== e.name) ? e.qbo_customer_name : null,
+                            ].filter(Boolean).join(' · ')}
                           />
-                          {!row.entity_id && (
+                          {!row.entity_id && !rowIgnored && (
                             <span style={{ fontSize: 10.5, color: '#b91c1c', fontWeight: 600 }}>unmatched</span>
                           )}
                           {res && (
@@ -667,12 +688,24 @@ export default function ClientRemindersPage() {
                               {res.ok ? '✓ sent' : `✗ ${res.text}`}
                             </span>
                           )}
-                          {row.reference_raw && (ignoreUtrs.has(utr10(row.reference_raw))
+                          {row.reference_raw && (rowIgnored
                             ? (
-                              <span style={{
-                                fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
-                                background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
-                              }}>ignored — not a client</span>
+                              <>
+                                <span style={{
+                                  fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
+                                  background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
+                                }}>ignored — not a client</span>
+                                {canManage && (
+                                  <button
+                                    onClick={() => removeIgnore(row)}
+                                    title="This UTR is a client after all — remove it from the never-remind list"
+                                    style={{
+                                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                      fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#0e7fe0', textDecoration: 'underline',
+                                    }}
+                                  >revert to client</button>
+                                )}
+                              </>
                             )
                             : canManage && (
                               <button
