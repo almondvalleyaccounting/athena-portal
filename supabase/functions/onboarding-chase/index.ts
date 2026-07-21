@@ -251,7 +251,10 @@ Deno.serve(async (req) => {
       owner:staff_profiles!onboardings_owner_id_fkey(id, name, email, is_active),
       steps:onboarding_steps(*, assignee:staff_profiles!onboarding_steps_assignee_id_fkey(name))
     `)
-    .eq("status", "active");
+    .eq("status", "active")
+    // offboard_entity() archives a former client's onboarding via archived_at
+    // (status is left 'active'), so guard on it here or we'd keep chasing them.
+    .is("archived_at", null);
   if (obsErr) return json({ success: false, error: obsErr.message }, 500);
 
   // ── BM cross-reference sweep: complete steps the BrightManager record

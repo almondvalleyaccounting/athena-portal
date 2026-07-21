@@ -194,6 +194,14 @@ Deno.serve(async (req) => {
   const dryRun = body.dry_run !== false; // default TRUE
   const testRecipient: string | null = body.test_recipient || null;
 
+  // Former clients (nlac/archived): we do no work for them, so we never seed a
+  // code request against them and never chase one that already exists. A
+  // director of BOTH a current and a former client is still chased (anchored to
+  // the current one), because we drop the former-client links, not the person.
+  const { data: formerRows } = await service
+    .from("entities").select("id").in("entity_status", ["nlac", "archived"]);
+  const formerEntities = new Set((formerRows || []).map((e: Row) => e.id as string));
+
   // ── 1. Seed: one open request per person who is a director or PSC and
   // has no personal code yet ──
   let seeded = 0;
@@ -207,7 +215,8 @@ Deno.serve(async (req) => {
       .select("entity_id, person_id, role, source, is_primary_contact, person:people(id, ch_personal_code)")
       .eq("source", "ch_psc");
     const allLinks = [...((links || []) as Row[]), ...((pscLinks || []) as Row[])]
-      .filter((l) => !((l.person as Row)?.ch_personal_code));
+      .filter((l) => !((l.person as Row)?.ch_personal_code))
+      .filter((l) => !formerEntities.has(l.entity_id as string));
 
     const { data: openReqs } = await service.from("ch_code_requests").select("person_id")
       .not("status", "in", "(entered_on_bm,stalled)");
@@ -249,6 +258,8 @@ Deno.serve(async (req) => {
   for (const r of (reqs || []) as Row[]) {
     const person = r.person as Row;
     const entity = r.entity as Row;
+    // Former client — never chase, never email, never surface in the digest.
+    if (formerEntities.has(entity?.id as string)) continue;
     const to = testRecipient || firstEmail(person?.email as string);
     const personName = (person?.name as string) || "there";
     const entityName = (entity?.name as string) || "your company";

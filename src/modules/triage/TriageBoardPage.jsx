@@ -71,16 +71,18 @@ export default function TriageBoardPage() {
     try {
       const [{ data: cs, error: e1 }, { data: st }, { data: ents }] = await Promise.all([
         supabase.from('triage_cases')
-          .select('*, entity:entities(id, name, company_status, company_status_detail)')
+          .select('*, entity:entities(id, name, company_status, company_status_detail, entity_status)')
           .order('created_at', { ascending: false }),
         supabase.from('staff_profiles').select('id, name, is_active'),
-        supabase.from('entities').select('id, name').order('name'),
+        supabase.from('entities').select('id, name, entity_status').order('name'),
       ]);
       if (e1) throw e1;
-      setCases(cs || []);
+      // Former clients (nlac/archived) never appear on the board — we do no
+      // work for them. Any case left over is self-healed to resolved (sql/134).
+      setCases((cs || []).filter((c) => !['nlac', 'archived'].includes(c.entity?.entity_status)));
       setStaffMap(Object.fromEntries((st || []).map((s) => [s.id, s.name])));
       setStaffList((st || []).filter((s) => s.is_active).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
-      setAllEntities(ents || []);
+      setAllEntities((ents || []).filter((e) => !['nlac', 'archived'].includes(e.entity_status)));
 
       const ids = (cs || []).map((c) => c.id);
       if (ids.length) {

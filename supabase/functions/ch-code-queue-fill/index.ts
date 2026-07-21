@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
 
   const [{ data: reqs, error: reqErr }, { data: queueRows }, { data: tpls }] = await Promise.all([
     service.from("ch_code_requests")
-      .select("id, stage, status, emails_sent, escalation_status, requested_at, client_replied_at, person:people(id, name, email), entity:entities!ch_code_requests_entity_id_fkey(id, name)")
+      .select("id, stage, status, emails_sent, escalation_status, requested_at, client_replied_at, person:people(id, name, email), entity:entities!ch_code_requests_entity_id_fkey(id, name, entity_status)")
       .in("stage", Object.keys(KIND_BY_STAGE)),
     service.from("ch_code_email_queue").select("request_id, status, sent_at"),
     service.from("ch_code_email_templates").select("*"),
@@ -163,11 +163,16 @@ Deno.serve(async (req) => {
   }
 
   const toQueue: Array<{ req: Row; kind: string; to: string; daysSince: number }> = [];
-  const skipped = { first_email_is_human: 0, capped: 0, escalated: 0, replied: 0, no_email: 0, already_queued: 0, no_anchor: 0, future_anchor: 0, not_due_yet: 0, no_template: 0 };
+  const skipped = { former_client: 0, first_email_is_human: 0, capped: 0, escalated: 0, replied: 0, no_email: 0, already_queued: 0, no_anchor: 0, future_anchor: 0, not_due_yet: 0, no_template: 0 };
   const anomalies: Array<Row> = [];
   const repliedHolds: Array<Row> = [];
+  const FORMER = new Set(["nlac", "archived"]);
 
   for (const r of (reqs || []) as Row[]) {
+    // Never chase a former client (nlac/archived). offboard_entity() stalls
+    // open requests, but a client made nlac via BM import — or whose request
+    // was mid-submission at offboard — would otherwise still be chased.
+    if (FORMER.has(((r.entity as Row)?.entity_status as string) ?? "active")) { skipped.former_client++; continue; }
     const sent = (r.emails_sent as number) || 0;
     if ((r.escalation_status as string) !== "none") { skipped.escalated++; continue; }
     if (sent === 0) { skipped.first_email_is_human++; continue; }

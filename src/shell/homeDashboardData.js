@@ -106,7 +106,7 @@ export function useDirectorDashboard(enabled) {
         supabase
           .from('bm_task_schedule')
           .select(
-            'id, bm_deadline, bm_status, bm_task_name, entity:entities!bm_task_schedule_entity_id_fkey(id, name), owner:staff_profiles!bm_task_schedule_assignee_id_fkey(name)',
+            'id, bm_deadline, bm_status, bm_task_name, entity:entities!bm_task_schedule_entity_id_fkey(id, name, entity_status), owner:staff_profiles!bm_task_schedule_assignee_id_fkey(name)',
           )
           .ilike('bm_task_name', CH_FILING)
           .eq('state', 'planned')
@@ -118,7 +118,7 @@ export function useDirectorDashboard(enabled) {
         supabase
           .from('bm_task_schedule')
           .select(
-            'id, bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(id, name)',
+            'id, bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(id, name, entity_status)',
           )
           .ilike('bm_task_name', SA_FILING)
           .eq('state', 'planned')
@@ -132,7 +132,7 @@ export function useDirectorDashboard(enabled) {
         supabase
           .from('bm_task_schedule')
           .select(
-            'id, service, bm_task_name, bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(id, name), owner:staff_profiles!bm_task_schedule_assignee_id_fkey(name)',
+            'id, service, bm_task_name, bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(id, name, entity_status), owner:staff_profiles!bm_task_schedule_assignee_id_fkey(name)',
           )
           .eq('state', 'planned')
           .is('excluded_at', null)
@@ -198,7 +198,7 @@ export function useDirectorDashboard(enabled) {
         // us), on_hold / general are visibility items. Staff-readable via RLS.
         supabase
           .from('triage_cases')
-          .select('*, entity:entities(id, name)')
+          .select('*, entity:entities(id, name, entity_status)')
           .eq('status', 'open')
           .order('created_at', { ascending: false }),
         // Did last night's Companies House refresh actually run, and cleanly?
@@ -210,6 +210,11 @@ export function useDirectorDashboard(enabled) {
       ]);
 
       if (cancelled) return;
+
+      // Former clients (nlac/archived) never appear in the attention queues.
+      // The headline counts come from v_deadline_buckets, which already
+      // excludes them (sql/134); this keeps the named lists consistent.
+      const notFormer = (r) => !['nlac', 'archived'].includes(r.entity?.entity_status);
 
       /* ── Deadline buckets — all counts come from v_deadline_buckets ── */
       const buckets = bucketsRes.data || {};
@@ -225,7 +230,7 @@ export function useDirectorDashboard(enabled) {
       const saRunRate = runRate(saCount, workingWeeksUntil(new Date(`${jan.end}T00:00:00Z`)));
 
       /* ── Overdue work: exact total from the view; 300-row detail list ── */
-      const overdueJobs = overdueRes.data || [];
+      const overdueJobs = (overdueRes.data || []).filter(notFormer);
       const overdueByService = Object.entries(buckets.overdue_by_service || {})
         .map(([service, count]) => ({ service, count }))
         .sort((a, b) => b.count - a.count);
@@ -282,7 +287,7 @@ export function useDirectorDashboard(enabled) {
         data: {
           ch: {
             overdue: chOverdueCount,
-            overdueList: chOverdueRes.data || [],
+            overdueList: (chOverdueRes.data || []).filter(notFormer),
             thisMonth: chThisMonth,
             nextMonth: chNextMonth,
             sixMonths: chSixMonths,
@@ -292,7 +297,7 @@ export function useDirectorDashboard(enabled) {
             count: saCount,
             year: jan.year,
             runRate: saRunRate,
-            overdueList: saOverdueRes.data || [],
+            overdueList: (saOverdueRes.data || []).filter(notFormer),
           },
           overdueWork: { total: overdueTotal, byService: overdueByService, jobs: overdueJobs },
           billingNeedsReview: billingReviewRes.count ?? 0,
@@ -313,7 +318,7 @@ export function useDirectorDashboard(enabled) {
           adminTasksOpen: adminTasksRes.count ?? 0,
           issuesOpen: issuesRes.count ?? 0,
           qboUnmapped: qboMappingRes.count ?? 0,
-          triage: triageRes.data || [],
+          triage: (triageRes.data || []).filter(notFormer),
           // null = the nightly refresh has no row for today (did not run)
           chRefresh: (chRefreshRes.data || [])[0] || null,
           bmDataAsOf: freshRow?.last_seen_at || null,

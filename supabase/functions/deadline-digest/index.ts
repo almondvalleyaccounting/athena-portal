@@ -161,19 +161,27 @@ Deno.serve(async (req) => {
   const horizonEnd = monthEnd(addMonths(today, HORIZON_MONTHS - 1));
   const jan = nextJanEnd(today);
 
-  const [{ data: chRows, error: chErr }, { data: saRows, error: saErr }] = await Promise.all([
+  const [{ data: chRowsRaw, error: chErr }, { data: saRowsRaw, error: saErr }] = await Promise.all([
     service.from("bm_task_schedule")
-      .select("bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(name), owner:staff_profiles!bm_task_schedule_assignee_id_fkey(name)")
+      .select("bm_deadline, bm_status, entity:entities!bm_task_schedule_entity_id_fkey(name, entity_status), owner:staff_profiles!bm_task_schedule_assignee_id_fkey(name)")
       .ilike("bm_task_name", CH_FILING_NAME).eq("state", "planned").is("excluded_at", null)
       .gte("bm_deadline", ymd(horizonStart)).lte("bm_deadline", ymd(horizonEnd))
       .order("bm_deadline"),
     service.from("bm_task_schedule")
-      .select("service, bm_task_name").eq("state", "planned").is("excluded_at", null)
+      .select("service, bm_task_name, entity:entities!bm_task_schedule_entity_id_fkey(entity_status)").eq("state", "planned").is("excluded_at", null)
       .gte("bm_deadline", jan.start).lte("bm_deadline", jan.end)
       .or(`bm_task_name.ilike.${SA_FILING_NAME},service.eq.Personal Tax`),
   ]);
   if (chErr) return json({ success: false, error: `CH query: ${chErr.message}` }, 500);
   if (saErr) return json({ success: false, error: `SA query: ${saErr.message}` }, 500);
+
+  // Former clients (nlac/archived) never appear — we do no work for them, so
+  // they don't belong in the deadline tables. The headline COUNTS already
+  // exclude them via v_deadline_buckets (sql/134); these row lists match it.
+  const FORMER = new Set(["nlac", "archived"]);
+  const isCurrent = (r: Row) => !FORMER.has(((r.entity as Row)?.entity_status as string) ?? "active");
+  const chRows = (chRowsRaw || []).filter(isCurrent);
+  const saRows = (saRowsRaw || []).filter(isCurrent);
 
   // All COUNTS come from v_deadline_buckets — the same view the home
   // dashboard reads, so the two can never drift again. Rows above are only

@@ -1,4 +1,7 @@
-// ch-ingest-officers (v8)
+// ch-ingest-officers (v10)
+// v10: nightly/manual candidate pick now excludes nlac/archived entities —
+//      former clients are no longer refreshed at CH (no wasted calls, and no
+//      strike-off status events raised for them). See sql/134.
 // Pulls officers + PSCs + company profile (status, Confirmation Statement due)
 // from Companies House for limited companies.
 //
@@ -135,6 +138,9 @@ Deno.serve(async (req) => {
       .select("id, name, company_number, company_status, company_status_detail, ch_last_refreshed_at")
       .eq("type", "limited_company")
       .not("company_number", "is", null)
+      // We do no work for former clients — don't spend CH calls on them, and
+      // above all don't generate status events that trigger strike-off alerts.
+      .not("entity_status", "in", "(nlac,archived)")
       .order("ch_last_refreshed_at", { ascending: true, nullsFirst: true })
       .order("name", { ascending: true });
 

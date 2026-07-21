@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     service.from("staff_profiles").select("id, email").eq("is_active", true),
     service.from("onboardings")
       .select("id, status, escalation_status, entity:entities!onboardings_entity_id_fkey(name), steps:onboarding_steps(name, client_label, status, owner_type, requested_at, expected_days, chase_count)")
-      .eq("status", "active"),
+      .eq("status", "active").is("archived_at", null),
     service.from("onboarding_chase_config").select("weekly_recipient_ids").eq("id", true).maybeSingle(),
   ]);
 

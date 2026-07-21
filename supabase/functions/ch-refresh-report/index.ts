@@ -73,12 +73,24 @@ Deno.serve(async (req) => {
     // Status changes detected in the last 24h and not yet notified.
     const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const { data: events } = await service.from("ch_status_events")
-      .select("*, entity:entities(id, name, company_number)")
+      .select("*, entity:entities(id, name, company_number, entity_status)")
       .gte("detected_at", since)
       .is("notified_at", null)
       .order("detected_at", { ascending: true });
 
-    const changes = events || [];
+    // Former clients (nlac/archived) must never appear here. We do no work for
+    // them, so their strike-off / status changes are none of our concern. Mark
+    // their events notified so they drop out and don't get re-scanned nightly.
+    const FORMER = new Set(["nlac", "archived"]);
+    const allEvents = events || [];
+    const formerEvents = allEvents.filter((c) => FORMER.has(c.entity?.entity_status));
+    if (!dryRun && formerEvents.length) {
+      await service.from("ch_status_events")
+        .update({ notified_at: new Date().toISOString() })
+        .in("id", formerEvents.map((c) => c.id));
+    }
+
+    const changes = allEvents.filter((c) => !FORMER.has(c.entity?.entity_status));
     const threats = changes.filter((c) =>
       THREAT_RE.test(c.new_status || "") || THREAT_RE.test(c.new_detail || ""));
 
@@ -178,7 +190,8 @@ Deno.serve(async (req) => {
       return jsonResponse({
         dry_run: true, subject,
         recipients: recipients.map((r) => r.email),
-        changes: changes.length, threats: threats.length, errors: errors.length, html,
+        changes: changes.length, threats: threats.length, errors: errors.length,
+        dup_tasks_raised: dupTasksRaised, html,
       });
     }
 
@@ -202,7 +215,7 @@ Deno.serve(async (req) => {
     }
     await service.from("audit_log").insert({
       action: "ch_refresh_report", entity_type: "system", entity_id: null,
-      detail: { run_date: runDate, sent_to: recipients.map((r) => r.email), threats: threats.length, changes: changes.length, errors: errors.length },
+      detail: { run_date: runDate, sent_to: recipients.map((r) => r.email), threats: threats.length, changes: changes.length, errors: errors.length, dup_tasks_raised: dupTasksRaised },
     });
 
     return jsonResponse({ success: true, sent, recipients: recipients.map((r) => r.email), threats: threats.length, send_errors: sendErrors });

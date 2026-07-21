@@ -230,9 +230,15 @@ Deno.serve(async (req) => {
 
     // Entity + email.
     const { data: ent } = await service.from("entities")
-      .select("id, name, billing_email, prospect_email")
+      .select("id, name, billing_email, prospect_email, entity_status")
       .eq("id", entityId).maybeSingle();
     if (!ent) { skipped.push({ entity_id: entityId, reason: "entity not found" }); continue; }
+    // Never email a former client (nlac/archived). Hard stop at the send path,
+    // whatever the target list contained — a stale opted-in TaxCalc row must
+    // not reach a client who has left.
+    if (["nlac", "archived"].includes(ent.entity_status as string)) {
+      skipped.push({ entity_id: entityId, reason: "no longer a client" }); continue;
+    }
     const to = testRecipient || (ent.billing_email || "").trim() || (ent.prospect_email || "").trim();
     if (!to || !to.includes("@")) { skipped.push({ entity_id: entityId, reason: "no email address on file" }); continue; }
 

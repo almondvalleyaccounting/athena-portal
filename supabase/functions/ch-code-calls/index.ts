@@ -89,12 +89,17 @@ Deno.serve(async (req) => {
 
   // Calls required = offer + 2 reminders (3 emails) with no call yet and no
   // escalation — the UI's "call due" (three_emails) state, across chasing stages.
-  const { data: calls } = await service.from("ch_code_requests")
-    .select("id, stage, emails_sent, last_chased_at, person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name)")
+  const { data: callsRaw } = await service.from("ch_code_requests")
+    .select("id, stage, emails_sent, last_chased_at, person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name, entity_status)")
     .in("stage", CHASING_STAGES)
     .eq("escalation_status", "none")
     .gte("emails_sent", 3)
     .order("stage");
+
+  // Former clients (nlac/archived) never appear — we do no work for them.
+  const FORMER = new Set(["nlac", "archived"]);
+  const calls = (callsRaw || []).filter((r: Row) =>
+    !FORMER.has(((r.entity as Row)?.entity_status as string) ?? "active"));
 
   // Recipient: the configured call assignee (Sophie), resolved to an email.
   let recipients: string[] = [];

@@ -100,15 +100,23 @@ Deno.serve(async (req) => {
   const testRecipient: string | null = body.test_recipient || null;
 
   const since = new Date(Date.now() - 7 * 86400000).toISOString();
-  const [{ data: activity }, { data: staff }, { data: openReqs }] = await Promise.all([
+  const [{ data: activityRaw }, { data: staff }, { data: openReqsRaw }] = await Promise.all([
     service.from("ch_code_activity")
-      .select("body, created_at, kind, request:ch_code_requests(person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name))")
+      .select("body, created_at, kind, request:ch_code_requests(person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name, entity_status))")
       .in("kind", ["email_out", "system", "status_change"]).gte("created_at", since).order("created_at"),
     service.from("staff_profiles").select("id, email").eq("is_active", true),
     service.from("ch_code_requests")
-      .select("chase_count, status, stage, escalation_status, person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name, id)")
+      .select("chase_count, status, stage, escalation_status, person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name, id, entity_status)")
       .not("stage", "in", "(s6_submitted,s7_rejected)"),
   ]);
+
+  // Former clients (nlac/archived) never appear — not in "what moved", not in
+  // "what's coming". We do no work for them.
+  const FORMER = new Set(["nlac", "archived"]);
+  const activity = (activityRaw || []).filter((a: Row) =>
+    !FORMER.has(((((a.request as Row)?.entity) as Row)?.entity_status as string) ?? "active"));
+  const openReqs = (openReqsRaw || []).filter((r: Row) =>
+    !FORMER.has(((r.entity as Row)?.entity_status as string) ?? "active"));
 
   // Recipients: the configured people (Bobby + Tracy) resolved to emails from
   // staff_profiles; fall back to all active staff if none are configured.
