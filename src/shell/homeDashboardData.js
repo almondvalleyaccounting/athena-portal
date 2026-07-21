@@ -365,7 +365,7 @@ export function usePracticePulse(enabled) {
 
         const { data: payload, error: fnErr } = await supabase.functions.invoke(
           'dashboard-qbo-pull',
-          { body: { realmId: conn.realm_id, metrics: ['pl_fytd', 'pl_fytd_prior', 'balances'] } },
+          { body: { realmId: conn.realm_id, metrics: ['pl_fytd', 'pl_fytd_prior', 'pl_summary', 'balances'] } },
         );
         if (cancelled) return;
         if (fnErr) {
@@ -383,6 +383,7 @@ export function usePracticePulse(enabled) {
             realmId: conn.realm_id,
             plFytd: payload?.metrics?.pl_fytd || null,
             plFytdPrior: payload?.metrics?.pl_fytd_prior || null,
+            plSummary: payload?.metrics?.pl_summary || null,
             balances: payload?.metrics?.balances || null,
             pulledAt: payload?.pulled_at || null,
             fromCache: payload?.cached === true,

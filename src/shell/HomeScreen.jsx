@@ -1048,16 +1048,14 @@ export default function HomeScreen() {
   const { loading, data } = useDirectorDashboard(isOwner || canSeeAttention);
   const { loading: pulseLoading, pulse, error: pulseError } = usePracticePulse(canSeePulse);
 
-  // The queue opens EXPANDED for the owner — the page's job is getting every
-  // issue in front of Bobby, not hiding them behind a summary line. The
-  // effect covers the profile arriving after first render; once the user
-  // toggles by hand we stop overriding.
-  const [attentionOpen, setAttentionOpen] = useState(isOwner);
+  // The queue starts COLLAPSED (a one-line summary); click to expand the full
+  // list. It sits mid-page now rather than dominating the top.
+  const [attentionOpen, setAttentionOpen] = useState(false);
   const attentionToggledRef = useRef(false);
-  useEffect(() => {
-    if (isOwner && !attentionToggledRef.current) setAttentionOpen(true);
-  }, [isOwner]);
   const attentionRef = useRef(null);
+
+  // Practice-pulse period: fiscal YTD, or the last 12 complete months.
+  const [pulsePeriod, setPulsePeriod] = useState('fytd'); // 'fytd' | 'ltm'
   const collapseAttention = () => {
     attentionToggledRef.current = true;
     setAttentionOpen(false);
@@ -1158,11 +1156,7 @@ export default function HomeScreen() {
     ? `work data from BrightManager · refreshed ${shortDate(data.bmDataAsOf)}`
     : null;
 
-  // Anything to put in the right-hand column? (Pulse is Bobby-only; deadlines
-  // and ops are owner-only — quote approvers get a full-width queue instead.)
-  const hasRightColumn = canSeePulse || isOwner;
-
-  /* ── Section renderers (shared between one- and two-column layouts) ── */
+  /* ── Section renderers ── */
 
   const attentionSection = canSeeAttention && (
     <div ref={attentionRef} style={{ scrollMarginTop: '20px' }}>
@@ -1288,16 +1282,37 @@ export default function HomeScreen() {
         : '/client-dashboard',
     );
 
+  const pulseIsLtm = pulsePeriod === 'ltm';
+  const pulsePl = pulseIsLtm ? pulse?.plSummary : pulse?.plFytd;
+  const pulsePeriodLabel = pulseIsLtm ? 'last 12 months' : 'fiscal YTD';
+  const pulseToggle = (
+    <span style={{ display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: '999px', overflow: 'hidden' }}>
+      {[['fytd', 'Fiscal YTD'], ['ltm', 'Last 12 months']].map(([key, label]) => (
+        <button
+          key={key}
+          onClick={() => setPulsePeriod(key)}
+          style={{
+            fontFamily: FONT, fontSize: '11px', fontWeight: 600, padding: '3px 10px',
+            border: 'none', cursor: 'pointer',
+            backgroundColor: pulsePeriod === key ? '#0f172a' : '#ffffff',
+            color: pulsePeriod === key ? '#ffffff' : '#64748b',
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </span>
+  );
+
   const pulseSection = canSeePulse && (
     <div>
       <SectionLabel
         note={
           pulse?.pulledAt
-            ? `QuickBooks · ${pulse.fromCache ? 'cached ' : 'pulled '}${shortDate(
-                pulse.pulledAt,
-              )} · only you`
+            ? `QuickBooks · ${pulse.fromCache ? 'cached ' : 'pulled '}${shortDate(pulse.pulledAt)} · only you`
             : 'visible only to you'
         }
+        action={!pulseLoading && pulseError !== 'reconnect' && pulseError !== 'no-connection' ? pulseToggle : null}
       >
         Practice pulse
       </SectionLabel>
@@ -1314,54 +1329,41 @@ export default function HomeScreen() {
           onClick={() => navigate('/client-dashboard')}
         />
       ) : (
+        // One row, tiles sized equally across the page (scrolls if it ever
+        // outgrows the width — room to add more tiles here later).
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gridAutoFlow: 'column',
+            gridAutoColumns: 'minmax(0, 1fr)',
             gap: '10px',
+            overflowX: 'auto',
           }}
         >
           <StatCard
-            label="Revenue — fiscal YTD"
-            value={pulse?.plFytd?.income != null ? formatCurrency(pulse.plFytd.income) : '—'}
-            chip={<YoYChip current={pulse?.plFytd?.income} prior={pulse?.plFytdPrior?.income} />}
-            sub={[
-              pulse?.plFytd?.period?.start
-                ? `since ${shortDate(pulse.plFytd.period.start)}`
-                : null,
-              pulse?.plFytdPrior?.income != null
-                ? `${formatCurrency(pulse.plFytdPrior.income)} last year`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
+            label={`Revenue — ${pulsePeriodLabel}`}
+            value={pulsePl?.income != null ? formatCurrency(pulsePl.income) : '—'}
+            chip={pulseIsLtm ? null : <YoYChip current={pulse?.plFytd?.income} prior={pulse?.plFytdPrior?.income} />}
+            sub={
+              pulseIsLtm
+                ? (pulsePl?.period ? `${shortDate(pulsePl.period.start)} – ${shortDate(pulsePl.period.end)}` : null)
+                : [
+                    pulse?.plFytd?.period?.start ? `since ${shortDate(pulse.plFytd.period.start)}` : null,
+                    pulse?.plFytdPrior?.income != null ? `${formatCurrency(pulse.plFytdPrior.income)} last year` : null,
+                  ].filter(Boolean).join(' · ')
+            }
             onClick={() => openPulse('pnl')}
           />
           <StatCard
-            label="Net operating — fiscal YTD"
-            value={
-              pulse?.plFytd?.net_operating_income != null
-                ? formatCurrency(pulse.plFytd.net_operating_income)
-                : '—'
-            }
-            chip={
-              <YoYChip
-                current={pulse?.plFytd?.net_operating_income}
-                prior={pulse?.plFytdPrior?.net_operating_income}
-              />
-            }
+            label={`Net operating — ${pulsePeriodLabel}`}
+            value={pulsePl?.net_operating_income != null ? formatCurrency(pulsePl.net_operating_income) : '—'}
+            chip={pulseIsLtm ? null : <YoYChip current={pulse?.plFytd?.net_operating_income} prior={pulse?.plFytdPrior?.net_operating_income} />}
             sub={[
-              pulse?.plFytd?.net_operating_income != null && pulse?.plFytd?.income > 0
-                ? `${Math.round(
-                    (pulse.plFytd.net_operating_income / pulse.plFytd.income) * 100,
-                  )}% margin`
+              pulsePl?.net_operating_income != null && pulsePl?.income > 0
+                ? `${Math.round((pulsePl.net_operating_income / pulsePl.income) * 100)}% margin`
                 : null,
-              pulse?.plFytd?.net_income != null
-                ? `${formatCurrency(pulse.plFytd.net_income)} net after dividends`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
+              pulsePl?.net_income != null ? `${formatCurrency(pulsePl.net_income)} net after dividends` : null,
+            ].filter(Boolean).join(' · ')}
             onClick={() => openPulse('pnl')}
           />
           <StatCard
@@ -1369,18 +1371,14 @@ export default function HomeScreen() {
             value={pulse?.balances?.cash != null ? formatCurrency(pulse.balances.cash) : '—'}
             sub={
               pulse?.balances?.bank_account_count
-                ? `across ${pulse.balances.bank_account_count} bank account${
-                    pulse.balances.bank_account_count === 1 ? '' : 's'
-                  }`
+                ? `across ${pulse.balances.bank_account_count} bank account${pulse.balances.bank_account_count === 1 ? '' : 's'}`
                 : null
             }
             onClick={() => openPulse('balance')}
           />
           <StatCard
             label="Debtors"
-            value={
-              pulse?.balances?.debtors != null ? formatCurrency(pulse.balances.debtors) : '—'
-            }
+            value={pulse?.balances?.debtors != null ? formatCurrency(pulse.balances.debtors) : '—'}
             sub="owed to the practice"
             onClick={() => openPulse('aged')}
           />
@@ -1398,78 +1396,44 @@ export default function HomeScreen() {
       >
         Deadlines
       </SectionLabel>
+      {/* Compact, drillable tiles — click through to the planner; no inline
+          detail panels. */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gridAutoFlow: 'column',
+          gridAutoColumns: 'minmax(0, 1fr)',
           gap: '10px',
+          overflowX: 'auto',
         }}
       >
-        <DeadlineCard
-          title="Companies House accounts"
-          big={data.ch.thisMonth}
-          unit={`due in ${thisMonthName}`}
-          pill={data.ch.overdue > 0 ? `${data.ch.overdue} past deadline` : null}
-          delta={data.wow?.chThisMonth}
-          rows={
-            <>
-              <DeadlineRow label={nextMonthName} value={data.ch.nextMonth} />
-              <DeadlineRow
-                label="Next 6 months"
-                value={data.ch.sixMonths}
-                delta={data.wow?.chSixMonths}
-              />
-            </>
-          }
-          footer={`~${data.ch.runRate} filings a week clears the 6-month pile`}
+        <OpsStat
+          label={`CH accounts · ${thisMonthName}`}
+          value={data.ch.thisMonth}
+          detail={data.ch.overdue > 0 ? `${data.ch.overdue} past deadline` : 'due this month'}
+          tone={data.ch.overdue > 0 ? 'warn' : 'default'}
           onClick={() => navigate('/planner/ready?service=Acc')}
         />
-        <DeadlineCard
-          title="Self Assessment"
-          big={data.sa.count}
-          unit={`returns due 31 Jan ${data.sa.year}`}
-          delta={data.wow?.sa}
-          footer={`~${data.sa.runRate} a week from now stays on track`}
+        <OpsStat
+          label="CH accounts · next 6 months"
+          value={data.ch.sixMonths}
+          detail="filings due"
+          onClick={() => navigate('/planner/ready?service=Acc')}
+        />
+        <OpsStat
+          label={`Self Assessment · 31 Jan ${data.sa.year}`}
+          value={data.sa.count}
+          detail="returns due"
           onClick={() => navigate('/planner/ready?service=SA')}
         />
-        <DeadlineCard
-          title="Work past BM deadline"
-          big={visibleOverdueTotal}
-          bigColor={visibleOverdueTotal > 0 ? '#b91c1c' : '#0f172a'}
-          unit="open jobs late"
-          delta={data.wow?.overdueTotal}
-          rows={
-            data.overdueWork.byService.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                {data.overdueWork.byService.slice(0, 5).map((r) => (
-                  <ServiceChip key={r.service} service={r.service} count={r.count} />
-                ))}
-                {data.overdueWork.byService.length > 5 && (
-                  <ServiceChip
-                    service="other"
-                    count={data.overdueWork.byService
-                      .slice(5)
-                      .reduce((s, r) => s + r.count, 0)}
-                  />
-                )}
-              </div>
-            )
-          }
-          footer={overdueOpen ? 'Hide the list' : 'Click to list every late job'}
-          onClick={() => setOverdueOpen((o) => !o)}
+        <OpsStat
+          label="Work past BM deadline"
+          value={visibleOverdueTotal}
+          detail="late jobs"
+          tone={visibleOverdueTotal > 0 ? 'bad' : 'default'}
+          onClick={() => navigate('/planner/ready')}
         />
       </div>
-      {overdueOpen && visibleOverdueJobs.length > 0 && (
-        <OverduePanel
-          jobs={visibleOverdueJobs}
-          byService={data.overdueWork.byService}
-          service={overdueService}
-          onService={setOverdueService}
-          onRow={(j) => j.entity?.id && navigate(`/clients/${j.entity.id}`)}
-          onWontHappen={markWontHappen}
-          total={visibleOverdueTotal}
-        />
-      )}
     </div>
   );
 
@@ -1477,15 +1441,30 @@ export default function HomeScreen() {
     <div>
       <SectionLabel>Operations</SectionLabel>
       <JobReviewRadar />
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+      {/* Last night's Companies House sweep — the feed behind strike-off triage. */}
+      <ChRefreshLine run={data.chRefresh} />
+    </div>
+  );
+
+  // Task counters — onboardings, CH codes, admin tasks, issues log, triage.
+  const strikeOffCount = (data?.triage || []).filter((t) => t.category === 'strike_off').length;
+  const triageCount = (data?.triage || []).length;
+  const countersSection = isOwner && data && (
+    <div>
+      <SectionLabel>Task counters</SectionLabel>
+      <div
+        style={{
+          display: 'grid',
+          gridAutoFlow: 'column',
+          gridAutoColumns: 'minmax(0, 1fr)',
+          gap: '8px',
+          overflowX: 'auto',
+        }}
+      >
         <OpsStat
-          label="Onboardings in flight"
+          label="Onboardings"
           value={data.onboarding.inFlight}
-          detail={
-            data.onboarding.issues.length > 0
-              ? `${data.onboarding.issues.length} with issues`
-              : null
-          }
+          detail={data.onboarding.issues.length > 0 ? `${data.onboarding.issues.length} with issues` : 'in flight'}
           tone={data.onboarding.issues.length > 0 ? 'warn' : 'default'}
           onClick={() => navigate('/onboarding')}
         />
@@ -1509,9 +1488,14 @@ export default function HomeScreen() {
           tone={data.issuesOpen > 0 ? 'warn' : 'default'}
           onClick={() => navigate('/issues')}
         />
+        <OpsStat
+          label="Triage"
+          value={triageCount}
+          detail={strikeOffCount > 0 ? `${strikeOffCount} strike-off` : 'open cases'}
+          tone={strikeOffCount > 0 ? 'bad' : triageCount > 0 ? 'warn' : 'default'}
+          onClick={() => navigate('/triage')}
+        />
       </div>
-      {/* Last night's Companies House sweep — the feed behind strike-off triage. */}
-      <ChRefreshLine run={data.chRefresh} />
     </div>
   );
 
@@ -1541,33 +1525,15 @@ export default function HomeScreen() {
         </span>
       </div>
 
-      {/* ── Director layout: attention queue left, pulse/deadlines/ops right.
-             flex-wrap collapses it to a single column on narrow screens. ── */}
-      {canSeeAttention && hasRightColumn ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start' }}>
-          <div style={{ flex: '1 1 600px', minWidth: 0 }}>{attentionSection}</div>
-          <div
-            style={{
-              flex: '1 1 400px',
-              minWidth: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '20px',
-            }}
-          >
-            {pulseSection}
-            {deadlinesSection}
-            {opsSection}
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {attentionSection}
-          {pulseSection}
-          {deadlinesSection}
-          {opsSection}
-        </div>
-      )}
+      {/* ── Full-width stacked sections: deadlines, operations, needs
+             attention (collapsed), practice pulse, then task counters. ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        {deadlinesSection}
+        {opsSection}
+        {attentionSection}
+        {pulseSection}
+        {countersSection}
+      </div>
 
       {/* ── Module strip (staff orientation — owners know the sidebar) ── */}
       {!isOwner && (
