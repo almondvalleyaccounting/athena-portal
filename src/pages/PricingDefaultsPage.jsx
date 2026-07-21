@@ -190,6 +190,12 @@ export default function PricingDefaultsPage() {
         <Row label="Property base (1 property)"><Inp value={D.property_base} onChange={v => set('property_base', v)} prefix="£" className="w-20" disabled={!canEdit} /></Row>
         <Row label="Per additional property"><Inp value={D.property_per_extra} onChange={v => set('property_per_extra', v)} prefix="£" className="w-20" disabled={!canEdit} /></Row>
 
+        {/* Sole Trader */}
+        <SectionHeader title="Sole Trader" />
+        <Row label="Sole trader accounts (annual)"><Inp value={D.sole_trader_accounts} onChange={v => set('sole_trader_accounts', v)} prefix="£" className="w-20" disabled={!canEdit} /></Row>
+        <Row label="MTD per return"><Inp value={D.mtd_returns?.per_return} onChange={v => set('mtd_returns.per_return', v)} prefix="£" className="w-20" disabled={!canEdit} /></Row>
+        <Row label="MTD returns / year"><Inp value={D.mtd_returns?.freq} onChange={v => set('mtd_returns.freq', v)} className="w-20" disabled={!canEdit} /></Row>
+
         {/* Confirmation Statement */}
         <SectionHeader title="Confirmation Statement" />
         <Row label="Client fee"><Inp value={D.confirmation_statement.fee} onChange={v => set('confirmation_statement.fee', v)} prefix="£" className="w-20" disabled={!canEdit} /></Row>

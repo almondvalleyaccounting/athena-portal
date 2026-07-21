@@ -16,6 +16,8 @@ const DRIVER_DEFS = [
   { id: 'bk_inc_vat', label: 'Includes VAT Returns', section: 'Bookkeeping & VAT Returns', type: 'boolean' },
   { id: 'vat_returns_pa', label: 'VAT Returns Per Year', section: 'VAT Returns', type: 'number' },
   { id: 'vat_per_return', label: 'Rate Per VAT Return', section: 'VAT Returns', type: 'currency' },
+  { id: 'mtd_returns_pa', label: 'MTD Returns Per Year', section: 'MTD Returns', type: 'number' },
+  { id: 'mtd_per_return', label: 'Rate Per MTD Return', section: 'MTD Returns', type: 'currency' },
   { id: 'monthly_employees', label: 'Monthly Employees', section: 'Payroll', type: 'number' },
   { id: 'weekly_employees', label: 'Weekly Employees', section: 'Payroll', type: 'number' },
   { id: 'payroll_flat', label: 'Payroll Flat Fee / Month', section: 'Payroll', type: 'currency' },
@@ -31,10 +33,12 @@ const DRIVER_DEFS = [
 
 const SERVICE_ROWS = [
   { id: 'accounts_ct', name: 'Accounts & CT' },
+  { id: 'sole_trader_accounts', name: 'Sole Trader Accounts' },
   { id: 'confirmation_statement', name: 'Confirmation Statement' },
   { id: 'directors_tax_return', name: "Directors' Tax Returns" },
   { id: 'bookkeeping_vat', name: 'Bookkeeping & VAT Returns' },
   { id: 'vat_returns', name: 'VAT Returns' },
+  { id: 'mtd_returns', name: 'MTD Returns' },
   { id: 'payroll', name: 'Payroll' },
   { id: 'auto_enrolment', name: 'Auto-Enrolment' },
   { id: 'modulr', name: 'Modulr' },
@@ -61,6 +65,8 @@ function calcService(serviceId, drivers, defaults) {
       const rate = band?.rate || 750;
       return { value: rate, calc: `Turnover ${fmt(turnover)} \u2192 Band: ${band?.label || 'Up to \u00A390K'} = ${fmt(rate)}` };
     }
+    case 'sole_trader_accounts':
+      return { value: D.sole_trader_accounts || 450, calc: `Standard fee: ${fmt(D.sole_trader_accounts || 450)}` };
     case 'confirmation_statement':
       return { value: D.confirmation_statement?.fee || 110, calc: `Standard fee: ${fmt(D.confirmation_statement?.fee || 110)}` };
     case 'directors_tax_return': {
@@ -78,6 +84,12 @@ function calcService(serviceId, drivers, defaults) {
     case 'vat_returns': {
       const n = g('vat_returns_pa', 0);
       const rate = g('vat_per_return', D.vat_per_return || 45);
+      const val = n * rate;
+      return { value: val, calc: `${n} returns \u00D7 ${fmt(rate)} = ${fmt(val)}` };
+    }
+    case 'mtd_returns': {
+      const n = g('mtd_returns_pa', D.mtd_returns?.freq || 4);
+      const rate = g('mtd_per_return', D.mtd_returns?.per_return || 35);
       const val = n * rate;
       return { value: val, calc: `${n} returns \u00D7 ${fmt(rate)} = ${fmt(val)}` };
     }
@@ -269,7 +281,7 @@ export default function GroupQuoteInputPage() {
             // Accounts' £750 band fallback). Driver-based services already
             // calc to £0 when their drivers are 0, and must stay live so
             // editing a driver updates the value.
-            const ZERO_IF_ABSENT = ['accounts_ct', 'confirmation_statement', 'auto_enrolment', 'modulr', 'budgeting', 'registered_office', 'software'];
+            const ZERO_IF_ABSENT = ['accounts_ct', 'sole_trader_accounts', 'confirmation_statement', 'auto_enrolment', 'modulr', 'budgeting', 'registered_office', 'software'];
             ZERO_IF_ABSENT.forEach((sid) => {
               if (!(sid in savedByRow)) ov[sid] = 0;
             });
@@ -299,6 +311,7 @@ export default function GroupQuoteInputPage() {
     num_directors: 'directors_tax_return', director_base: 'directors_tax_return',
     bk_hours: 'bookkeeping_vat', bk_rate: 'bookkeeping_vat', bk_inc_vat: 'bookkeeping_vat',
     vat_returns_pa: 'vat_returns', vat_per_return: 'vat_returns',
+    mtd_returns_pa: 'mtd_returns', mtd_per_return: 'mtd_returns',
     monthly_employees: 'payroll', weekly_employees: 'payroll', payroll_flat: 'payroll', monthly_ee_rate: 'payroll', weekly_ee_rate: 'payroll',
     ma_sets: 'management_accounts', ma_rate: 'management_accounts',
     rm_count: 'review_meetings', rm_rate: 'review_meetings',

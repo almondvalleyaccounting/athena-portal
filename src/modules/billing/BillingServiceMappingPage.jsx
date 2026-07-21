@@ -23,6 +23,8 @@ export const CANONICAL_SERVICES = [
   { id: 'accounts_preparation', label: 'Accounts Preparation' },
   { id: 'accounts_submission',  label: 'Accounts Submission' },
   { id: 'self_assessment',      label: 'Self Assessment' },
+  { id: 'sole_trader_accounts', label: 'Sole Trader Accounts' },
+  { id: 'mtd_returns',          label: 'MTD Returns' },
 ];
 
 export default function BillingServiceMappingPage() {

@@ -12,7 +12,8 @@ import { SERVICE_CONTENT, resolveService } from './services';
 
 // Add-ons we're happy to advertise; setup_* are one-off onboarding services.
 const OFFERABLE = [
-  'accounts_ct', 'bookkeeping_vat', 'vat_returns', 'payroll', 'auto_enrolment',
+  'accounts_ct', 'sole_trader_accounts', 'mtd_returns', 'bookkeeping_vat',
+  'vat_returns', 'payroll', 'auto_enrolment',
   'directors_tax_return', 'confirmation_statement', 'software_accounting',
   'management_accounts', 'review_meetings', 'registered_office', 'modulr',
 ];

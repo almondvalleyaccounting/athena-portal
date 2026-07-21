@@ -191,6 +191,22 @@ export default function QuoteFormPage({ mode = 'new' }) {
         if (roLI.annual_amount != null) f.setRoFee(Number(roLI.annual_amount));
       }
 
+      const staLI = findLI('sole_trader_accounts');
+      if (staLI) {
+        f.setStaEnabled(true);
+        if (staLI.annual_amount != null) f.setStaFee(Number(staLI.annual_amount));
+      }
+
+      const mtdLI = findLI('mtd_returns');
+      if (mtdLI) {
+        f.setMtdEnabled(true);
+        // Line stores annual = freq × rate. Default freq 4 (quarterly); derive
+        // a per-return rate from the saved annual so the form round-trips.
+        const annual = Number(mtdLI.annual_amount) || 0;
+        f.setMtdFreq(4);
+        if (annual > 0) f.setMtdRate(Math.round((annual / 4) * 100) / 100);
+      }
+
       if (mode === 'edit') {
         setExistingQuoteRef(q.quote_ref);
       }
@@ -506,6 +522,12 @@ export default function QuoteFormPage({ mode = 'new' }) {
         </>}
       </Section>
 
+      {/* Sole Trader Accounts */}
+      <Section title="Sole Trader Accounts" enabled={f.staEnabled} onToggle={() => f.setStaEnabled(!f.staEnabled)} annual={f.staAnnual}>
+        <div className="flex justify-between items-center text-xs"><span className="font-medium">Annual fee</span><Inp value={f.staFee} onChange={f.setStaFee} prefix="£" className="w-20" /></div>
+        <p className="text-[10px] text-gray-400 mt-1">Year-end accounts for an unincorporated business (no Corporation Tax or Companies House filing).</p>
+      </Section>
+
       {/* Confirmation Statement */}
       <Section title="Confirmation Statement" enabled={f.csEnabled} onToggle={() => f.setCsEnabled(!f.csEnabled)} annual={f.csFee}>
         <div className="flex justify-between items-center text-xs"><span className="font-medium">Annual fee (+ VAT)</span><Inp value={f.csFee} onChange={f.setCsFee} prefix="£" className="w-16" /></div>
@@ -534,6 +556,13 @@ export default function QuoteFormPage({ mode = 'new' }) {
       <Section title="VAT Returns (standalone)" enabled={f.vatEnabled} onToggle={() => f.setVatEnabled(!f.vatEnabled)} annual={f.vatAnnual}>
         <TabRow cells={['', 'Returns', 'Per return', 'Annual']} header />
         <div className={G4} style={C4}><span>VAT returns</span><span className="text-right"><Inp value={f.vatFreq} onChange={f.setVatFreq} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={f.vatRate} onChange={f.setVatRate} prefix="£" className="w-14" /></span><span className="text-right font-mono">{fmt(f.vatAnnual)}</span></div>
+      </Section>
+
+      {/* MTD Returns */}
+      <Section title="MTD Returns" enabled={f.mtdEnabled} onToggle={() => f.setMtdEnabled(!f.mtdEnabled)} annual={f.mtdAnnual}>
+        <TabRow cells={['', 'Returns/yr', 'Per return', 'Annual']} header />
+        <div className={G4} style={C4}><span>MTD for Income Tax</span><span className="text-right"><Inp value={f.mtdFreq} onChange={f.setMtdFreq} min={1} max={12} className="w-12" /></span><span className="text-right"><Inp value={f.mtdRate} onChange={f.setMtdRate} prefix="£" className="w-14" /></span><span className="text-right font-mono">{fmt(f.mtdAnnual)}</span></div>
+        <p className="text-[10px] text-gray-400 mt-1">Quarterly Making Tax Digital submissions to HMRC (ITSA).</p>
       </Section>
 
       {/* Payroll */}

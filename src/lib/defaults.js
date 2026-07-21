@@ -17,6 +17,12 @@ export const INITIAL_DEFAULTS = {
   dormant_rate: 150,
   property_base: 650,
   property_per_extra: 60,
+  // Sole Trader Accounts — flat annual fee (add-on for unincorporated clients;
+  // the ltd Accounts & CT bands don't apply). Editable per quote.
+  sole_trader_accounts: 450,
+  // MTD Returns — Making Tax Digital for Income Tax (ITSA) quarterly
+  // submissions. Priced per return × returns/year (quarterly = 4).
+  mtd_returns: { per_return: 35, freq: 4 },
   confirmation_statement: { fee: 110, ch_filing_fee: 50 },
   director_base: 240,
   director_addons: {

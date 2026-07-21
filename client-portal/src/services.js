@@ -9,6 +9,18 @@ export const SERVICE_CONTENT = {
     entails: "Once a year we turn your records into statutory accounts and your Corporation Tax return, filed with Companies House and HMRC — accurate and on time. We'll also talk you through what the numbers mean, in plain English.",
     needs: 'Records kept reasonably up to date through the year — we remind you well before any deadline.',
   },
+  sole_trader_accounts: {
+    icon: '📊',
+    title: 'Sole trader accounts',
+    entails: 'Once a year we turn your records into a clear set of accounts for your business and feed the figures straight into your tax return — accurate, on time, and explained in plain English.',
+    needs: 'Records kept reasonably up to date through the year — we remind you well before any deadline.',
+  },
+  mtd_returns: {
+    icon: '🧾',
+    title: 'Making Tax Digital returns',
+    entails: 'We prepare and file your quarterly Making Tax Digital submissions to HMRC, so your income and expenses are reported on time every quarter and there are no year-end surprises.',
+    needs: 'Your records for each quarter kept up to date — bank feeds and receipts shared little and often make this effortless.',
+  },
   confirmation_statement: {
     icon: '✅',
     title: 'Confirmation statement',
@@ -105,6 +117,8 @@ export const DEFAULT_SERVICE = {
 // Existing clients billed via QuickBooks have display-name service ids
 // ("Bookkeeping & VAT Returns") rather than fee-engine codes — map by keyword.
 const BILLING_NAME_RULES = [
+  [/sole.?trader.*account|sole.?trader.*(accs|ye)/i, 'sole_trader_accounts'],
+  [/making tax digital|\bmtd\b/i, 'mtd_returns'],
   [/bookkeeping.*vat|vat return/i, 'bookkeeping_vat'],
   [/payroll/i, 'payroll'],
   [/self assessment|sole trader/i, 'directors_tax_return'],

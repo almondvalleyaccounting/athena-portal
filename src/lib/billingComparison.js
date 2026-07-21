@@ -5,6 +5,8 @@
 
 const SERVICE_LABELS = {
   accounts_ct: 'Accounts & CT',
+  sole_trader_accounts: 'Sole Trader Accounts',
+  mtd_returns: 'MTD Returns',
   confirmation_statement: 'Confirmation Statement',
   directors_tax_return: "Directors' Tax Returns",
   bookkeeping_vat: 'Bookkeeping & VAT',

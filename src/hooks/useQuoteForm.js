@@ -52,6 +52,13 @@ export default function useQuoteForm(D) {
     : accType === 'property' ? accPropBase + Math.max(0, accProperties - 1) * accPropExtra
     : accRate;
 
+  // ── Sole Trader Accounts ──
+  // Flat annual fee add-on for unincorporated clients (no CT, no CH filing).
+  // Off by default — this is a sole-trader-specific service.
+  const [staEnabled, setStaEnabled] = useState(false);
+  const [staFee, setStaFee] = useState(D.sole_trader_accounts ?? 450);
+  const staAnnual = staFee;
+
   // ── Confirmation statement ──
   const [csEnabled, setCsEnabled] = useState(true);
   const [csFee, setCsFee] = useState(D.confirmation_statement.fee);
@@ -91,6 +98,12 @@ export default function useQuoteForm(D) {
   const [vatFreq, setVatFreq] = useState(4);
   const [vatRate, setVatRate] = useState(D.vat_per_return);
   const vatAnnual = vatFreq * vatRate;
+
+  // ── MTD Returns (MTD for Income Tax — quarterly ITSA submissions) ──
+  const [mtdEnabled, setMtdEnabled] = useState(false);
+  const [mtdFreq, setMtdFreq] = useState(D.mtd_returns?.freq ?? 4);
+  const [mtdRate, setMtdRate] = useState(D.mtd_returns?.per_return ?? 35);
+  const mtdAnnual = mtdFreq * mtdRate;
 
   // ── Payroll ──
   const [prEnabled, setPrEnabled] = useState(false);
@@ -166,10 +179,12 @@ export default function useQuoteForm(D) {
   // ── Totals ──
   const lines = [];
   if (accEnabled) lines.push({ id: 'accounts_ct', name: 'Accounts & CT', annual: accAnnual });
+  if (staEnabled) lines.push({ id: 'sole_trader_accounts', name: 'Sole Trader Accounts', annual: staAnnual });
   if (csEnabled) lines.push({ id: 'confirmation_statement', name: 'Confirmation Statement', annual: csFee });
   if (dtrEnabled) lines.push({ id: 'directors_tax_return', name: `Directors' Tax Returns`, annual: dtrAnnual });
   if (bkEnabled) lines.push({ id: bkIncVat ? 'bookkeeping_vat' : 'bookkeeping', name: bkIncVat ? 'Bookkeeping & VAT Returns' : 'Bookkeeping', annual: bkAnnual });
   if (vatEnabled) lines.push({ id: 'vat_returns', name: 'VAT Returns', annual: vatAnnual });
+  if (mtdEnabled) lines.push({ id: 'mtd_returns', name: 'MTD Returns', annual: mtdAnnual });
   if (prEnabled) lines.push({ id: 'payroll', name: 'Payroll', annual: prAnnual });
   if (aeEnabled) lines.push({ id: 'auto_enrolment', name: 'Auto-Enrolment', annual: aeFee });
   if (modEnabled) lines.push({ id: 'modulr', name: 'Modulr Wage Payments', annual: modAnnual });
@@ -202,6 +217,8 @@ export default function useQuoteForm(D) {
   }
   if (bkEnabled) flagBelow('bookkeeping_vat', 'Bookkeeping & VAT', bkAnnual, bkHours * D.bookkeeping_rate * 12 + (bkIncVat ? bkVatAdj : 0));
   if (vatEnabled) flagBelow('vat_returns', 'VAT Returns', vatAnnual, vatFreq * D.vat_per_return);
+  if (staEnabled) flagBelow('sole_trader_accounts', 'Sole Trader Accounts', staAnnual, D.sole_trader_accounts ?? 450);
+  if (mtdEnabled) flagBelow('mtd_returns', 'MTD Returns', mtdAnnual, mtdFreq * (D.mtd_returns?.per_return ?? 35));
   if (aeEnabled) flagBelow('auto_enrolment', 'Auto-Enrolment', aeFee, D.auto_enrolment.standard);
   if (roEnabled) flagBelow('registered_office', 'Registered Office', roFee, D.registered_office);
   if (rmEnabled) flagBelow('review_meetings', 'Review Meetings', rmAnnual, rmCount * (D.review_meeting_rate || 210));
@@ -301,6 +318,12 @@ export default function useQuoteForm(D) {
           break;
         case 'vat_returns':
           setVatEnabled(true); if (copy) { setVatFreq(4); setVatRate(Math.round((annual / 4) * 100) / 100); }
+          break;
+        case 'sole_trader_accounts':
+          setStaEnabled(true); if (copy) setStaFee(Math.round(annual));
+          break;
+        case 'mtd_returns':
+          setMtdEnabled(true); if (copy) { setMtdFreq(4); setMtdRate(Math.round((annual / 4) * 100) / 100); }
           break;
         case 'auto_enrolment':
           setAeEnabled(true); if (copy) setAeFee(Math.round(annual));
@@ -468,6 +491,8 @@ export default function useQuoteForm(D) {
     accEnabled, setAccEnabled, accType, setAccType, accRate, setAccRate,
     accProperties, setAccProperties, accPropBase, setAccPropBase, accPropExtra, setAccPropExtra,
     accDormant, setAccDormant, turnoverNum, detectedBand, accAnnual,
+    // Sole Trader Accounts
+    staEnabled, setStaEnabled, staFee, setStaFee, staAnnual,
     // Confirmation
     csEnabled, setCsEnabled, csFee, setCsFee,
     // Directors
@@ -478,6 +503,8 @@ export default function useQuoteForm(D) {
     bkIncVat, setBkIncVat, bkVatAdj, setBkVatAdj, bkAnnual,
     // VAT
     vatEnabled, setVatEnabled, vatFreq, setVatFreq, vatRate, setVatRate, vatAnnual,
+    // MTD Returns
+    mtdEnabled, setMtdEnabled, mtdFreq, setMtdFreq, mtdRate, setMtdRate, mtdAnnual,
     // Payroll
     prEnabled, setPrEnabled, prFlat, setPrFlat, prFlatCalc,
     prMonthlyEe, setPrMonthlyEe, prMonthlyEeRate, setPrMonthlyEeRate,
