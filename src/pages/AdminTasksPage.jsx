@@ -425,6 +425,14 @@ export default function AdminTasksPage() {
     load();
   }
 
+  // Manager-set pipeline step from the row dropdown (change a task's step).
+  async function setTaskStage(t, stage) {
+    if (stage === (t.stage || 'todo')) return;
+    const { error: e } = await supabase.from('admin_tasks').update({ stage }).eq('id', t.id);
+    if (e) { setError(e.message); return; }
+    load();
+  }
+
   async function addNote(taskId, body) {
     const text = (body || '').trim();
     if (!text) return;
@@ -546,34 +554,47 @@ export default function AdminTasksPage() {
     };
   }, [open, filteredDrafts, filteredOnboardings, filteredChCodes]);
 
-  // ── Pipeline stage split ──
-  // Bill & Hold vs Billed is derived from whether the linked invoice is pushed.
+  // ── Manually generated vs system generated ──
+  // Manual = things we initiate in Athena (added-manually + uploaded workplan);
+  // these flow through the billing pipeline (Draft → Bill & Hold → Billed →
+  // To Do). System = data issues Athena's rules raise (BM keying, data errors,
+  // duplicate people).
+  const MANUAL_SOURCES = ['Added manually', 'sophie_workplan_import'];
+  const isManual = (t) => MANUAL_SOURCES.includes(t.source);
   const billPushed = useCallback((t) => {
     const b = billingById[t.billing_item_id];
     return !!b && (!!b.qbo_invoice_id || ['pushed', 'sent', 'paid'].includes(b.status));
   }, [billingById]);
   const stageOf = (t) => t.stage || 'todo';
-  const isBilling = (t) => stageOf(t) === 'bill_hold' || stageOf(t) === 'billed';
-  const todoOpen = useMemo(() => open.filter((t) => stageOf(t) === 'todo'), [open]);
-  const draftOpen = useMemo(() => open.filter((t) => stageOf(t) === 'draft'), [open]);
-  const billHoldOpen = useMemo(() => open.filter((t) => isBilling(t) && !billPushed(t)), [open, billPushed]);
-  const billedOpen = useMemo(() => open.filter((t) => isBilling(t) && billPushed(t)), [open, billPushed]);
 
-  // To Do tasks keep the existing source-group layout; pipeline stages render
-  // in their own boxes below.
-  const groupedOpen = useMemo(() => {
+  const manualOpen = useMemo(() => open.filter(isManual), [open]);
+  const draftOpen = useMemo(() => manualOpen.filter((t) => stageOf(t) === 'draft'), [manualOpen]);
+  const billHoldOpen = useMemo(() => manualOpen.filter((t) => stageOf(t) === 'bill_hold' && !billPushed(t)), [manualOpen, billPushed]);
+  const billedOpen = useMemo(() => manualOpen.filter((t) => stageOf(t) === 'billed' || (stageOf(t) === 'bill_hold' && billPushed(t))), [manualOpen, billPushed]);
+  const todoOpen = useMemo(() => manualOpen.filter((t) => stageOf(t) === 'todo'), [manualOpen]);
+
+  // System-generated data-issue tasks grouped by source. Offboarding (we
+  // triggered it by marking NLAC) shows under Manually generated.
+  const SYSTEM_KEYS = ['bm_keying', 'bm_data_error', 'person_dedup', 'other'];
+  const systemGroups = useMemo(() => {
     const buckets = {};
-    for (const t of todoOpen) (buckets[groupKeyFor(t)] ||= []).push(t);
+    for (const t of open) {
+      if (isManual(t) || t.source === 'nlac_bm_mirror') continue;
+      (buckets[groupKeyFor(t)] ||= []).push(t);
+    }
     return buckets;
-  }, [todoOpen]);
+  }, [open]);
+  const offboardingOpen = useMemo(() => open.filter((t) => t.source === 'nlac_bm_mirror'), [open]);
+  const visibleSystemKeys = SYSTEM_KEYS.filter((k) => (systemGroups[k]?.length || 0) > 0);
+
   const groupedCompleted = useMemo(() => {
     const buckets = {};
     for (const t of completedFiltered) (buckets[groupKeyFor(t)] ||= []).push(t);
     return buckets;
   }, [completedFiltered]);
-  const visibleGroupKeys = useMemo(
-    () => GROUP_ORDER.filter((k) => (groupedOpen[k]?.length || 0) > 0 || (groupedCompleted[k]?.length || 0) > 0),
-    [groupedOpen, groupedCompleted]
+  const completedGroupKeys = useMemo(
+    () => GROUP_ORDER.filter((k) => (groupedCompleted[k]?.length || 0) > 0),
+    [groupedCompleted]
   );
 
   // Where admin time goes: minutes recorded on completed tasks, by task type
@@ -599,9 +620,9 @@ export default function AdminTasksPage() {
     };
   }, [completedFiltered]);
 
-  // Collapse-all treats every visible section (task groups + fixed) as one set.
-  const PIPELINE_KEYS = ['bill_hold', 'billed', 'draft'];
-  const allSectionKeys = useMemo(() => [...visibleGroupKeys, ...PIPELINE_KEYS, ...FIXED_SECTION_KEYS], [visibleGroupKeys]);
+  // Collapse-all treats every section (both groups + fixed) as one set.
+  const allSectionKeys = ['draft', 'bill_hold', 'billed', 'todo', 'realloc', 'onboard',
+    'offboarding', 'bm_keying', 'bm_data_error', 'person_dedup', 'other', 'chcodes'];
   const allCollapsed = !allSectionKeys.some((k) => expandedSet.has(k));
   const toggleAllCollapsed = () => persistExpanded(allCollapsed ? new Set(allSectionKeys) : new Set());
 
@@ -625,6 +646,7 @@ export default function AdminTasksPage() {
       onDeleteDoc={deleteDoc}
       onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
       onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
+      onSetStage={(stage) => setTaskStage(t, stage)}
       {...extra}
     />
   );
@@ -802,30 +824,24 @@ export default function AdminTasksPage() {
       )}
 
       {view !== 'report' && (<>
-      {/* ── Tasks, grouped by the module that generated them ── */}
       {tasks === null && (
         <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Loading…</div>
       )}
-      {tasks !== null && visibleGroupKeys.length === 0 && (
-        <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
-          Nothing outstanding — Athena and BrightManager are in step. 🎉
-        </div>
-      )}
-      {visibleGroupKeys.map((key) => {
-        const groupOpen = groupedOpen[key] || [];
-        const groupCompleted = groupedCompleted[key] || [];
-        const items = view === 'open' ? groupOpen : groupCompleted;
-        return (
+
+      {/* ── Completed view: simple source grouping ── */}
+      {view === 'completed' && (<>
+        {tasks !== null && completedGroupKeys.length === 0 && (
+          <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+            Nothing completed yet.
+          </div>
+        )}
+        {completedGroupKeys.map((key) => (
           <Section
             key={key}
-            title={groupLabelFor(key)} count={view === 'open' ? groupOpen.length : groupCompleted.length}
+            title={groupLabelFor(key)} count={(groupedCompleted[key] || []).length}
             collapsed={!expandedSet.has(key)} onToggle={() => toggleCollapse(key)}
           >
-            {items.length === 0 && <Empty>{view === 'open' ? 'Nothing outstanding here.' : 'Nothing completed here yet.'}</Empty>}
-            {view === 'open' && items.map((t) => taskRow(t, {
-              onAddBill: (!t.billing_item_id && t.entity_id) ? () => addBillToTask(t) : null,
-            }))}
-            {view === 'completed' && items.map((t) => (
+            {(groupedCompleted[key] || []).map((t) => (
               <CompletedRow
                 key={t.id} t={t} staffMap={staffMap}
                 onReopen={() => reopen(t)}
@@ -834,40 +850,116 @@ export default function AdminTasksPage() {
               />
             ))}
           </Section>
-        );
-      })}
+        ))}
+      </>)}
 
-      {/* ── Billing pipeline: Bill & Hold → Billed → Draft (below To Do) ── */}
-      {view === 'open' && (
-        <>
-          <Section
-            title="Bill & Hold" count={billHoldOpen.length}
-            collapsed={!expandedSet.has('bill_hold')} onToggle={() => toggleCollapse('bill_hold')}
-          >
-            {billHoldOpen.length === 0 && <Empty>Nothing waiting on a bill to be raised.</Empty>}
-            {billHoldOpen.map((t) => taskRow(t))}
+      {/* ── Open view: Manually generated (pipeline) + System generated ── */}
+      {view === 'open' && (<>
+        <GroupHeader>Manually generated</GroupHeader>
+        {/* Pipeline: Draft → Bill & Hold → Billed → To Do. Managers change a
+            task's step with the row dropdown; uploaded tasks land on To Do. */}
+        {canPipeline && (
+          <Section title="Draft — not on the live list" count={draftOpen.length}
+            collapsed={!expandedSet.has('draft')} onToggle={() => toggleCollapse('draft')}>
+            {draftOpen.length === 0 && <Empty>No drafts.</Empty>}
+            {draftOpen.map((t) => taskRow(t, { stageSelect: true, onAddBill: !t.billing_item_id ? () => addBillToTask(t) : null, onRelease: () => publishDraft(t), releaseLabel: 'Publish' }))}
           </Section>
-          <Section
-            title="Billed — held until paid or released" count={billedOpen.length}
-            collapsed={!expandedSet.has('billed')} onToggle={() => toggleCollapse('billed')}
-          >
-            {billedOpen.length === 0 && <Empty>Nothing billed and awaiting release.</Empty>}
-            {billedOpen.map((t) => taskRow(t, canPipeline ? { onRelease: () => releaseTask(t), releaseLabel: 'Release to To Do' } : {}))}
-          </Section>
-          {canPipeline && (
-            <Section
-              title="Draft — not on the live list" count={draftOpen.length}
-              collapsed={!expandedSet.has('draft')} onToggle={() => toggleCollapse('draft')}
-            >
-              {draftOpen.length === 0 && <Empty>No drafts.</Empty>}
-              {draftOpen.map((t) => taskRow(t, {
-                onAddBill: !t.billing_item_id ? () => addBillToTask(t) : null,
-                onRelease: () => publishDraft(t), releaseLabel: 'Publish',
-              }))}
-            </Section>
+        )}
+        <Section title="Bill & Hold" count={billHoldOpen.length}
+          collapsed={!expandedSet.has('bill_hold')} onToggle={() => toggleCollapse('bill_hold')}>
+          {billHoldOpen.length === 0 && <Empty>Nothing waiting on a bill to be raised.</Empty>}
+          {billHoldOpen.map((t) => taskRow(t, { stageSelect: canPipeline }))}
+        </Section>
+        <Section title="Billed — held until paid or released" count={billedOpen.length}
+          collapsed={!expandedSet.has('billed')} onToggle={() => toggleCollapse('billed')}>
+          {billedOpen.length === 0 && <Empty>Nothing billed and awaiting release.</Empty>}
+          {billedOpen.map((t) => taskRow(t, { stageSelect: canPipeline, ...(canPipeline ? { onRelease: () => releaseTask(t), releaseLabel: 'Release to To Do' } : {}) }))}
+        </Section>
+        <Section title="To Do" count={todoOpen.length}
+          collapsed={!expandedSet.has('todo')} onToggle={() => toggleCollapse('todo')}>
+          {todoOpen.length === 0 && <Empty>Nothing on the live list.</Empty>}
+          {todoOpen.map((t) => taskRow(t, { stageSelect: canPipeline, onAddBill: (!t.billing_item_id && t.entity_id) ? () => addBillToTask(t) : null }))}
+        </Section>
+
+        {/* Reallocations (capacity planner) — a manual action of ours */}
+        <Section
+          title="Task reallocations to apply in BM" count={filteredDrafts.length}
+          collapsed={!expandedSet.has('realloc')} onToggle={() => toggleCollapse('realloc')}
+          action={<button onClick={() => navigate('/planner/allocations')} style={btn('ghost')}>Open capacity planner →</button>}
+        >
+          {filteredDrafts.length === 0 && <Empty>No reallocation proposals waiting.</Empty>}
+          {filteredDrafts.map((d) => (
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13 }}>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>{entities[d.entity_id] || 'Client'}</span>
+              <span style={{ color: '#64748b', flex: 1 }}>{String(d.canonical_service_id || '').replace(/_/g, ' ')}</span>
+              <span style={{ color: '#475569', whiteSpace: 'nowrap' }}>→ {staffMap[d.proposed_fee_earner_id] || 'unassigned'}</span>
+              <button onClick={() => completeRealloc(d)} title="Mark applied in BM" style={completeBtn(false)}>
+                <CheckCircle2 size={13} /> Complete
+              </button>
+            </div>
+          ))}
+          {filteredDrafts.length > 0 && (
+            <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
+              Marking one complete assumes you've made the change in BM. The next BM upload checks it — if the assignee still doesn't match, it reappears here.
+            </div>
           )}
-        </>
-      )}
+        </Section>
+
+        {/* Onboarding in flight */}
+        <Section
+          title="Onboarding in flight" count={filteredOnboardings.length}
+          collapsed={!expandedSet.has('onboard')} onToggle={() => toggleCollapse('onboard')}
+          action={<button onClick={() => navigate('/onboarding')} style={btn('ghost')}>Open onboarding →</button>}
+        >
+          {filteredOnboardings.length === 0 && <Empty>No onboardings in progress.</Empty>}
+          {filteredOnboardings.map((o) => {
+            const pct = o.total ? Math.round((o.done / o.total) * 100) : 0;
+            return (
+              <div key={o.id} onClick={() => navigate(`/onboarding/${o.id}`)}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13, cursor: 'pointer' }}>
+                <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 190px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {o.entity?.name || 'Client'}
+                </span>
+                {o.status === 'issues'
+                  ? <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#fee2e2', color: '#b91c1c', fontWeight: 600 }}>Issues</span>
+                  : <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#e0f2fe', color: '#0369a1' }}>Active</span>}
+                <div style={{ flex: 1, minWidth: 0, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {o.nextStep ? <>Next: {o.nextStep}</> : 'All steps done'}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
+                  <div style={{ width: 70, height: 6, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? '#16a34a' : '#0e7fe0' }} />
+                  </div>
+                  <span style={{ color: '#94a3b8', fontVariantNumeric: 'tabular-nums', width: 42, textAlign: 'right' }}>{o.done}/{o.total}</span>
+                </div>
+              </div>
+            );
+          })}
+        </Section>
+
+        {/* Offboarding — mirror tasks from us marking a client NLAC */}
+        {offboardingOpen.length > 0 && (
+          <Section title="Offboarding — remove from BrightManager" count={offboardingOpen.length}
+            collapsed={!expandedSet.has('offboarding')} onToggle={() => toggleCollapse('offboarding')}>
+            {offboardingOpen.map((t) => taskRow(t))}
+          </Section>
+        )}
+
+        <GroupHeader>System generated</GroupHeader>
+        {visibleSystemKeys.length === 0 && (
+          <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+            No data issues flagged — Athena and BrightManager are in step. 🎉
+          </div>
+        )}
+        {visibleSystemKeys.map((key) => (
+          <Section
+            key={key}
+            title={groupLabelFor(key)} count={(systemGroups[key] || []).length}
+            collapsed={!expandedSet.has(key)} onToggle={() => toggleCollapse(key)}
+          >
+            {(systemGroups[key] || []).map((t) => taskRow(t))}
+          </Section>
+        ))}
 
       {/* ── CH personal code chases (live from the ch-codes module) ── */}
       <Section
@@ -899,61 +991,7 @@ export default function AdminTasksPage() {
         })}
       </Section>
 
-      {/* ── Reallocations (from capacity planner) ── */}
-      <Section
-        title="Task reallocations to apply in BM" count={filteredDrafts.length}
-        collapsed={!expandedSet.has('realloc')} onToggle={() => toggleCollapse('realloc')}
-        action={<button onClick={() => navigate('/planner/allocations')} style={btn('ghost')}>Open capacity planner →</button>}
-      >
-        {filteredDrafts.length === 0 && <Empty>No reallocation proposals waiting.</Empty>}
-        {filteredDrafts.map((d) => (
-          <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13 }}>
-            <span style={{ fontWeight: 600, color: '#0f172a' }}>{entities[d.entity_id] || 'Client'}</span>
-            <span style={{ color: '#64748b', flex: 1 }}>{String(d.canonical_service_id || '').replace(/_/g, ' ')}</span>
-            <span style={{ color: '#475569', whiteSpace: 'nowrap' }}>→ {staffMap[d.proposed_fee_earner_id] || 'unassigned'}</span>
-            <button onClick={() => completeRealloc(d)} title="Mark applied in BM" style={completeBtn(false)}>
-              <CheckCircle2 size={13} /> Complete
-            </button>
-          </div>
-        ))}
-        {filteredDrafts.length > 0 && (
-          <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
-            Marking one complete assumes you've made the change in BM. The next BM upload checks it — if the assignee still doesn't match, it reappears here.
-          </div>
-        )}
-      </Section>
-
-      {/* ── Onboarding summary ── */}
-      <Section
-        title="Onboarding in flight" count={filteredOnboardings.length}
-        collapsed={!expandedSet.has('onboard')} onToggle={() => toggleCollapse('onboard')}
-        action={<button onClick={() => navigate('/onboarding')} style={btn('ghost')}>Open onboarding →</button>}
-      >
-        {filteredOnboardings.length === 0 && <Empty>No onboardings in progress.</Empty>}
-        {filteredOnboardings.map((o) => {
-          const pct = o.total ? Math.round((o.done / o.total) * 100) : 0;
-          return (
-            <div key={o.id} onClick={() => navigate(`/onboarding/${o.id}`)}
-              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13, cursor: 'pointer' }}>
-              <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 190px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {o.entity?.name || 'Client'}
-              </span>
-              {o.status === 'issues'
-                ? <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#fee2e2', color: '#b91c1c', fontWeight: 600 }}>Issues</span>
-                : <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#e0f2fe', color: '#0369a1' }}>Active</span>}
-              <div style={{ flex: 1, minWidth: 0, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {o.nextStep ? <>Next: {o.nextStep}</> : 'All steps done'}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
-                <div style={{ width: 70, height: 6, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden' }}>
-                  <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? '#16a34a' : '#0e7fe0' }} />
-                </div>
-                <span style={{ color: '#94a3b8', fontVariantNumeric: 'tabular-nums', width: 42, textAlign: 'right' }}>{o.done}/{o.total}</span>
-              </div>
-            </div>
-          );
-        })}
-      </Section>
+      </>)}
       </>)}
 
       {escalateTask && (
@@ -1037,7 +1075,7 @@ function TaskRow({
   t, notes, notesOpen, docs, staffMap, copied,
   onComplete, onCopy, onDismiss, onDeadline, onToggleNotes, onAddNote, onEscalate,
   onToggleUrgent, onAttach, onOpenDoc, onDeleteDoc, onOpenClient, onReviewBill,
-  onAddBill, onRelease, releaseLabel,
+  onAddBill, onRelease, releaseLabel, onSetStage, stageSelect,
 }) {
   const [noteDraft, setNoteDraft] = useState('');
   const today = isoToday();
@@ -1107,6 +1145,20 @@ function TaskRow({
           <button onClick={onRelease} title={releaseLabel || 'Release to To Do'} style={{ ...btn('ghost'), color: '#166534', borderColor: '#bbf7d0', flexShrink: 0, whiteSpace: 'nowrap' }}>
             {releaseLabel || 'Release'} →
           </button>
+        )}
+
+        {stageSelect && (
+          <select
+            value={t.stage || 'todo'}
+            onChange={(e) => onSetStage && onSetStage(e.target.value)}
+            title="Move this task to another pipeline step"
+            style={{ fontSize: 11.5, fontFamily: font, padding: '3px 6px', borderRadius: 6, border: '1px solid #e2e8f0', color: '#475569', background: '#fff', outline: 'none', flexShrink: 0 }}
+          >
+            <option value="draft">Draft</option>
+            <option value="bill_hold">Bill &amp; Hold</option>
+            <option value="billed">Billed</option>
+            <option value="todo">To Do</option>
+          </select>
         )}
 
         {/* Deadline — kept directly next to the comments button below, so the
@@ -1576,6 +1628,18 @@ function Chip({ label, value, tone = 'default' }) {
 
 function Empty({ children }) {
   return <div style={{ padding: '18px 16px', fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>{children}</div>;
+}
+
+// Top-level group divider (Manually generated / System generated).
+function GroupHeader({ children }) {
+  return (
+    <div style={{
+      fontSize: 12.5, fontWeight: 800, color: '#334155', textTransform: 'uppercase',
+      letterSpacing: 0.6, margin: '24px 0 10px', paddingBottom: 6, borderBottom: '2px solid #e5e7eb',
+    }}>
+      {children}
+    </div>
+  );
 }
 
 function btn(kind) {
