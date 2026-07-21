@@ -250,6 +250,7 @@ export default function ClientRemindersPage() {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [queuedCount, setQueuedCount] = useState(0);
+  const [autoQueue, setAutoQueue] = useState(null); // { enabled, last_run_at } | null
   const [bmEmailByEntity, setBmEmailByEntity] = useState({}); // entity_id -> BM contact email fallback
 
   const entityById = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e])), [entities]);
@@ -309,6 +310,10 @@ export default function ClientRemindersPage() {
         .select('id', { count: 'exact', head: true })
         .eq('comm_type', COMM_TYPE).eq('status', 'queued');
       setQueuedCount(qCount || 0);
+
+      // Auto-queue (Jan/Jul cron) on/off state.
+      const { data: aq } = await supabase.from('v_reminder_autoqueue').select('enabled, last_run_at').maybeSingle();
+      setAutoQueue(aq || null);
 
       // Gmail pill — reminders go out from the practice-default mailbox.
       // v_gmail_connections is the staff-safe view (no token columns).
@@ -455,6 +460,18 @@ export default function ClientRemindersPage() {
     loadRows(batchId);
   };
 
+  const canManage = profile?.can_manage_portal === true || profile?.is_portal_admin === true;
+  const toggleAutoQueue = async () => {
+    if (!canManage) return;
+    const next = !(autoQueue?.enabled);
+    const { error: e } = await supabase.from('reminder_autoqueue_config').update({ enabled: next }).eq('id', true);
+    if (e) { setError(`Could not change auto-queue: ${e.message}`); return; }
+    setAutoQueue((a) => ({ ...(a || {}), enabled: next }));
+    setNotice(next
+      ? 'Auto-queue ON — every 4 hours in January & July the queue is filled for you to review and release.'
+      : 'Auto-queue OFF.');
+  };
+
   // ── render ──
   if (loading) {
     return <div style={{ padding: 24, fontFamily: font, fontSize: 13, color: '#64748b' }}>Loading client reminders…</div>;
@@ -487,6 +504,20 @@ export default function ClientRemindersPage() {
               Gmail not connected — sends will fail
             </span>
           )
+        )}
+        {canManage && (
+          <button
+            onClick={toggleAutoQueue}
+            title="Every 4 hours during January & July, auto-fill the queue (opt-in invites for undecided clients, reminders for opted-in). Queue only — you still review and release."
+            style={{
+              padding: '2px 10px', fontSize: 11, fontWeight: 600, borderRadius: 999, cursor: 'pointer', fontFamily: font,
+              background: autoQueue?.enabled ? '#f0fdf4' : '#f1f5f9',
+              color: autoQueue?.enabled ? '#166534' : '#64748b',
+              border: `1px solid ${autoQueue?.enabled ? '#bbf7d0' : '#e2e8f0'}`,
+            }}
+          >
+            ⟳ Auto-queue (Jan & Jul): {autoQueue?.enabled ? 'ON' : 'OFF'}
+          </button>
         )}
       </div>
       <p style={{ fontSize: 12.5, color: '#64748b', margin: '0 0 16px', maxWidth: 760 }}>
