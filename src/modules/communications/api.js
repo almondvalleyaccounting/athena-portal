@@ -38,7 +38,9 @@ export function connectMailboxUrl({ staffId, kind, displayName, returnTo }) {
 export function mailboxNeedsReconnect(mailbox) {
   if (!mailbox) return false;
   if (mailbox.status !== 'active') return true;
-  return !(mailbox.scope || '').includes('gmail.modify');
+  const scope = mailbox.scope || '';
+  // Full current permission set = modify (archive/labels) + contacts.
+  return !scope.includes('gmail.modify') || !scope.includes('contacts.readonly');
 }
 
 // ── Gmail proxy ───────────────────────────────────────────────────────

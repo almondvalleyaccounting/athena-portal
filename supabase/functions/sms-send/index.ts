@@ -8,9 +8,13 @@
 // Body: { body: string, to?: "+44...", entity_id?: uuid, triage_case_id?: uuid,
 //         channel?: 'sms' | 'whatsapp' }
 //   to falls back to the entity's prospect_phone. UK numbers are normalised
-//   to E.164 (07… → +447…). channel 'whatsapp' rides the same Telnyx Messages
-//   API with type WHATSAPP — outside a 24h session window Telnyx will reject
-//   non-template sends; the error lands on the sms_messages row.
+//   to E.164 (07… → +447…). channel 'whatsapp' uses Telnyx's dedicated
+//   /v2/messages/whatsapp endpoint (the plain Messages API only takes
+//   SMS/MMS). Prereqs: the from number must be WhatsApp-registered with
+//   Telnyx (Mission Control embedded Meta signup), and free-form text only
+//   works inside a 24h window from the client's last message — outside it
+//   Meta requires a pre-approved template. Failures land on the
+//   sms_messages row.
 //
 // Every send is logged to sms_messages; a triage_case_id also drops a note
 // on the case — this is the send primitive the escalation ladder will call.
@@ -85,15 +89,27 @@ Deno.serve(async (req) => {
   }).select("id").single();
   if (insErr) return json({ success: false, error: `Could not log message: ${insErr.message}` }, 500);
 
-  const resp = await fetch("https://api.telnyx.com/v2/messages", {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${cfg.api_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from: cfg.from_number, to, text,
-      ...(channel === "whatsapp" ? { type: "WHATSAPP" } : {}),
-      ...(cfg.messaging_profile_id ? { messaging_profile_id: cfg.messaging_profile_id } : {}),
-    }),
-  });
+  const telnyxHeaders = { "Authorization": `Bearer ${cfg.api_key}`, "Content-Type": "application/json" };
+  const resp = channel === "whatsapp"
+    ? await fetch("https://api.telnyx.com/v2/messages/whatsapp", {
+      method: "POST",
+      headers: telnyxHeaders,
+      body: JSON.stringify({
+        from: cfg.from_number, to,
+        whatsapp_message: { type: "text", text: { body: text } },
+        // Delivery receipts back to our webhook (secret in the URL, as on
+        // the messaging profile).
+        ...(cfg.webhook_secret ? { webhook_url: `${SUPABASE_URL}/functions/v1/telnyx-inbound?secret=${cfg.webhook_secret}` } : {}),
+      }),
+    })
+    : await fetch("https://api.telnyx.com/v2/messages", {
+      method: "POST",
+      headers: telnyxHeaders,
+      body: JSON.stringify({
+        from: cfg.from_number, to, text,
+        ...(cfg.messaging_profile_id ? { messaging_profile_id: cfg.messaging_profile_id } : {}),
+      }),
+    });
   const tj = await resp.json().catch(() => ({}));
 
   if (!resp.ok) {

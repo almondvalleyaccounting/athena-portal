@@ -660,6 +660,13 @@ export default function EmailView() {
           <button onClick={openSigEditor} style={railBtn}>
             <PenSquare size={13} /> Signature
           </button>
+          <a
+            href={reconnectUrl}
+            onClick={(e) => { if (!window.confirm(`Reconnect ${mailboxObj?.account_email}? You'll be sent to Google to re-approve — sign in as that account. This refreshes the mailbox's permissions (needed after permission upgrades, e.g. contacts access).`)) e.preventDefault(); }}
+            style={{ ...railBtn, textDecoration: 'none', ...(needsReconnect ? { border: '1px solid #fcd34d', background: '#fffbeb', color: '#92400e' } : {}) }}
+          >
+            <RefreshCw size={13} /> Reconnect mailbox{needsReconnect ? ' ⚠' : ''}
+          </a>
         </div>
       </div>
 
