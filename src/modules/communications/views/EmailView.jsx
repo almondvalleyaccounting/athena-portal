@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Archive, ArchiveRestore, BookUser, Forward as ForwardIcon, Inbox as InboxIcon,
-  Layers, Mail, MailOpen, Paperclip, PenSquare, Plus, RefreshCw,
-  Reply as ReplyIcon, ReplyAll as ReplyAllIcon, Search, Send, Tag, X,
+  Archive, ArchiveRestore, BookUser, ChevronDown, ChevronRight,
+  Forward as ForwardIcon, Inbox as InboxIcon, Layers, Mail, MailOpen, Paperclip,
+  PenSquare, Plus, RefreshCw, Reply as ReplyIcon, ReplyAll as ReplyAllIcon,
+  Search, Send, Tag, Trash2, X,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { chipStyle, tones } from '../../../lib/tokens';
@@ -21,6 +22,7 @@ const SYSTEM_LABELS = [
   { id: 'SENT', label: 'Sent' },
   { id: 'DRAFT', label: 'Drafts' },
   { id: 'ALL', label: 'All mail' },
+  { id: 'TRASH', label: 'Bin' },
 ];
 
 function fmtDate(ms) {
@@ -37,8 +39,7 @@ function fmtDate(ms) {
 // Sandboxed HTML email body — allow-same-origin (no scripts) so we can
 // measure the content height, but nothing inside can run code or reach
 // the portal session. Height is re-measured on a short schedule after
-// load because images/remote assets arrive late and grow the document
-// (the "few cm tall then suddenly expands" bug).
+// load because images/remote assets arrive late and grow the document.
 function HtmlBody({ html }) {
   const ref = useRef(null);
   const [height, setHeight] = useState(160);
@@ -54,8 +55,6 @@ function HtmlBody({ html }) {
 
   const onLoad = () => {
     measure();
-    // Late-loading images change the height — re-measure on a schedule,
-    // and again whenever an image inside finishes loading.
     [200, 600, 1200, 2500, 5000].forEach((ms) => setTimeout(measure, ms));
     try {
       const doc = ref.current?.contentDocument;
@@ -123,7 +122,7 @@ function MessageCard({ msg, mailbox, defaultOpen }) {
 
 // To/Cc input with Google Contacts autocomplete. Comma-separated;
 // suggestions apply to the token being typed.
-function AddressInput({ value, onChange, contacts, placeholder, bold }) {
+function AddressInput({ value, onChange, contacts, placeholder }) {
   const [focus, setFocus] = useState(false);
   const parts = String(value || '').split(',');
   const token = parts[parts.length - 1].trim().toLowerCase();
@@ -157,7 +156,7 @@ function AddressInput({ value, onChange, contacts, placeholder, bold }) {
         onFocus={() => setFocus(true)}
         onBlur={() => setTimeout(() => setFocus(false), 150)}
         placeholder={placeholder}
-        style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, fontWeight: bold ? 600 : 400 }}
+        style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7 }}
       />
       {suggestions.length > 0 && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 8px 24px rgba(15,23,42,.12)', overflow: 'hidden' }}>
@@ -178,6 +177,122 @@ function AddressInput({ value, onChange, contacts, placeholder, bold }) {
       )}
     </div>
   );
+}
+
+// Searchable label picker with create ("Tax/VAT" nests) — used for the
+// bulk Tag+archive and the single-thread Tag action.
+function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left' }) {
+  const [open, setOpen] = useState(false);
+  const [term, setTerm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const sorted = useMemo(() => [...labels].sort((a, b) => a.name.localeCompare(b.name)), [labels]);
+  const filtered = term.trim()
+    ? sorted.filter((l) => l.name.toLowerCase().includes(term.trim().toLowerCase()))
+    : sorted;
+  const exact = sorted.some((l) => l.name.toLowerCase() === term.trim().toLowerCase());
+
+  const pick = async (label) => {
+    setOpen(false);
+    setTerm('');
+    await onPick(label);
+  };
+
+  const create = async () => {
+    setBusy(true);
+    try {
+      const label = await onCreate(term.trim());
+      if (label) await pick(label);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <span onClick={() => setOpen((o) => !o)}>{trigger}</span>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', [align]: 0, marginTop: 4, zIndex: 40, width: 260, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 10px 30px rgba(15,23,42,.15)', overflow: 'hidden', fontFamily: font }}>
+          <input
+            autoFocus
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setOpen(false);
+              if (e.key === 'Enter') {
+                if (filtered.length === 1) pick(filtered[0]);
+                else if (term.trim() && !exact) create();
+              }
+            }}
+            placeholder="Search labels… (use / to nest)"
+            style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 12.5, fontFamily: font, border: 'none', borderBottom: '1px solid #e2e8f0', outline: 'none' }}
+          />
+          <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+            {filtered.map((l) => {
+              const parts = l.name.split('/');
+              const seg = parts.pop();
+              return (
+                <div
+                  key={l.id}
+                  onClick={() => pick(l)}
+                  style={{ padding: `6px 10px 6px ${10 + parts.length * 14}px`, fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: 6 }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#eff6ff'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+                >
+                  <Tag size={11} color="#94a3b8" />
+                  <span style={{ fontWeight: 600, color: '#0f172a' }}>{seg}</span>
+                  {parts.length > 0 && <span style={{ fontSize: 10.5, color: '#94a3b8' }}>{parts.join(' / ')}</span>}
+                </div>
+              );
+            })}
+            {filtered.length === 0 && !term.trim() && (
+              <div style={{ padding: 12, fontSize: 12, color: '#94a3b8' }}>No labels yet — type to create one.</div>
+            )}
+          </div>
+          {term.trim() && !exact && (
+            <button
+              onClick={create}
+              disabled={busy}
+              style={{ width: '100%', padding: '8px 11px', fontSize: 12.5, fontWeight: 600, color: '#0e7fe0', background: '#f8fafc', border: 'none', borderTop: '1px solid #e2e8f0', cursor: 'pointer', textAlign: 'left', fontFamily: font }}
+            >
+              {busy ? 'Creating…' : `+ Create “${term.trim()}”`}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Nested labels ("Tax/VAT/Q1") → collapsible tree for the rail.
+function buildLabelTree(userLabels) {
+  const roots = [];
+  const byPath = new Map();
+  for (const l of [...userLabels].sort((a, b) => a.name.localeCompare(b.name))) {
+    const parts = l.name.split('/');
+    let path = '';
+    let siblings = roots;
+    for (let i = 0; i < parts.length; i++) {
+      path = path ? `${path}/${parts[i]}` : parts[i];
+      let node = byPath.get(path);
+      if (!node) {
+        node = { seg: parts[i], full: path, label: null, children: [] };
+        byPath.set(path, node);
+        siblings.push(node);
+      }
+      if (i === parts.length - 1) node.label = l;
+      siblings = node.children;
+    }
+  }
+  return roots;
 }
 
 // Quote the original message for reply/forward bodies (plain text).
@@ -211,7 +326,7 @@ export default function EmailView() {
   const [composer, setComposer] = useState(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
-  const [notice, setNotice] = useState(null);
+  const [notice, setNotice] = useState(null); // { text, undo? }
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -221,6 +336,10 @@ export default function EmailView() {
   const [sigDraft, setSigDraft] = useState('');
   const [sigScope, setSigScope] = useState('*');
   const [syncBusy, setSyncBusy] = useState(false);
+  const [expanded, setExpanded] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('comms_labels_expanded') || '[]')); }
+    catch { return new Set(); }
+  });
   const paneRef = useRef(null);
 
   const mailboxObj = useMemo(
@@ -228,10 +347,24 @@ export default function EmailView() {
     [mailboxes, mailbox],
   );
   const labelById = useMemo(() => Object.fromEntries(labels.map((l) => [l.id, l])), [labels]);
-  const userLabels = labels.filter((l) => l.type === 'user' && l.labelListVisibility !== 'labelHide');
+  const userLabels = useMemo(
+    () => labels.filter((l) => l.type === 'user' && l.labelListVisibility !== 'labelHide'),
+    [labels],
+  );
+  const labelTree = useMemo(() => buildLabelTree(userLabels), [userLabels]);
   const sigText = useMemo(() => effectiveSignature(signatures, mailbox), [signatures, mailbox]);
 
-  const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(null), 3000); };
+  const flash = (text, undo = null) => {
+    setNotice({ text, undo });
+    setTimeout(() => setNotice((n) => (n?.text === text ? null : n)), undo ? 8000 : 3000);
+  };
+
+  const toggleExpanded = (full) => setExpanded((prev) => {
+    const next = new Set(prev);
+    if (next.has(full)) next.delete(full); else next.add(full);
+    localStorage.setItem('comms_labels_expanded', JSON.stringify([...next]));
+    return next;
+  });
 
   // ── Mailboxes / contacts / signatures ──
   const loadMailboxes = useCallback(async () => {
@@ -260,13 +393,15 @@ export default function EmailView() {
 
   // ── Labels + threads ──
   const loadLabels = useCallback(async () => {
-    if (!mailbox) return;
+    if (!mailbox) return [];
     try {
       const res = await gmail.listLabels(mailbox);
       setLabels(res.labels || []);
+      return res.labels || [];
     } catch (e) {
       setLabels([]);
       setError(e.code === 'no_gmail_connection' ? null : `Labels: ${e.message}`);
+      return [];
     }
   }, [mailbox]);
 
@@ -294,14 +429,39 @@ export default function EmailView() {
   useEffect(() => { setThread(null); setComposer(null); loadLabels(); }, [mailbox, loadLabels]);
   useEffect(() => { setThread(null); loadThreads(); }, [loadThreads]);
 
+  // Ensure a label path exists, creating each missing level ("Tax/VAT"
+  // creates "Tax" then "Tax/VAT"). Returns the leaf label.
+  const ensureLabel = useCallback(async (name) => {
+    const parts = name.split('/').map((s) => s.trim()).filter(Boolean);
+    if (!parts.length) return null;
+    let current = [...labels];
+    let path = '';
+    let leaf = null;
+    for (const p of parts) {
+      path = path ? `${path}/${p}` : p;
+      leaf = current.find((l) => l.name.toLowerCase() === path.toLowerCase()) || null;
+      if (!leaf) {
+        try {
+          const res = await gmail.createLabel(mailbox, path);
+          leaf = res.label;
+          current = [...current, leaf];
+        } catch (e) {
+          setError(`Could not create label “${path}”: ${e.message}`);
+          return null;
+        }
+      }
+    }
+    setLabels(current);
+    loadLabels();
+    return leaf;
+  }, [labels, mailbox, loadLabels]);
+
   // ── Thread (preview pane) ──
   const openThread = useCallback(async (summary) => {
     setThreadLoading(true);
-    setComposer((c) => (c?.mode === 'new' ? c : null));
     setError(null);
     try {
       const res = await gmail.getThread(mailbox, summary.id);
-      // Newest first — latest reply on top, oldest at the bottom.
       res.thread.messages = [...res.thread.messages].sort((a, b) => b.internalDate - a.internalDate);
       setThread(res.thread);
       setComposer(null);
@@ -319,6 +479,7 @@ export default function EmailView() {
   }, [mailbox]);
 
   const latestMsg = thread?.messages?.[0] || null;
+  const threadInTrash = !!thread && thread.messages.some((m) => m.labelIds.includes('TRASH'));
 
   const archiveThread = useCallback(async (threadId, restore = false) => {
     try {
@@ -334,6 +495,47 @@ export default function EmailView() {
         : e.message);
     }
   }, [mailbox]);
+
+  // Delete = Gmail bin (recoverable ~30 days), never permanent.
+  const trashThread = useCallback(async (threadId) => {
+    try {
+      await gmail.trashThread(mailbox, threadId);
+      setThreads((prev) => prev.filter((t) => t.id !== threadId));
+      setThread(null);
+      flash('Moved to bin.', async () => {
+        await gmail.untrashThread(mailbox, threadId).catch(() => {});
+        loadThreads();
+      });
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [mailbox, loadThreads]);
+
+  const restoreThread = useCallback(async (threadId) => {
+    try {
+      await gmail.untrashThread(mailbox, threadId);
+      setThreads((prev) => prev.filter((t) => t.id !== threadId));
+      setThread(null);
+      flash('Restored from bin.');
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [mailbox]);
+
+  const tagThread = useCallback(async (label) => {
+    if (!thread) return;
+    try {
+      await gmail.modifyThread(mailbox, thread.id, { addLabelIds: [label.id] });
+      setThread((prev) => (prev ? {
+        ...prev,
+        messages: prev.messages.map((m) => ({ ...m, labelIds: [...new Set([...m.labelIds, label.id])] })),
+      } : prev));
+      setThreads((prev) => prev.map((t) => (t.id === thread.id ? { ...t, labelIds: [...new Set([...(t.labelIds || []), label.id])] } : t)));
+      flash(`Tagged “${label.name}”.`);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [mailbox, thread]);
 
   // ── Bulk actions ──
   const toggleSelect = (id) => setSelected((prev) => {
@@ -357,19 +559,22 @@ export default function EmailView() {
     loadThreads();
   }, [selected, mailbox, loadThreads]);
 
-  const bulkTagArchive = useCallback(async (labelChoice) => {
-    let targetLabel = labelChoice;
-    if (labelChoice === '__new__') {
-      const name = window.prompt('New label name:');
-      if (!name?.trim()) return;
-      try {
-        const res = await gmail.createLabel(mailbox, name.trim());
-        targetLabel = res.label.id;
-        await loadLabels();
-      } catch (e) { setError(`Could not create label: ${e.message}`); return; }
+  const bulkTrash = useCallback(async () => {
+    setBulkBusy(true);
+    setError(null);
+    const ids = [...selected];
+    let failed = 0;
+    for (const id of ids) {
+      try { await gmail.trashThread(mailbox, id); } catch { failed++; }
     }
-    await bulkModify({ addLabelIds: [targetLabel], removeLabelIds: ['INBOX'], verb: 'Tagged & archived' });
-  }, [mailbox, bulkModify, loadLabels]);
+    setBulkBusy(false);
+    setSelected(new Set());
+    flash(`Binned ${ids.length - failed} conversation${ids.length - failed === 1 ? '' : 's'}.`, async () => {
+      for (const id of ids) await gmail.untrashThread(mailbox, id).catch(() => {});
+      loadThreads();
+    });
+    loadThreads();
+  }, [selected, mailbox, loadThreads]);
 
   // ── Composer ──
   const startComposer = useCallback((mode) => {
@@ -434,9 +639,7 @@ export default function EmailView() {
       setContacts(await loadContacts());
       flash(`Synced ${res.stored} contacts from ${res.mailbox}.`);
     } catch (e) {
-      setError(e.code === 'needs_reconnect'
-        ? `${e.message}`
-        : `Contacts sync failed: ${e.message}`);
+      setError(e.code === 'needs_reconnect' ? `${e.message}` : `Contacts sync failed: ${e.message}`);
     } finally {
       setSyncBusy(false);
     }
@@ -494,46 +697,39 @@ export default function EmailView() {
     staffId: profile?.id, kind: mailboxObj.kind, displayName: mailboxObj.display_name,
   }) : '#';
 
-  const paneContent = () => {
-    if (composer?.mode === 'new' || composer?.mode === 'forward') {
-      return renderComposer();
-    }
-    if (thread) {
-      return (
-        <>
-          {/* Header + actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', flex: 1, minWidth: 200 }}>
-              {latestMsg?.subject || '(no subject)'}
-            </span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => startComposer('reply')} title="Reply" style={btnIcon}><ReplyIcon size={14} /> Reply</button>
-              <button onClick={() => startComposer('replyAll')} title="Reply all" style={btnIcon}><ReplyAllIcon size={14} /> Reply all</button>
-              <button onClick={() => startComposer('forward')} title="Forward" style={btnIcon}><ForwardIcon size={14} /> Forward</button>
-              {latestMsg?.labelIds?.includes('INBOX') || thread.messages.some((m) => m.labelIds.includes('INBOX'))
-                ? <button onClick={() => archiveThread(thread.id)} title="Archive (remove from inbox)" style={btnIcon}><Archive size={14} /> Archive</button>
-                : <button onClick={() => archiveThread(thread.id, true)} title="Move back to inbox" style={btnIcon}><ArchiveRestore size={14} /> To inbox</button>}
-              <button onClick={() => setThread(null)} title="Close" style={btnIcon}><X size={14} /></button>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {[...new Set(thread.messages.flatMap((m) => m.labelIds))]
-              .filter((id) => labelById[id]?.type === 'user')
-              .map((id) => <span key={id} style={chipStyle('accent')}>{labelById[id].name}</span>)}
-          </div>
-          {/* Inline reply composer sits above the messages */}
-          {composer && renderComposer()}
-          {/* Newest first; latest expanded */}
-          {thread.messages.map((m, i) => (
-            <MessageCard key={m.id} msg={m} mailbox={mailbox} defaultOpen={i === 0} />
-          ))}
-        </>
-      );
-    }
+  const selectLabel = (id) => { setQ(''); setQDraft(''); setLabelId(id); };
+
+  const renderTreeNode = (node, depth) => {
+    const isActive = node.label && labelId === node.label.id && !q;
+    const hasKids = node.children.length > 0;
+    const isOpen = expanded.has(node.full);
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13, border: '1px dashed #e2e8f0', borderRadius: 10, minHeight: 240 }}>
-        {threadLoading ? 'Opening…' : 'Select an email to preview it here'}
-      </div>
+      <React.Fragment key={node.full}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <button
+            onClick={() => hasKids && toggleExpanded(node.full)}
+            style={{ width: 18, height: 22, padding: 0, border: 'none', background: 'none', cursor: hasKids ? 'pointer' : 'default', color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: depth * 12 }}
+          >
+            {hasKids ? (isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />) : null}
+          </button>
+          <button
+            onClick={() => (node.label ? selectLabel(node.label.id) : hasKids && toggleExpanded(node.full))}
+            title={node.full}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', fontSize: 12.5,
+              fontWeight: isActive ? 700 : 500,
+              background: isActive ? tones.info.bg : 'transparent',
+              color: isActive ? tones.info.fg : node.label ? '#475569' : '#94a3b8',
+              border: 'none', borderRadius: 7, cursor: 'pointer', textAlign: 'left', fontFamily: font, minWidth: 0,
+            }}
+          >
+            <Tag size={11} style={{ flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.seg}</span>
+            {hasKids && <span style={{ fontSize: 10, color: '#cbd5e1', flexShrink: 0 }}>{node.children.length}</span>}
+          </button>
+        </div>
+        {hasKids && isOpen && node.children.map((c) => renderTreeNode(c, depth + 1))}
+      </React.Fragment>
     );
   };
 
@@ -563,10 +759,60 @@ export default function EmailView() {
     );
   }
 
+  const paneContent = () => {
+    if (composer?.mode === 'new' || composer?.mode === 'forward') {
+      return renderComposer();
+    }
+    if (thread) {
+      return (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', flex: 1, minWidth: 200 }}>
+              {latestMsg?.subject || '(no subject)'}
+            </span>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button onClick={() => startComposer('reply')} title="Reply" style={btnIcon}><ReplyIcon size={14} /> Reply</button>
+              <button onClick={() => startComposer('replyAll')} title="Reply all" style={btnIcon}><ReplyAllIcon size={14} /> All</button>
+              <button onClick={() => startComposer('forward')} title="Forward" style={btnIcon}><ForwardIcon size={14} /> Forward</button>
+              <LabelPicker
+                labels={userLabels}
+                onPick={tagThread}
+                onCreate={ensureLabel}
+                align="right"
+                trigger={<button title="Tag with a label" style={btnIcon}><Tag size={13} /> Tag</button>}
+              />
+              {thread.messages.some((m) => m.labelIds.includes('INBOX'))
+                ? <button onClick={() => archiveThread(thread.id)} title="Archive (remove from inbox)" style={btnIcon}><Archive size={14} /> Archive</button>
+                : !threadInTrash && <button onClick={() => archiveThread(thread.id, true)} title="Move back to inbox" style={btnIcon}><ArchiveRestore size={14} /> To inbox</button>}
+              {threadInTrash
+                ? <button onClick={() => restoreThread(thread.id)} title="Restore from bin" style={btnIcon}><ArchiveRestore size={14} /> Restore</button>
+                : <button onClick={() => trashThread(thread.id)} title="Move to bin (recoverable for ~30 days in Gmail)" style={{ ...btnIcon, color: '#b91c1c', borderColor: '#fca5a5' }}><Trash2 size={14} /> Delete</button>}
+              <button onClick={() => setThread(null)} title="Close" style={btnIcon}><X size={14} /></button>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[...new Set(thread.messages.flatMap((m) => m.labelIds))]
+              .filter((id) => labelById[id]?.type === 'user')
+              .map((id) => <span key={id} style={chipStyle('accent')}>{labelById[id].name}</span>)}
+          </div>
+          {composer && renderComposer()}
+          {thread.messages.map((m, i) => (
+            <MessageCard key={m.id} msg={m} mailbox={mailbox} defaultOpen={i === 0} />
+          ))}
+        </>
+      );
+    }
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13, border: '1px dashed #e2e8f0', borderRadius: 10, minHeight: 240 }}>
+        {threadLoading ? 'Opening…' : 'Select an email to preview it here'}
+      </div>
+    );
+  };
+
   return (
     <div style={{ display: 'flex', gap: 14, height: '100%', minHeight: 0, fontFamily: font }}>
-      {/* ── Left rail: mailbox + labels ── */}
-      <div style={{ width: 208, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+      {/* ── Left rail ── */}
+      <div style={{ width: 212, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
         <select
           value={mailbox}
           onChange={(e) => setMailbox(e.target.value)}
@@ -578,37 +824,48 @@ export default function EmailView() {
             </option>
           ))}
         </select>
-        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: -4, paddingLeft: 2 }}>{mailboxObj?.account_email}</div>
+        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: -2, paddingLeft: 2 }}>{mailboxObj?.account_email}</div>
 
-        {(!myPersonal || isAdmin) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <button
-              onClick={() => setAddOpen((o) => !o)}
-              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 10px', fontSize: 12.5, fontWeight: 600, background: '#fff', color: '#334155', border: '1px dashed #94a3b8', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
-            >
-              <Plus size={13} /> Add mailbox
+        {/* Mailbox tools — directly under the switcher */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          {(!myPersonal || isAdmin) && (
+            <button onClick={() => setAddOpen((o) => !o)} style={{ ...railBtn, border: '1px dashed #94a3b8' }}>
+              <Plus size={12} /> Add mailbox
             </button>
-            {addOpen && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, border: '1px solid #e2e8f0', borderRadius: 8, background: '#f8fafc' }}>
-                {!myPersonal && (
-                  <a href={connectPersonalUrl} style={addOptionStyle}>
-                    <Mail size={13} /> Connect my inbox
-                  </a>
-                )}
-                {isAdmin && (
-                  <a
-                    href={connectSharedUrl}
-                    onClick={(e) => { if (!window.confirm('You’ll be sent to Google — sign in as the SHARED mailbox you want to add (e.g. accounts@ or payroll@), not your own account. Continue?')) e.preventDefault(); }}
-                    style={addOptionStyle}
-                  >
-                    <InboxIcon size={13} /> Add shared mailbox
-                  </a>
-                )}
-                <div style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.4 }}>
-                  Shared = the whole team sees it (info@, accounts@…). You&apos;ll sign into that Google account once.
-                </div>
-              </div>
+          )}
+          <a
+            href={reconnectUrl}
+            onClick={(e) => { if (!window.confirm(`Reconnect ${mailboxObj?.account_email}? You'll be sent to Google to re-approve — sign in as that account. This refreshes the mailbox's permissions.`)) e.preventDefault(); }}
+            style={{ ...railBtn, textDecoration: 'none', ...(needsReconnect ? { border: '1px solid #fcd34d', background: '#fffbeb', color: '#92400e' } : {}) }}
+          >
+            <RefreshCw size={12} /> Reconnect{needsReconnect ? ' ⚠' : ''}
+          </a>
+          <button onClick={doSyncContacts} disabled={syncBusy} style={railBtn}>
+            <BookUser size={12} /> {syncBusy ? 'Syncing…' : 'Contacts'}
+          </button>
+          <button onClick={openSigEditor} style={railBtn}>
+            <PenSquare size={12} /> Signature
+          </button>
+        </div>
+        {addOpen && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, border: '1px solid #e2e8f0', borderRadius: 8, background: '#f8fafc' }}>
+            {!myPersonal && (
+              <a href={connectPersonalUrl} style={addOptionStyle}>
+                <Mail size={13} /> Connect my inbox
+              </a>
             )}
+            {isAdmin && (
+              <a
+                href={connectSharedUrl}
+                onClick={(e) => { if (!window.confirm('You’ll be sent to Google — sign in as the SHARED mailbox you want to add (e.g. accounts@ or payroll@), not your own account. Continue?')) e.preventDefault(); }}
+                style={addOptionStyle}
+              >
+                <InboxIcon size={13} /> Add shared mailbox
+              </a>
+            )}
+            <div style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.4 }}>
+              Shared = the whole team sees it (info@, accounts@…). You&apos;ll sign into that Google account once.
+            </div>
           </div>
         )}
 
@@ -623,7 +880,7 @@ export default function EmailView() {
           {SYSTEM_LABELS.filter((s) => s.id === 'INBOX' || s.id === 'ALL' || labelById[s.id]).map((s) => (
             <button
               key={s.id}
-              onClick={() => { setQ(''); setQDraft(''); setLabelId(s.id); }}
+              onClick={() => selectLabel(s.id)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', fontSize: 13,
                 fontWeight: labelId === s.id && !q ? 700 : 500,
@@ -632,41 +889,11 @@ export default function EmailView() {
                 border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: font,
               }}
             >
-              {s.id === 'INBOX' ? <InboxIcon size={14} /> : s.id === 'ALL' ? <Layers size={14} /> : <Tag size={13} />} {s.label}
+              {s.id === 'INBOX' ? <InboxIcon size={14} /> : s.id === 'ALL' ? <Layers size={14} /> : s.id === 'TRASH' ? <Trash2 size={13} /> : <Tag size={13} />} {s.label}
             </button>
           ))}
-          {userLabels.length > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, padding: '8px 10px 2px' }}>Labels</div>}
-          {userLabels.map((l) => (
-            <button
-              key={l.id}
-              onClick={() => { setQ(''); setQDraft(''); setLabelId(l.id); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 12.5,
-                fontWeight: labelId === l.id && !q ? 700 : 500,
-                background: labelId === l.id && !q ? tones.info.bg : 'transparent',
-                color: labelId === l.id && !q ? tones.info.fg : '#475569',
-                border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: font,
-              }}
-            >
-              <Tag size={12} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</span>
-            </button>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 10 }}>
-          <button onClick={doSyncContacts} disabled={syncBusy} style={railBtn}>
-            <BookUser size={13} /> {syncBusy ? 'Syncing…' : 'Sync Google contacts'}
-          </button>
-          <button onClick={openSigEditor} style={railBtn}>
-            <PenSquare size={13} /> Signature
-          </button>
-          <a
-            href={reconnectUrl}
-            onClick={(e) => { if (!window.confirm(`Reconnect ${mailboxObj?.account_email}? You'll be sent to Google to re-approve — sign in as that account. This refreshes the mailbox's permissions (needed after permission upgrades, e.g. contacts access).`)) e.preventDefault(); }}
-            style={{ ...railBtn, textDecoration: 'none', ...(needsReconnect ? { border: '1px solid #fcd34d', background: '#fffbeb', color: '#92400e' } : {}) }}
-          >
-            <RefreshCw size={13} /> Reconnect mailbox{needsReconnect ? ' ⚠' : ''}
-          </a>
+          {labelTree.length > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, padding: '8px 10px 2px' }}>Labels</div>}
+          {labelTree.map((n) => renderTreeNode(n, 0))}
         </div>
       </div>
 
@@ -691,18 +918,15 @@ export default function EmailView() {
         {selected.size > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 8, fontSize: 12, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 700, color: '#0c4a6e' }}>{selected.size} selected</span>
-            <select
-              defaultValue=""
-              disabled={bulkBusy}
-              onChange={(e) => { const v = e.target.value; e.target.value = ''; if (v) bulkTagArchive(v); }}
-              style={{ fontSize: 12, padding: '4px 6px', border: '1px solid #93c5fd', borderRadius: 6, fontFamily: font, background: '#fff', color: '#0c4a6e', maxWidth: 140 }}
-            >
-              <option value="" disabled>Tag + archive…</option>
-              {userLabels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-              <option value="__new__">+ New label…</option>
-            </select>
+            <LabelPicker
+              labels={userLabels}
+              onPick={(label) => bulkModify({ addLabelIds: [label.id], removeLabelIds: ['INBOX'], verb: `Tagged “${label.name}” & archived` })}
+              onCreate={ensureLabel}
+              trigger={<button disabled={bulkBusy} style={bulkBtn}><Tag size={12} /> Tag + archive ▾</button>}
+            />
             <button disabled={bulkBusy} onClick={() => bulkModify({ removeLabelIds: ['INBOX'], verb: 'Archived' })} style={bulkBtn}><Archive size={12} /> Archive</button>
             <button disabled={bulkBusy} onClick={() => bulkModify({ removeLabelIds: ['UNREAD'], verb: 'Marked read' })} style={bulkBtn}><MailOpen size={12} /> Read</button>
+            <button disabled={bulkBusy} onClick={bulkTrash} style={{ ...bulkBtn, color: '#b91c1c', borderColor: '#fca5a5' }}><Trash2 size={12} /> Delete</button>
             <button disabled={bulkBusy} onClick={() => setSelected(new Set())} style={{ ...bulkBtn, marginLeft: 'auto' }}>Clear</button>
             {bulkBusy && <span style={{ color: '#0c4a6e' }}>Working…</span>}
           </div>
@@ -737,7 +961,7 @@ export default function EmailView() {
                     <span style={{ fontSize: 12.5, fontWeight: t.unread ? 700 : 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                       {from.name}{t.messageCount > 1 ? ` (${t.messageCount})` : ''}
                     </span>
-                    {userLabelChips.map((id) => <span key={id} style={{ ...chipStyle('accent'), flexShrink: 0 }}>{labelById[id].name}</span>)}
+                    {userLabelChips.map((id) => <span key={id} style={{ ...chipStyle('accent'), flexShrink: 0 }}>{labelById[id].name.split('/').pop()}</span>)}
                     <span style={{ fontSize: 10.5, color: '#94a3b8', flexShrink: 0 }}>{fmtDate(t.internalDate)}</span>
                   </div>
                   <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -774,7 +998,17 @@ export default function EmailView() {
           </div>
         )}
         {notice && (
-          <div style={{ padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 12, color: '#166534' }}>{notice}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 12, color: '#166534' }}>
+            <span style={{ flex: 1 }}>{notice.text}</span>
+            {notice.undo && (
+              <button
+                onClick={async () => { const u = notice.undo; setNotice(null); await u(); }}
+                style={{ fontSize: 12, fontWeight: 700, color: '#166534', background: 'none', border: '1px solid #86efac', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: font }}
+              >
+                Undo
+              </button>
+            )}
+          </div>
         )}
         <div ref={paneRef} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 4, minHeight: 0 }}>
           {paneContent()}
@@ -831,9 +1065,9 @@ const bulkBtn = {
 };
 
 const railBtn = {
-  display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', fontSize: 12, fontWeight: 600,
+  display: 'flex', alignItems: 'center', gap: 5, padding: '6px 8px', fontSize: 11.5, fontWeight: 600,
   border: '1px solid #e2e8f0', background: '#fff', borderRadius: 8, cursor: 'pointer',
-  fontFamily: font, color: '#475569', textAlign: 'left',
+  fontFamily: font, color: '#475569', textAlign: 'left', whiteSpace: 'nowrap',
 };
 
 const addOptionStyle = {

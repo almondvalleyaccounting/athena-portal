@@ -10,6 +10,8 @@
 //                    inReplyTo?, references? }   new mail / reply / forward
 //   modify_thread  { threadId, addLabelIds?, removeLabelIds? }
 //                    archive = remove INBOX; mark read = remove UNREAD
+//   trash_thread   { threadId }        Gmail bin (recoverable ~30 days)
+//   untrash_thread { threadId }        undo for the above
 //   get_attachment { messageId, attachmentId }
 //
 // Deployed with verify_jwt ON; additionally checks the caller is active staff
@@ -293,6 +295,17 @@ Deno.serve(async (req) => {
           method: "POST",
           body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }),
         });
+        return jsonResponse({ success: true });
+      }
+
+      // Gmail bin, never permanent deletion (gmail.modify can't hard-delete
+      // anyway — that needs the full mail scope, deliberately not requested).
+      case "trash_thread":
+      case "untrash_thread": {
+        if (!body.threadId) return jsonResponse({ success: false, error: "threadId required" }, 400);
+        await gmailFetch(tok.accessToken,
+          `/threads/${body.threadId}/${action === "trash_thread" ? "trash" : "untrash"}`,
+          { method: "POST", body: "{}" });
         return jsonResponse({ success: true });
       }
 

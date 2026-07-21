@@ -79,6 +79,8 @@ export const gmail = {
   send: (mailbox, opts) => callGmail('send', { mailbox, ...opts }),
   modifyThread: (mailbox, threadId, { addLabelIds, removeLabelIds }) =>
     callGmail('modify_thread', { mailbox, threadId, addLabelIds, removeLabelIds }),
+  trashThread: (mailbox, threadId) => callGmail('trash_thread', { mailbox, threadId }),
+  untrashThread: (mailbox, threadId) => callGmail('untrash_thread', { mailbox, threadId }),
   getAttachment: (mailbox, messageId, attachmentId) =>
     callGmail('get_attachment', { mailbox, messageId, attachmentId }),
 };
