@@ -4,7 +4,8 @@ import { Download, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { SERVICES } from '../../work-planner/lib/constants';
 import {
   fetchAllCompletedForRange, fetchAllTimesheetEntriesForRange,
-  fetchStaffList, fetchEntities,
+  fetchStaffList, fetchEntities, fetchTimesheetLocks, isDateLocked,
+  updateTimesheetEntry, deleteTimesheetEntryById,
 } from '../lib/timesheetQueries';
 
 /* ─── Helpers ──────────────────────────────────────────────── */
@@ -33,7 +34,10 @@ export default function EntriesView() {
   const [entityList, setEntityList] = useState([]);
   const [completed, setCompleted] = useState([]);
   const [entries, setEntries] = useState([]);
+  const [locks, setLocks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [editRow, setEditRow] = useState(null); // timesheet_entries row being edited
 
   // Filters
   const [staffFilter, setStaffFilter] = useState('');
@@ -65,16 +69,18 @@ export default function EntriesView() {
       try {
         // Fetch functions use an exclusive upper bound — add a day to include "to"
         const toExclusive = formatISO(addDays(new Date(to + 'T00:00:00'), 1));
-        const [c, e] = await Promise.all([
+        const [c, e, lk] = await Promise.all([
           fetchAllCompletedForRange(from, toExclusive).catch(() => []),
           fetchAllTimesheetEntriesForRange(from, toExclusive).catch(() => []),
+          fetchTimesheetLocks().catch(() => []),
         ]);
         setCompleted(c);
         setEntries(e);
+        setLocks(lk || []);
       } catch (e) { console.error('[Timesheets] entries load error:', e); }
       setLoading(false);
     })();
-  }, [from, to]);
+  }, [from, to, reloadKey]);
 
   const entityMap = useMemo(() => { const m = {}; entityList.forEach((e) => { m[e.id] = e; }); return m; }, [entityList]);
   const staffMap = useMemo(() => { const m = {}; staffList.forEach((s) => { m[s.id] = s; }); return m; }, [staffList]);
@@ -90,15 +96,19 @@ export default function EntriesView() {
       _date: t.completed_at ? formatISO(new Date(t.completed_at)) : '',
       _text: t.title || '',
       service: t.service || '',
+      _editable: false,
     }));
     entries.forEach((e) => arr.push({
+      _id: e.id,
       _mins: e.minutes || 0,
       _source: e.source === 'override' ? 'override' : 'manual',
       _staff: e.staff_id,
       _entity: e.entity_id,
       _date: e.work_date || '',
       _text: e.notes || '',
+      _notes: e.notes || '',
       service: e.service || '',
+      _editable: true, // timesheet_entries rows — the editable timesheet
     }));
     return arr;
   }, [completed, entries]);
@@ -253,16 +263,23 @@ export default function EntriesView() {
                 )}
                 {sorted.map((e, i) => {
                   const clientName = e._entity ? (entityMap[e._entity]?.name || 'Unknown') : '—';
+                  const locked = isDateLocked(locks, e._date);
+                  const canEdit = e._editable && !locked;
                   return (
-                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <tr key={i}
+                      onClick={canEdit ? () => setEditRow(e) : undefined}
+                      title={canEdit ? 'Click to edit this timesheet entry' : (locked ? 'Locked period — cannot edit' : 'From completed work — not editable here')}
+                      style={{ borderBottom: '1px solid #f1f5f9', cursor: canEdit ? 'pointer' : 'default' }}
+                    >
                       <td style={{ ...tdStyle, whiteSpace: 'nowrap', color: '#64748b' }}>
                         {e._date ? new Date(e._date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                        {locked && <span style={{ marginLeft: 6, fontSize: 10, color: '#94a3b8' }}>🔒</span>}
                       </td>
                       <td style={{ ...tdStyle, color: '#0f172a', fontWeight: 500 }}>{staffMap[e._staff]?.name || '—'}</td>
                       <td style={tdStyle}>
                         {e._entity ? (
                           <span
-                            onClick={() => navigate(`/clients/${e._entity}`)}
+                            onClick={(ev) => { ev.stopPropagation(); navigate(`/clients/${e._entity}`); }}
                             title="Open client"
                             style={{ color: '#0e7fe0', fontWeight: 500, cursor: 'pointer' }}
                           >{clientName}</span>
@@ -307,6 +324,80 @@ export default function EntriesView() {
           </div>
         </div>
       )}
+
+      {editRow && (
+        <EditEntryModal
+          row={editRow}
+          staffName={staffMap[editRow._staff]?.name || '—'}
+          clientName={editRow._entity ? (entityMap[editRow._entity]?.name || 'Unknown') : 'No client'}
+          onClose={() => setEditRow(null)}
+          onSaved={() => { setEditRow(null); setReloadKey((k) => k + 1); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Edit a single timesheet entry ─────────────────────────── */
+function EditEntryModal({ row, staffName, clientName, onClose, onSaved }) {
+  const [minutes, setMinutes] = useState(String(Math.round(row._mins || 0)));
+  const [service, setService] = useState(row.service || '');
+  const [notes, setNotes] = useState(row._notes || '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const save = async () => {
+    const mins = parseInt(minutes, 10);
+    if (isNaN(mins) || mins < 0) { setErr('Enter minutes as a whole number.'); return; }
+    setBusy(true); setErr(null);
+    try {
+      await updateTimesheetEntry(row._id, { minutes: mins, service: service || null, notes: notes.trim() || null });
+      onSaved();
+    } catch (e) { setErr(e.message); setBusy(false); }
+  };
+  const remove = async () => {
+    if (!window.confirm('Delete this timesheet entry?')) return;
+    setBusy(true); setErr(null);
+    try { await deleteTimesheetEntryById(row._id); onSaved(); }
+    catch (e) { setErr(e.message); setBusy(false); }
+  };
+
+  const F = "'Outfit', sans-serif";
+  const inp = { width: '100%', boxSizing: 'border-box', padding: '8px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: F, outline: 'none' };
+  const lbl = { fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 5 };
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: 20, width: 440, maxWidth: '94vw', fontFamily: F }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>Edit timesheet entry</div>
+        <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 14 }}>
+          {staffName} · {clientName} · {row._date ? new Date(row._date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+        </div>
+        {err && <div style={{ fontSize: 12.5, color: '#b91c1c', marginBottom: 10 }}>{err}</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div>
+            <div style={lbl}>Minutes</div>
+            <input type="number" min="0" step="5" value={minutes} onChange={(e) => setMinutes(e.target.value)} style={inp} />
+          </div>
+          <div>
+            <div style={lbl}>Service</div>
+            <select value={service} onChange={(e) => setService(e.target.value)} style={{ ...inp, appearance: 'auto' }}>
+              <option value="">— none —</option>
+              {SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={lbl}>Notes</div>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={remove} disabled={busy} style={{ padding: '8px 12px', fontSize: 12.5, fontWeight: 600, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>Delete</button>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button onClick={onClose} disabled={busy} style={{ padding: '8px 14px', fontSize: 13, color: '#334155', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>Cancel</button>
+            <button onClick={save} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>{busy ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -187,6 +187,16 @@ export async function fetchAllTimesheetEntriesForRange(startDate, endDate) {
   return data || [];
 }
 
+/* ─── Edit / delete a single timesheet entry by id (All Entries screen) ── */
+export async function updateTimesheetEntry(id, patch) {
+  const { error } = await supabase.from('timesheet_entries').update(patch).eq('id', id);
+  if (error) throw error;
+}
+export async function deleteTimesheetEntryById(id) {
+  const { error } = await supabase.from('timesheet_entries').delete().eq('id', id);
+  if (error) throw error;
+}
+
 /* ─── Fetch scheduled tasks for a staff member (for placeholders) ── */
 export async function fetchScheduledForStaff(staffId) {
   const { data, error } = await supabase
