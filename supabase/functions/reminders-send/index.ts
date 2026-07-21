@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
         gmail_message_id: sentMsg.id || null, gmail_thread_id: sentMsg.threadId || null,
       }).eq("id", r.id);
 
-      if (r.kind === "reminder" && r.payment_id) {
+      if ((r.kind === "reminder" || r.kind === "no_utr") && r.payment_id) {
         await service.from("tax_payments_due").update({ last_reminded_at: now }).eq("id", r.payment_id);
       }
       if (r.kind === "promo") {
@@ -252,6 +252,15 @@ Deno.serve(async (req) => {
     .eq("comm_type", commType).eq("kind", kind).maybeSingle();
   if (tErr) return json({ success: false, error: `Template lookup failed: ${tErr.message}` }, 500);
   if (!tmpl) return json({ success: false, error: `No ${kind} template configured for '${commType}'` }, 400);
+
+  // No-UTR variant of the reminder: for a client who will owe a payment
+  // but has no UTR (not registered with HMRC yet). Routed to per-target.
+  let tmplNoUtr: { subject: string; body_html: string; body_text: string } | null = null;
+  if (kind === "reminder") {
+    const { data: nu } = await service.from("comm_templates")
+      .select("subject, body_html, body_text").eq("comm_type", commType).eq("kind", "no_utr").maybeSingle();
+    tmplNoUtr = nu || null;
+  }
 
   // Gmail is only needed when we actually send now (mode 'send').
   let token: { accessToken: string; accountEmail: string } | null = null;
@@ -290,6 +299,8 @@ Deno.serve(async (req) => {
     let payment: { id: string; batch_id: string; amount: number } | null = null;
     let dueDate = body.due_date || null;
     let paymentRef = "";
+    let effKind: string = kind;
+    let effTmpl = tmpl;
     if (kind === "reminder") {
       if (!target.payment_id) { skipped.push({ entity_id: entityId, reason: "payment_id required for reminders" }); continue; }
       const { data: pay } = await service.from("tax_payments_due")
@@ -301,7 +312,12 @@ Deno.serve(async (req) => {
       dueDate = (pay.batch as { due_date?: string } | null)?.due_date || dueDate;
       if (!dueDate) { skipped.push({ entity_id: entityId, reason: "no due date on batch" }); continue; }
       paymentRef = taxPaymentRef(pay.reference_raw as string | null);
-      if (!paymentRef) { skipped.push({ entity_id: entityId, reason: "no UTR / payment reference on record" }); continue; }
+      if (!paymentRef) {
+        // No UTR → not registered with HMRC yet. Send the 'no_utr' variant
+        // (no bank details, no reference) rather than skipping.
+        if (!tmplNoUtr) { skipped.push({ entity_id: entityId, reason: "no UTR and no 'no_utr' template" }); continue; }
+        effKind = "no_utr"; effTmpl = tmplNoUtr;
+      }
     }
 
     // Mint the token up front so the opt-in URLs can be baked into the
@@ -318,13 +334,13 @@ Deno.serve(async (req) => {
       opt_in_url: kind === "promo" ? `${optBase}&choice=in` : "",
       opt_out_url: kind === "promo" ? `${optBase}&choice=out` : "",
     };
-    const content = renderEmail(tmpl, vars);
+    const content = renderEmail(effTmpl, vars);
     const now = new Date().toISOString();
 
     // ── QUEUE: store the rendered email, don't send ──
     if (mode === "queue") {
       const { error: qErr } = await service.from("reminder_emails").insert({
-        kind, comm_type: commType, entity_id: entityId,
+        kind: effKind, comm_type: commType, entity_id: entityId,
         batch_id: payment?.batch_id || null, payment_id: payment?.id || null,
         to_email: to, subject: content.subject, token: tok,
         body_html: content.html, body_text: content.text,
@@ -338,7 +354,7 @@ Deno.serve(async (req) => {
     // ── SEND (test): persist then send immediately ──
     const { data: emailRow, error: insErr } = await service.from("reminder_emails")
       .insert({
-        kind, comm_type: commType, entity_id: entityId,
+        kind: effKind, comm_type: commType, entity_id: entityId,
         batch_id: payment?.batch_id || null, payment_id: payment?.id || null,
         to_email: to, subject: content.subject, token: tok,
         body_html: content.html, body_text: content.text, status: "sent",

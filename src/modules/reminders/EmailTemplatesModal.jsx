@@ -34,6 +34,7 @@ const btnPrimary = (on) => ({
 const KINDS = [
   { key: 'promo', label: 'Email 1 · opt-in invitation' },
   { key: 'reminder', label: 'Email 2 · payment details' },
+  { key: 'no_utr', label: 'Email 2b · not registered yet' },
 ];
 const TOKENS = ['{{first_name}}', '{{amount}}', '{{due_date}}', '{{payment_ref}}', '{{opt_in_url}}', '{{opt_out_url}}', '{{pay_url}}', '{{pta_url}}'];
 

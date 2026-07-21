@@ -148,12 +148,12 @@ Deno.serve(async (req) => {
   for (const x of existing || []) {
     if (x.status === "dropped") continue;
     if (x.kind === "promo") promoedEver.add(x.entity_id);
-    if (x.kind === "reminder" && x.batch_id === batch.id) remindedThisBatch.add(x.entity_id);
+    if ((x.kind === "reminder" || x.kind === "no_utr") && x.batch_id === batch.id) remindedThisBatch.add(x.entity_id);
   }
 
   const now = new Date().toISOString();
   const toInsert: Record<string, unknown>[] = [];
-  const counts = { promo: 0, reminder: 0, skipped_no_email: 0, skipped_optout: 0, skipped_former: 0, skipped_dup: 0, skipped_no_ref: 0 };
+  const counts = { promo: 0, reminder: 0, no_utr: 0, skipped_no_email: 0, skipped_optout: 0, skipped_former: 0, skipped_dup: 0, skipped_no_ref: 0 };
 
   for (const r of rows) {
     const ent = entById[r.entity_id];
@@ -168,21 +168,27 @@ Deno.serve(async (req) => {
     if (pref === "opted_in") {
       if (remindedThisBatch.has(r.entity_id)) { counts.skipped_dup++; continue; }
       const paymentRef = taxPaymentRef(r.reference_raw as string | null);
-      if (!paymentRef) { counts.skipped_no_ref++; continue; }
+      // No UTR → not registered with HMRC yet; use the 'no_utr' variant.
+      let effKind = "reminder";
+      let effTmpl = tmplByKind.reminder;
+      if (!paymentRef) {
+        if (!tmplByKind.no_utr) { counts.skipped_no_ref++; continue; }
+        effKind = "no_utr"; effTmpl = tmplByKind.no_utr;
+      }
       const tok = genToken();
       const vars = {
         first_name: greetingName(ent.name), amount: fmtMoney(Number(r.amount)),
         due_date: fmtDateLong(batch.due_date), payment_ref: paymentRef,
         pay_url: PAY_URL, pta_url: PTA_URL, opt_in_url: "", opt_out_url: "",
       };
-      const c = renderEmail(tmplByKind.reminder, vars);
+      const c = renderEmail(effTmpl, vars);
       toInsert.push({
-        kind: "reminder", comm_type: commType, entity_id: r.entity_id, batch_id: batch.id, payment_id: r.id,
+        kind: effKind, comm_type: commType, entity_id: r.entity_id, batch_id: batch.id, payment_id: r.id,
         to_email: to, subject: c.subject, token: tok, body_html: c.html, body_text: c.text,
         status: "queued", queued_at: now,
       });
       remindedThisBatch.add(r.entity_id);
-      counts.reminder++;
+      if (effKind === "no_utr") counts.no_utr++; else counts.reminder++;
     } else {
       // undecided / pending / never asked → opt-in, ask once.
       if (promoedEver.has(r.entity_id)) { counts.skipped_dup++; continue; }
