@@ -43,6 +43,8 @@ const th = {
   borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
 };
 const td = { padding: '7px 10px', fontSize: 12.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
+// Sticky header so the whole preview list scrolls under fixed column titles.
+const thSticky = { ...th, position: 'sticky', top: 0, background: '#fff', zIndex: 1 };
 
 const REASON_LABEL = {
   'no-utr': 'no UTR in file',
@@ -244,18 +246,18 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
             )}.
           </div>
 
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 14, maxHeight: 440, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={th}>Client</th>
-                  <th style={th}>Amount</th>
-                  <th style={th}>UTR</th>
-                  <th style={th}>Match</th>
+                  <th style={thSticky}>Client</th>
+                  <th style={thSticky}>Amount</th>
+                  <th style={thSticky}>UTR</th>
+                  <th style={thSticky}>Match</th>
                 </tr>
               </thead>
               <tbody>
-                {parsed.slice(0, 10).map((r, i) => {
+                {parsed.map((r, i) => {
                   const m = matchEntityByUtrSurname(r.reference_raw, r.surname, entities);
                   const ent = m.id ? entities.find((e) => e.id === m.id) : null;
                   return (
@@ -270,9 +272,6 @@ export default function TaxBatchUpload({ entities, profileId, onSaved }) {
                     </tr>
                   );
                 })}
-                {parsed.length > 10 && (
-                  <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={4}>…and {parsed.length - 10} more</td></tr>
-                )}
               </tbody>
             </table>
           </div>
