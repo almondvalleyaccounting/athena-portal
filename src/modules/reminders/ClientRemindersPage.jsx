@@ -692,17 +692,19 @@ export default function ClientRemindersPage() {
                   <th style={{ ...th, width: 30 }}>
                     <input type="checkbox" checked={!!allSelected} onChange={toggleAll} />
                   </th>
-                  <th style={th}>Client</th>
+                  <th style={th}>TaxCalc Client</th>
+                  <th style={th}>Athena (BM) Client</th>
+                  <th style={th}>Reminder Override</th>
                   <th style={th}>Email</th>
                   <th style={{ ...th, textAlign: 'right' }}>Amount</th>
                   <th style={th}>Preference</th>
-                  <th style={th}>Paid</th>
-                  <th style={th}>Last contact</th>
+                  <th style={th}>Payment Status</th>
+                  <th style={th}>Last Contact</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleRows.length === 0 && (
-                  <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={7}>No rows match these filters.</td></tr>
+                  <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={9}>No rows match these filters.</td></tr>
                 )}
                 {visibleRows.map((row) => {
                   const ent = row.entity_id ? entityById[row.entity_id] : null;
@@ -717,71 +719,64 @@ export default function ClientRemindersPage() {
                       <td style={td}>
                         <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleRow(row.id)} />
                       </td>
+                      {/* TaxCalc Client — the raw imported name + UTR */}
                       <td style={td}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-start' }}>
-                          {/* Line 1 — CSV name + reference + send result */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span style={{ fontWeight: 600 }}>{row.client_name_raw}</span>
-                            {row.reference_raw && <span style={{ fontSize: 11, color: '#94a3b8' }}>{row.reference_raw}</span>}
-                            {res && (
-                              <span style={{
-                                fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
-                                background: res.ok ? '#f0fdf4' : '#fef2f2',
-                                color: res.ok ? '#166534' : '#b91c1c',
-                                border: `1px solid ${res.ok ? '#bbf7d0' : '#fecaca'}`,
-                              }} title={res.text}>
-                                {res.ok ? '✓ sent' : `✗ ${res.text}`}
-                              </span>
-                            )}
-                          </div>
-                          {/* Line 2 — match picker (aligned left) + match status */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <ClientTypeAhead
-                              entityList={entities}
-                              value={row.entity_id || ''}
-                              onChange={(id) => setEntityMatch(row, id)}
-                              onAddNew={async () => null}
-                              size="small"
-                              metaOf={(e) => [
-                                e.utr && `UTR ${e.utr}`,
-                                e.bm_client_id && `ref ${e.bm_client_id}`,
-                                (e.qbo_customer_name && e.qbo_customer_name !== e.name) ? e.qbo_customer_name : null,
-                              ].filter(Boolean).join(' · ')}
-                            />
-                            {!row.entity_id && !rowIgnored && (
-                              <span style={{ fontSize: 10.5, color: '#b91c1c', fontWeight: 600 }}>unmatched</span>
-                            )}
-                            {row.reference_raw && (rowIgnored
-                              ? (
-                                <>
-                                  <span style={{
-                                    fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
-                                    background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
-                                  }}>ignored — not a client</span>
-                                  {canManage && (
-                                    <button
-                                      onClick={() => removeIgnore(row)}
-                                      title="This UTR is a client after all — remove it from the never-remind list"
-                                      style={{
-                                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                        fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#0e7fe0', textDecoration: 'underline',
-                                      }}
-                                    >revert to client</button>
-                                  )}
-                                </>
-                              )
-                              : canManage && (
-                                <button
-                                  onClick={() => addIgnore(row)}
-                                  title="Never send tax reminders to this UTR (someone whose return you file but who isn't a practice client)"
-                                  style={{
-                                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                    fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#94a3b8', textDecoration: 'underline',
-                                  }}
-                                >never remind</button>
-                              ))}
-                          </div>
+                        <span style={{ fontWeight: 600 }}>{row.client_name_raw}</span>
+                        {row.reference_raw && <div style={{ fontSize: 11, color: '#94a3b8' }}>{row.reference_raw}</div>}
+                      </td>
+                      {/* Athena (BM) Client — the matched client picker */}
+                      <td style={td}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <ClientTypeAhead
+                            entityList={entities}
+                            value={row.entity_id || ''}
+                            onChange={(id) => setEntityMatch(row, id)}
+                            onAddNew={async () => null}
+                            size="small"
+                            metaOf={(e) => [
+                              e.utr && `UTR ${e.utr}`,
+                              e.bm_client_id && `ref ${e.bm_client_id}`,
+                              (e.qbo_customer_name && e.qbo_customer_name !== e.name) ? e.qbo_customer_name : null,
+                            ].filter(Boolean).join(' · ')}
+                          />
+                          {!row.entity_id && !rowIgnored && (
+                            <span style={{ fontSize: 10.5, color: '#b91c1c', fontWeight: 600 }}>unmatched</span>
+                          )}
                         </div>
+                      </td>
+                      {/* Reminder Override — never-remind / ignored / revert */}
+                      <td style={td}>
+                        {!row.reference_raw ? (
+                          <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>—</span>
+                        ) : rowIgnored ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{
+                              fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
+                              background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
+                            }}>ignored — not a client</span>
+                            {canManage && (
+                              <button
+                                onClick={() => removeIgnore(row)}
+                                title="This UTR is a client after all — remove it from the never-remind list"
+                                style={{
+                                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                  fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#0e7fe0', textDecoration: 'underline',
+                                }}
+                              >revert to client</button>
+                            )}
+                          </div>
+                        ) : canManage ? (
+                          <button
+                            onClick={() => addIgnore(row)}
+                            title="Never send tax reminders to this UTR (someone whose return you file but who isn't a practice client)"
+                            style={{
+                              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                              fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#94a3b8', textDecoration: 'underline',
+                            }}
+                          >never remind</button>
+                        ) : (
+                          <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>—</span>
+                        )}
                       </td>
                       <td style={td}>
                         {email ? (
@@ -837,6 +832,18 @@ export default function ClientRemindersPage() {
                         </button>
                       </td>
                       <td style={td}>
+                        {res && (
+                          <div style={{ marginBottom: 4 }}>
+                            <span style={{
+                              fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
+                              background: res.ok ? '#f0fdf4' : '#fef2f2',
+                              color: res.ok ? '#166534' : '#b91c1c',
+                              border: `1px solid ${res.ok ? '#bbf7d0' : '#fecaca'}`,
+                            }} title={res.text}>
+                              {res.ok ? '✓ sent' : `✗ ${res.text}`}
+                            </span>
+                          </div>
+                        )}
                         {lastEm ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 11.5, color: '#64748b' }}>
