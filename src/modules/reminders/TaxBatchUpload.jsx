@@ -254,7 +254,7 @@ export default function TaxBatchUpload({ entities, ignoreUtrs = [], profileId, o
           </div>
           {unmatchedTotal > 0 && (
             <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 6 }}>
-              Unmatched rows still import. After saving, open <strong>Client Reminders</strong> to match
+              Unmatched rows still import. After saving, open <strong>Client Tax Reminders</strong> to match
               each to a client (per-row picker) or mark it <strong>Excluded</strong> — e.g. someone whose
               tax return you file but who isn’t a practice client. Only matched, opted-in clients are emailed.
             </div>

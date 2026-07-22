@@ -548,7 +548,7 @@ export default function ClientRemindersPage() {
     <div style={{ padding: '20px 24px', fontFamily: font, maxWidth: 1200 }}>
       {/* 1 — header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: 0 }}>Client Reminders</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: 0 }}>Client Tax Reminders</h1>
         <span style={{
           padding: '2px 10px', fontSize: 11, fontWeight: 600, borderRadius: 999,
           background: '#eff6ff', color: ACCENT, border: '1px solid #bfdbfe',

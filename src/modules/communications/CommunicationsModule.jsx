@@ -16,7 +16,7 @@ const TABS = [
   { path: '/comms/email', label: 'Email' },
   { path: '/comms/sms', label: 'Text Messages' },
   { path: '/comms/whatsapp', label: 'WhatsApp' },
-  { path: '/comms/reminders', label: 'Client Reminders', perm: 'can_manage_portal' },
+  { path: '/comms/reminders', label: 'Client Tax Reminders', perm: 'can_manage_portal' },
   { path: '/comms/preferences', label: 'Client Preferences' },
 ];
 

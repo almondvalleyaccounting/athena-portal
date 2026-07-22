@@ -12,12 +12,9 @@
 //     deliberate decision.
 //   * Client reminders: a message whose Gmail thread matches a sent
 //     reminder_emails row (last 30 days) stamps reply_seen_at and
-//     notifies portal staff (kind 'reminder_reply'). These matched
-//     reminder-thread messages are the ONE mailbox mutation this
-//     function makes: they're archived (INBOX label removed) so a human
-//     never has to clear them. General chase replies are left in the
-//     inbox untouched. Archiving fails soft if the token lacks the
-//     gmail.modify scope.
+//     notifies portal staff (kind 'reminder_reply'). This function makes
+//     NO mailbox mutations — inbound replies are always left in the
+//     inbox for a human to read and action (never archived).
 //   * Both chase engines HOLD reminders while the reply is newer than the
 //     last outbound email (see ch-code-queue-fill / onboarding-chase).
 //
@@ -257,25 +254,9 @@ Deno.serve(async (req) => {
           link_path: "/reminders",
         });
       }
-      // Archive matched reminder-thread messages ONLY — the reply is
-      // recorded above, so nobody needs to clear it from the inbox by
-      // hand. Fails soft (e.g. 403 if the connection pre-dates the
-      // gmail.modify scope) — the scan itself must never die here.
-      try {
-        const archResp = await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}/modify`,
-          {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token.accessToken}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ removeLabelIds: ["INBOX"] }),
-          },
-        );
-        if (!archResp.ok) {
-          console.log(`reminder archive skipped for ${id}: ${archResp.status} ${await archResp.text()}`);
-        }
-      } catch (e) {
-        console.log(`reminder archive error for ${id}: ${(e as Error).message}`);
-      }
+      // Reply recorded + staff notified above. We deliberately do NOT
+      // archive it — inbound client replies always stay in the inbox for
+      // a human to read and action.
     }
     details.push({ from, subject, ch: chMatches.length, onboarding: obMatches.length, reminder: remMatches.length });
   }

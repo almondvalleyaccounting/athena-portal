@@ -44,7 +44,7 @@ export default function TaxCalcView() {
           Upload a TaxCalc / POA report (.xlsx or .csv) of personal-tax payments due — e.g. July
           payments on account. Only rows with a payment-on-account amount import, and each is matched
           to a client by <strong>UTR + surname</strong>. Unmatched rows still import; you match or
-          exclude them by hand in <strong>Client Reminders</strong> after saving, where opt-in
+          exclude them by hand in <strong>Client Tax Reminders</strong> after saving, where opt-in
           invitations and payment reminders are then sent.
         </p>
 
@@ -73,7 +73,7 @@ export default function TaxCalcView() {
                   textDecoration: 'underline',
                 }}
               >
-                open Client Reminders →
+                open Client Tax Reminders →
               </button>
             </span>
           </div>
