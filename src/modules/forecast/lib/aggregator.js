@@ -89,20 +89,7 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
   const derive = inflationPct === 'derive';
   let incomeFactor, costFactor;
   if (derive) {
-    const fInc = new Map(), fCost = new Map();
-    for (const [t, rows] of byPeriod) {
-      let baseRev = 0, upliftRev = 0, baseCost = 0, upliftCost = 0;
-      for (const r of rows) {
-        if (r.nominal_type === 'revenue') baseRev += r.amount_p;
-        else if (r.nominal_type === 'staff_cost' || r.nominal_type === 'overhead' || r.nominal_type === 'cost_of_sales') baseCost += r.amount_p;
-        else if (r.nominal_type === 'pnl.income_inflation_uplift') upliftRev += r.amount_p;
-        else if (r.nominal_type === 'pnl.cost_inflation_uplift') upliftCost += -r.amount_p;   // emitted negative
-      }
-      fInc.set(t, baseRev > 0 ? 1 + upliftRev / baseRev : 1);
-      fCost.set(t, baseCost > 0 ? 1 + upliftCost / baseCost : 1);
-    }
-    incomeFactor = (t) => fInc.get(t) ?? 1;
-    costFactor = (t) => fCost.get(t) ?? 1;
+    ({ incomeFactor, costFactor } = deriveInflationFactors(outputs));
   } else {
     incomeFactor = (t) => Math.pow(1 + (inflationPct?.income || 0) / 100, Math.floor(t / 12));
     costFactor   = (t) => Math.pow(1 + (inflationPct?.cost   || 0) / 100, Math.floor(t / 12));
@@ -131,23 +118,7 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
   // Revenue-share per period — the fraction of shared (group-level) rows
   // a filtered view carries. Zero-revenue periods (pre-opening) borrow
   // the nearest following period's share so central costs aren't lost.
-  const shareByT = new Map();
-  if (entityIds) {
-    const raw = periods.map(t => {
-      let scoped = 0, total = 0;
-      for (const r of byPeriod.get(t) || []) {
-        if (r.nominal_type !== 'revenue') continue;
-        total += r.amount_p;
-        if (r.entity_id != null && entityIds.has(r.entity_id)) scoped += r.amount_p;
-      }
-      return total > 0 ? scoped / total : null;
-    });
-    let next = 1;
-    for (let i = raw.length - 1; i >= 0; i--) {
-      if (raw[i] == null) raw[i] = next; else next = raw[i];
-    }
-    periods.forEach((t, i) => shareByT.set(t, raw[i]));
-  }
+  const shareByT = revenueSharesByPeriod(outputs, periods, entityIds);
 
   // Running BS state for cash + equity + tax_payable
   let cash = cash0;
@@ -439,6 +410,57 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
  * `outputs` shape (array of {nominal_type, period, amount_p}) so we can
  * pass scoped aggregates into the existing view code.
  */
+/**
+ * Back-solve the engine's per-period inflation factors from its emitted
+ * uplift rows (uplift = base × (f − 1)). Shared by scopedAggregate and
+ * the PDF exporter so every scoped surface uses identical factors.
+ */
+export function deriveInflationFactors(outputs) {
+  const baseRev = new Map(), upliftRev = new Map(), baseCost = new Map(), upliftCost = new Map();
+  const bump = (m, t, v) => m.set(t, (m.get(t) || 0) + v);
+  for (const r of outputs) {
+    const t = r.period;
+    if (t == null) continue;
+    if (r.nominal_type === 'revenue') bump(baseRev, t, r.amount_p);
+    else if (r.nominal_type === 'staff_cost' || r.nominal_type === 'overhead' || r.nominal_type === 'cost_of_sales') bump(baseCost, t, r.amount_p);
+    else if (r.nominal_type === 'pnl.income_inflation_uplift') bump(upliftRev, t, r.amount_p);
+    else if (r.nominal_type === 'pnl.cost_inflation_uplift') bump(upliftCost, t, -r.amount_p);   // emitted negative
+  }
+  return {
+    incomeFactor: (t) => (baseRev.get(t) > 0 ? 1 + (upliftRev.get(t) || 0) / baseRev.get(t) : 1),
+    costFactor:   (t) => (baseCost.get(t) > 0 ? 1 + (upliftCost.get(t) || 0) / baseCost.get(t) : 1),
+  };
+}
+
+/**
+ * Revenue share per period for a filtered scope — the fraction of shared
+ * (group-level) rows the scope carries. Zero-revenue periods borrow the
+ * nearest following period's share. Returns Map(t -> share); shares are
+ * all 1 when entityIds is null.
+ */
+export function revenueSharesByPeriod(outputs, periods, entityIds) {
+  const shareByT = new Map();
+  if (!entityIds) {
+    for (const t of periods) shareByT.set(t, 1);
+    return shareByT;
+  }
+  const scoped = new Map(), total = new Map();
+  for (const r of outputs) {
+    if (r.nominal_type !== 'revenue' || r.period == null) continue;
+    total.set(r.period, (total.get(r.period) || 0) + r.amount_p);
+    if (r.entity_id != null && entityIds.has(r.entity_id)) {
+      scoped.set(r.period, (scoped.get(r.period) || 0) + r.amount_p);
+    }
+  }
+  const raw = periods.map(t => ((total.get(t) || 0) > 0 ? (scoped.get(t) || 0) / total.get(t) : null));
+  let next = 1;
+  for (let i = raw.length - 1; i >= 0; i--) {
+    if (raw[i] == null) raw[i] = next; else next = raw[i];
+  }
+  periods.forEach((t, i) => shareByT.set(t, raw[i]));
+  return shareByT;
+}
+
 export function aggregatedAsOutputRows(map) {
   const rows = [];
   for (const [key, amount_p] of map) {

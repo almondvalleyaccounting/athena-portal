@@ -12,6 +12,7 @@ import {
 } from './aggregations';
 import { buildOccupancyIndex, occKey, curveForBand, occupancyOnCurve } from '../occupancy.js';
 import { drawLineChart, drawColumnChart, drawStackedBars, SERIES, fmtAxisMoney } from './pdfCharts.js';
+import { deriveInflationFactors, revenueSharesByPeriod } from '../aggregator.js';
 
 // Brand palette
 const INK = '#0f172a';
@@ -857,6 +858,274 @@ function drawExecutiveSummary(doc, { outputs, scopedOutputs, periods, openingPer
   });
 }
 
+// ── Key assumptions page ──────────────────────────────────────
+//
+// The lender's first-flip page: headline ramp assumptions per location,
+// then the operating assumptions by phase (M0–3 / M3–6 / M6–9 / M9–12,
+// then Y2–Y5), grouped Income → Costs → Staffing → Children & capacity.
+// Everything is normalised so short and long buckets compare fairly:
+// prices per day, costs per month (average), wages annualised.
+
+function drawAssumptionsPage(doc, { outputs, periods, openingPeriod, entities, entityIds, incomeContext, header }) {
+  drawHeader(doc, header);
+  drawSectionHeading(doc, 'Key assumptions', 'Operating assumptions by phase — prices per day · costs per month (avg) · wages annualised (loaded)');
+
+  const inScope = entities.filter(e => !entityIds || entityIds.has(e.id));
+  const occIdx = buildOccupancyIndex(outputs);
+  const { incomeFactor, costFactor } = deriveInflationFactors(outputs);
+  const shares = revenueSharesByPeriod(outputs, periods, entityIds);
+  // Weight for a row: entity rows in scope at 1, group rows at revenue share.
+  const w = (r) => r.entity_id == null
+    ? (shares.get(r.period) ?? 1)
+    : ((!entityIds || entityIds.has(r.entity_id)) ? 1 : 0);
+
+  const BANDS = ['babies', 'twos', 'three_to_five', 'after_school'];
+  const SQM = { babies: 3.7, twos: 2.8, three_to_five: 2.3, after_school: 1.86 };
+  const SQFT_PER_SQM = 10.7639;
+
+  // Capacity-weighted occupancy % for one entity at t (null if no rows).
+  const entityOcc = (e, t) => {
+    const caps = e.config?.capacity_by_age_band || {};
+    let ws = 0, cw = 0;
+    for (const b of BANDS) {
+      const c = caps[b] || 0;
+      if (!c) continue;
+      const o = occIdx.get(occKey(e.id, b, t));
+      if (o == null) continue;
+      ws += c * o; cw += c;
+    }
+    return cw > 0 ? ws / cw : null;
+  };
+
+  // ── Headline ramp assumptions per location ───────────────────
+  let hy = 38;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(MUTED);
+  doc.text('RAMP-UP ASSUMPTIONS', MARGIN.left, hy);
+  hy += 5;
+  for (const e of inScope.slice(0, 4)) {
+    const opening = e.config?.opening_month_offset ?? 0;
+    const series = periods.map(t => entityOcc(e, t));
+    const peak = Math.max(...series.map(v => v ?? 0));
+    let steadyT = opening;
+    for (let t = opening; t < periods.length; t++) {
+      if ((series[t] ?? 0) >= peak - 0.5) { steadyT = t; break; }
+    }
+    const rampMonths = Math.max(0, steadyT - opening);
+    const openPct = series[opening];
+    let avgRamp = openPct ?? 0, nRamp = 0, sRamp = 0;
+    for (let t = opening; t <= steadyT; t++) { if (series[t] != null) { sRamp += series[t]; nRamp++; } }
+    if (nRamp > 0) avgRamp = sRamp / nRamp;
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(INK);
+    doc.text(e.label || e.key, MARGIN.left, hy);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(MUTED);
+    const line = rampMonths === 0
+      ? `at target occupancy (${(peak).toFixed(0)}%) from day one`
+      : `ramps ${rampMonths} months · opens at ${(openPct ?? 0).toFixed(0)}% capacity · averages ${avgRamp.toFixed(0)}% during ramp-up · steady at ${peak.toFixed(0)}%`;
+    doc.text(line, MARGIN.left + 62, hy);
+    hy += 5.5;
+  }
+  if (inScope.length > 4) {
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(MUTED);
+    doc.text(`(+${inScope.length - 4} more locations)`, MARGIN.left, hy);
+    hy += 5;
+  }
+
+  // ── Phase buckets ─────────────────────────────────────────────
+  const bucketDefs = [
+    { label: 'M0–3', from: 0, to: 3 }, { label: 'M3–6', from: 3, to: 6 },
+    { label: 'M6–9', from: 6, to: 9 }, { label: 'M9–12', from: 9, to: 12 },
+    { label: 'Y2', from: 12, to: 24 }, { label: 'Y3', from: 24, to: 36 },
+    { label: 'Y4', from: 36, to: 48 }, { label: 'Y5', from: 48, to: 60 },
+  ].map(b => ({ ...b, ts: periods.filter(t => t >= b.from && t < b.to) }))
+   .filter(b => b.ts.length > 0);
+
+  // ── Single pass over outputs into per-period accumulators ────
+  const NP_ROLES = new Set(['senior_qualified', 'qualified', 'apprentice', 'practitioner']);
+  const acc = new Map();   // t -> accumulator
+  const A = (t) => {
+    let a = acc.get(t);
+    if (!a) acc.set(t, a = {
+      privRev: 0, laRev: 0, privDays: 0, laDays: 0,
+      staffCost: 0, npCost: 0, npHc: 0,
+      rent: 0, svc: 0, otherOH: 0,
+      req: 0, prov: 0,
+    });
+    return a;
+  };
+  const dailyPriv = (band) => (incomeContext?.weeklyRate?.[band] || 0) / 5;
+  const dailyLa = (band) => (incomeContext?.laRate?.[band] || 0) * ((incomeContext?.hoursPerWeek?.[band] || 50) / 5);
+
+  for (const r of outputs) {
+    const t = r.period;
+    if (t == null || t < 0 || t >= periods.length) continue;
+    const wt = w(r);
+    if (wt === 0) continue;
+    const a = A(t);
+    const band = r.tags?.age_band;
+    switch (r.nominal_type) {
+      case 'revenue': {
+        if (r.tags?.revenue_kind === 'funded') {
+          a.laRev += r.amount_p * wt;
+          const d = dailyLa(band);
+          if (d > 0) a.laDays += (r.amount_p * wt) / d;
+        } else {
+          a.privRev += r.amount_p * wt;
+          const d = dailyPriv(band);
+          if (d > 0) a.privDays += (r.amount_p * wt) / d;
+        }
+        break;
+      }
+      case 'staff_cost': {
+        if (r.module_key === 'pre_opening') { a.otherOH += r.amount_p * wt; break; }
+        a.staffCost += r.amount_p * wt;
+        if (NP_ROLES.has(r.tags?.role)) {
+          a.npCost += r.amount_p * wt;
+          a.npHc += (Number(r.tags?.headcount) || 0) * wt;
+        }
+        break;
+      }
+      case 'overhead':
+      case 'cost_of_sales': {
+        const lbl = r.line_label || '';
+        if (lbl === 'Rent') a.rent += r.amount_p * wt;
+        else if (lbl === 'Service charge') a.svc += r.amount_p * wt;
+        else a.otherOH += r.amount_p * wt;
+        break;
+      }
+      case 'metric.ratio_required': if (r.entity_id != null) a.req += r.amount_p * wt; break;
+      case 'metric.ratio_provided': if (r.entity_id != null) a.prov += r.amount_p * wt; break;
+    }
+  }
+
+  // Children / capacity per period from engine occupancy.
+  const totalCap = inScope.reduce((s, e) => {
+    const caps = e.config?.capacity_by_age_band || {};
+    return s + BANDS.reduce((x, b) => x + (caps[b] || 0), 0);
+  }, 0);
+  const childrenAt = (t) => {
+    let kids = 0;
+    for (const e of inScope) {
+      const caps = e.config?.capacity_by_age_band || {};
+      for (const b of BANDS) {
+        const c = caps[b] || 0;
+        if (!c) continue;
+        kids += c * ((occIdx.get(occKey(e.id, b, t)) ?? 0) / 100);
+      }
+    }
+    return kids;
+  };
+
+  // Registered capacity vs the maximum the floor space allows.
+  let requiredSqft = 0, actualSqft = 0;
+  for (const e of inScope) {
+    const caps = e.config?.capacity_by_age_band || {};
+    for (const b of BANDS) requiredSqft += (caps[b] || 0) * SQM[b] * SQFT_PER_SQM;
+    actualSqft += Number(e.config?.sq_ft) || 0;
+  }
+  const spaceRatio = actualSqft > 0 ? requiredSqft / actualSqft : null;
+
+  // ── Bucket aggregation ────────────────────────────────────────
+  const agg = bucketDefs.map(b => {
+    const s = {
+      privRev: 0, laRev: 0, privDays: 0, laDays: 0,
+      staffCost: 0, npCost: 0, npHc: 0, rent: 0, svc: 0, otherOH: 0,
+      req: 0, prov: 0, kids: 0, revenue: 0,
+    };
+    for (const t of b.ts) {
+      const a = acc.get(t);
+      const fC = costFactor(t), fI = incomeFactor(t);
+      if (a) {
+        s.privRev += a.privRev * fI; s.laRev += a.laRev * fI;
+        s.privDays += a.privDays; s.laDays += a.laDays;
+        s.staffCost += a.staffCost * fC;
+        s.npCost += a.npCost * fC; s.npHc += a.npHc;
+        s.rent += a.rent * fC; s.svc += a.svc * fC; s.otherOH += a.otherOH * fC;
+        s.req += a.req; s.prov += a.prov;
+      }
+      s.kids += childrenAt(t);
+    }
+    const m = b.ts.length;
+    s.revenue = s.privRev + s.laRev;
+    return {
+      label: b.label, months: m,
+      privPerDay: s.privDays > 0 ? s.privRev / s.privDays : null,
+      laPerDay: s.laDays > 0 ? s.laRev / s.laDays : null,
+      rentMo: s.rent / m, svcMo: s.svc / m, staffMo: s.staffCost / m, ohMo: s.otherOH / m,
+      totalMo: (s.rent + s.svc + s.staffCost + s.otherOH) / m,
+      wage: s.npHc > 0 ? (s.npCost / s.npHc) * 12 : null,
+      ratio: s.req > 0 ? s.prov / s.req : null,
+      staffToIncome: s.revenue > 0 ? (s.staffCost / s.revenue) * 100 : null,
+      kids: s.kids / m,
+      capPct: totalCap > 0 ? (s.kids / m / totalCap) * 100 : null,
+    };
+  });
+
+  // ── Table ─────────────────────────────────────────────────────
+  const fmtDay = (p) => (p == null ? '—' : '£' + (p / 100).toFixed(2));
+  const fmtMo = (p) => (p == null ? '—' : fmtMoneyExact(p));
+  const fmtWage = (p) => (p == null ? '—' : '£' + Math.round(p / 100).toLocaleString('en-GB'));
+  const fmtX = (x) => (x == null ? '—' : x.toFixed(2) + '×');
+  const fmtPc = (x) => (x == null ? '—' : x.toFixed(1) + '%');
+  const fmtKids = (x) => (x == null || x === 0 ? '—' : x.toFixed(1));
+
+  const groupRow = (label) => [{ content: label, colSpan: 1 + agg.length, styles: {
+    halign: 'left', fontStyle: 'bold', fontSize: 6.5, textColor: MUTED, fillColor: '#eef2f7',
+  } }];
+  const dataRow = (label, fn, fmt, opts = {}) => [
+    { content: label, styles: { halign: 'left', fontStyle: opts.bold ? 'bold' : 'normal', fillColor: opts.fill || undefined } },
+    ...agg.map(b => ({ content: fmt(fn(b)), styles: { halign: 'right', fontStyle: opts.bold ? 'bold' : 'normal', fillColor: opts.fill || undefined } })),
+  ];
+
+  const body = [
+    groupRow('Income'),
+    dataRow('Avg private price per day', b => b.privPerDay, fmtDay),
+    dataRow('Avg council funded price per day', b => b.laPerDay, fmtDay),
+    groupRow('Costs — £ per month (average)'),
+    dataRow('Rent', b => b.rentMo, fmtMo),
+    dataRow('Service charge', b => b.svcMo, fmtMo),
+    dataRow('Staff costs', b => b.staffMo, fmtMo),
+    dataRow('Other overheads', b => b.ohMo, fmtMo),
+    dataRow('Total costs', b => b.totalMo, fmtMo, { bold: true, fill: SOFT }),
+    groupRow('Staffing'),
+    dataRow('Avg staff wage — non-manager (annual, loaded)', b => b.wage, fmtWage),
+    dataRow('Staff : statutory ratio', b => b.ratio, fmtX),
+    dataRow('Staff costs : income', b => b.staffToIncome, fmtPc),
+    groupRow('Children & capacity'),
+    dataRow('Children (FTE, average)', b => b.kids, fmtKids),
+    dataRow('Capacity %', b => b.capPct, fmtPc),
+    dataRow('Registered : space-maximum children', () => spaceRatio, fmtX),
+  ];
+
+  autoTable(doc, {
+    startY: hy + 3,
+    head: [[
+      { content: 'Assumption', styles: { halign: 'left' } },
+      ...agg.map(b => ({ content: b.label, styles: { halign: 'right' } })),
+    ]],
+    body,
+    theme: 'plain',
+    styles: { font: 'helvetica', fontSize: 8, cellPadding: { top: 1.7, right: 3, bottom: 1.7, left: 3 }, lineColor: BORDER, lineWidth: 0 },
+    headStyles: { fontStyle: 'bold', fontSize: 7, textColor: MUTED, fillColor: SOFT, lineWidth: { bottom: 0.4 }, lineColor: INK },
+    columnStyles: { 0: { cellWidth: 78, halign: 'left' } },
+    didParseCell: (data) => {
+      if (data.section === 'body') {
+        data.cell.styles.lineWidth = { bottom: 0.08 };
+        data.cell.styles.lineColor = BORDER;
+      }
+    },
+    margin: { left: MARGIN.left, right: MARGIN.right },
+  });
+
+  const noteY = doc.lastAutoTable.finalY + 5;
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(MUTED);
+  doc.text(
+    'Prices per child-day (private = weekly rate ÷ 5; council = LA hourly rate × operating hours ÷ 5). Wages are fully loaded (NI, pension, vacancy cover). ' +
+    'Space maximum uses Care Inspectorate m²-per-child minimums.',
+    MARGIN.left, noteY
+  );
+}
+
 // ── Executive dashboard page ──────────────────────────────────
 //
 // One-pager partner-level summary: per-year revenue / EBITDA / NPAT /
@@ -1551,7 +1820,7 @@ export function buildPdfPack({
   granularity = 'annual',
   year = 3,
   scopeLabel = 'all',
-  selectedPages = ['cover', 'exec_summary', 'exec_dashboard', 'road_to_market', 'pnl', 'bs', 'cf', 'income', 'staff', 'premises', 'capacities'],
+  selectedPages = ['cover', 'exec_summary', 'assumptions', 'exec_dashboard', 'road_to_market', 'pnl', 'bs', 'cf', 'income', 'staff', 'premises', 'capacities'],
   headlineKpis = [],
   incomeContext = null,    // { weeklyRate, laRate, eligiblePct, takeupPct, hoursPerWeek, openingPct, targetPct, phaseMonths, weeksPerYear }
   notes = '',
@@ -1569,7 +1838,8 @@ export function buildPdfPack({
   // Cover
   if (selectedPages.includes('cover')) {
     const PAGE_TITLES = {
-      exec_summary: 'Executive summary', exec_dashboard: 'Executive dashboard',
+      exec_summary: 'Executive summary', assumptions: 'Key assumptions',
+      exec_dashboard: 'Executive dashboard',
       road_to_market: 'Road to market', pnl: 'Profit & loss', bs: 'Balance sheet',
       cf: 'Cashflow', income: 'Income analysis', staff: 'Staff detail',
       premises: 'Premises & overheads', capacities: 'Capacities',
@@ -1589,6 +1859,14 @@ export function buildPdfPack({
     startPage();
     drawExecutiveSummary(doc, {
       outputs, scopedOutputs, periods, openingPeriod, entities, entityIds, header: headerCtx,
+    });
+  }
+
+  // Key assumptions — operating assumptions by phase
+  if (selectedPages.includes('assumptions')) {
+    startPage();
+    drawAssumptionsPage(doc, {
+      outputs, periods, openingPeriod, entities, entityIds, incomeContext, header: headerCtx,
     });
   }
 
