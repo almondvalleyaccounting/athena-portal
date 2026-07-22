@@ -91,7 +91,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
     setLoading(true);
     let q = supabase
       .from('reminder_emails')
-      .select('id, kind, entity_id, to_email, subject, body_html, queued_at, sent_at, status')
+      .select('id, kind, entity_id, to_email, subject, body_html, queued_at, sent_at, status, clicked_at, clicked_link, clicked_choice, reply_seen_at')
       .eq('comm_type', commType).eq('status', view);
     q = view === 'sent'
       ? q.order('sent_at', { ascending: false }).limit(1000)
@@ -190,13 +190,14 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
                   <th style={th}>Email</th>
                   <th style={th}>Kind</th>
                   <th style={th}>{isQueued ? 'Queued' : 'Sent'}</th>
+                  {!isQueued && <th style={th}>Engagement</th>}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td style={td} colSpan={isQueued ? 5 : 4}>Loading…</td></tr>
+                  <tr><td style={td} colSpan={5}>Loading…</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={isQueued ? 5 : 4}>
+                  <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={5}>
                     {isQueued ? 'Nothing queued. Select clients on the reminders page and choose “Add to queue”.' : 'Nothing sent yet.'}
                   </td></tr>
                 ) : rows.map((r) => (
@@ -218,6 +219,27 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
                       );
                     })()}</td>
                     <td style={{ ...td, color: '#64748b' }}>{fmtWhen(isQueued ? r.queued_at : r.sent_at)}</td>
+                    {!isQueued && (
+                      <td style={td} title="A click or reply is the reliable 'engaged' signal — we don't track opens (unreliable across mail clients)">
+                        {(() => {
+                          const chip = (label, bg, color, border) => (
+                            <span style={{
+                              display: 'inline-block', fontSize: 10.5, fontWeight: 600, padding: '2px 8px',
+                              borderRadius: 999, background: bg, color, border: `1px solid ${border}`, whiteSpace: 'nowrap',
+                            }}>{label}</span>
+                          );
+                          if (r.reply_seen_at) return chip('Replied', '#f0fdf4', '#166534', '#bbf7d0');
+                          if (r.clicked_at) {
+                            const what = r.clicked_link === 'pay' ? 'Clicked · how to pay'
+                              : r.clicked_link === 'pta' ? 'Clicked · view balance'
+                              : r.clicked_choice ? `Clicked · opt-${r.clicked_choice}`
+                              : 'Clicked';
+                            return chip(what, '#eff6ff', '#1d4ed8', '#bfdbfe');
+                          }
+                          return <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>—</span>;
+                        })()}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

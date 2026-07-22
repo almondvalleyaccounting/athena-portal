@@ -237,10 +237,12 @@ Deno.serve(async (req) => {
         effKind = "no_utr"; effTmpl = tmplByKind.no_utr;
       }
       const tok = genToken();
+      // Payment-reminder links go through the click-tracking redirect.
+      const clickBase = `${SUPABASE_URL}/functions/v1/comm-click?token=${encodeURIComponent(tok)}`;
       const vars = {
         first_name: greetingName(ent.name), amount: fmtMoney(Number(r.amount)),
         due_date: fmtDateLong(batch.due_date), payment_ref: paymentRef,
-        pay_url: PAY_URL, pta_url: PTA_URL, opt_in_url: "", opt_out_url: "",
+        pay_url: `${clickBase}&to=pay`, pta_url: `${clickBase}&to=pta`, opt_in_url: "", opt_out_url: "",
       };
       const c = renderEmail(effTmpl, vars);
       toInsert.push({

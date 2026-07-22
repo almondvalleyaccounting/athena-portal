@@ -358,13 +358,18 @@ Deno.serve(async (req) => {
     // stored body (queue) or the sent body (send) alike.
     const tok = genToken();
     const optBase = `${SUPABASE_URL}/functions/v1/comm-optin?token=${encodeURIComponent(tok)}`;
+    const clickBase = `${SUPABASE_URL}/functions/v1/comm-click?token=${encodeURIComponent(tok)}`;
+    // Payment-reminder links (reminder + no_utr) go through the click-tracking
+    // redirect; the offer email's links stay direct (its signal is the opt-in
+    // button click).
+    const trackLinks = kind === "reminder";
     const vars: Record<string, string> = {
       first_name: greetingName(ent.name),
       amount: payment ? fmtMoney(payment.amount) : "",
       due_date: dueDate ? fmtDateLong(dueDate) : "",
       payment_ref: paymentRef,
-      pay_url: PAY_URL,
-      pta_url: PTA_URL,
+      pay_url: trackLinks ? `${clickBase}&to=pay` : PAY_URL,
+      pta_url: trackLinks ? `${clickBase}&to=pta` : PTA_URL,
       opt_in_url: kind === "promo" ? `${optBase}&choice=in` : "",
       opt_out_url: kind === "promo" ? `${optBase}&choice=out` : "",
     };
