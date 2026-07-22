@@ -11,8 +11,8 @@
 //                                   details), unless already queued/sent
 //                                   for this batch;
 //   * undecided clients          → queue the 'promo' opt-in invite,
-//                                   unless a promo was EVER queued/sent to
-//                                   them (ask once);
+//                                   once per batch (a client who has opted
+//                                   in/out never lands here again);
 //   * opted-out / former clients → skipped.
 // Opt-in decisions persist, so an opt-in received in (say) November is
 // recognised in the January run and that client gets the reminder direct.
@@ -192,13 +192,17 @@ Deno.serve(async (req) => {
   for (const p of prefs || []) prefById[p.entity_id] = p.status;
   const bmById: Record<string, string> = {};
   for (const b of bm || []) if (b.entity_id && !bmById[b.entity_id] && (b.bm_contact_email || "").trim()) bmById[b.entity_id] = b.bm_contact_email.trim();
-  // Ask-once: any promo ever (queued or sent). Reminder: once per batch.
-  const promoedEver = new Set<string>();
+  // One offer AND one reminder per client per batch. Offers go only to the
+  // still-undecided (the pref check below), and once a client opts in/out
+  // they never reach the promo branch again — so this is the per-batch cap
+  // on repeat offers to people who haven't yet responded.
+  const promoedThisBatch = new Set<string>();
   const remindedThisBatch = new Set<string>();
   for (const x of existing || []) {
     if (x.status === "dropped") continue;
-    if (x.kind === "promo") promoedEver.add(x.entity_id);
-    if ((x.kind === "reminder" || x.kind === "no_utr") && x.batch_id === batch.id) remindedThisBatch.add(x.entity_id);
+    if (x.batch_id !== batch.id) continue;
+    if (x.kind === "promo") promoedThisBatch.add(x.entity_id);
+    if (x.kind === "reminder" || x.kind === "no_utr") remindedThisBatch.add(x.entity_id);
   }
 
   const now = new Date().toISOString();
@@ -247,8 +251,9 @@ Deno.serve(async (req) => {
       remindedThisBatch.add(r.entity_id);
       if (effKind === "no_utr") counts.no_utr++; else counts.reminder++;
     } else {
-      // undecided / pending / never asked → opt-in, ask once.
-      if (promoedEver.has(r.entity_id)) { counts.skipped_dup++; continue; }
+      // undecided / pending / never asked → opt-in (once per batch; once
+      // they opt in/out they no longer land here at all).
+      if (promoedThisBatch.has(r.entity_id)) { counts.skipped_dup++; continue; }
       const tok = genToken();
       const optBase = `${SUPABASE_URL}/functions/v1/comm-optin?token=${encodeURIComponent(tok)}`;
       const vars = {
@@ -262,7 +267,7 @@ Deno.serve(async (req) => {
         to_email: to, subject: c.subject, token: tok, body_html: c.html, body_text: c.text,
         status: "queued", queued_at: now,
       });
-      promoedEver.add(r.entity_id);
+      promoedThisBatch.add(r.entity_id);
       counts.promo++;
     }
   }

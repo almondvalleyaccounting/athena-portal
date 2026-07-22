@@ -280,6 +280,16 @@ Deno.serve(async (req) => {
   const { data: ign } = await service.from("tax_reminder_ignore").select("utr");
   const ignoreSet = new Set(((ign || []) as Array<{ utr: string }>).map((x) => x.utr));
 
+  // Offers are one-per-batch, so stamp promos with the current run's batch
+  // (the most recent upload) — this makes the per-batch uniqueness index
+  // apply to manually-sent offers too, not just auto-queued ones.
+  let promoBatchId: string | null = null;
+  if (kind === "promo") {
+    const { data: b } = await service.from("tax_payment_batches")
+      .select("id").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    promoBatchId = b?.id || null;
+  }
+
   // Gmail is only needed when we actually send now (mode 'send').
   let token: { accessToken: string; accountEmail: string; displayName: string | null } | null = null;
   if (mode === "send") {
@@ -365,14 +375,14 @@ Deno.serve(async (req) => {
     if (mode === "queue") {
       const { error: qErr } = await service.from("reminder_emails").insert({
         kind: effKind, comm_type: commType, entity_id: entityId,
-        batch_id: payment?.batch_id || null, payment_id: payment?.id || null,
+        batch_id: payment?.batch_id || promoBatchId || null, payment_id: payment?.id || null,
         to_email: to, subject: content.subject, token: tok,
         body_html: content.html, body_text: content.text,
         status: "queued", queued_at: now, queued_by: user.id,
       });
       if (qErr) {
         // Unique-index backstop: this client already has a queued email, or a
-        // reminder for this batch / a promo ever. Skip rather than duplicate.
+        // reminder / offer for this batch. Skip rather than duplicate.
         if ((qErr as { code?: string }).code === "23505") {
           skipped.push({ entity_id: entityId, reason: "already queued or emailed for this run" }); continue;
         }
@@ -386,7 +396,7 @@ Deno.serve(async (req) => {
     const { data: emailRow, error: insErr } = await service.from("reminder_emails")
       .insert({
         kind: effKind, comm_type: commType, entity_id: entityId,
-        batch_id: payment?.batch_id || null, payment_id: payment?.id || null,
+        batch_id: payment?.batch_id || promoBatchId || null, payment_id: payment?.id || null,
         to_email: to, subject: content.subject, token: tok,
         body_html: content.html, body_text: content.text, status: "sent",
       })
