@@ -253,6 +253,7 @@ export default function ClientRemindersPage() {
   const [autoQueue, setAutoQueue] = useState(null); // { enabled, last_run_at } | null
   const [bmEmailByEntity, setBmEmailByEntity] = useState({}); // entity_id -> BM contact email fallback
   const [ignoreUtrs, setIgnoreUtrs] = useState(() => new Set()); // UTRs never to remind (not clients)
+  const [filters, setFilters] = useState({ q: '', pref: 'all', paid: 'all', match: 'all' });
 
   const entityById = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e])), [entities]);
   const batch = batches.find((b) => b.id === batchId) || null;
@@ -455,22 +456,47 @@ export default function ClientRemindersPage() {
       return n;
     });
   };
-  const allSelected = rows && rows.length > 0 && rows.every((r) => selected.has(r.id));
-  const toggleAll = () => {
-    if (!rows) return;
-    setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
-  };
-
-  const selRows = (rows || []).filter((r) => selected.has(r.id));
   // Never send to a former client (nlac/archived), even if a stale TaxCalc row
   // has them opted-in and unpaid. reminders-send enforces this too; we filter
   // here so they don't show as selectable targets in the first place.
   const isFormerClient = (r) => ['nlac', 'archived'].includes(entityById[r.entity_id]?.entity_status);
+  const isIgnored = (r) => r.reference_raw && ignoreUtrs.has(utr10(r.reference_raw));
+
+  // Column filters — display only; selection persists across filter changes.
+  const visibleRows = useMemo(() => {
+    const list = rows || [];
+    const q = filters.q.trim().toLowerCase();
+    return list.filter((r) => {
+      if (filters.pref !== 'all' && prefStatusOf(r) !== filters.pref) return false;
+      if (filters.paid !== 'all' && (r.status || 'unpaid') !== filters.paid) return false;
+      if (filters.match === 'matched' && !r.entity_id) return false;
+      if (filters.match === 'unmatched' && (r.entity_id || isIgnored(r))) return false;
+      if (filters.match === 'ignored' && !isIgnored(r)) return false;
+      if (q) {
+        const ent = r.entity_id ? entityById[r.entity_id] : null;
+        const hay = [r.client_name_raw, ent && ent.name, emailOf(r), r.reference_raw]
+          .filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, filters, entityById, prefsByEntity, ignoreUtrs, bmEmailByEntity]);
+
+  const allSelected = visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id));
+  const toggleAll = () => {
+    setSelected((s) => {
+      const n = new Set(s);
+      visibleRows.forEach((r) => (allSelected ? n.delete(r.id) : n.add(r.id)));
+      return n;
+    });
+  };
+
+  const selRows = (rows || []).filter((r) => selected.has(r.id));
   const toTarget = (r) => {
     const ent = entityById[r.entity_id];
     return { paymentId: r.id, entityId: r.entity_id, name: ent ? ent.name : r.client_name_raw, email: emailOf(r), amount: r.amount, ref: taxPaymentRef(r.reference_raw) };
   };
-  const isIgnored = (r) => r.reference_raw && ignoreUtrs.has(utr10(r.reference_raw));
   const inviteTargets = selRows
     .filter((r) => r.entity_id && !isFormerClient(r) && !isIgnored(r) && emailOf(r) && !['opted_in', 'opted_out'].includes(prefStatusOf(r)))
     .map(toTarget);
@@ -503,7 +529,9 @@ export default function ClientRemindersPage() {
   const toggleAutoQueue = async () => {
     if (!canManage) return;
     const next = !(autoQueue?.enabled);
-    const { error: e } = await supabase.from('reminder_autoqueue_config').update({ enabled: next }).eq('id', true);
+    // Persisted via a SECURITY DEFINER RPC (a direct table update is blocked
+    // by RLS-on-write and silently no-ops, so the flag reverted on refresh).
+    const { error: e } = await supabase.rpc('set_reminder_autoqueue_enabled', { p_enabled: next });
     if (e) { setError(`Could not change auto-queue: ${e.message}`); return; }
     setAutoQueue((a) => ({ ...(a || {}), enabled: next }));
     setNotice(next
@@ -630,6 +658,33 @@ export default function ClientRemindersPage() {
         </div>
       ) : (
         <div style={{ ...card, overflow: 'visible' }}>
+          {/* filters */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid #e5e7eb', flexWrap: 'wrap' }}>
+            <input
+              value={filters.q}
+              onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
+              placeholder="Search name, email or UTR…"
+              style={{ padding: '5px 10px', fontSize: 12.5, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 8, minWidth: 220 }}
+            />
+            {[
+              ['match', [['all', 'All matches'], ['matched', 'Matched'], ['unmatched', 'Unmatched'], ['ignored', 'Ignored']]],
+              ['pref', [['all', 'Any preference'], ['opted_in', 'Opted in'], ['opted_out', 'Opted out'], ['pending', 'Pending'], ['not_asked', 'Not asked']]],
+              ['paid', [['all', 'Any status'], ['unpaid', 'Unpaid'], ['paid', 'Paid'], ['excluded', 'Excluded']]],
+            ].map(([key, opts]) => (
+              <select
+                key={key}
+                value={filters[key]}
+                onChange={(e) => setFilters((f) => ({ ...f, [key]: e.target.value }))}
+                style={{ padding: '5px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#334155', cursor: 'pointer' }}
+              >
+                {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            ))}
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>{visibleRows.length} of {rows.length}</span>
+            {(filters.q || filters.pref !== 'all' || filters.paid !== 'all' || filters.match !== 'all') && (
+              <button onClick={() => setFilters({ q: '', pref: 'all', paid: 'all', match: 'all' })} style={btnGhost}>Clear</button>
+            )}
+          </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -646,7 +701,10 @@ export default function ClientRemindersPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => {
+                {visibleRows.length === 0 && (
+                  <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={7}>No rows match these filters.</td></tr>
+                )}
+                {visibleRows.map((row) => {
                   const ent = row.entity_id ? entityById[row.entity_id] : null;
                   const email = emailOf(row);
                   const prefStatus = prefStatusOf(row);
