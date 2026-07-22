@@ -417,6 +417,10 @@ function bsLines(groups: Record<string, number>) {
     current_assets,
     cash: pick("BankAccounts", "TotalBankAccounts"),
     debtors: pick("AR"),
+    // Trade creditors (Accounts Payable group) — the "Creditors" headline tile
+    // wants trade payables, NOT the whole current-liabilities group (which also
+    // carries VAT/PAYE/etc). Falls back to within-1yr when AP isn't a group.
+    accounts_payable: pick("AccountsPayable", "AP"),
     creditors_within_1yr: within1yr,
     creditors_after_1yr: after1yr,
     total_liabilities,
@@ -426,15 +430,16 @@ function bsLines(groups: Record<string, number>) {
   };
 }
 
-// Balance sheet: current snapshot (headline + expandable detail) PLUS monthly
-// comparatives (this month / last month / 3 months ago / 12 months ago).
-// period_end = today → daily snapshot history via upsert.
-async function pullBalanceSheet(sb: any, realmId: string) {
-  const now = new Date();
-  const end = fmt(now);
+// Balance sheet AS AT an explicit date: single-period snapshot (headline +
+// expandable detail) PLUS monthly comparatives ending in the as-at month
+// (that month / last month / 3 months ago / 12 months ago) and a convenience
+// `prev` (the prior-month lines, for month-on-month tile deltas).
+async function balanceSheetAsAt(sb: any, realmId: string, asAt: string, withComp: boolean) {
+  const base = new Date(`${asAt}T00:00:00`);
+  const end = asAt;
 
-  // 1. Current single-period report — powers the expandable account detail and
-  //    the headline figures.
+  // 1. Single-period report — powers the expandable account detail and the
+  //    headline figures, as at `end`.
   const resp = await qboFetch(sb, realmId, `reports/BalanceSheet?end_date=${end}&accounting_method=Accrual&minorversion=75`);
   if (!resp.ok) throw new Error(`BalanceSheet ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   const report = await resp.json();
@@ -451,11 +456,12 @@ async function pullBalanceSheet(sb: any, realmId: string) {
   walkCur(report?.Rows?.Row || []);
   const lines = bsLines(groups);
 
-  // 2. Monthly comparatives — 13 month-end columns (current + 12 prior).
+  // 2. Monthly comparatives — 13 month-end columns (as-at month + 12 prior).
   let comparatives: any = null;
-  try {
-    const startM = fmt(new Date(now.getFullYear(), now.getMonth() - 12, 1));
-    const endM = fmt(lastDay(now.getFullYear(), now.getMonth()));
+  let prev: any = null;
+  if (withComp) try {
+    const startM = fmt(new Date(base.getFullYear(), base.getMonth() - 12, 1));
+    const endM = fmt(lastDay(base.getFullYear(), base.getMonth()));
     const mResp = await qboFetch(sb, realmId, `reports/BalanceSheet?start_date=${startM}&end_date=${endM}&summarize_column_by=Month&accounting_method=Accrual&minorversion=75`);
     if (mResp.ok) {
       const mRep = await mResp.json();
@@ -519,6 +525,9 @@ async function pullBalanceSheet(sb: any, realmId: string) {
           values: perCol.map((pc) => pc.lines[key] ?? null),
         })),
       };
+      // Prior-month lines (the "m1" column) — used for the month-on-month
+      // deltas on the Overview cash/debtors/creditors tiles.
+      prev = (perCol.find((pc) => pc.col.key === "m1") || null)?.lines || null;
     }
   } catch { /* comparatives are best-effort; headline+detail still render */ }
 
@@ -527,10 +536,14 @@ async function pullBalanceSheet(sb: any, realmId: string) {
     currency: report?.Header?.Currency || null,
     ...lines,
     comparatives,
+    prev,
     groups,
     report,
   };
 }
+// Back-compat wrapper: the "current state" balance-sheet snapshot (as at today,
+// with comparatives) that Home/Portfolio and the default pull rely on.
+const pullBalanceSheet = (sb: any, realmId: string) => balanceSheetAsAt(sb, realmId, fmt(new Date()), true);
 
 // Aged receivables / payables summary — rows are customers/suppliers, columns
 // are ageing buckets. Parses buckets + per-name balances; keeps the raw report
@@ -596,21 +609,21 @@ async function agedByName(sb: any, realmId: string, endpoint: string, reportDate
   return map;
 }
 
-async function pullAged(sb: any, realmId: string, endpoint: "AgedReceivables" | "AgedPayables") {
-  const now = new Date();
-  const end = fmt(now);
+async function agedAsAt(sb: any, realmId: string, endpoint: "AgedReceivables" | "AgedPayables", asAt: string) {
+  const base = new Date(`${asAt}T00:00:00`);
+  const end = asAt;
   const resp = await qboFetch(sb, realmId, `reports/${endpoint}?report_date=${end}&minorversion=75`);
   if (!resp.ok) throw new Error(`${endpoint} ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   const report = await resp.json();
   const parsed = parseAged(report);
 
-  // Same-client comparison: take the customers/suppliers on the CURRENT report
-  // and total THEIR balances as at last month-end and three months ago. We do
-  // NOT introduce names that weren't on the file this month (Bobby's rule).
+  // Same-client comparison: take the customers/suppliers on the as-at report
+  // and total THEIR balances one and three month-ends earlier. We do NOT
+  // introduce names that weren't on the file at the as-at date (Bobby's rule).
   const currentNames = parsed.rows.map((r) => r.name);
   const currentTotal = parsed.rows.reduce((s, r) => s + r.total, 0);
-  const m1Date = fmt(monthEndOffset(now, 1));
-  const m3Date = fmt(monthEndOffset(now, 3));
+  const m1Date = fmt(monthEndOffset(base, 1));
+  const m3Date = fmt(monthEndOffset(base, 3));
   const sameTotal = async (dateStr: string) => {
     try {
       const map = await agedByName(sb, realmId, endpoint, dateStr);
@@ -633,8 +646,69 @@ async function pullAged(sb: any, realmId: string, endpoint: "AgedReceivables" | 
     report,
   };
 }
-const pullAgedReceivables = (sb: any, realmId: string) => pullAged(sb, realmId, "AgedReceivables");
-const pullAgedPayables = (sb: any, realmId: string) => pullAged(sb, realmId, "AgedPayables");
+// Back-compat wrappers: aged as at today (the default-pull snapshots).
+const pullAgedReceivables = (sb: any, realmId: string) => agedAsAt(sb, realmId, "AgedReceivables", fmt(new Date()));
+const pullAgedPayables = (sb: any, realmId: string) => agedAsAt(sb, realmId, "AgedPayables", fmt(new Date()));
+
+/* ── Windowed (date-filtered) P&L ─────────────────────────────────── */
+// P&L over an explicit [start,end]. When `monthly`, QBO adds one column per
+// month plus a trailing Total column: we read the WHOLE-range totals from the
+// last (Total) cell of each group's Summary, and the per-month series from the
+// month columns. Serves the period tiles (totals), the P&L-by-month table (raw
+// report) and the trend chart (months + series). Non-monthly returns totals
+// only (used for the prior-period comparison).
+async function plReport(sb: any, realmId: string, start: string, end: string, monthly: boolean) {
+  const path = `reports/ProfitAndLoss?start_date=${start}&end_date=${end}`
+    + (monthly ? `&summarize_column_by=Month` : ``)
+    + `&accounting_method=Accrual&minorversion=75`;
+  const resp = await qboFetch(sb, realmId, path);
+  if (!resp.ok) throw new Error(`P&L ${start}..${end} ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const report = await resp.json();
+
+  const cols = (report?.Columns?.Column || []).map((c: any) => c.ColTitle ?? "");
+  const months = monthly ? cols.slice(1).filter((t: string) => !/^total$/i.test(t)) : [];
+  const nMonths = months.length;
+
+  const groups: Record<string, number> = {};
+  const series: Record<string, number[]> = {};
+  const walk = (rs: any[]) => {
+    for (const r of rs || []) {
+      const cd = r.Summary?.ColData;
+      if (r.group && cd) {
+        const tv = parseFloat(cd[cd.length - 1]?.value || "0"); // Total column (or the single value col)
+        if (!isNaN(tv)) groups[r.group] = tv;
+        if (monthly && nMonths) {
+          series[r.group] = cd.slice(1, 1 + nMonths).map((c: any) => {
+            const v = parseFloat(c?.value ?? ""); return isNaN(v) ? 0 : v;
+          });
+        }
+      }
+      if (r.Rows?.Row) walk(r.Rows.Row);
+    }
+  };
+  walk(report?.Rows?.Row || []);
+
+  const num = (k: string) => (typeof groups[k] === "number" ? groups[k] : null);
+  return {
+    period: { start, end },
+    currency: report?.Header?.Currency || null,
+    income: num("Income"),
+    cogs: num("COGS"),
+    gross_profit: num("GrossProfit"),
+    expenses: num("Expenses"),
+    net_operating_income: num("NetOperatingIncome"),
+    net_income: num("NetIncome"),
+    months,
+    series: monthly ? {
+      income: series.Income || null,
+      cogs: series.COGS || null,
+      gross_profit: series.GrossProfit || null,
+      expenses: series.Expenses || null,
+      net_income: series.NetIncome || null,
+    } : null,
+    report: monthly ? report : null,
+  };
+}
 
 const METRICS: Record<string, (sb: any, realmId: string) => Promise<any>> = {
   company: pullCompany,
@@ -695,6 +769,86 @@ Deno.serve(async (req) => {
 
     const cutoff = Date.now() - maxAgeMin * 60 * 1000;
     const isFresh = (row: any) => row && new Date(row.pulled_at).getTime() >= cutoff;
+
+    // 3b. Windowed (date-filtered) mode — the Client Dashboard sends a `window`
+    // describing the selected period (Overview/P&L) and/or as-at date (Balance
+    // Sheet / Debtors & Creditors). Results come back under stable base keys;
+    // cache rows are keyed by the actual date range so re-selecting a preset
+    // reuses them, while custom ranges pull live and are never stored. These
+    // keys never collide with the Home/Portfolio metric keys above.
+    const win = body.window;
+    if (win) {
+      const store = win.kind !== "custom";
+      const out: Record<string, any> = {};
+      const werr: Record<string, string> = {};
+
+      const windowMetric = async (
+        storeKey: string, periodStart: string | null, periodEnd: string | null,
+        baseName: string, fn: () => Promise<any>,
+      ) => {
+        const cached = cacheByKey[storeKey];
+        if (!refresh && isFresh(cached)) { out[baseName] = cached.data; return; }
+        try {
+          const data = await fn();
+          out[baseName] = data;
+          if (store) {
+            const row = {
+              realm_id: realmId, metric_key: storeKey,
+              period_start: periodStart, period_end: periodEnd || fmt(new Date()),
+              data, pulled_at: new Date().toISOString(),
+            };
+            const { error: upErr } = await sb.from("qbo_dashboard_cache")
+              .upsert(row, { onConflict: "realm_id,metric_key,period_end" });
+            if (upErr) {
+              await sb.from("qbo_dashboard_cache").delete()
+                .eq("realm_id", realmId).eq("metric_key", storeKey).eq("period_end", row.period_end);
+              await sb.from("qbo_dashboard_cache").insert(row);
+            }
+          }
+        } catch (e) {
+          werr[baseName] = (e as Error).message;
+          if (cached) out[baseName] = cached.data; // fall back to stale cache
+        }
+      };
+
+      if (win.period) {
+        const p = win.period;
+        await windowMetric(`pl_range#${p.plStart}_${p.plEnd}`, p.plStart, p.plEnd, "pl_range",
+          () => plReport(sb, realmId, p.plStart, p.plEnd, true));
+        await windowMetric(`pl_prior#${p.priorStart}_${p.priorEnd}`, p.priorStart, p.priorEnd, "pl_range_prior",
+          () => plReport(sb, realmId, p.priorStart, p.priorEnd, false));
+        // Chart = 12 months ending at the period end month. When that window is
+        // identical to the selected range (the 12-month presets), reuse it.
+        if (p.chartStart === p.plStart && p.chartEnd === p.plEnd && out.pl_range) {
+          out.pnl_chart = out.pl_range;
+        } else {
+          await windowMetric(`pnl_chart#${p.chartStart}_${p.chartEnd}`, p.chartStart, p.chartEnd, "pnl_chart",
+            () => plReport(sb, realmId, p.chartStart, p.chartEnd, true));
+        }
+        // Balance figures for the Overview tiles, as at the period end. Shares a
+        // cache key with the Balance-Sheet-tab as-at pull (same date ⇒ one row).
+        await windowMetric(`bs_asat#${p.plEnd}`, null, p.plEnd, "bs_period",
+          () => balanceSheetAsAt(sb, realmId, p.plEnd, true));
+      }
+
+      if (win.asat) {
+        const d = String(win.asat.date);
+        await windowMetric(`bs_asat#${d}`, null, d, "bs_asat",
+          () => balanceSheetAsAt(sb, realmId, d, true));
+        await windowMetric(`ar_asat#${d}`, null, d, "ar_asat",
+          () => agedAsAt(sb, realmId, "AgedReceivables", d));
+        await windowMetric(`ap_asat#${d}`, null, d, "ap_asat",
+          () => agedAsAt(sb, realmId, "AgedPayables", d));
+      }
+
+      return jr({
+        success: Object.keys(werr).length === 0,
+        realmId,
+        metrics: out,
+        errors: Object.keys(werr).length ? werr : undefined,
+        pulled_at: new Date().toISOString(),
+      });
+    }
 
     const metrics: Record<string, any> = {};
     const errors: Record<string, string> = {};

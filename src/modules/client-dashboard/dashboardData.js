@@ -47,6 +47,16 @@ export function shortDate(iso) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// LOCAL yyyy-mm-dd (no UTC shift — the QBO reports are date-only and we never
+// want a timezone to roll the day back a day).
+export function iso(d) {
+  if (!(d instanceof Date) || isNaN(d)) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // "Aug 2025" / "Aug '25" style month-column labels → "Aug 25".
 export function shortMonth(label) {
   if (!label) return '';
@@ -127,15 +137,17 @@ export function parseReportTree(report) {
 
 /* ─── Ratios ───────────────────────────────────────────────────── */
 // Defined as a config array so new ratios are one entry each. compute(ctx)
-// returns a number or null (→ rendered as "—"). ctx keys:
-//   plFytd, plFytdPrior, plSummary, balances, agedAR, agedAP,
-//   pnlMonthly, balanceSheet, fileHealth
+// returns a number or null (→ rendered as "—"). ctx keys (all follow the
+// selected period):
+//   plRange   — P&L totals over the selected period (margins)
+//   pnlChart  — rolling 12 months ending at the period end (annualised base
+//               for debtor/creditor days)
+//   bs        — balance-sheet lines as at the period end (debtors, creditors,
+//               current assets/liabilities)
 const sum = (arr) => (Array.isArray(arr) ? arr.reduce((s, v) => s + (v || 0), 0) : null);
-const annualIncome = (ctx) => ctx.plSummary?.income ?? sum(ctx.pnlMonthly?.series?.income);
+const annualIncome = (ctx) => sum(ctx.pnlChart?.series?.income);
 const annualCosts = (ctx) => {
-  const p = ctx.plSummary;
-  if (p && (p.cogs != null || p.expenses != null)) return (p.cogs || 0) + (p.expenses || 0);
-  const m = ctx.pnlMonthly?.series;
+  const m = ctx.pnlChart?.series;
   if (!m) return null;
   const c = sum(m.cogs) || 0;
   const e = sum(m.expenses) || 0;
@@ -145,9 +157,9 @@ const annualCosts = (ctx) => {
 export const RATIOS = [
   {
     key: 'gross_margin', label: 'Gross margin', format: 'pct',
-    hint: 'Gross profit ÷ income, fiscal year to date',
+    hint: 'Gross profit ÷ income, over the selected period',
     compute: (ctx) => {
-      const p = ctx.plFytd || ctx.plSummary;
+      const p = ctx.plRange;
       if (!p || !p.income) return null;
       const gp = p.gross_profit ?? (p.income - (p.cogs || 0));
       return (gp / p.income) * 100;
@@ -155,18 +167,18 @@ export const RATIOS = [
   },
   {
     key: 'net_margin', label: 'Net margin', format: 'pct',
-    hint: 'Net income ÷ income, fiscal year to date',
+    hint: 'Net income ÷ income, over the selected period',
     compute: (ctx) => {
-      const p = ctx.plFytd || ctx.plSummary;
+      const p = ctx.plRange;
       if (!p || !p.income || p.net_income == null) return null;
       return (p.net_income / p.income) * 100;
     },
   },
   {
     key: 'debtor_days', label: 'Debtor days', format: 'days',
-    hint: 'Debtors ÷ last-12-months income × 365',
+    hint: 'Debtors (at period end) ÷ rolling-12-month income × 365',
     compute: (ctx) => {
-      const debtors = ctx.agedAR?.buckets?.total ?? ctx.balances?.debtors;
+      const debtors = ctx.bs?.debtors;
       const income = annualIncome(ctx);
       if (debtors == null || !income) return null;
       return (debtors / income) * 365;
@@ -174,9 +186,9 @@ export const RATIOS = [
   },
   {
     key: 'creditor_days', label: 'Creditor days', format: 'days',
-    hint: 'Creditors ÷ last-12-months costs (COGS + expenses) × 365',
+    hint: 'Creditors (at period end) ÷ rolling-12-month costs (COGS + expenses) × 365',
     compute: (ctx) => {
-      const creditors = ctx.agedAP?.buckets?.total ?? ctx.balances?.creditors;
+      const creditors = ctx.bs?.accounts_payable ?? ctx.bs?.creditors_within_1yr;
       const costs = annualCosts(ctx);
       if (creditors == null || !costs) return null;
       return (creditors / costs) * 365;
@@ -184,9 +196,9 @@ export const RATIOS = [
   },
   {
     key: 'current_ratio', label: 'Current ratio', format: 'ratio',
-    hint: 'Current assets ÷ current liabilities',
+    hint: 'Current assets ÷ current liabilities, at the period end',
     compute: (ctx) => {
-      const bs = ctx.balanceSheet;
+      const bs = ctx.bs;
       if (!bs || bs.current_assets == null || !bs.current_liabilities) return null;
       return bs.current_assets / bs.current_liabilities;
     },
@@ -198,6 +210,156 @@ export function formatRatio(value, format) {
   if (format === 'pct') return `${value.toFixed(1)}%`;
   if (format === 'days') return `${Math.round(value)} days`;
   return value.toFixed(2);
+}
+
+/* ─── Date filters ─────────────────────────────────────────────── */
+// The Client Dashboard has two independent filters:
+//   • a PERIOD selector driving Overview + P&L (a date range), and
+//   • an AS-AT selector driving Balance Sheet + Debtors & Creditors (a single
+//     point in time).
+// All maths is done here (pure) so the page just holds the selected keys and
+// hands the computed windows to dashboard-qbo-pull.
+
+export const PERIOD_PRESETS = [
+  { key: 'last12full', label: 'Last 12 months' },
+  { key: 'last365', label: 'Last 365 days' },
+  { key: 'mtd', label: 'This month to date' },
+  { key: 'lastMonth', label: 'Last month' },
+  { key: 'lastFiscalYear', label: 'Last fiscal year' },
+  { key: 'lastCalendarYear', label: 'Last calendar year' },
+  { key: 'custom', label: 'Custom…' },
+];
+
+export const ASAT_PRESETS = [
+  { key: 'lastMonthEnd', label: 'Last month end' },
+  { key: 'today', label: 'Today' },
+  { key: 'lastFiscalYearEnd', label: 'Last fiscal year end' },
+  { key: 'lastCalendarYearEnd', label: 'Last calendar year end' },
+  { key: 'custom', label: 'Custom…' },
+];
+
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_NAMES = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const monthLabel = (d) => `${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+
+// 0-based month the fiscal year starts on, from a QBO value that may be a name
+// ("October") or a number ("10"). Defaults to October (AVA's year end is 30 Sep).
+export function fyStartMonthIndex(v) {
+  if (v == null || v === '') return 9;
+  const n = parseInt(v, 10);
+  if (!isNaN(n) && n >= 1 && n <= 12) return n - 1;
+  const i = MONTH_NAMES.indexOf(String(v).trim().toLowerCase());
+  return i >= 0 ? i : 9;
+}
+
+// The most recently COMPLETED fiscal year, given today and the FY start month.
+function lastFiscalYearRange(today, fyIdx) {
+  const y = today.getFullYear();
+  const m = today.getMonth();
+  const startYear = m >= fyIdx ? y : y - 1;       // year the CURRENT FY began
+  const currentStart = new Date(startYear, fyIdx, 1);
+  const lastStart = new Date(startYear - 1, fyIdx, 1);
+  const lastEnd = new Date(currentStart.getFullYear(), currentStart.getMonth(), 0); // day before current FY start
+  return { start: lastStart, end: lastEnd };
+}
+
+// PERIOD → { plStart, plEnd, priorStart, priorEnd, chartStart, chartEnd, label, deltaLabel }.
+// The chart window is ALWAYS the 12 months ending in the period-end month.
+export function computePeriod(key, today = new Date(), fyIdx = 9, custom = null) {
+  const y = today.getFullYear();
+  const m = today.getMonth();
+  let plStart, plEnd, priorStart, priorEnd, label, deltaLabel;
+
+  // prior = the `span` whole months immediately before plStart (month-aligned).
+  const setMonthPrior = (span) => {
+    priorEnd = new Date(plStart.getFullYear(), plStart.getMonth(), 0);
+    priorStart = new Date(plStart.getFullYear(), plStart.getMonth() - span, 1);
+  };
+
+  switch (key) {
+    case 'last365':
+      plEnd = new Date(y, m, today.getDate());
+      plStart = new Date(y, m, today.getDate() - 364);
+      priorEnd = new Date(plStart); priorEnd.setDate(priorEnd.getDate() - 1);
+      priorStart = new Date(priorEnd); priorStart.setDate(priorStart.getDate() - 364);
+      label = 'last 365 days'; deltaLabel = 'vs prior 365 days';
+      break;
+    case 'mtd':
+      plStart = new Date(y, m, 1);
+      plEnd = new Date(y, m, today.getDate());
+      priorStart = new Date(y, m - 1, 1);
+      priorEnd = new Date(y, m - 1, today.getDate());
+      label = `${monthLabel(plStart)} to date`; deltaLabel = 'vs same period last month';
+      break;
+    case 'lastMonth':
+      plStart = new Date(y, m - 1, 1);
+      plEnd = new Date(y, m, 0);
+      setMonthPrior(1);
+      label = monthLabel(plStart); deltaLabel = 'vs previous month';
+      break;
+    case 'lastFiscalYear': {
+      const r = lastFiscalYearRange(today, fyIdx);
+      plStart = r.start; plEnd = r.end; setMonthPrior(12);
+      label = `FY ${plStart.getFullYear()}/${String(plEnd.getFullYear()).slice(-2)}`;
+      deltaLabel = 'vs prior fiscal year';
+      break;
+    }
+    case 'lastCalendarYear':
+      plStart = new Date(y - 1, 0, 1);
+      plEnd = new Date(y - 1, 11, 31);
+      setMonthPrior(12);
+      label = `${y - 1}`; deltaLabel = 'vs prior year';
+      break;
+    case 'custom':
+      plStart = custom?.start ? new Date(`${custom.start}T00:00:00`) : new Date(y, m - 11, 1);
+      plEnd = custom?.end ? new Date(`${custom.end}T00:00:00`) : new Date(y, m, 0);
+      {
+        const lenDays = Math.round((plEnd - plStart) / 86400000) + 1;
+        priorEnd = new Date(plStart); priorEnd.setDate(priorEnd.getDate() - 1);
+        priorStart = new Date(priorEnd); priorStart.setDate(priorStart.getDate() - (lenDays - 1));
+      }
+      label = `${shortDate(iso(plStart))} – ${shortDate(iso(plEnd))}`; deltaLabel = 'vs prior period';
+      break;
+    case 'last12full':
+    default:
+      plEnd = new Date(y, m, 0);                                   // last full month
+      plStart = new Date(plEnd.getFullYear(), plEnd.getMonth() - 11, 1);
+      setMonthPrior(12);
+      label = 'last 12 months'; deltaLabel = 'vs prior 12 months';
+      break;
+  }
+
+  const chartEnd = new Date(plEnd.getFullYear(), plEnd.getMonth() + 1, 0);      // end of period-end month
+  const chartStart = new Date(chartEnd.getFullYear(), chartEnd.getMonth() - 11, 1);
+
+  return {
+    plStart: iso(plStart), plEnd: iso(plEnd),
+    priorStart: iso(priorStart), priorEnd: iso(priorEnd),
+    chartStart: iso(chartStart), chartEnd: iso(chartEnd),
+    label, deltaLabel,
+  };
+}
+
+// AS-AT → { date, label }.
+export function computeAsAt(key, today = new Date(), fyIdx = 9, custom = null) {
+  const y = today.getFullYear();
+  const m = today.getMonth();
+  let date, label;
+  switch (key) {
+    case 'today':
+      date = new Date(y, m, today.getDate()); label = 'today'; break;
+    case 'lastFiscalYearEnd':
+      date = lastFiscalYearRange(today, fyIdx).end; label = 'last fiscal year end'; break;
+    case 'lastCalendarYearEnd':
+      date = new Date(y - 1, 11, 31); label = 'last calendar year end'; break;
+    case 'custom':
+      date = custom?.date ? new Date(`${custom.date}T00:00:00`) : new Date(y, m, 0);
+      label = 'custom date'; break;
+    case 'lastMonthEnd':
+    default:
+      date = new Date(y, m, 0); label = 'last month end'; break;
+  }
+  return { date: iso(date), label };
 }
 
 /* ─── Shared styles ────────────────────────────────────────────── */

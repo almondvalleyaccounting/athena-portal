@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   RefreshCw, AlertCircle, CheckCircle, Loader, ShieldCheck,
@@ -10,8 +10,9 @@ import { getReportsAuthUrl } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
 import {
   money, moneyCompact, timeAgo, shortDate, shortMonth,
-  latestByMetric, priorMonthSnapshot, parseReportTree,
+  latestByMetric, parseReportTree,
   RATIOS, formatRatio,
+  PERIOD_PRESETS, ASAT_PRESETS, computePeriod, computeAsAt, fyStartMonthIndex,
   OUTFIT, PLAYFAIR, cardStyle, inputStyle, HEALTH_COLORS,
 } from './dashboardData';
 import { TrendChart } from './DashboardCharts';
@@ -19,15 +20,18 @@ import { TrendChart } from './DashboardCharts';
 /*
   Client Dashboard v2 — multi-tab reporting tool over the client's QuickBooks.
 
-  Data model: dashboard-qbo-pull caches SNAPSHOTS in qbo_dashboard_cache, one
-  row per (realm, metric, period_end). The page invokes the function (best
-  effort — it fails cleanly when the client's tokens are gone) and then always
-  renders from the cache table directly, so a dead connection still shows the
-  last good figures with a reconnect banner.
+  Two independent date filters live in the left rail, contextual to the active
+  tab (see FilterRail):
+    • PERIOD  → Overview + P&L. A date range (default: last full 12 months).
+      Overview tiles, ratios and the 12-month trend chart all follow it; the
+      chart is always the 12 months ending in the selected period-end month.
+    • AS-AT   → Balance Sheet + Debtors & Creditors. A single point in time
+      (default: last month end).
 
-  Tabs: Overview | P&L | Balance Sheet | Debtors & Creditors | Bookkeeping
-  Health. Tab bodies are pure components fed parsed data via props, so a
-  simplified client-safe portal view can later reuse a subset of them.
+  Filtered figures come from dashboard-qbo-pull's windowed mode (live pull;
+  presets cached by date range, custom ranges never stored). The default full
+  pull (load) still runs to keep company/file-health, the reconnect banner and
+  the Portfolio/Home shared cache fresh.
 */
 
 const TABS = [
@@ -37,6 +41,8 @@ const TABS = [
   { id: 'aged', label: 'Debtors & Creditors' },
   { id: 'health', label: 'Bookkeeping Health' },
 ];
+const PERIOD_TABS = new Set(['overview', 'pnl']);
+const ASAT_TABS = new Set(['balance', 'aged']);
 
 /* ─── Page ─────────────────────────────────────────────────────── */
 export default function ClientDashboardPage() {
@@ -53,6 +59,20 @@ export default function ClientDashboardPage() {
   const [tab, setTab] = useState('overview');
   const [favourites, setFavourites] = useState(new Set());
 
+  // Date-filter state.
+  const today = useMemo(() => new Date(), []);
+  const [periodKey, setPeriodKey] = useState('last12full');
+  const [asAtKey, setAsAtKey] = useState('lastMonthEnd');
+  const [customPeriod, setCustomPeriod] = useState({ start: '', end: '' });
+  const [customAsAt, setCustomAsAt] = useState({ date: '' });
+
+  // Windowed (filtered) data.
+  const [periodData, setPeriodData] = useState(null); // { pl_range, pl_range_prior, pnl_chart, bs_period }
+  const [asAtData, setAsAtData] = useState(null);      // { bs_asat, ar_asat, ap_asat }
+  const [periodLoading, setPeriodLoading] = useState(false);
+  const [asAtLoading, setAsAtLoading] = useState(false);
+  const asAtLoadedRef = useRef(null);
+
   const loadClients = async () => {
     try {
       const { data, error } = await supabase
@@ -68,9 +88,6 @@ export default function ClientDashboardPage() {
   const loadFavourites = async () => {
     if (!profile?.id) return;
     try {
-      // Favourites are keyed on realm_id — the connection's natural key. (The
-      // entity_id link is null on every connection, which is why the old
-      // entity-keyed star was always disabled.)
       const { data } = await supabase
         .from('staff_client_favourites')
         .select('realm_id')
@@ -98,8 +115,7 @@ export default function ClientDashboardPage() {
     }
   }, []);
 
-  // ?realm=…&tab=… deep link (portfolio cards + the home-screen Practice Pulse
-  // land here pre-selected, optionally on a specific tab).
+  // ?realm=…&tab=… deep link (portfolio cards + the home-screen Practice Pulse).
   useEffect(() => {
     if (clientsLoading) return;
     const r = searchParams.get('realm');
@@ -117,13 +133,14 @@ export default function ClientDashboardPage() {
     window.location.href = getReportsAuthUrl(profile?.id || '', '/client-dashboard');
   };
 
+  // Default full pull — company + file-health for this page, and the shared
+  // cache the Portfolio/Home read. Best effort: dead tokens fail per-metric and
+  // we still render from cache.
   const load = async (realm, refresh = false) => {
     if (!realm) return;
     setLoading(true);
     setError(null);
     setFnErrors(null);
-    // Best-effort live pull — refreshes stale metrics into the cache. A realm
-    // with no usable tokens fails per-metric; we still render from cache.
     try {
       const { data: payload, error: fnErr } = await supabase.functions.invoke('dashboard-qbo-pull', {
         body: { realmId: realm, refresh },
@@ -133,14 +150,14 @@ export default function ClientDashboardPage() {
     } catch (e) {
       setError(e.message || 'Request failed');
     }
-    // Always read the snapshot cache — it's the page's source of truth.
     try {
       const { data: rows } = await supabase
         .from('qbo_dashboard_cache')
         .select('metric_key, period_start, period_end, data, pulled_at')
         .eq('realm_id', realm)
+        .in('metric_key', ['company', 'file_health', 'pl_fytd', 'pl_summary', 'balances', 'pnl_monthly', 'aged_receivables'])
         .order('pulled_at', { ascending: false })
-        .limit(500);
+        .limit(200);
       setCacheRows(rows || []);
     } catch {
       setCacheRows([]);
@@ -151,6 +168,9 @@ export default function ClientDashboardPage() {
   const onSelect = (realm) => {
     setRealmId(realm);
     setCacheRows([]);
+    setPeriodData(null);
+    setAsAtData(null);
+    asAtLoadedRef.current = null;
     setError(null);
     setFnErrors(null);
     setTab('overview');
@@ -174,34 +194,75 @@ export default function ClientDashboardPage() {
       } else {
         next.add(realmId);
         setFavourites(next);
-        // entity_id carried when known (null today) so the Portfolio can show
-        // Companies House status once realms are linked to entities.
         await supabase.from('staff_client_favourites')
           .insert({ staff_id: profile.id, realm_id: realmId, entity_id: entityId });
       }
     } catch { loadFavourites(); }
   };
 
-  /* Derived data ------------------------------------------------- */
+  /* Derived: company / health from the default cache; fiscal year for presets */
   const latest = useMemo(() => latestByMetric(cacheRows), [cacheRows]);
-  const ctx = useMemo(() => ({
-    company: latest.company?.data,
-    plFytd: latest.pl_fytd?.data,
-    plFytdPrior: latest.pl_fytd_prior?.data,
-    plSummary: latest.pl_summary?.data,
-    balances: latest.balances?.data,
-    balancesPrior: priorMonthSnapshot(cacheRows, 'balances')?.data,
-    agedAR: latest.aged_receivables?.data,
-    agedAP: latest.aged_payables?.data,
-    agedARPriorRow: priorMonthSnapshot(cacheRows, 'aged_receivables'),
-    agedAPPriorRow: priorMonthSnapshot(cacheRows, 'aged_payables'),
-    pnlMonthly: latest.pnl_monthly?.data,
-    balanceSheet: latest.balance_sheet?.data,
-    fileHealth: latest.file_health?.data,
-  }), [cacheRows, latest]);
+  const company = latest.company?.data || null;
+  const fileHealth = latest.file_health?.data || null;
+  const fyIdx = useMemo(() => fyStartMonthIndex(company?.fiscal_year_start_month), [company]);
 
-  const currency = ctx.pnlMonthly?.currency || ctx.plFytd?.currency || ctx.plSummary?.currency || 'GBP';
+  const period = useMemo(
+    () => computePeriod(periodKey, today, fyIdx, customPeriod),
+    [periodKey, today, fyIdx, customPeriod],
+  );
+  const asAt = useMemo(
+    () => computeAsAt(asAtKey, today, fyIdx, customAsAt),
+    [asAtKey, today, fyIdx, customAsAt],
+  );
+
+  /* Windowed pulls ------------------------------------------------ */
+  const fetchPeriod = useCallback(async (refresh = false) => {
+    if (!realmId) return;
+    setPeriodLoading(true);
+    try {
+      const { data: payload, error: fnErr } = await supabase.functions.invoke('dashboard-qbo-pull', {
+        body: {
+          realmId, refresh,
+          window: {
+            kind: periodKey === 'custom' ? 'custom' : 'preset',
+            period: {
+              plStart: period.plStart, plEnd: period.plEnd,
+              priorStart: period.priorStart, priorEnd: period.priorEnd,
+              chartStart: period.chartStart, chartEnd: period.chartEnd,
+            },
+          },
+        },
+      });
+      if (!fnErr) setPeriodData(payload?.metrics || null);
+    } catch { /* the reconnect banner is driven by the default pull */ }
+    setPeriodLoading(false);
+  }, [realmId, periodKey, period.plStart, period.plEnd, period.priorStart, period.priorEnd, period.chartStart, period.chartEnd]);
+
+  const fetchAsAt = useCallback(async (refresh = false) => {
+    if (!realmId) return;
+    setAsAtLoading(true);
+    try {
+      const { data: payload, error: fnErr } = await supabase.functions.invoke('dashboard-qbo-pull', {
+        body: {
+          realmId, refresh,
+          window: { kind: asAtKey === 'custom' ? 'custom' : 'preset', asat: { date: asAt.date } },
+        },
+      });
+      if (!fnErr) { setAsAtData(payload?.metrics || null); asAtLoadedRef.current = asAt.date; }
+    } catch { /* reconnect banner via the default pull */ }
+    setAsAtLoading(false);
+  }, [realmId, asAtKey, asAt.date]);
+
+  // Period data: fetch on select and whenever the period window changes.
+  useEffect(() => { if (realmId) fetchPeriod(false); }, [fetchPeriod]);
+  // As-at data: fetch lazily on first visit to a balance/aged tab, and when the
+  // as-at window changes while one of those tabs is open.
+  useEffect(() => {
+    if (realmId && ASAT_TABS.has(tab) && asAtLoadedRef.current !== asAt.date) fetchAsAt(false);
+  }, [realmId, tab, asAt.date, fetchAsAt]);
+
   const lastPulled = cacheRows.length ? cacheRows[0].pulled_at : null;
+  const winBusy = periodLoading || asAtLoading;
 
   // A realm with no stored tokens → every metric errors with the same reconnect message.
   const errVals = fnErrors ? Object.values(fnErrors) : [];
@@ -209,8 +270,12 @@ export default function ClientDashboardPage() {
   const partialErrors = fnErrors && !needsReconnect ? fnErrors : null;
   const hasCache = cacheRows.length > 0;
 
-  const pull = () => load(realmId, true);
-  const emptyProps = { needsReconnect, selectedName, onPull: pull, loading };
+  const pull = () => {
+    load(realmId, true);
+    if (PERIOD_TABS.has(tab)) fetchPeriod(true);
+    if (ASAT_TABS.has(tab)) { asAtLoadedRef.current = null; fetchAsAt(true); }
+  };
+  const emptyProps = { needsReconnect, selectedName, onPull: pull, loading: winBusy || loading };
 
   const btnBase = {
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
@@ -218,10 +283,13 @@ export default function ClientDashboardPage() {
     fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#38bdf8',
   };
 
+  const periodCurrency = periodData?.pl_range?.currency || periodData?.pnl_chart?.currency || periodData?.bs_period?.currency || 'GBP';
+  const asAtCurrency = asAtData?.bs_asat?.currency || asAtData?.ar_asat?.currency || asAtData?.ap_asat?.currency || 'GBP';
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '28px 24px 40px' }}>
       <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
-        {/* ── Left rail: title, client picker, actions, freshness ── */}
+        {/* ── Left rail: title, client picker, actions, filters ── */}
         <div style={{
           width: '250px', flexShrink: 0, position: 'sticky', top: '20px',
           display: 'flex', flexDirection: 'column', gap: '12px',
@@ -261,11 +329,11 @@ export default function ClientDashboardPage() {
             {realmId && (
               <button
                 onClick={pull}
-                disabled={loading}
+                disabled={loading || winBusy}
                 title="Refresh from QuickBooks"
-                style={{ ...btnBase, flex: '1 1 auto', padding: '9px 10px', cursor: loading ? 'not-allowed' : 'pointer' }}
+                style={{ ...btnBase, flex: '1 1 auto', padding: '9px 10px', cursor: (loading || winBusy) ? 'not-allowed' : 'pointer' }}
               >
-                <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} />
+                <RefreshCw size={14} style={(loading || winBusy) ? { animation: 'spin 1s linear infinite' } : {}} />
                 Refresh
               </button>
             )}
@@ -279,18 +347,16 @@ export default function ClientDashboardPage() {
           </div>
 
           {realmId && (
-            <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-              <div style={{ fontFamily: PLAYFAIR, fontSize: '17px', color: '#0f172a', lineHeight: 1.25 }}>
-                {ctx.company?.name || selectedName}
-              </div>
-              {ctx.company?.country && (
-                <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>{ctx.company.country}</div>
-              )}
-              <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                {loading && <Loader size={11} style={{ animation: 'spin 1s linear infinite' }} />}
-                {lastPulled ? `Last pulled ${timeAgo(lastPulled)}` : loading ? 'Pulling…' : 'No cached data yet'}
-              </div>
-            </div>
+            <FilterRail
+              tab={tab}
+              periodKey={periodKey} setPeriodKey={setPeriodKey}
+              asAtKey={asAtKey} setAsAtKey={setAsAtKey}
+              customPeriod={customPeriod} setCustomPeriod={setCustomPeriod}
+              customAsAt={customAsAt} setCustomAsAt={setCustomAsAt}
+              period={period} asAt={asAt}
+              busy={winBusy}
+              lastPulled={lastPulled}
+            />
           )}
         </div>
 
@@ -375,11 +441,22 @@ export default function ClientDashboardPage() {
               </div>
 
               {/* Tab body */}
-              {tab === 'overview' && <OverviewTab ctx={ctx} currency={currency} empty={emptyProps} goTab={setTab} />}
-              {tab === 'pnl' && <PnlTab pnlMonthly={ctx.pnlMonthly} currency={currency} empty={emptyProps} />}
-              {tab === 'balance' && <BalanceSheetTab balanceSheet={ctx.balanceSheet} currency={currency} empty={emptyProps} />}
-              {tab === 'aged' && <AgedTab ctx={ctx} currency={currency} empty={emptyProps} />}
-              {tab === 'health' && <HealthTab health={ctx.fileHealth} currency={currency} empty={emptyProps} />}
+              {tab === 'overview' && (
+                <OverviewTab
+                  data={periodData} meta={period} currency={periodCurrency}
+                  loading={periodLoading} empty={emptyProps} goTab={setTab}
+                />
+              )}
+              {tab === 'pnl' && (
+                <PnlTab pnlMonthly={periodData?.pl_range} currency={periodCurrency} loading={periodLoading} empty={emptyProps} />
+              )}
+              {tab === 'balance' && (
+                <BalanceSheetTab balanceSheet={asAtData?.bs_asat} currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
+              )}
+              {tab === 'aged' && (
+                <AgedTab agedAR={asAtData?.ar_asat} agedAP={asAtData?.ap_asat} currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
+              )}
+              {tab === 'health' && <HealthTab health={fileHealth} currency={periodCurrency} empty={emptyProps} />}
 
               {/* Per-metric errors (partial pull) */}
               {partialErrors && (
@@ -397,14 +474,122 @@ export default function ClientDashboardPage() {
   );
 }
 
+/* ─── Filter rail (contextual date filters) ────────────────────── */
+function FilterRail({
+  tab, periodKey, setPeriodKey, asAtKey, setAsAtKey,
+  customPeriod, setCustomPeriod, customAsAt, setCustomAsAt,
+  period, asAt, busy, lastPulled,
+}) {
+  const isAsAt = ASAT_TABS.has(tab);
+  const isPeriod = PERIOD_TABS.has(tab);
+
+  const freshness = (
+    <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px' }}>
+      {busy && <Loader size={11} style={{ animation: 'spin 1s linear infinite' }} />}
+      {busy ? 'Pulling…' : lastPulled ? `Last pulled ${timeAgo(lastPulled)}` : 'No cached data yet'}
+    </div>
+  );
+
+  if (!isAsAt && !isPeriod) {
+    return (
+      <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+          Bookkeeping health reflects the current state of the file.
+        </div>
+        {freshness}
+      </div>
+    );
+  }
+
+  const presets = isAsAt ? ASAT_PRESETS : PERIOD_PRESETS;
+  const activeKey = isAsAt ? asAtKey : periodKey;
+  const railLabel = isAsAt ? 'Balance date' : 'Period';
+
+  const pick = (k) => {
+    if (isAsAt) {
+      if (k === 'custom' && !customAsAt.date) setCustomAsAt({ date: asAt.date });
+      setAsAtKey(k);
+    } else {
+      if (k === 'custom' && !customPeriod.start) setCustomPeriod({ start: period.plStart, end: period.plEnd });
+      setPeriodKey(k);
+    }
+  };
+
+  const optBtn = (active) => ({
+    textAlign: 'left', padding: '7px 10px', borderRadius: '8px', cursor: 'pointer',
+    fontFamily: OUTFIT, fontSize: '12.5px', fontWeight: active ? 700 : 500,
+    border: `1px solid ${active ? '#7dd3fc' : '#e5e7eb'}`,
+    backgroundColor: active ? '#f0f9ff' : '#ffffff',
+    color: active ? '#0369a1' : '#475569',
+  });
+  const dateInput = { ...inputStyle, padding: '7px 10px', fontSize: '12.5px', width: '100%' };
+
+  return (
+    <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
+      <div style={{ fontFamily: OUTFIT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: '8px' }}>
+        {railLabel}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+        {presets.map((p) => (
+          <button key={p.key} onClick={() => pick(p.key)} style={optBtn(activeKey === p.key)}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Custom entry */}
+      {!isAsAt && periodKey === 'custom' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+          <label style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8' }}>
+            From
+            <input type="date" value={customPeriod.start} max={customPeriod.end || undefined}
+              onChange={(e) => setCustomPeriod((c) => ({ ...c, start: e.target.value }))} style={dateInput} />
+          </label>
+          <label style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8' }}>
+            To
+            <input type="date" value={customPeriod.end} min={customPeriod.start || undefined}
+              onChange={(e) => setCustomPeriod((c) => ({ ...c, end: e.target.value }))} style={dateInput} />
+          </label>
+        </div>
+      )}
+      {isAsAt && asAtKey === 'custom' && (
+        <div style={{ marginTop: '8px' }}>
+          <label style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8' }}>
+            As at
+            <input type="date" value={customAsAt.date}
+              onChange={(e) => setCustomAsAt({ date: e.target.value })} style={dateInput} />
+          </label>
+        </div>
+      )}
+
+      {/* Computed window summary */}
+      <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#64748b', marginTop: '10px', lineHeight: 1.5 }}>
+        {isAsAt
+          ? `Figures as at ${shortDate(asAt.date)}.`
+          : `${shortDate(period.plStart)} → ${shortDate(period.plEnd)}. Chart ends ${shortDate(period.chartEnd)}.`}
+      </div>
+      {freshness}
+    </div>
+  );
+}
+
 /* ─── Shared bits ──────────────────────────────────────────────── */
+
+function LoadingCard({ label }) {
+  return (
+    <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
+      <Loader size={22} style={{ color: '#7dd3fc', marginBottom: '10px', animation: 'spin 1s linear infinite' }} />
+      <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#64748b' }}>Loading {label}…</div>
+    </div>
+  );
+}
 
 function EmptyState({ label, needsReconnect, selectedName, onPull, loading }) {
   return (
     <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
       <CloudOff size={26} style={{ color: '#cbd5e1', marginBottom: '10px' }} />
       <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
-        No {label} cached for this client yet
+        No {label} for this client yet
       </div>
       <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#64748b', maxWidth: '460px', margin: '0 auto 16px' }}>
         {needsReconnect
@@ -472,58 +657,58 @@ function MetricTile({ label, value, currency, sub, delta, onClick }) {
 }
 
 /* ─── Overview tab ─────────────────────────────────────────────── */
-function OverviewTab({ ctx, currency, empty, goTab }) {
-  const { plFytd, plFytdPrior, balances, balancesPrior, agedAR, agedAP, pnlMonthly } = ctx;
-  const hasAnything = plFytd || balances || pnlMonthly || agedAR || agedAP;
-  if (!hasAnything) return <EmptyState label="overview figures" {...empty} />;
+function OverviewTab({ data, meta, currency, loading, empty, goTab }) {
+  const plRange = data?.pl_range;
+  const plPrior = data?.pl_range_prior;
+  const pnlChart = data?.pnl_chart;
+  const bs = data?.bs_period;
+  const hasAnything = plRange || bs || pnlChart;
+  if (!hasAnything) return loading ? <LoadingCard label="overview figures" /> : <EmptyState label="overview figures" {...empty} />;
 
-  // Debtors/creditors prefer the aged reports; deltas compare like with like
-  // (aged snapshot vs prior aged snapshot, else balances vs prior balances).
-  const debtors = agedAR?.buckets?.total ?? balances?.debtors;
-  const debtorsPrev = agedAR ? ctx.agedARPriorRow?.data?.buckets?.total : balancesPrior?.debtors;
-  const creditors = agedAP?.buckets?.total ?? balances?.creditors;
-  const creditorsPrev = agedAP ? ctx.agedAPPriorRow?.data?.buckets?.total : balancesPrior?.creditors;
+  const deltaLabel = meta?.deltaLabel || 'vs prior period';
+  const asAtLabel = bs?.period?.end ? `as at ${shortDate(bs.period.end)}` : null;
+  const creditors = bs?.accounts_payable ?? bs?.creditors_within_1yr;
+  const creditorsPrev = bs?.prev?.accounts_payable ?? bs?.prev?.creditors_within_1yr;
 
-  const ratioVals = RATIOS.map((r) => ({ ...r, value: r.compute(ctx) }));
+  const ratioVals = RATIOS.map((r) => ({ ...r, value: r.compute({ plRange, pnlChart, bs }) }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {/* Headline tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
         <MetricTile
-          label="Revenue — fiscal YTD" value={plFytd?.income} currency={currency}
-          sub={plFytd?.period?.end ? `to ${shortDate(plFytd.period.end)}` : null}
-          delta={<Delta now={plFytd?.income} prev={plFytdPrior?.income} currency={currency} label="vs last FYTD" />}
+          label={`Revenue — ${meta?.label || 'period'}`} value={plRange?.income} currency={currency}
+          delta={<Delta now={plRange?.income} prev={plPrior?.income} currency={currency} label={deltaLabel} />}
           onClick={goTab ? () => goTab('pnl') : undefined}
         />
         <MetricTile
-          label="Net profit — fiscal YTD" value={plFytd?.net_income} currency={currency}
-          delta={<Delta now={plFytd?.net_income} prev={plFytdPrior?.net_income} currency={currency} label="vs last FYTD" />}
+          label={`Net profit — ${meta?.label || 'period'}`} value={plRange?.net_income} currency={currency}
+          delta={<Delta now={plRange?.net_income} prev={plPrior?.net_income} currency={currency} label={deltaLabel} />}
           onClick={goTab ? () => goTab('pnl') : undefined}
         />
         <MetricTile
-          label="Cash at bank" value={balances?.cash} currency={currency}
-          delta={<Delta now={balances?.cash} prev={balancesPrior?.cash} currency={currency} />}
+          label="Cash at bank" value={bs?.cash} currency={currency} sub={asAtLabel}
+          delta={<Delta now={bs?.cash} prev={bs?.prev?.cash} currency={currency} />}
           onClick={goTab ? () => goTab('balance') : undefined}
         />
         <MetricTile
-          label="Debtors" value={debtors} currency={currency}
-          delta={<Delta now={debtors} prev={debtorsPrev} currency={currency} upIsGood={false} />}
+          label="Debtors" value={bs?.debtors} currency={currency} sub={asAtLabel}
+          delta={<Delta now={bs?.debtors} prev={bs?.prev?.debtors} currency={currency} upIsGood={false} />}
           onClick={goTab ? () => goTab('aged') : undefined}
         />
         <MetricTile
-          label="Creditors" value={creditors} currency={currency}
+          label="Creditors" value={creditors} currency={currency} sub={asAtLabel}
           delta={<Delta now={creditors} prev={creditorsPrev} currency={currency} upIsGood={false} />}
           onClick={goTab ? () => goTab('aged') : undefined}
         />
       </div>
 
-      {/* 12-month trend */}
-      {pnlMonthly?.months?.length > 0 && (
+      {/* 12-month trend (always ends at the selected period-end month) */}
+      {pnlChart?.months?.length > 0 && (
         <div style={cardStyle}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '10px' }}>
             <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-              Revenue &amp; net profit — last 12 months
+              Revenue &amp; net profit — 12 months to {shortMonth(pnlChart.months[pnlChart.months.length - 1])}
             </span>
             <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginLeft: 'auto' }}>
               <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: '#bae6fd', borderRadius: '2px', marginRight: '4px', verticalAlign: '-1px' }} />
@@ -533,9 +718,9 @@ function OverviewTab({ ctx, currency, empty, goTab }) {
             </span>
           </div>
           <TrendChart
-            months={pnlMonthly.months}
-            income={pnlMonthly.series?.income || []}
-            net={pnlMonthly.series?.net_income || []}
+            months={pnlChart.months}
+            income={pnlChart.series?.income || []}
+            net={pnlChart.series?.net_income || []}
             currency={currency}
           />
         </div>
@@ -557,7 +742,7 @@ function OverviewTab({ ctx, currency, empty, goTab }) {
           ))}
         </div>
         <p style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginTop: '10px', marginBottom: 0 }}>
-          Margins use fiscal-YTD figures; debtor/creditor days use the last 12 months; current ratio uses today's balance sheet. Hover a tile for the formula.
+          Margins use the selected period; debtor/creditor days annualise over the rolling 12 months; current ratio uses the balance sheet at the period end. Hover a tile for the formula.
         </p>
       </div>
     </div>
@@ -573,7 +758,6 @@ function ReportTable({ columns, rows, monthLabels = true }) {
     return n;
   });
 
-  // Flatten the tree into visible rows.
   const visible = [];
   const push = (node, depth) => {
     if (node.kind === 'section') {
@@ -661,12 +845,12 @@ function ReportTable({ columns, rows, monthLabels = true }) {
 }
 
 /* ─── P&L tab ──────────────────────────────────────────────────── */
-function PnlTab({ pnlMonthly, currency, empty }) {
+function PnlTab({ pnlMonthly, currency, loading, empty }) {
   const parsed = useMemo(
     () => (pnlMonthly?.report ? parseReportTree(pnlMonthly.report) : null),
     [pnlMonthly],
   );
-  if (!parsed) return <EmptyState label="monthly P&L" {...empty} />;
+  if (!parsed) return loading ? <LoadingCard label="monthly P&L" /> : <EmptyState label="monthly P&L" {...empty} />;
   return (
     <div style={cardStyle}>
       <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: '12px' }}>
@@ -688,12 +872,12 @@ function PnlTab({ pnlMonthly, currency, empty }) {
 }
 
 /* ─── Balance Sheet tab ────────────────────────────────────────── */
-function BalanceSheetTab({ balanceSheet, currency, empty }) {
+function BalanceSheetTab({ balanceSheet, currency, loading, empty }) {
   const parsed = useMemo(
     () => (balanceSheet?.report ? parseReportTree(balanceSheet.report) : null),
     [balanceSheet],
   );
-  if (!balanceSheet) return <EmptyState label="balance sheet" {...empty} />;
+  if (!balanceSheet) return loading ? <LoadingCard label="balance sheet" /> : <EmptyState label="balance sheet" {...empty} />;
   const bs = balanceSheet;
   const within = bs.creditors_within_1yr;
   const after = bs.creditors_after_1yr;
@@ -760,7 +944,7 @@ function BalanceSheetTab({ balanceSheet, currency, empty }) {
             Balance sheet detail
           </div>
           <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: 0, marginBottom: '10px' }}>
-            Click a section to expand it to account level. Latest position.
+            Click a section to expand it to account level. As at {shortDate(bs.period?.end)}.
           </p>
           <ReportTable columns={parsed.columns} rows={parsed.rows} monthLabels={false} />
         </div>
@@ -780,10 +964,8 @@ const BUCKET_DEFS = [
   ['b91_plus', '91+ days'],
 ];
 
-function AgedSection({ title, data, priorRow, currency, sameLabel }) {
+function AgedSection({ title, data, currency, sameLabel }) {
   if (!data) return null;
-  const prior = priorRow?.data;
-  const priorDate = priorRow ? (priorRow.period_end || priorRow.pulled_at) : null;
   const top = (data.top || []).slice(0, 10);
   const sc = data.same_clients;
   return (
@@ -797,15 +979,10 @@ function AgedSection({ title, data, priorRow, currency, sameLabel }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
         <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>
           as at {shortDate(data.period?.end)}
-          {priorDate ? ` · compared with ${shortDate(priorDate)}` : ' · no earlier snapshot yet for month-on-month change'}
-        </span>
-        <span style={{ marginLeft: 'auto' }}>
-          <Delta now={data.buckets?.total} prev={prior?.buckets?.total} currency={currency} upIsGood={false} />
         </span>
       </div>
 
-      {/* Same-client comparison — the CURRENT list's balances back in time
-          (no new names introduced). */}
+      {/* Same-client comparison — the CURRENT list's balances back in time */}
       {sc && (sc.last_month?.total != null || sc.three_months?.total != null) && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '16px' }}>
           {[
@@ -834,9 +1011,6 @@ function AgedSection({ title, data, priorRow, currency, sameLabel }) {
             <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
             <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: key === 'b91_plus' && Math.abs(data.buckets?.[key] || 0) > 0.005 ? '#991b1b' : '#0f172a' }}>
               {money(data.buckets?.[key], currency)}
-            </div>
-            <div style={{ minHeight: '14px' }}>
-              <Delta now={data.buckets?.[key]} prev={prior?.buckets?.[key]} currency={currency} upIsGood={false} />
             </div>
           </div>
         ))}
@@ -875,20 +1049,17 @@ function AgedSection({ title, data, priorRow, currency, sameLabel }) {
 const agedTh = { fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', fontWeight: 600, textAlign: 'right', padding: '6px 10px', whiteSpace: 'nowrap' };
 const agedTd = { fontFamily: OUTFIT, fontSize: '12.5px', textAlign: 'right', padding: '7px 10px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' };
 
-function AgedTab({ ctx, currency, empty }) {
-  const { agedAR, agedAP, agedARPriorRow, agedAPPriorRow } = ctx;
-  if (!agedAR && !agedAP) return <EmptyState label="aged debtors / creditors" {...empty} />;
+function AgedTab({ agedAR, agedAP, currency, loading, empty }) {
+  if (!agedAR && !agedAP) return loading ? <LoadingCard label="aged debtors / creditors" /> : <EmptyState label="aged debtors / creditors" {...empty} />;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <AgedSection title="Aged debtors (receivables)" data={agedAR} priorRow={agedARPriorRow} currency={currency} sameLabel="Same debtors" />
-      <AgedSection title="Aged creditors (payables)" data={agedAP} priorRow={agedAPPriorRow} currency={currency} sameLabel="Same suppliers" />
+      <AgedSection title="Aged debtors (receivables)" data={agedAR} currency={currency} sameLabel="Same debtors" />
+      <AgedSection title="Aged creditors (payables)" data={agedAP} currency={currency} sameLabel="Same suppliers" />
     </div>
   );
 }
 
 /* ─── Bookkeeping Health tab ────────────────────────────────────── */
-// White card, always expanded — same shell as the other tabs (no coloured
-// box). The traffic-light shows only as a small status pill.
 function HealthTab({ health, currency, empty }) {
   if (!health) return <EmptyState label="bookkeeping health" {...empty} />;
   const c = HEALTH_COLORS[health.score] || HEALTH_COLORS.amber;
@@ -901,7 +1072,6 @@ function HealthTab({ health, currency, empty }) {
   ];
   return (
     <div style={cardStyle}>
-      {/* Header: title + status pill (no coloured background) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
         {health.score === 'green'
           ? <ShieldCheck size={20} style={{ color: c.dot, flexShrink: 0 }} />
