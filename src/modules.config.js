@@ -94,6 +94,7 @@ export const MODULES = [
         permissions: ['can_view_timesheets'],
         matchPaths: ['/timesheets'],
       },
+      { id: 'wp-triage', label: 'Triage Board', route: '/triage' },
     ],
   },
   {
@@ -107,7 +108,6 @@ export const MODULES = [
     children: [
       { id: 'cw-dashboard', label: 'Client Dashboard', route: '/client-dashboard', permissions: ['can_view_reports'] },
       { id: 'cw-portfolio', label: 'Portfolio', route: '/portfolio', permissions: ['can_view_reports'] },
-      { id: 'cw-triage', label: 'Triage Board', route: '/triage' },
       { id: 'cw-reports', label: 'Client Reports', route: '/reports', permissions: ['can_view_reports'] },
       { id: 'cw-forecast', label: 'Client Forecast', route: '/forecast', permissions: ['can_manage_portal'] },
     ],
