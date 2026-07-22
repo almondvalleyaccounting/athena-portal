@@ -4,6 +4,7 @@ import { ChevronLeft, CheckCircle, Clock, AlertTriangle, FileText, Receipt, Clip
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import { approvedServicesOf, feeTotals, underBillingOf } from './feeRollup';
+import ClientCommsTab from './ClientCommsTab';
 
 const TIME_PERIODS = [
   { value: '1', label: 'Last month' },
@@ -237,11 +238,15 @@ export default function ClientDetailView() {
   const isLtd = entity?.type === 'limited_company';
   const directors = people.filter((p) => p.role === 'director');
   const pscs = people.filter((p) => p.source === 'ch_psc');
-  const detailsVisible = !isLtd || activeTab === 'details';
+  // Every client now gets a tab bar (Full Details + Communications). Directors
+  // and PSCs are limited-company concepts, so they're appended only for Ltds.
+  const detailsVisible = activeTab === 'details';
   const CLIENT_TABS = [
     { id: 'details', label: 'Full Details' },
-    { id: 'directors', label: `Directors${directors.length ? ` (${directors.length})` : ''}` },
-    { id: 'pscs', label: `PSCs${pscs.length ? ` (${pscs.length})` : ''}` },
+    ...(isLtd ? [
+      { id: 'directors', label: `Directors${directors.length ? ` (${directors.length})` : ''}` },
+      { id: 'pscs', label: `PSCs${pscs.length ? ` (${pscs.length})` : ''}` },
+    ] : []),
     { id: 'comms', label: 'Communications' },
   ];
 
@@ -363,8 +368,8 @@ export default function ClientDetailView() {
         </div>
       </div>
 
-      {/* Tabs — limited companies only */}
-      {isLtd && (
+      {/* Tabs — every client (Directors/PSCs appended for limited companies) */}
+      {(
         <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb', marginBottom: 20, flexWrap: 'wrap' }}>
           {CLIENT_TABS.map((t) => (
             <button
@@ -386,7 +391,7 @@ export default function ClientDetailView() {
 
       {isLtd && activeTab === 'directors' && <PeopleList people={directors} kind="director" />}
       {isLtd && activeTab === 'pscs' && <PeopleList people={pscs} kind="psc" />}
-      {isLtd && activeTab === 'comms' && <CommsPlaceholder />}
+      {activeTab === 'comms' && <ClientCommsTab entityId={id} />}
 
       {detailsVisible && (<>
 
@@ -716,18 +721,6 @@ function PeopleList({ people, kind }) {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function CommsPlaceholder() {
-  return (
-    <div style={{ ...cardStyle, textAlign: 'center', padding: '44px 24px' }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Communications</div>
-      <div style={{ fontSize: 13, color: '#64748b', maxWidth: 460, margin: '0 auto' }}>
-        Emails, text messages and WhatsApp with this client will appear here once the
-        Communications module is linked to client records.
-      </div>
     </div>
   );
 }

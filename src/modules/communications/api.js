@@ -188,6 +188,32 @@ export function parseAddress(raw) {
   return { name: s, email: s };
 }
 
+// ── Client-page timeline ──────────────────────────────────────────────
+// The client-detail Communications tab merges stored emails (fed by the
+// comms-ingest edge function) with the client's SMS/WhatsApp history.
+
+export async function loadClientEmails(entityId) {
+  const { data, error } = await supabase
+    .from('client_communications')
+    .select('id, mailbox, gmail_thread_id, rfc_message_id, direction, from_email, from_name, to_emails, cc_emails, subject, snippet, body_html, body_text, matched_email, occurred_at')
+    .eq('entity_id', entityId)
+    .order('occurred_at', { ascending: false })
+    .limit(2000);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function listEntitySms(entityId) {
+  const { data, error } = await supabase
+    .from('sms_messages')
+    .select('id, direction, to_number, from_number, body, status, error, channel, created_at, delivered_at')
+    .eq('entity_id', entityId)
+    .order('created_at', { ascending: false })
+    .limit(1000);
+  if (error) throw error;
+  return data || [];
+}
+
 // ── SMS / WhatsApp ────────────────────────────────────────────────────
 
 export async function listMessages(channel) {
