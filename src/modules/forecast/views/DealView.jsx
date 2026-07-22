@@ -18,11 +18,11 @@ export default function DealView({
     if (!usingScoped) return null;
     return scopedAggregate({
       outputs, periods, entityIds,
-      // 'derive' inherits the scenario's inflation + dividend policy from
-      // the engine's own emitted rows. Opening cash stays 0: scoped
-      // statements are a site-contribution view (see aggregator.js).
+      // 'derive' inherits the scenario's inflation + dividend policy and
+      // starts cash from the capital attributed to the in-scope locations
+      // (central/unallocated pot excluded — see aggregator.js).
       inflationPct: 'derive',
-      openingCash: 0, openingEquity: 0, taxLagMonths: 9,
+      openingCash: 'derive', openingEquity: 'derive', taxLagMonths: 9,
     });
   }, [usingScoped, outputs, periods, entityIds]);
 

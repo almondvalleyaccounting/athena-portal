@@ -14,7 +14,7 @@
 // root-cause hint, not one row per month.
 //
 // Opening balance sheet: the only opening position is cash. Opening
-// equity is DERIVED (= opening cash) so the BS starts balanced by
+// equity is DERIVED (= total opening cash) so the BS starts balanced by
 // construction — the two can never be edited apart. Fund additional
 // opening cash with an fc_loan starting month 0 (drawdown adds cash and
 // a matching liability); opening fixed assets arrive via premises /
@@ -22,8 +22,14 @@
 // retired and ignored (a deprecation finding fires if a legacy row
 // still holds a different value).
 //
-// Drivers (group):
-//   bs.opening_cash_p
+// Opening cash is attributable PER LOCATION so a single site can be run
+// as a standalone scenario (filtered views start from the capital
+// actually introduced for that site):
+//   bs.opening_cash_p (group scope)  — central / unallocated pot
+//   bs.opening_cash_p (entity scope) — capital introduced per location
+// Total = central + Σ per-location. The engine emits one
+// `bs.opening_cash_alloc` row per source at t=0 so scoped views can
+// derive their own starting cash from the outputs alone.
 
 export const financialCoreModule = {
   key: 'financial_core',
@@ -31,7 +37,8 @@ export const financialCoreModule = {
   dependsOn: ['services_childcare', 'staff', 'overheads', 'premises', 'pre_opening', 'loans', 'working_capital', 'tax_simple'],
 
   drivers: [
-    { key: 'bs.opening_cash_p', label: 'Opening cash (= capital introduced)', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 50000000 },
+    { key: 'bs.opening_cash_p', label: 'Opening cash — central / unallocated', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 50000000 },
+    { key: 'bs.opening_cash_p', label: 'Opening cash — this location (capital introduced)', unit: 'gbp_p', kind: 'scalar', scope: 'entity', defaultValue: 0 },
     // Inflation: applied annually as a multiplier on revenue / costs.
     // Compounded by elapsed years from forecast start.
     { key: 'inflation.income_pct', label: 'Income inflation (annual %)', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 3 },
@@ -102,6 +109,11 @@ export const financialCoreModule = {
     { nominal_type: 'bs.directors_loans', label: 'Directors\' loans', by_entity: false },
     { nominal_type: 'bs.non_current_liabilities', label: 'Total non-current liabilities', by_entity: false },
 
+    // Opening-cash attribution (t=0 only): one row per source so scoped
+    // views can start their cash roll-forward from the capital actually
+    // attributed to the filtered locations.
+    { nominal_type: 'bs.opening_cash_alloc', label: 'Opening cash attribution', by_entity: true },
+
     // Legacy aggregate (kept for back-compat)
     { nominal_type: 'bs.net_wc', label: 'Net working capital (legacy)', by_entity: false },
     { nominal_type: 'bs.debt', label: 'Total debt (legacy)', by_entity: false },
@@ -148,10 +160,30 @@ export const financialCoreModule = {
     const upstream = ctx.upstreamOutputs;
     const periods = ctx.periods;
 
-    const openingCash = ctx.resolve('bs.opening_cash_p', {}) || 0;
+    const openingAlloc = openingCashAllocation(ctx);
+    const openingCash = openingAlloc.total;
     // Opening equity is derived, not entered: cash is the only opening
     // position, so equity must equal it for the BS to start balanced.
     const openingEquity = openingCash;
+
+    // Emit the attribution rows (t=0) — central pot + per-location capital.
+    if (periods.length > 0) {
+      if (openingAlloc.central !== 0) {
+        out.push({
+          module_key: 'financial_core', period: 0,
+          nominal_type: 'bs.opening_cash_alloc', line_label: 'Opening cash — central / unallocated',
+          amount_p: Math.round(openingAlloc.central),
+        });
+      }
+      for (const [entityId, amount] of openingAlloc.byEntity) {
+        if (amount === 0) continue;
+        out.push({
+          module_key: 'financial_core', entity_id: entityId, period: 0,
+          nominal_type: 'bs.opening_cash_alloc', line_label: 'Opening cash — capital introduced',
+          amount_p: Math.round(amount),
+        });
+      }
+    }
     const taxLagMonths = ctx.resolve('tax.payment_lag_months', {}) || 9;
     const incomeInflation = (ctx.resolve('inflation.income_pct', {}) || 0) / 100;
     const costInflation  = (ctx.resolve('inflation.cost_pct', {}) || 0) / 100;
@@ -587,7 +619,7 @@ export const financialCoreModule = {
     const findings = [];
     const upstream = ctx.upstreamOutputs;
     const periods = ctx.periods;
-    const openingCash = ctx.resolve('bs.opening_cash_p', {}) || 0;
+    const openingCash = openingCashAllocation(ctx).total;
 
     // Legacy opening-equity driver: retired — equity is derived from
     // opening cash so the BS always starts balanced. Tell the user if a
@@ -671,6 +703,30 @@ export const financialCoreModule = {
 // £-format a pence amount for finding messages.
 function fmtGbp(p) {
   return '£' + Math.round(p / 100).toLocaleString('en-GB');
+}
+
+// Read a scalar driver row's value directly (period -1 convention).
+function readScalar(ctx, driver) {
+  if (!driver) return 0;
+  const vs = ctx.driverValuesById?.get(driver.id) || [];
+  const hit = vs.find(v => v.period === -1) || vs[0];
+  return hit ? Number(hit.value) : 0;
+}
+
+// Opening cash = central/unallocated (group driver) + capital introduced
+// per location (entity drivers). Entity rows are read via findDriver —
+// NOT resolve(), whose group fallback would double-count the central pot
+// once per entity.
+function openingCashAllocation(ctx) {
+  const central = readScalar(ctx, ctx.findDriver('bs.opening_cash_p', null));
+  const byEntity = new Map();
+  let total = central;
+  for (const e of ctx.entities || []) {
+    const v = readScalar(ctx, ctx.findDriver('bs.opening_cash_p', e.key));
+    byEntity.set(e.id, v);
+    total += v;
+  }
+  return { central, byEntity, total };
 }
 
 // Collapse a sorted list of period indices into "months 0–11, 14, 20–59".

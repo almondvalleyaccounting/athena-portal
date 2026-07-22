@@ -20,10 +20,15 @@
 //                   With 'derive', year-end dividends also inherit the
 //                   group's effective payout ratio.
 //
-// Opening cash is deliberately NOT inherited from the group: it is a
-// company-level pot, and attributing it to every filtered subset would
-// double-count it across site views. Scoped statements are a CONTRIBUTION
-// view — pass openingCash 0 and label the surface accordingly.
+//   openingCash   — 'derive' (recommended) starts the cash roll-forward
+//                   from the capital ATTRIBUTED to the in-scope locations
+//                   (per-entity `bs.opening_cash_alloc` rows emitted by
+//                   financial_core). The central/unallocated pot counts
+//                   only when unfiltered — copying it into every subset
+//                   would double-count it across site views. Or a number
+//                   for an explicit override. openingEquity: 'derive'
+//                   mirrors the derived cash so the scoped BS starts
+//                   balanced.
 //
 // Returns: a Map keyed by `${nominal_type}::${period}` -> amount_p.
 //
@@ -108,9 +113,24 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
   const isUtilities = (lbl) => /utilit/i.test(lbl);
   const isPreOpening = (mod, lbl) => mod === 'pre_opening' || /^Pre-opening/i.test(lbl);
 
-  // Running BS state for cash + equity + tax_payable (only meaningful when no filter)
-  let cash = openingCash || 0;
-  let equity = openingEquity || 0;
+  // Opening cash: 'derive' sums the engine's attribution rows — per-entity
+  // capital for in-scope locations, plus the central pot only when the
+  // view is unfiltered (a shared pot copied into every subset would
+  // double-count across site views).
+  let cash0;
+  if (openingCash === 'derive') {
+    cash0 = 0;
+    for (const r of byPeriod.get(0) || []) {
+      if (r.nominal_type !== 'bs.opening_cash_alloc') continue;
+      if (r.entity_id == null ? !entityIds : (!entityIds || entityIds.has(r.entity_id))) cash0 += r.amount_p;
+    }
+  } else {
+    cash0 = openingCash || 0;
+  }
+
+  // Running BS state for cash + equity + tax_payable
+  let cash = cash0;
+  let equity = openingEquity === 'derive' ? cash0 : (openingEquity || 0);
   let taxPayable = 0;
   let prevDebtBalance = 0;
   let npatYtd = 0;

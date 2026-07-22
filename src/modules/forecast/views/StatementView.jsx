@@ -33,11 +33,11 @@ export default function StatementView({
     if (!usingScoped) return null;
     return scopedAggregate({
       outputs, periods, entityIds, entities,
-      // 'derive' inherits the scenario's inflation + dividend policy from
-      // the engine's own emitted rows. Opening cash stays 0: scoped
-      // statements are a site-contribution view (see aggregator.js).
+      // 'derive' inherits the scenario's inflation + dividend policy and
+      // starts cash from the capital attributed to the in-scope locations
+      // (central/unallocated pot excluded — see aggregator.js).
       inflationPct: 'derive',
-      openingCash: 0, openingEquity: 0, taxLagMonths: 9,
+      openingCash: 'derive', openingEquity: 'derive', taxLagMonths: 9,
     });
   }, [usingScoped, outputs, periods, entityIds]);
 
@@ -95,7 +95,7 @@ export default function StatementView({
 
       {usingScoped && (
         <div style={{ padding: '6px 10px', fontSize: 11, color: '#7c2d12', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, marginBottom: 10 }}>
-          Scoped to {filterLabel(filter, entities, groups)} — recomputed from upstream entity rows. Tax / dividends / opening BS use group-level assumptions.
+          Scoped to {filterLabel(filter, entities, groups)} — recomputed from upstream entity rows. Inflation, tax and dividend policy inherited from the scenario; opening cash = capital attributed to these locations (central / unallocated pot excluded).
         </div>
       )}
 

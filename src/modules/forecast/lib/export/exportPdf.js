@@ -740,9 +740,9 @@ function drawExecutiveSummary(doc, { outputs, scopedOutputs, periods, openingPer
     { label: 'EBITDA margin at steady state', value: steadyMarginPct != null ? steadyMarginPct.toFixed(1) + '%' : '—',
       hint: story.ebitdaPosMonth != null ? `profitable from ${mLabel(story.ebitdaPosMonth)}` : null },
     { label: 'Lowest cash point', value: story.cashMin != null ? fmtMoney(story.cashMin) : '—',
-      hint: story.cashMinIdx != null ? `in ${mLabel(story.cashMinIdx)}${entityIds ? ' · contribution view' : ''}` : null },
+      hint: story.cashMinIdx != null ? `in ${mLabel(story.cashMinIdx)}${entityIds ? ' · scope capital only' : ''}` : null },
     { label: `Cash at end of plan`, value: story.cashEnd != null ? fmtMoney(story.cashEnd) : '—',
-      hint: entityIds ? 'site contribution — excl. group opening cash' : `${mLabel(n - 1)} · ${Math.round(n / 12)}-year horizon` },
+      hint: entityIds ? 'from capital attributed to this scope' : `${mLabel(n - 1)} · ${Math.round(n / 12)}-year horizon` },
   ];
   const stripY = 38;
   const colW = (PAGE.w - MARGIN.left - MARGIN.right) / kpis.length;
@@ -820,7 +820,7 @@ function drawExecutiveSummary(doc, { outputs, scopedOutputs, periods, openingPer
     });
   }
   if (story.cashMin != null) {
-    const basis = entityIds ? ' On a site-contribution basis (group opening cash not attributed).' : '';
+    const basis = entityIds ? ' Basis: capital attributed to these locations; central / unallocated cash excluded.' : '';
     bullets.push({
       title: 'Cash & funding',
       text: (story.cashMin < 0
@@ -1099,7 +1099,7 @@ function drawRoadToMarket(doc, { outputs, scopedOutputs, periods, openingPeriod,
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(7);
     doc.setTextColor(MUTED);
-    doc.text('site contribution view — group opening cash is not attributed to filtered locations', MARGIN.left + 55, 37);
+    doc.text('capital attributed to the filtered locations; central / unallocated cash excluded', MARGIN.left + 55, 37);
   }
 
   const headRow = [

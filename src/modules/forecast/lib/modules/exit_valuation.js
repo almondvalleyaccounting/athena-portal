@@ -91,9 +91,14 @@ export const exitValuationModule = {
     const netDebt = (debtByT[exitMonth] || 0) - (cashByT[exitMonth] || 0);
     const txnCosts = ev * txnPct;
     const grossEquity = ev - netDebt - txnCosts;
-    // Investor cost basis = capital introduced = opening cash (opening
-    // equity is derived from it; the separate equity driver is retired).
-    const openingEquity = ctx.resolve('bs.opening_cash_p', {}) || 0;
+    // Investor cost basis = total capital introduced = central pot +
+    // per-location opening cash. financial_core emits one attribution
+    // row per source at t=0 — sum them rather than re-resolving drivers.
+    let openingEquity = 0;
+    for (const r of ctx.upstreamOutputs) {
+      if (r.nominal_type === 'bs.opening_cash_alloc' && r.period === 0) openingEquity += r.amount_p;
+    }
+    if (openingEquity === 0) openingEquity = ctx.resolve('bs.opening_cash_p', {}) || 0;
     const gain = Math.max(0, grossEquity - openingEquity);
     const exitTax = gain * exitTaxPct;
     const netEquity = grossEquity - exitTax;
