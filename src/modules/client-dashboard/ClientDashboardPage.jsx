@@ -290,8 +290,11 @@ export default function ClientDashboardPage() {
   const asAtCurrency = asAtData?.bs_asat?.currency || asAtData?.ar_asat?.currency || asAtData?.ap_asat?.currency || 'GBP';
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '28px 24px 40px' }}>
-      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+    // Fill the available width (laptop → PC → docked/external monitor); a wide
+    // cap keeps line lengths sane on 4K without wasting space below it. Mobile
+    // is intentionally not catered for.
+    <div style={{ width: '100%', maxWidth: '2200px', margin: '0 auto', padding: '28px clamp(20px, 2.4vw, 48px) 40px' }}>
+      <div style={{ display: 'flex', gap: 'clamp(24px, 2.4vw, 44px)', alignItems: 'flex-start' }}>
         {/* ── Left rail: title, client picker, actions, filters ── */}
         <div style={{
           width: '250px', flexShrink: 0, position: 'sticky', top: '20px',
