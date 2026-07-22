@@ -21,10 +21,20 @@
 //   - value: display string (formatted with units)
 //   - kind: 'input' | 'derived' | 'result' (for styling)
 
+import { curveForBand, occupancyOnCurve } from './occupancy.js';
+import { AGE_BAND_LABELS } from './modules/locations.js';
+
 const AGE_BANDS = ['babies', 'twos', 'three_to_five', 'after_school'];
 const DEFAULT_RATIOS = { babies: 3, twos: 5, three_to_five: 8, after_school: 10 };
 const FUNDED_HOURS_PER_YEAR = 1140;
 const FUNDED_BANDS = ['twos', 'three_to_five'];
+
+// Output line labels carry the display band ("0-2"); config and driver
+// keys use the band key ("babies"). Map back.
+const LABEL_TO_KEY = Object.fromEntries(
+  Object.entries(AGE_BAND_LABELS).map(([key, label]) => [label, key])
+);
+const bandKeyFromLabel = (label) => LABEL_TO_KEY[label] || label;
 
 // ── Resolver helper ──────────────────────────────────────────────
 //
@@ -54,22 +64,22 @@ function makeResolver(drivers, values, entityKey) {
   };
 }
 
-// ── Occupancy ramp (mirrors locations.js logic) ──────────────────
+// ── Occupancy ramp (shared engine curve — lib/occupancy.js) ──────
+//
+// Reproduces the engine's base curve: acquired sites use entity config,
+// greenfield uses the group per-band drivers (resolved via `r`). The
+// engine additionally applies August cohort dips, so a trace at/after
+// an August may sit slightly above the persisted number.
 
-function occupancyAt(entity, band, period) {
-  const cfg = entity?.config || {};
-  const opening = cfg.opening_month_offset ?? 0;
-  const ramp = cfg.ramp_to_target_months ?? 18;
-  const target = cfg.target_occupancy_pct ?? 85;
-  const start = cfg.starting_occupancy_pct ??
-    (cfg.acquisition_type === 'acquired_going_concern' ? 70 : 0);
-  if (period < opening) return 0;
-  const tIn = period - opening;
-  if (tIn === 0) return start;
-  if (tIn >= ramp) return target;
-  const frac = tIn / ramp;
-  const eased = 1 - Math.pow(1 - frac, 2);
-  return Math.max(0, Math.min(100, start + (target - start) * eased));
+function occupancyAt(entity, band, period, r) {
+  const num = (v) => (v == null || v === 0 ? undefined : Number(v));
+  const groupCurve = {
+    opening: num(r(`capacity.opening_pct.${band}`)),
+    target:  num(r(`capacity.target_pct.${band}`)),
+    phase:   num(r(`capacity.phase_up_months.${band}`)),
+  };
+  const opening = entity?.config?.opening_month_offset ?? 0;
+  return occupancyOnCurve(curveForBand(entity, band, groupCurve), opening, period);
 }
 
 // ── Formatters ───────────────────────────────────────────────────
@@ -110,11 +120,11 @@ function explainServicesChildcare({ lineLabel, period, entity, drivers, values }
   const m = lineLabel.match(/^(Private fees|Funded hours) — (.+)$/);
   if (!m) return null;
   const kind = m[1];   // 'Private fees' | 'Funded hours'
-  const band = m[2];
+  const band = bandKeyFromLabel(m[2]);   // display label → band key
 
   const cfg = entity?.config || {};
   const capacity = cfg.capacity_by_age_band?.[band] ?? 0;
-  const occPct = occupancyAt(entity, band, period);
+  const occPct = occupancyAt(entity, band, period, r);
   const children = capacity * occPct / 100;
   const eligiblePct = r(`eligible_for_funded_pct.${band}`);
   const takeupPct = r(`funded_hours_take_up_pct.${band}`);
@@ -177,14 +187,14 @@ function explainStaff({ lineLabel, period, entity, drivers, values }) {
   const agencyPct = r('agency_premium_pct') / 100;
   const loadFactor = (1 + niPct + penPct) * (1 + vacPct * agencyPct);
 
-  // Match new per-role + per-band lines: "Senior qualified — babies (4)"
-  const directBandMatch = lineLabel.match(/^(Senior qualified|Qualified|Apprentice) — ([a-z_]+) \((\d+)\)$/);
+  // Match new per-role + per-band lines: "Senior qualified — 0-2 (4)"
+  const directBandMatch = lineLabel.match(/^(Senior qualified|Qualified|Apprentice) — (.+?) \((\d+)\)$/);
   if (directBandMatch) {
     const roleLabel = directBandMatch[1];
-    const band = directBandMatch[2];
+    const band = bandKeyFromLabel(directBandMatch[2]);
     const headcount = Number(directBandMatch[3]);
     const cap = cfg.capacity_by_age_band?.[band] ?? 0;
-    const occ = occupancyAt(entity, band, period);
+    const occ = occupancyAt(entity, band, period, r);
     const children = cap * occ / 100;
     const ratio = ratioFor(band);
     const required = children > 0 ? Math.ceil(children / ratio) : 0;
@@ -245,7 +255,7 @@ function explainStaff({ lineLabel, period, entity, drivers, values }) {
   for (const band of AGE_BANDS) {
     const cap = cfg.capacity_by_age_band?.[band] ?? 0;
     if (cap === 0) continue;
-    const occ = occupancyAt(entity, band, period);
+    const occ = occupancyAt(entity, band, period, r);
     const children = cap * occ / 100;
     const ratio = ratioFor(band);
     const required = children > 0 ? Math.ceil(children / ratio) : 0;
@@ -264,9 +274,9 @@ function explainStaff({ lineLabel, period, entity, drivers, values }) {
 
   if (bandMatch) {
     // Per-band practitioner cost
-    const band = bandMatch[1];
+    const band = bandKeyFromLabel(bandMatch[1]);
     const cap = cfg.capacity_by_age_band?.[band] ?? 0;
-    const occ = occupancyAt(entity, band, period);
+    const occ = occupancyAt(entity, band, period, r);
     const children = cap * occ / 100;
     const ratio = ratioFor(band);
     const required = children > 0 ? Math.ceil(children / ratio) : 0;

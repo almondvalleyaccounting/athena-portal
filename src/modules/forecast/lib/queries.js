@@ -319,8 +319,12 @@ export async function upsertLaFundedRate({ la_council_id, period_year, age_band,
  * the compute fn typically reads both.
  */
 export async function loadDriversForContext({ scenario_id, module_key, entity_id }) {
+  // Always include the locations module's drivers alongside: the
+  // occupancy ramp (capacity.opening_pct.* etc.) lives there and the
+  // services / staff explainers need it to reproduce the curve.
+  const moduleKeys = module_key === 'locations' ? ['locations'] : [module_key, 'locations'];
   let q = supabase.from('fc_driver').select('*')
-    .eq('scenario_id', scenario_id).eq('module_key', module_key);
+    .eq('scenario_id', scenario_id).in('module_key', moduleKeys);
   if (entity_id) {
     // Either match this entity OR group-scope (NULL).
     q = q.or(`entity_id.eq.${entity_id},entity_id.is.null`);

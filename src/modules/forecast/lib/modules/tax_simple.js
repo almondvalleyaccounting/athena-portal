@@ -1,6 +1,20 @@
-// Tax (simple) — flat marginal CT rate applied to PBT each period.
-// Cash timing: cash payment lags 9 months from period end (UK CT 9mo+1day);
-// for v1 we apply tax to P&L when accrued and to cash 9 months later.
+// Tax (simple) — flat marginal CT rate with loss carryforward.
+//
+// Taxable PBT is computed on the SAME basis as the displayed P&L: the
+// income / cost inflation factors financial_core applies to revenue and
+// costs are applied here too, so pnl.tax_total ties to pnl.pbt at the
+// headline CT rate. Depreciation and interest are not inflated (they
+// derive from actual capex and loan balances).
+//
+// Losses carry forward: months with negative PBT build a loss pool that
+// offsets later profitable months before any tax accrues — so a ramping
+// site pays no CT until its cumulative position turns positive.
+// (Monthly granularity, no group relief, capital allowances = book
+// depreciation. v1 simplifications.)
+//
+// Cash timing: cash payment lags 9 months from period end (UK CT
+// 9mo+1day); financial_core applies tax to P&L when accrued and to cash
+// `tax.payment_lag_months` later.
 
 export const taxSimpleModule = {
   key: 'tax_simple',
@@ -19,25 +33,44 @@ export const taxSimpleModule = {
   compute(ctx) {
     const out = [];
     const ctRate = ctx.resolve('tax.ct_rate_pct', {}) / 100;
+    // Same inflation basis as financial_core's P&L assembly.
+    const incomeInflation = (ctx.resolve('inflation.income_pct', {}) || 0) / 100;
+    const costInflation   = (ctx.resolve('inflation.cost_pct', {}) || 0) / 100;
 
-    const upstream = ctx.upstreamOutputs;
-    for (const t of ctx.periods) {
-      // PBT = revenue - costs - depreciation - interest
-      let revenue = 0, costs = 0, dep = 0, interest = 0;
-      for (const r of upstream) {
-        if (r.period !== t) continue;
-        switch (r.nominal_type) {
-          case 'revenue':       revenue  += r.amount_p; break;
-          case 'staff_cost':
-          case 'overhead':
-          case 'cost_of_sales': costs    += r.amount_p; break;
-          case 'depreciation':  dep      += r.amount_p; break;
-          case 'debt_interest': interest += r.amount_p; break;
-        }
+    // Single pass over upstream rows into per-period buckets.
+    const n = ctx.periods.length;
+    const revenue = new Array(n).fill(0);
+    const costs = new Array(n).fill(0);
+    const dep = new Array(n).fill(0);
+    const interest = new Array(n).fill(0);
+    for (const r of ctx.upstreamOutputs) {
+      const t = r.period;
+      if (t == null || t < 0 || t >= n) continue;
+      switch (r.nominal_type) {
+        case 'revenue':       revenue[t]  += r.amount_p; break;
+        case 'staff_cost':
+        case 'overhead':
+        case 'cost_of_sales': costs[t]    += r.amount_p; break;
+        case 'depreciation':  dep[t]      += r.amount_p; break;
+        case 'debt_interest': interest[t] += r.amount_p; break;
       }
-      const pbt = revenue - costs - dep - interest;
-      // Don't accrue negative tax (no group relief modelled in v1)
-      const taxAccrued = pbt > 0 ? Math.round(pbt * ctRate) : 0;
+    }
+
+    let lossPool = 0;   // unrelieved losses carried forward, positive pence
+    for (const t of ctx.periods) {
+      const yearIdx = Math.floor(t / 12);
+      const fInc = Math.pow(1 + incomeInflation, yearIdx);
+      const fCost = Math.pow(1 + costInflation, yearIdx);
+      const pbt = revenue[t] * fInc - costs[t] * fCost - dep[t] - interest[t];
+
+      let taxAccrued = 0;
+      if (pbt < 0) {
+        lossPool += -pbt;
+      } else if (pbt > 0) {
+        const relieved = Math.min(lossPool, pbt);
+        lossPool -= relieved;
+        taxAccrued = Math.round((pbt - relieved) * ctRate);
+      }
       if (taxAccrued !== 0) {
         out.push({
           module_key: 'tax_simple', period: t,

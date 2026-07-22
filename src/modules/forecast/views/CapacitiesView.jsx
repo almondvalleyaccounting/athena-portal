@@ -9,6 +9,7 @@
 import React, { useMemo, useState } from 'react';
 import { colors, fontStack, H2, KPI, fmtP, serifStack } from '../components/ui';
 import LocationFilter, { resolveFilterToEntityIds, filterLabel } from '../components/LocationFilter';
+import { buildOccupancyIndex, occKey } from '../lib/occupancy.js';
 
 const AGE_BANDS = [
   { key: 'babies',         label: '0-2' },
@@ -67,6 +68,10 @@ export default function CapacitiesView({
   const aggTotal = aggCap.babies + aggCap.twos + aggCap.three_to_five + aggCap.after_school;
   const aggSqft = locationRows.reduce((s, r) => s + r.sqft, 0);
 
+  // Engine-emitted occupancy (metric.occupancy_pct rows) — the same
+  // numbers the P&L was computed from, including August cohort dips.
+  const occIdx = useMemo(() => buildOccupancyIndex(outputs), [outputs]);
+
   // Per-period × per-location effective children (capacity × occupancy at end of period)
   const periodMatrix = grouped.map(g => {
     const t = Math.max(...g.periods);
@@ -76,7 +81,7 @@ export default function CapacitiesView({
         const cap = e.config?.capacity_by_age_band || {};
         let totalChildren = 0;
         for (const b of AGE_BANDS) {
-          const occ = occupancyAt(e, b.key, t);
+          const occ = occIdx.get(occKey(e.id, b.key, t)) ?? 0;
           totalChildren += (cap[b.key] || 0) * occ / 100;
         }
         return totalChildren;
@@ -269,7 +274,7 @@ export default function CapacitiesView({
       {/* Per-period effective children matrix */}
       <H2 style={{ fontSize: 16 }}>Effective children — utilisation ramp</H2>
       <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 8px' }}>
-        End-of-period effective children = capacity × occupancy at the period's last month. Shows how each location ramps from opening.
+        End-of-period effective children = capacity × engine occupancy at the period's last month — the same occupancy the P&L is computed from, including August school-leaver dips.
       </p>
       <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack }}>
@@ -330,22 +335,6 @@ export default function CapacitiesView({
       </div>
     </div>
   );
-}
-
-function occupancyAt(entity, band, period) {
-  const cfg = entity?.config || {};
-  const opening = cfg.opening_month_offset ?? 0;
-  const ramp = cfg.ramp_to_target_months ?? 18;
-  const target = cfg.target_occupancy_pct ?? 85;
-  const start = cfg.starting_occupancy_pct ??
-    (cfg.acquisition_type === 'acquired_going_concern' ? 70 : 0);
-  if (period < opening) return 0;
-  const tIn = period - opening;
-  if (tIn === 0) return start;
-  if (tIn >= ramp) return target;
-  const frac = tIn / ramp;
-  const eased = 1 - Math.pow(1 - frac, 2);
-  return Math.max(0, Math.min(100, start + (target - start) * eased));
 }
 
 function groupPeriods(periods, granularity) {

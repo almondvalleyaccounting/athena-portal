@@ -91,7 +91,9 @@ export const exitValuationModule = {
     const netDebt = (debtByT[exitMonth] || 0) - (cashByT[exitMonth] || 0);
     const txnCosts = ev * txnPct;
     const grossEquity = ev - netDebt - txnCosts;
-    const openingEquity = ctx.resolve('bs.opening_equity_p', {}) || 0;
+    // Investor cost basis = capital introduced = opening cash (opening
+    // equity is derived from it; the separate equity driver is retired).
+    const openingEquity = ctx.resolve('bs.opening_cash_p', {}) || 0;
     const gain = Math.max(0, grossEquity - openingEquity);
     const exitTax = gain * exitTaxPct;
     const netEquity = grossEquity - exitTax;

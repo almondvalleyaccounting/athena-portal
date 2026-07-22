@@ -9,11 +9,21 @@
 //
 // Reconciliation indicator: at every period, BS must balance and
 // cash movement on the cashflow must equal cash delta on the BS. We
-// emit findings with severity='error' if either fails by >£1.
+// emit findings with severity='error' if either fails by >£1 —
+// collapsed into one finding per check with a period range and a
+// root-cause hint, not one row per month.
+//
+// Opening balance sheet: the only opening position is cash. Opening
+// equity is DERIVED (= opening cash) so the BS starts balanced by
+// construction — the two can never be edited apart. Fund additional
+// opening cash with an fc_loan starting month 0 (drawdown adds cash and
+// a matching liability); opening fixed assets arrive via premises /
+// fixed-asset capex flows. The old `bs.opening_equity_p` driver is
+// retired and ignored (a deprecation finding fires if a legacy row
+// still holds a different value).
 //
 // Drivers (group):
 //   bs.opening_cash_p
-//   bs.opening_debt_p (if any non-mortgage debt at t=0)
 
 export const financialCoreModule = {
   key: 'financial_core',
@@ -21,8 +31,7 @@ export const financialCoreModule = {
   dependsOn: ['services_childcare', 'staff', 'overheads', 'premises', 'pre_opening', 'loans', 'working_capital', 'tax_simple'],
 
   drivers: [
-    { key: 'bs.opening_cash_p', label: 'Opening cash', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 50000000 },
-    { key: 'bs.opening_equity_p', label: 'Opening equity (capital introduced)', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 50000000 },
+    { key: 'bs.opening_cash_p', label: 'Opening cash (= capital introduced)', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 50000000 },
     // Inflation: applied annually as a multiplier on revenue / costs.
     // Compounded by elapsed years from forecast start.
     { key: 'inflation.income_pct', label: 'Income inflation (annual %)', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 3 },
@@ -140,7 +149,9 @@ export const financialCoreModule = {
     const periods = ctx.periods;
 
     const openingCash = ctx.resolve('bs.opening_cash_p', {}) || 0;
-    const openingEquity = ctx.resolve('bs.opening_equity_p', {}) || 0;
+    // Opening equity is derived, not entered: cash is the only opening
+    // position, so equity must equal it for the BS to start balanced.
+    const openingEquity = openingCash;
     const taxLagMonths = ctx.resolve('tax.payment_lag_months', {}) || 9;
     const incomeInflation = (ctx.resolve('inflation.income_pct', {}) || 0) / 100;
     const costInflation  = (ctx.resolve('inflation.cost_pct', {}) || 0) / 100;
@@ -576,42 +587,103 @@ export const financialCoreModule = {
     const findings = [];
     const upstream = ctx.upstreamOutputs;
     const periods = ctx.periods;
+    const openingCash = ctx.resolve('bs.opening_cash_p', {}) || 0;
+
+    // Legacy opening-equity driver: retired — equity is derived from
+    // opening cash so the BS always starts balanced. Tell the user if a
+    // leftover row still holds a different value they might expect to bite.
+    const legacyEquity = ctx.resolve('bs.opening_equity_p', {}) || 0;
+    if (legacyEquity > 0 && Math.abs(legacyEquity - openingCash) > 100) {
+      findings.push({
+        severity: 'info',
+        code: 'bs.opening_equity_retired',
+        message: `The old "Opening equity" driver (${fmtGbp(legacyEquity)}) is no longer used — opening equity is now derived from Opening cash (${fmtGbp(openingCash)}) so the balance sheet always starts balanced. To model extra opening funding, add a loan starting month 0 instead.`,
+      });
+    }
+
+    // Index financial_core rows once: period -> { nominal_type: amount }
+    const byPeriod = new Map();
+    for (const r of upstream) {
+      if (r.module_key !== 'financial_core') continue;
+      let m = byPeriod.get(r.period);
+      if (!m) byPeriod.set(r.period, (m = {}));
+      m[r.nominal_type] = r.amount_p;
+    }
 
     // BS balance check: assets = liabilities + equity
     // Assets = fixed_assets_net + net_wc + cash
-    // L+E    = debt + equity + ... (deposits + advance billing already netted into net_wc)
-    let prevCash = ctx.resolve('bs.opening_cash_p', {}) || 0;
+    // L+E    = debt + equity + tax payable (deposits + advance billing
+    //          already netted into net_wc)
+    const bsBreaks = [];
+    const cfBreaks = [];
+    let prevCash = openingCash;
     for (const t of periods) {
-      const m = {};
-      for (const r of upstream) {
-        if (r.period !== t || r.module_key !== 'financial_core') continue;
-        m[r.nominal_type] = r.amount_p;
-      }
+      const m = byPeriod.get(t) || {};
       const assets = (m['bs.fixed_assets_net'] || 0) + (m['bs.net_wc'] || 0) + (m['bs.cash'] || 0);
       const le = (m['bs.debt'] || 0) + (m['bs.equity'] || 0) + (m['bs.tax_payable'] || 0);
       const diff = assets - le;
-      if (Math.abs(diff) > 100) {
-        findings.push({
-          severity: 'error', period: t,
-          code: 'recon.bs_imbalance',
-          message: `BS does not balance at t=${t}: assets ${assets} vs L+E ${le} (diff £${(diff / 100).toFixed(2)})`,
-        });
-      }
+      if (Math.abs(diff) > 100) bsBreaks.push({ t, diff });
 
       // Cash movement on cashflow vs BS cash delta
       const cfMove = m['cf.net_movement'] || 0;
       const cashNow = m['bs.cash'] || 0;
-      const cfImpliedCash = prevCash + cfMove;
-      if (Math.abs(cfImpliedCash - cashNow) > 100) {
-        findings.push({
-          severity: 'error', period: t,
-          code: 'recon.cf_bs_mismatch',
-          message: `CF closing (${cfImpliedCash}) ≠ BS cash (${cashNow}) at t=${t}`,
-        });
-      }
+      const cfDiff = (prevCash + cfMove) - cashNow;
+      if (Math.abs(cfDiff) > 100) cfBreaks.push({ t, diff: cfDiff });
       prevCash = cashNow;
+    }
+
+    // One finding per check, not one per month. Diagnose the classic
+    // signature: a diff that is constant from some month onward means a
+    // one-off entry with no matching funding source at that month.
+    if (bsBreaks.length > 0) {
+      const first = bsBreaks[0];
+      const worst = bsBreaks.reduce((a, b) => (Math.abs(b.diff) > Math.abs(a.diff) ? b : a));
+      const isConstant = bsBreaks.every(b => Math.abs(b.diff - first.diff) <= 100)
+        && bsBreaks.length === periods.filter(t => t >= first.t).length;
+      let hint = '';
+      if (isConstant && first.t === 0) {
+        hint = ' The difference is constant from month 0, which means the opening balances don\'t tie — check Opening cash and any month-0 capital or loan entries.';
+      } else if (isConstant) {
+        hint = ` The difference is constant from month ${first.t}, which points to a one-off entry at that month with no matching funding source (a balance changed without a corresponding cash, loan or equity movement).`;
+      }
+      const side = worst.diff > 0 ? 'assets exceed liabilities + equity' : 'liabilities + equity exceed assets';
+      findings.push({
+        severity: 'error', period: first.t,
+        code: 'recon.bs_imbalance',
+        message: `Balance sheet does not balance in ${bsBreaks.length} of ${periods.length} months (${describePeriodRanges(bsBreaks.map(b => b.t))}). Worst at month ${worst.t}: ${side} by ${fmtGbp(Math.abs(worst.diff))}.${hint}`,
+      });
+    }
+
+    if (cfBreaks.length > 0) {
+      const first = cfBreaks[0];
+      const worst = cfBreaks.reduce((a, b) => (Math.abs(b.diff) > Math.abs(a.diff) ? b : a));
+      findings.push({
+        severity: 'error', period: first.t,
+        code: 'recon.cf_bs_mismatch',
+        message: `Cashflow closing cash does not tie to balance-sheet cash in ${cfBreaks.length} of ${periods.length} months (${describePeriodRanges(cfBreaks.map(b => b.t))}). Worst at month ${worst.t}: off by ${fmtGbp(Math.abs(worst.diff))}. This is an engine inconsistency (a flow hit the P&L or BS without the matching cash line) — recompute, and if it persists report it as a bug.`,
+      });
     }
 
     return findings;
   },
 };
+
+// £-format a pence amount for finding messages.
+function fmtGbp(p) {
+  return '£' + Math.round(p / 100).toLocaleString('en-GB');
+}
+
+// Collapse a sorted list of period indices into "months 0–11, 14, 20–59".
+function describePeriodRanges(ts) {
+  if (ts.length === 0) return '';
+  const parts = [];
+  let start = ts[0];
+  let prev = ts[0];
+  for (let i = 1; i <= ts.length; i++) {
+    const v = ts[i];
+    if (v === prev + 1) { prev = v; continue; }
+    parts.push(start === prev ? `${start}` : `${start}–${prev}`);
+    start = prev = v;
+  }
+  return 'months ' + parts.join(', ');
+}

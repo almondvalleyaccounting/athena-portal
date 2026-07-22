@@ -5,6 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import { colors, fmtP, fontStack, KPI, serifStack, H2, Pill } from '../components/ui';
 import LocationFilter, { resolveFilterToEntityIds, filterLabel } from '../components/LocationFilter';
+import { buildOccupancyIndex, occKey } from '../lib/occupancy.js';
 
 const AGE_BANDS = [
   { key: 'babies',         label: '0-2' },
@@ -57,6 +58,10 @@ export default function DashboardView({
   const totalCapacity = capByBand.babies + capByBand.twos + capByBand.three_to_five + capByBand.after_school;
   const totalSqFt = scopedEntities.reduce((s, e) => s + (e.config?.sq_ft || 0), 0);
 
+  // Engine-emitted occupancy (metric.occupancy_pct) — same numbers the
+  // P&L was computed from, including August cohort dips.
+  const occIdx = useMemo(() => buildOccupancyIndex(outputs), [outputs]);
+
   // ── Blended occupancy per band, averaged over selected year, weighted by capacity ──
   const blendedOcc = useMemo(() => {
     // For each entity + band, compute average occupancy over yearPeriods, weighted by capacity.
@@ -72,7 +77,7 @@ export default function DashboardView({
         const c = cap[band] || 0;
         if (c === 0) continue;
         let yearOccPct = 0;
-        for (const t of yearPeriods) yearOccPct += occupancyAt(e, band, t);
+        for (const t of yearPeriods) yearOccPct += occIdx.get(occKey(e.id, band, t)) ?? 0;
         const avg = yearPeriods.length > 0 ? yearOccPct / yearPeriods.length : 0;
         totals[band] += avg * c;
         weights[band] += c;
@@ -86,7 +91,7 @@ export default function DashboardView({
     }
     out.total = allWt > 0 ? allTot / allWt : 0;
     return out;
-  }, [scopedEntities, yearPeriods]);
+  }, [scopedEntities, yearPeriods, occIdx]);
 
   // ── Income split (funded vs private) for the year ──
   const incomeSplit = useMemo(() => {
@@ -383,22 +388,6 @@ function CentralRow({ label, hint, amount }) {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
-
-function occupancyAt(entity, band, period) {
-  const cfg = entity?.config || {};
-  const opening = cfg.opening_month_offset ?? 0;
-  const ramp = cfg.ramp_to_target_months ?? 18;
-  const target = cfg.target_occupancy_pct ?? 85;
-  const start = cfg.starting_occupancy_pct ??
-    (cfg.acquisition_type === 'acquired_going_concern' ? 70 : 0);
-  if (period < opening) return 0;
-  const tIn = period - opening;
-  if (tIn === 0) return start;
-  if (tIn >= ramp) return target;
-  const frac = tIn / ramp;
-  const eased = 1 - Math.pow(1 - frac, 2);
-  return Math.max(0, Math.min(100, start + (target - start) * eased));
-}
 
 function fmtPct(n, dp = 1) {
   if (n == null) return '—';

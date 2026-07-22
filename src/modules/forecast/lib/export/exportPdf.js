@@ -10,6 +10,7 @@ import {
   buildIncomeMatrix,
   pToGbp,
 } from './aggregations';
+import { buildOccupancyIndex, occKey, curveForBand, occupancyOnCurve } from '../occupancy.js';
 
 // Brand palette
 const INK = '#0f172a';
@@ -1012,36 +1013,24 @@ function drawCapacitiesPage(doc, { entities, entityIds, outputs, scopedOutputs, 
   const horizonYears = Math.max(1, Math.ceil(periods.length / 12));
   const yearLabels = Array.from({ length: horizonYears }, (_, i) => `Y${i + 1}`);
 
-  // Helper — replicates the engine's per-band ramp curve to estimate
-  // effective children per entity per period (uses entity config defaults
-  // for going-concern; default ramp shape for greenfield).
+  // Engine-emitted occupancy (metric.occupancy_pct rows) — the same
+  // numbers the P&L was computed from, including August cohort dips.
+  // Fall back to the shared curve (lib/occupancy.js) if outputs predate
+  // occupancy persistence (stale recompute).
+  const occIdx = buildOccupancyIndex(outputs);
   const occupancyForEntity = (e, band, period) => {
-    const cfg = e?.config || {};
-    const opening = cfg.opening_month_offset ?? 0;
-    const isGc = cfg.acquisition_type === 'acquired_going_concern';
-    // Greenfield: prefer the user's per-band drivers (capacity.opening_pct /
-    // target_pct / phase_up_months on the Pipeline tab), falling back to
-    // the built-in band defaults only if the driver hasn't been seeded.
-    const driverOpening = ramp.opening?.[band];
-    const driverTarget  = ramp.target?.[band];
-    const driverPhase   = ramp.phaseMonths?.[band];
-    const start = isGc
-      ? (cfg.starting_occupancy_pct ?? 70)
-      : (driverOpening != null ? Number(driverOpening) : defaultBandOpening(band));
-    const target = isGc
-      ? (cfg.target_occupancy_pct ?? 85)
-      : (driverTarget  != null ? Number(driverTarget)  : defaultBandTarget(band));
-    const phaseMonths = isGc
-      ? (cfg.ramp_to_target_months ?? 6)
-      : (driverPhase   != null ? Number(driverPhase)   : 6);
-    const rampWindow = Math.max(1, phaseMonths);
-    if (period < opening) return 0;
-    const tIn = period - opening;
-    if (tIn === 0) return start;
-    if (tIn >= rampWindow) return target;
-    const frac = tIn / rampWindow;
-    const eased = 1 - Math.pow(1 - frac, 2);
-    return Math.max(0, Math.min(100, start + (target - start) * eased));
+    const fromEngine = occIdx.get(occKey(e.id, band, period));
+    if (fromEngine != null) return fromEngine;
+    const groupCurve = {
+      opening: ramp.opening?.[band] != null ? Number(ramp.opening[band]) : defaultBandOpening(band),
+      target:  ramp.target?.[band]  != null ? Number(ramp.target[band])  : defaultBandTarget(band),
+      phase:   ramp.phaseMonths?.[band] != null ? Number(ramp.phaseMonths[band]) : 6,
+    };
+    return occupancyOnCurve(
+      curveForBand(e, band, groupCurve),
+      e?.config?.opening_month_offset ?? 0,
+      period,
+    );
   };
 
   const rampHeadRow = [
@@ -1106,7 +1095,7 @@ function drawCapacitiesPage(doc, { entities, entityIds, outputs, scopedOutputs, 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(MUTED);
   doc.text('YEAR-BY-YEAR RAMP', MARGIN.left, rampHeadingY + 5);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(MUTED);
-  doc.text('Effective children at year-end (capacity × per-band ramp curve) and total utilisation', MARGIN.left, rampHeadingY + 9);
+  doc.text('Effective children at year-end (capacity × engine occupancy, incl. August cohort dips) and total utilisation', MARGIN.left, rampHeadingY + 9);
 
   autoTable(doc, {
     startY: rampHeadingY + 12,

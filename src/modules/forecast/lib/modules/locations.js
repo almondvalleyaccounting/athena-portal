@@ -16,6 +16,8 @@
 // the band below partially refill the band above. The dip-stack model
 // applies a refill curve back to the base ramp over `refill_months`.
 
+import { curveForBand, occupancyOnCurve } from '../occupancy.js';
+
 const AGE_BANDS = ['babies', 'twos', 'three_to_five', 'after_school'];
 
 export const AGE_BAND_LABELS = {
@@ -33,8 +35,9 @@ export const locationsModule = {
   drivers: [
     // ── Per-band capacity ramp ────────────────────────────────────
     // Each age band has its own opening %, target %, and phase-up
-    // window. These define the steady-state utilisation curve at any
-    // entity (going-concern entities can override via entity.config).
+    // window. These define the utilisation curve for GREENFIELD sites.
+    // Acquired sites (going concern or empty premises) use their own
+    // entity-config start/target/ramp instead — see lib/occupancy.js.
     ...AGE_BANDS.flatMap(b => ([
       { key: `capacity.opening_pct.${b}`,      label: `Capacity at opening — ${AGE_BAND_LABELS[b]}`,    unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: defaultOpeningPct(b) },
       { key: `capacity.target_pct.${b}`,       label: `Capacity target — ${AGE_BAND_LABELS[b]}`,         unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: defaultTargetPct(b) },
@@ -66,7 +69,11 @@ export const locationsModule = {
     // Refill window
     { key: 'cohort.refill_months',             label: 'Refill window (months back to capacity)',  unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 6 },
   ],
-  outputs: [],
+  outputs: [
+    // Per-entity, per-band occupancy — the number every view reads.
+    // amount_p = percent × 100 (85.25% → 8525); tags.age_band set.
+    { nominal_type: 'metric.occupancy_pct', label: 'Occupancy %', by_entity: true },
+  ],
 
   compute(ctx) {
     // Calendar month of forecast start (0 = Jan, 7 = Aug)
@@ -93,41 +100,23 @@ export const locationsModule = {
     }
 
     const map = {};
+    const out = [];
 
     for (const e of ctx.entities) {
       const cfg = e.config || {};
       const opn = cfg.opening_month_offset ?? 0;
-      const isGoingConcern = cfg.acquisition_type === 'acquired_going_concern';
       const cap = cfg.capacity_by_age_band || {};
 
-      // Per-band ramp curves. Going-concern overrides via entity config.
+      // Per-band ramp curves — shared helper (lib/occupancy.js).
+      // Acquired sites (going concern or empty premises) use the entity's
+      // own start/target/ramp config; greenfield uses group drivers.
       const curveByBand = {};
       for (const band of AGE_BANDS) {
-        const g = groupCurve[band];
-        curveByBand[band] = isGoingConcern
-          ? {
-              start:  cfg.starting_occupancy_pct ?? 70,
-              target: cfg.target_occupancy_pct   ?? g.target,
-              ramp:   Math.max(1, cfg.ramp_to_target_months ?? g.phase),
-            }
-          : {
-              start:  g.opening,
-              target: g.target,
-              ramp:   Math.max(1, g.phase),
-            };
+        curveByBand[band] = curveForBand(e, band, groupCurve[band]);
       }
 
       // Base ramp curve per band — quadratic ease-out from start to target
-      const baseAt = (band, t) => {
-        if (t < opn) return 0;
-        const c = curveByBand[band];
-        const tIn = t - opn;
-        if (tIn === 0) return c.start;
-        if (tIn >= c.ramp) return c.target;
-        const frac = tIn / c.ramp;
-        const eased = 1 - Math.pow(1 - frac, 2);
-        return Math.max(0, Math.min(100, c.start + (c.target - c.start) * eased));
-      };
+      const baseAt = (band, t) => occupancyOnCurve(curveByBand[band], opn, t);
 
       // Per-band dip stack. Each dip = % shortfall from base curve at time t,
       // refilling linearly to zero over refill_months.
@@ -210,10 +199,25 @@ export const locationsModule = {
       }
 
       map[e.key] = byBand;
+
+      // Persist occupancy so every view reads the engine's number
+      // (including August dips) instead of re-deriving the curve.
+      for (const band of AGE_BANDS) {
+        if ((cap[band] || 0) === 0) continue;
+        for (const t of ctx.periods) {
+          out.push({
+            module_key: 'locations', entity_id: e.id, period: t,
+            nominal_type: 'metric.occupancy_pct',
+            line_label: `Occupancy — ${AGE_BAND_LABELS[band]}`,
+            amount_p: Math.round(byBand[band][t] * 100),
+            tags: { age_band: band },
+          });
+        }
+      }
     }
 
     ctx.occupancyPct = map;
-    return [];
+    return out;
   },
 };
 

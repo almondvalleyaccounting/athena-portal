@@ -330,6 +330,9 @@ export default function InputsView({
       // (To explicitly retire: call out in the deprecated set below.)
       const RETIRED_KEYS = new Set([
         'launch.greenfield_influx_pct', 'launch.ramp_months',
+        // Opening equity is derived from opening cash (financial_core);
+        // editing it separately could only unbalance the BS.
+        'bs.opening_equity_p',
       ]);
       if (RETIRED_KEYS.has(d.driver_key)) return false;
       if (filterEntity === 'group' && d.entity_id) return false;

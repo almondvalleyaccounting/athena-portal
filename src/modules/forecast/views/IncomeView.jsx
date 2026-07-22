@@ -30,6 +30,7 @@ import { colors, fmtP, fontStack, serifStack, H2 } from '../components/ui';
 import LocationFilter, { resolveFilterToEntityIds, filterLabel } from '../components/LocationFilter';
 import { loadScenarioDrivers } from '../lib/queries';
 import { AGE_BANDS_LIST, AGE_BAND_LABELS } from '../lib/modules/locations';
+import { buildOccupancyIndex, occKey } from '../lib/occupancy.js';
 
 const FUNDED_HOURS_PER_YEAR = 1140;
 
@@ -95,10 +96,6 @@ export default function IncomeView({
   const eligiblePct   = useMemo(() => resolveByBand('services_childcare', 'eligible_for_funded_pct.{band}'), [drivers, driverValues, entityIds]);
   const takeupPct     = useMemo(() => resolveByBand('services_childcare', 'funded_hours_take_up_pct.{band}'), [drivers, driverValues, entityIds]);
   const hpwByBand     = useMemo(() => resolveByBand('services_childcare', 'operating_hours_per_week.{band}'), [drivers, driverValues, entityIds]);
-  // Per-band capacity ramp (group scope on locations)
-  const openingPct    = useMemo(() => resolveByBand('locations', 'capacity.opening_pct.{band}'), [drivers, driverValues, entityIds]);
-  const targetPct     = useMemo(() => resolveByBand('locations', 'capacity.target_pct.{band}'), [drivers, driverValues, entityIds]);
-  const phaseMonths   = useMemo(() => resolveByBand('locations', 'capacity.phase_up_months.{band}'), [drivers, driverValues, entityIds]);
 
   const weeksPerYear = useMemo(() => {
     const d = drivers.find(d => d.module_key === 'services_childcare' && d.driver_key === 'weeks_per_year' && !d.entity_id);
@@ -124,37 +121,21 @@ export default function IncomeView({
     return out;
   }, [inScopeEntities, startOfYear]);
 
-  // ── Average occupancy% for the year, derived from upstream revenue.
-  // Read engine-emitted revenue rows for the year; reverse-solve children:
-  //   children_total = LA_revenue/(la_rate*la_per_child*weeks)/funded_share
-  //                  + private_revenue/(hourly*hpw*weeks)
-  // We prefer averaging engine occupancy when accessible — but it's not
-  // persisted, so we compute occupancy from the ramp curve we control.
+  // ── Average occupancy% for the year — engine-emitted occupancy
+  // (metric.occupancy_pct rows), capacity-weighted across in-scope
+  // entities. These are the exact numbers revenue was computed from,
+  // including August cohort dips.
+  const occIdx = useMemo(() => buildOccupancyIndex(outputs), [outputs]);
   const occByBand = useMemo(() => {
     const out = {};
     for (const band of AGE_BANDS_LIST) {
-      const start = openingPct[band] ?? 40;
-      const target = targetPct[band] ?? 85;
-      const phase = Math.max(1, phaseMonths[band] ?? 6);
-      // Average across yearPeriods using same easing as the engine
       let sum = 0, n = 0;
       for (const t of yearPeriods) {
-        // entity-anchored opening month — average across in-scope entities
         let occThisT = 0, weight = 0;
         for (const e of inScopeEntities) {
-          const opn = e.config?.opening_month_offset ?? 0;
           const cap = e.config?.capacity_by_age_band?.[band] || 0;
           if (cap === 0) continue;
-          if (t < opn) { weight += cap; continue; } // not open contributes 0
-          const tIn = t - opn;
-          let occ = target;
-          if (tIn === 0) occ = start;
-          else if (tIn < phase) {
-            const frac = tIn / phase;
-            const eased = 1 - Math.pow(1 - frac, 2);
-            occ = start + (target - start) * eased;
-          }
-          occThisT += cap * occ;
+          occThisT += cap * (occIdx.get(occKey(e.id, band, t)) ?? 0);
           weight += cap;
         }
         if (weight > 0) { sum += occThisT / weight; n += 1; }
@@ -162,7 +143,7 @@ export default function IncomeView({
       out[band] = n > 0 ? sum / n : 0;
     }
     return out;
-  }, [yearPeriods, inScopeEntities, openingPct, targetPct, phaseMonths]);
+  }, [yearPeriods, inScopeEntities, occIdx]);
 
   // ── Engine revenue for the year (for cross-check / display) ──
   const revenueByBand = useMemo(() => {
