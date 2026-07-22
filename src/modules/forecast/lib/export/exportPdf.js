@@ -740,9 +740,9 @@ function drawExecutiveSummary(doc, { outputs, scopedOutputs, periods, openingPer
     { label: 'EBITDA margin at steady state', value: steadyMarginPct != null ? steadyMarginPct.toFixed(1) + '%' : '—',
       hint: story.ebitdaPosMonth != null ? `profitable from ${mLabel(story.ebitdaPosMonth)}` : null },
     { label: 'Lowest cash point', value: story.cashMin != null ? fmtMoney(story.cashMin) : '—',
-      hint: story.cashMinIdx != null ? `in ${mLabel(story.cashMinIdx)}` : null },
+      hint: story.cashMinIdx != null ? `in ${mLabel(story.cashMinIdx)}${entityIds ? ' · contribution view' : ''}` : null },
     { label: `Cash at end of plan`, value: story.cashEnd != null ? fmtMoney(story.cashEnd) : '—',
-      hint: `${mLabel(n - 1)} · ${Math.round(n / 12)}-year horizon` },
+      hint: entityIds ? 'site contribution — excl. group opening cash' : `${mLabel(n - 1)} · ${Math.round(n / 12)}-year horizon` },
   ];
   const stripY = 38;
   const colW = (PAGE.w - MARGIN.left - MARGIN.right) / kpis.length;
@@ -820,11 +820,12 @@ function drawExecutiveSummary(doc, { outputs, scopedOutputs, periods, openingPer
     });
   }
   if (story.cashMin != null) {
+    const basis = entityIds ? ' On a site-contribution basis (group opening cash not attributed).' : '';
     bullets.push({
       title: 'Cash & funding',
-      text: story.cashMin < 0
-        ? `Cash bottoms out at ${fmtMoney(story.cashMin)} in ${mLabel(story.cashMinIdx)} — the plan needs ${fmtMoney(-story.cashMin)} of funding beyond opening cash.`
-        : `Cash never goes below ${fmtMoney(story.cashMin)} (${mLabel(story.cashMinIdx)}) — the plan self-funds from opening cash.`,
+      text: (story.cashMin < 0
+        ? `Cash bottoms out at ${fmtMoney(story.cashMin)} in ${mLabel(story.cashMinIdx)} — this scope needs ${fmtMoney(-story.cashMin)} of funding.`
+        : `Cash never goes below ${fmtMoney(story.cashMin)} (${mLabel(story.cashMinIdx)}) — the plan self-funds.`) + basis,
     });
   }
   if (story.oneOff12 > 0) {
@@ -1094,6 +1095,12 @@ function drawRoadToMarket(doc, { outputs, scopedOutputs, periods, openingPeriod,
   doc.setFontSize(12);
   doc.setTextColor(INK);
   doc.text(fmtMoneyExact(startingCashM0), MARGIN.left + 30, 37);
+  if (entityIds) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(MUTED);
+    doc.text('site contribution view — group opening cash is not attributed to filtered locations', MARGIN.left + 55, 37);
+  }
 
   const headRow = [
     { content: 'Cashflow', styles: { halign: 'left' } },

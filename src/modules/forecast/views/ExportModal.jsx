@@ -72,8 +72,11 @@ export default function ExportModal({
     if (!entityIds) return null;
     const map = scopedAggregate({
       outputs, periods, entityIds,
-      inflationPct: { income: 0, cost: 0 },
-      openingCash: 0, openingEquity: 0, taxLagMonths: 9, payoutRatioPct: 0,
+      // 'derive' inherits the scenario's inflation + dividend policy from
+      // the engine's own emitted rows. Opening cash stays 0: scoped
+      // statements are a site-contribution view (see aggregator.js).
+      inflationPct: 'derive',
+      openingCash: 0, openingEquity: 0, taxLagMonths: 9,
     });
     return aggregatedAsOutputRows(map);
   }, [entityIds, outputs, periods]);

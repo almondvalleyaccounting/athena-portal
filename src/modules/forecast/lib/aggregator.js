@@ -13,7 +13,17 @@
 //   periods       — array of period indices to compute
 //   entityIds     — Set of entity ids to include; null = all entities
 //                   (group-level rows always included regardless)
-//   inflationPct  — { income, cost } in pct (e.g. 3 = 3%)
+//   inflationPct  — 'derive' (recommended) reads the engine's own
+//                   inflation-uplift rows so the scoped view inherits the
+//                   scenario's inflation settings exactly; or
+//                   { income, cost } in pct (e.g. 3 = 3%) for an override.
+//                   With 'derive', year-end dividends also inherit the
+//                   group's effective payout ratio.
+//
+// Opening cash is deliberately NOT inherited from the group: it is a
+// company-level pot, and attributing it to every filtered subset would
+// double-count it across site views. Scoped statements are a CONTRIBUTION
+// view — pass openingCash 0 and label the surface accordingly.
 //
 // Returns: a Map keyed by `${nominal_type}::${period}` -> amount_p.
 //
@@ -46,9 +56,6 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
   const result = new Map();
   const set = (nt, t, v) => result.set(`${nt}::${t}`, Math.round(v));
 
-  const incomeFactor = (t) => Math.pow(1 + (inflationPct?.income || 0) / 100, Math.floor(t / 12));
-  const costFactor   = (t) => Math.pow(1 + (inflationPct?.cost   || 0) / 100, Math.floor(t / 12));
-
   const inScope = (o) => {
     if (!entityIds) return true;
     if (o.entity_id == null) return true;   // group-level rows always count
@@ -62,6 +69,32 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     if (t == null) continue;
     if (!byPeriod.has(t)) byPeriod.set(t, []);
     byPeriod.get(t).push(o);
+  }
+
+  // Inflation factors. 'derive' back-solves the engine's own per-period
+  // factors from its emitted uplift rows (uplift = base × (f − 1)), so
+  // the scoped view inherits the scenario's inflation settings exactly —
+  // no driver lookup needed and no drift if the engine's basis changes.
+  const derive = inflationPct === 'derive';
+  let incomeFactor, costFactor;
+  if (derive) {
+    const fInc = new Map(), fCost = new Map();
+    for (const [t, rows] of byPeriod) {
+      let baseRev = 0, upliftRev = 0, baseCost = 0, upliftCost = 0;
+      for (const r of rows) {
+        if (r.nominal_type === 'revenue') baseRev += r.amount_p;
+        else if (r.nominal_type === 'staff_cost' || r.nominal_type === 'overhead' || r.nominal_type === 'cost_of_sales') baseCost += r.amount_p;
+        else if (r.nominal_type === 'pnl.income_inflation_uplift') upliftRev += r.amount_p;
+        else if (r.nominal_type === 'pnl.cost_inflation_uplift') upliftCost += -r.amount_p;   // emitted negative
+      }
+      fInc.set(t, baseRev > 0 ? 1 + upliftRev / baseRev : 1);
+      fCost.set(t, baseCost > 0 ? 1 + upliftCost / baseCost : 1);
+    }
+    incomeFactor = (t) => fInc.get(t) ?? 1;
+    costFactor = (t) => fCost.get(t) ?? 1;
+  } else {
+    incomeFactor = (t) => Math.pow(1 + (inflationPct?.income || 0) / 100, Math.floor(t / 12));
+    costFactor   = (t) => Math.pow(1 + (inflationPct?.cost   || 0) / 100, Math.floor(t / 12));
   }
 
   const sumOf = (rows, predicate) => {
@@ -175,11 +208,27 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     const pbt = ebit - interest;
     const npat = pbt - tax;
 
-    // Year-end dividends (group-level concept, but applied to filtered NPAT YTD if filtered)
+    // Year-end dividends (group-level concept, applied to filtered NPAT
+    // YTD). With 'derive', inherit the group's EFFECTIVE payout ratio
+    // for the year (group dividends ÷ group NPAT YTD from emitted rows).
     if (t % 12 === 0) npatYtd = 0;
     npatYtd += npat;
     const isYearEnd = (t % 12) === 11;
-    const dividend = (isYearEnd && payout > 0 && npatYtd > 0) ? Math.round(npatYtd * payout) : 0;
+    let dividend = 0;
+    if (isYearEnd && npatYtd > 0) {
+      let ratio = payout;
+      if (derive) {
+        let groupDiv = 0, groupNpatYtd = 0;
+        for (let k = t - 11; k <= t; k++) {
+          for (const r of byPeriod.get(k) || []) {
+            if (r.nominal_type === 'pnl.dividends') groupDiv += -r.amount_p;    // emitted negative
+            else if (r.nominal_type === 'pnl.npat' && !r.entity_id) groupNpatYtd += r.amount_p;
+          }
+        }
+        ratio = groupNpatYtd > 0 ? Math.max(0, groupDiv / groupNpatYtd) : 0;
+      }
+      if (ratio > 0) dividend = Math.round(npatYtd * ratio);
+    }
 
     // CF buckets — INFLATED for revenue/costs (matching financial_core)
     const cashIn_priv = revenuePrivBase * fInc;
