@@ -7,9 +7,10 @@
 // against reminder_autoqueue_config; gated on that row's `enabled` flag.
 //
 // Each run, against the MOST RECENT tax_payment_batches upload:
-//   * opted-in + unpaid clients  → queue the 'reminder' (figure + bank
-//                                   details), unless already queued/sent
-//                                   for this batch;
+//   * opted-in + unpaid clients  → on or after the trigger working day,
+//                                   queue the 'reminder' (figure + bank
+//                                   details), once per batch — so late
+//                                   opt-ins are still caught;
 //   * undecided clients          → queue the 'promo' opt-in invite,
 //                                   once per batch (a client who has opted
 //                                   in/out never lands here again);
@@ -135,10 +136,13 @@ Deno.serve(async (req) => {
   const [ty, tm] = londonToday.split("-").map(Number);
   if (!force && tm !== 1 && tm !== 7) return json({ success: true, skipped: `not a run month (${tm})` });
 
-  // Opt-in invites are queued throughout the run month (once ever per
-  // client). Payment reminders fire on ONE trigger working day per batch:
-  // 5th working day of January, 1st working day of July — weekends AND
-  // Scottish bank holidays excluded (official gov.uk calendar).
+  // Payment reminders start on a trigger working day and then keep filling
+  // for the rest of the run month — 5th working day of January, 1st working
+  // day of July (weekends + Scottish bank holidays excluded). It's ON OR
+  // AFTER, not just that one day: opt-ins arrive throughout the month (the
+  // offer campaign runs all month), so anyone who opts in after the trigger
+  // day still gets their reminder on the next run. Dedup keeps it to one per
+  // client per batch. (Offers are queued throughout the month regardless.)
   const reminderN = tm === 1 ? 5 : tm === 7 ? 1 : 0;
   let triggerDate: string | null = null;
   if (reminderN) {
@@ -150,7 +154,8 @@ Deno.serve(async (req) => {
       triggerDate = null; // holidays unavailable → don't risk the wrong day
     }
   }
-  const isTriggerDay = !!triggerDate && triggerDate === londonToday;
+  // YYYY-MM-DD strings compare correctly with >=.
+  const remindersOpen = !!triggerDate && londonToday >= triggerDate;
 
   const commType = (cfg.comm_type as string) || "tax_reminders";
 
@@ -222,9 +227,9 @@ Deno.serve(async (req) => {
     if (pref === "opted_out") { counts.skipped_optout++; continue; }
 
     if (pref === "opted_in") {
-      // Payment reminder only fires on the trigger working day (one per
-      // batch). force bypasses the date gate for manual/test runs.
-      if (!isTriggerDay && !force) { counts.skipped_not_trigger++; continue; }
+      // Reminders are open from the trigger working day onward (one per
+      // batch, deduped below). force bypasses the date gate for a test run.
+      if (!remindersOpen && !force) { counts.skipped_not_trigger++; continue; }
       if (remindedThisBatch.has(r.entity_id)) { counts.skipped_dup++; continue; }
       // Reference from the TaxCalc row, falling back to the client's UTR on
       // the entity (e.g. added to BM after the file was uploaded).
@@ -274,7 +279,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  if (dryRun) return json({ success: true, dry_run: true, batch_id: batch.id, trigger_date: triggerDate, is_trigger_day: isTriggerDay, would_queue: toInsert.length, counts });
+  if (dryRun) return json({ success: true, dry_run: true, batch_id: batch.id, trigger_date: triggerDate, reminders_open: remindersOpen, would_queue: toInsert.length, counts });
 
   // Insert row-by-row so a single unique-index hit (the queue-uniqueness
   // backstop catching a dup from a concurrent run) skips just that row
@@ -290,5 +295,5 @@ Deno.serve(async (req) => {
   }
   await service.from("reminder_autoqueue_config").update({ last_run_at: now }).eq("id", true);
 
-  return json({ success: true, batch_id: batch.id, trigger_date: triggerDate, is_trigger_day: isTriggerDay, queued: inserted, counts });
+  return json({ success: true, batch_id: batch.id, trigger_date: triggerDate, reminders_open: remindersOpen, queued: inserted, counts });
 });
