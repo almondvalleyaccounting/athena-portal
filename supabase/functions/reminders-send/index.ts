@@ -85,6 +85,11 @@ function taxPaymentRef(raw: string | null | undefined): string {
   if (digits.length >= 10) return `${digits.slice(0, 10)}K`;
   return "";
 }
+// Bare 10-digit UTR (tax_reminder_ignore key), or '' if fewer than 10.
+function utr10(raw: string | null | undefined): string {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  return d.length >= 10 ? d.slice(0, 10) : "";
+}
 
 function renderStr(s: string, vars: Record<string, string>): string {
   return String(s ?? "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, k) => (k in vars ? String(vars[k] ?? "") : ""));
@@ -271,6 +276,10 @@ Deno.serve(async (req) => {
     tmplNoUtr = nu || null;
   }
 
+  // Manual exclusions (not-a-client / client-excluded) — never send.
+  const { data: ign } = await service.from("tax_reminder_ignore").select("utr");
+  const ignoreSet = new Set(((ign || []) as Array<{ utr: string }>).map((x) => x.utr));
+
   // Gmail is only needed when we actually send now (mode 'send').
   let token: { accessToken: string; accountEmail: string; displayName: string | null } | null = null;
   if (mode === "send") {
@@ -294,6 +303,10 @@ Deno.serve(async (req) => {
     if (!ent) { skipped.push({ entity_id: entityId, reason: "entity not found" }); continue; }
     if (["nlac", "archived"].includes(ent.entity_status as string)) {
       skipped.push({ entity_id: entityId, reason: "no longer a client" }); continue;
+    }
+    // Manually excluded from reminders (not a client, or client-excluded).
+    if (ignoreSet.has(utr10(ent.utr as string | null))) {
+      skipped.push({ entity_id: entityId, reason: "excluded (reminder override)" }); continue;
     }
 
     // Recipient: entity billing/prospect first, then BM contact email.

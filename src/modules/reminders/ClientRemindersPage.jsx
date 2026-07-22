@@ -252,7 +252,7 @@ export default function ClientRemindersPage() {
   const [queuedCount, setQueuedCount] = useState(0);
   const [autoQueue, setAutoQueue] = useState(null); // { enabled, last_run_at } | null
   const [bmEmailByEntity, setBmEmailByEntity] = useState({}); // entity_id -> BM contact email fallback
-  const [ignoreUtrs, setIgnoreUtrs] = useState(() => new Set()); // UTRs never to remind (not clients)
+  const [ignoreByUtr, setIgnoreByUtr] = useState(() => new Map()); // utr -> reason ('not_client' | 'client_excluded')
   const [filters, setFilters] = useState({ q: '', pref: 'all', paid: 'all', match: 'all' });
 
   const entityById = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e])), [entities]);
@@ -317,9 +317,9 @@ export default function ClientRemindersPage() {
       const { data: aq } = await supabase.from('v_reminder_autoqueue').select('enabled, last_run_at').maybeSingle();
       setAutoQueue(aq || null);
 
-      // "Never remind" ignore-list (non-client UTRs).
-      const { data: ign } = await supabase.from('tax_reminder_ignore').select('utr');
-      setIgnoreUtrs(new Set((ign || []).map((r) => r.utr)));
+      // Reminder-exclusion list (UTR -> reason: not a client / client-excluded).
+      const { data: ign } = await supabase.from('tax_reminder_ignore').select('utr, reason');
+      setIgnoreByUtr(new Map((ign || []).map((r) => [r.utr, r.reason || 'not_client'])));
 
       // Gmail pill — reminders go out from the practice-default mailbox.
       // v_gmail_connections is the staff-safe view (no token columns).
@@ -408,44 +408,45 @@ export default function ClientRemindersPage() {
     setPrefsByEntity((p) => ({ ...p, [entityId]: data || rec }));
   };
 
+  // Payment status is paid/unpaid only. Paid suppresses reminders because
+  // they've paid — nothing to do with the manual reminder override.
   const cyclePaid = async (row) => {
-    const next = row.status === 'unpaid' ? 'paid' : row.status === 'paid' ? 'excluded' : 'unpaid';
+    const next = row.status === 'paid' ? 'unpaid' : 'paid';
     const { error: e } = await supabase.from('tax_payments_due').update({ status: next }).eq('id', row.id);
     if (e) { setError(`Could not update the status: ${e.message}`); return; }
     setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, status: next } : r)));
   };
 
-  // Durably ignore a UTR — for people whose return the practice files but
-  // who aren't clients. Adds to tax_reminder_ignore (auto-excludes them on
-  // every future import) and excludes this row now.
-  const addIgnore = async (row) => {
+  // Manually exclude a client from reminders, with a reason. Persists in
+  // tax_reminder_ignore (survives re-imports) and is changeable later.
+  // reason: 'not_client' (return we file but not a practice client) or
+  // 'client_excluded' (a client we've chosen not to remind, with a note).
+  const setIgnore = async (row, reason) => {
     if (!(profile?.can_manage_portal || profile?.is_portal_admin)) return;
     const u = rowUtr(row);
-    if (!u) { setError('That row has no 10-digit UTR to ignore.'); return; }
-    if (!window.confirm(`Never send tax reminders to UTR ${u}?\n\nUse this for someone whose return you file but who isn’t a practice client. Future TaxCalc uploads will auto-exclude this UTR. This row will be excluded now.`)) return;
-    const { error: e1 } = await supabase.from('tax_reminder_ignore')
-      .upsert({ utr: u, created_by: profile?.id || null }, { onConflict: 'utr', ignoreDuplicates: true });
-    if (e1) { setError(`Could not add to ignore list: ${e1.message}`); return; }
-    const { error: e2 } = await supabase.from('tax_payments_due').update({ status: 'excluded' }).eq('id', row.id);
-    if (e2) { setError(`Added to ignore list, but could not exclude the row: ${e2.message}`); }
-    setIgnoreUtrs((s) => { const n = new Set(s); n.add(u); return n; });
-    setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, status: 'excluded' } : r)));
-    setNotice(`UTR ${u} added to the never-remind list.`);
+    if (!u) { setError('That row has no 10-digit UTR to exclude.'); return; }
+    let note = null;
+    if (reason === 'client_excluded') {
+      note = window.prompt('Reason for excluding this client from reminders (optional):', '') || null;
+    }
+    const { error } = await supabase.from('tax_reminder_ignore')
+      .upsert({ utr: u, reason, note, created_by: profile?.id || null }, { onConflict: 'utr' });
+    if (error) { setError(`Could not save the exclusion: ${error.message}`); return; }
+    setIgnoreByUtr((m) => new Map(m).set(u, reason));
+    setNotice(reason === 'not_client'
+      ? `UTR ${u} marked "not a client" — excluded from reminders.`
+      : `UTR ${u} excluded from reminders (client).`);
   };
 
-  // Undo an ignore — this UTR is a client after all. Removes it from the
-  // ignore-list and un-excludes the row so it can be matched/reminded.
+  // Undo an exclusion — put the client back in the reminder run.
   const removeIgnore = async (row) => {
     if (!(profile?.can_manage_portal || profile?.is_portal_admin)) return;
     const u = rowUtr(row);
     if (!u) return;
-    const { error: e1 } = await supabase.from('tax_reminder_ignore').delete().eq('utr', u);
-    if (e1) { setError(`Could not revert: ${e1.message}`); return; }
-    const { error: e2 } = await supabase.from('tax_payments_due').update({ status: 'unpaid' }).eq('id', row.id);
-    if (e2) { setError(`Removed from ignore list, but could not restore the row: ${e2.message}`); }
-    setIgnoreUtrs((s) => { const n = new Set(s); n.delete(u); return n; });
-    setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, status: 'unpaid' } : r)));
-    setNotice(`UTR ${u} reverted to client — match it below to send reminders.`);
+    const { error } = await supabase.from('tax_reminder_ignore').delete().eq('utr', u);
+    if (error) { setError(`Could not restore: ${error.message}`); return; }
+    setIgnoreByUtr((m) => { const n = new Map(m); n.delete(u); return n; });
+    setNotice(`UTR ${u} back in the reminder run.`);
   };
 
   // ── selection + action-bar eligibility ──
@@ -463,7 +464,8 @@ export default function ClientRemindersPage() {
   // Effective UTR for ignore/reference purposes: the TaxCalc row's UTR,
   // else the client's UTR on the entity (added to BM after the upload).
   const rowUtr = (r) => utr10(r.reference_raw) || utr10(entityById[r.entity_id]?.utr || '');
-  const isIgnored = (r) => { const u = rowUtr(r); return !!u && ignoreUtrs.has(u); };
+  const isIgnored = (r) => { const u = rowUtr(r); return !!u && ignoreByUtr.has(u); };
+  const ignoreReason = (r) => ignoreByUtr.get(rowUtr(r)) || '';
 
   // Column filters — display only; selection persists across filter changes.
   const visibleRows = useMemo(() => {
@@ -484,7 +486,7 @@ export default function ClientRemindersPage() {
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, filters, entityById, prefsByEntity, ignoreUtrs, bmEmailByEntity]);
+  }, [rows, filters, entityById, prefsByEntity, ignoreByUtr, bmEmailByEntity]);
 
   const allSelected = visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id));
   const toggleAll = () => {
@@ -672,7 +674,7 @@ export default function ClientRemindersPage() {
             {[
               ['match', [['all', 'All matches'], ['matched', 'Matched'], ['unmatched', 'Unmatched'], ['ignored', 'Ignored']]],
               ['pref', [['all', 'Any preference'], ['opted_in', 'Opted in'], ['opted_out', 'Opted out'], ['pending', 'Pending'], ['not_asked', 'Not asked']]],
-              ['paid', [['all', 'Any status'], ['unpaid', 'Unpaid'], ['paid', 'Paid'], ['excluded', 'Excluded']]],
+              ['paid', [['all', 'Any status'], ['unpaid', 'Unpaid'], ['paid', 'Paid']]],
             ].map(([key, opts]) => (
               <select
                 key={key}
@@ -748,27 +750,30 @@ export default function ClientRemindersPage() {
                           )}
                         </div>
                       </td>
-                      {/* Reminder — toggle: reminding ⇄ not a client */}
+                      {/* Reminder — exclusion reason (persists, changeable) */}
                       <td style={td}>
                         {!rowUtr(row) ? (
                           <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>—</span>
                         ) : !canManage ? (
                           <span style={{ fontSize: 10.5, fontWeight: 600, color: rowIgnored ? '#b91c1c' : '#166534' }}>
-                            {rowIgnored ? 'Not a client' : 'Reminding'}
+                            {rowIgnored ? (ignoreReason(row) === 'client_excluded' ? 'Client — excluded' : 'Not a client') : 'Reminding'}
                           </span>
                         ) : (
-                          <button
-                            onClick={() => (rowIgnored ? removeIgnore(row) : addIgnore(row))}
-                            title={rowIgnored
-                              ? 'Excluded as not a client — click to start reminding again'
-                              : 'This client is in the reminder run — click to exclude them (not a practice client)'}
+                          <select
+                            value={ignoreReason(row)}
+                            onChange={(e) => (e.target.value ? setIgnore(row, e.target.value) : removeIgnore(row))}
+                            title="Exclude this UTR from reminders (persists across imports) — or leave 'Reminding' to keep them in the run"
                             style={{
-                              padding: '2px 10px', fontSize: 11, fontWeight: 600, fontFamily: font, cursor: 'pointer', borderRadius: 999,
+                              padding: '3px 6px', fontSize: 11, fontFamily: font, borderRadius: 6, cursor: 'pointer',
                               background: rowIgnored ? '#fef2f2' : '#f0fdf4',
                               color: rowIgnored ? '#b91c1c' : '#166534',
                               border: `1px solid ${rowIgnored ? '#fecaca' : '#bbf7d0'}`,
                             }}
-                          >{rowIgnored ? 'Not a client' : 'Reminding'}</button>
+                          >
+                            <option value="">Reminding</option>
+                            <option value="not_client">Exclude — not a client</option>
+                            <option value="client_excluded">Exclude — client (reason)</option>
+                          </select>
                         )}
                       </td>
                       <td style={td}>
@@ -818,7 +823,7 @@ export default function ClientRemindersPage() {
                       <td style={td}>
                         <button
                           onClick={() => cyclePaid(row)}
-                          title="Click to cycle: unpaid → paid → excluded"
+                          title="Click to toggle paid / unpaid. Paid suppresses reminders because they've paid — use the Reminder column to exclude for other reasons."
                           style={{
                             padding: '2px 10px', fontSize: 11, fontWeight: 600, fontFamily: font,
                             background: paidMeta.bg, color: paidMeta.color, border: `1px solid ${paidMeta.border}`,

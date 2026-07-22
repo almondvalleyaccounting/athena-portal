@@ -73,6 +73,11 @@ function taxPaymentRef(raw: string | null | undefined): string {
   if (digits.length >= 10) return `${digits.slice(0, 10)}K`;
   return "";
 }
+// Bare 10-digit UTR (tax_reminder_ignore key), or '' if fewer than 10.
+function utr10(raw: string | null | undefined): string {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  return d.length >= 10 ? d.slice(0, 10) : "";
+}
 function renderStr(s: string, vars: Record<string, string>): string {
   return String(s ?? "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, k) => (k in vars ? String(vars[k] ?? "") : ""));
 }
@@ -170,12 +175,16 @@ Deno.serve(async (req) => {
   const entityIds = [...new Set(rows.map((r) => r.entity_id))];
 
   // Entities, preferences, BM emails, and the dedup ledger.
-  const [{ data: ents }, { data: prefs }, { data: bm }, { data: existing }] = await Promise.all([
+  const [{ data: ents }, { data: prefs }, { data: bm }, { data: existing }, { data: ign }] = await Promise.all([
     service.from("entities").select("id, name, utr, billing_email, prospect_email, entity_status").in("id", entityIds),
     service.from("client_comm_preferences").select("entity_id, status").eq("comm_type", commType).in("entity_id", entityIds),
     service.from("v_email_reconciliation").select("entity_id, bm_contact_email").in("entity_id", entityIds),
     service.from("reminder_emails").select("entity_id, kind, batch_id, status").eq("comm_type", commType).in("entity_id", entityIds),
+    service.from("tax_reminder_ignore").select("utr"),
   ]);
+  // Manual exclusions (not-a-client OR client-excluded) — never send them
+  // anything, keyed by the effective UTR (TaxCalc row or the entity's).
+  const ignoreSet = new Set(((ign || []) as Array<{ utr: string }>).map((x) => x.utr));
 
   const entById: Record<string, { name: string; utr: string | null; billing_email: string; prospect_email: string; entity_status: string }> = {};
   for (const e of ents || []) entById[e.id] = e as never;
@@ -194,12 +203,14 @@ Deno.serve(async (req) => {
 
   const now = new Date().toISOString();
   const toInsert: Record<string, unknown>[] = [];
-  const counts = { promo: 0, reminder: 0, no_utr: 0, skipped_no_email: 0, skipped_optout: 0, skipped_former: 0, skipped_dup: 0, skipped_no_ref: 0, skipped_not_trigger: 0 };
+  const counts = { promo: 0, reminder: 0, no_utr: 0, skipped_ignored: 0, skipped_no_email: 0, skipped_optout: 0, skipped_former: 0, skipped_dup: 0, skipped_no_ref: 0, skipped_not_trigger: 0 };
 
   for (const r of rows) {
     const ent = entById[r.entity_id];
     if (!ent) continue;
     if (["nlac", "archived"].includes(ent.entity_status)) { counts.skipped_former++; continue; }
+    // Manually excluded (not a client, or client we've chosen not to remind).
+    if (ignoreSet.has(utr10(r.reference_raw) || utr10(ent.utr))) { counts.skipped_ignored++; continue; }
     const to = (ent.billing_email || "").trim() || (ent.prospect_email || "").trim() || bmById[r.entity_id] || "";
     if (!to || !to.includes("@")) { counts.skipped_no_email++; continue; }
 
