@@ -52,6 +52,6 @@ begin
 end;
 $function$;
 
--- Every 4 hours, on the hour, during January and July only. cron.schedule
--- upserts by job name. The schedule is armed now but no-ops while disabled.
-select cron.schedule('reminders-autoqueue', '0 */4 * 1,7 *', $$select public.run_reminders_autoqueue()$$);
+-- Every 15 minutes during January and July only. cron.schedule upserts by
+-- job name. The schedule is armed now but no-ops while disabled.
+select cron.schedule('reminders-autoqueue', '*/15 * * 1,7 *', $$select public.run_reminders_autoqueue()$$);

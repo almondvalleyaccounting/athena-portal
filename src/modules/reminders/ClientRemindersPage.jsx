@@ -535,7 +535,7 @@ export default function ClientRemindersPage() {
     if (e) { setError(`Could not change auto-queue: ${e.message}`); return; }
     setAutoQueue((a) => ({ ...(a || {}), enabled: next }));
     setNotice(next
-      ? 'Auto-queue ON — every 4 hours in January & July the queue is filled for you to review and release.'
+      ? 'Auto-queue ON — every 15 minutes in January & July the queue is filled for you to review and release.'
       : 'Auto-queue OFF.');
   };
 
@@ -575,7 +575,7 @@ export default function ClientRemindersPage() {
         {canManage && (
           <button
             onClick={toggleAutoQueue}
-            title="Every 4 hours during January & July, auto-fill the queue (opt-in invites for undecided clients, reminders for opted-in). Queue only — you still review and release."
+            title="Every 15 minutes during January & July, auto-fill the queue (opt-in invites for undecided clients, reminders for opted-in). Queue only — you still review and release."
             style={{
               padding: '2px 10px', fontSize: 11, fontWeight: 600, borderRadius: 999, cursor: 'pointer', fontFamily: font,
               background: autoQueue?.enabled ? '#f0fdf4' : '#f1f5f9',

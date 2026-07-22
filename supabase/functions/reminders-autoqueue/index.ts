@@ -2,7 +2,7 @@
 // Cron-driven filler for the Client Reminders queue. It QUEUES only —
 // never sends. A human still reviews and releases from the queue.
 //
-// Triggered by pg_cron (run_reminders_autoqueue) every 4 hours during
+// Triggered by pg_cron (run_reminders_autoqueue) every 15 minutes during
 // January and July. Authenticated by an x-cron-secret header matched
 // against reminder_autoqueue_config; gated on that row's `enabled` flag.
 //
