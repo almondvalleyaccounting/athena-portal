@@ -168,7 +168,7 @@ export default function VacancyDetailView() {
 
       {openApp && (
         <ApplicationDrawer
-          app={openApp} staffMap={staffMap} staffList={staffList} profileId={profile?.id}
+          app={openApp} vacancy={vacancy} staffMap={staffMap} staffList={staffList} profileId={profile?.id}
           onClose={() => setOpenAppId(null)}
           onPatch={(patch) => patchApp(openApp.id, patch)}
         />

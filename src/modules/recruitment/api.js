@@ -215,6 +215,171 @@ export async function addNote(applicationId, body, authorId) {
   return data;
 }
 
+// ── Communications (P2) ──────────────────────────────────────────────
+export async function listMessages(applicationId) {
+  const { data, error } = await supabase
+    .from('recruitment_messages')
+    .select('*')
+    .eq('application_id', applicationId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+// Send an email to the applicant via the recruitment-email edge function
+// (Resend + server-side log). Uses the shared error-unwrapping idiom.
+export async function sendApplicantEmail({ applicationId, to, subject, body, replyTo }) {
+  const { data, error } = await supabase.functions.invoke('recruitment-email', {
+    body: { application_id: applicationId, to, subject, body, reply_to: replyTo || undefined },
+  });
+  if (error) {
+    let detail = error.message;
+    try { const b = await error.context?.json(); if (b?.error) detail = b.error; } catch { /* keep */ }
+    throw new Error(detail);
+  }
+  if (data && data.success === false) throw new Error(data.error || 'Send failed');
+  return data;
+}
+
+// Send an SMS/WhatsApp via the shared sms-send function, then mirror a row
+// into recruitment_messages so it lands on the applicant timeline (sms-send
+// logs its own sms_messages row too, keyed by number).
+export async function sendApplicantSms({ applicationId, candidateId, to, body, channel = 'sms', createdBy }) {
+  const { data, error } = await supabase.functions.invoke('sms-send', { body: { to, body, channel } });
+  if (error) {
+    let detail = error.message;
+    try { const b = await error.context?.json(); if (b?.error) detail = b.error; } catch { /* keep */ }
+    throw new Error(detail);
+  }
+  if (data && data.success === false) throw new Error(data.error || 'Send failed');
+  await supabase.from('recruitment_messages').insert({
+    application_id: applicationId, candidate_id: candidateId || null, channel,
+    direction: 'out', body, to_addr: to, status: 'sent',
+    provider_id: data?.provider_id || null, created_by: createdBy || null,
+  });
+  return data;
+}
+
+// ── Interviews (P3) ──────────────────────────────────────────────────
+export async function listInterviews(applicationId) {
+  const { data, error } = await supabase
+    .from('recruitment_interviews')
+    .select('*')
+    .eq('application_id', applicationId)
+    .order('scheduled_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createInterview(patch, createdBy) {
+  const { data, error } = await supabase
+    .from('recruitment_interviews')
+    .insert({ ...patch, created_by: createdBy || null })
+    .select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateInterview(id, patch) {
+  const { data, error } = await supabase
+    .from('recruitment_interviews')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteInterview(id) {
+  const { error } = await supabase.from('recruitment_interviews').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// Cross-vacancy upcoming interviews for the module-level schedule view.
+export async function upcomingInterviews() {
+  const { data, error } = await supabase
+    .from('recruitment_interviews')
+    .select('*, application:recruitment_applications(id, vacancy_id, candidate:recruitment_candidates(full_name), vacancy:recruitment_vacancies(title))')
+    .in('status', ['scheduled'])
+    .order('scheduled_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+// ── Offers (P5) ──────────────────────────────────────────────────────
+export async function getOffer(applicationId) {
+  const { data, error } = await supabase
+    .from('recruitment_offers')
+    .select('*').eq('application_id', applicationId)
+    .order('created_at', { ascending: false }).limit(1);
+  if (error) throw error;
+  return (data && data[0]) || null;
+}
+
+export async function upsertOffer(applicationId, patch, createdBy) {
+  const existing = await getOffer(applicationId);
+  if (existing) {
+    const { data, error } = await supabase.from('recruitment_offers')
+      .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', existing.id).select('*').single();
+    if (error) throw error;
+    return data;
+  }
+  const { data, error } = await supabase.from('recruitment_offers')
+    .insert({ ...patch, application_id: applicationId, created_by: createdBy || null }).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+// ── Contracts (P5) ───────────────────────────────────────────────────
+export async function getContract(applicationId) {
+  const { data, error } = await supabase
+    .from('recruitment_contracts')
+    .select('*').eq('application_id', applicationId)
+    .order('created_at', { ascending: false }).limit(1);
+  if (error) throw error;
+  return (data && data[0]) || null;
+}
+
+export async function upsertContract(applicationId, patch, createdBy) {
+  const existing = await getContract(applicationId);
+  if (existing) {
+    const { data, error } = await supabase.from('recruitment_contracts')
+      .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', existing.id).select('*').single();
+    if (error) throw error;
+    return data;
+  }
+  const { data, error } = await supabase.from('recruitment_contracts')
+    .insert({ ...patch, application_id: applicationId, created_by: createdBy || null }).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+// ── Induction (P6) ───────────────────────────────────────────────────
+export async function listInduction(applicationId) {
+  const { data, error } = await supabase
+    .from('recruitment_induction_items')
+    .select('*').eq('application_id', applicationId)
+    .order('sort', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+// Seed the default checklist for a hire (human-in-the-loop — called from a
+// deliberate "Start induction" button, never automatically).
+export async function startInduction(applicationId, items) {
+  const rows = items.map((label, i) => ({ application_id: applicationId, label, sort: i }));
+  const { data, error } = await supabase.from('recruitment_induction_items').insert(rows).select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function toggleInductionItem(id, done, byWho) {
+  const { data, error } = await supabase.from('recruitment_induction_items')
+    .update({ done, done_at: done ? new Date().toISOString() : null, done_by: done ? (byWho || null) : null })
+    .eq('id', id).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
 // Count applications per vacancy (for the vacancies list), excluding exits.
 export async function applicationCounts() {
   const { data, error } = await supabase

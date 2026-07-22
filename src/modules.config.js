@@ -138,6 +138,10 @@ export const MODULES = [
     permissions: ['can_view_recruitment'],
     status: 'live',
     group: 'team',
+    children: [
+      { id: 'rec-vacancies', label: 'Vacancies', route: '/recruitment', matchPaths: ['/recruitment'] },
+      { id: 'rec-interviews', label: 'Interviews', route: '/recruitment/interviews', matchPaths: ['/recruitment/interviews'] },
+    ],
   },
   {
     id: 'issues',

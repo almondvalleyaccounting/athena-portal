@@ -104,6 +104,102 @@ export function daysSince(iso) {
   return Math.max(0, Math.floor(ms / 86400000));
 }
 
+// ── Phase 2–6 constants ──────────────────────────────────────────────
+export const INTERVIEW_KINDS = [
+  { key: 'phone', label: 'Phone' },
+  { key: 'video', label: 'Video call' },
+  { key: 'in_person', label: 'In person' },
+  { key: 'task', label: 'Task / assessment' },
+];
+export const INTERVIEW_STATUSES = [
+  { key: 'scheduled', label: 'Scheduled', tone: { fg: '#b45309', bg: '#fffbeb', border: '#fde68a' } },
+  { key: 'completed', label: 'Completed', tone: { fg: '#166534', bg: '#f0fdf4', border: '#bbf7d0' } },
+  { key: 'cancelled', label: 'Cancelled', tone: { fg: '#64748b', bg: '#f8fafc', border: '#e2e8f0' } },
+  { key: 'no_show', label: 'No-show', tone: { fg: '#b91c1c', bg: '#fef2f2', border: '#fecaca' } },
+];
+export const INTERVIEW_STATUS_MAP = Object.fromEntries(INTERVIEW_STATUSES.map((s) => [s.key, s]));
+
+export const OFFER_STATUSES = [
+  { key: 'draft', label: 'Draft', tone: { fg: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' } },
+  { key: 'sent', label: 'Sent', tone: { fg: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' } },
+  { key: 'accepted', label: 'Accepted', tone: { fg: '#166534', bg: '#dcfce7', border: '#86efac' } },
+  { key: 'declined', label: 'Declined', tone: { fg: '#b91c1c', bg: '#fef2f2', border: '#fecaca' } },
+  { key: 'withdrawn', label: 'Withdrawn', tone: { fg: '#64748b', bg: '#f8fafc', border: '#e2e8f0' } },
+];
+export const CONTRACT_STATUSES = [
+  { key: 'draft', label: 'Draft', tone: { fg: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' } },
+  { key: 'sent', label: 'Sent', tone: { fg: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' } },
+  { key: 'signed', label: 'Signed', tone: { fg: '#166534', bg: '#dcfce7', border: '#86efac' } },
+  { key: 'declined', label: 'Declined', tone: { fg: '#b91c1c', bg: '#fef2f2', border: '#fecaca' } },
+];
+
+// Default new-starter induction checklist (seeded on "Start induction").
+export const DEFAULT_INDUCTION = [
+  'Send welcome email with start date & first-day details',
+  'Issue employment contract & collect signed copy',
+  'Collect ID, right-to-work & bank details',
+  'Add to payroll',
+  'Create email account & system logins (manual — separate admin action)',
+  'Order equipment / set up desk',
+  'Assign a buddy / first-week schedule',
+  'Book induction & mandatory training (CPD tracker)',
+  'Add to relevant calendars & team channels',
+  'Probation review date set',
+];
+
+// Editable email presets. {{name}} / {{role}} substituted at compose time.
+export const EMAIL_TEMPLATES = [
+  {
+    key: 'ack', label: 'Application received',
+    subject: 'Your application to Almond Valley Accounting',
+    body: 'Hi {{name}},\n\nThank you for applying for the {{role}} role. We’ve received your application and are reviewing it now — we’ll be in touch soon with next steps.\n\nKind regards,\nAlmond Valley Accounting',
+  },
+  {
+    key: 'invite', label: 'Invite to interview',
+    subject: 'Interview invitation — {{role}}',
+    body: 'Hi {{name}},\n\nWe’d like to invite you to an interview for the {{role}} role. Could you let us know your availability over the coming week?\n\nWe look forward to speaking with you.\n\nKind regards,\nAlmond Valley Accounting',
+  },
+  {
+    key: 'reject', label: 'Unsuccessful (post-interview)',
+    subject: 'Update on your application — {{role}}',
+    body: 'Hi {{name}},\n\nThank you for taking the time to apply for the {{role}} role and for speaking with us. On this occasion we won’t be taking your application further. We wish you the very best in your search.\n\nKind regards,\nAlmond Valley Accounting',
+  },
+  {
+    key: 'offer', label: 'Offer',
+    subject: 'Job offer — {{role}} at Almond Valley Accounting',
+    body: 'Hi {{name}},\n\nWe’re delighted to offer you the {{role}} role. A formal offer letter and contract will follow. Please let us know if you have any questions in the meantime — we’d love to have you on the team.\n\nKind regards,\nAlmond Valley Accounting',
+  },
+];
+
+// Build a downloadable .ics for an interview (client-side, no backend — keeps
+// calendar handoff a plain file, no doorway into Athena).
+export function interviewIcs({ title, start, durationMins = 45, location, description }) {
+  const dt = (d) => {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}00Z`;
+  };
+  const startD = new Date(start);
+  const endD = new Date(startD.getTime() + durationMins * 60000);
+  const esc = (s) => String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
+  const uid = `${startD.getTime()}-${Math.floor(startD.getTime() / 1000) % 100000}@athena.recruitment`;
+  return [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Athena//Recruitment//EN', 'BEGIN:VEVENT',
+    `UID:${uid}`, `DTSTART:${dt(startD)}`, `DTEND:${dt(endD)}`,
+    `SUMMARY:${esc(title)}`,
+    location ? `LOCATION:${esc(location)}` : '',
+    description ? `DESCRIPTION:${esc(description)}` : '',
+    'END:VEVENT', 'END:VCALENDAR',
+  ].filter(Boolean).join('\r\n');
+}
+
+export function downloadIcs(filename, ics) {
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename || 'interview.ics'; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // "£28,000 – £34,000 per year" from a vacancy row.
 export function fmtSalary(v) {
   if (v == null) return '';
