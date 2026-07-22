@@ -38,11 +38,12 @@ const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'pnl', label: 'P&L' },
   { id: 'balance', label: 'Balance Sheet' },
-  { id: 'aged', label: 'Debtors & Creditors' },
+  { id: 'debtors', label: 'Debtors' },
+  { id: 'creditors', label: 'Creditors' },
   { id: 'health', label: 'Bookkeeping Health' },
 ];
 const PERIOD_TABS = new Set(['overview', 'pnl']);
-const ASAT_TABS = new Set(['balance', 'aged']);
+const ASAT_TABS = new Set(['balance', 'debtors', 'creditors']);
 
 /* ─── Page ─────────────────────────────────────────────────────── */
 export default function ClientDashboardPage() {
@@ -453,8 +454,13 @@ export default function ClientDashboardPage() {
               {tab === 'balance' && (
                 <BalanceSheetTab balanceSheet={asAtData?.bs_asat} currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
               )}
-              {tab === 'aged' && (
-                <AgedTab agedAR={asAtData?.ar_asat} agedAP={asAtData?.ap_asat} currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
+              {tab === 'debtors' && (
+                <AgedTab data={asAtData?.ar_asat} title="Aged debtors (receivables)" sameLabel="Same debtors"
+                  label="aged debtors" currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
+              )}
+              {tab === 'creditors' && (
+                <AgedTab data={asAtData?.ap_asat} title="Aged creditors (payables)" sameLabel="Same suppliers"
+                  label="aged creditors" currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
               )}
               {tab === 'health' && <HealthTab health={fileHealth} currency={periodCurrency} empty={emptyProps} />}
 
@@ -1049,12 +1055,11 @@ function AgedSection({ title, data, currency, sameLabel }) {
 const agedTh = { fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', fontWeight: 600, textAlign: 'right', padding: '6px 10px', whiteSpace: 'nowrap' };
 const agedTd = { fontFamily: OUTFIT, fontSize: '12.5px', textAlign: 'right', padding: '7px 10px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' };
 
-function AgedTab({ agedAR, agedAP, currency, loading, empty }) {
-  if (!agedAR && !agedAP) return loading ? <LoadingCard label="aged debtors / creditors" /> : <EmptyState label="aged debtors / creditors" {...empty} />;
+function AgedTab({ data, title, sameLabel, label, currency, loading, empty }) {
+  if (!data) return loading ? <LoadingCard label={label} /> : <EmptyState label={label} {...empty} />;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <AgedSection title="Aged debtors (receivables)" data={agedAR} currency={currency} sameLabel="Same debtors" />
-      <AgedSection title="Aged creditors (payables)" data={agedAP} currency={currency} sameLabel="Same suppliers" />
+      <AgedSection title={title} data={data} currency={currency} sameLabel={sameLabel} />
     </div>
   );
 }
