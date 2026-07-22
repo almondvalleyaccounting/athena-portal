@@ -78,6 +78,12 @@ function fmtDateLong(iso: string | null | undefined): string {
 const PAY_URL = "https://www.gov.uk/pay-self-assessment-tax-bill";       // how to pay
 const PTA_URL = "https://www.gov.uk/personal-tax-account";               // view balance/payments
 
+// Client-facing sender name on the From header. Without this the bare
+// mailbox address is used and Gmail shows the local-part (e.g. "info").
+// gmail_connections.display_name is a staff-facing UI label, deliberately
+// NOT reused here — these are practice-branded client emails.
+const FROM_NAME = "Almond Valley Accounting";
+
 // UTR → Self Assessment payment reference: 10-digit UTR + 'K'. Idempotent
 // if a 'K' is already present; '' when no 10-digit UTR can be read.
 function taxPaymentRef(raw: string | null | undefined): string {
@@ -118,10 +124,19 @@ function encodeSubject(s: string): string {
   return `=?UTF-8?B?${padded}?=`;
 }
 
-function buildMime(to: string, subject: string, text: string, html: string, fromEmail: string): string {
+// Format a From header with a display name. ASCII names are quoted;
+// non-ASCII is RFC2047 encoded-word (same scheme as the subject).
+function formatFrom(name: string, email: string): string {
+  const n = (name || "").trim();
+  if (!n) return email;
+  const display = /^[\x20-\x7e]*$/.test(n) ? `"${n.replace(/([\\"])/g, "\\$1")}"` : encodeSubject(n);
+  return `${display} <${email}>`;
+}
+
+function buildMime(to: string, subject: string, text: string, html: string, fromEmail: string, fromName = FROM_NAME): string {
   const boundary = `=_athena_${crypto.randomUUID()}`;
   const headers = [
-    `From: ${fromEmail}`,
+    `From: ${formatFrom(fromName, fromEmail)}`,
     `To: ${to}`,
     `Subject: ${encodeSubject(subject)}`,
     `MIME-Version: 1.0`,
