@@ -11,6 +11,7 @@ import {
   pToGbp,
 } from './aggregations';
 import { buildOccupancyIndex, occKey, curveForBand, occupancyOnCurve } from '../occupancy.js';
+import { drawLineChart, drawColumnChart, drawStackedBars, SERIES, fmtAxisMoney } from './pdfCharts.js';
 
 // Brand palette
 const INK = '#0f172a';
@@ -82,10 +83,12 @@ function drawSectionHeading(doc, title, subtitle) {
 
 // ── Cover page ─────────────────────────────────────────────────
 
-function drawCover(doc, { forecast, scenario, scopeLabel, granularity, year, kpis, notes, preparedBy, preparedFor }) {
+function drawCover(doc, { forecast, scenario, scopeLabel, granularity, year, kpis, notes, preparedBy, preparedFor, contents = [] }) {
   // Title block
   doc.setFillColor(INK);
   doc.rect(0, 0, PAGE.w, 70, 'F');
+  doc.setFillColor(ACCENT);
+  doc.rect(0, 70, PAGE.w, 1.2, 'F');
 
   doc.setTextColor('#ffffff');
   doc.setFont('helvetica', 'bold');
@@ -104,18 +107,42 @@ function drawCover(doc, { forecast, scenario, scopeLabel, granularity, year, kpi
   doc.setTextColor('#cbd5e1');
   doc.text([
     `Scenario: ${scenario?.name || ''}`,
-    `Scope: ${scopeLabel || 'All locations'}`,
-    `Granularity: ${granularity} · Anchor year: Y${year}`,
-    `Generated: ${new Date().toLocaleString('en-GB')}`,
+    scopeLabel || 'All locations',
+    `${granularity} · anchored to Y${year}`,
+    `Generated ${new Date().toLocaleDateString('en-GB')}`,
   ].join('   ·   '), MARGIN.left, 56);
 
   // Cover deliberately carries no headline numbers — title + commentary
-  // only. Quantitative summary lives on the Executive dashboard page.
+  // only. Quantitative summary lives on the Executive summary page.
 
-  // Prepared-for / prepared-by block
+  // Contents — right-hand column of section names
+  if (contents.length > 0) {
+    const cx = PAGE.w - MARGIN.right - 70;
+    let cy = 90;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(MUTED);
+    doc.text('IN THIS PACK', cx, cy);
+    doc.setDrawColor(RULE);
+    doc.setLineWidth(0.2);
+    doc.line(cx, cy + 2, PAGE.w - MARGIN.right, cy + 2);
+    cy += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    for (const c of contents) {
+      doc.setFillColor(ACCENT);
+      doc.circle(cx + 1, cy - 1, 0.7, 'F');
+      doc.setTextColor(INK);
+      doc.text(c, cx + 4, cy);
+      cy += 6.5;
+    }
+  }
+
+  // Prepared-for / prepared-by block — kept clear of the contents column
+  const bodyW = contents.length > 0 ? PAGE.w - MARGIN.left - MARGIN.right - 84 : PAGE.w - MARGIN.left - MARGIN.right;
   let infoY = 90;
   if (preparedFor || preparedBy) {
-    const colW = (PAGE.w - MARGIN.left - MARGIN.right) / 2;
+    const colW = bodyW / 2;
     doc.setTextColor(MUTED);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
@@ -134,7 +161,7 @@ function drawCover(doc, { forecast, scenario, scopeLabel, granularity, year, kpi
     const startY = Math.max(infoY, 90);
     doc.setDrawColor(RULE);
     doc.setLineWidth(0.2);
-    doc.line(MARGIN.left, startY, PAGE.w - MARGIN.right, startY);
+    doc.line(MARGIN.left, startY, MARGIN.left + bodyW, startY);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
@@ -144,7 +171,7 @@ function drawCover(doc, { forecast, scenario, scopeLabel, granularity, year, kpi
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(INK);
-    const maxW = PAGE.w - MARGIN.left - MARGIN.right;
+    const maxW = bodyW;
     const wrapped = doc.splitTextToSize(notes.trim(), maxW);
     // Cap so notes can't overflow the cover page; the rest fits on the page now
     // that headline KPIs have been removed.
@@ -197,7 +224,7 @@ function drawStatementPage(doc, { title, subtitle, lines, outputs, scopedOutputs
     body: body.map(r => r.cells),
     theme: 'plain',
     styles: {
-      font: 'helvetica', fontSize: 8, cellPadding: { top: 1.6, right: 3, bottom: 1.6, left: 3 },
+      font: 'helvetica', fontSize: 8, cellPadding: { top: 1.4, right: 3, bottom: 1.4, left: 3 },
       lineColor: BORDER, lineWidth: 0,
     },
     headStyles: {
@@ -218,7 +245,15 @@ function drawStatementPage(doc, { title, subtitle, lines, outputs, scopedOutputs
         }
       }
     },
-    margin: { left: MARGIN.left, right: MARGIN.right },
+    // Continuation pages get the page chrome + a "(continued)" heading
+    // instead of an orphaned bare table.
+    margin: { left: MARGIN.left, right: MARGIN.right, top: 38, bottom: 16 },
+    didDrawPage: (data) => {
+      if (data.pageNumber > 1) {
+        drawHeader(doc, header);
+        drawSectionHeading(doc, `${title} (continued)`, subtitle);
+      }
+    },
   });
 }
 
@@ -233,6 +268,16 @@ function drawStaffPage(doc, { outputs, scopedOutputs, grouped, headers, entityId
   // then average across the periods in the group).
   const staff = buildStaffMatrix(scopedOutputs || outputs, grouped, entityIds);
   const fteByRoleGroup = computeFteByRoleGroup(scopedOutputs || outputs, grouped, entityIds);
+
+  // Empty state — don't print a grid of dashes if there's no staff data
+  // in scope (e.g. stale outputs from before headcount metrics existed).
+  const anyStaff = STAFF_ROWS.some(row =>
+    grouped.some((_, i) => (staff[row.role]?.[i]?.cost || 0) !== 0 || (fteByRoleGroup[row.role]?.[i] || 0) !== 0));
+  if (!anyStaff) {
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(MUTED);
+    doc.text('No staff cost data in scope for this scenario — recompute the forecast to populate this page.', MARGIN.left, 44);
+    return;
+  }
 
   // Multi-row header. Right-align both rows so they line up with the
   // numeric body cells underneath.
@@ -368,6 +413,15 @@ function drawPremisesPage(doc, { outputs, scopedOutputs, grouped, headers, entit
   );
 
   const totalAcrossRows = (rs, gi) => rs.reduce((s, r) => s + r.values[gi], 0);
+
+  // Empty state — skip the dash-grid when nothing is in scope.
+  const anyPremises = grouped.some((_, gi) =>
+    totalAcrossRows(ongoingRows, gi) !== 0 || totalAcrossRows(preOpenRows, gi) !== 0);
+  if (!anyPremises) {
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(MUTED);
+    doc.text('No premises or overhead cost data in scope for this scenario — recompute the forecast to populate this page.', MARGIN.left, 44);
+    return;
+  }
 
   const body = [];
   const sectionRow = (label) => [{
@@ -540,6 +594,252 @@ function drawIncomePage(doc, { incomeRows, year, header }) {
     },
     margin: { left: MARGIN.left, right: MARGIN.right },
   });
+
+  // Revenue mix by age band — private vs LA funded, stacked.
+  const mixRows = incomeRows
+    .filter(r => (r.revenuePrivate || 0) + (r.revenueLA || 0) > 0)
+    .map(r => ({ label: r.label, parts: [r.revenuePrivate || 0, r.revenueLA || 0] }));
+  if (mixRows.length > 0) {
+    drawStackedBars(doc, {
+      x: MARGIN.left, y: doc.lastAutoTable.finalY + 8,
+      w: (PAGE.w - MARGIN.left - MARGIN.right) * 0.62,
+      h: 10 + mixRows.length * 9,
+      title: `Revenue mix by age band — Y${year}`,
+      rows: mixRows,
+      series: [
+        { label: 'Private fees', color: SERIES[0] },
+        { label: 'LA funded', color: SERIES[1] },
+      ],
+    });
+  }
+}
+
+// ── Executive summary — the story ─────────────────────────────
+//
+// The page a lender or investor reads first: four headline tiles, two
+// charts (income build-up, cash position) and an auto-written narrative
+// derived from the numbers — steady state, break-even, cash trough,
+// funding need, end state.
+
+function computeStory({ src, periods, openingPeriod, entities, entityIds }) {
+  const n = periods.length;
+  const revenue = new Array(n).fill(0);
+  const costs = new Array(n).fill(0);
+  const ebitda = new Array(n).fill(0);
+  const cash = new Array(n).fill(null);
+  let openingCash = null;
+  for (const r of src) {
+    const t = r.period;
+    if (t == null || t < 0 || t >= n) continue;
+    switch (r.nominal_type) {
+      case 'pnl.revenue_total': revenue[t] += r.amount_p; break;
+      case 'pnl.cost_total':    costs[t]   += -r.amount_p; break;
+      case 'pnl.ebitda':        ebitda[t]  += r.amount_p; break;
+      case 'bs.cash':           cash[t]     = r.amount_p; break;
+      case 'cf.opening_cash':   if (t === 0) openingCash = r.amount_p; break;
+    }
+  }
+
+  // Capacity-weighted group occupancy from the engine's persisted rows.
+  const occIdx = buildOccupancyIndex(src);
+  const inScope = entities.filter(e => !entityIds || entityIds.has(e.id));
+  const occ = new Array(n).fill(null);
+  for (let t = 0; t < n; t++) {
+    let wsum = 0, w = 0;
+    for (const e of inScope) {
+      const caps = e.config?.capacity_by_age_band || {};
+      for (const band of Object.keys(caps)) {
+        const c = caps[band] || 0;
+        if (!c) continue;
+        const o = occIdx.get(occKey(e.id, band, t));
+        if (o == null) continue;
+        wsum += c * o; w += c;
+      }
+    }
+    if (w > 0) occ[t] = wsum / w;
+  }
+
+  // Steady state: first month within half a point of the occupancy peak.
+  let steadyMonth = null;
+  const occMax = Math.max(...occ.map(v => v ?? -1));
+  if (occMax > 0) steadyMonth = occ.findIndex(v => v != null && v >= occMax - 0.5);
+
+  // EBITDA-positive: first month positive and staying positive next 2.
+  let ebitdaPosMonth = null;
+  for (let t = 0; t < n; t++) {
+    if (ebitda[t] > 0 && (t + 1 >= n || ebitda[t + 1] > 0) && (t + 2 >= n || ebitda[t + 2] > 0)) { ebitdaPosMonth = t; break; }
+  }
+
+  let cashMin = Infinity, cashMinIdx = null, cashEnd = null;
+  for (let t = 0; t < n; t++) {
+    if (cash[t] == null) continue;
+    if (cash[t] < cashMin) { cashMin = cash[t]; cashMinIdx = t; }
+    cashEnd = cash[t];
+  }
+  if (!isFinite(cashMin)) { cashMin = null; }
+
+  // One-off investment in the first 12 months (capex + pre-opening).
+  let oneOff12 = 0;
+  for (const r of src) {
+    if (r.period == null || r.period >= Math.min(12, n)) continue;
+    if (r.nominal_type === 'capex') oneOff12 += r.amount_p;
+    else if ((r.module_key === 'pre_opening' || /^Pre-opening/i.test(r.line_label || '')) &&
+             (r.nominal_type === 'overhead' || r.nominal_type === 'staff_cost')) oneOff12 += r.amount_p;
+  }
+
+  const lastNT = (nt) => {
+    let bestT = -1, bestV = null;
+    for (const r of src) if (r.nominal_type === nt && r.period > bestT) { bestT = r.period; bestV = r.amount_p; }
+    return bestV;
+  };
+
+  return {
+    revenue, costs, ebitda, cash, occ,
+    openingCash, steadyMonth, ebitdaPosMonth,
+    cashMin, cashMinIdx, cashEnd, oneOff12,
+    headcountEnd: lastNT('metric.headcount_total'),
+    locationsEnd: lastNT('metric.locations_active'),
+  };
+}
+
+function drawExecutiveSummary(doc, { outputs, scopedOutputs, periods, openingPeriod, entities, entityIds, header }) {
+  drawHeader(doc, header);
+  drawSectionHeading(doc, 'Executive summary', 'The plan at a glance — build-up, profitability and cash');
+
+  const src = scopedOutputs || outputs;
+  const story = computeStory({ src, periods, openingPeriod, entities, entityIds });
+  const n = periods.length;
+  const mLabel = (t) => monthLabel(t, openingPeriod);
+
+  // ── KPI tiles ────────────────────────────────────────────────
+  const steady = story.steadyMonth;
+  const steadyRevenueYr = steady != null ? story.revenue[Math.min(steady, n - 1)] * 12 : null;
+  let steadyMarginPct = null;
+  if (steady != null) {
+    let r12 = 0, e12 = 0;
+    for (let t = steady; t < Math.min(steady + 12, n); t++) { r12 += story.revenue[t]; e12 += story.ebitda[t]; }
+    if (r12 > 0) steadyMarginPct = (e12 / r12) * 100;
+  }
+  const kpis = [
+    { label: 'Steady-state revenue', value: steadyRevenueYr != null ? fmtMoney(steadyRevenueYr) + '/yr' : '—',
+      hint: steady != null ? `run-rate from ${mLabel(steady)}` : null },
+    { label: 'EBITDA margin at steady state', value: steadyMarginPct != null ? steadyMarginPct.toFixed(1) + '%' : '—',
+      hint: story.ebitdaPosMonth != null ? `profitable from ${mLabel(story.ebitdaPosMonth)}` : null },
+    { label: 'Lowest cash point', value: story.cashMin != null ? fmtMoney(story.cashMin) : '—',
+      hint: story.cashMinIdx != null ? `in ${mLabel(story.cashMinIdx)}` : null },
+    { label: `Cash at end of plan`, value: story.cashEnd != null ? fmtMoney(story.cashEnd) : '—',
+      hint: `${mLabel(n - 1)} · ${Math.round(n / 12)}-year horizon` },
+  ];
+  const stripY = 38;
+  const colW = (PAGE.w - MARGIN.left - MARGIN.right) / kpis.length;
+  kpis.forEach((k, i) => {
+    const x = MARGIN.left + i * colW;
+    doc.setDrawColor(BORDER); doc.setLineWidth(0.3);
+    doc.rect(x + 1, stripY, colW - 2, 22);
+    doc.setFillColor(ACCENT);
+    doc.rect(x + 1, stripY, 1.1, 22, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); doc.setTextColor(MUTED);
+    doc.text(k.label.toUpperCase(), x + 5, stripY + 5.5);
+    doc.setFont('times', 'normal'); doc.setFontSize(15); doc.setTextColor(INK);
+    doc.text(k.value, x + 5, stripY + 14);
+    if (k.hint) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(MUTED);
+      doc.text(k.hint, x + 5, stripY + 19);
+    }
+  });
+
+  // ── Charts ───────────────────────────────────────────────────
+  const chartY = stripY + 28;
+  const chartH = 62;
+  const chartW = (PAGE.w - MARGIN.left - MARGIN.right - 8) / 2;
+  const xLabelAt = (i) => (i % 12 === 0 || i === n - 1) ? mLabel(i) : null;
+
+  const annotations1 = [];
+  if (steady != null && steady > 0 && steady < n - 1) {
+    annotations1.push({ series: 0, index: steady, text: `steady state · ${mLabel(steady)}` });
+  }
+  drawLineChart(doc, {
+    x: MARGIN.left, y: chartY, w: chartW, h: chartH,
+    title: 'Income build-up — monthly revenue vs operating costs',
+    series: [
+      { label: 'Revenue', color: SERIES[0], values: story.revenue },
+      { label: 'Operating costs', color: SERIES[1], values: story.costs },
+    ],
+    xLabelAt, fillFirst: true, annotations: annotations1,
+  });
+
+  const annotations2 = [];
+  if (story.cashMinIdx != null && story.cashMin != null) {
+    annotations2.push({ series: 0, index: story.cashMinIdx, text: `low point ${fmtMoney(story.cashMin)}`, below: story.cashMin >= 0 ? false : true });
+  }
+  drawLineChart(doc, {
+    x: MARGIN.left + chartW + 8, y: chartY, w: chartW, h: chartH,
+    title: 'Cash position — closing balance by month',
+    series: [{ label: 'Closing cash', color: SERIES[2], values: story.cash.map(v => v ?? 0) }],
+    xLabelAt, fillFirst: true, annotations: annotations2,
+  });
+
+  // ── The story — auto-written narrative ───────────────────────
+  const storyY = chartY + chartH + 8;
+  doc.setDrawColor(INK); doc.setLineWidth(0.4);
+  doc.line(MARGIN.left, storyY, PAGE.w - MARGIN.right, storyY);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(MUTED);
+  doc.text('THE STORY IN THE NUMBERS', MARGIN.left, storyY + 6);
+
+  const bullets = [];
+  if (story.occ[0] != null && steady != null) {
+    bullets.push({
+      title: 'Build-up',
+      text: `The group opens at ${story.occ[0].toFixed(0)}% average occupancy and reaches its steady ${(Math.max(...story.occ.map(v => v ?? 0))).toFixed(0)}% by ${mLabel(steady)}.`,
+    });
+  }
+  if (steady != null) {
+    bullets.push({
+      title: 'Income',
+      text: `Monthly income builds from ${fmtMoney(story.revenue[0])} at opening to ${fmtMoney(story.revenue[Math.min(steady, n - 1)])} a month at steady state — ${fmtMoney(steadyRevenueYr)} a year.`,
+    });
+  }
+  if (story.ebitdaPosMonth != null) {
+    bullets.push({
+      title: 'Profitability',
+      text: `The plan is EBITDA-positive from ${mLabel(story.ebitdaPosMonth)} (month ${story.ebitdaPosMonth + 1})${steadyMarginPct != null ? ` and margins settle at ~${steadyMarginPct.toFixed(0)}%` : ''}.`,
+    });
+  }
+  if (story.cashMin != null) {
+    bullets.push({
+      title: 'Cash & funding',
+      text: story.cashMin < 0
+        ? `Cash bottoms out at ${fmtMoney(story.cashMin)} in ${mLabel(story.cashMinIdx)} — the plan needs ${fmtMoney(-story.cashMin)} of funding beyond opening cash.`
+        : `Cash never goes below ${fmtMoney(story.cashMin)} (${mLabel(story.cashMinIdx)}) — the plan self-funds from opening cash.`,
+    });
+  }
+  if (story.oneOff12 > 0) {
+    bullets.push({
+      title: 'Investment',
+      text: `One-off setup spend of ${fmtMoney(story.oneOff12)} in the first 12 months (fit-out, equipment and pre-opening costs).`,
+    });
+  }
+  if (story.cashEnd != null) {
+    const endBits = [`${fmtMoney(story.cashEnd)} cash`];
+    if (story.headcountEnd) endBits.push(`${Math.round(story.headcountEnd)} staff`);
+    if (story.locationsEnd) endBits.push(`${Math.round(story.locationsEnd)} site${story.locationsEnd === 1 ? '' : 's'}`);
+    bullets.push({
+      title: 'End state',
+      text: `By ${mLabel(n - 1)} the group holds ${endBits.join(', ')}.`,
+    });
+  }
+
+  const cols = 3;
+  const cellW = (PAGE.w - MARGIN.left - MARGIN.right - (cols - 1) * 8) / cols;
+  bullets.slice(0, 6).forEach((b, i) => {
+    const cx = MARGIN.left + (i % cols) * (cellW + 8);
+    const cy = storyY + 12 + Math.floor(i / cols) * 20;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); doc.setTextColor(ACCENT);
+    doc.text(b.title.toUpperCase(), cx, cy);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(INK);
+    const wrapped = doc.splitTextToSize(b.text, cellW);
+    doc.text(wrapped.slice(0, 4), cx, cy + 4);
+  });
 }
 
 // ── Executive dashboard page ──────────────────────────────────
@@ -587,7 +887,11 @@ function drawExecutiveDashboard(doc, { outputs, scopedOutputs, periods, openingP
     { label: `Revenue Y${year}`, value: fmtMoney(revY) },
     { label: `EBITDA Y${year}`, value: fmtMoney(ebitdaY), hint: ebitdaPct != null ? ebitdaPct.toFixed(1) + '% margin' : null },
     { label: 'Closing cash', value: fmtMoney(closingCash) },
-    { label: 'End-state', value: `${headcountEnd ?? 0} staff · ${locationsEnd ?? 0} sites` },
+    // End-state only when the engine emitted the metrics (stale outputs
+    // from an old recompute won't have them — show horizon instead).
+    (headcountEnd != null || locationsEnd != null)
+      ? { label: 'End-state', value: `${Math.round(headcountEnd ?? 0)} staff · ${Math.round(locationsEnd ?? 0)} site${(locationsEnd ?? 0) === 1 ? '' : 's'}` }
+      : { label: 'Horizon', value: `${horizonYears} years` },
   ];
 
   const stripY = 40;
@@ -642,7 +946,7 @@ function drawExecutiveDashboard(doc, { outputs, scopedOutputs, periods, openingP
   autoTable(doc, {
     startY: stripY + 32,
     head: [headRow], body, theme: 'plain',
-    styles: { font: 'helvetica', fontSize: 8.5, cellPadding: { top: 2.2, right: 3, bottom: 2.2, left: 3 }, lineColor: BORDER, lineWidth: 0 },
+    styles: { font: 'helvetica', fontSize: 8, cellPadding: { top: 1.8, right: 3, bottom: 1.8, left: 3 }, lineColor: BORDER, lineWidth: 0 },
     headStyles: { fontStyle: 'bold', fontSize: 7.5, textColor: MUTED, fillColor: SOFT, lineWidth: { bottom: 0.4 }, lineColor: INK },
     columnStyles: { 0: { cellWidth: 60, halign: 'left' } },
     didParseCell: (data) => {
@@ -653,6 +957,21 @@ function drawExecutiveDashboard(doc, { outputs, scopedOutputs, periods, openingP
     },
     margin: { left: MARGIN.left, right: MARGIN.right },
   });
+
+  // Annual revenue vs EBITDA columns — only when there's real room left.
+  const chartTop = doc.lastAutoTable.finalY + 6;
+  const chartH = PAGE.h - 16 - chartTop;
+  if (chartH >= 26) {
+    drawColumnChart(doc, {
+      x: MARGIN.left, y: chartTop, w: PAGE.w - MARGIN.left - MARGIN.right, h: Math.min(chartH, 46),
+      title: 'Revenue vs EBITDA by year',
+      groups: yearGroups.map(g => g.label),
+      series: [
+        { label: 'Revenue', color: SERIES[0], values: yearGroups.map(g => sumNT('pnl.revenue_total', g.periods)) },
+        { label: 'EBITDA',  color: SERIES[1], values: yearGroups.map(g => sumNT('pnl.ebitda', g.periods)) },
+      ],
+    });
+  }
 }
 
 // ── Road to Market — 12-month investment cashflow ───────────────
@@ -998,7 +1317,7 @@ function drawCapacitiesPage(doc, { entities, entityIds, outputs, scopedOutputs, 
   });
 
   // Note on Care Inspectorate benchmarks
-  const noteY = doc.lastAutoTable.finalY + 5;
+  let noteY = doc.lastAutoTable.finalY + 5;
   doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(MUTED);
   doc.text(
     'Required sq ft uses Care Inspectorate (Scotland) minimums: 0-2 = 3.7 m²/child · 2-3 = 2.8 m² · 3-5 = 2.3 m² · After-school = 1.86 m².',
@@ -1032,6 +1351,38 @@ function drawCapacitiesPage(doc, { entities, entityIds, outputs, scopedOutputs, 
       period,
     );
   };
+
+  // ── Occupancy ramp chart — per site (≤3) or group total ─────
+  // Capacity-weighted occupancy per month, straight from the engine.
+  const weightedOcc = (ents, t) => {
+    let wsum = 0, w = 0;
+    for (const e of ents) {
+      const caps = e.config?.capacity_by_age_band || {};
+      for (const b of BANDS) {
+        const c = caps[b.key] || 0;
+        if (!c) continue;
+        wsum += c * occupancyForEntity(e, b.key, t);
+        w += c;
+      }
+    }
+    return w > 0 ? wsum / w : null;
+  };
+  const chartSeries = (inScope.length > 0 && inScope.length <= 3)
+    ? inScope.map((e, i) => ({
+        label: e.label || e.key, color: SERIES[i],
+        values: periods.map(t => weightedOcc([e], t) ?? 0),
+      }))
+    : [{ label: 'Group', color: SERIES[0], values: periods.map(t => weightedOcc(inScope, t) ?? 0) }];
+  const chartTop = noteY + 4;
+  const chartHeight = 48;
+  drawLineChart(doc, {
+    x: MARGIN.left, y: chartTop, w: PAGE.w - MARGIN.left - MARGIN.right, h: chartHeight,
+    title: 'Occupancy ramp — capacity-weighted, by month',
+    series: chartSeries,
+    xLabelAt: (i) => (i % 12 === 0 || i === periods.length - 1) ? monthLabel(i, header?.forecast?.opening_period) : null,
+    yFormat: (v) => `${Math.round(v)}%`,
+  });
+  noteY = chartTop + chartHeight;
 
   const rampHeadRow = [
     { content: 'Location', styles: { halign: 'left' } },
@@ -1177,7 +1528,7 @@ export function buildPdfPack({
   granularity = 'annual',
   year = 3,
   scopeLabel = 'all',
-  selectedPages = ['cover', 'exec_dashboard', 'road_to_market', 'pnl', 'bs', 'cf', 'income', 'staff', 'premises', 'capacities'],
+  selectedPages = ['cover', 'exec_summary', 'exec_dashboard', 'road_to_market', 'pnl', 'bs', 'cf', 'income', 'staff', 'premises', 'capacities'],
   headlineKpis = [],
   incomeContext = null,    // { weeklyRate, laRate, eligiblePct, takeupPct, hoursPerWeek, openingPct, targetPct, phaseMonths, weeksPerYear }
   notes = '',
@@ -1194,10 +1545,27 @@ export function buildPdfPack({
 
   // Cover
   if (selectedPages.includes('cover')) {
+    const PAGE_TITLES = {
+      exec_summary: 'Executive summary', exec_dashboard: 'Executive dashboard',
+      road_to_market: 'Road to market', pnl: 'Profit & loss', bs: 'Balance sheet',
+      cf: 'Cashflow', income: 'Income analysis', staff: 'Staff detail',
+      premises: 'Premises & overheads', capacities: 'Capacities',
+    };
+    const contents = Object.keys(PAGE_TITLES)
+      .filter(k => selectedPages.includes(k) && (k !== 'income' || incomeContext))
+      .map(k => PAGE_TITLES[k]);
     startPage();
     drawCover(doc, {
       forecast, scenario, scopeLabel, granularity, year,
-      kpis: headlineKpis, notes, preparedFor, preparedBy,
+      kpis: headlineKpis, notes, preparedFor, preparedBy, contents,
+    });
+  }
+
+  // Executive summary — story + charts
+  if (selectedPages.includes('exec_summary')) {
+    startPage();
+    drawExecutiveSummary(doc, {
+      outputs, scopedOutputs, periods, openingPeriod, entities, entityIds, header: headerCtx,
     });
   }
 
@@ -1237,6 +1605,7 @@ export function buildPdfPack({
     startPage();
     const incomeRows = buildIncomeMatrix({
       outputs: scopedOutputs || outputs,
+      occupancySource: outputs,   // per-entity occupancy rows live on the raw outputs
       year, entities, entityIds, ...incomeContext,
     });
     drawIncomePage(doc, { incomeRows, year, header: headerCtx });

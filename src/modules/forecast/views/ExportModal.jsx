@@ -12,6 +12,7 @@ import { AGE_BANDS_LIST } from '../lib/modules/locations';
 
 const PDF_PAGES = [
   { key: 'cover',           label: 'Cover (title + notes)',           yearAware: false },
+  { key: 'exec_summary',    label: 'Executive summary (story + charts)', yearAware: false },
   { key: 'exec_dashboard',  label: 'Executive dashboard',             yearAware: true  },
   { key: 'road_to_market',  label: 'Road to market (12-mo cashflow)', yearAware: false },
   { key: 'pnl',             label: 'Profit & loss',                   yearAware: false },
@@ -44,7 +45,7 @@ export default function ExportModal({
   const [selectedSheets, setSelectedSheets] = useState(XL_SHEETS.map(s => s.key));
   const [notes, setNotes] = useState('');
   const [preparedFor, setPreparedFor] = useState(forecast?.client_name || '');
-  const [preparedBy, setPreparedBy] = useState('');
+  const [preparedBy, setPreparedBy] = useState('Almond Valley Accounting');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 

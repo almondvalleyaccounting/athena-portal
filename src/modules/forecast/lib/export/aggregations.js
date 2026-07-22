@@ -2,6 +2,8 @@
 // The view layer has its own aggregation logic; we re-derive here so the
 // exports don't depend on React-rendered DOM.
 
+import { buildOccupancyIndex, occKey, curveForBand, occupancyOnCurve } from '../occupancy.js';
+
 export function groupPeriods(periods, granularity, openingPeriod) {
   const out = [];
   const opening = openingPeriod ? new Date(openingPeriod) : null;
@@ -152,8 +154,9 @@ export const AGE_BAND_LABELS = {
 export function buildIncomeMatrix({
   outputs, year, entities, entityIds,
   weeklyRate, laRate, eligiblePct, takeupPct, hoursPerWeek,
-  openingPct, targetPct, phaseMonths,    // per-band ramp drivers
+  openingPct, targetPct, phaseMonths,    // per-band ramp drivers (curve fallback)
   weeksPerYear,
+  occupancySource = null,   // raw (unscoped) outputs carrying metric.occupancy_pct
 }) {
   const FUNDED_HOURS_PER_YEAR = 1140;
   const startOfYear = (year - 1) * 12;
@@ -173,28 +176,29 @@ export function buildIncomeMatrix({
     for (const b of AGE_BANDS) capacity[b] += Number(cap[b] || 0);
   }
 
-  // Average occupancy% across the year, mirroring the engine ramp curve
-  // exactly so the cascade ties to the engine's emitted revenue.
+  // Average occupancy% across the year — engine-emitted occupancy
+  // (metric.occupancy_pct) so the cascade shows the same numbers the
+  // revenue was computed from; shared-curve fallback for stale outputs.
+  const occIdx = buildOccupancyIndex(occupancySource || outputs);
   const avgOcc = {};
   for (const band of AGE_BANDS) {
-    const start = openingPct?.[band] ?? 40;
-    const target = targetPct?.[band] ?? 85;
-    const phase = Math.max(1, phaseMonths?.[band] ?? 6);
     let sum = 0, n = 0;
     for (const t of yearPeriods) {
       let occThisT = 0, weight = 0;
       for (const e of inScopeEntities) {
-        const opn = e.config?.opening_month_offset ?? 0;
         const cap = e.config?.capacity_by_age_band?.[band] || 0;
         if (cap === 0) continue;
-        if (t < opn) { weight += cap; continue; }
-        const tIn = t - opn;
-        let occ = target;
-        if (tIn === 0) occ = start;
-        else if (tIn < phase) {
-          const frac = tIn / phase;
-          const eased = 1 - Math.pow(1 - frac, 2);
-          occ = start + (target - start) * eased;
+        let occ = occIdx.get(occKey(e.id, band, t));
+        if (occ == null) {
+          occ = occupancyOnCurve(
+            curveForBand(e, band, {
+              opening: openingPct?.[band] ?? undefined,
+              target:  targetPct?.[band] ?? undefined,
+              phase:   phaseMonths?.[band] ?? undefined,
+            }),
+            e.config?.opening_month_offset ?? 0,
+            t,
+          );
         }
         occThisT += cap * occ;
         weight += cap;
