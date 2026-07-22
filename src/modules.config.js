@@ -144,6 +144,15 @@ export const MODULES = [
     ],
   },
   {
+    id: 'bugs',
+    label: 'Bug Reports',
+    route: '/bugs',
+    icon: 'bug',
+    permissions: [],
+    status: 'live',
+    group: 'meta',
+  },
+  {
     id: 'issues',
     label: 'Issues Log',
     route: '/issues',

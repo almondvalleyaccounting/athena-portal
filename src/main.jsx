@@ -34,6 +34,7 @@ import JobReviewModule from './modules/job-review/JobReviewModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
 import BillingPage from './modules/billing/BillingPage';
 import IssuesPage from './modules/issues/IssuesPage';
+import BugReportPage from './modules/bugs/BugReportPage';
 import PlanningModule from './modules/planning/PlanningModule';
 import ForecastModule from './modules/forecast/ForecastModule';
 import PDTrackerModule from './modules/pd-tracker/PDTrackerModule';
@@ -83,8 +84,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route element={<AppShell />}>
           <Route path="/home" element={<HomeScreen />} />
           <Route path="/ideas" element={<IdeasPage />} />
-          {/* Bugs folded into Issues (category Software) — sql/110. */}
-          <Route path="/bugs" element={<Navigate to="/issues" replace />} />
+          {/* Dedicated structured Bug Reports module — sql/157. */}
+          <Route path="/bugs" element={<BugReportPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/client-dashboard" element={<ClientDashboardPage />} />
           <Route path="/portfolio" element={<PortfolioDashboardPage />} />
