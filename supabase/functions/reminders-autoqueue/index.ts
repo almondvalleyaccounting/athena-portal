@@ -90,6 +90,22 @@ function renderEmail(tmpl: { subject: string; body_html: string; body_text: stri
   };
 }
 
+// Nth working day (Mon–Fri, excluding the given holiday dates) of a month,
+// returned as 'YYYY-MM-DD'. Used for the payment-reminder trigger day.
+function nthWorkingDay(year: number, month: number, n: number, holidays: Set<string>): string | null {
+  let count = 0;
+  for (let day = 1; day <= 31; day++) {
+    const d = new Date(Date.UTC(year, month - 1, day));
+    if (d.getUTCMonth() !== month - 1) break; // rolled into next month
+    const dow = d.getUTCDay();
+    if (dow === 0 || dow === 6) continue; // weekend
+    const iso = d.toISOString().slice(0, 10);
+    if (holidays.has(iso)) continue; // bank holiday
+    if (++count === n) return iso;
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "POST required" }, 405);
@@ -109,8 +125,27 @@ Deno.serve(async (req) => {
 
   if (!cfg.enabled) return json({ success: true, skipped: "auto-queue disabled" });
 
-  const month = new Date().getUTCMonth() + 1; // 1..12
-  if (!force && ![1, 7].includes(month)) return json({ success: true, skipped: `not a run month (${month})` });
+  // "Today" in UK local time (Jan = GMT, Jul = BST).
+  const londonToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date());
+  const [ty, tm] = londonToday.split("-").map(Number);
+  if (!force && tm !== 1 && tm !== 7) return json({ success: true, skipped: `not a run month (${tm})` });
+
+  // Opt-in invites are queued throughout the run month (once ever per
+  // client). Payment reminders fire on ONE trigger working day per batch:
+  // 5th working day of January, 1st working day of July — weekends AND
+  // Scottish bank holidays excluded (official gov.uk calendar).
+  const reminderN = tm === 1 ? 5 : tm === 7 ? 1 : 0;
+  let triggerDate: string | null = null;
+  if (reminderN) {
+    try {
+      const hjson = await (await fetch("https://www.gov.uk/bank-holidays.json")).json();
+      const events = (hjson?.scotland?.events || []) as Array<{ date: string }>;
+      triggerDate = nthWorkingDay(ty, tm, reminderN, new Set(events.map((e) => e.date)));
+    } catch (_e) {
+      triggerDate = null; // holidays unavailable → don't risk the wrong day
+    }
+  }
+  const isTriggerDay = !!triggerDate && triggerDate === londonToday;
 
   const commType = (cfg.comm_type as string) || "tax_reminders";
 
@@ -159,7 +194,7 @@ Deno.serve(async (req) => {
 
   const now = new Date().toISOString();
   const toInsert: Record<string, unknown>[] = [];
-  const counts = { promo: 0, reminder: 0, no_utr: 0, skipped_no_email: 0, skipped_optout: 0, skipped_former: 0, skipped_dup: 0, skipped_no_ref: 0 };
+  const counts = { promo: 0, reminder: 0, no_utr: 0, skipped_no_email: 0, skipped_optout: 0, skipped_former: 0, skipped_dup: 0, skipped_no_ref: 0, skipped_not_trigger: 0 };
 
   for (const r of rows) {
     const ent = entById[r.entity_id];
@@ -172,6 +207,9 @@ Deno.serve(async (req) => {
     if (pref === "opted_out") { counts.skipped_optout++; continue; }
 
     if (pref === "opted_in") {
+      // Payment reminder only fires on the trigger working day (one per
+      // batch). force bypasses the date gate for manual/test runs.
+      if (!isTriggerDay && !force) { counts.skipped_not_trigger++; continue; }
       if (remindedThisBatch.has(r.entity_id)) { counts.skipped_dup++; continue; }
       const paymentRef = taxPaymentRef(r.reference_raw as string | null);
       // No UTR → not registered with HMRC yet; use the 'no_utr' variant.
@@ -216,7 +254,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  if (dryRun) return json({ success: true, dry_run: true, batch_id: batch.id, would_queue: toInsert.length, counts });
+  if (dryRun) return json({ success: true, dry_run: true, batch_id: batch.id, trigger_date: triggerDate, is_trigger_day: isTriggerDay, would_queue: toInsert.length, counts });
 
   for (let i = 0; i < toInsert.length; i += 500) {
     const { error } = await service.from("reminder_emails").insert(toInsert.slice(i, i + 500));
@@ -224,5 +262,5 @@ Deno.serve(async (req) => {
   }
   await service.from("reminder_autoqueue_config").update({ last_run_at: now }).eq("id", true);
 
-  return json({ success: true, batch_id: batch.id, queued: toInsert.length, counts });
+  return json({ success: true, batch_id: batch.id, trigger_date: triggerDate, is_trigger_day: isTriggerDay, queued: toInsert.length, counts });
 });
