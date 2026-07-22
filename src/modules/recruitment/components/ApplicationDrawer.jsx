@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Star, Mail, Phone, MapPin, Linkedin, FileText, Send, ExternalLink } from 'lucide-react';
+import { X, Star, Mail, Phone, MapPin, Link2, FileText, Send, ExternalLink } from 'lucide-react';
 import { listNotes, addNote } from '../api';
 import {
   font, input, fieldLabel, btn, backdrop,
@@ -114,7 +114,7 @@ function OverviewTab({ app, c, staffMap, staffList, profileId, onPatch }) {
           {c.email && <ContactRow icon={Mail} href={`mailto:${c.email}`}>{c.email}</ContactRow>}
           {c.phone && <ContactRow icon={Phone} href={`tel:${c.phone}`}>{c.phone}</ContactRow>}
           {c.location && <ContactRow icon={MapPin}>{c.location}</ContactRow>}
-          {c.linkedin_url && <ContactRow icon={Linkedin} href={c.linkedin_url} external>LinkedIn profile</ContactRow>}
+          {c.linkedin_url && <ContactRow icon={Link2} href={c.linkedin_url} external>LinkedIn profile</ContactRow>}
           {c.cv_url && <ContactRow icon={FileText} href={c.cv_url} external>View CV</ContactRow>}
         </div>
       )}
