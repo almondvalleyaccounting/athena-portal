@@ -200,12 +200,30 @@ export async function loadContacts() {
 }
 
 // suffix (last 9 digits) → contact, for SMS/WhatsApp name matching.
+// Google contact books are messy: the same number often sits on several
+// duplicate contacts, and occasionally on a wrongly-merged one belonging
+// to somebody else. Majority vote by (token-sorted) display name decides —
+// six "Bobby Gallacher" copies outvote one bad merge. Ties keep the first
+// seen, so the result is deterministic.
 export function contactsByPhoneSuffix(contacts) {
-  const map = new Map();
+  const nameKey = (c) => (c.display_name || '')
+    .toLowerCase().split(/\s+/).filter(Boolean).sort().join(' ') || c.id;
+  const votes = new Map(); // suffix → Map(nameKey → { contact, n })
   for (const c of contacts) {
     for (const s of c.phone_suffixes || []) {
-      if (!map.has(s)) map.set(s, c);
+      let m = votes.get(s);
+      if (!m) { m = new Map(); votes.set(s, m); }
+      const key = nameKey(c);
+      const cur = m.get(key) || { contact: c, n: 0 };
+      cur.n++;
+      m.set(key, cur);
     }
+  }
+  const map = new Map();
+  for (const [s, m] of votes) {
+    let best = null;
+    for (const v of m.values()) if (!best || v.n > best.n) best = v;
+    if (best) map.set(s, best.contact);
   }
   return map;
 }
