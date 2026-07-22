@@ -218,22 +218,29 @@ async function pullBalances(sb: any, realmId: string) {
 // map exactly onto report lines.
 async function pullAccounts(sb: any, realmId: string) {
   const j = await qboQuery(sb, realmId, "SELECT * FROM Account MAXRESULTS 1000");
-  const accounts: any[] = j?.QueryResponse?.Account || [];
-  const pl = accounts
+  const all: any[] = j?.QueryResponse?.Account || [];
+  const byId: Record<string, any> = {};
+  for (const a of all) byId[String(a.Id)] = a;
+  const pl = all
     .filter((a) => a.Classification === "Revenue" || a.Classification === "Expense")
-    .map((a) => ({
-      id: String(a.Id),
-      acct_num: a.AcctNum || null,
-      name: a.Name || "",
-      fq_name: a.FullyQualifiedName || a.Name || "",
-      type: a.AccountType || null,
-      sub: a.AccountSubType || null,
-      classification: a.Classification || null,
-      active: a.Active !== false,
-    }))
-    .sort((x, y) =>
-      String(x.acct_num || "~").localeCompare(String(y.acct_num || "~")) ||
-      x.name.localeCompare(y.name));
+    .map((a) => {
+      const parentId = a.ParentRef?.value ? String(a.ParentRef.value) : null;
+      const parent = parentId ? byId[parentId] : null;
+      return {
+        id: String(a.Id),
+        acct_num: a.AcctNum || null,
+        name: a.Name || "",
+        fq_name: a.FullyQualifiedName || a.Name || "",
+        type: a.AccountType || null,        // Income / Other Income / Cost of Goods Sold / Expense / Other Expense
+        sub_type: a.AccountSubType || null,
+        classification: a.Classification || null, // Revenue | Expense
+        is_sub: a.SubAccount === true,
+        parent_id: parentId,
+        parent_num: parent?.AcctNum || null, // nominal code of the parent account, for hierarchy ordering
+        parent_name: parent?.Name || null,
+        active: a.Active !== false,
+      };
+    });
   return { accounts: pl };
 }
 

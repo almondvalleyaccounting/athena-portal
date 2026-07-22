@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Loader, Plus, X, TrendingUp, Info } from 'lucide-react';
+import { Loader, Plus, X, TrendingUp, Info, ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import { money, shortDate, OUTFIT, cardStyle, inputStyle } from './dashboardData';
@@ -112,13 +112,16 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
     const underlyingNet = reportedNet == null ? null
       : reportedNet + ownerAddBack + oneoffCost - oneoffIncome;
 
+    const reportedMargin = (reportedRevenue && reportedNet != null)
+      ? (reportedNet / reportedRevenue) * 100 : null;
+
     const ownerIncomeTagged = owner.filter((o) => o.income).reduce((s, o) => s + o.amount, 0);
     const underlyingRevenue = reportedRevenue == null ? null
       : reportedRevenue - ownerIncomeTagged - oneoffIncome;
     const underlyingMargin = (underlyingRevenue && underlyingNet != null)
       ? (underlyingNet / underlyingRevenue) * 100 : null;
 
-    return { owner, ownerAddBack, oo, oneoffCost, oneoffIncome, reportedNet, underlyingNet, underlyingRevenue, underlyingMargin };
+    return { owner, ownerAddBack, oo, oneoffCost, oneoffIncome, reportedNet, reportedMargin, underlyingNet, underlyingRevenue, underlyingMargin };
   }, [plDetail, plRange, ownerRows, oneoffs, accountsById, meta]);
 
   /* Mutations ------------------------------------------------------ */
@@ -173,15 +176,16 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
         </div>;
   }
 
-  const availableAccounts = accounts.filter((a) => !ownerRows.some((o) => o.account_id === a.id));
+  const ownerIdSet = new Set(ownerRows.map((o) => o.account_id));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {/* Headline tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
         <Tile label={`Reported net profit — ${meta?.label || 'period'}`} value={calc.reportedNet} currency={currency} />
+        <Tile label="Reported margin" text={calc.reportedMargin == null ? '—' : `${calc.reportedMargin.toFixed(1)}%`} />
         <Tile label="Underlying profit for the owner" value={calc.underlyingNet} currency={currency} accent />
-        <Tile label="Underlying margin" text={calc.underlyingMargin == null ? '—' : `${calc.underlyingMargin.toFixed(1)}%`} />
+        <Tile label="Underlying margin" text={calc.underlyingMargin == null ? '—' : `${calc.underlyingMargin.toFixed(1)}%`} accent />
       </div>
 
       {/* Waterfall */}
@@ -231,7 +235,7 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
             ))}
           </div>
         )}
-        <AddAccount accounts={availableAccounts} loading={accountsLoading} onAdd={addOwnerAccount} />
+        <AddAccount accounts={accounts} loading={accountsLoading} exclude={ownerIdSet} onAdd={addOwnerAccount} />
       </div>
 
       {/* One-off adjustments config */}
@@ -310,17 +314,16 @@ function SectionHead({ title, hint, busy }) {
   );
 }
 
-function AddAccount({ accounts, loading, onAdd }) {
+function AddAccount({ accounts, loading, exclude, onAdd }) {
   const [sel, setSel] = useState('');
   return (
     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-      <select value={sel} onChange={(e) => setSel(e.target.value)} disabled={loading}
-        style={{ ...inputStyle, flex: '1 1 260px', appearance: 'auto', fontSize: '13px', padding: '8px 10px' }}>
-        <option value="">{loading ? 'Loading nominal codes…' : 'Select a nominal code to add…'}</option>
-        {accounts.map((a) => (
-          <option key={a.id} value={a.id}>{acctLabel(a.acct_num, a.name)} ({a.classification})</option>
-        ))}
-      </select>
+      <div style={{ flex: '1 1 300px', minWidth: '240px' }}>
+        <NominalPicker
+          accounts={accounts} value={sel} onChange={setSel} exclude={exclude}
+          placeholder={loading ? 'Loading nominal codes…' : 'Search a nominal code to add…'}
+        />
+      </div>
       <button
         onClick={() => { if (sel) { onAdd(sel); setSel(''); } }}
         disabled={!sel}
@@ -328,6 +331,104 @@ function AddAccount({ accounts, loading, onAdd }) {
       >
         <Plus size={14} /> Add to Owner costs
       </button>
+    </div>
+  );
+}
+
+/* Searchable, category-grouped nominal-code picker. Options are grouped by P&L
+   category (Income → Other income → Cost of sales → Expense → Other expense),
+   then ordered by parent nominal code (sub-accounts cluster under their parent),
+   then alphabetically. */
+const CAT_ORDER = { 'Income': 1, 'Other Income': 2, 'Cost of Goods Sold': 3, 'Expense': 4, 'Other Expense': 5 };
+const CAT_LABEL = { 'Income': 'Income', 'Other Income': 'Other income', 'Cost of Goods Sold': 'Cost of sales', 'Expense': 'Expense', 'Other Expense': 'Other expense' };
+const catOf = (a) => (CAT_ORDER[a.type] ? a.type : (a.classification === 'Revenue' ? 'Income' : 'Expense'));
+
+function NominalPicker({ accounts, value, onChange, placeholder = 'Search nominal codes…', exclude }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const selected = accounts.find((a) => a.id === value) || null;
+  const ql = q.trim().toLowerCase();
+
+  const groups = (() => {
+    const list = accounts.filter((a) =>
+      !(exclude && exclude.has(a.id)) &&
+      (!ql || `${a.acct_num || ''} ${a.name} ${a.parent_name || ''}`.toLowerCase().includes(ql)));
+    const byCat = {};
+    for (const a of list) (byCat[catOf(a)] ||= []).push(a);
+    const cmp = (x, y) => {
+      const bx = String(x.parent_num || x.acct_num || '~');
+      const by = String(y.parent_num || y.acct_num || '~');
+      if (bx !== by) return bx.localeCompare(by, undefined, { numeric: true });
+      const sx = x.is_sub ? 1 : 0, sy = y.is_sub ? 1 : 0;
+      if (sx !== sy) return sx - sy;
+      return x.name.localeCompare(y.name);
+    };
+    return Object.keys(byCat)
+      .sort((a, b) => (CAT_ORDER[a] || 9) - (CAT_ORDER[b] || 9))
+      .map((c) => ({ cat: c, label: CAT_LABEL[c] || c, items: byCat[c].sort(cmp) }));
+  })();
+
+  const trigger = {
+    ...inputStyle, width: '100%', fontSize: '13px', padding: '8px 10px', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+    color: selected ? '#0f172a' : '#94a3b8', backgroundColor: '#ffffff',
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div style={trigger} onClick={() => setOpen((o) => !o)}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selected ? acctLabel(selected.acct_num, selected.name) : placeholder}
+        </span>
+        <ChevronDown size={14} style={{ color: '#94a3b8', flexShrink: 0 }} />
+      </div>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 50,
+            backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '10px',
+            boxShadow: '0 10px 30px rgba(15,23,42,0.12)', overflow: 'hidden',
+          }}>
+            <div style={{ padding: '8px' }}>
+              <input
+                autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type to search…"
+                style={{ ...inputStyle, width: '100%', fontSize: '13px', padding: '7px 10px' }}
+              />
+            </div>
+            <div style={{ maxHeight: '280px', overflowY: 'auto', paddingBottom: '6px' }}>
+              {groups.length === 0 && (
+                <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', padding: '8px 14px' }}>No matches.</div>
+              )}
+              {groups.map((g) => (
+                <div key={g.cat}>
+                  <div style={{
+                    fontFamily: OUTFIT, fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.04em',
+                    textTransform: 'uppercase', color: '#94a3b8', padding: '8px 14px 4px',
+                    position: 'sticky', top: 0, backgroundColor: '#f8fafc',
+                  }}>{g.label}</div>
+                  {g.items.map((a) => (
+                    <button key={a.id}
+                      onClick={() => { onChange(a.id); setOpen(false); setQ(''); }}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left', border: 'none',
+                        background: a.id === value ? '#f0f9ff' : 'transparent', cursor: 'pointer',
+                        fontFamily: OUTFIT, fontSize: '13px', color: '#334155',
+                        padding: `7px 14px 7px ${a.is_sub ? '28px' : '14px'}`,
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = a.id === value ? '#f0f9ff' : 'transparent'; }}
+                    >
+                      {a.acct_num && <span style={{ color: '#94a3b8', marginRight: '6px' }}>{a.acct_num}</span>}
+                      {a.name}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -370,7 +471,7 @@ function AddOneoff({ accounts, onAdd }) {
   const [amount, setAmount] = useState('');
   const [accountId, setAccountId] = useState('');
   const [note, setNote] = useState('');
-  const canAdd = date && amount && !isNaN(Number(amount));
+  const canAdd = date && amount && !isNaN(Number(amount)) && accountId;
   const inp = { ...inputStyle, fontSize: '13px', padding: '8px 10px' };
   return (
     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -380,10 +481,9 @@ function AddOneoff({ accounts, onAdd }) {
       </select>
       <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...inp, flex: '0 0 150px' }} />
       <input type="number" step="0.01" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...inp, flex: '0 0 120px' }} />
-      <select value={accountId} onChange={(e) => setAccountId(e.target.value)} style={{ ...inp, appearance: 'auto', flex: '1 1 200px' }}>
-        <option value="">Nominal code (optional)…</option>
-        {accounts.map((a) => <option key={a.id} value={a.id}>{acctLabel(a.acct_num, a.name)}</option>)}
-      </select>
+      <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
+        <NominalPicker accounts={accounts} value={accountId} onChange={setAccountId} placeholder="Nominal code (required)…" />
+      </div>
       <input type="text" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, flex: '1 1 160px' }} />
       <button
         onClick={() => { if (canAdd) { onAdd({ kind, entry_date: date, amount, account_id: accountId, note }); setDate(''); setAmount(''); setAccountId(''); setNote(''); } }}
