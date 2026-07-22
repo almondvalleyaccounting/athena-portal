@@ -192,8 +192,11 @@ export function drawLineChart(doc, opts) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6);
     doc.setTextColor(INK);
-    const ty = a.below ? ay + 4 : ay - 2.4;
-    // Keep the label inside the plot horizontally
+    // Keep the label inside the plot — flip above/below if it would land
+    // outside, and clamp horizontally.
+    let ty = a.below ? ay + 4 : ay - 2.4;
+    if (ty > py + ph - 0.5) ty = ay - 2.4;
+    if (ty < py + 2) ty = ay + 4;
     const tw = doc.getTextWidth(a.text);
     const tx = Math.min(Math.max(ax, px + tw / 2 + 1), px + pw - tw / 2 - 1);
     doc.text(a.text, tx, ty, { align: 'center' });

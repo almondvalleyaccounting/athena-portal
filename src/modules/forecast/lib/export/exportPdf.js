@@ -259,15 +259,20 @@ function drawStatementPage(doc, { title, subtitle, lines, outputs, scopedOutputs
 
 // ── Staff detail page ──────────────────────────────────────────
 
-function drawStaffPage(doc, { outputs, scopedOutputs, grouped, headers, entityIds, header }) {
+function drawStaffPage(doc, { outputs, grouped, headers, entityIds, header }) {
   drawHeader(doc, header);
   drawSectionHeading(doc, 'Staff detail', 'FTE and cost by role, per period');
 
   // Replace HC integer with average-FTE decimal across periods in each
   // group. Mirrors StaffCostsView logic (sum HC across roles per period,
   // then average across the periods in the group).
-  const staff = buildStaffMatrix(scopedOutputs || outputs, grouped, entityIds);
-  const fteByRoleGroup = computeFteByRoleGroup(scopedOutputs || outputs, grouped, entityIds);
+  //
+  // ALWAYS reads the raw outputs: the tagged per-entity staff_cost rows
+  // this page needs don't exist in the scoped aggregate (it only carries
+  // summary statement lines) — the location filter is applied here via
+  // entityIds instead.
+  const staff = buildStaffMatrix(outputs, grouped, entityIds);
+  const fteByRoleGroup = computeFteByRoleGroup(outputs, grouped, entityIds);
 
   // Empty state — don't print a grid of dashes if there's no staff data
   // in scope (e.g. stale outputs from before headcount metrics existed).
@@ -377,13 +382,15 @@ function fmtFte(n) {
 
 // ── Premises detail page ───────────────────────────────────────
 
-function drawPremisesPage(doc, { outputs, scopedOutputs, grouped, headers, entityIds, header }) {
+function drawPremisesPage(doc, { outputs, grouped, headers, entityIds, header }) {
   drawHeader(doc, header);
   drawSectionHeading(doc, 'Premises & overheads detail', 'Cost lines by category, per period');
 
   // Split rows into ongoing (recurring overheads + capex + depreciation)
   // vs pre-opening so each block is grouped under its own banner.
-  const src = scopedOutputs || outputs;
+  // Raw outputs only — the scoped aggregate has no per-line labels; the
+  // location filter is applied via entityIds.
+  const src = outputs;
   const allRows = buildPremisesMatrix(src, grouped, entityIds);
 
   const inScope = (r) => !entityIds || r.entity_id == null || entityIds.has(r.entity_id);
@@ -621,7 +628,7 @@ function drawIncomePage(doc, { incomeRows, year, header }) {
 // derived from the numbers — steady state, break-even, cash trough,
 // funding need, end state.
 
-function computeStory({ src, periods, openingPeriod, entities, entityIds }) {
+function computeStory({ src, rawOutputs, periods, openingPeriod, entities, entityIds }) {
   const n = periods.length;
   const revenue = new Array(n).fill(0);
   const costs = new Array(n).fill(0);
@@ -640,8 +647,9 @@ function computeStory({ src, periods, openingPeriod, entities, entityIds }) {
     }
   }
 
-  // Capacity-weighted group occupancy from the engine's persisted rows.
-  const occIdx = buildOccupancyIndex(src);
+  // Capacity-weighted group occupancy from the engine's persisted rows —
+  // per-entity rows only exist on the RAW outputs, not the scoped aggregate.
+  const occIdx = buildOccupancyIndex(rawOutputs || src);
   const inScope = entities.filter(e => !entityIds || entityIds.has(e.id));
   const occ = new Array(n).fill(null);
   for (let t = 0; t < n; t++) {
@@ -678,18 +686,24 @@ function computeStory({ src, periods, openingPeriod, entities, entityIds }) {
   }
   if (!isFinite(cashMin)) { cashMin = null; }
 
-  // One-off investment in the first 12 months (capex + pre-opening).
+  // One-off investment in the first 12 months (capex + pre-opening) —
+  // line-level rows live on the RAW outputs; scope via entityIds.
+  const rowInScope = (r) => !entityIds || r.entity_id == null || entityIds.has(r.entity_id);
   let oneOff12 = 0;
-  for (const r of src) {
+  for (const r of (rawOutputs || src)) {
     if (r.period == null || r.period >= Math.min(12, n)) continue;
+    if (!rowInScope(r)) continue;
     if (r.nominal_type === 'capex') oneOff12 += r.amount_p;
     else if ((r.module_key === 'pre_opening' || /^Pre-opening/i.test(r.line_label || '')) &&
              (r.nominal_type === 'overhead' || r.nominal_type === 'staff_cost')) oneOff12 += r.amount_p;
   }
 
+  // Headcount / site metrics are group-level — only meaningful (and only
+  // read) when the export isn't filtered to a subset of locations.
   const lastNT = (nt) => {
+    if (entityIds) return null;
     let bestT = -1, bestV = null;
-    for (const r of src) if (r.nominal_type === nt && r.period > bestT) { bestT = r.period; bestV = r.amount_p; }
+    for (const r of (rawOutputs || src)) if (r.nominal_type === nt && r.period > bestT) { bestT = r.period; bestV = r.amount_p; }
     return bestV;
   };
 
@@ -707,7 +721,7 @@ function drawExecutiveSummary(doc, { outputs, scopedOutputs, periods, openingPer
   drawSectionHeading(doc, 'Executive summary', 'The plan at a glance — build-up, profitability and cash');
 
   const src = scopedOutputs || outputs;
-  const story = computeStory({ src, periods, openingPeriod, entities, entityIds });
+  const story = computeStory({ src, rawOutputs: outputs, periods, openingPeriod, entities, entityIds });
   const n = periods.length;
   const mLabel = (t) => monthLabel(t, openingPeriod);
 
@@ -979,7 +993,7 @@ function drawExecutiveDashboard(doc, { outputs, scopedOutputs, periods, openingP
 // A signed-off "what does it cost to get this open" cashflow with
 // running cash. Monthly columns for the first 12 periods.
 
-function drawRoadToMarket(doc, { outputs, scopedOutputs, periods, openingPeriod, header }) {
+function drawRoadToMarket(doc, { outputs, scopedOutputs, periods, openingPeriod, entityIds, header }) {
   drawHeader(doc, header);
   drawSectionHeading(doc, 'Road to market', 'Executive investment summary — cash flow, first 12 months');
 
@@ -1179,11 +1193,13 @@ function drawRoadToMarket(doc, { outputs, scopedOutputs, periods, openingPeriod,
   // callout strip.
   const itemY = drawY + 34;
   const monthSet = new Set(monthPeriods);
-  const inScopeRow = (r) => true;   // src already filtered upstream
+  // Line-item labels only exist on the RAW outputs — the scoped aggregate
+  // carries summary lines with no labels. Scope by entityIds here.
+  const inScopeRow = (r) => !entityIds || r.entity_id == null || entityIds.has(r.entity_id);
 
   const sumByLabel = (filterFn) => {
     const m = new Map();
-    for (const r of src) {
+    for (const r of outputs) {
       if (!filterFn(r)) continue;
       if (!monthSet.has(r.period)) continue;
       const lbl = r.line_label || '(unlabelled)';
@@ -1581,7 +1597,7 @@ export function buildPdfPack({
   if (selectedPages.includes('road_to_market')) {
     startPage();
     drawRoadToMarket(doc, {
-      outputs, scopedOutputs, periods, openingPeriod, header: headerCtx,
+      outputs, scopedOutputs, periods, openingPeriod, entityIds, header: headerCtx,
     });
   }
 
@@ -1600,11 +1616,12 @@ export function buildPdfPack({
     });
   }
 
-  // Income
+  // Income — tagged per-entity revenue rows only exist on the raw
+  // outputs; buildIncomeMatrix scopes itself via entityIds.
   if (selectedPages.includes('income') && incomeContext) {
     startPage();
     const incomeRows = buildIncomeMatrix({
-      outputs: scopedOutputs || outputs,
+      outputs,
       occupancySource: outputs,   // per-entity occupancy rows live on the raw outputs
       year, entities, entityIds, ...incomeContext,
     });
@@ -1614,13 +1631,13 @@ export function buildPdfPack({
   // Staff
   if (selectedPages.includes('staff')) {
     startPage();
-    drawStaffPage(doc, { outputs, scopedOutputs, grouped, headers, entityIds, header: headerCtx });
+    drawStaffPage(doc, { outputs, grouped, headers, entityIds, header: headerCtx });
   }
 
   // Premises
   if (selectedPages.includes('premises')) {
     startPage();
-    drawPremisesPage(doc, { outputs, scopedOutputs, grouped, headers, entityIds, header: headerCtx });
+    drawPremisesPage(doc, { outputs, grouped, headers, entityIds, header: headerCtx });
   }
 
   // Capacities

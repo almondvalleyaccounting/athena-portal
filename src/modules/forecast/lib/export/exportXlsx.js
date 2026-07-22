@@ -76,8 +76,10 @@ export function buildExcelPack({
   }
 
   // ── Staff detail ───────────────────────────────────────────────
+  // Raw outputs only — the scoped aggregate carries no tagged per-entity
+  // staff_cost rows; the location filter is applied via entityIds.
   if (selectedSheets.includes('staff')) {
-    const staff = buildStaffMatrix(scopedOutputs || outputs, grouped, entityIds);
+    const staff = buildStaffMatrix(outputs, grouped, entityIds);
     const aoa = [];
     aoa.push(['Staff detail', ...periodHeaders.flatMap(h => [h + ' — HC', h + ' — Cost £'])]);
     for (const row of STAFF_ROWS) {
@@ -103,8 +105,9 @@ export function buildExcelPack({
   }
 
   // ── Premises detail ────────────────────────────────────────────
+  // Raw outputs only — same reason as the staff sheet above.
   if (selectedSheets.includes('premises')) {
-    const rows = buildPremisesMatrix(scopedOutputs || outputs, grouped, entityIds);
+    const rows = buildPremisesMatrix(outputs, grouped, entityIds);
     const aoa = [];
     aoa.push(['Premises & overheads detail', ...periodHeaders]);
     for (const r of rows) {
