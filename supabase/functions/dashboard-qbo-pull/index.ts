@@ -471,8 +471,13 @@ async function balanceSheetAsAt(sb: any, realmId: string, asAt: string, withComp
   const end = asAt;
 
   // 1. Single-period report — powers the expandable account detail and the
-  //    headline figures, as at `end`.
-  const resp = await qboFetch(sb, realmId, `reports/BalanceSheet?end_date=${end}&accounting_method=Accrual&minorversion=75`);
+  //    headline figures, as at `end`. NOTE: QBO's BalanceSheet defaults the
+  //    as-of date to TODAY when only end_date is supplied (it returned current
+  //    balances for every historic end_date); supplying a start_date makes it
+  //    honour end_date. A balance sheet is cumulative, so an early start_date
+  //    does not truncate the figures (confirmed against the monthly report).
+  const startAsAt = fmt(new Date(base.getFullYear() - 10, 0, 1));
+  const resp = await qboFetch(sb, realmId, `reports/BalanceSheet?start_date=${startAsAt}&end_date=${end}&accounting_method=Accrual&minorversion=75`);
   if (!resp.ok) throw new Error(`BalanceSheet ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   const report = await resp.json();
   const groups: Record<string, number> = {};
