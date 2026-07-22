@@ -3,13 +3,14 @@ import {
   Archive, ArchiveRestore, BookUser, ChevronDown, ChevronRight,
   Forward as ForwardIcon, Inbox as InboxIcon, Layers, Mail, MailOpen, Paperclip,
   PenSquare, Plus, RefreshCw, Reply as ReplyIcon, ReplyAll as ReplyAllIcon,
-  Search, Send, Tag, Trash2, X,
+  Search, Send, Sparkles, Tag, Trash2, X,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { chipStyle, tones } from '../../../lib/tokens';
 import {
-  connectMailboxUrl, downloadAttachment, effectiveSignature, gmail, listMailboxes,
-  loadContacts, loadSignatures, mailboxNeedsReconnect, parseAddress, saveSignature, syncContacts,
+  buildTagSuggester, connectMailboxUrl, downloadAttachment, effectiveSignature, gmail, listMailboxes,
+  loadContacts, loadSignatures, loadTagRules, mailboxNeedsReconnect, parseAddress, recordTagRule,
+  saveSignature, syncContacts,
 } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -336,6 +337,10 @@ export default function EmailView() {
   const [sigDraft, setSigDraft] = useState('');
   const [sigScope, setSigScope] = useState('*');
   const [syncBusy, setSyncBusy] = useState(false);
+  const [tagRules, setTagRules] = useState([]);
+  const [learnBusy, setLearnBusy] = useState(false);
+  const [sweepBusy, setSweepBusy] = useState(false);
+  const autoLearned = useRef(new Set());
   const [expanded, setExpanded] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('comms_labels_expanded') || '[]')); }
     catch { return new Set(); }
@@ -428,6 +433,100 @@ export default function EmailView() {
 
   useEffect(() => { setThread(null); setComposer(null); loadLabels(); }, [mailbox, loadLabels]);
   useEffect(() => { setThread(null); loadThreads(); }, [loadThreads]);
+
+  // ── Auto-suggested tags ──
+  // Sender→label rules learned from this mailbox's history + every manual
+  // tag. First visit with no rules kicks off a background history scan.
+  const refreshTagRules = useCallback(async () => {
+    if (!mailbox) return [];
+    try {
+      const rules = await loadTagRules(mailbox);
+      setTagRules(rules);
+      return rules;
+    } catch {
+      setTagRules([]);
+      return [];
+    }
+  }, [mailbox]);
+
+  const doLearnTags = useCallback(async (silent = false) => {
+    setLearnBusy(true);
+    try {
+      const res = await gmail.learnLabels(mailbox);
+      const rules = await loadTagRules(mailbox).catch(() => []);
+      setTagRules(rules);
+      flash(`Learned from ${res.labelsScanned} labels — ${res.rules} sender rules.`);
+    } catch (e) {
+      if (!silent) setError(`Learning tags failed: ${e.message}`);
+    } finally {
+      setLearnBusy(false);
+    }
+  }, [mailbox]);
+
+  useEffect(() => {
+    if (!mailbox) return;
+    (async () => {
+      const rules = await refreshTagRules();
+      if (!rules.length && !autoLearned.current.has(mailbox)) {
+        autoLearned.current.add(mailbox);
+        doLearnTags(true);
+      }
+    })();
+  }, [mailbox, refreshTagRules, doLearnTags]);
+
+  const suggestTag = useMemo(() => buildTagSuggester(tagRules), [tagRules]);
+
+  // Suggestion for one inbox thread — only labels that still exist.
+  const suggestionFor = useCallback((t) => {
+    if (labelId !== 'INBOX' || q) return null;
+    const sender = parseAddress(t.counterpartFrom || t.from).email.toLowerCase();
+    if (!sender || sender === mailbox) return null;
+    const s = suggestTag(sender);
+    if (!s) return null;
+    let label = labelById[s.label_id];
+    if (!label || label.type !== 'user') {
+      label = userLabels.find((l) => l.name === s.label_name) || null;
+    }
+    if (!label) return null;
+    return { label, sender };
+  }, [labelId, q, suggestTag, labelById, userLabels, mailbox]);
+
+  const suggested = useMemo(
+    () => threads.map((t) => ({ t, sug: suggestionFor(t) })).filter((x) => x.sug),
+    [threads, suggestionFor],
+  );
+
+  const acceptSuggestion = useCallback(async (t, sug) => {
+    try {
+      await gmail.modifyThread(mailbox, t.id, { addLabelIds: [sug.label.id], removeLabelIds: ['INBOX'] });
+      recordTagRule(mailbox, sug.sender, sug.label);
+      setThreads((prev) => prev.filter((x) => x.id !== t.id));
+      setSelected((prev) => { const n = new Set(prev); n.delete(t.id); return n; });
+      setThread((prev) => (prev?.id === t.id ? null : prev));
+      flash(`Tagged “${sug.label.name}” & archived.`);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [mailbox]);
+
+  const acceptAllSuggestions = useCallback(async () => {
+    setSweepBusy(true);
+    let done = 0;
+    let failed = 0;
+    for (const { t, sug } of suggested) {
+      try {
+        await gmail.modifyThread(mailbox, t.id, { addLabelIds: [sug.label.id], removeLabelIds: ['INBOX'] });
+        recordTagRule(mailbox, sug.sender, sug.label);
+        setThreads((prev) => prev.filter((x) => x.id !== t.id));
+        done++;
+      } catch {
+        failed++;
+      }
+    }
+    setSweepBusy(false);
+    setSelected(new Set());
+    flash(`Cleared ${done} conversation${done === 1 ? '' : 's'} as suggested${failed ? ` (${failed} failed)` : ''}.`);
+  }, [suggested, mailbox]);
 
   // Ensure a label path exists, creating each missing level ("Tax/VAT"
   // creates "Tax" then "Tax/VAT"). Returns the leaf label.
@@ -526,6 +625,10 @@ export default function EmailView() {
     if (!thread) return;
     try {
       await gmail.modifyThread(mailbox, thread.id, { addLabelIds: [label.id] });
+      const sender = thread.messages
+        .map((m) => parseAddress(m.from).email.toLowerCase())
+        .find((e) => e && e !== mailbox);
+      recordTagRule(mailbox, sender, label);
       setThread((prev) => (prev ? {
         ...prev,
         messages: prev.messages.map((m) => ({ ...m, labelIds: [...new Set([...m.labelIds, label.id])] })),
@@ -914,13 +1017,49 @@ export default function EmailView() {
           <button onClick={() => loadThreads()} title="Refresh" style={btnIcon}><RefreshCw size={14} /></button>
         </div>
 
+        {/* Auto-suggested tags: eyeball, then one-click clear */}
+        {labelId === 'INBOX' && !q && (suggested.length > 0 || learnBusy || tagRules.length === 0) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#fefce8', border: '1px solid #fde047', borderRadius: 8, fontSize: 12, flexWrap: 'wrap' }}>
+            <Sparkles size={13} color="#a16207" style={{ flexShrink: 0 }} />
+            {learnBusy ? (
+              <span style={{ color: '#a16207' }}>Learning from this mailbox&apos;s labelled history…</span>
+            ) : suggested.length > 0 ? (
+              <>
+                <span style={{ fontWeight: 700, color: '#854d0e' }}>
+                  {suggested.length} suggested tag{suggested.length === 1 ? '' : 's'}
+                </span>
+                <button disabled={sweepBusy} onClick={acceptAllSuggestions} style={sweepBtn}>
+                  {sweepBusy ? 'Clearing…' : 'Tag + archive all'}
+                </button>
+              </>
+            ) : (
+              <span style={{ color: '#a16207' }}>No tag suggestions yet.</span>
+            )}
+            <button
+              disabled={learnBusy || sweepBusy}
+              onClick={() => doLearnTags(false)}
+              title="Scan this mailbox's labelled threads and refresh the sender→tag rules"
+              style={{ ...sweepBtn, marginLeft: 'auto', background: 'transparent' }}
+            >
+              {tagRules.length === 0 && !learnBusy ? 'Learn from my labels' : 'Re-learn'}
+            </button>
+          </div>
+        )}
+
         {/* Bulk action bar */}
         {selected.size > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 8, fontSize: 12, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 700, color: '#0c4a6e' }}>{selected.size} selected</span>
             <LabelPicker
               labels={userLabels}
-              onPick={(label) => bulkModify({ addLabelIds: [label.id], removeLabelIds: ['INBOX'], verb: `Tagged “${label.name}” & archived` })}
+              onPick={(label) => {
+                for (const id of selected) {
+                  const t = threads.find((x) => x.id === id);
+                  const sender = t ? parseAddress(t.counterpartFrom || t.from).email.toLowerCase() : '';
+                  if (sender && sender !== mailbox) recordTagRule(mailbox, sender, label);
+                }
+                bulkModify({ addLabelIds: [label.id], removeLabelIds: ['INBOX'], verb: `Tagged “${label.name}” & archived` });
+              }}
               onCreate={ensureLabel}
               trigger={<button disabled={bulkBusy} style={bulkBtn}><Tag size={12} /> Tag + archive ▾</button>}
             />
@@ -943,6 +1082,7 @@ export default function EmailView() {
             const from = parseAddress(t.from);
             const isOpen = thread?.id === t.id;
             const userLabelChips = (t.labelIds || []).filter((id) => labelById[id]?.type === 'user').slice(0, 2);
+            const sug = suggestionFor(t);
             return (
               <div
                 key={t.id}
@@ -962,6 +1102,16 @@ export default function EmailView() {
                       {from.name}{t.messageCount > 1 ? ` (${t.messageCount})` : ''}
                     </span>
                     {userLabelChips.map((id) => <span key={id} style={{ ...chipStyle('accent'), flexShrink: 0 }}>{labelById[id].name.split('/').pop()}</span>)}
+                    {sug && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); acceptSuggestion(t, sug); }}
+                        disabled={sweepBusy}
+                        title={`Tag “${sug.label.name}” and archive`}
+                        style={suggChipBtn}
+                      >
+                        <Sparkles size={10} /> {sug.label.name.split('/').pop()}
+                      </button>
+                    )}
                     <span style={{ fontSize: 10.5, color: '#94a3b8', flexShrink: 0 }}>{fmtDate(t.internalDate)}</span>
                   </div>
                   <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1062,6 +1212,19 @@ const bulkBtn = {
   display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', fontSize: 12, fontWeight: 600,
   border: '1px solid #93c5fd', background: '#fff', borderRadius: 6, cursor: 'pointer',
   fontFamily: font, color: '#0c4a6e',
+};
+
+const sweepBtn = {
+  display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', fontSize: 12, fontWeight: 600,
+  border: '1px solid #eab308', background: '#fff', borderRadius: 6, cursor: 'pointer',
+  fontFamily: font, color: '#854d0e',
+};
+
+// One-click "tag as suggested + archive" chip on an inbox row.
+const suggChipBtn = {
+  display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 10.5, fontWeight: 700,
+  color: '#854d0e', background: '#fef9c3', border: '1px dashed #eab308', borderRadius: 999,
+  cursor: 'pointer', fontFamily: font, flexShrink: 0, whiteSpace: 'nowrap',
 };
 
 const railBtn = {

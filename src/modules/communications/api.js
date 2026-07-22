@@ -83,7 +83,86 @@ export const gmail = {
   untrashThread: (mailbox, threadId) => callGmail('untrash_thread', { mailbox, threadId }),
   getAttachment: (mailbox, messageId, attachmentId) =>
     callGmail('get_attachment', { mailbox, messageId, attachmentId }),
+  learnLabels: (mailbox) => callGmail('learn_labels', { mailbox }),
 };
+
+// ── Auto-suggested tags ───────────────────────────────────────────────
+// comms_tag_rules holds learned sender→label stats per mailbox: seeded by
+// comms-gmail's learn_labels scan, reinforced every time a tag is applied
+// here. The inbox suggests a tag per thread for one-click tag+archive.
+
+export async function loadTagRules(mailbox) {
+  const { data, error } = await supabase
+    .from('comms_tag_rules')
+    .select('sender_email, sender_domain, label_id, label_name, times_used, last_used_at')
+    .eq('mailbox_email', mailbox)
+    .limit(20000);
+  if (error) throw error;
+  return data || [];
+}
+
+// Fire-and-forget: suggestions are advisory, a lost write only costs a
+// little learning.
+export function recordTagRule(mailbox, senderEmail, label) {
+  if (!mailbox || !senderEmail || !label?.id) return;
+  supabase.rpc('record_comms_tag', {
+    p_mailbox: mailbox,
+    p_sender: senderEmail,
+    p_label_id: label.id,
+    p_label_name: label.name,
+  }).then(() => {}, () => {});
+}
+
+// Shared consumer domains carry no signal about who the sender is —
+// never suggest at domain level for these.
+const FREEMAIL = new Set([
+  'gmail.com', 'googlemail.com', 'hotmail.com', 'hotmail.co.uk', 'outlook.com',
+  'live.com', 'live.co.uk', 'yahoo.com', 'yahoo.co.uk', 'ymail.com',
+  'icloud.com', 'me.com', 'mac.com', 'aol.com', 'btinternet.com',
+  'btopenworld.com', 'sky.com', 'talktalk.net', 'virginmedia.com', 'msn.com',
+  'mail.com', 'protonmail.com', 'proton.me',
+]);
+
+// rules → suggest(senderEmail) → { label_id, label_name } | null.
+// Exact sender match wins (most-used label, recency tiebreak); otherwise a
+// company-domain match, but only when one label clearly dominates.
+export function buildTagSuggester(rules) {
+  const bySender = new Map();
+  const domainAgg = new Map();
+  for (const r of rules) {
+    const cur = bySender.get(r.sender_email);
+    if (!cur || r.times_used > cur.times_used ||
+        (r.times_used === cur.times_used && (r.last_used_at || '') > (cur.last_used_at || ''))) {
+      bySender.set(r.sender_email, r);
+    }
+    if (r.sender_domain && !FREEMAIL.has(r.sender_domain)) {
+      let m = domainAgg.get(r.sender_domain);
+      if (!m) { m = new Map(); domainAgg.set(r.sender_domain, m); }
+      const d = m.get(r.label_id) || { label_id: r.label_id, label_name: r.label_name, count: 0 };
+      d.count += r.times_used;
+      m.set(r.label_id, d);
+    }
+  }
+  const byDomain = new Map();
+  for (const [domain, m] of domainAgg) {
+    let best = null;
+    let total = 0;
+    for (const d of m.values()) {
+      total += d.count;
+      if (!best || d.count > best.count) best = d;
+    }
+    if (best && best.count >= 3 && best.count / total >= 0.6) byDomain.set(domain, best);
+  }
+  return (senderEmail) => {
+    const email = String(senderEmail || '').toLowerCase();
+    if (!email) return null;
+    const exact = bySender.get(email);
+    if (exact) return { label_id: exact.label_id, label_name: exact.label_name };
+    const dom = byDomain.get(email.split('@')[1] || '');
+    if (dom) return { label_id: dom.label_id, label_name: dom.label_name };
+    return null;
+  };
+}
 
 // ── Google Contacts (synced into comms_contacts) ─────────────────────
 

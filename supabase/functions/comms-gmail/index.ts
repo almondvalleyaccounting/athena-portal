@@ -13,6 +13,9 @@
 //   trash_thread   { threadId }        Gmail bin (recoverable ~30 days)
 //   untrash_thread { threadId }        undo for the above
 //   get_attachment { messageId, attachmentId }
+//   learn_labels   { maxPerLabel? }    scan threads under each user label and
+//                    record sender→label stats into comms_tag_rules (feeds
+//                    the inbox's auto-suggested tags)
 //
 // Deployed with verify_jwt ON; additionally checks the caller is active staff
 // and may use the mailbox: personal mailboxes are owner-only (portal admins
@@ -64,6 +67,13 @@ function base64UrlDecode(data: string): string {
 
 function header(headers: Array<{ name: string; value: string }> | undefined, name: string): string {
   return headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
+}
+
+// "Almond Valley <info@av.co.uk>" → "info@av.co.uk" (lowercased, "" if unparseable).
+function extractEmail(raw: string): string {
+  const m = String(raw || "").match(/<([^>]+)>/);
+  const e = (m ? m[1] : String(raw || "")).trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : "";
 }
 
 // Walks a message payload tree collecting the best text/html and text/plain
@@ -155,7 +165,7 @@ function buildMime(opts: {
 
 // Fetch thread summaries in small batches to stay inside Gmail's per-user
 // rate quota (threads.get costs 10 units, 250 units/sec allowed).
-async function fetchThreadSummaries(accessToken: string, ids: string[]) {
+async function fetchThreadSummaries(accessToken: string, ids: string[], selfEmail = "") {
   const summaries: any[] = [];
   const CHUNK = 10;
   for (let i = 0; i < ids.length; i += CHUNK) {
@@ -171,7 +181,16 @@ async function fetchThreadSummaries(accessToken: string, ids: string[]) {
       const last = msgs[msgs.length - 1];
       const labelIds = new Set<string>();
       for (const m of msgs) for (const l of m.labelIds || []) labelIds.add(l);
+      // Most recent From that isn't the mailbox itself — the conversation
+      // partner even when we replied last (drives tag suggestions).
+      let counterpartFrom = "";
+      for (let j = msgs.length - 1; j >= 0; j--) {
+        const f = header(msgs[j]?.payload?.headers, "From");
+        const e = extractEmail(f);
+        if (e && e !== selfEmail) { counterpartFrom = f; break; }
+      }
       summaries.push({
+        counterpartFrom,
         id: t.id,
         messageCount: msgs.length,
         snippet: last?.snippet || "",
@@ -245,7 +264,7 @@ Deno.serve(async (req) => {
         params.set("maxResults", String(Math.min(Number(body.maxResults) || 25, 50)));
         const list = await gmailFetch(tok.accessToken, `/threads?${params.toString()}`);
         const ids = (list.threads || []).map((t: any) => t.id);
-        const threads = await fetchThreadSummaries(tok.accessToken, ids);
+        const threads = await fetchThreadSummaries(tok.accessToken, ids, tok.accountEmail.toLowerCase());
         return jsonResponse({
           success: true, threads,
           nextPageToken: list.nextPageToken || null,
@@ -307,6 +326,70 @@ Deno.serve(async (req) => {
           `/threads/${body.threadId}/${action === "trash_thread" ? "trash" : "untrash"}`,
           { method: "POST", body: "{}" });
         return jsonResponse({ success: true });
+      }
+
+      // Scan threads already filed under each user label and record their
+      // senders into comms_tag_rules — the inbox uses those stats to suggest
+      // a tag per email. Re-running is safe (merge_comms_tag_rules uses
+      // greatest(), so counts refresh without double-counting).
+      case "learn_labels": {
+        const maxPerLabel = Math.min(Math.max(Number(body.maxPerLabel) || 50, 1), 100);
+        const labelData = await gmailFetch(tok.accessToken, "/labels");
+        const learnable = (labelData.labels || []).filter((l: any) => l.type === "user");
+        const self = tok.accountEmail.toLowerCase();
+        const counts = new Map<string, { sender: string; label_id: string; label_name: string; count: number }>();
+
+        for (const label of learnable) {
+          // Collect up to maxPerLabel thread ids for this label.
+          const ids: string[] = [];
+          let pageToken: string | undefined;
+          while (ids.length < maxPerLabel) {
+            const params = new URLSearchParams({
+              maxResults: String(Math.min(100, maxPerLabel - ids.length)),
+            });
+            params.append("labelIds", label.id);
+            if (pageToken) params.set("pageToken", pageToken);
+            const list = await gmailFetch(tok.accessToken, `/threads?${params.toString()}`);
+            const batch = (list.threads || []).map((t: any) => t.id);
+            ids.push(...batch);
+            pageToken = list.nextPageToken;
+            if (!pageToken || !batch.length) break;
+          }
+          // From headers only, small chunks + a pause to stay inside the
+          // per-user rate quota (threads.get = 10 units, 250 units/sec).
+          for (let i = 0; i < ids.length; i += 10) {
+            const chunk = ids.slice(i, i + 10);
+            const got = await Promise.all(chunk.map((id) =>
+              gmailFetch(tok.accessToken, `/threads/${id}?format=metadata&metadataHeaders=From`)
+                .catch(() => null)
+            ));
+            for (const t of got) {
+              if (!t) continue;
+              const senders = new Set<string>();
+              for (const m of t.messages || []) {
+                const e = extractEmail(header(m.payload?.headers, "From"));
+                if (e && e !== self) senders.add(e);
+              }
+              for (const s of senders) {
+                const key = `${s}|${label.id}`;
+                const cur = counts.get(key) || { sender: s, label_id: label.id, label_name: label.name, count: 0 };
+                cur.count++;
+                counts.set(key, cur);
+              }
+            }
+            await new Promise((r) => setTimeout(r, 120));
+          }
+        }
+
+        const rules = [...counts.values()];
+        if (rules.length) {
+          const { error: mergeErr } = await service.rpc("merge_comms_tag_rules", {
+            p_mailbox: self,
+            p_rules: rules,
+          });
+          if (mergeErr) return jsonResponse({ success: false, error: `Could not store rules: ${mergeErr.message}` }, 500);
+        }
+        return jsonResponse({ success: true, labelsScanned: learnable.length, rules: rules.length });
       }
 
       case "get_attachment": {
