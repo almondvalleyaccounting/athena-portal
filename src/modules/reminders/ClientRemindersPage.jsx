@@ -39,11 +39,11 @@ const btnGhost = {
   borderRadius: 8, cursor: 'pointer',
 };
 const th = {
-  padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#64748b',
+  padding: '8px 8px', fontSize: 11, fontWeight: 600, color: '#64748b',
   textAlign: 'left', textTransform: 'uppercase', letterSpacing: 0.4,
   borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
 };
-const td = { padding: '7px 10px', fontSize: 12.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
+const td = { padding: '7px 8px', fontSize: 12.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
 
 const PREF_META = {
   opted_in: { label: 'Opted in', bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
@@ -771,14 +771,18 @@ export default function ClientRemindersPage() {
                             }}
                           >
                             <option value="">Reminding</option>
-                            <option value="not_client">Exclude — not a client</option>
-                            <option value="client_excluded">Exclude — client (reason)</option>
+                            <option value="not_client">Not a client</option>
+                            <option value="client_excluded">Client — excluded</option>
                           </select>
                         )}
                       </td>
                       <td style={td}>
                         {email ? (
-                          <span style={{ fontSize: 12, color: '#334155' }}>{email}</span>
+                          <span title={email} style={{
+                            display: 'inline-block', maxWidth: 180, overflow: 'hidden',
+                            textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle',
+                            fontSize: 12, color: '#334155',
+                          }}>{email}</span>
                         ) : ent ? (
                           <span style={{
                             padding: '2px 8px', fontSize: 11, fontWeight: 600, borderRadius: 999,
