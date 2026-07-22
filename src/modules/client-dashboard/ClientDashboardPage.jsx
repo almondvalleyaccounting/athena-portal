@@ -16,6 +16,7 @@ import {
   OUTFIT, PLAYFAIR, cardStyle, inputStyle, HEALTH_COLORS,
 } from './dashboardData';
 import { TrendChart } from './DashboardCharts';
+import UnderlyingPerformanceTab from './UnderlyingPerformanceTab';
 
 /*
   Client Dashboard v2 — multi-tab reporting tool over the client's QuickBooks.
@@ -37,12 +38,13 @@ import { TrendChart } from './DashboardCharts';
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'pnl', label: 'P&L' },
+  { id: 'underlying', label: 'Underlying Performance' },
   { id: 'balance', label: 'Balance Sheet' },
   { id: 'debtors', label: 'Debtors' },
   { id: 'creditors', label: 'Creditors' },
   { id: 'health', label: 'Bookkeeping Health' },
 ];
-const PERIOD_TABS = new Set(['overview', 'pnl']);
+const PERIOD_TABS = new Set(['overview', 'pnl', 'underlying']);
 const ASAT_TABS = new Set(['balance', 'debtors', 'creditors']);
 
 /* ─── Page ─────────────────────────────────────────────────────── */
@@ -450,6 +452,12 @@ export default function ClientDashboardPage() {
               )}
               {tab === 'pnl' && (
                 <PnlTab pnlMonthly={periodData?.pl_range} currency={periodCurrency} loading={periodLoading} empty={emptyProps} />
+              )}
+              {tab === 'underlying' && (
+                <UnderlyingPerformanceTab
+                  realmId={realmId} data={periodData} meta={period}
+                  currency={periodCurrency} loading={periodLoading} empty={emptyProps}
+                />
               )}
               {tab === 'balance' && (
                 <BalanceSheetTab balanceSheet={asAtData?.bs_asat} currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />

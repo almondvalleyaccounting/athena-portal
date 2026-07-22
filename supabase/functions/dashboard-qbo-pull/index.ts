@@ -212,6 +212,31 @@ async function pullBalances(sb: any, realmId: string) {
   };
 }
 
+// Chart of accounts, P&L accounts only (Revenue/Expense classification) — the
+// picker for tagging owner-cost / one-off nominal codes on the Underlying
+// Performance tab. Account.Id matches the P&L report row ids, so tagged codes
+// map exactly onto report lines.
+async function pullAccounts(sb: any, realmId: string) {
+  const j = await qboQuery(sb, realmId, "SELECT * FROM Account MAXRESULTS 1000");
+  const accounts: any[] = j?.QueryResponse?.Account || [];
+  const pl = accounts
+    .filter((a) => a.Classification === "Revenue" || a.Classification === "Expense")
+    .map((a) => ({
+      id: String(a.Id),
+      acct_num: a.AcctNum || null,
+      name: a.Name || "",
+      fq_name: a.FullyQualifiedName || a.Name || "",
+      type: a.AccountType || null,
+      sub: a.AccountSubType || null,
+      classification: a.Classification || null,
+      active: a.Active !== false,
+    }))
+    .sort((x, y) =>
+      String(x.acct_num || "~").localeCompare(String(y.acct_num || "~")) ||
+      x.name.localeCompare(y.name));
+  return { accounts: pl };
+}
+
 // Bookkeeping "file health" signals.
 // NOTE on what QBO's API can and can't see:
 //  - Balance-sheet hygiene accounts (Undeposited Funds, Opening Balance Equity,
@@ -710,12 +735,64 @@ async function plReport(sb: any, realmId: string, start: string, end: string, mo
   };
 }
 
+// P&L account-level detail over [start,end] (single column) — per-account totals
+// for the Underlying Performance tab. Returns leaf rows { id, acct_num, name,
+// classification, amount } so tagged owner-cost / one-off nominal codes map by
+// account id (with an acct_num / name fallback).
+async function plAccountDetail(sb: any, realmId: string, start: string, end: string) {
+  const resp = await qboFetch(sb, realmId, `reports/ProfitAndLoss?start_date=${start}&end_date=${end}&accounting_method=Accrual&minorversion=75`);
+  if (!resp.ok) throw new Error(`P&L detail ${start}..${end} ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const report = await resp.json();
+
+  // Track the enclosing top-level group (Income / COGS / Expenses / …) so each
+  // leaf carries whether it is income or a cost.
+  const rowsOut: any[] = [];
+  const walk = (rs: any[], group: string | null) => {
+    for (const r of rs || []) {
+      const g = r.group || group;
+      if (r.ColData && Array.isArray(r.ColData) && r.type !== "Section") {
+        const c0 = r.ColData[0] || {};
+        const name = c0.value || "";
+        const id = c0.id ? String(c0.id) : null;
+        if (name) {
+          const v = parseFloat(r.ColData[r.ColData.length - 1]?.value || "0");
+          rowsOut.push({ id, name, group: g, amount: isNaN(v) ? 0 : v });
+        }
+      }
+      if (r.Rows?.Row) walk(r.Rows.Row, g);
+    }
+  };
+  walk(report?.Rows?.Row || [], null);
+
+  return {
+    period: { start, end },
+    currency: report?.Header?.Currency || null,
+    net_income: (() => {
+      // Net income summary line, if present.
+      let ni: number | null = null;
+      const w = (rs: any[]) => {
+        for (const r of rs || []) {
+          if (r.group === "NetIncome" && r.Summary?.ColData) {
+            const v = parseFloat(r.Summary.ColData[r.Summary.ColData.length - 1]?.value || "0");
+            if (!isNaN(v)) ni = v;
+          }
+          if (r.Rows?.Row) w(r.Rows.Row);
+        }
+      };
+      w(report?.Rows?.Row || []);
+      return ni;
+    })(),
+    rows: rowsOut,
+  };
+}
+
 const METRICS: Record<string, (sb: any, realmId: string) => Promise<any>> = {
   company: pullCompany,
   pl_summary: pullPlSummary,
   pl_fytd: pullPlFytd,
   pl_fytd_prior: pullPlFytdPrior,
   balances: pullBalances,
+  accounts: pullAccounts,
   file_health: pullFileHealth,
   // Dashboard v2
   pnl_monthly: pullPnlMonthly,
@@ -829,6 +906,10 @@ Deno.serve(async (req) => {
         // cache key with the Balance-Sheet-tab as-at pull (same date ⇒ one row).
         await windowMetric(`bs_asat#${p.plEnd}`, null, p.plEnd, "bs_period",
           () => balanceSheetAsAt(sb, realmId, p.plEnd, true));
+        // Account-level P&L detail for the Underlying Performance tab (owner-cost
+        // add-backs matched by account id over the selected range).
+        await windowMetric(`pl_detail#${p.plStart}_${p.plEnd}`, p.plStart, p.plEnd, "pl_detail",
+          () => plAccountDetail(sb, realmId, p.plStart, p.plEnd));
       }
 
       if (win.asat) {
