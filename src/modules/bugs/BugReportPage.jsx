@@ -186,7 +186,9 @@ export default function BugReportPage() {
         {[
           { id: 'report', label: 'Report a bug' },
           { id: 'mine', label: `My reports (${myBugs.length})` },
-          ...(canTriage ? [{ id: 'triage', label: 'Triage board' }] : []),
+          ...(canTriage
+            ? [{ id: 'triage', label: 'Triage board' }]
+            : [{ id: 'all', label: `All bugs (${bugs.length})` }]),
         ].map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)} style={tabBtn(tab === t.id)}>{t.label}</button>
         ))}
@@ -198,6 +200,10 @@ export default function BugReportPage() {
       {tab === 'mine' && (
         <BugList bugs={myBugs} loading={loading} entityMap={entityMap} staffList={staffList}
           canTriage={false} onPatch={patchBug} onDelete={deleteBug} profile={profile} emptyMsg="You haven't reported any bugs yet." />
+      )}
+      {tab === 'all' && (
+        <BugList bugs={bugs} loading={loading} entityMap={entityMap} staffList={staffList}
+          canTriage={false} onPatch={patchBug} onDelete={deleteBug} profile={profile} emptyMsg="No bugs reported yet." />
       )}
       {tab === 'triage' && canTriage && (
         <TriageBoard bugs={bugs} loading={loading} entityMap={entityMap} staffList={staffList}
