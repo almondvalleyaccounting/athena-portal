@@ -104,6 +104,36 @@ export function daysSince(iso) {
   return Math.max(0, Math.floor(ms / 86400000));
 }
 
+// ── Draft an advert from a central role profile ──────────────────────
+// Requirements are drafted from the profile's weighted skill categories,
+// split by target level: 4–5 = essential, 3 = good working knowledge,
+// 1–2 = desirable. Fully editable afterwards.
+export function draftRequirementsFromProfile(categories) {
+  const cats = [...(categories || [])].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+  const essential = cats.filter((c) => (c.target_level ?? 0) >= 4).map((c) => c.category);
+  const working = cats.filter((c) => (c.target_level ?? 0) === 3).map((c) => c.category);
+  const desirable = cats.filter((c) => (c.target_level ?? 0) > 0 && (c.target_level ?? 0) <= 2).map((c) => c.category);
+  const lines = [];
+  const block = (heading, items) => {
+    if (!items.length) return;
+    if (lines.length) lines.push('');
+    lines.push(heading);
+    items.forEach((x) => lines.push(`• ${x}`));
+  };
+  block('Essential — strong knowledge of:', essential);
+  block('Good working knowledge of:', working);
+  block('Desirable:', desirable);
+  return lines.join('\n');
+}
+
+// Draft { description, requirements } from a role profile. Description takes
+// the profile narrative; requirements come from the weighted categories.
+export function draftFromRoleProfile(rp) {
+  if (!rp) return { description: '', requirements: '' };
+  const description = (rp.profile_text || rp.description || '').trim();
+  return { description, requirements: draftRequirementsFromProfile(rp.categories) };
+}
+
 // ── Phase 2–6 constants ──────────────────────────────────────────────
 export const INTERVIEW_KINDS = [
   { key: 'phone', label: 'Phone' },

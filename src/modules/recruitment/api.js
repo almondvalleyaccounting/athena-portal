@@ -17,6 +17,19 @@ export async function listStaff() {
   return data || [];
 }
 
+// ── Role profiles (central CPD profiles → advert drafts) ─────────────
+// Reads the same pd_role_profiles that drive the CPD tracker, with their
+// weighted skill categories, so a vacancy advert can be drafted from one.
+export async function listRoleProfiles() {
+  const { data, error } = await supabase
+    .from('pd_role_profiles')
+    .select('id, name, description, profile_text, active, categories:pd_role_profile_categories(category, target_level, display_order)')
+    .eq('active', true)
+    .order('display_order', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
 // ── Vacancies ────────────────────────────────────────────────────────
 export async function listVacancies() {
   const { data, error } = await supabase

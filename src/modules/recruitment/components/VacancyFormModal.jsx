@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Briefcase } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Briefcase, Sparkles } from 'lucide-react';
+import { listRoleProfiles } from '../api';
 import {
-  backdrop, modal, fieldLabel, input, btn,
+  backdrop, modal, fieldLabel, input, btn, font, draftFromRoleProfile,
   EMPLOYMENT_TYPES, WORK_MODES, SALARY_PERIODS, VACANCY_STATUSES,
 } from '../recruitmentShared';
 
@@ -20,10 +21,33 @@ export default function VacancyFormModal({ initial, staffList, onClose, onSave }
     hiring_manager_id: initial?.hiring_manager_id || '',
     description: initial?.description || '',
     requirements: initial?.requirements || '',
+    role_profile_id: initial?.role_profile_id || '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [roleProfiles, setRoleProfiles] = useState([]);
+  const [drafted, setDrafted] = useState(false);
   const set = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }));
+
+  useEffect(() => {
+    listRoleProfiles().then(setRoleProfiles).catch(() => setRoleProfiles([]));
+  }, []);
+
+  // Draft description + requirements from the selected central role profile.
+  // Warns before overwriting text the user has already entered.
+  function draftFromProfile() {
+    const rp = roleProfiles.find((r) => r.id === f.role_profile_id);
+    if (!rp) return;
+    const { description, requirements } = draftFromRoleProfile(rp);
+    const hasText = (f.description || '').trim() || (f.requirements || '').trim();
+    if (hasText && !window.confirm('Replace the current description and requirements with a draft from this role profile?')) return;
+    setF((prev) => ({
+      ...prev,
+      title: prev.title.trim() ? prev.title : rp.name,
+      description, requirements,
+    }));
+    setDrafted(true);
+  }
 
   async function submit() {
     if (!f.title.trim() || saving) return;
@@ -43,6 +67,7 @@ export default function VacancyFormModal({ initial, staffList, onClose, onSave }
         hiring_manager_id: f.hiring_manager_id || null,
         description: f.description.trim() || null,
         requirements: f.requirements.trim() || null,
+        role_profile_id: f.role_profile_id || null,
       });
     } catch (e) {
       setError(e.message || 'Could not save');
@@ -62,6 +87,28 @@ export default function VacancyFormModal({ initial, staffList, onClose, onSave }
 
         <label style={fieldLabel}>Job title *</label>
         <input value={f.title} onChange={set('title')} style={input} placeholder="Bookkeeper" autoFocus />
+
+        <div style={{ marginTop: 12, padding: '10px 12px', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8 }}>
+          <label style={{ ...fieldLabel, color: '#5b21b6' }}>Draft from a role profile</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={f.role_profile_id} onChange={set('role_profile_id')} style={{ ...input, flex: 1, minWidth: 180 }}>
+              <option value="">Select a role profile…</option>
+              {roleProfiles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+            <button type="button" onClick={draftFromProfile} disabled={!f.role_profile_id}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 12px', fontSize: 12.5, fontWeight: 600,
+                fontFamily: font, borderRadius: 8, cursor: f.role_profile_id ? 'pointer' : 'not-allowed',
+                background: f.role_profile_id ? '#7c3aed' : '#e9d5ff', color: '#fff', border: 'none',
+              }}>
+              <Sparkles size={13} /> Draft
+            </button>
+          </div>
+          <div style={{ fontSize: 11.5, color: '#7c3aed', marginTop: 6 }}>
+            {drafted ? 'Drafted from the role profile — edit the description & requirements below as needed.'
+              : 'Fills the description & requirements from the central CPD role profile. Fully editable afterwards.'}
+          </div>
+        </div>
 
         <div style={{ ...row, marginTop: 12 }}>
           <div style={col}>
