@@ -8,13 +8,16 @@
 // Body: { body: string, to?: "+44...", entity_id?: uuid, triage_case_id?: uuid,
 //         channel?: 'sms' | 'whatsapp' }
 //   to falls back to the entity's prospect_phone. UK numbers are normalised
-//   to E.164 (07… → +447…). channel 'whatsapp' uses Telnyx's dedicated
-//   /v2/messages/whatsapp endpoint (the plain Messages API only takes
-//   SMS/MMS). Prereqs: the from number must be WhatsApp-registered with
-//   Telnyx (Mission Control embedded Meta signup), and free-form text only
-//   works inside a 24h window from the client's last message — outside it
-//   Meta requires a pre-approved template. Failures land on the
-//   sms_messages row.
+//   to E.164 (07… → +447…).
+//
+//   channel 'whatsapp' goes via CLERK CHAT, not Telnyx: Clerk holds the
+//   practice number's WhatsApp Business registration (it bridges WhatsApp
+//   into MS Teams), so Telnyx rejects WhatsApp for that number. Sends via
+//   Clerk's API appear in the same Clerk conversation Teams sees — one
+//   thread, two surfaces. Config lives in clerk_config (api_key,
+//   whatsapp_sender). Free-form text only works inside a 24h window from
+//   the client's last message — outside it Meta requires a pre-approved
+//   template. Failures land on the sms_messages row.
 //
 // Every send is logged to sms_messages; a triage_case_id also drops a note
 // on the case — this is the send primitive the escalation ladder will call.
@@ -57,7 +60,7 @@ Deno.serve(async (req) => {
   const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
   const { data: { user }, error: authErr } = await anon.auth.getUser();
   if (authErr || !user) return json({ success: false, error: "Invalid token" }, 401);
-  const { data: prof } = await service.from("staff_profiles").select("is_active").eq("id", user.id).single();
+  const { data: prof } = await service.from("staff_profiles").select("is_active, name").eq("id", user.id).single();
   if (!prof?.is_active) return json({ success: false, error: "Not authorised" }, 403);
 
   const body = await req.json().catch(() => ({}));
@@ -89,37 +92,58 @@ Deno.serve(async (req) => {
   }).select("id").single();
   if (insErr) return json({ success: false, error: `Could not log message: ${insErr.message}` }, 500);
 
-  const telnyxHeaders = { "Authorization": `Bearer ${cfg.api_key}`, "Content-Type": "application/json" };
-  const resp = channel === "whatsapp"
-    ? await fetch("https://api.telnyx.com/v2/messages/whatsapp", {
+  let providerId: string | null = null;
+  if (channel === "whatsapp") {
+    // WhatsApp rides Clerk Chat (see header). Same conversation Teams sees.
+    const { data: ck } = await service.from("clerk_config").select("*").eq("id", true).maybeSingle();
+    if (!ck?.api_key) {
+      const err = "WhatsApp goes via Clerk Chat and no API key is configured yet (clerk_config.api_key).";
+      await service.from("sms_messages").update({ status: "failed", error: err }).eq("id", row.id);
+      return json({ success: false, error: err }, 400);
+    }
+    if (!ck.enabled) {
+      const err = "WhatsApp sending is disabled in clerk_config.";
+      await service.from("sms_messages").update({ status: "failed", error: err }).eq("id", row.id);
+      return json({ success: false, error: err }, 400);
+    }
+    const resp = await fetch("https://web-api.clerk.chat/public/messages", {
       method: "POST",
-      headers: telnyxHeaders,
+      headers: { "apiKey": ck.api_key, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: cfg.from_number, to,
-        whatsapp_message: { type: "text", text: { body: text } },
-        // Delivery receipts back to our webhook (secret in the URL, as on
-        // the messaging profile).
-        ...(cfg.webhook_secret ? { webhook_url: `${SUPABASE_URL}/functions/v1/telnyx-inbound?secret=${cfg.webhook_secret}` } : {}),
+        sender: ck.whatsapp_sender || cfg.from_number,
+        recipients: [to],
+        body: text,
+        mediaUrls: [],
+        sentByName: prof.name || "Athena",
       }),
-    })
-    : await fetch("https://api.telnyx.com/v2/messages", {
+    });
+    const cj = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const err = cj?.message || cj?.error || cj?.errors?.[0]?.message || `Clerk ${resp.status}`;
+      await service.from("sms_messages").update({ status: "failed", error: String(err).slice(0, 500) }).eq("id", row.id);
+      return json({ success: false, error: err }, 502);
+    }
+    providerId = cj?.data?.id != null ? `clerk:${cj.data.id}` : null;
+  } else {
+    const resp = await fetch("https://api.telnyx.com/v2/messages", {
       method: "POST",
-      headers: telnyxHeaders,
+      headers: { "Authorization": `Bearer ${cfg.api_key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         from: cfg.from_number, to, text,
         ...(cfg.messaging_profile_id ? { messaging_profile_id: cfg.messaging_profile_id } : {}),
       }),
     });
-  const tj = await resp.json().catch(() => ({}));
-
-  if (!resp.ok) {
-    const err = tj?.errors?.[0]?.detail || tj?.errors?.[0]?.title || `Telnyx ${resp.status}`;
-    await service.from("sms_messages").update({ status: "failed", error: err }).eq("id", row.id);
-    return json({ success: false, error: err }, 502);
+    const tj = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const err = tj?.errors?.[0]?.detail || tj?.errors?.[0]?.title || `Telnyx ${resp.status}`;
+      await service.from("sms_messages").update({ status: "failed", error: err }).eq("id", row.id);
+      return json({ success: false, error: err }, 502);
+    }
+    providerId = tj?.data?.id || null;
   }
 
   await service.from("sms_messages").update({
-    status: "sent", telnyx_message_id: tj?.data?.id || null,
+    status: "sent", telnyx_message_id: providerId,
   }).eq("id", row.id);
 
   if (body.triage_case_id) {
@@ -130,8 +154,8 @@ Deno.serve(async (req) => {
   }
   await service.from("audit_log").insert({
     user_id: user.id, action: "sms_sent", entity_type: "entity", entity_id: entityId,
-    detail: { to, chars: text.length, sms_id: row.id, telnyx_id: tj?.data?.id || null, channel },
+    detail: { to, chars: text.length, sms_id: row.id, provider_id: providerId, channel },
   });
 
-  return json({ success: true, id: row.id, telnyx_id: tj?.data?.id || null });
+  return json({ success: true, id: row.id, provider_id: providerId });
 });
