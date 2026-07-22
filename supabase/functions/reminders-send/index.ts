@@ -26,7 +26,7 @@
 // whose staff_profiles row has can_manage_portal (or is_portal_admin).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getValidGmailToken, base64UrlEncode, corsHeaders } from "../_shared/gmail-client.ts";
+import { getValidGmailToken, base64UrlEncode, corsHeaders, formatSender } from "../_shared/gmail-client.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -118,13 +118,13 @@ function encodeSubject(s: string): string {
   return `=?UTF-8?B?${padded}?=`;
 }
 
-// From uses the bare mailbox address; Gmail applies the account's send-as
-// display name (set once in the mailbox's Gmail settings) so the sender
-// name stays global across Athena-sent and manually-sent email alike.
-function buildMime(to: string, subject: string, text: string, html: string, fromEmail: string): string {
+// The Gmail API sends From verbatim and does NOT apply the mailbox's
+// "Send mail as" name, so we stamp the mailbox's display name here (from
+// gmail_connections.display_name). fromName omitted → bare address.
+function buildMime(to: string, subject: string, text: string, html: string, fromEmail: string, fromName?: string | null): string {
   const boundary = `=_athena_${crypto.randomUUID()}`;
   const headers = [
-    `From: ${fromEmail}`,
+    `From: ${formatSender(fromName, fromEmail)}`,
     `To: ${to}`,
     `Subject: ${encodeSubject(subject)}`,
     `MIME-Version: 1.0`,
@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
     const ids = Array.isArray(body.ids) ? body.ids.slice(0, 200) : [];
     if (!ids.length) return json({ success: false, error: "ids required" }, 400);
 
-    let token: { accessToken: string; accountEmail: string };
+    let token: { accessToken: string; accountEmail: string; displayName: string | null };
     try { token = await getValidGmailToken(mailbox); }
     catch (e) { return json({ success: false, error: `No usable Gmail connection: ${(e as Error).message}`, code: "no_gmail_connection" }, 400); }
 
@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
       if (!first) await sleep(300);
       first = false;
 
-      const mime = buildMime(r.to_email, r.subject, r.body_text || "", r.body_html || "", token.accountEmail);
+      const mime = buildMime(r.to_email, r.subject, r.body_text || "", r.body_html || "", token.accountEmail, token.displayName);
       let resp: Response;
       try {
         resp = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
@@ -272,7 +272,7 @@ Deno.serve(async (req) => {
   }
 
   // Gmail is only needed when we actually send now (mode 'send').
-  let token: { accessToken: string; accountEmail: string } | null = null;
+  let token: { accessToken: string; accountEmail: string; displayName: string | null } | null = null;
   if (mode === "send") {
     try { token = await getValidGmailToken(mailbox); }
     catch (e) { return json({ success: false, error: `No usable Gmail connection: ${(e as Error).message}`, code: "no_gmail_connection" }, 400); }
@@ -378,7 +378,7 @@ Deno.serve(async (req) => {
     if (!first) await sleep(300);
     first = false;
 
-    const mime = buildMime(to, content.subject, content.text, content.html, token!.accountEmail);
+    const mime = buildMime(to, content.subject, content.text, content.html, token!.accountEmail, token!.displayName);
     let gmailResp: Response;
     try {
       gmailResp = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {

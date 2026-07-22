@@ -58,6 +58,28 @@ export interface GmailTokenInfo {
   kind: string;
   ownerStaffId: string | null;
   scope: string | null;
+  // Sender display name for this mailbox (gmail_connections.display_name).
+  // The Gmail API sends the From header verbatim and does NOT apply the
+  // account's "Send mail as" name, so every sender must stamp this itself.
+  displayName: string | null;
+}
+
+// Format a From/Sender header value with a display name. ASCII names are
+// quoted; non-ASCII uses an RFC2047 base64 encoded-word. Falls back to the
+// bare address when there's no name.
+export function formatSender(displayName: string | null | undefined, email: string): string {
+  const n = (displayName || "").trim();
+  if (!n) return email;
+  let display: string;
+  if (/^[\x20-\x7e]*$/.test(n)) {
+    display = `"${n.replace(/([\\"])/g, "\\$1")}"`;
+  } else {
+    const bytes = new TextEncoder().encode(n);
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    display = `=?UTF-8?B?${btoa(bin)}?=`;
+  }
+  return `${display} <${email}>`;
 }
 
 // Resolves a mailbox's active gmail_connections row and refreshes the
@@ -96,6 +118,7 @@ export async function getValidGmailToken(mailbox?: string): Promise<GmailTokenIn
     kind: (c.kind as string) || "shared",
     ownerStaffId: (c.owner_staff_id as string) || null,
     scope: (c.scope as string) || null,
+    displayName: (c.display_name as string) || null,
   });
 
   const expiresAt = new Date(conn.token_expires_at);

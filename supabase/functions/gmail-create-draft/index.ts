@@ -14,15 +14,15 @@
 //
 // Returns { success, draft_id, account_email }.
 import {
-  getServiceClient, getValidGmailToken, base64UrlEncode, jsonResponse, corsHeaders,
+  getServiceClient, getValidGmailToken, base64UrlEncode, jsonResponse, corsHeaders, formatSender,
 } from "../_shared/gmail-client.ts";
 
 // Build a multipart/alternative MIME message: text first (fallback)
 // then HTML. Gmail picks the best part per recipient client.
-function buildMime(to: string, subject: string, text: string, html: string, fromEmail: string): string {
+function buildMime(to: string, subject: string, text: string, html: string, fromEmail: string, fromName?: string | null): string {
   const boundary = `=_athena_${crypto.randomUUID()}`;
   const headers = [
-    `From: ${fromEmail}`,
+    `From: ${formatSender(fromName, fromEmail)}`,
     `To: ${to}`,
     `Subject: ${encodeSubject(subject)}`,
     `MIME-Version: 1.0`,
@@ -69,10 +69,12 @@ Deno.serve(async (req) => {
 
   let accessToken: string;
   let accountEmail: string;
+  let senderName: string | null = null;
   try {
     const tok = await getValidGmailToken();
     accessToken = tok.accessToken;
     accountEmail = tok.accountEmail;
+    senderName = tok.displayName;
   } catch (e) {
     return jsonResponse({ success: false, error: (e as Error).message, code: "no_gmail_connection" }, 400);
   }
@@ -87,7 +89,7 @@ Deno.serve(async (req) => {
     .single();
   if (rowErr || !row) return jsonResponse({ success: false, error: "billing_id not found" }, 404);
 
-  const mime = buildMime(body.to, body.subject, body.body_text, body.body_html, accountEmail);
+  const mime = buildMime(body.to, body.subject, body.body_text, body.body_html, accountEmail, senderName);
   const raw = base64UrlEncode(mime);
 
   // POST to Gmail API. Drafts live at users.drafts.create.

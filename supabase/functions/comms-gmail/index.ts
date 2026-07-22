@@ -21,7 +21,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  getValidGmailToken, base64UrlEncode, jsonResponse, corsHeaders, getServiceClient,
+  getValidGmailToken, base64UrlEncode, jsonResponse, corsHeaders, getServiceClient, formatSender,
 } from "../_shared/gmail-client.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -268,7 +268,7 @@ Deno.serve(async (req) => {
           return jsonResponse({ success: false, error: "to, subject, bodyText required" }, 400);
         }
         const mime = buildMime({
-          from: tok.accountEmail, to, cc, bcc, subject,
+          from: formatSender(tok.displayName, tok.accountEmail), to, cc, bcc, subject,
           text: bodyText, html: bodyHtml, inReplyTo, references,
         });
         const sent = await gmailFetch(tok.accessToken, "/messages/send", {
