@@ -370,7 +370,14 @@ Deno.serve(async (req) => {
         body_html: content.html, body_text: content.text,
         status: "queued", queued_at: now, queued_by: user.id,
       });
-      if (qErr) { errors.push({ entity_id: entityId, error: `Could not queue: ${qErr.message}` }); continue; }
+      if (qErr) {
+        // Unique-index backstop: this client already has a queued email, or a
+        // reminder for this batch / a promo ever. Skip rather than duplicate.
+        if ((qErr as { code?: string }).code === "23505") {
+          skipped.push({ entity_id: entityId, reason: "already queued or emailed for this run" }); continue;
+        }
+        errors.push({ entity_id: entityId, error: `Could not queue: ${qErr.message}` }); continue;
+      }
       queued++;
       continue;
     }
@@ -386,6 +393,9 @@ Deno.serve(async (req) => {
       .select("id")
       .single();
     if (insErr || !emailRow?.id) {
+      if ((insErr as { code?: string } | null)?.code === "23505") {
+        skipped.push({ entity_id: entityId, reason: "already emailed for this run (duplicate blocked)" }); continue;
+      }
       errors.push({ entity_id: entityId, error: `Could not create tracking row: ${insErr?.message || "no id"}` });
       continue;
     }

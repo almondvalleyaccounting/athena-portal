@@ -66,6 +66,7 @@ export default function PreferencesView() {
   const [commTypes, setCommTypes] = useState([]);
   const [prefs, setPrefs] = useState([]);
   const [entityById, setEntityById] = useState({});
+  const [staffById, setStaffById] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -76,10 +77,11 @@ export default function PreferencesView() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: types, error: e1 }, { data: p, error: e2 }, { data: ents, error: e3 }] = await Promise.all([
+      const [{ data: types, error: e1 }, { data: p, error: e2 }, { data: ents, error: e3 }, { data: staff }] = await Promise.all([
         supabase.from('comm_types').select('id, label, active').order('label'),
         supabase.from('client_comm_preferences').select('*'),
         supabase.from('entities').select('id, name, entity_status').order('name'),
+        supabase.from('staff_profiles').select('id, name'),
       ]);
       if (e1) throw e1;
       if (e2) throw e2;
@@ -87,6 +89,7 @@ export default function PreferencesView() {
       setCommTypes(types || []);
       setPrefs(p || []);
       setEntityById(Object.fromEntries((ents || []).map((e) => [e.id, e])));
+      setStaffById(Object.fromEntries((staff || []).map((s) => [s.id, s.name])));
       setError(null);
     } catch (ex) {
       setError(`Could not load preferences: ${ex.message || String(ex)}`);
@@ -223,7 +226,12 @@ export default function PreferencesView() {
                 <td style={td}>{typeLabel(r.comm_type)}</td>
                 <td style={td}><PrefChip status={r.status} /></td>
                 <td style={{ ...td, color: '#64748b' }}>{fmtDateTime(r.decided_at)}</td>
-                <td style={{ ...td, color: '#64748b' }}>{VIA_LABEL[r.decided_via] || '—'}</td>
+                <td style={{ ...td, color: '#64748b' }}>
+                  {VIA_LABEL[r.decided_via] || '—'}
+                  {r.decided_via === 'staff' && staffById[r.decided_by] && (
+                    <span style={{ color: '#94a3b8' }}> · {staffById[r.decided_by]}</span>
+                  )}
+                </td>
                 {canManage && (
                   <td style={td}>
                     <select

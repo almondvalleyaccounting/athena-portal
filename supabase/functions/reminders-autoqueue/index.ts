@@ -269,11 +269,19 @@ Deno.serve(async (req) => {
 
   if (dryRun) return json({ success: true, dry_run: true, batch_id: batch.id, trigger_date: triggerDate, is_trigger_day: isTriggerDay, would_queue: toInsert.length, counts });
 
-  for (let i = 0; i < toInsert.length; i += 500) {
-    const { error } = await service.from("reminder_emails").insert(toInsert.slice(i, i + 500));
-    if (error) return json({ success: false, error: `Queue insert failed: ${error.message}`, counts }, 500);
+  // Insert row-by-row so a single unique-index hit (the queue-uniqueness
+  // backstop catching a dup from a concurrent run) skips just that row
+  // rather than rolling back the whole queue-fill.
+  let inserted = 0;
+  for (const row of toInsert) {
+    const { error } = await service.from("reminder_emails").insert(row);
+    if (error) {
+      if ((error as { code?: string }).code === "23505") { counts.skipped_dup++; continue; }
+      return json({ success: false, error: `Queue insert failed: ${error.message}`, counts }, 500);
+    }
+    inserted++;
   }
   await service.from("reminder_autoqueue_config").update({ last_run_at: now }).eq("id", true);
 
-  return json({ success: true, batch_id: batch.id, trigger_date: triggerDate, is_trigger_day: isTriggerDay, queued: toInsert.length, counts });
+  return json({ success: true, batch_id: batch.id, trigger_date: triggerDate, is_trigger_day: isTriggerDay, queued: inserted, counts });
 });
