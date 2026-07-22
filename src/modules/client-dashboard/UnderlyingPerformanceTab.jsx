@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Loader, Plus, X, TrendingUp, Info, ChevronDown } from 'lucide-react';
+import { Loader, Plus, X, TrendingUp, Info, ChevronDown, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import { money, shortDate, OUTFIT, cardStyle, inputStyle } from './dashboardData';
@@ -34,6 +34,8 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
   const { profile } = useAuth();
   const plDetail = data?.pl_detail || null;
   const plRange = data?.pl_range || null;
+  const plDetailPrior = data?.pl_detail_prior || null;
+  const plRangePrior = data?.pl_range_prior || null;
 
   const [accounts, setAccounts] = useState([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
@@ -83,8 +85,13 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
 
   /* Adjustment maths ---------------------------------------------- */
   const calc = useMemo(() => {
-    const rowsById = {};
-    for (const r of plDetail?.rows || []) if (r.id) rowsById[r.id] = r;
+    const byId = (rows) => {
+      const m = {};
+      for (const r of rows || []) if (r.id) m[r.id] = r;
+      return m;
+    };
+    const rowsById = byId(plDetail?.rows);
+    const priorById = byId(plDetailPrior?.rows);
 
     const owner = ownerRows.map((o) => {
       const row = rowsById[o.account_id];
@@ -97,32 +104,59 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
         amount, income,
       };
     });
-    // Add-back = costs added back, less any tagged income removed.
-    const ownerAddBack = owner.reduce((s, o) => s + (o.income ? -o.amount : o.amount), 0);
+    // Owner add-back = costs added back, less any tagged income removed. Same
+    // rule applied to a supplied per-account map (current or prior period).
+    const addBackFrom = (map) => ownerRows.reduce((s, o) => {
+      const amt = map[o.account_id]?.amount ?? 0;
+      const acct = accountsById[o.account_id];
+      const income = acct ? acct.classification === 'Revenue' : isIncomeGroup(map[o.account_id]?.group);
+      return s + (income ? -amt : amt);
+    }, 0);
+    const ownerAddBack = addBackFrom(rowsById);
+    const priorOwnerAddBack = addBackFrom(priorById);
+    const ownerIncomeTaggedFrom = (map) => ownerRows.reduce((s, o) => {
+      const acct = accountsById[o.account_id];
+      const income = acct ? acct.classification === 'Revenue' : isIncomeGroup(map[o.account_id]?.group);
+      return s + (income ? (map[o.account_id]?.amount ?? 0) : 0);
+    }, 0);
 
-    const inPeriod = (d) => (!meta?.plStart || d >= meta.plStart) && (!meta?.plEnd || d <= meta.plEnd);
-    const oo = oneoffs.map((e) => ({ ...e, in_period: inPeriod(e.entry_date) }));
-    const oneoffCost = oo.filter((e) => e.kind === 'cost' && e.in_period).reduce((s, e) => s + Number(e.amount || 0), 0);
-    const oneoffIncome = oo.filter((e) => e.kind === 'income' && e.in_period).reduce((s, e) => s + Number(e.amount || 0), 0);
+    // One-offs falling inside a [start,end] window.
+    const inRange = (d, s, e) => (!s || d >= s) && (!e || d <= e);
+    const oo = oneoffs.map((e) => ({ ...e, in_period: inRange(e.entry_date, meta?.plStart, meta?.plEnd) }));
+    const sumOO = (s, e, kind) => oneoffs
+      .filter((x) => x.kind === kind && inRange(x.entry_date, s, e))
+      .reduce((a, x) => a + Number(x.amount || 0), 0);
+    const oneoffCost = sumOO(meta?.plStart, meta?.plEnd, 'cost');
+    const oneoffIncome = sumOO(meta?.plStart, meta?.plEnd, 'income');
+    const priorOneoffCost = sumOO(meta?.priorStart, meta?.priorEnd, 'cost');
+    const priorOneoffIncome = sumOO(meta?.priorStart, meta?.priorEnd, 'income');
+
+    // Current + prior underlying, from reported net + adjustments.
+    const build = (reportedNet, reportedRevenue, addBack, incomeTagged, ooCost, ooInc) => {
+      if (reportedNet == null) return { reportedNet: null, reportedMargin: null, underlyingNet: null, underlyingMargin: null };
+      const underlyingNet = reportedNet + addBack + ooCost - ooInc;
+      const reportedMargin = reportedRevenue ? (reportedNet / reportedRevenue) * 100 : null;
+      const underlyingRevenue = reportedRevenue == null ? null : reportedRevenue - incomeTagged - ooInc;
+      const underlyingMargin = underlyingRevenue ? (underlyingNet / underlyingRevenue) * 100 : null;
+      return { reportedNet, reportedMargin, underlyingNet, underlyingMargin };
+    };
 
     const reportedNet = plDetail?.net_income ?? plRange?.net_income ?? null;
     const reportedRevenue = plRange?.income
       ?? (plDetail?.rows || []).filter((r) => isIncomeGroup(r.group)).reduce((s, r) => s + (r.amount || 0), 0);
+    const cur = build(reportedNet, reportedRevenue, ownerAddBack, ownerIncomeTaggedFrom(rowsById), oneoffCost, oneoffIncome);
 
-    const underlyingNet = reportedNet == null ? null
-      : reportedNet + ownerAddBack + oneoffCost - oneoffIncome;
+    // Prior only when we actually have the prior-period P&L (else no delta).
+    const havePrior = !!(plDetailPrior || plRangePrior);
+    const priorReportedNet = havePrior ? (plDetailPrior?.net_income ?? plRangePrior?.net_income ?? null) : null;
+    const priorReportedRevenue = plRangePrior?.income ?? null;
+    const prior = build(priorReportedNet, priorReportedRevenue, priorOwnerAddBack, ownerIncomeTaggedFrom(priorById), priorOneoffCost, priorOneoffIncome);
 
-    const reportedMargin = (reportedRevenue && reportedNet != null)
-      ? (reportedNet / reportedRevenue) * 100 : null;
-
-    const ownerIncomeTagged = owner.filter((o) => o.income).reduce((s, o) => s + o.amount, 0);
-    const underlyingRevenue = reportedRevenue == null ? null
-      : reportedRevenue - ownerIncomeTagged - oneoffIncome;
-    const underlyingMargin = (underlyingRevenue && underlyingNet != null)
-      ? (underlyingNet / underlyingRevenue) * 100 : null;
-
-    return { owner, ownerAddBack, oo, oneoffCost, oneoffIncome, reportedNet, reportedMargin, underlyingNet, underlyingRevenue, underlyingMargin };
-  }, [plDetail, plRange, ownerRows, oneoffs, accountsById, meta]);
+    return {
+      owner, ownerAddBack, oo, oneoffCost, oneoffIncome,
+      ...cur, prior,
+    };
+  }, [plDetail, plRange, plDetailPrior, plRangePrior, ownerRows, oneoffs, accountsById, meta]);
 
   /* Mutations ------------------------------------------------------ */
   const addOwnerAccount = async (accountId) => {
@@ -182,10 +216,14 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {/* Headline tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
-        <Tile label={`Reported net profit — ${meta?.label || 'period'}`} value={calc.reportedNet} currency={currency} />
-        <Tile label="Reported margin" text={calc.reportedMargin == null ? '—' : `${calc.reportedMargin.toFixed(1)}%`} />
-        <Tile label="Underlying profit for the owner" value={calc.underlyingNet} currency={currency} accent />
-        <Tile label="Underlying margin" text={calc.underlyingMargin == null ? '—' : `${calc.underlyingMargin.toFixed(1)}%`} accent />
+        <Tile label={`Reported net profit — ${meta?.label || 'period'}`} value={calc.reportedNet} currency={currency}
+          delta={<MoneyDelta now={calc.reportedNet} prev={calc.prior?.reportedNet} currency={currency} label={meta?.deltaLabel} />} />
+        <Tile label="Reported margin" text={calc.reportedMargin == null ? '—' : `${calc.reportedMargin.toFixed(1)}%`}
+          delta={<PpDelta now={calc.reportedMargin} prev={calc.prior?.reportedMargin} label={meta?.deltaLabel} />} />
+        <Tile label="Underlying profit for the owner" value={calc.underlyingNet} currency={currency} accent
+          delta={<MoneyDelta now={calc.underlyingNet} prev={calc.prior?.underlyingNet} currency={currency} label={meta?.deltaLabel} />} />
+        <Tile label="Underlying margin" text={calc.underlyingMargin == null ? '—' : `${calc.underlyingMargin.toFixed(1)}%`} accent
+          delta={<PpDelta now={calc.underlyingMargin} prev={calc.prior?.underlyingMargin} label={meta?.deltaLabel} />} />
       </div>
 
       {/* Waterfall */}
@@ -262,7 +300,7 @@ const iconBtn = {
   display: 'inline-flex', alignItems: 'center',
 };
 
-function Tile({ label, value, text, currency, accent }) {
+function Tile({ label, value, text, currency, accent, delta }) {
   return (
     <div style={{
       backgroundColor: accent ? '#f0f9ff' : '#ffffff',
@@ -272,7 +310,36 @@ function Tile({ label, value, text, currency, accent }) {
       <div style={{ fontFamily: OUTFIT, fontSize: '22px', fontWeight: 700, color: (value ?? 0) < 0 ? '#991b1b' : accent ? '#0369a1' : '#0f172a' }}>
         {text != null ? text : money(value, currency)}
       </div>
+      <div style={{ minHeight: '16px', marginTop: '2px' }}>{delta}</div>
     </div>
+  );
+}
+
+// Money delta (↑/↓ £X vs prior period) — mirrors the Overview tiles.
+function MoneyDelta({ now, prev, currency, label = 'vs prior period' }) {
+  if (now == null || prev == null) return null;
+  const diff = now - prev;
+  if (Math.abs(diff) < 0.005) return <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>unchanged {label}</span>;
+  const up = diff > 0;
+  const Icon = up ? ArrowUpRight : ArrowDownRight;
+  return (
+    <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 600, color: up ? '#166534' : '#991b1b', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+      <Icon size={12} /> {money(Math.abs(diff), currency)} {label}
+    </span>
+  );
+}
+
+// Margin delta in percentage points.
+function PpDelta({ now, prev, label = 'vs prior period' }) {
+  if (now == null || prev == null) return null;
+  const diff = now - prev;
+  if (Math.abs(diff) < 0.05) return <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>unchanged {label}</span>;
+  const up = diff > 0;
+  const Icon = up ? ArrowUpRight : ArrowDownRight;
+  return (
+    <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 600, color: up ? '#166534' : '#991b1b', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+      <Icon size={12} /> {Math.abs(diff).toFixed(1)} pp {label}
+    </span>
   );
 }
 

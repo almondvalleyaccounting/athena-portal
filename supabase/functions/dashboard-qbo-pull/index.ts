@@ -919,9 +919,12 @@ Deno.serve(async (req) => {
         await windowMetric(`bs_asat#${p.plEnd}`, null, p.plEnd, "bs_period",
           () => balanceSheetAsAt(sb, realmId, p.plEnd, true));
         // Account-level P&L detail for the Underlying Performance tab (owner-cost
-        // add-backs matched by account id over the selected range).
+        // add-backs matched by account id over the selected range) — current and
+        // prior period, so the underlying tiles can show a vs-prior delta.
         await windowMetric(`pl_detail#${p.plStart}_${p.plEnd}`, p.plStart, p.plEnd, "pl_detail",
           () => plAccountDetail(sb, realmId, p.plStart, p.plEnd));
+        await windowMetric(`pl_detail#${p.priorStart}_${p.priorEnd}`, p.priorStart, p.priorEnd, "pl_detail_prior",
+          () => plAccountDetail(sb, realmId, p.priorStart, p.priorEnd));
       }
 
       if (win.asat) {
