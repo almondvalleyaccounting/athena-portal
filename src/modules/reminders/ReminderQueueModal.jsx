@@ -45,6 +45,12 @@ const th = {
 };
 const td = { padding: '6px 10px', fontSize: 12.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
 
+const KIND_META = {
+  promo: { label: 'Opt-in invite', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
+  reminder: { label: 'Payment reminder', bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
+  no_utr: { label: 'Not registered (no UTR)', bg: '#fffbeb', color: '#92400e', border: '#fde68a' },
+};
+
 function fmtWhen(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -202,7 +208,15 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
                     )}
                     <td style={{ ...td, fontWeight: 600 }}>{nameOf(r)}</td>
                     <td style={{ ...td, color: '#334155' }}>{r.to_email}</td>
-                    <td style={td}>{r.kind === 'promo' ? 'opt-in' : 'reminder'}</td>
+                    <td style={td}>{(() => {
+                      const m = KIND_META[r.kind] || { label: r.kind, bg: '#f1f5f9', color: '#64748b', border: '#e2e8f0' };
+                      return (
+                        <span style={{
+                          display: 'inline-block', fontSize: 10.5, fontWeight: 600, padding: '2px 8px',
+                          borderRadius: 999, background: m.bg, color: m.color, border: `1px solid ${m.border}`, whiteSpace: 'nowrap',
+                        }}>{m.label}</span>
+                      );
+                    })()}</td>
                     <td style={{ ...td, color: '#64748b' }}>{fmtWhen(isQueued ? r.queued_at : r.sent_at)}</td>
                   </tr>
                 ))}
