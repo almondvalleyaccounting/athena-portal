@@ -420,7 +420,7 @@ export default function ClientRemindersPage() {
   // every future import) and excludes this row now.
   const addIgnore = async (row) => {
     if (!(profile?.can_manage_portal || profile?.is_portal_admin)) return;
-    const u = utr10(row.reference_raw);
+    const u = rowUtr(row);
     if (!u) { setError('That row has no 10-digit UTR to ignore.'); return; }
     if (!window.confirm(`Never send tax reminders to UTR ${u}?\n\nUse this for someone whose return you file but who isn’t a practice client. Future TaxCalc uploads will auto-exclude this UTR. This row will be excluded now.`)) return;
     const { error: e1 } = await supabase.from('tax_reminder_ignore')
@@ -437,7 +437,7 @@ export default function ClientRemindersPage() {
   // ignore-list and un-excludes the row so it can be matched/reminded.
   const removeIgnore = async (row) => {
     if (!(profile?.can_manage_portal || profile?.is_portal_admin)) return;
-    const u = utr10(row.reference_raw);
+    const u = rowUtr(row);
     if (!u) return;
     const { error: e1 } = await supabase.from('tax_reminder_ignore').delete().eq('utr', u);
     if (e1) { setError(`Could not revert: ${e1.message}`); return; }
@@ -460,7 +460,10 @@ export default function ClientRemindersPage() {
   // has them opted-in and unpaid. reminders-send enforces this too; we filter
   // here so they don't show as selectable targets in the first place.
   const isFormerClient = (r) => ['nlac', 'archived'].includes(entityById[r.entity_id]?.entity_status);
-  const isIgnored = (r) => r.reference_raw && ignoreUtrs.has(utr10(r.reference_raw));
+  // Effective UTR for ignore/reference purposes: the TaxCalc row's UTR,
+  // else the client's UTR on the entity (added to BM after the upload).
+  const rowUtr = (r) => utr10(r.reference_raw) || utr10(entityById[r.entity_id]?.utr || '');
+  const isIgnored = (r) => { const u = rowUtr(r); return !!u && ignoreUtrs.has(u); };
 
   // Column filters — display only; selection persists across filter changes.
   const visibleRows = useMemo(() => {
@@ -692,19 +695,20 @@ export default function ClientRemindersPage() {
                   <th style={{ ...th, width: 30 }}>
                     <input type="checkbox" checked={!!allSelected} onChange={toggleAll} />
                   </th>
-                  <th style={th}>TaxCalc Client</th>
-                  <th style={th}>Athena (BM) Client</th>
-                  <th style={th}>Reminder Override</th>
+                  <th style={th}>TaxCalc</th>
+                  <th style={th}>Matched (BM)</th>
+                  <th style={th}>Reminder</th>
                   <th style={th}>Email</th>
                   <th style={{ ...th, textAlign: 'right' }}>Amount</th>
                   <th style={th}>Preference</th>
-                  <th style={th}>Payment Status</th>
-                  <th style={th}>Last Contact</th>
+                  <th style={th}>Set</th>
+                  <th style={th}>Payment</th>
+                  <th style={th}>Last contact</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleRows.length === 0 && (
-                  <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={9}>No rows match these filters.</td></tr>
+                  <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={10}>No rows match these filters.</td></tr>
                 )}
                 {visibleRows.map((row) => {
                   const ent = row.entity_id ? entityById[row.entity_id] : null;
@@ -744,38 +748,27 @@ export default function ClientRemindersPage() {
                           )}
                         </div>
                       </td>
-                      {/* Reminder Override — never-remind / ignored / revert */}
+                      {/* Reminder — toggle: reminding ⇄ not a client */}
                       <td style={td}>
-                        {!row.reference_raw ? (
+                        {!rowUtr(row) ? (
                           <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>—</span>
-                        ) : rowIgnored ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <span style={{
-                              fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
-                              background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
-                            }}>ignored — not a client</span>
-                            {canManage && (
-                              <button
-                                onClick={() => removeIgnore(row)}
-                                title="This UTR is a client after all — remove it from the never-remind list"
-                                style={{
-                                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                  fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#0e7fe0', textDecoration: 'underline',
-                                }}
-                              >revert to client</button>
-                            )}
-                          </div>
-                        ) : canManage ? (
-                          <button
-                            onClick={() => addIgnore(row)}
-                            title="Never send tax reminders to this UTR (someone whose return you file but who isn't a practice client)"
-                            style={{
-                              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                              fontFamily: font, fontSize: 10.5, fontWeight: 600, color: '#94a3b8', textDecoration: 'underline',
-                            }}
-                          >never remind</button>
+                        ) : !canManage ? (
+                          <span style={{ fontSize: 10.5, fontWeight: 600, color: rowIgnored ? '#b91c1c' : '#166534' }}>
+                            {rowIgnored ? 'Not a client' : 'Reminding'}
+                          </span>
                         ) : (
-                          <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>—</span>
+                          <button
+                            onClick={() => (rowIgnored ? removeIgnore(row) : addIgnore(row))}
+                            title={rowIgnored
+                              ? 'Excluded as not a client — click to start reminding again'
+                              : 'This client is in the reminder run — click to exclude them (not a practice client)'}
+                            style={{
+                              padding: '2px 10px', fontSize: 11, fontWeight: 600, fontFamily: font, cursor: 'pointer', borderRadius: 999,
+                              background: rowIgnored ? '#fef2f2' : '#f0fdf4',
+                              color: rowIgnored ? '#b91c1c' : '#166534',
+                              border: `1px solid ${rowIgnored ? '#fecaca' : '#bbf7d0'}`,
+                            }}
+                          >{rowIgnored ? 'Not a client' : 'Reminding'}</button>
                         )}
                       </td>
                       <td style={td}>
@@ -795,28 +788,32 @@ export default function ClientRemindersPage() {
                       <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                         {row.amount != null ? `£${fmtMoney(row.amount)}` : '—'}
                       </td>
+                      {/* Preference — status chip only */}
                       <td style={td}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <PrefChip status={prefStatus} />
-                          {ent && (
-                            <select
-                              value=""
-                              onChange={(e) => setPreference(row.entity_id, e.target.value)}
-                              title="Set the preference manually — e.g. record a yes/no from an email reply"
-                              style={{
-                                padding: '2px 4px', fontSize: 11, fontFamily: font, color: '#64748b',
-                                border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', maxWidth: 52,
-                              }}
-                            >
-                              <option value="">set…</option>
-                              <option value="in_reply">Opted in (replied)</option>
-                              <option value="out_reply">Opted out (replied)</option>
-                              <option value="in_staff">Opted in (staff)</option>
-                              <option value="out_staff">Opted out (staff)</option>
-                              <option value="pending">Back to pending</option>
-                            </select>
-                          )}
-                        </div>
+                        <PrefChip status={prefStatus} />
+                      </td>
+                      {/* Set — manual preference override */}
+                      <td style={td}>
+                        {ent ? (
+                          <select
+                            value=""
+                            onChange={(e) => setPreference(row.entity_id, e.target.value)}
+                            title="Set the preference manually — e.g. record a yes/no from an email reply"
+                            style={{
+                              padding: '3px 6px', fontSize: 11, fontFamily: font, color: '#64748b',
+                              border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
+                            }}
+                          >
+                            <option value="">set…</option>
+                            <option value="in_reply">Opted in (replied)</option>
+                            <option value="out_reply">Opted out (replied)</option>
+                            <option value="in_staff">Opted in (staff)</option>
+                            <option value="out_staff">Opted out (staff)</option>
+                            <option value="pending">Back to pending</option>
+                          </select>
+                        ) : (
+                          <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>—</span>
+                        )}
                       </td>
                       <td style={td}>
                         <button
