@@ -13,7 +13,7 @@
 //   trash_thread   { threadId }        Gmail bin (recoverable ~30 days)
 //   untrash_thread { threadId }        undo for the above
 //   get_attachment { messageId, attachmentId }
-//   learn_labels   { maxPerLabel? }    scan threads under each user label and
+//   learn_labels   { maxThreads? }     scan recent archived threads and
 //                    record sender→label stats into comms_tag_rules (feeds
 //                    the inbox's auto-suggested tags)
 //
@@ -328,57 +328,79 @@ Deno.serve(async (req) => {
         return jsonResponse({ success: true });
       }
 
-      // Scan threads already filed under each user label and record their
-      // senders into comms_tag_rules — the inbox uses those stats to suggest
-      // a tag per email. Re-running is safe (merge_comms_tag_rules uses
-      // greatest(), so counts refresh without double-counting).
+      // One pass over recent ARCHIVED mail (processed = usually labelled):
+      // each threads.get already carries every message's labelIds + From, so
+      // a single call credits the sender to all user labels on the thread.
+      // Results merge into comms_tag_rules — the inbox uses those stats to
+      // suggest a tag per email. Re-running is safe (merge_comms_tag_rules
+      // uses greatest(), so counts refresh without double-counting).
+      //
+      // Quota: Gmail caps "Queries per minute per user" at 15,000 units and
+      // threads.get/list cost 10 each. Chunks of 5 + 350ms pauses ≈ 5k/min.
+      // Anything that still fails is skipped and reported as partial.
       case "learn_labels": {
-        const maxPerLabel = Math.min(Math.max(Number(body.maxPerLabel) || 50, 1), 100);
-        const labelData = await gmailFetch(tok.accessToken, "/labels");
-        const learnable = (labelData.labels || []).filter((l: any) => l.type === "user");
+        const maxThreads = Math.min(Math.max(Number(body.maxThreads) || 400, 50), 800);
         const self = tok.accountEmail.toLowerCase();
-        const counts = new Map<string, { sender: string; label_id: string; label_name: string; count: number }>();
+        const labelData = await gmailFetch(tok.accessToken, "/labels");
+        const userLabelById = new Map<string, string>();
+        for (const l of labelData.labels || []) {
+          if (l.type === "user") userLabelById.set(l.id, l.name);
+        }
 
-        for (const label of learnable) {
-          // Collect up to maxPerLabel thread ids for this label.
-          const ids: string[] = [];
+        const ids: string[] = [];
+        let partial = false;
+        try {
           let pageToken: string | undefined;
-          while (ids.length < maxPerLabel) {
+          while (ids.length < maxThreads) {
             const params = new URLSearchParams({
-              maxResults: String(Math.min(100, maxPerLabel - ids.length)),
+              q: "-in:inbox -in:spam -in:trash",
+              maxResults: String(Math.min(100, maxThreads - ids.length)),
             });
-            params.append("labelIds", label.id);
             if (pageToken) params.set("pageToken", pageToken);
             const list = await gmailFetch(tok.accessToken, `/threads?${params.toString()}`);
             const batch = (list.threads || []).map((t: any) => t.id);
             ids.push(...batch);
             pageToken = list.nextPageToken;
             if (!pageToken || !batch.length) break;
+            await new Promise((r) => setTimeout(r, 200));
           }
-          // From headers only, small chunks + a pause to stay inside the
-          // per-user rate quota (threads.get = 10 units, 250 units/sec).
-          for (let i = 0; i < ids.length; i += 10) {
-            const chunk = ids.slice(i, i + 10);
-            const got = await Promise.all(chunk.map((id) =>
-              gmailFetch(tok.accessToken, `/threads/${id}?format=metadata&metadataHeaders=From`)
-                .catch(() => null)
-            ));
-            for (const t of got) {
-              if (!t) continue;
-              const senders = new Set<string>();
-              for (const m of t.messages || []) {
-                const e = extractEmail(header(m.payload?.headers, "From"));
-                if (e && e !== self) senders.add(e);
+        } catch {
+          partial = true; // learn from whatever we managed to list
+        }
+
+        const counts = new Map<string, { sender: string; label_id: string; label_name: string; count: number }>();
+        const labelsSeen = new Set<string>();
+        let scanned = 0;
+        for (let i = 0; i < ids.length; i += 5) {
+          const chunk = ids.slice(i, i + 5);
+          const got = await Promise.all(chunk.map((id) =>
+            gmailFetch(tok.accessToken, `/threads/${id}?format=metadata&metadataHeaders=From`)
+              .catch(() => null)
+          ));
+          for (const t of got) {
+            if (!t) { partial = true; continue; }
+            scanned++;
+            const senders = new Set<string>();
+            const labelsOn = new Set<string>();
+            for (const m of t.messages || []) {
+              const e = extractEmail(header(m.payload?.headers, "From"));
+              if (e && e !== self) senders.add(e);
+              for (const lid of m.labelIds || []) {
+                if (userLabelById.has(lid)) labelsOn.add(lid);
               }
+            }
+            for (const lid of labelsOn) {
+              labelsSeen.add(lid);
               for (const s of senders) {
-                const key = `${s}|${label.id}`;
-                const cur = counts.get(key) || { sender: s, label_id: label.id, label_name: label.name, count: 0 };
+                const key = `${s}|${lid}`;
+                const cur = counts.get(key) ||
+                  { sender: s, label_id: lid, label_name: userLabelById.get(lid)!, count: 0 };
                 cur.count++;
                 counts.set(key, cur);
               }
             }
-            await new Promise((r) => setTimeout(r, 120));
           }
+          await new Promise((r) => setTimeout(r, 350));
         }
 
         const rules = [...counts.values()];
@@ -389,7 +411,13 @@ Deno.serve(async (req) => {
           });
           if (mergeErr) return jsonResponse({ success: false, error: `Could not store rules: ${mergeErr.message}` }, 500);
         }
-        return jsonResponse({ success: true, labelsScanned: learnable.length, rules: rules.length });
+        return jsonResponse({
+          success: true,
+          threadsScanned: scanned,
+          labelsScanned: labelsSeen.size,
+          rules: rules.length,
+          partial,
+        });
       }
 
       case "get_attachment": {

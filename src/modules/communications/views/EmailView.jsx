@@ -455,7 +455,7 @@ export default function EmailView() {
       const res = await gmail.learnLabels(mailbox);
       const rules = await loadTagRules(mailbox).catch(() => []);
       setTagRules(rules);
-      flash(`Learned from ${res.labelsScanned} labels — ${res.rules} sender rules.`);
+      flash(`Learned from ${res.threadsScanned} archived threads (${res.labelsScanned} labels) — ${res.rules} sender rules${res.partial ? ', partial scan' : ''}.`);
     } catch (e) {
       if (!silent) setError(`Learning tags failed: ${e.message}`);
     } finally {
