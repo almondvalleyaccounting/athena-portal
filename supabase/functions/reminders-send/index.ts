@@ -289,7 +289,7 @@ Deno.serve(async (req) => {
     const entityId = target.entity_id;
 
     const { data: ent } = await service.from("entities")
-      .select("id, name, billing_email, prospect_email, entity_status")
+      .select("id, name, utr, billing_email, prospect_email, entity_status")
       .eq("id", entityId).maybeSingle();
     if (!ent) { skipped.push({ entity_id: entityId, reason: "entity not found" }); continue; }
     if (["nlac", "archived"].includes(ent.entity_status as string)) {
@@ -320,10 +320,12 @@ Deno.serve(async (req) => {
       payment = { id: pay.id, batch_id: pay.batch_id, amount: Number(pay.amount) };
       dueDate = (pay.batch as { due_date?: string } | null)?.due_date || dueDate;
       if (!dueDate) { skipped.push({ entity_id: entityId, reason: "no due date on batch" }); continue; }
-      paymentRef = taxPaymentRef(pay.reference_raw as string | null);
+      // Reference from the TaxCalc row, falling back to the client's UTR on
+      // the entity (e.g. added to BM after the file was uploaded).
+      paymentRef = taxPaymentRef(pay.reference_raw as string | null) || taxPaymentRef(ent.utr as string | null);
       if (!paymentRef) {
-        // No UTR → not registered with HMRC yet. Send the 'no_utr' variant
-        // (no bank details, no reference) rather than skipping.
+        // No UTR anywhere → not registered with HMRC yet. Send the 'no_utr'
+        // variant (no bank details, no reference) rather than skipping.
         if (!tmplNoUtr) { skipped.push({ entity_id: entityId, reason: "no UTR and no 'no_utr' template" }); continue; }
         effKind = "no_utr"; effTmpl = tmplNoUtr;
       }

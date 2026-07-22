@@ -171,13 +171,13 @@ Deno.serve(async (req) => {
 
   // Entities, preferences, BM emails, and the dedup ledger.
   const [{ data: ents }, { data: prefs }, { data: bm }, { data: existing }] = await Promise.all([
-    service.from("entities").select("id, name, billing_email, prospect_email, entity_status").in("id", entityIds),
+    service.from("entities").select("id, name, utr, billing_email, prospect_email, entity_status").in("id", entityIds),
     service.from("client_comm_preferences").select("entity_id, status").eq("comm_type", commType).in("entity_id", entityIds),
     service.from("v_email_reconciliation").select("entity_id, bm_contact_email").in("entity_id", entityIds),
     service.from("reminder_emails").select("entity_id, kind, batch_id, status").eq("comm_type", commType).in("entity_id", entityIds),
   ]);
 
-  const entById: Record<string, { name: string; billing_email: string; prospect_email: string; entity_status: string }> = {};
+  const entById: Record<string, { name: string; utr: string | null; billing_email: string; prospect_email: string; entity_status: string }> = {};
   for (const e of ents || []) entById[e.id] = e as never;
   const prefById: Record<string, string> = {};
   for (const p of prefs || []) prefById[p.entity_id] = p.status;
@@ -211,8 +211,10 @@ Deno.serve(async (req) => {
       // batch). force bypasses the date gate for manual/test runs.
       if (!isTriggerDay && !force) { counts.skipped_not_trigger++; continue; }
       if (remindedThisBatch.has(r.entity_id)) { counts.skipped_dup++; continue; }
-      const paymentRef = taxPaymentRef(r.reference_raw as string | null);
-      // No UTR → not registered with HMRC yet; use the 'no_utr' variant.
+      // Reference from the TaxCalc row, falling back to the client's UTR on
+      // the entity (e.g. added to BM after the file was uploaded).
+      const paymentRef = taxPaymentRef(r.reference_raw as string | null) || taxPaymentRef(ent.utr);
+      // No UTR anywhere → not registered with HMRC yet; use 'no_utr' variant.
       let effKind = "reminder";
       let effTmpl = tmplByKind.reminder;
       if (!paymentRef) {
