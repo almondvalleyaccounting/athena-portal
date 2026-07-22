@@ -868,7 +868,7 @@ function drawExecutiveSummary(doc, { outputs, scopedOutputs, periods, openingPer
 
 function drawAssumptionsPage(doc, { outputs, periods, openingPeriod, entities, entityIds, incomeContext, header }) {
   drawHeader(doc, header);
-  drawSectionHeading(doc, 'Key assumptions', 'Operating assumptions by phase — prices per day · costs per month (avg) · wages annualised (loaded)');
+  drawSectionHeading(doc, 'Key assumptions', 'Operating assumptions by phase — prices per day · costs as period totals · wages annualised (loaded)');
 
   const inScope = entities.filter(e => !entityIds || entityIds.has(e.id));
   const occIdx = buildOccupancyIndex(outputs);
@@ -1051,8 +1051,10 @@ function drawAssumptionsPage(doc, { outputs, periods, openingPeriod, entities, e
       label: b.label, months: m,
       privPerDay: s.privDays > 0 ? s.privRev / s.privDays : null,
       laPerDay: s.laDays > 0 ? s.laRev / s.laDays : null,
-      rentMo: s.rent / m, svcMo: s.svc / m, staffMo: s.staffCost / m, ohMo: s.otherOH / m,
-      totalMo: (s.rent + s.svc + s.staffCost + s.otherOH) / m,
+      // Costs are TOTALS for the column's period (a quarter in year one,
+      // then a full year) — the way an accountant reads the column.
+      rent: s.rent, svc: s.svc, staff: s.staffCost, oh: s.otherOH,
+      total: s.rent + s.svc + s.staffCost + s.otherOH,
       wage: s.npHc > 0 ? (s.npCost / s.npHc) * 12 : null,
       ratio: s.req > 0 ? s.prov / s.req : null,
       staffToIncome: s.revenue > 0 ? (s.staffCost / s.revenue) * 100 : null,
@@ -1081,12 +1083,12 @@ function drawAssumptionsPage(doc, { outputs, periods, openingPeriod, entities, e
     groupRow('Income'),
     dataRow('Avg private price per day', b => b.privPerDay, fmtDay),
     dataRow('Avg council funded price per day', b => b.laPerDay, fmtDay),
-    groupRow('Costs — £ per month (average)'),
-    dataRow('Rent', b => b.rentMo, fmtMo),
-    dataRow('Service charge', b => b.svcMo, fmtMo),
-    dataRow('Staff costs', b => b.staffMo, fmtMo),
-    dataRow('Other overheads', b => b.ohMo, fmtMo),
-    dataRow('Total costs', b => b.totalMo, fmtMo, { bold: true, fill: SOFT }),
+    groupRow('Costs — £ total for the period (quarters, then full years)'),
+    dataRow('Rent', b => b.rent, fmtMo),
+    dataRow('Service charge', b => b.svc, fmtMo),
+    dataRow('Staff costs', b => b.staff, fmtMo),
+    dataRow('Other overheads', b => b.oh, fmtMo),
+    dataRow('Total costs', b => b.total, fmtMo, { bold: true, fill: SOFT }),
     groupRow('Staffing'),
     dataRow('Avg staff wage — non-manager (annual, loaded)', b => b.wage, fmtWage),
     dataRow('Staff : statutory ratio', b => b.ratio, fmtX),
@@ -1119,11 +1121,9 @@ function drawAssumptionsPage(doc, { outputs, periods, openingPeriod, entities, e
 
   const noteY = doc.lastAutoTable.finalY + 5;
   doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(MUTED);
-  doc.text(
-    'Prices per child-day (private = weekly rate ÷ 5; council = LA hourly rate × operating hours ÷ 5). Wages are fully loaded (NI, pension, vacancy cover). ' +
-    'Space maximum uses Care Inspectorate m²-per-child minimums.',
-    MARGIN.left, noteY
-  );
+  const note = 'Costs are totals for each column\'s period — quarters in year one, then full years. Prices per child-day (private = weekly rate ÷ 5; council = LA hourly rate × operating hours ÷ 5). ' +
+    'Wages are fully loaded (NI, pension, vacancy cover). Space maximum uses Care Inspectorate m²-per-child minimums.';
+  doc.text(doc.splitTextToSize(note, PAGE.w - MARGIN.left - MARGIN.right), MARGIN.left, noteY);
 }
 
 // ── Executive dashboard page ──────────────────────────────────
