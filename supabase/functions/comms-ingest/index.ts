@@ -16,9 +16,13 @@
 // portal-admin JWT (mirrors chase-reply-scan).
 //
 // Body: { mode?: 'incremental' | 'backfill', mailbox?: string }
-//   incremental (default) — mail newer than the mailbox's last_scanned_at
-//   backfill              — walk backwards to a 12-month floor in bounded runs;
-//                           re-invoke until every mailbox reports done:true
+//   incremental (default) — per mailbox: if its 12-month backfill isn't done
+//                           yet (new/just-connected mailbox), run a backfill
+//                           pass; otherwise scan mail newer than last_scanned_at.
+//                           So a newly connected team member is auto-seeded with
+//                           12 months of history on its first cron runs.
+//   backfill              — force a backfill pass for every mailbox; walk back to
+//                           the 12-month floor in bounded runs (manual driver).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -197,9 +201,20 @@ async function processMailbox(
   // Window bounds.
   const { data: stateRow } = await service.from("comms_ingest_state").select("*").eq("mailbox", token.accountEmail).maybeSingle();
   const floorMs = Date.now() - BACKFILL_MONTHS * 30 * 24 * 3600 * 1000;
+  const backfilledThroughMs = stateRow?.backfilled_through ? new Date(stateRow.backfilled_through as string).getTime() : null;
+  const backfillComplete = backfilledThroughMs !== null && backfilledThroughMs <= floorMs;
+
+  // A mailbox that hasn't finished its 12-month backfill gets backfill passes
+  // FIRST — even under the regular incremental cron — then settles into
+  // incremental. So a newly connected team member is seeded with 12 months of
+  // history automatically on its first runs; no special connect-flow wiring.
+  // (An explicit mode:'backfill' request always backfills, for manual drivers.)
+  const effectiveMode: "incremental" | "backfill" =
+    mode === "backfill" ? "backfill" : (backfillComplete ? "incremental" : "backfill");
+
   let q: string;
-  if (mode === "backfill") {
-    const upperMs = stateRow?.backfilled_through ? new Date(stateRow.backfilled_through as string).getTime() : Date.now();
+  if (effectiveMode === "backfill") {
+    const upperMs = backfilledThroughMs ?? Date.now();
     if (upperMs <= floorMs) return { mailbox: token.accountEmail, done: true, scanned: 0, stored: 0 };
     q = `after:${Math.floor(floorMs / 1000)} before:${Math.floor(upperMs / 1000)} -in:chats -in:drafts`;
   } else {
@@ -303,7 +318,7 @@ async function processMailbox(
   // Advance progress markers.
   const state: Row = { mailbox: token.accountEmail, updated_at: runStart.toISOString() };
   let done = false;
-  if (mode === "backfill") {
+  if (effectiveMode === "backfill") {
     if (cappedOut && oldestMs !== Infinity) {
       // More to do below the oldest we saw — resume before it next run.
       state.backfilled_through = new Date(oldestMs).toISOString();
@@ -317,7 +332,7 @@ async function processMailbox(
   }
   await service.from("comms_ingest_state").upsert(state, { onConflict: "mailbox" });
 
-  return { mailbox: token.accountEmail, scanned: ids.length, stored, done, cappedOut };
+  return { mailbox: token.accountEmail, mode: effectiveMode, scanned: ids.length, stored, done, cappedOut };
 }
 
 Deno.serve(async (req) => {
