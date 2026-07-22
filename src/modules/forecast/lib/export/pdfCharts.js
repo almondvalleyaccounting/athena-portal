@@ -265,7 +265,7 @@ export function drawStackedBars(doc, opts) {
     doc.setTextColor(MUTED);
     doc.text(title.toUpperCase(), x, y + 3);
   }
-  drawLegend(doc, x + (title ? doc.getTextWidth(title.toUpperCase()) * 1.18 + 8 : 0), y + 3, series);
+  drawLegend(doc, x + w, y + 3, series);
 
   const labelW = 24;
   const valueW = 16;
