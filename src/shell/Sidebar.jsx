@@ -17,6 +17,7 @@ import {
   Gauge,
   Briefcase,
   Inbox,
+  UserCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -44,6 +45,7 @@ const ICON_MAP = {
   gauge: Gauge,
   briefcase: Briefcase,
   inbox: Inbox,
+  'user-check': UserCheck,
 };
 
 /* ─── Visibility rules ─────────────────────────────────────────── */

@@ -131,6 +131,15 @@ export const MODULES = [
     group: 'team',
   },
   {
+    id: 'recruitment',
+    label: 'Recruitment',
+    route: '/recruitment',
+    icon: 'user-check',
+    permissions: ['can_view_recruitment'],
+    status: 'live',
+    group: 'team',
+  },
+  {
     id: 'issues',
     label: 'Issues Log',
     route: '/issues',
