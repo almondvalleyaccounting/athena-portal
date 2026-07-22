@@ -12,7 +12,7 @@
 //   outputs       — fc_output rows (already loaded)
 //   periods       — array of period indices to compute
 //   entityIds     — Set of entity ids to include; null = all entities
-//                   (group-level rows always included regardless)
+//                   (group-level rows apportioned by revenue share — see below)
 //   inflationPct  — 'derive' (recommended) reads the engine's own
 //                   inflation-uplift rows so the scoped view inherits the
 //                   scenario's inflation settings exactly; or
@@ -29,6 +29,12 @@
 //                   for an explicit override. openingEquity: 'derive'
 //                   mirrors the derived cash so the scoped BS starts
 //                   balanced.
+//
+// GROUP-LEVEL rows (central staff, central admin overhead, group loans,
+// working capital) are apportioned to a filtered view by REVENUE SHARE —
+// the scope's slice of that period's total revenue — so site views carry
+// a fair slice of shared costs and sum back to the group. Periods before
+// any revenue exists borrow the nearest following period's share.
 //
 // Returns: a Map keyed by `${nominal_type}::${period}` -> amount_p.
 //
@@ -102,12 +108,6 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     costFactor   = (t) => Math.pow(1 + (inflationPct?.cost   || 0) / 100, Math.floor(t / 12));
   }
 
-  const sumOf = (rows, predicate) => {
-    let s = 0;
-    for (const r of rows) if (predicate(r)) s += r.amount_p;
-    return s;
-  };
-
   // Cost categorisation matching financial_core
   const isPremises  = (lbl) => lbl === 'Rent' || lbl === 'Service charge' || lbl === 'NDR' || lbl === 'Maintenance';
   const isUtilities = (lbl) => /utilit/i.test(lbl);
@@ -128,6 +128,27 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     cash0 = openingCash || 0;
   }
 
+  // Revenue-share per period — the fraction of shared (group-level) rows
+  // a filtered view carries. Zero-revenue periods (pre-opening) borrow
+  // the nearest following period's share so central costs aren't lost.
+  const shareByT = new Map();
+  if (entityIds) {
+    const raw = periods.map(t => {
+      let scoped = 0, total = 0;
+      for (const r of byPeriod.get(t) || []) {
+        if (r.nominal_type !== 'revenue') continue;
+        total += r.amount_p;
+        if (r.entity_id != null && entityIds.has(r.entity_id)) scoped += r.amount_p;
+      }
+      return total > 0 ? scoped / total : null;
+    });
+    let next = 1;
+    for (let i = raw.length - 1; i >= 0; i--) {
+      if (raw[i] == null) raw[i] = next; else next = raw[i];
+    }
+    periods.forEach((t, i) => shareByT.set(t, raw[i]));
+  }
+
   // Running BS state for cash + equity + tax_payable
   let cash = cash0;
   let equity = openingEquity === 'derive' ? cash0 : (openingEquity || 0);
@@ -144,12 +165,25 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
   const pnlByT = [];
 
   for (const t of periods) {
-    const rows = (byPeriod.get(t) || []).filter(inScope);
+    const allRows = byPeriod.get(t) || [];
+    const rows = allRows.filter(inScope);          // metrics only (whole headcounts)
+    const share = entityIds ? (shareByT.get(t) ?? 1) : 1;
+    // Entity rows in scope at full weight; group-level rows at the
+    // scope's revenue share (so shared costs apportion, not duplicate).
+    const sumScoped = (pred) => {
+      let ent = 0, grp = 0;
+      for (const r of allRows) {
+        if (!pred(r)) continue;
+        if (r.entity_id == null) grp += r.amount_p;
+        else if (!entityIds || entityIds.has(r.entity_id)) ent += r.amount_p;
+      }
+      return ent + grp * share;
+    };
     const fInc = incomeFactor(t);
     const fCost = costFactor(t);
 
-    const revenuePrivBase = sumOf(rows, r => r.nominal_type === 'revenue' && r.tags?.revenue_kind !== 'funded');
-    const revenueFundBase = sumOf(rows, r => r.nominal_type === 'revenue' && r.tags?.revenue_kind === 'funded');
+    const revenuePrivBase = sumScoped(r => r.nominal_type === 'revenue' && r.tags?.revenue_kind !== 'funded');
+    const revenueFundBase = sumScoped(r => r.nominal_type === 'revenue' && r.tags?.revenue_kind === 'funded');
     const revenueBase = revenuePrivBase + revenueFundBase;
     const revenueUplift = revenueBase * (fInc - 1);
     const revenue = revenueBase + revenueUplift;
@@ -165,28 +199,28 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     const isOverheadStaff = (r) => r.nominal_type === 'staff_cost'
       && r.module_key !== 'pre_opening'
       && !DIRECT_ROLES.has(r.tags?.role);
-    const staffDirectBase   = sumOf(rows, isDirectStaff);
-    const staffOverheadBase = sumOf(rows, isOverheadStaff);
+    const staffDirectBase   = sumScoped(isDirectStaff);
+    const staffOverheadBase = sumScoped(isOverheadStaff);
     const staffBase = staffDirectBase + staffOverheadBase;
-    const preOpenStaffBase = sumOf(rows, r => r.nominal_type === 'staff_cost' && r.module_key === 'pre_opening');
+    const preOpenStaffBase = sumScoped(r => r.nominal_type === 'staff_cost' && r.module_key === 'pre_opening');
 
-    const premisesBase = sumOf(rows, r => r.nominal_type === 'overhead' && isPremises(r.line_label || ''));
-    const utilitiesBase = sumOf(rows, r => r.nominal_type === 'overhead' && isUtilities(r.line_label || ''));
-    const preOpenOverheadBase = sumOf(rows, r => r.nominal_type === 'overhead' && isPreOpening(r.module_key, r.line_label || ''));
+    const premisesBase = sumScoped(r => r.nominal_type === 'overhead' && isPremises(r.line_label || ''));
+    const utilitiesBase = sumScoped(r => r.nominal_type === 'overhead' && isUtilities(r.line_label || ''));
+    const preOpenOverheadBase = sumScoped(r => r.nominal_type === 'overhead' && isPreOpening(r.module_key, r.line_label || ''));
     // Pre-opening line-item split (overhead is the registration period catch-all,
     // marketing is the spike, staffing is the staff_cost rows)
-    const preOpenMarketingBase = sumOf(rows, r =>
+    const preOpenMarketingBase = sumScoped(r =>
       r.nominal_type === 'overhead' && isPreOpening(r.module_key, r.line_label || '') && /marketing/i.test(r.line_label || '')
     );
     const preOpenOhRecurringBase = preOpenOverheadBase - preOpenMarketingBase;
     // Direct costs (consumables / food) carved out so the P&L row matches the engine.
-    const directCostsBase = sumOf(rows, r =>
+    const directCostsBase = sumScoped(r =>
       r.nominal_type === 'overhead' && r.module_key !== 'pre_opening' && /consumable|food/i.test(r.line_label || '')
     );
-    const adminBase = sumOf(rows, r =>
+    const adminBase = sumScoped(r =>
       r.nominal_type === 'overhead' && r.module_key !== 'pre_opening' && (r.line_label || '') === 'Central admin'
     );
-    const otherOverheadBase = sumOf(rows, r =>
+    const otherOverheadBase = sumScoped(r =>
       (r.nominal_type === 'overhead' && !isPremises(r.line_label || '') && !isUtilities(r.line_label || '') && !isPreOpening(r.module_key, r.line_label || '') && !/consumable|food/i.test(r.line_label || '') && (r.line_label || '') !== 'Central admin')
       || r.nominal_type === 'cost_of_sales'
     );
@@ -195,14 +229,14 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     const costsUplift = costsBase * (fCost - 1);
     const costs = costsBase + costsUplift;
 
-    const dep = sumOf(rows, r => DEP_NTS.includes(r.nominal_type));
-    const interest = sumOf(rows, r => INT_NTS.includes(r.nominal_type));
+    const dep = sumScoped(r => DEP_NTS.includes(r.nominal_type));
+    const interest = sumScoped(r => INT_NTS.includes(r.nominal_type));
     // Tax: when a location filter is active, the group-level `tax` row was
     // being pulled in wholesale — overstating the tax burden on a single
     // entity. Recompute scoped tax from scoped PBT × effective group tax
     // rate (= group_tax / group_PBT for periods with positive group PBT).
     // max(0, …) matches the engine's no-group-relief behaviour.
-    const taxRaw = sumOf(rows, r => TAX_NTS.includes(r.nominal_type));
+    const taxRaw = sumScoped(r => TAX_NTS.includes(r.nominal_type));
     let tax;
     if (entityIds) {
       // Derive effective rate from group-emitted rows for this period.
@@ -211,17 +245,19 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
         if (r.nominal_type === 'tax') groupTax += r.amount_p;
         else if (r.nominal_type === 'pnl.pbt' && !r.entity_id) groupPbt += r.amount_p;
       }
-      const effRate = groupPbt > 0 ? (groupTax / groupPbt) : 0.25;
+      // When the group pays no tax (losses still absorbing profits), the
+      // marginal tax on the scope's profit is nil too — rate 0, not 25%.
+      const effRate = groupPbt > 0 ? (groupTax / groupPbt) : 0;
       // Scoped PBT (signed) computed below; we need it now → reorder.
       const scopedPbt = (revenue - costs) - dep - interest;
       tax = Math.max(0, scopedPbt * effRate);
     } else {
       tax = taxRaw;
     }
-    const capex = sumOf(rows, r => CAPEX_NTS.includes(r.nominal_type));
-    const debtPrincipal = sumOf(rows, r => DEBT_PRIN_NTS.includes(r.nominal_type));
-    const debtBalance = sumOf(rows, r => DEBT_BAL_NTS.includes(r.nominal_type));
-    const wcMovement = sumOf(rows, r => WC_MVT_NTS.includes(r.nominal_type));
+    const capex = sumScoped(r => CAPEX_NTS.includes(r.nominal_type));
+    const debtPrincipal = sumScoped(r => DEBT_PRIN_NTS.includes(r.nominal_type));
+    const debtBalance = sumScoped(r => DEBT_BAL_NTS.includes(r.nominal_type));
+    const wcMovement = sumScoped(r => WC_MVT_NTS.includes(r.nominal_type));
 
     const ebitda = revenue - costs;
     const ebit = ebitda - dep;
@@ -262,7 +298,9 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     const cashOut_staff     = staffBase * fCost;
     const cashOut_premises  = premisesBase * fCost;
     const cashOut_utilities = utilitiesBase * fCost;
-    const cashOut_otherOH   = otherOverheadBase * fCost;
+    // Matches financial_core's CF bucketing: "other overhead" cash-out
+    // carries admin + direct costs (consumables/food) too.
+    const cashOut_otherOH   = (otherOverheadBase + adminBase + directCostsBase) * fCost;
     const cashOut_preOpenOh        = preOpenOhRecurringBase * fCost;
     const cashOut_preOpenMarketing = preOpenMarketingBase   * fCost;
     const cashOut_preOpenStaffing  = preOpenStaffBase       * fCost;
@@ -383,15 +421,13 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     set('bs.debt', t, debtBalance);
     set('bs.equity', t, equity);
     set('bs.tax_payable', t, taxPayable);
-    // Net WC: re-derived from upstream balance rows
-    let netWc = 0;
-    for (const r of rows) {
-      if (r.nominal_type === 'wc_balance.debtors_private') netWc += r.amount_p;
-      else if (r.nominal_type === 'wc_balance.debtors_la') netWc += r.amount_p;
-      else if (r.nominal_type === 'wc_balance.creditors')   netWc -= r.amount_p;
-      else if (r.nominal_type === 'wc_balance.deposits_held') netWc -= r.amount_p;
-      else if (r.nominal_type === 'wc_balance.advance_billing') netWc -= r.amount_p;
-    }
+    // Net WC: re-derived from upstream balance rows (group-level — takes
+    // the scope's revenue share, matching the wc_movement treatment).
+    const netWc = sumScoped(r => r.nominal_type === 'wc_balance.debtors_private')
+      + sumScoped(r => r.nominal_type === 'wc_balance.debtors_la')
+      - sumScoped(r => r.nominal_type === 'wc_balance.creditors')
+      - sumScoped(r => r.nominal_type === 'wc_balance.deposits_held')
+      - sumScoped(r => r.nominal_type === 'wc_balance.advance_billing');
     set('bs.net_wc', t, netWc);
   }
 

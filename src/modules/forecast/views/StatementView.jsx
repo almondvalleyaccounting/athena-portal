@@ -95,7 +95,7 @@ export default function StatementView({
 
       {usingScoped && (
         <div style={{ padding: '6px 10px', fontSize: 11, color: '#7c2d12', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, marginBottom: 10 }}>
-          Scoped to {filterLabel(filter, entities, groups)} — recomputed from upstream entity rows. Inflation, tax and dividend policy inherited from the scenario; opening cash = capital attributed to these locations (central / unallocated pot excluded).
+          Scoped to {filterLabel(filter, entities, groups)} — recomputed from upstream entity rows. Inflation, tax and dividend policy inherited from the scenario; central costs (HQ staff, admin, group loans) apportioned by revenue share; opening cash = capital attributed to these locations (central / unallocated pot excluded).
         </div>
       )}
 

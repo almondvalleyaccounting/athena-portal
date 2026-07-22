@@ -820,7 +820,7 @@ function drawExecutiveSummary(doc, { outputs, scopedOutputs, periods, openingPer
     });
   }
   if (story.cashMin != null) {
-    const basis = entityIds ? ' Basis: capital attributed to these locations; central / unallocated cash excluded.' : '';
+    const basis = entityIds ? ' Basis: capital attributed to these locations; central costs apportioned by revenue share.' : '';
     bullets.push({
       title: 'Cash & funding',
       text: (story.cashMin < 0
