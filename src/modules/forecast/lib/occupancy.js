@@ -23,34 +23,50 @@ export const ACQUIRED_TYPES = new Set(['acquired_going_concern', 'acquired_empty
  * these three fields. Greenfield sites use the group per-band phase-up
  * drivers (0-2 fills slower than 3-5, etc.).
  *
- * `override` carries PER-VERSION values from the entity-scoped
- * `ramp.*` drivers (see locations.js): entity config is forecast-level
- * and shared across versions, so the ramp is overridable per version
- * through drivers. Any override value present forces the site-level
- * curve (even for a greenfield site).
+ * `override` carries PER-VERSION site-level values from the entity-
+ * scoped `ramp.*` drivers (see locations.js): entity config is
+ * forecast-level and shared across versions, so the ramp is overridable
+ * per version through drivers. Any override value present forces the
+ * site-level curve (even for a greenfield site).
+ *
+ * `bandOverride` carries PER-BAND, per-location, per-version values
+ * from the entity-scoped `capacity.*` drivers — the TOP layer for any
+ * site type, so a 3-5 room can fill faster than the 0-2 room on an
+ * acquired site. Priority per value:
+ *   band override > site ramp override > entity config (acquired)
+ *                                      / group band defaults (greenfield)
  *
  * @param {object} entity fc_entity row (config jsonb parsed)
  * @param {string} band age band key
  * @param {{opening?:number, target?:number, phase?:number}} groupCurve
- *   resolved group drivers for this band (capacity.opening_pct.<band> etc.)
+ *   resolved GROUP drivers for this band (capacity.opening_pct.<band> etc.)
  * @param {{start?:number, target?:number, months?:number}|null} override
+ * @param {{opening?:number, target?:number, phase?:number}|null} bandOverride
  * @returns {{start:number, target:number, ramp:number}}
  */
-export function curveForBand(entity, band, groupCurve, override = null) {
+export function curveForBand(entity, band, groupCurve, override = null, bandOverride = null) {
   const cfg = entity?.config || {};
   const hasOverride = override != null
     && (override.start != null || override.target != null || override.months != null);
+
+  let base;
   if (ACQUIRED_TYPES.has(cfg.acquisition_type) || hasOverride) {
-    return {
+    base = {
       start:  override?.start ?? cfg.starting_occupancy_pct ?? (cfg.acquisition_type === 'acquired_going_concern' ? 70 : 40),
       target: override?.target ?? cfg.target_occupancy_pct ?? groupCurve?.target ?? 85,
-      ramp:   Math.max(1, override?.months ?? cfg.ramp_to_target_months ?? groupCurve?.phase ?? 6),
+      ramp:   override?.months ?? cfg.ramp_to_target_months ?? groupCurve?.phase ?? 6,
+    };
+  } else {
+    base = {
+      start:  groupCurve?.opening ?? 40,
+      target: groupCurve?.target ?? 85,
+      ramp:   groupCurve?.phase ?? 6,
     };
   }
   return {
-    start:  groupCurve?.opening ?? 40,
-    target: groupCurve?.target ?? 85,
-    ramp:   Math.max(1, groupCurve?.phase ?? 6),
+    start:  bandOverride?.opening ?? base.start,
+    target: bandOverride?.target ?? base.target,
+    ramp:   Math.max(1, bandOverride?.phase ?? base.ramp),
   };
 }
 

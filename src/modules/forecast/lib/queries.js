@@ -981,15 +981,17 @@ export async function seedPackDefaults({ scenario_id, modules, entities, overwri
     }
   }
 
-  // The capacity.* band-curve drivers only apply to GREENFIELD sites
-  // (acquired sites use their own site-level curve) — don't seed dead
-  // assumptions into forecasts that have no greenfield locations.
+  // GROUP-scope capacity.* rows are greenfield defaults only — skip
+  // them for forecasts with no greenfield locations. The ENTITY-scoped
+  // capacity.* rows are per-band overrides that apply to ANY site type
+  // (e.g. 3-5 filling faster than 0-2 on an acquired site), so those
+  // always seed (blank).
   const hasGreenfield = (entities || []).some(e =>
     (e.config?.acquisition_type ?? 'greenfield') === 'greenfield');
 
   for (const mod of modules) {
     for (const def of (mod.drivers || [])) {
-      if (!hasGreenfield && def.key.startsWith('capacity.')) continue;
+      if (!hasGreenfield && def.key.startsWith('capacity.') && def.scope !== 'entity') continue;
       const targets = def.scope === 'entity'
         ? entities.map(e => ({ entity_id: e.id }))
         : [{ entity_id: null }];

@@ -133,18 +133,19 @@ export const locationsModule = {
       };
 
       // Per-band ramp curves — shared helper (lib/occupancy.js).
-      // Acquired sites (going concern or empty premises) use the entity's
-      // own start/target/ramp config; greenfield uses the band curve —
-      // per-LOCATION band values when set, group defaults otherwise.
-      // The site-level ramp.* overrides beat everything.
+      // Layering, top first: per-BAND per-location values (capacity.*
+      // entity drivers — works for ANY site type, so the 3-5 room can
+      // fill faster than 0-2 on an acquired site) → site-level ramp.*
+      // overrides → entity config (acquired) / group band defaults
+      // (greenfield).
       const curveByBand = {};
       for (const band of AGE_BANDS) {
-        const bandCurve = {
-          opening: readOverride(`capacity.opening_pct.${band}`)     ?? groupCurve[band].opening,
-          target:  readOverride(`capacity.target_pct.${band}`)      ?? groupCurve[band].target,
-          phase:   readOverride(`capacity.phase_up_months.${band}`) ?? groupCurve[band].phase,
+        const bandOverride = {
+          opening: readOverride(`capacity.opening_pct.${band}`),
+          target:  readOverride(`capacity.target_pct.${band}`),
+          phase:   readOverride(`capacity.phase_up_months.${band}`),
         };
-        curveByBand[band] = curveForBand(e, band, bandCurve, override);
+        curveByBand[band] = curveForBand(e, band, groupCurve[band], override, bandOverride);
       }
 
       // Base ramp curve per band — quadratic ease-out from start to target
