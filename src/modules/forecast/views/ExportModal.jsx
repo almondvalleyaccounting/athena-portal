@@ -72,7 +72,7 @@ export default function ExportModal({
   const scopedOutputRows = useMemo(() => {
     if (!entityIds) return null;
     const map = scopedAggregate({
-      outputs, periods, entityIds,
+      outputs, periods, entityIds, entities,
       // 'derive' inherits the scenario's inflation + dividend policy and
       // starts cash from the capital attributed to the in-scope locations
       // (central/unallocated pot excluded — see aggregator.js).

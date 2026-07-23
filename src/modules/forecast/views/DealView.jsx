@@ -17,7 +17,7 @@ export default function DealView({
   const scopedMap = useMemo(() => {
     if (!usingScoped) return null;
     return scopedAggregate({
-      outputs, periods, entityIds,
+      outputs, periods, entityIds, entities,
       // 'derive' inherits the scenario's inflation + dividend policy and
       // starts cash from the capital attributed to the in-scope locations
       // (central/unallocated pot excluded — see aggregator.js).
