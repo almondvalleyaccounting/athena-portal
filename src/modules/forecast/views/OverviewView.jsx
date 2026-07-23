@@ -12,7 +12,7 @@ import { colors, fontStack, Section } from '../components/ui';
 
 const fmtMoney = (p) => {
   if (p == null) return '—';
-  const gbp = p / 100;
+  const gbp = p / 100 || 0;   // `|| 0` collapses -0 (from sign-flipped zero cost rows)
   const abs = Math.abs(gbp);
   if (abs >= 1_000_000) return `£${(gbp / 1_000_000).toFixed(2)}m`;
   if (abs >= 100_000)   return `£${Math.round(gbp / 1000).toLocaleString()}k`;
