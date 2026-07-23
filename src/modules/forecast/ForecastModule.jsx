@@ -21,6 +21,7 @@ import PremisesOverheadsView from './views/PremisesOverheadsView';
 import KpisTrendView from './views/KpisTrendView';
 import CapacitiesView from './views/CapacitiesView';
 import IncomeView from './views/IncomeView';
+import CompareView from './views/CompareView';
 import ExportModal from './views/ExportModal';
 
 const TABS = [
@@ -34,6 +35,7 @@ const TABS = [
   { key: 'premises',  label: 'Premises & overheads' },
   { key: 'capacities',label: 'Capacities' },
   { key: 'trends',    label: 'KPI trends' },
+  { key: 'compare',   label: 'Compare' },
   { key: 'deal',      label: 'Deal view' },
   { key: 'insights',  label: 'AI insights' },
   { key: 'findings',  label: 'Findings' },
@@ -386,6 +388,12 @@ export default function ForecastModule() {
               <KpisTrendView outputs={outputs} forecast={forecast} periods={periods}
                 entities={entities} groups={groups} assignments={assignments}
                 filter={filter} onFilterChange={setFilter} />
+            )}
+            {tab === 'compare' && (
+              <CompareView
+                forecast={forecast} versions={versions} version={version} scenario={scenario}
+                outputs={outputs} periods={periods} openingPeriod={forecast.opening_period}
+              />
             )}
             {tab === 'deal' && (
               <DealView outputs={outputs} forecast={forecast} periods={periods}
