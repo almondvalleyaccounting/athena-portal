@@ -94,20 +94,23 @@ export default function OverviewView({ outputs = [], forecast, periods = [], ent
     const line = (t, agg) => YB.map(g => sumLine(outputs, t, g.periods, agg || 'sum'));
     const tot = (t) => sumLine(outputs, t, allPeriods, 'sum');
 
+    // Cost lines and cash-out lines are stored NEGATIVE (statement sign
+    // convention); the Overview presents them as positive cost magnitudes.
+    const neg = (a) => a.map(v => -v);
     const revPrivate  = line('pnl.revenue_private');
     const revFunded   = line('pnl.revenue_la_funded');
     const revTotal    = line('pnl.revenue_total');
-    const staffDirect = line('pnl.cost_staff_direct');
-    const staffOh     = line('pnl.cost_staff_overhead');
-    const directCosts = line('pnl.cost_direct_costs');
-    const premises    = line('pnl.cost_premises');
-    const utilities   = line('pnl.cost_utilities');
-    const otherOh     = YB.map((g) => sumLine(outputs, 'pnl.cost_other_overhead', g.periods) + sumLine(outputs, 'pnl.cost_admin', g.periods));
-    const preOpening  = line('pnl.cost_pre_opening');
-    const costTotal   = line('pnl.cost_total');
+    const staffDirect = neg(line('pnl.cost_staff_direct'));
+    const staffOh     = neg(line('pnl.cost_staff_overhead'));
+    const directCosts = neg(line('pnl.cost_direct_costs'));
+    const premises    = neg(line('pnl.cost_premises'));
+    const utilities   = neg(line('pnl.cost_utilities'));
+    const otherOh     = YB.map((g) => -(sumLine(outputs, 'pnl.cost_other_overhead', g.periods) + sumLine(outputs, 'pnl.cost_admin', g.periods)));
+    const preOpening  = neg(line('pnl.cost_pre_opening'));
+    const costTotal   = neg(line('pnl.cost_total'));
     const ebitda      = line('pnl.ebitda');
     const pbt         = line('pnl.pbt');
-    const capex       = line('cf.out.capex');
+    const capex       = neg(line('cf.out.capex'));
     const drawdown    = line('cf.in.debt_drawdown');
 
     // ── Cash floor: monthly bs.cash series (one group row per period) ─
@@ -134,13 +137,13 @@ export default function OverviewView({ outputs = [], forecast, periods = [], ent
       totals: {
         revPrivate: tot('pnl.revenue_private'), revFunded: tot('pnl.revenue_la_funded'),
         revTotal: tot('pnl.revenue_total'),
-        staffDirect: tot('pnl.cost_staff_direct'), staffOh: tot('pnl.cost_staff_overhead'),
-        directCosts: tot('pnl.cost_direct_costs'),
-        premises: tot('pnl.cost_premises'), utilities: tot('pnl.cost_utilities'),
-        otherOh: tot('pnl.cost_other_overhead') + tot('pnl.cost_admin'),
-        preOpening: tot('pnl.cost_pre_opening'), costTotal: tot('pnl.cost_total'),
+        staffDirect: -tot('pnl.cost_staff_direct'), staffOh: -tot('pnl.cost_staff_overhead'),
+        directCosts: -tot('pnl.cost_direct_costs'),
+        premises: -tot('pnl.cost_premises'), utilities: -tot('pnl.cost_utilities'),
+        otherOh: -(tot('pnl.cost_other_overhead') + tot('pnl.cost_admin')),
+        preOpening: -tot('pnl.cost_pre_opening'), costTotal: -tot('pnl.cost_total'),
         ebitda: tot('pnl.ebitda'), pbt: tot('pnl.pbt'),
-        capex: tot('cf.out.capex'), drawdown: tot('cf.in.debt_drawdown'),
+        capex: -tot('cf.out.capex'), drawdown: tot('cf.in.debt_drawdown'),
       },
     };
   }, [outputs, periods, entities, forecast?.opening_period]);
