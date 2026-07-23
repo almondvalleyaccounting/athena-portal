@@ -125,6 +125,7 @@ export default function ExportModal({
       laRate:       resolveByBand('la_funded_rate_p.{band}'),
       eligiblePct:  resolveByBand('eligible_for_funded_pct.{band}'),
       takeupPct:    resolveByBand('funded_hours_take_up_pct.{band}'),
+      fundedOnlyPct: resolveByBand('funded_only_pct.{band}'),
       hoursPerWeek: resolveByBand('operating_hours_per_week.{band}'),
       openingPct:   resolveLocByBand('capacity.opening_pct.{band}'),
       targetPct:    resolveLocByBand('capacity.target_pct.{band}'),

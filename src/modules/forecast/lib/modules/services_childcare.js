@@ -46,6 +46,11 @@ export const servicesChildcareModule = {
       { key: `operating_hours_per_week.${band}`, label: `Operating hours per week (${bandLabel(band)})`, unit: 'hours', kind: 'scalar', scope: 'entity', defaultValue: defaultHoursPerWeek(band) },
       { key: `funded_hours_take_up_pct.${band}`, label: `Funded take-up % (${bandLabel(band)})`, unit: 'pct', kind: 'scalar', scope: 'entity', defaultValue: FUNDED_BANDS.includes(band) ? 80 : 0 },
       { key: `eligible_for_funded_pct.${band}`, label: `Eligible for funded % (${bandLabel(band)})`, unit: 'pct', kind: 'scalar', scope: 'entity', defaultValue: FUNDED_BANDS.includes(band) ? 100 : 0 },
+      // Of the funded take-up, the share who use ONLY their 1140 hours
+      // (part-time pattern — ~2 such children fill one FTE place, so the
+      // place's occupied hours all bill at the LA rate, no private top-up).
+      // The balance are full-time: 1140 funded + the rest at private rates.
+      { key: `funded_only_pct.${band}`, label: `Funded-only families % (${bandLabel(band)})`, unit: 'pct', kind: 'scalar', scope: 'entity', defaultValue: 0 },
       { key: `la_funded_rate_p.${band}`, label: `LA funded rate £/hr (${bandLabel(band)})`, unit: 'gbp_p', kind: 'scalar', scope: 'entity', defaultValue: 555 },   // ~£5.55/hr default
     ])),
   ],
@@ -88,6 +93,7 @@ export const servicesChildcareModule = {
         const hpw            = ctx.resolve(`operating_hours_per_week.${band}`, { entity: e.key }) || 50;
         const eligiblePct    = ctx.resolve(`eligible_for_funded_pct.${band}`, { entity: e.key });
         const takeupPct      = ctx.resolve(`funded_hours_take_up_pct.${band}`, { entity: e.key });
+        const fundedOnlyPct  = ctx.resolve(`funded_only_pct.${band}`, { entity: e.key });
         const laRate         = ctx.resolve(`la_funded_rate_p.${band}`, { entity: e.key });
 
         // £/hour for private fees (derived from the weekly rate).
@@ -107,14 +113,23 @@ export const servicesChildcareModule = {
           const fundedChildren = children * fundedShare;
           const nonFundedChildren = children - fundedChildren;
 
+          // Split funded FTEs into FUNDED-ONLY (places composed of ~2
+          // part-time children who each use only their 1140 hours — every
+          // occupied hour of the place bills at the LA rate) and BLENDED
+          // (one full-time child per place: 1140 funded, rest private).
+          const fundedOnlyFte = fundedChildren * (fundedOnlyPct / 100);
+          const blendedChildren = fundedChildren - fundedOnlyFte;
+
           // Hours per child per week
           const fundedChildPrivateHours = Math.max(0, hpw - laHoursPerChildPerWeek);
 
           // Per-period totals (per month)
-          const laHoursMonthly = fundedChildren * laHoursPerChildPerWeek * monthlyWeeks;
+          const laHoursMonthly =
+              fundedOnlyFte * hpw * monthlyWeeks
+            + blendedChildren * laHoursPerChildPerWeek * monthlyWeeks;
           const privateHoursMonthly =
               nonFundedChildren * hpw * monthlyWeeks
-            + fundedChildren * fundedChildPrivateHours * monthlyWeeks;
+            + blendedChildren * fundedChildPrivateHours * monthlyWeeks;
 
           const fundedRevenue   = laHoursMonthly      * laRate;
           const privateRevenue  = privateHoursMonthly * hourlyRate;

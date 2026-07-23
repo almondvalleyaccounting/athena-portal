@@ -763,7 +763,7 @@ function PipelineDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
 
 const SERVICE_BAND_PREFIXES = [
   'weekly_rate_p.', 'operating_hours_per_week.',
-  'eligible_for_funded_pct.', 'funded_hours_take_up_pct.', 'la_funded_rate_p.',
+  'eligible_for_funded_pct.', 'funded_hours_take_up_pct.', 'funded_only_pct.', 'la_funded_rate_p.',
 ];
 const SERVICE_GROUP_KEYS = ['weeks_per_year', 'deposit_weeks', 'advance_billing_weeks'];
 
@@ -788,6 +788,9 @@ function ServicesDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
       <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 12px' }}>
         Pricing and funded-hours assumptions per age band, one card per location.
         LA-funded hours (1140/yr) are billed at the LA rate; remaining hours at the private rate.
+        <strong> Funded-only %</strong> is the share of funded take-up made up of part-timers using
+        only their 1140 hours (≈2 children per FTE place, so that place bills wholly at the LA rate);
+        the balance are full-timers who top up at private rates.
       </p>
 
       {entities.length === 0 && (
@@ -807,6 +810,7 @@ function ServicesDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
                 <th style={{ ...pipeTh, textAlign: 'right' }}>Hours / week</th>
                 <th style={{ ...pipeTh, textAlign: 'right' }}>Eligible for funded %</th>
                 <th style={{ ...pipeTh, textAlign: 'right' }}>Funded take-up %</th>
+                <th style={{ ...pipeTh, textAlign: 'right' }}>Funded-only %</th>
                 <th style={{ ...pipeTh, textAlign: 'right' }}>LA rate (£/hr)</th>
                 <th style={{ ...pipeTh, paddingLeft: 18 }}>Private £/hr</th>
               </tr>
@@ -817,6 +821,7 @@ function ServicesDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
                 const dHours = find(e.id, `operating_hours_per_week.${band}`);
                 const dElig  = find(e.id, `eligible_for_funded_pct.${band}`);
                 const dTake  = find(e.id, `funded_hours_take_up_pct.${band}`);
+                const dFOnly = find(e.id, `funded_only_pct.${band}`);
                 const dLa    = find(e.id, `la_funded_rate_p.${band}`);
                 const rate = numOf(dRate), hours = numOf(dHours);
                 const perHr = rate != null && hours > 0 ? rate / hours / 100 : null;
@@ -826,7 +831,7 @@ function ServicesDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dRate} {...cellProps} /></td>
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dHours} {...cellProps} /></td>
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dElig} suffix="%" {...cellProps} /></td>
-                    <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dTake} suffix="%" {...cellProps} /></td>
+                    <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dFOnly} suffix="%" {...cellProps} /></td>
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dLa} {...cellProps} /></td>
                     <td style={{ ...pipeTd, paddingLeft: 18, fontSize: 11, color: colors.muted, whiteSpace: 'nowrap' }}>
                       {perHr == null ? '—' : `£${perHr.toFixed(2)}/hr`}

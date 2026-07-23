@@ -154,7 +154,7 @@ export const AGE_BAND_LABELS = {
 
 export function buildIncomeMatrix({
   outputs, year, entities, entityIds,
-  weeklyRate, laRate, eligiblePct, takeupPct, hoursPerWeek,
+  weeklyRate, laRate, eligiblePct, takeupPct, fundedOnlyPct, hoursPerWeek,
   openingPct, targetPct, phaseMonths,    // per-band ramp drivers (curve fallback)
   weeksPerYear,
   occupancySource = null,   // raw (unscoped) outputs carrying metric.occupancy_pct
@@ -235,12 +235,17 @@ export function buildIncomeMatrix({
 
     const fundedKids = child * elig * take;
     const nonFundedKids = child - fundedKids;
+    // Funded-only FTEs: places composed of ~2 part-timers using only their
+    // 1140 hours — all occupied hours bill at the LA rate (mirrors engine).
+    const fOnly = (fundedOnlyPct?.[band] ?? 0) / 100;
+    const fundedOnlyFte = fundedKids * fOnly;
+    const blendedKids = fundedKids - fundedOnlyFte;
     const laPerChildWeek = wpy > 0 ? Math.min(hpw, FUNDED_HOURS_PER_YEAR / wpy) : 0;
     const fundedChildPrivateHoursWeek = Math.max(0, hpw - laPerChildWeek);
 
     const annualMax = cap * hpw * wpy;
-    const annualLA  = fundedKids * laPerChildWeek * wpy;
-    const annualPrivate = (nonFundedKids * hpw + fundedKids * fundedChildPrivateHoursWeek) * wpy;
+    const annualLA  = (fundedOnlyFte * hpw + blendedKids * laPerChildWeek) * wpy;
+    const annualPrivate = (nonFundedKids * hpw + blendedKids * fundedChildPrivateHoursWeek) * wpy;
     const annualTotal = annualLA + annualPrivate;
 
     const hourlyPrivate = hpw > 0 ? wRate / hpw : 0;
