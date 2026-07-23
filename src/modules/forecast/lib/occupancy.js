@@ -23,19 +23,28 @@ export const ACQUIRED_TYPES = new Set(['acquired_going_concern', 'acquired_empty
  * these three fields. Greenfield sites use the group per-band phase-up
  * drivers (0-2 fills slower than 3-5, etc.).
  *
+ * `override` carries PER-VERSION values from the entity-scoped
+ * `ramp.*` drivers (see locations.js): entity config is forecast-level
+ * and shared across versions, so the ramp is overridable per version
+ * through drivers. Any override value present forces the site-level
+ * curve (even for a greenfield site).
+ *
  * @param {object} entity fc_entity row (config jsonb parsed)
  * @param {string} band age band key
  * @param {{opening?:number, target?:number, phase?:number}} groupCurve
  *   resolved group drivers for this band (capacity.opening_pct.<band> etc.)
+ * @param {{start?:number, target?:number, months?:number}|null} override
  * @returns {{start:number, target:number, ramp:number}}
  */
-export function curveForBand(entity, band, groupCurve) {
+export function curveForBand(entity, band, groupCurve, override = null) {
   const cfg = entity?.config || {};
-  if (ACQUIRED_TYPES.has(cfg.acquisition_type)) {
+  const hasOverride = override != null
+    && (override.start != null || override.target != null || override.months != null);
+  if (ACQUIRED_TYPES.has(cfg.acquisition_type) || hasOverride) {
     return {
-      start:  cfg.starting_occupancy_pct ?? (cfg.acquisition_type === 'acquired_going_concern' ? 70 : 40),
-      target: cfg.target_occupancy_pct ?? groupCurve?.target ?? 85,
-      ramp:   Math.max(1, cfg.ramp_to_target_months ?? groupCurve?.phase ?? 6),
+      start:  override?.start ?? cfg.starting_occupancy_pct ?? (cfg.acquisition_type === 'acquired_going_concern' ? 70 : 40),
+      target: override?.target ?? cfg.target_occupancy_pct ?? groupCurve?.target ?? 85,
+      ramp:   Math.max(1, override?.months ?? cfg.ramp_to_target_months ?? groupCurve?.phase ?? 6),
     };
   }
   return {

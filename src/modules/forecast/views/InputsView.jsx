@@ -924,11 +924,16 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
             </select>
           </Field>
           <Field label="Opens (months from start)"><input type="number" value={form.opening_month_offset} onChange={setNum('opening_month_offset')} style={inputStyle} /></Field>
-          <Field label="Ramp to target (months)"><input type="number" value={form.ramp_to_target_months} onChange={setNum('ramp_to_target_months')} style={inputStyle} /></Field>
+          <Field label="Ramp to target (months) — default for all versions"><input type="number" value={form.ramp_to_target_months} onChange={setNum('ramp_to_target_months')} style={inputStyle} /></Field>
           <Field label="Target occupancy %"><input type="number" value={form.target_occupancy_pct} onChange={setNum('target_occupancy_pct')} style={inputStyle} /></Field>
           <Field label="Launch occupancy % (day-1 marketing influx)"><input type="number" value={form.starting_occupancy_pct} onChange={setNum('starting_occupancy_pct')} style={inputStyle} /></Field>
         </div>
 
+        <p style={{ fontSize: 11, color: colors.muted, margin: '10px 0 0' }}>
+          Ramp / launch / target occupancy here are the location's <strong>defaults, shared by every version</strong>.
+          To vary the ramp per version (e.g. a slower ramp in "Budget"), set the
+          "Ramp override" drivers on the Inputs → Drivers → locations tab of that version.
+        </p>
         <h3 style={{ fontFamily: serifStack, fontSize: 16, color: colors.ink, margin: '20px 0 10px' }}>Capacity by age band</h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
           <Field label="0-2"><input type="number" value={form.cap_babies} onChange={setNum('cap_babies')} style={inputStyle} /></Field>

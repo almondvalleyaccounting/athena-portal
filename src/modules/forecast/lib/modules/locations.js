@@ -68,6 +68,16 @@ export const locationsModule = {
     { key: 'cohort.as_leaver_pct',             label: 'Aug AS leavers % (P7 → S1, ~1/7)',         unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 14 },
     // Refill window
     { key: 'cohort.refill_months',             label: 'Refill window (months back to capacity)',  unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 6 },
+
+    // ── Per-VERSION ramp overrides (per location) ─────────────────
+    // The location's default ramp (start/target/months) lives in entity
+    // config, which is forecast-level and therefore shared by every
+    // version. These entity-scoped drivers override it per version —
+    // leave blank to use the location default. defaultValue null means
+    // seeding creates the (blank) rows without values.
+    { key: 'ramp.starting_occupancy_pct', label: 'Ramp override — opening occupancy % (blank = location default)', unit: 'pct',   kind: 'scalar', scope: 'entity', defaultValue: null },
+    { key: 'ramp.target_occupancy_pct',   label: 'Ramp override — target occupancy % (blank = location default)',  unit: 'pct',   kind: 'scalar', scope: 'entity', defaultValue: null },
+    { key: 'ramp.months_to_target',       label: 'Ramp override — months to target (blank = location default)',    unit: 'count', kind: 'scalar', scope: 'entity', defaultValue: null },
   ],
   outputs: [
     // Per-entity, per-band occupancy — the number every view reads.
@@ -107,12 +117,28 @@ export const locationsModule = {
       const opn = cfg.opening_month_offset ?? 0;
       const cap = cfg.capacity_by_age_band || {};
 
+      // Per-VERSION ramp overrides — entity-scoped drivers, read directly
+      // (not via resolve(), which can't distinguish "no value" from 0).
+      const readOverride = (key) => {
+        const d = ctx.findDriver(key, e.key);
+        if (!d) return null;
+        const vs = ctx.driverValuesById?.get(d.id) || [];
+        const hit = vs.find(v => v.period === -1) || vs[0];
+        return hit != null && hit.value !== '' && hit.value != null ? Number(hit.value) : null;
+      };
+      const override = {
+        start:  readOverride('ramp.starting_occupancy_pct'),
+        target: readOverride('ramp.target_occupancy_pct'),
+        months: readOverride('ramp.months_to_target'),
+      };
+
       // Per-band ramp curves — shared helper (lib/occupancy.js).
       // Acquired sites (going concern or empty premises) use the entity's
-      // own start/target/ramp config; greenfield uses group drivers.
+      // own start/target/ramp config; greenfield uses group drivers;
+      // per-version driver overrides beat both.
       const curveByBand = {};
       for (const band of AGE_BANDS) {
-        curveByBand[band] = curveForBand(e, band, groupCurve[band]);
+        curveByBand[band] = curveForBand(e, band, groupCurve[band], override);
       }
 
       // Base ramp curve per band — quadratic ease-out from start to target
