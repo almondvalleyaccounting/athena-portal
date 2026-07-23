@@ -831,6 +831,7 @@ function ServicesDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dRate} {...cellProps} /></td>
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dHours} {...cellProps} /></td>
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dElig} suffix="%" {...cellProps} /></td>
+                    <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dTake} suffix="%" {...cellProps} /></td>
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dFOnly} suffix="%" {...cellProps} /></td>
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dLa} {...cellProps} /></td>
                     <td style={{ ...pipeTd, paddingLeft: 18, fontSize: 11, color: colors.muted, whiteSpace: 'nowrap' }}>
