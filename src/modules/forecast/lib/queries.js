@@ -955,8 +955,15 @@ export async function seedPackDefaults({ scenario_id, modules, entities, overwri
     }
   }
 
+  // The capacity.* band-curve drivers only apply to GREENFIELD sites
+  // (acquired sites use their own site-level curve) — don't seed dead
+  // assumptions into forecasts that have no greenfield locations.
+  const hasGreenfield = (entities || []).some(e =>
+    (e.config?.acquisition_type ?? 'greenfield') === 'greenfield');
+
   for (const mod of modules) {
     for (const def of (mod.drivers || [])) {
+      if (!hasGreenfield && def.key.startsWith('capacity.')) continue;
       const targets = def.scope === 'entity'
         ? entities.map(e => ({ entity_id: e.id }))
         : [{ entity_id: null }];

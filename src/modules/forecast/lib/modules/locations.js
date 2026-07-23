@@ -52,21 +52,16 @@ export const locationsModule = {
     ])),
 
     // ── Cohort flow shares ────────────────────────────────────────
-    // Annual % of each band's children who age up to the next room.
-    //
-    // For 0-2 → 2-3 and 2-3 → 3-5 these are CONTINUOUS turnover events
-    // — children move room when they turn 2 or 3, throughout the year,
-    // and are continuously backfilled by rolling intake. The engine
-    // models them as a steady flow (no occupancy dip) so the band
-    // stays at its base ramp curve. The drivers are informational —
-    // they represent reality but don't drive a step-change.
+    // 0-2 → 2-3 and 2-3 → 3-5 are CONTINUOUS turnover (children move
+    // room on their birthday, backfilled by rolling intake) — modelled
+    // as a steady flow inside the base ramp curve with no drivers: the
+    // old informational move-up drivers were dead inputs and have been
+    // removed.
     //
     // The 3-5 → primary school transition IS a real August event in
     // Scotland (children all start P1 at the same time). It triggers
     // an occupancy dip on the 3-5 band that refills over the
     // configurable refill window.
-    { key: 'cohort.moveup_babies_pct',         label: 'Annual age-up — 0-2 → 2-3 % (continuous)', unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 50 },
-    { key: 'cohort.moveup_twos_pct',           label: 'Annual age-up — 2-3 → 3-5 % (continuous)', unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 50 },
     // 3-5: share leaving for school (those starting P1)
     { key: 'cohort.school_leaver_three_to_five_pct', label: 'Aug school leavers — 3-5 % (start P1)',  unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 33 },
     // Of school leavers, share that continues at after-school care at the same setting
@@ -99,8 +94,6 @@ export const locationsModule = {
 
     const refillMonths = Math.max(1, Math.round(ctx.resolve('cohort.refill_months', {}) || 6));
     const moveup = {
-      babies:        (ctx.resolve('cohort.moveup_babies_pct', {}) || 0) / 100,
-      twos:          (ctx.resolve('cohort.moveup_twos_pct', {})   || 0) / 100,
       three_to_five: (ctx.resolve('cohort.school_leaver_three_to_five_pct', {}) || 0) / 100,
       after_school:  (ctx.resolve('cohort.as_leaver_pct', {})     || 0) / 100,
     };

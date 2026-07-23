@@ -333,6 +333,12 @@ export default function InputsView({
         // Opening equity is derived from opening cash (financial_core);
         // editing it separately could only unbalance the BS.
         'bs.opening_equity_p',
+        // Dead inputs removed 2026-07: continuous age-ups are modelled
+        // inside the ramp curve (no driver), and the legacy flat
+        // practitioner/manager staffing keys pre-date the role mix.
+        'cohort.moveup_babies_pct', 'cohort.moveup_twos_pct',
+        'base_salary_p.practitioner', 'base_salary_p.lead_practitioner',
+        'base_salary_p.manager', 'manager_per_n_practitioners',
       ]);
       if (RETIRED_KEYS.has(d.driver_key)) return false;
       if (filterEntity === 'group' && d.entity_id) return false;
