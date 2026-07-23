@@ -38,16 +38,17 @@ function fmtRateP(p) { return p == null ? '—' : '£' + (p / 100).toLocaleStrin
 
 // ── Header / footer chrome ─────────────────────────────────────
 
-function drawHeader(doc, { forecast, scenario, scopeLabel, granularity }) {
+function drawHeader(doc, { forecast, scenario, version, scopeLabel, granularity }) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(INK);
-  doc.text((forecast?.client_name || 'Forecast pack').toUpperCase(), MARGIN.left, 10);
+  const masthead = forecast?.client_name || forecast?.group_client_name || 'Forecast pack';
+  doc.text(masthead.toUpperCase(), MARGIN.left, 10);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(MUTED);
-  const right = `${scenario?.name || ''} · ${scopeLabel || 'all'} · ${granularity}`;
+  const right = [version?.name, scenario?.name, scopeLabel || 'all', granularity].filter(Boolean).join(' · ');
   doc.text(right, PAGE.w - MARGIN.right, 10, { align: 'right' });
 
   doc.setDrawColor(RULE);
@@ -84,7 +85,7 @@ function drawSectionHeading(doc, title, subtitle) {
 
 // ── Cover page ─────────────────────────────────────────────────
 
-function drawCover(doc, { forecast, scenario, scopeLabel, granularity, year, kpis, notes, preparedBy, preparedFor, contents = [] }) {
+function drawCover(doc, { forecast, scenario, version, scopeLabel, granularity, year, kpis, notes, preparedBy, preparedFor, contents = [] }) {
   // Title block
   doc.setFillColor(INK);
   doc.rect(0, 0, PAGE.w, 70, 'F');
@@ -94,7 +95,9 @@ function drawCover(doc, { forecast, scenario, scopeLabel, granularity, year, kpi
   doc.setTextColor('#ffffff');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text((forecast?.client_name || '—').toUpperCase(), MARGIN.left, 18);
+  const masthead = [forecast?.group_client_name, forecast?.client_name].filter(Boolean).join('  ·  ')
+    || forecast?.client_name || forecast?.group_client_name || '—';
+  doc.text(masthead.toUpperCase(), MARGIN.left, 18);
 
   doc.setFont('times', 'normal');
   doc.setFontSize(34);
@@ -102,16 +105,17 @@ function drawCover(doc, { forecast, scenario, scopeLabel, granularity, year, kpi
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
-  doc.text(forecast?.name || '', MARGIN.left, 46);
+  doc.text([forecast?.name, version?.name].filter(Boolean).join(' — '), MARGIN.left, 46);
 
   doc.setFontSize(9);
   doc.setTextColor('#cbd5e1');
   doc.text([
+    version?.name ? `Version: ${version.name}` : null,
     `Scenario: ${scenario?.name || ''}`,
     scopeLabel || 'All locations',
     `${granularity} · anchored to Y${year}`,
     `Generated ${new Date().toLocaleDateString('en-GB')}`,
-  ].join('   ·   '), MARGIN.left, 56);
+  ].filter(Boolean).join('   ·   '), MARGIN.left, 56);
 
   // Cover deliberately carries no headline numbers — title + commentary
   // only. Quantitative summary lives on the Executive summary page.
@@ -1814,7 +1818,7 @@ function monthLabel(period, openingPeriod) {
 // ── Public entry ───────────────────────────────────────────────
 
 export function buildPdfPack({
-  forecast, scenario, periods, openingPeriod,
+  forecast, scenario, version = null, periods, openingPeriod,
   outputs, scopedOutputs,
   entities = [], entityIds = null,
   granularity = 'annual',
@@ -1830,7 +1834,7 @@ export function buildPdfPack({
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const grouped = groupPeriods(periods, granularity, openingPeriod);
   const headers = grouped.map(g => g.label);
-  const headerCtx = { forecast, scenario, scopeLabel, granularity };
+  const headerCtx = { forecast, scenario, version, scopeLabel, granularity };
 
   let firstPage = true;
   const startPage = () => { if (!firstPage) doc.addPage(); firstPage = false; };
@@ -1849,7 +1853,7 @@ export function buildPdfPack({
       .map(k => PAGE_TITLES[k]);
     startPage();
     drawCover(doc, {
-      forecast, scenario, scopeLabel, granularity, year,
+      forecast, scenario, version, scopeLabel, granularity, year,
       kpis: headlineKpis, notes, preparedFor, preparedBy, contents,
     });
   }

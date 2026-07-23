@@ -34,7 +34,7 @@ const XL_SHEETS = [
 ];
 
 export default function ExportModal({
-  forecast, scenario, periods, outputs,
+  forecast, scenario, version, periods, outputs,
   entities = [], groups = [], assignments = [], filter,
   onClose,
 }) {
@@ -45,7 +45,7 @@ export default function ExportModal({
   const [selectedPages, setSelectedPages] = useState(PDF_PAGES.map(p => p.key));
   const [selectedSheets, setSelectedSheets] = useState(XL_SHEETS.map(s => s.key));
   const [notes, setNotes] = useState('');
-  const [preparedFor, setPreparedFor] = useState(forecast?.client_name || '');
+  const [preparedFor, setPreparedFor] = useState(forecast?.group_client_name || forecast?.client_name || '');
   const [preparedBy, setPreparedBy] = useState('Almond Valley Accounting');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -170,13 +170,19 @@ export default function ExportModal({
     ];
   }, [scopedOutputRows, outputs, periods, year, horizonYears]);
 
-  const filenameBase = `${(forecast?.client_name || 'forecast').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${(scenario?.name || '').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
+  const slug = (s) => (s || '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
+  const filenameBase = [
+    slug(forecast?.client_name || forecast?.group_client_name || 'forecast'),
+    slug(forecast?.name),
+    slug(version?.name),
+    slug(scenario?.name),
+  ].filter(Boolean).join('-');
 
   const onExportPdf = async () => {
     setBusy(true); setError(null);
     try {
       const doc = buildPdfPack({
-        forecast, scenario, periods, openingPeriod: forecast?.opening_period,
+        forecast, scenario, version, periods, openingPeriod: forecast?.opening_period,
         outputs, scopedOutputs: scopedOutputRows,
         entities, entityIds,
         granularity, year, scopeLabel,

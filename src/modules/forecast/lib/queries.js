@@ -11,17 +11,23 @@ export async function listForecasts() {
   return data || [];
 }
 
-export async function createForecast({ name, client_name, vertical_pack, horizon_months = 60, opening_period }) {
+export async function createForecast({ name, client_name, group_client_name, client_entity_id, vertical_pack, horizon_months = 60, opening_period }) {
   const { data: forecast, error } = await supabase
     .from('fc_forecast')
-    .insert({ name, client_name: client_name || null, vertical_pack, horizon_months, opening_period })
+    .insert({
+      name, vertical_pack, horizon_months, opening_period,
+      client_name: client_name || null,
+      group_client_name: group_client_name || null,
+      client_entity_id: client_entity_id || null,
+    })
     .select().single();
   if (error) throw error;
 
-  // Create the working version + base scenario in one go
+  // Create the first version + base scenario in one go. Versions are
+  // user-facing ("v1", "Budget", "Rolling Forecast", …) and renameable.
   const { data: version, error: vErr } = await supabase
     .from('fc_version')
-    .insert({ forecast_id: forecast.id, name: 'Working', kind: 'working' })
+    .insert({ forecast_id: forecast.id, name: 'v1', kind: 'working' })
     .select().single();
   if (vErr) throw vErr;
 
@@ -47,6 +53,8 @@ export async function updateForecast(id, patch) {
   const next = {};
   if (patch.name !== undefined) next.name = patch.name;
   if (patch.client_name !== undefined) next.client_name = patch.client_name || null;
+  if (patch.group_client_name !== undefined) next.group_client_name = patch.group_client_name || null;
+  if (patch.client_entity_id !== undefined) next.client_entity_id = patch.client_entity_id || null;
   if (patch.horizon_months !== undefined) next.horizon_months = Number(patch.horizon_months);
   if (patch.opening_period !== undefined) next.opening_period = patch.opening_period;
 
@@ -87,6 +95,115 @@ export async function listScenarios(version_id) {
     .order('kind').order('name');
   if (error) throw error;
   return data || [];
+}
+
+/**
+ * Search the practice's client list (Athena `entities` table) by name —
+ * used to link a forecast to a real client record.
+ */
+export async function searchClients(q) {
+  const term = (q || '').trim();
+  if (term.length < 2) return [];
+  const { data, error } = await supabase
+    .from('entities').select('id, name')
+    .ilike('name', `%${term}%`)
+    .order('name')
+    .limit(15);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function renameVersion(version_id, name) {
+  const { data, error } = await supabase
+    .from('fc_version').update({ name }).eq('id', version_id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Create a new named version by duplicating an existing one — scenarios,
+ * drivers, driver values and loans are copied; entities/groups are
+ * forecast-level and shared across versions. Outputs are NOT copied:
+ * recompute the new version after switching to it.
+ */
+export async function createVersionFrom({ forecast_id, source_version_id, name }) {
+  const { data: newVersion, error: eV } = await supabase
+    .from('fc_version')
+    .insert({ forecast_id, name, kind: 'working', parent_version_id: source_version_id || null })
+    .select().single();
+  if (eV) throw eV;
+
+  if (!source_version_id) return newVersion;
+
+  // Scenarios
+  const { data: srcScenarios, error: eS } = await supabase
+    .from('fc_scenario').select('*').eq('version_id', source_version_id);
+  if (eS) throw eS;
+  const scenarioIdMap = new Map();
+  for (const s of srcScenarios || []) {
+    const { data: ns, error } = await supabase
+      .from('fc_scenario')
+      .insert({ version_id: newVersion.id, name: s.name, kind: s.kind, notes: s.notes })
+      .select().single();
+    if (error) throw error;
+    scenarioIdMap.set(s.id, ns.id);
+  }
+  const oldScenarioIds = Array.from(scenarioIdMap.keys());
+  if (oldScenarioIds.length === 0) return newVersion;
+
+  // Drivers — entity ids are shared across versions, so they copy verbatim.
+  const { data: srcDrivers, error: eD } = await supabase
+    .from('fc_driver').select('*').in('scenario_id', oldScenarioIds);
+  if (eD) throw eD;
+  const driverIdMap = new Map();
+  const CHUNK = 400;
+  for (let i = 0; i < (srcDrivers || []).length; i += CHUNK) {
+    const slice = srcDrivers.slice(i, i + CHUNK);
+    const rows = slice.map(d => ({
+      scenario_id: scenarioIdMap.get(d.scenario_id),
+      entity_id: d.entity_id,
+      module_key: d.module_key, driver_key: d.driver_key,
+      label: d.label, unit: d.unit, kind: d.kind,
+      expression: d.expression,
+    }));
+    const { data: ins, error } = await supabase.from('fc_driver').insert(rows).select();
+    if (error) throw error;
+    for (let k = 0; k < slice.length; k++) {
+      if (ins[k]) driverIdMap.set(slice[k].id, ins[k].id);
+    }
+  }
+
+  // Driver values
+  const oldDriverIds = Array.from(driverIdMap.keys());
+  const PAGE = 800;
+  for (let i = 0; i < oldDriverIds.length; i += PAGE) {
+    const slice = oldDriverIds.slice(i, i + PAGE);
+    const { data: oldVals, error } = await supabase
+      .from('fc_driver_value').select('driver_id, period, value').in('driver_id', slice);
+    if (error) throw error;
+    const insertVals = (oldVals || []).map(v => ({
+      driver_id: driverIdMap.get(v.driver_id), period: v.period, value: v.value,
+    })).filter(v => v.driver_id != null);
+    for (let j = 0; j < insertVals.length; j += 500) {
+      const { error: eIns } = await supabase.from('fc_driver_value').insert(insertVals.slice(j, j + 500));
+      if (eIns) throw eIns;
+    }
+  }
+
+  // Loans
+  const { data: srcLoans, error: eL } = await supabase
+    .from('fc_loan').select('*').in('scenario_id', oldScenarioIds);
+  if (eL) throw eL;
+  if ((srcLoans || []).length > 0) {
+    const rows = srcLoans.map(l => {
+      const { id, created_at, updated_at, ...rest } = l;
+      return { ...rest, scenario_id: scenarioIdMap.get(l.scenario_id) };
+    });
+    const { error } = await supabase.from('fc_loan').insert(rows);
+    if (error) throw error;
+  }
+
+  return newVersion;
 }
 
 export async function listEntities(forecast_id) {
@@ -555,6 +672,8 @@ export async function copyForecast(source_forecast_id, { name_suffix = ' (copy)'
     .from('fc_forecast').insert({
       name: `${srcForecast.name}${name_suffix}`,
       client_name: srcForecast.client_name,
+      group_client_name: srcForecast.group_client_name,
+      client_entity_id: srcForecast.client_entity_id,
       vertical_pack: srcForecast.vertical_pack,
       horizon_months: srcForecast.horizon_months,
       opening_period: srcForecast.opening_period,

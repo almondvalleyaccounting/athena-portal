@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   listForecasts, createForecast, updateForecast, listVersions, listScenarios,
   loadOutputs, loadFindings, listEntities, listGroups, listEntityGroupAssignments,
-  copyForecast,
+  copyForecast, createVersionFrom, renameVersion, searchClients,
 } from './lib/queries';
 import { recomputeScenario } from './lib/recompute';
 import { PACKS } from './lib/packs';
@@ -44,6 +44,7 @@ export default function ForecastModule() {
   const [forecasts, setForecasts] = useState([]);
   const [forecastId, setForecastId] = useState(null);
   const [forecast, setForecast] = useState(null);
+  const [versions, setVersions] = useState([]);
   const [version, setVersion] = useState(null);
   const [scenario, setScenario] = useState(null);
 
@@ -70,16 +71,30 @@ export default function ForecastModule() {
     try { setForecasts(await listForecasts()); } catch (e) { setErr(e.message); }
   })(); }, []);
 
+  // Load a version's base scenario + its outputs/findings.
+  const loadVersionData = async (v) => {
+    setVersion(v);
+    const scenarios = v ? await listScenarios(v.id) : [];
+    const base = scenarios.find(s => s.kind === 'base') || scenarios[0];
+    setScenario(base || null);
+    if (base) {
+      setOutputs(await loadOutputs(base.id));
+      setFindings(await loadFindings(base.id));
+    } else {
+      setOutputs([]); setFindings([]);
+    }
+  };
+
   useEffect(() => {
     if (!forecastId) {
-      setForecast(null); setVersion(null); setScenario(null);
+      setForecast(null); setVersions([]); setVersion(null); setScenario(null);
       setOutputs([]); setFindings([]); return;
     }
     (async () => {
       try {
         const f = forecasts.find(x => x.id === forecastId);
         setForecast(f);
-        const [versions, ents, gs, asgn] = await Promise.all([
+        const [vs, ents, gs, asgn] = await Promise.all([
           listVersions(forecastId),
           listEntities(forecastId),
           listGroups(forecastId).then(r => r.groups).catch(() => []),
@@ -88,18 +103,62 @@ export default function ForecastModule() {
         setEntities(ents);
         setGroups(gs);
         setAssignments(asgn);
-        const working = versions.find(v => v.kind === 'working') || versions[0];
-        setVersion(working);
-        const scenarios = working ? await listScenarios(working.id) : [];
-        const base = scenarios.find(s => s.kind === 'base') || scenarios[0];
-        setScenario(base);
-        if (base) {
-          setOutputs(await loadOutputs(base.id));
-          setFindings(await loadFindings(base.id));
-        }
+        setVersions(vs);
+        // Most recently created version first (listVersions orders desc);
+        // fall back to the legacy "working" row.
+        const initial = vs[0] || vs.find(v => v.kind === 'working');
+        await loadVersionData(initial || null);
       } catch (e) { setErr(e.message); }
     })();
   }, [forecastId, forecasts]);
+
+  const onSelectVersion = async (versionId) => {
+    const v = versions.find(x => x.id === versionId);
+    if (!v) return;
+    setBusy(true); setErr(null);
+    try { await loadVersionData(v); } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+
+  const onNewVersion = async () => {
+    if (!forecast || !version) return;
+    const name = prompt(
+      'Name for the new version?\n\nDuplicates the current version (assumptions, drivers, loans) so you can change it independently — e.g. "Budget", "Rolling Forecast", "v2", "2026.07 Scenario 1".',
+      `${version.name} copy`
+    );
+    if (name == null || !name.trim()) return;
+    setBusy(true); setErr(null);
+    try {
+      const nv = await createVersionFrom({
+        forecast_id: forecast.id, source_version_id: version.id, name: name.trim(),
+      });
+      const vs = await listVersions(forecast.id);
+      setVersions(vs);
+      await loadVersionData(vs.find(v => v.id === nv.id) || nv);
+      // Fresh version has no outputs yet — compute them now.
+      const scenarios = await listScenarios(nv.id);
+      const base = scenarios.find(s => s.kind === 'base') || scenarios[0];
+      if (base) {
+        await recomputeScenario({ forecast_id: forecast.id, version_id: nv.id, scenario_id: base.id });
+        setOutputs(await loadOutputs(base.id));
+        setFindings(await loadFindings(base.id));
+      }
+    } catch (e) { setErr(`New version failed: ${e.message}`); }
+    setBusy(false);
+  };
+
+  const onRenameVersion = async () => {
+    if (!version) return;
+    const name = prompt('Rename this version', version.name || '');
+    if (name == null || !name.trim() || name.trim() === version.name) return;
+    setBusy(true); setErr(null);
+    try {
+      const updated = await renameVersion(version.id, name.trim());
+      setVersions(prev => prev.map(v => (v.id === updated.id ? updated : v)));
+      setVersion(updated);
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
 
   const reloadGroups = async () => {
     if (!forecastId) return;
@@ -140,7 +199,10 @@ export default function ForecastModule() {
       const fallback = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
       const opening = form.opening_period || fallback;
       const { forecast: f } = await createForecast({
-        name: form.name, client_name: form.client_name || null,
+        name: form.name,
+        client_name: form.client_name || null,
+        group_client_name: form.group_client_name || null,
+        client_entity_id: form.client_entity_id || null,
         vertical_pack: form.vertical_pack, horizon_months: form.horizon_months || 84,
         opening_period: opening,
       });
@@ -207,6 +269,10 @@ export default function ForecastModule() {
       <Header onExport={forecast ? () => setShowExport(true) : null}
         forecast={forecast} forecasts={forecasts}
         forecastId={forecastId} onSelect={setForecastId}
+        versions={versions} version={version}
+        onSelectVersion={onSelectVersion}
+        onNewVersion={forecast ? onNewVersion : null}
+        onRenameVersion={version ? onRenameVersion : null}
         onCreate={() => setShowCreate(true)}
         onEdit={forecast ? () => setShowEdit(true) : null}
         onCopy={forecast ? onCopyForecast : null}
@@ -218,13 +284,13 @@ export default function ForecastModule() {
         <CreateForecastModal
           onClose={() => setShowCreate(false)}
           onCreate={onCreate}
-          existingClients={[...new Set(forecasts.map(f => f.client_name).filter(Boolean))]}
+          existingGroupClients={[...new Set(forecasts.map(f => f.group_client_name || f.client_name).filter(Boolean))]}
           busy={busy}
         />
       )}
       {showExport && forecast && scenario && (
         <ExportModal
-          forecast={forecast} scenario={scenario}
+          forecast={forecast} scenario={scenario} version={version}
           periods={periods} outputs={outputs}
           entities={entities} groups={groups} assignments={assignments}
           filter={filter}
@@ -236,7 +302,7 @@ export default function ForecastModule() {
           forecast={forecast}
           onClose={() => setShowEdit(false)}
           onSave={onEdit}
-          existingClients={[...new Set(forecasts.map(f => f.client_name).filter(Boolean))]}
+          existingGroupClients={[...new Set(forecasts.map(f => f.group_client_name || f.client_name).filter(Boolean))]}
           busy={busy}
         />
       )}
@@ -339,28 +405,42 @@ export default function ForecastModule() {
   );
 }
 
-function Header({ forecast, forecasts, forecastId, onSelect, onCreate, onEdit, onCopy, onExport, integrity, onRecompute, busy }) {
-  const byClient = {};
+function Header({
+  forecast, forecasts, forecastId, onSelect,
+  versions = [], version, onSelectVersion, onNewVersion, onRenameVersion,
+  onCreate, onEdit, onCopy, onExport, integrity, onRecompute, busy,
+}) {
+  // Group the picker by GROUP CLIENT (e.g. "Marc Kelly"); each option
+  // shows client company + forecast name.
+  const byGroup = {};
   for (const f of forecasts) {
-    const c = f.client_name || '— no client —';
-    (byClient[c] ||= []).push(f);
+    const c = f.group_client_name || f.client_name || '— no group client —';
+    (byGroup[c] ||= []).push(f);
   }
-  const clients = Object.keys(byClient).sort((a, b) => a.localeCompare(b));
+  const groupsSorted = Object.keys(byGroup).sort((a, b) => a.localeCompare(b));
+
+  // Hierarchy line: Group client · Client · Forecast · Version
+  const crumbs = forecast ? [
+    forecast.group_client_name,
+    forecast.client_name,
+    forecast.name,
+    version?.name,
+  ].filter(Boolean) : [];
 
   return (
     <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
       <div>
         <h1 style={{ fontFamily: serifStack, fontSize: 30, fontWeight: 500, color: colors.ink, margin: 0 }}>
           Client Forecast
-          {forecast?.client_name && (
+          {(forecast?.client_name || forecast?.group_client_name) && (
             <span style={{ fontSize: 16, fontWeight: 400, color: colors.muted, marginLeft: 12 }}>
-              · {forecast.client_name}
+              · {forecast.client_name || forecast.group_client_name}
             </span>
           )}
         </h1>
         <p style={{ fontSize: 12, color: colors.muted, margin: '4px 0 0' }}>
           {forecast
-            ? `${forecast.name} · ${forecast.vertical_pack} · ${forecast.horizon_months} months`
+            ? `${crumbs.join(' › ')} · ${forecast.vertical_pack} · ${forecast.horizon_months} months`
             : 'Multi-location · 3-statement · investor-deck-ready'}
         </p>
       </div>
@@ -372,20 +452,45 @@ function Header({ forecast, forecasts, forecastId, onSelect, onCreate, onEdit, o
           style={selectStyle}
         >
           <option value="">— pick a forecast —</option>
-          {clients.map(c => (
+          {groupsSorted.map(c => (
             <optgroup key={c} label={c}>
-              {byClient[c].map(f => (
-                <option key={f.id} value={f.id}>{f.name} · {f.vertical_pack}</option>
+              {byGroup[c].map(f => (
+                <option key={f.id} value={f.id}>
+                  {[f.client_name, f.name].filter(Boolean).join(' › ') || f.name}
+                </option>
               ))}
             </optgroup>
           ))}
         </select>
+        {forecast && versions.length > 0 && (
+          <>
+            <select
+              value={version?.id || ''}
+              onChange={(e) => onSelectVersion(e.target.value)}
+              style={selectStyle}
+              title="Forecast version — e.g. Budget, Rolling Forecast, v1, v2"
+            >
+              {versions.map(v => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
+            {onRenameVersion && (
+              <button onClick={onRenameVersion} disabled={busy} style={btnOutline} title="Rename this version">✎</button>
+            )}
+            {onNewVersion && (
+              <button onClick={onNewVersion} disabled={busy} style={btnOutline}
+                title="Duplicate the current version's assumptions as a new named version (Budget, Rolling Forecast, v2, …)">
+                + Version
+              </button>
+            )}
+          </>
+        )}
         {onEdit && (
-          <button onClick={onEdit} style={btnOutline} title="Edit client name, forecast name and horizon">Edit</button>
+          <button onClick={onEdit} style={btnOutline} title="Edit group client, client link, forecast name and horizon">Edit</button>
         )}
         <button onClick={onCreate} style={btnDark}>+ New</button>
         {forecast && onCopy && (
-          <button onClick={onCopy} disabled={busy} style={btnOutline} title="Duplicate this forecast as a new version (e.g. v2)">Copy</button>
+          <button onClick={onCopy} disabled={busy} style={btnOutline} title="Duplicate the entire forecast as a new forecast">Copy</button>
         )}
         {forecast && onExport && (
           <button onClick={onExport} style={btnOutline} title="Export PDF / Excel pack">Export</button>
@@ -400,14 +505,86 @@ function Header({ forecast, forecasts, forecastId, onSelect, onCreate, onEdit, o
   );
 }
 
-function CreateForecastModal({ onClose, onCreate, existingClients, busy }) {
+// Searchable picker against the practice's client list (entities table).
+// Stores both the linked id and a denormalised label; typing a name that
+// isn't picked keeps it as a free-text client label (unlinked).
+function ClientPicker({ value, onChange, autoFocus }) {
+  const [q, setQ] = useState(value?.client_name || '');
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const term = q.trim();
+    if (term.length < 2) { setResults([]); return; }
+    const h = setTimeout(async () => {
+      try {
+        const r = await searchClients(term);
+        if (!cancelled) setResults(r);
+      } catch { /* search is best-effort */ }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(h); };
+  }, [q]);
+
+  const pick = (row) => {
+    onChange({ client_entity_id: row.id, client_name: row.name });
+    setQ(row.name);
+    setOpen(false);
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        autoFocus={autoFocus}
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setOpen(true);
+          // Free text until a result is picked — clears any stale link.
+          onChange({ client_entity_id: null, client_name: e.target.value });
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Search Athena clients…"
+        style={inputStyle}
+      />
+      {value?.client_entity_id && (
+        <span style={{ position: 'absolute', right: 8, top: 8, fontSize: 10, color: '#166534', background: '#dcfce7', borderRadius: 999, padding: '1px 7px', fontWeight: 700 }}>
+          linked
+        </span>
+      )}
+      {open && results.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
+          background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(15,23,42,0.12)', maxHeight: 220, overflowY: 'auto',
+        }}>
+          {results.map(r => (
+            <div key={r.id}
+              onMouseDown={(e) => { e.preventDefault(); pick(r); }}
+              style={{ padding: '7px 10px', fontSize: 13, cursor: 'pointer', color: colors.ink }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#f0f9ff'}
+              onMouseLeave={(e) => e.currentTarget.style.background = ''}
+            >
+              {r.name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreateForecastModal({ onClose, onCreate, existingGroupClients, busy }) {
   // Default the start month to the current month so a fresh forecast
   // begins now; users override to backdate or push forward.
   const today = new Date();
   const ymThisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   const [form, setForm] = useState({
     name: '',
+    group_client_name: '',
     client_name: '',
+    client_entity_id: null,
     vertical_pack: 'childcare_scotland',
     horizon_months: 84,
     start_month: ymThisMonth,           // YYYY-MM
@@ -420,7 +597,9 @@ function CreateForecastModal({ onClose, onCreate, existingClients, busy }) {
     }
     onCreate({
       ...form,
-      name: form.name.trim(), client_name: form.client_name.trim(),
+      name: form.name.trim(),
+      group_client_name: form.group_client_name.trim(),
+      client_name: (form.client_name || '').trim(),
       horizon_months: Number(form.horizon_months),
       opening_period: `${form.start_month}-01`,    // first of month
     });
@@ -432,24 +611,30 @@ function CreateForecastModal({ onClose, onCreate, existingClients, busy }) {
           New forecast
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field label="Client name">
+          <Field label="Group client">
             <input
               autoFocus
-              value={form.client_name}
-              onChange={set('client_name')}
-              list="fc-existing-clients"
-              placeholder="e.g. Acme Childcare Ltd"
+              value={form.group_client_name}
+              onChange={set('group_client_name')}
+              list="fc-existing-group-clients"
+              placeholder="e.g. Marc Kelly"
               style={inputStyle}
             />
-            <datalist id="fc-existing-clients">
-              {existingClients.map(c => <option key={c} value={c} />)}
+            <datalist id="fc-existing-group-clients">
+              {existingGroupClients.map(c => <option key={c} value={c} />)}
             </datalist>
+          </Field>
+          <Field label="Client (Athena record)">
+            <ClientPicker
+              value={{ client_entity_id: form.client_entity_id, client_name: form.client_name }}
+              onChange={(v) => setForm(prev => ({ ...prev, ...v }))}
+            />
           </Field>
           <Field label="Forecast name">
             <input
               value={form.name}
               onChange={set('name')}
-              placeholder="e.g. Childcare group — Scotland"
+              placeholder="e.g. Childcare Scotland"
               style={inputStyle}
             />
           </Field>
@@ -478,7 +663,10 @@ function CreateForecastModal({ onClose, onCreate, existingClients, busy }) {
           past or future month to anchor the forecast.
         </p>
         <p style={{ fontSize: 11, color: colors.muted, margin: '6px 0 0' }}>
-          Client name groups forecasts in the picker and will support consolidation across multiple businesses for the same client.
+          Group client groups forecasts in the picker (the person or group behind the deal, even if
+          they're not an Athena client yet). Client links this forecast to the actual Athena client
+          record — pick from the search, or type a name to leave it unlinked. A first version named
+          "v1" is created automatically; add "Budget" / "Rolling Forecast" versions from the header.
         </p>
         <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
           <button onClick={onClose} style={{ ...btnOutline, flex: 1, justifyContent: 'center' }}>Cancel</button>
@@ -520,13 +708,15 @@ function IntegrityBadge({ state, label }) {
   );
 }
 
-function EditForecastModal({ forecast, onClose, onSave, existingClients, busy }) {
+function EditForecastModal({ forecast, onClose, onSave, existingGroupClients, busy }) {
   // Pull the YYYY-MM portion out of the stored opening_period (which is
   // a YYYY-MM-DD string) so the <input type="month"> binds cleanly.
   const startMonthFromForecast = (forecast.opening_period || '').slice(0, 7);
   const [form, setForm] = useState({
     name: forecast.name || '',
+    group_client_name: forecast.group_client_name || '',
     client_name: forecast.client_name || '',
+    client_entity_id: forecast.client_entity_id || null,
     horizon_months: forecast.horizon_months || 60,
     start_month: startMonthFromForecast,
   });
@@ -539,7 +729,9 @@ function EditForecastModal({ forecast, onClose, onSave, existingClients, busy })
     }
     onSave({
       name: form.name.trim(),
-      client_name: form.client_name.trim(),
+      group_client_name: form.group_client_name.trim(),
+      client_name: (form.client_name || '').trim(),
+      client_entity_id: form.client_entity_id,
       horizon_months: Number(form.horizon_months),
       opening_period: `${form.start_month}-01`,
     });
@@ -553,18 +745,24 @@ function EditForecastModal({ forecast, onClose, onSave, existingClients, busy })
           Edit forecast
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field label="Client name">
+          <Field label="Group client">
             <input
               autoFocus
-              value={form.client_name}
-              onChange={set('client_name')}
-              list="fc-edit-existing-clients"
-              placeholder="e.g. Acme Childcare Ltd"
+              value={form.group_client_name}
+              onChange={set('group_client_name')}
+              list="fc-edit-existing-group-clients"
+              placeholder="e.g. Marc Kelly"
               style={inputStyle}
             />
-            <datalist id="fc-edit-existing-clients">
-              {existingClients.map(c => <option key={c} value={c} />)}
+            <datalist id="fc-edit-existing-group-clients">
+              {existingGroupClients.map(c => <option key={c} value={c} />)}
             </datalist>
+          </Field>
+          <Field label="Client (Athena record)">
+            <ClientPicker
+              value={{ client_entity_id: form.client_entity_id, client_name: form.client_name }}
+              onChange={(v) => setForm(prev => ({ ...prev, ...v }))}
+            />
           </Field>
           <Field label="Forecast name">
             <input value={form.name} onChange={set('name')} style={inputStyle} />
