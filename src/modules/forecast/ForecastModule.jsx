@@ -393,6 +393,7 @@ export default function ForecastModule() {
               <CompareView
                 forecast={forecast} versions={versions} version={version} scenario={scenario}
                 outputs={outputs} periods={periods} openingPeriod={forecast.opening_period}
+                entities={entities}
               />
             )}
             {tab === 'deal' && (
