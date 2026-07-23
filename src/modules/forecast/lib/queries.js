@@ -121,6 +121,21 @@ export async function renameVersion(version_id, name) {
 }
 
 /**
+ * Delete a version and everything under it. fc_scenario cascades from
+ * the version FK, and drivers/values/loans/outputs/findings cascade
+ * from the scenario — so one delete removes the whole subtree. Versions
+ * created FROM this one keep working: their parent link is detached
+ * first (the self-FK doesn't cascade).
+ */
+export async function deleteVersion(version_id) {
+  const { error: eDetach } = await supabase
+    .from('fc_version').update({ parent_version_id: null }).eq('parent_version_id', version_id);
+  if (eDetach) throw eDetach;
+  const { error } = await supabase.from('fc_version').delete().eq('id', version_id);
+  if (error) throw error;
+}
+
+/**
  * Create a new named version by duplicating an existing one — scenarios,
  * drivers, driver values and loans are copied; entities/groups are
  * forecast-level and shared across versions. Outputs are NOT copied:

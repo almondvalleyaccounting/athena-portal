@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   listForecasts, createForecast, updateForecast, listVersions, listScenarios,
   loadOutputs, loadFindings, listEntities, listGroups, listEntityGroupAssignments,
-  copyForecast, createVersionFrom, renameVersion, searchClients,
+  copyForecast, createVersionFrom, renameVersion, deleteVersion, searchClients,
 } from './lib/queries';
 import { recomputeScenario } from './lib/recompute';
 import { PACKS } from './lib/packs';
@@ -162,6 +162,22 @@ export default function ForecastModule() {
     setBusy(false);
   };
 
+  const onDeleteVersion = async () => {
+    if (!version || versions.length < 2) return;   // never delete the last version
+    const ok = confirm(
+      `Delete version "${version.name}"?\n\nThis permanently removes its scenarios, assumptions (drivers), loans and computed outputs. Locations are shared with other versions and are NOT affected.\n\nThis cannot be undone.`
+    );
+    if (!ok) return;
+    setBusy(true); setErr(null);
+    try {
+      await deleteVersion(version.id);
+      const vs = await listVersions(forecast.id);
+      setVersions(vs);
+      await loadVersionData(vs[0] || null);
+    } catch (e) { setErr(`Delete failed: ${e.message}`); }
+    setBusy(false);
+  };
+
   const reloadGroups = async () => {
     if (!forecastId) return;
     try {
@@ -275,6 +291,7 @@ export default function ForecastModule() {
         onSelectVersion={onSelectVersion}
         onNewVersion={forecast ? onNewVersion : null}
         onRenameVersion={version ? onRenameVersion : null}
+        onDeleteVersion={version && versions.length > 1 ? onDeleteVersion : null}
         onCreate={() => setShowCreate(true)}
         onEdit={forecast ? () => setShowEdit(true) : null}
         onCopy={forecast ? onCopyForecast : null}
@@ -416,7 +433,7 @@ export default function ForecastModule() {
 
 function Header({
   forecast, forecasts, forecastId, onSelect,
-  versions = [], version, onSelectVersion, onNewVersion, onRenameVersion,
+  versions = [], version, onSelectVersion, onNewVersion, onRenameVersion, onDeleteVersion,
   onCreate, onEdit, onCopy, onExport, integrity, onRecompute, busy,
 }) {
   // Group the picker by GROUP CLIENT (e.g. "Marc Kelly"); each option
@@ -485,6 +502,13 @@ function Header({
             </select>
             {onRenameVersion && (
               <button onClick={onRenameVersion} disabled={busy} style={btnOutline} title="Rename this version">✎</button>
+            )}
+            {onDeleteVersion && (
+              <button onClick={onDeleteVersion} disabled={busy}
+                style={{ ...btnOutline, color: colors.red }}
+                title="Delete this version (its assumptions and outputs) — locations and other versions are unaffected">
+                🗑
+              </button>
             )}
             {onNewVersion && (
               <button onClick={onNewVersion} disabled={busy} style={btnOutline}
