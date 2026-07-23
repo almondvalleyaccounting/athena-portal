@@ -826,6 +826,7 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
     cap_three_to_five: cap.three_to_five ?? tplCap.three_to_five ?? 32,
     cap_after_school: cap.after_school ?? tplCap.after_school ?? 0,
     concession_stages: cfg.premises_concession_stages || tplCfg.premises_concession_stages || [],
+    svc_concession_stages: cfg.premises_svc_concession_stages || tplCfg.premises_svc_concession_stages || [],
   }));
   const [busy, setBusy] = useState(false);
 
@@ -852,6 +853,9 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
         starting_occupancy_pct: Number(form.starting_occupancy_pct) || 0,
         premises_concession_stages: form.lease_or_buy === 'lease'
           ? (form.concession_stages || []).filter(s => Number(s?.months) > 0)
+          : [],
+        premises_svc_concession_stages: form.lease_or_buy === 'lease'
+          ? (form.svc_concession_stages || []).filter(s => Number(s?.months) > 0)
           : [],
       };
       const wasNew = !form.id;
@@ -936,15 +940,27 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
         {form.lease_or_buy === 'lease' && (
           <>
             <h3 style={{ fontFamily: serifStack, fontSize: 16, color: colors.ink, margin: '20px 0 6px' }}>
-              Lease concession stages
+              Rent concession stages
             </h3>
             <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 10px' }}>
-              Sequential stages from the location's opening month. Months × Factor (1.0 = full rent, 0.5 = half price, 0 = free).
+              Sequential stages from the location's opening month. Months × Factor (100% = full rent, 50% = half price, 0% = free).
               Once stages are exhausted, full rent applies. Leave empty for no concession.
             </p>
             <ConcessionEditor
               stages={form.concession_stages}
               onChange={(s) => setForm({ ...form, concession_stages: s })}
+            />
+
+            <h3 style={{ fontFamily: serifStack, fontSize: 16, color: colors.ink, margin: '20px 0 6px' }}>
+              Service charge concession stages
+            </h3>
+            <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 10px' }}>
+              Independent of the rent schedule — a rent-free period rarely extends to the service charge,
+              which is usually payable in full from day one. Leave empty for no concession.
+            </p>
+            <ConcessionEditor
+              stages={form.svc_concession_stages}
+              onChange={(s) => setForm({ ...form, svc_concession_stages: s })}
             />
           </>
         )}

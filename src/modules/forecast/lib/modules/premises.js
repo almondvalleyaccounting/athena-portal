@@ -74,24 +74,30 @@ export const premisesModule = {
       if (mode === 'lease') {
         const rent = ctx.resolve('premises.rent_monthly_p', { entity: e.key });
         const svc = ctx.resolve('premises.service_charge_monthly_p', { entity: e.key });
-        const stages = cfg.premises_concession_stages || [];
+        // Rent and service charge ramp on INDEPENDENT schedules: a
+        // rent-free period rarely extends to the service charge, which
+        // is typically payable in full from day one. No stages = full
+        // from the opening month.
+        const rentStages = cfg.premises_concession_stages || [];
+        const svcStages = cfg.premises_svc_concession_stages || [];
         for (const t of ctx.periods) {
           if (t < opening) continue;
-          const factor = concessionFactorAt(t - opening, stages);
+          const rentFactor = concessionFactorAt(t - opening, rentStages);
+          const svcFactor = concessionFactorAt(t - opening, svcStages);
           if (rent > 0) {
             out.push({
               module_key: 'premises', entity_id: e.id, period: t,
               nominal_type: 'overhead', line_label: 'Rent',
-              amount_p: Math.round(rent * factor),
-              tags: { premises_kind: 'lease', concession_factor: factor },
+              amount_p: Math.round(rent * rentFactor),
+              tags: { premises_kind: 'lease', concession_factor: rentFactor },
             });
           }
           if (svc > 0) {
             out.push({
               module_key: 'premises', entity_id: e.id, period: t,
               nominal_type: 'overhead', line_label: 'Service charge',
-              amount_p: Math.round(svc * factor),
-              tags: { concession_factor: factor },
+              amount_p: Math.round(svc * svcFactor),
+              tags: { concession_factor: svcFactor },
             });
           }
         }
