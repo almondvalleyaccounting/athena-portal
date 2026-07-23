@@ -38,10 +38,17 @@ export const locationsModule = {
     // window. These define the utilisation curve for GREENFIELD sites.
     // Acquired sites (going concern or empty premises) use their own
     // entity-config start/target/ramp instead — see lib/occupancy.js.
+    //
+    // Two scopes per key: the GROUP row is the default; the entity-
+    // scoped row overrides it PER LOCATION (blank = group default) —
+    // different settings have different capacities and ramp-ups.
     ...AGE_BANDS.flatMap(b => ([
-      { key: `capacity.opening_pct.${b}`,      label: `Capacity at opening — ${AGE_BAND_LABELS[b]}`,    unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: defaultOpeningPct(b) },
-      { key: `capacity.target_pct.${b}`,       label: `Capacity target — ${AGE_BAND_LABELS[b]}`,         unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: defaultTargetPct(b) },
-      { key: `capacity.phase_up_months.${b}`,  label: `Phase-up to target — ${AGE_BAND_LABELS[b]} (months)`, unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 6 },
+      { key: `capacity.opening_pct.${b}`,      label: `Capacity at opening — ${AGE_BAND_LABELS[b]} (default all locations)`, unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: defaultOpeningPct(b) },
+      { key: `capacity.opening_pct.${b}`,      label: `Capacity at opening — ${AGE_BAND_LABELS[b]} — this location (blank = default)`, unit: 'pct', kind: 'scalar', scope: 'entity', defaultValue: null },
+      { key: `capacity.target_pct.${b}`,       label: `Capacity target — ${AGE_BAND_LABELS[b]} (default all locations)`,     unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: defaultTargetPct(b) },
+      { key: `capacity.target_pct.${b}`,       label: `Capacity target — ${AGE_BAND_LABELS[b]} — this location (blank = default)`, unit: 'pct', kind: 'scalar', scope: 'entity', defaultValue: null },
+      { key: `capacity.phase_up_months.${b}`,  label: `Phase-up to target — ${AGE_BAND_LABELS[b]} (months, default all locations)`, unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 6 },
+      { key: `capacity.phase_up_months.${b}`,  label: `Phase-up to target — ${AGE_BAND_LABELS[b]} (months) — this location (blank = default)`, unit: 'count', kind: 'scalar', scope: 'entity', defaultValue: null },
     ])),
 
     // ── Cohort flow shares ────────────────────────────────────────
@@ -134,11 +141,17 @@ export const locationsModule = {
 
       // Per-band ramp curves — shared helper (lib/occupancy.js).
       // Acquired sites (going concern or empty premises) use the entity's
-      // own start/target/ramp config; greenfield uses group drivers;
-      // per-version driver overrides beat both.
+      // own start/target/ramp config; greenfield uses the band curve —
+      // per-LOCATION band values when set, group defaults otherwise.
+      // The site-level ramp.* overrides beat everything.
       const curveByBand = {};
       for (const band of AGE_BANDS) {
-        curveByBand[band] = curveForBand(e, band, groupCurve[band], override);
+        const bandCurve = {
+          opening: readOverride(`capacity.opening_pct.${band}`)     ?? groupCurve[band].opening,
+          target:  readOverride(`capacity.target_pct.${band}`)      ?? groupCurve[band].target,
+          phase:   readOverride(`capacity.phase_up_months.${band}`) ?? groupCurve[band].phase,
+        };
+        curveByBand[band] = curveForBand(e, band, bandCurve, override);
       }
 
       // Base ramp curve per band — quadratic ease-out from start to target
