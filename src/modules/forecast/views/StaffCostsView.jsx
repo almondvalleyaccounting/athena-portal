@@ -7,22 +7,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { colors, fmtP, fontStack, H2 } from '../components/ui';
 import LocationFilter, { resolveFilterToEntityIds, filterLabel } from '../components/LocationFilter';
 import { loadDriversForContext } from '../lib/queries';
-
-// Row order requested by user. Each row is one role bucket; tags.role on
-// the upstream rows is the matching key.
-const ROWS = [
-  // Indirect / management
-  { role: 'executive',         label: 'Executives',          group: 'mgmt' },
-  { role: 'senior_manager',    label: 'Senior managers',     group: 'mgmt' },
-  { role: 'admin',             label: 'Admin',               group: 'mgmt' },
-  // Setting-level
-  { role: 'setting_manager',   label: 'Setting managers',    group: 'setting' },
-  { role: 'assistant_manager', label: 'Assistant managers',  group: 'setting' },
-  // Direct
-  { role: 'senior_qualified',  label: 'Senior qualified',    group: 'direct' },
-  { role: 'qualified',         label: 'Qualified',           group: 'direct' },
-  { role: 'apprentice',        label: 'Apprentices',         group: 'direct' },
-];
+// Single source of truth for the role rows — shared with the PDF staff
+// page and Excel export, so a new role lands everywhere at once.
+import { STAFF_ROWS as ROWS } from '../lib/export/aggregations';
 
 const TOTAL_MGMT_AFTER = 'admin';   // emit a "Total management costs" subtotal after the admin row
 
@@ -78,19 +65,19 @@ export default function StaffCostsView({
     return m;
   }, [outputs, grouped, entityIds]);
 
-  // Total management = exec + senior_manager + admin
-  // Total setting = setting_mgr + asst_mgr
-  // Total direct = senior_qual + qualified + apprentice
+  // Subtotals derive from the shared row list so new roles are included
+  // automatically in their group.
   const subtotal = (roles) => grouped.map((g, i) =>
     roles.reduce((acc, role) => ({
       cost: acc.cost + (matrix[role]?.[i]?.cost || 0),
       hc: acc.hc + (matrix[role]?.[i]?.hc || 0),
     }), { cost: 0, hc: 0 })
   );
+  const rolesIn = (group) => ROWS.filter(r => r.group === group).map(r => r.role);
 
-  const mgmtSubtotal = subtotal(['executive', 'senior_manager', 'admin']);
-  const settingSubtotal = subtotal(['setting_manager', 'assistant_manager']);
-  const directSubtotal = subtotal(['senior_qualified', 'qualified', 'apprentice']);
+  const mgmtSubtotal = subtotal(rolesIn('mgmt'));
+  const settingSubtotal = subtotal(rolesIn('setting'));
+  const directSubtotal = subtotal(rolesIn('direct'));
   const grand = grouped.map((g, i) => ({
     cost: mgmtSubtotal[i].cost + settingSubtotal[i].cost + directSubtotal[i].cost,
     hc: mgmtSubtotal[i].hc + settingSubtotal[i].hc + directSubtotal[i].hc,
@@ -293,17 +280,19 @@ function RateAnalysisBox({ staffDrivers, outputs = [], entityIds = null, periods
   const fteSetMgr = avgFte('setting_manager');
   const fteAssist = avgFte('assistant_manager');
   const fteAdmin = avgFte('admin');
+  const fteCook = avgFte('cook');
   const fteSenQual = avgFte('senior_qualified');
   const fteQualBlended = avgFte('qualified');
   const fteApprBlended = avgFte('apprentice');
 
   // Each row: [label, annual salary (pence), nmw hourly, isBlended, fte]
-  const ROWS = [
+  const RATE_ROWS = [
     ['Executive',            lookup('base_salary_p.executive') || 0,         nmw21,      false, fteExec],
     ['Senior manager',       lookup('base_salary_p.senior_manager') || 0,    nmw21,      false, fteSrMgr],
     ['Setting manager',      lookup('base_salary_p.setting_manager') || 0,   nmw21,      false, fteSetMgr],
     ['Assistant manager',    lookup('base_salary_p.assistant_manager') || 0, nmw21,      false, fteAssist],
     ['Admin',                lookup('base_salary_p.admin') || 0,             nmw21,      false, fteAdmin],
+    ['Cook',                 lookup('base_salary_p.cook') || 0,              nmw21,      false, fteCook],
     ['Senior qualified',     lookup('base_salary_p.senior_qualified') || 0,  nmw21,      false, fteSenQual],
     // Direct staff broken down by NMW age band — apportion total via the mix %
     ['Qualified — under 19', lookup('base_salary_p.qualified_under19') || 0, nmwUnder18, false, fteQualBlended * qualMix.u19],
@@ -350,7 +339,7 @@ function RateAnalysisBox({ staffDrivers, outputs = [], entityIds = null, periods
           </tr>
         </thead>
         <tbody>
-          {ROWS.map(([label, salary, nmw, isBlended, fte]) => {
+          {RATE_ROWS.map(([label, salary, nmw, isBlended, fte]) => {
             const hourly = salary > 0 ? salary / hoursPerYear : 0;
             const niPerHr = hourly * niPct;
             const penPerHr = hourly * penPct;
