@@ -945,7 +945,7 @@ function drawAssumptionsPage(doc, { outputs, periods, openingPeriod, entities, e
    .filter(b => b.ts.length > 0);
 
   // ── Single pass over outputs into per-period accumulators ────
-  const NP_ROLES = new Set(['senior_qualified', 'qualified', 'apprentice', 'practitioner']);
+  const NP_ROLES = new Set(['senior_qualified', 'qualified', 'apprentice', 'practitioner', 'cook']);
   const acc = new Map();   // t -> accumulator
   const A = (t) => {
     let a = acc.get(t);

@@ -249,7 +249,7 @@ export const financialCoreModule = {
           // manager / admin (group-level). Pre-opening stays in its own bucket.
           const isDirectStaff = role === 'setting_manager' || role === 'assistant_manager'
             || role === 'senior_qualified' || role === 'qualified' || role === 'apprentice'
-            || role === 'practitioner';
+            || role === 'practitioner' || role === 'cook';
           if (r.module_key === 'pre_opening') {
             p.cost_pre_opening_base += r.amount_p;
             p.cost_pre_opening_staffing_base += r.amount_p;

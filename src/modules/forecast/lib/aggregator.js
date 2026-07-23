@@ -163,7 +163,7 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     // mirroring financial_core's bucketing so the on-screen P&L rows are
     // populated when the view is location-filtered.
     const DIRECT_ROLES = new Set(['setting_manager', 'assistant_manager',
-      'senior_qualified', 'qualified', 'apprentice', 'practitioner']);
+      'senior_qualified', 'qualified', 'apprentice', 'practitioner', 'cook']);
     const isDirectStaff = (r) => r.nominal_type === 'staff_cost'
       && r.module_key !== 'pre_opening'
       && DIRECT_ROLES.has(r.tags?.role);

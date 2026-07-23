@@ -77,6 +77,7 @@ export const STAFF_ROWS = [
   { role: 'admin',             label: 'Admin',               group: 'mgmt' },
   { role: 'setting_manager',   label: 'Setting managers',    group: 'setting' },
   { role: 'assistant_manager', label: 'Assistant managers',  group: 'setting' },
+  { role: 'cook',              label: 'Cooks',               group: 'setting' },
   { role: 'senior_qualified',  label: 'Senior qualified',    group: 'direct' },
   { role: 'qualified',         label: 'Qualified',           group: 'direct' },
   { role: 'apprentice',        label: 'Apprentices',         group: 'direct' },

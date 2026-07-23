@@ -134,8 +134,11 @@ export default function DashboardView({
         continue;
       }
 
-      // Management = manager salaries + pre-opening staffing
-      if (r.nominal_type === 'staff_cost' && (r.tags?.role === 'manager' || r.module_key === 'pre_opening')) {
+      // Staff not tied to an age band (setting/assistant managers, cook,
+      // exec/senior mgr/admin) + pre-opening staffing → the central
+      // management & support bucket. Previously only the legacy
+      // 'manager' role matched, so these fell out of every bucket.
+      if (r.nominal_type === 'staff_cost') {
         central.management += r.amount_p;
         continue;
       }
@@ -336,7 +339,7 @@ export default function DashboardView({
                 Central
               </td>
             </tr>
-            <CentralRow label="Management" hint="manager salaries + pre-opening staffing" amount={costByBand.central.management} />
+            <CentralRow label="Management & support staff" hint="managers, admin, cooks + pre-opening staffing" amount={costByBand.central.management} />
             <CentralRow label="Admin" hint="central admin overhead" amount={costByBand.central.admin} />
             <CentralRow label="Premises" hint="rent / service charge / NDR / maintenance" amount={costByBand.central.premises} />
             <CentralRow label="Overheads" hint="utilities, insurance, software, consumables, marketing, professional fees, pre-opening" amount={costByBand.central.overheads} />

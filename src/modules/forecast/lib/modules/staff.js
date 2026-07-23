@@ -33,6 +33,7 @@ const DEFAULTS = {
   setting_manager:  3800000,    // £38k
   assistant_manager:3000000,    // £30k
   admin:            2400000,    // £24k
+  cook:             2200000,    // £22k
   senior_qualified: 3000000,    // £30k (presumed 21+ skilled)
 
   qualified_under19:  1820000,  // £18.2k (matches 18-20 NMW for <19 too if not apprentice)
@@ -80,6 +81,10 @@ export const staffModule = {
     // Assistant manager
     { key: 'base_salary_p.assistant_manager',      label: 'Assistant manager — salary',      unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.assistant_manager },
     { key: 'headcount.assistant_managers_per_site',label: 'Assistant manager — per site',    unit: 'count', kind: 'scalar', scope: 'entity', defaultValue: 1 },
+    // Cook — site kitchen staff; costed like managers (salary + per-site
+    // headcount) but never counts toward the statutory ratio.
+    { key: 'base_salary_p.cook',                   label: 'Cook — salary',                   unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.cook },
+    { key: 'headcount.cooks_per_site',             label: 'Cooks — per site',                unit: 'count', kind: 'scalar', scope: 'entity', defaultValue: 1 },
 
     // Senior qualified (kept for back-compat; sits between mgmt and qualified bands)
     { key: 'base_salary_p.senior_qualified',       label: 'Senior qualified — salary',       unit: 'gbp_p', kind: 'scalar', scope: 'group',  defaultValue: DEFAULTS.senior_qualified },
@@ -167,6 +172,7 @@ export const staffModule = {
       setting_manager:  ctx.resolve('base_salary_p.setting_manager', {}),
       assistant_manager:ctx.resolve('base_salary_p.assistant_manager', {}),
       admin:            ctx.resolve('base_salary_p.admin', {}),
+      cook:             ctx.resolve('base_salary_p.cook', {}),
       senior_qualified: ctx.resolve('base_salary_p.senior_qualified', {}),
       qualified:        blend('qualified'),
       apprentice:       blend('apprentice'),
@@ -223,6 +229,9 @@ export const staffModule = {
 
         const hcAsst = ctx.resolve('headcount.assistant_managers_per_site', { entity: e.key }) || 0;
         if (hcAsst > 0) emit(e.id, t, 'assistant_manager', `Assistant managers (${hcAsst})`, hcAsst, monthlyCost(hcAsst, sal.assistant_manager));
+
+        const hcCook = ctx.resolve('headcount.cooks_per_site', { entity: e.key }) || 0;
+        if (hcCook > 0) emit(e.id, t, 'cook', `Cooks (${hcCook})`, hcCook, monthlyCost(hcCook, sal.cook));
 
         // Direct staff: required per band, then ENTITY-LEVEL allocation by mix.
         // This avoids the floor-rounding skew you saw.
