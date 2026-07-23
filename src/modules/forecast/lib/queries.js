@@ -273,6 +273,17 @@ export async function setDriverValue(driver_id, period, value) {
 }
 
 /**
+ * Remove a driver's value row — returns a blank-by-default driver (e.g.
+ * the ramp/capacity overrides) to "use the default" state.
+ */
+export async function clearDriverValue(driver_id, period = -1) {
+  const { error } = await supabase
+    .from('fc_driver_value')
+    .delete().eq('driver_id', driver_id).eq('period', period);
+  if (error) throw error;
+}
+
+/**
  * Delete a driver (and any associated values). Used for custom drivers
  * the user added via the +Add driver UI and now wants to remove.
  *

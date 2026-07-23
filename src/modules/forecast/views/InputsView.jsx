@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import {
   listEntities, upsertEntity, deleteEntity, listLaCouncils,
-  loadScenarioDrivers, upsertDriver, setDriverValue, deleteDriver, updateDriver,
+  loadScenarioDrivers, upsertDriver, setDriverValue, clearDriverValue, deleteDriver, updateDriver,
   copyEntity,
   seedPackDefaults,
   createGroup, deleteGroup, assignEntityToGroup,
@@ -238,14 +238,31 @@ export default function InputsView({
   };
 
   const onChangeValue = async (driverId, period, raw, unit) => {
+    const existing = values.find(v => v.driver_id === driverId && v.period === period);
+
+    // Cleared cell → delete the value row (blank-by-default drivers like
+    // the ramp / capacity overrides mean "use the default" when blank).
+    if (String(raw).trim() === '') {
+      if (!existing) return;                       // was already blank
+      await clearDriverValue(driverId, period);
+      setValues(prev => prev.filter(v => !(v.driver_id === driverId && v.period === period)));
+      onChanged?.();                               // assumption changed — recompute
+      return;
+    }
+
     const num = fromDisplay(raw, unit);
     if (num == null) return;
+    if (existing && Number(existing.value) === num) return;   // no change — no write, no recompute
     await setDriverValue(driverId, period, num);
     setValues(prev => {
       const i = prev.findIndex(v => v.driver_id === driverId && v.period === period);
       if (i >= 0) { const c = [...prev]; c[i] = { ...c[i], value: num }; return c; }
       return [...prev, { driver_id: driverId, period, value: num }];
     });
+    // Assumption changed — recompute so every tab (and the Compare view)
+    // reflects it immediately, instead of showing stale outputs until a
+    // manual Recompute.
+    onChanged?.();
   };
 
   const [filterEntity, setFilterEntity] = useState('all');         // 'all' | 'group' | entity_id
