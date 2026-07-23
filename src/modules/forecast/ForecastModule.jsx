@@ -9,6 +9,7 @@ import { PACKS } from './lib/packs';
 import { btnDark, btnOutline, colors, fontStack, inputStyle, KPI, Pill, selectStyle, serifStack } from './components/ui';
 
 import InputsView from './views/InputsView';
+import OverviewView from './views/OverviewView';
 import StatementView from './views/StatementView';
 import { PNL_LINES, BS_LINES, CF_LINES } from './views/statementLines';
 import DealView from './views/DealView';
@@ -25,8 +26,9 @@ import CompareView from './views/CompareView';
 import ExportModal from './views/ExportModal';
 
 const TABS = [
-  { key: 'dashboard', label: 'Dashboard' },
   { key: 'inputs',    label: 'Inputs' },
+  { key: 'dashboard', label: 'Dashboard' },
+  { key: 'overview',  label: 'Overview' },
   { key: 'pnl',       label: 'P&L' },
   { key: 'bs',        label: 'Balance sheet' },
   { key: 'cf',        label: 'Cashflow' },
@@ -54,7 +56,7 @@ export default function ForecastModule() {
   const [findings, setFindings] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
-  const [tab, setTab] = useState('dashboard');
+  const [tab, setTab] = useState('inputs');
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -347,6 +349,9 @@ export default function ForecastModule() {
               <DashboardView outputs={outputs} forecast={forecast} periods={periods}
                 entities={entities} groups={groups} assignments={assignments}
                 filter={filter} onFilterChange={setFilter} />
+            )}
+            {tab === 'overview' && (
+              <OverviewView outputs={outputs} forecast={forecast} periods={periods} entities={entities} />
             )}
             {tab === 'la' && (
               <LaSettingsView />
