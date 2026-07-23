@@ -9,6 +9,8 @@ import {
   saveNurseryDefaults, loadNurseryDefaults, clearNurseryDefaults,
 } from '../lib/queries';
 import { modulesFor } from '../lib/packs';
+import { curveForBand, ACQUIRED_TYPES } from '../lib/occupancy.js';
+import { AGE_BANDS, AGE_BAND_LABELS } from '../lib/modules/locations.js';
 import { btnDark, btnGhost, btnOutline, colors, fontStack, H2, inputStyle, Pill, Section, selectStyle, serifStack } from '../components/ui';
 import LoansPanel from './LoansPanel';
 
@@ -104,6 +106,21 @@ const TAB_FILTERS = {
     match: (s) => (d) => s === 'central' ? !d.entity_id : !!d.entity_id,
   },
 };
+
+// Orphan DB driver rows for keys the modules no longer declare — hidden
+// everywhere (flat grid + Pipeline panel).
+const RETIRED_KEYS = new Set([
+  'launch.greenfield_influx_pct', 'launch.ramp_months',
+  // Opening equity is derived from opening cash (financial_core);
+  // editing it separately could only unbalance the BS.
+  'bs.opening_equity_p',
+  // Dead inputs removed 2026-07: continuous age-ups are modelled
+  // inside the ramp curve (no driver), and the legacy flat
+  // practitioner/manager staffing keys pre-date the role mix.
+  'cohort.moveup_babies_pct', 'cohort.moveup_twos_pct',
+  'base_salary_p.practitioner', 'base_salary_p.lead_practitioner',
+  'base_salary_p.manager', 'manager_per_n_practitioners',
+]);
 
 export default function InputsView({
   forecast, scenario,
@@ -338,25 +355,8 @@ export default function InputsView({
 
     return drivers.filter(d => {
       if (d.module_key !== activeModuleKey) return false;
-      // Hide orphan drivers (DB rows for keys no longer declared by the module).
-      // Custom user-added drivers won't have a declared key, but they live in
-      // their own module declarations or are intentional one-offs — to allow
-      // them, only hide orphans that are *not* in the declared list AND share
-      // a prefix with retired keys we know about. Simpler: show all declared
-      // keys; for non-declared keys keep them visible too so custom drivers work.
-      // (To explicitly retire: call out in the deprecated set below.)
-      const RETIRED_KEYS = new Set([
-        'launch.greenfield_influx_pct', 'launch.ramp_months',
-        // Opening equity is derived from opening cash (financial_core);
-        // editing it separately could only unbalance the BS.
-        'bs.opening_equity_p',
-        // Dead inputs removed 2026-07: continuous age-ups are modelled
-        // inside the ramp curve (no driver), and the legacy flat
-        // practitioner/manager staffing keys pre-date the role mix.
-        'cohort.moveup_babies_pct', 'cohort.moveup_twos_pct',
-        'base_salary_p.practitioner', 'base_salary_p.lead_practitioner',
-        'base_salary_p.manager', 'manager_per_n_practitioners',
-      ]);
+      // Hide orphan drivers (retired keys); custom user-added drivers stay
+      // visible even though they're not in the declared list.
       if (RETIRED_KEYS.has(d.driver_key)) return false;
       if (filterEntity === 'group' && d.entity_id) return false;
       if (filterEntity !== 'all' && filterEntity !== 'group' && d.entity_id !== filterEntity) return false;
@@ -372,6 +372,14 @@ export default function InputsView({
       return (a.entity_id || '').localeCompare(b.entity_id || '');
     });
   }, [drivers, activeModuleKey, filterEntity, filterUnit, filterSearch, tabFilterValue, modules]);
+
+  // The Pipeline (locations) tab renders a purpose-built grouped panel
+  // instead of the flat grid, so it ignores the generic entity/unit/search
+  // filters — everything is visible, grouped the way the engine resolves it.
+  const pipelineDrivers = useMemo(
+    () => drivers.filter(d => d.module_key === 'locations' && !RETIRED_KEYS.has(d.driver_key)),
+    [drivers]
+  );
 
   // Distinct units present in the active module
   const unitOptions = useMemo(() => {
@@ -538,6 +546,19 @@ export default function InputsView({
           ))}
         </div>
 
+        {activeModuleKey === 'locations' ? (
+          <PipelineDriversPanel
+            entities={entities}
+            drivers={pipelineDrivers}
+            valueOf={valueOf}
+            toDisplay={toDisplay}
+            onChangeValue={onChangeValue}
+            compact={compact}
+            declaredKeys={declaredKeys}
+            onRenameDriver={onRenameDriver}
+            onDeleteDriver={onDeleteDriver}
+          />
+        ) : (<>
         <DriverFilters
           entities={entities}
           unitOptions={unitOptions}
@@ -626,6 +647,7 @@ export default function InputsView({
             </tbody>
           </table>
         )}
+        </>)}
       </Section>
 
       {editingEntity && (
@@ -681,6 +703,284 @@ function GroupsPanel({ groups, onAdd, onDelete }) {
     </div>
   );
 }
+
+// ═══ Pipeline (locations) drivers panel ═════════════════════════════════
+// The flat grid was unreadable here — ~19 near-identically-labelled rows
+// spanning three override layers. This panel groups them the way the
+// engine resolves the curve (lib/occupancy.js curveForBand):
+//   age-band override → site-wide override → location default / group default.
+// Blank cells show the value they'd inherit as a grey placeholder, and
+// each band row spells out its effective curve.
+
+function PipelineDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeValue, compact, declaredKeys, onRenameDriver, onDeleteDriver }) {
+  const find = (entityId, key) => drivers.find(d => (d.entity_id || null) === entityId && d.driver_key === key);
+  const numOf = (d) => {
+    if (!d) return null;
+    const v = valueOf(d.id, -1);
+    if (v === '' || v == null) return null;
+    const n = Number(v);
+    return Number.isNaN(n) ? null : n;
+  };
+  const groupCurveFor = (band) => ({
+    opening: numOf(find(null, `capacity.opening_pct.${band}`)),
+    target:  numOf(find(null, `capacity.target_pct.${band}`)),
+    phase:   numOf(find(null, `capacity.phase_up_months.${band}`)),
+  });
+
+  const hasGroupBandRows = drivers.some(d => !d.entity_id && d.driver_key.startsWith('capacity.'));
+  const COHORT_ORDER = ['cohort.school_leaver_three_to_five_pct', 'cohort.school_to_as_pct', 'cohort.as_leaver_pct', 'cohort.refill_months'];
+  const cohortDrivers = drivers
+    .filter(d => !d.entity_id && d.driver_key.startsWith('cohort.'))
+    .sort((a, b) => {
+      const ia = COHORT_ORDER.indexOf(a.driver_key), ib = COHORT_ORDER.indexOf(b.driver_key);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+  const others = drivers.filter(d =>
+    !d.driver_key.startsWith('ramp.') && !d.driver_key.startsWith('capacity.') && !d.driver_key.startsWith('cohort.'));
+
+  const cellProps = { valueOf, toDisplay, onChangeValue, compact };
+
+  return (
+    <div>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 12px' }}>
+        Ramp-up assumptions resolve top-down: an <strong>age-band value</strong> beats the <strong>site-wide override</strong>,
+        which beats the location default (set in <em>Edit location</em>) or the group default.
+        Leave a cell blank to inherit — the grey number shows what blank means.
+      </p>
+
+      {entities.length === 0 && (
+        <p style={{ fontSize: 13, color: colors.muted }}>Add a location above to set its ramp-up assumptions.</p>
+      )}
+      {entities.map(e => (
+        <LocationRampCard key={e.id} entity={e} find={find} numOf={numOf} groupCurveFor={groupCurveFor} {...cellProps} />
+      ))}
+
+      {hasGroupBandRows && <GroupBandDefaultsCard find={find} {...cellProps} />}
+
+      {cohortDrivers.length > 0 && <CohortCard drivers={cohortDrivers} {...cellProps} />}
+
+      {others.length > 0 && (
+        <OtherDriversTable
+          drivers={others} entities={entities} declaredKeys={declaredKeys}
+          onRenameDriver={onRenameDriver} onDeleteDriver={onDeleteDriver}
+          {...cellProps}
+        />
+      )}
+    </div>
+  );
+}
+
+function LocationRampCard({ entity, find, numOf, groupCurveFor, valueOf, toDisplay, onChangeValue, compact }) {
+  const cfg = entity.config || {};
+  const acq = cfg.acquisition_type;
+  const isAcquired = ACQUIRED_TYPES.has(acq);
+  const acqLabel = acq === 'acquired_going_concern' ? 'Acquired — going concern'
+    : acq === 'acquired_empty' ? 'Acquired — empty premises'
+    : 'Greenfield';
+
+  const dStart  = find(entity.id, 'ramp.starting_occupancy_pct');
+  const dTarget = find(entity.id, 'ramp.target_occupancy_pct');
+  const dMonths = find(entity.id, 'ramp.months_to_target');
+  const siteOverride = { start: numOf(dStart), target: numOf(dTarget), months: numOf(dMonths) };
+
+  // What a blank site-override cell falls back to: the location default
+  // from entity config (acquired sites), or the per-band defaults below
+  // (greenfield — no single site-level number, so no placeholder).
+  const sitePh = isAcquired ? {
+    start:  cfg.starting_occupancy_pct ?? (acq === 'acquired_going_concern' ? 70 : 40),
+    target: cfg.target_occupancy_pct ?? 85,
+    months: cfg.ramp_to_target_months ?? 6,
+  } : { start: null, target: null, months: null };
+
+  const cellProps = { valueOf, toDisplay, onChangeValue, compact };
+  const r1 = (v) => Math.round(v * 10) / 10;
+
+  return (
+    <div style={pipeCard}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: colors.ink }}>{entity.label}</span>
+        <Pill>{acqLabel}</Pill>
+      </div>
+
+      <div style={pipeSectionLabel}>Site-wide ramp override — this version</div>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', margin: '6px 0 14px' }}>
+        <LabelledCell label="Opening occupancy" suffix="%" driver={dStart} placeholder={sitePh.start} {...cellProps} />
+        <LabelledCell label="Target occupancy" suffix="%" driver={dTarget} placeholder={sitePh.target} {...cellProps} />
+        <LabelledCell label="Months to target" driver={dMonths} placeholder={sitePh.months} {...cellProps} />
+        <span style={{ fontSize: 11, color: colors.muted }}>
+          {isAcquired ? 'Blank = location default (Edit location).' : 'Blank = per-band defaults.'}
+        </span>
+      </div>
+
+      <div style={pipeSectionLabel}>Fine-tune by age band — this version</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack, marginTop: 6 }}>
+        <thead>
+          <tr>
+            <th style={pipeTh}>Age band</th>
+            <th style={{ ...pipeTh, textAlign: 'right' }}>Opening %</th>
+            <th style={{ ...pipeTh, textAlign: 'right' }}>Target %</th>
+            <th style={{ ...pipeTh, textAlign: 'right' }}>Months to target</th>
+            <th style={{ ...pipeTh, paddingLeft: 18 }}>Effective curve</th>
+          </tr>
+        </thead>
+        <tbody>
+          {AGE_BANDS.map(band => {
+            const dO = find(entity.id, `capacity.opening_pct.${band}`);
+            const dT = find(entity.id, `capacity.target_pct.${band}`);
+            const dP = find(entity.id, `capacity.phase_up_months.${band}`);
+            const bandOverride = { opening: numOf(dO), target: numOf(dT), phase: numOf(dP) };
+            const gc = groupCurveFor(band);
+            const inherited = curveForBand(entity, band, gc, siteOverride, null);
+            const effective = curveForBand(entity, band, gc, siteOverride, bandOverride);
+            const overridden = bandOverride.opening != null || bandOverride.target != null || bandOverride.phase != null;
+            return (
+              <tr key={band} style={{ borderBottom: `1px dotted ${colors.borderSoft}` }}>
+                <td style={pipeTd}>{AGE_BAND_LABELS[band]}</td>
+                <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dO} placeholder={r1(inherited.start)} {...cellProps} /></td>
+                <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dT} placeholder={r1(inherited.target)} {...cellProps} /></td>
+                <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dP} placeholder={r1(inherited.ramp)} {...cellProps} /></td>
+                <td style={{ ...pipeTd, paddingLeft: 18, fontSize: 11, color: overridden ? colors.accent : colors.muted, whiteSpace: 'nowrap' }}>
+                  {r1(effective.start)}% → {r1(effective.target)}% over {r1(effective.ramp)} mo{overridden ? ' · band override' : ''}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function GroupBandDefaultsCard({ find, valueOf, toDisplay, onChangeValue, compact }) {
+  const cellProps = { valueOf, toDisplay, onChangeValue, compact };
+  return (
+    <div style={pipeCard}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: colors.ink }}>Greenfield ramp defaults</span>
+        <Pill>group — all locations</Pill>
+      </div>
+      <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 8px' }}>
+        Default per-band curve for greenfield sites. Acquired sites use their own location settings instead.
+      </p>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack }}>
+        <thead>
+          <tr>
+            <th style={pipeTh}>Age band</th>
+            <th style={{ ...pipeTh, textAlign: 'right' }}>Opening %</th>
+            <th style={{ ...pipeTh, textAlign: 'right' }}>Target %</th>
+            <th style={{ ...pipeTh, textAlign: 'right' }}>Months to target</th>
+          </tr>
+        </thead>
+        <tbody>
+          {AGE_BANDS.map(band => (
+            <tr key={band} style={{ borderBottom: `1px dotted ${colors.borderSoft}` }}>
+              <td style={pipeTd}>{AGE_BAND_LABELS[band]}</td>
+              <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={find(null, `capacity.opening_pct.${band}`)} {...cellProps} /></td>
+              <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={find(null, `capacity.target_pct.${band}`)} {...cellProps} /></td>
+              <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={find(null, `capacity.phase_up_months.${band}`)} {...cellProps} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CohortCard({ drivers, valueOf, toDisplay, onChangeValue, compact }) {
+  const cellProps = { valueOf, toDisplay, onChangeValue, compact };
+  return (
+    <div style={pipeCard}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: colors.ink }}>August cohort dynamics</span>
+        <Pill>group — all locations</Pill>
+      </div>
+      <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 8px' }}>
+        Each August a share of 3-5s leaves for P1 (some staying on in after-school care) and P7
+        after-schoolers move up to high school. The occupancy dip refills over the window below.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, max-content) auto', gap: '6px 14px', alignItems: 'center' }}>
+        {drivers.map(d => (
+          <React.Fragment key={d.id}>
+            <span style={{ fontSize: 12, color: colors.ink }}>{d.label}</span>
+            <OverrideCell driver={d} suffix={d.unit === 'pct' ? '%' : d.unit === 'count' ? 'mo' : null} {...cellProps} />
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OtherDriversTable({ drivers, entities, declaredKeys, onRenameDriver, onDeleteDriver, valueOf, toDisplay, onChangeValue, compact }) {
+  const cellProps = { valueOf, toDisplay, onChangeValue, compact };
+  return (
+    <div style={pipeCard}>
+      <div style={{ ...pipeSectionLabel, marginBottom: 6 }}>Other drivers</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack }}>
+        <tbody>
+          {drivers.map(d => {
+            const ent = entities.find(e => e.id === d.entity_id);
+            return (
+              <tr key={d.id} style={{ borderBottom: `1px dotted ${colors.borderSoft}` }}>
+                <td style={pipeTd}><strong>{d.label}</strong></td>
+                <td style={pipeTd}>{ent?.label || <span style={{ color: colors.muted }}>group</span>}</td>
+                <td style={{ ...pipeTd, textAlign: 'right' }}>
+                  {d.kind === 'scalar'
+                    ? <OverrideCell driver={d} suffix={d.unit === 'pct' ? '%' : null} {...cellProps} />
+                    : <span style={{ fontSize: 11, color: colors.muted }}>({d.kind})</span>}
+                </td>
+                <td style={{ ...pipeTd, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {!declaredKeys.has(d.driver_key) && (
+                    <span style={{ display: 'inline-flex', gap: 2 }}>
+                      <button onClick={() => onRenameDriver(d)} title="Rename custom driver" style={iconBtn}>✎</button>
+                      <button onClick={() => onDeleteDriver(d)} title="Delete custom driver" style={{ ...iconBtn, color: colors.red }}>×</button>
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LabelledCell({ label, driver, placeholder, suffix, valueOf, toDisplay, onChangeValue, compact }) {
+  return (
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+      <span style={{ color: colors.muted }}>{label}</span>
+      <OverrideCell
+        driver={driver} placeholder={placeholder} suffix={suffix}
+        valueOf={valueOf} toDisplay={toDisplay} onChangeValue={onChangeValue} compact={compact}
+      />
+    </label>
+  );
+}
+
+function OverrideCell({ driver, placeholder, suffix, valueOf, toDisplay, onChangeValue, compact }) {
+  if (!driver) {
+    return <span style={{ fontSize: 11, color: colors.muted }} title={'Driver row missing — click "Fill missing defaults" above'}>—</span>;
+  }
+  const ph = placeholder == null ? '' : String(placeholder);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+      {driver.unit === 'gbp_p' && <span style={{ fontSize: 11, color: colors.muted }}>£</span>}
+      <input
+        defaultValue={toDisplay(valueOf(driver.id, -1), driver.unit)}
+        placeholder={ph}
+        title={ph !== '' ? `Blank = ${ph} (inherited)` : undefined}
+        onBlur={(e) => onChangeValue(driver.id, -1, e.target.value, driver.unit)}
+        style={{ ...inputStyle, width: compact ? 64 : 80, textAlign: 'right', padding: compact ? '3px 6px' : '5px 8px', fontSize: compact ? 11 : 12 }}
+      />
+      {suffix && <span style={{ fontSize: 11, color: colors.muted }}>{suffix}</span>}
+    </span>
+  );
+}
+
+const pipeCard = { border: `1px solid ${colors.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12, background: '#fff' };
+const pipeSectionLabel = { fontSize: 10, color: colors.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 };
+const pipeTh = { padding: '4px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, background: colors.bgSoft };
+const pipeTd = { padding: '5px 8px', color: colors.ink, verticalAlign: 'middle', fontSize: 12 };
 
 function CustomDriverModal({ scenarioId, moduleKey, entities, onClose, onSaved }) {
   const [form, setForm] = useState({

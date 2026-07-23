@@ -18,7 +18,7 @@
 
 import { curveForBand, occupancyOnCurve } from '../occupancy.js';
 
-const AGE_BANDS = ['babies', 'twos', 'three_to_five', 'after_school'];
+export const AGE_BANDS = ['babies', 'twos', 'three_to_five', 'after_school'];
 
 export const AGE_BAND_LABELS = {
   babies:        '0-2',
