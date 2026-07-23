@@ -31,80 +31,34 @@ const MODULE_LABELS = {
   exit_valuation: 'Exit valuation',
 };
 
-// Per-tab semantic filters. Each spec: { label, options: [{ value, label }], match(value) -> driver-predicate }
-const TAB_FILTERS = {
-  services_childcare: {
-    label: 'Age band',
-    options: [
-      { value: 'all', label: 'All bands' },
-      { value: 'babies', label: '0-2' },
-      { value: 'twos', label: '2-3' },
-      { value: 'three_to_five', label: '3-5' },
-      { value: 'after_school', label: 'After-school' },
-    ],
-    match: (band) => (d) => d.driver_key.endsWith('.' + band),
-  },
-  staff: {
-    label: 'Driver group',
-    options: [
-      { value: 'all', label: 'All' },
-      { value: 'ratios', label: 'Statutory ratios' },
-      { value: 'mix', label: 'Direct mix + age-band split' },
-      { value: 'salaries', label: 'Salaries' },
-      { value: 'headcount', label: 'Headcount' },
-      { value: 'on_costs', label: 'On-costs (NI / pension)' },
-      { value: 'workforce', label: 'Workforce / cover' },
-      { value: 'inclusion', label: 'Ratio inclusion flags' },
-    ],
-    match: (g) => (d) => {
-      if (g === 'ratios')    return d.driver_key.startsWith('ratio.') && !d.driver_key.startsWith('ratio_inclusion.');
-      if (g === 'mix')       return d.driver_key.startsWith('direct_mix.') || d.driver_key.startsWith('nmw_mix.');
-      if (g === 'salaries')  return d.driver_key.startsWith('base_salary_p.') || d.driver_key === 'real_living_wage_hourly_p';
-      if (g === 'headcount') return d.driver_key.startsWith('headcount.');
-      if (g === 'on_costs')  return d.driver_key === 'employer_ni_pct' || d.driver_key === 'employer_pension_pct' || d.driver_key === 'employment_allowance_p';
-      if (g === 'workforce') return d.driver_key === 'vacancy_rate_pct' || d.driver_key === 'agency_premium_pct' || d.driver_key === 'standard_hours_per_year';
-      if (g === 'inclusion') return d.driver_key.startsWith('ratio_inclusion.');
-      return true;
-    },
-  },
-  premises: {
-    label: 'Mode',
-    options: [
-      { value: 'all', label: 'All premises drivers' },
-      { value: 'lease', label: 'Lease (rent / service charge)' },
-      { value: 'buy', label: 'Buy (purchase / mortgage / NDR)' },
-    ],
-    match: (m) => (d) => {
-      const leaseKeys = ['premises.rent_monthly_p', 'premises.service_charge_monthly_p'];
-      if (m === 'lease') return leaseKeys.includes(d.driver_key);
-      if (m === 'buy') return !leaseKeys.includes(d.driver_key);
-      return true;
-    },
-  },
-  pre_opening: {
-    label: 'Cost type',
-    options: [
-      { value: 'all', label: 'All pre-opening' },
-      { value: 'overhead', label: 'Overhead' },
-      { value: 'staffing', label: 'Staffing' },
-      { value: 'marketing', label: 'Marketing' },
-    ],
-    match: (k) => (d) => {
-      if (k === 'overhead') return d.driver_key.includes('monthly_overhead') || d.driver_key.includes('registration_lead');
-      if (k === 'staffing') return d.driver_key.includes('staffing');
-      if (k === 'marketing') return d.driver_key.includes('marketing');
-      return true;
-    },
-  },
-  overheads: {
-    label: 'Scope',
-    options: [
-      { value: 'all', label: 'All overheads' },
-      { value: 'site', label: 'Site-level (per location)' },
-      { value: 'central', label: 'Central / group' },
-    ],
-    match: (s) => (d) => s === 'central' ? !d.entity_id : !!d.entity_id,
-  },
+// Grouped sections for the flat driver grid — visible header rows in the
+// table, replacing the old per-tab dropdown filters. A driver lands in
+// the FIRST section whose match() passes; unmatched drivers fall into a
+// trailing "Other" group. Pipeline and Services have their own custom
+// panels instead.
+const MODULE_SECTIONS = {
+  staff: [
+    { label: 'Statutory ratios (children per adult)', match: (d) => d.driver_key.startsWith('ratio.') && !d.driver_key.startsWith('ratio_inclusion.') },
+    { label: 'Salaries & wage floors', match: (d) => d.driver_key.startsWith('base_salary_p.') || d.driver_key.endsWith('_hourly_p') },
+    { label: 'Headcount', match: (d) => d.driver_key.startsWith('headcount.') },
+    { label: 'Direct staff mix & age-band split', match: (d) => d.driver_key.startsWith('direct_mix.') || d.driver_key.startsWith('nmw_mix.') },
+    { label: 'On-costs (NI / pension)', match: (d) => ['employer_ni_pct', 'employer_pension_pct', 'employment_allowance_p'].includes(d.driver_key) },
+    { label: 'Workforce & cover', match: (d) => ['vacancy_rate_pct', 'agency_premium_pct', 'standard_hours_per_year'].includes(d.driver_key) },
+    { label: 'Counted in statutory ratios?', match: (d) => d.driver_key.startsWith('ratio_inclusion.') },
+  ],
+  premises: [
+    { label: 'Lease (rent / service charge)', match: (d) => ['premises.rent_monthly_p', 'premises.service_charge_monthly_p'].includes(d.driver_key) },
+    { label: 'Buy (purchase / mortgage / NDR) & upkeep', match: () => true },
+  ],
+  pre_opening: [
+    { label: 'Overhead & registration', match: (d) => d.driver_key.includes('monthly_overhead') || d.driver_key.includes('registration_lead') },
+    { label: 'Staffing', match: (d) => d.driver_key.includes('staffing') },
+    { label: 'Marketing', match: (d) => d.driver_key.includes('marketing') },
+  ],
+  overheads: [
+    { label: 'Site-level (per location)', match: (d) => !!d.entity_id },
+    { label: 'Central / group', match: (d) => !d.entity_id },
+  ],
 };
 
 // Orphan DB driver rows for keys the modules no longer declare — hidden
@@ -290,7 +244,6 @@ export default function InputsView({
   const [locationsExpanded, setLocationsExpanded] = useState(true);
   const [addingDriver, setAddingDriver] = useState(false);
   const [compact, setCompact] = useState(true);
-  const [tabFilter, setTabFilter] = useState({});                   // per-module: { module_key: 'value' }
   const driversAnchorRef = useRef(null);
   const initialModuleSetRef = useRef(false);
 
@@ -308,9 +261,6 @@ export default function InputsView({
       driversAnchorRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [activeModuleKey]);
-
-  const tabFilterSpec = TAB_FILTERS[activeModuleKey] || null;
-  const tabFilterValue = tabFilter[activeModuleKey] || 'all';
 
   // Set of driver keys declared by the active module, so we can tell
   // user-added custom drivers apart and offer rename / delete on them.
@@ -342,10 +292,6 @@ export default function InputsView({
   const moduleDrivers = useMemo(() => {
     if (!activeModuleKey) return [];
     const q = filterSearch.trim().toLowerCase();
-    const spec = TAB_FILTERS[activeModuleKey];
-    const tabFilterFn = spec && tabFilterValue !== 'all'
-      ? spec.match(tabFilterValue)
-      : () => true;
 
     // Use the active module's `drivers` declaration order so the user's
     // requested role-grouped layout (exec → … → apprentice <19) is honoured.
@@ -362,7 +308,6 @@ export default function InputsView({
       if (filterEntity !== 'all' && filterEntity !== 'group' && d.entity_id !== filterEntity) return false;
       if (filterUnit !== 'all' && d.unit !== filterUnit) return false;
       if (q && !(d.label?.toLowerCase().includes(q) || d.driver_key.toLowerCase().includes(q))) return false;
-      if (!tabFilterFn(d)) return false;
       return true;
     }).sort((a, b) => {
       const oa = orderByKey.has(a.driver_key) ? orderByKey.get(a.driver_key) : 9999;
@@ -371,13 +316,32 @@ export default function InputsView({
       // Within same driver key, group entities together
       return (a.entity_id || '').localeCompare(b.entity_id || '');
     });
-  }, [drivers, activeModuleKey, filterEntity, filterUnit, filterSearch, tabFilterValue, modules]);
+  }, [drivers, activeModuleKey, filterEntity, filterUnit, filterSearch, modules]);
 
-  // The Pipeline (locations) tab renders a purpose-built grouped panel
-  // instead of the flat grid, so it ignores the generic entity/unit/search
-  // filters — everything is visible, grouped the way the engine resolves it.
+  // Rows grouped under visible section headers (spec order preserved
+  // within each section); modules without a spec render flat.
+  const sectionedRows = useMemo(() => {
+    const spec = MODULE_SECTIONS[activeModuleKey];
+    if (!spec) return null;
+    const buckets = spec.map(s => ({ label: s.label, rows: [] }));
+    const other = { label: 'Other', rows: [] };
+    for (const d of moduleDrivers) {
+      const b = buckets.find((bk, i) => spec[i].match(d));
+      (b || other).rows.push(d);
+    }
+    return [...buckets, other].filter(b => b.rows.length > 0);
+  }, [moduleDrivers, activeModuleKey]);
+
+  // Pipeline (locations) and Services tabs render purpose-built grouped
+  // panels instead of the flat grid, so they ignore the generic
+  // entity/unit/search filters — everything is visible, grouped the way
+  // the engine reads it.
   const pipelineDrivers = useMemo(
     () => drivers.filter(d => d.module_key === 'locations' && !RETIRED_KEYS.has(d.driver_key)),
+    [drivers]
+  );
+  const servicesDrivers = useMemo(
+    () => drivers.filter(d => d.module_key === 'services_childcare' && !RETIRED_KEYS.has(d.driver_key)),
     [drivers]
   );
 
@@ -558,6 +522,18 @@ export default function InputsView({
             onRenameDriver={onRenameDriver}
             onDeleteDriver={onDeleteDriver}
           />
+        ) : activeModuleKey === 'services_childcare' ? (
+          <ServicesDriversPanel
+            entities={entities}
+            drivers={servicesDrivers}
+            valueOf={valueOf}
+            toDisplay={toDisplay}
+            onChangeValue={onChangeValue}
+            compact={compact}
+            declaredKeys={declaredKeys}
+            onRenameDriver={onRenameDriver}
+            onDeleteDriver={onDeleteDriver}
+          />
         ) : (<>
         <DriverFilters
           entities={entities}
@@ -565,9 +541,6 @@ export default function InputsView({
           filterEntity={filterEntity} setFilterEntity={setFilterEntity}
           filterUnit={filterUnit} setFilterUnit={setFilterUnit}
           filterSearch={filterSearch} setFilterSearch={setFilterSearch}
-          tabFilterSpec={tabFilterSpec}
-          tabFilterValue={tabFilterValue}
-          setTabFilterValue={(v) => setTabFilter(prev => ({ ...prev, [activeModuleKey]: v }))}
         />
 
         {moduleDrivers.length === 0 ? (
@@ -585,7 +558,19 @@ export default function InputsView({
               </tr>
             </thead>
             <tbody>
-              {moduleDrivers.map((d, idx) => {
+              {(sectionedRows
+                ? sectionedRows.flatMap(sec => [{ __section: sec.label }, ...sec.rows])
+                : moduleDrivers
+              ).map((d, idx) => {
+                if (d.__section) {
+                  return (
+                    <tr key={`sec-${d.__section}`}>
+                      <td colSpan={compact ? 4 : 6} style={{ padding: '14px 8px 4px', fontSize: 10, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: `1px solid ${colors.border}`, background: '#fff' }}>
+                        {d.__section}
+                      </td>
+                    </tr>
+                  );
+                }
                 const ent = entities.find(e => e.id === d.entity_id);
                 const cellTd = compact ? tdCompact : td;
                 // Light leader lines: alternate row background so the eye can
@@ -758,6 +743,118 @@ function PipelineDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
       {hasGroupBandRows && <GroupBandDefaultsCard find={find} {...cellProps} />}
 
       {cohortDrivers.length > 0 && <CohortCard drivers={cohortDrivers} {...cellProps} />}
+
+      {others.length > 0 && (
+        <OtherDriversTable
+          drivers={others} entities={entities} declaredKeys={declaredKeys}
+          onRenameDriver={onRenameDriver} onDeleteDriver={onDeleteDriver}
+          {...cellProps}
+        />
+      )}
+    </div>
+  );
+}
+
+// ═══ Services drivers panel ═════════════════════════════════════════════
+// Same treatment as Pipeline: the per-band pricing drivers become a
+// band × metric matrix per location (they're entity-scoped), with a
+// derived private £/hr column, and the group billing/calendar knobs sit
+// in their own card.
+
+const SERVICE_BAND_PREFIXES = [
+  'weekly_rate_p.', 'operating_hours_per_week.',
+  'eligible_for_funded_pct.', 'funded_hours_take_up_pct.', 'la_funded_rate_p.',
+];
+const SERVICE_GROUP_KEYS = ['weeks_per_year', 'deposit_weeks', 'advance_billing_weeks'];
+
+function ServicesDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeValue, compact, declaredKeys, onRenameDriver, onDeleteDriver }) {
+  const find = (entityId, key) => drivers.find(d => (d.entity_id || null) === entityId && d.driver_key === key);
+  const numOf = (d) => {
+    if (!d) return null;
+    const v = valueOf(d.id, -1);
+    if (v === '' || v == null) return null;
+    const n = Number(v);
+    return Number.isNaN(n) ? null : n;
+  };
+  const cellProps = { valueOf, toDisplay, onChangeValue, compact };
+
+  const isBandDriver = (d) => SERVICE_BAND_PREFIXES.some(p => d.driver_key.startsWith(p));
+  const groupDrivers = drivers.filter(d => !d.entity_id && SERVICE_GROUP_KEYS.includes(d.driver_key))
+    .sort((a, b) => SERVICE_GROUP_KEYS.indexOf(a.driver_key) - SERVICE_GROUP_KEYS.indexOf(b.driver_key));
+  const others = drivers.filter(d => !isBandDriver(d) && !SERVICE_GROUP_KEYS.includes(d.driver_key));
+
+  return (
+    <div>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 12px' }}>
+        Pricing and funded-hours assumptions per age band, one card per location.
+        LA-funded hours (1140/yr) are billed at the LA rate; remaining hours at the private rate.
+      </p>
+
+      {entities.length === 0 && (
+        <p style={{ fontSize: 13, color: colors.muted }}>Add a location above to set its pricing.</p>
+      )}
+      {entities.map(e => (
+        <div key={e.id} style={pipeCard}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: colors.ink }}>{e.label}</span>
+            <Pill>pricing & funding by age band</Pill>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack }}>
+            <thead>
+              <tr>
+                <th style={pipeTh}>Age band</th>
+                <th style={{ ...pipeTh, textAlign: 'right' }}>Weekly rate (£)</th>
+                <th style={{ ...pipeTh, textAlign: 'right' }}>Hours / week</th>
+                <th style={{ ...pipeTh, textAlign: 'right' }}>Eligible for funded %</th>
+                <th style={{ ...pipeTh, textAlign: 'right' }}>Funded take-up %</th>
+                <th style={{ ...pipeTh, textAlign: 'right' }}>LA rate (£/hr)</th>
+                <th style={{ ...pipeTh, paddingLeft: 18 }}>Private £/hr</th>
+              </tr>
+            </thead>
+            <tbody>
+              {AGE_BANDS.map(band => {
+                const dRate  = find(e.id, `weekly_rate_p.${band}`);
+                const dHours = find(e.id, `operating_hours_per_week.${band}`);
+                const dElig  = find(e.id, `eligible_for_funded_pct.${band}`);
+                const dTake  = find(e.id, `funded_hours_take_up_pct.${band}`);
+                const dLa    = find(e.id, `la_funded_rate_p.${band}`);
+                const rate = numOf(dRate), hours = numOf(dHours);
+                const perHr = rate != null && hours > 0 ? rate / hours / 100 : null;
+                return (
+                  <tr key={band} style={{ borderBottom: `1px dotted ${colors.borderSoft}` }}>
+                    <td style={pipeTd}>{AGE_BAND_LABELS[band]}</td>
+                    <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dRate} {...cellProps} /></td>
+                    <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dHours} {...cellProps} /></td>
+                    <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dElig} suffix="%" {...cellProps} /></td>
+                    <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dTake} suffix="%" {...cellProps} /></td>
+                    <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dLa} {...cellProps} /></td>
+                    <td style={{ ...pipeTd, paddingLeft: 18, fontSize: 11, color: colors.muted, whiteSpace: 'nowrap' }}>
+                      {perHr == null ? '—' : `£${perHr.toFixed(2)}/hr`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
+
+      {groupDrivers.length > 0 && (
+        <div style={pipeCard}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: colors.ink }}>Billing & calendar</span>
+            <Pill>group — all locations</Pill>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, max-content) auto', gap: '6px 14px', alignItems: 'center' }}>
+            {groupDrivers.map(d => (
+              <React.Fragment key={d.id}>
+                <span style={{ fontSize: 12, color: colors.ink }}>{d.label}</span>
+                <OverrideCell driver={d} suffix="wks" {...cellProps} />
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      )}
 
       {others.length > 0 && (
         <OtherDriversTable
@@ -1382,8 +1479,8 @@ function Field({ label, children }) {
   );
 }
 
-function DriverFilters({ entities, unitOptions, filterEntity, setFilterEntity, filterUnit, setFilterUnit, filterSearch, setFilterSearch, tabFilterSpec, tabFilterValue, setTabFilterValue }) {
-  const anyFilterActive = filterEntity !== 'all' || filterUnit !== 'all' || filterSearch || (tabFilterSpec && tabFilterValue !== 'all');
+function DriverFilters({ entities, unitOptions, filterEntity, setFilterEntity, filterUnit, setFilterUnit, filterSearch, setFilterSearch }) {
+  const anyFilterActive = filterEntity !== 'all' || filterUnit !== 'all' || filterSearch;
   return (
     <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
       <select value={filterEntity} onChange={(e) => setFilterEntity(e.target.value)} style={filterSel}>
@@ -1395,18 +1492,6 @@ function DriverFilters({ entities, unitOptions, filterEntity, setFilterEntity, f
         <option value="all">All units</option>
         {unitOptions.map(u => <option key={u} value={u}>{prettyUnit(u)} ({u})</option>)}
       </select>
-      {tabFilterSpec && (
-        <select
-          value={tabFilterValue}
-          onChange={(e) => setTabFilterValue(e.target.value)}
-          style={{ ...filterSel, borderColor: tabFilterValue !== 'all' ? colors.accent : colors.border }}
-          title={tabFilterSpec.label}
-        >
-          {tabFilterSpec.options.map(o => (
-            <option key={o.value} value={o.value}>{o.value === 'all' ? o.label : `${tabFilterSpec.label}: ${o.label}`}</option>
-          ))}
-        </select>
-      )}
       <input
         value={filterSearch}
         onChange={(e) => setFilterSearch(e.target.value)}
@@ -1415,10 +1500,7 @@ function DriverFilters({ entities, unitOptions, filterEntity, setFilterEntity, f
       />
       {anyFilterActive && (
         <button
-          onClick={() => {
-            setFilterEntity('all'); setFilterUnit('all'); setFilterSearch('');
-            if (tabFilterSpec && setTabFilterValue) setTabFilterValue('all');
-          }}
+          onClick={() => { setFilterEntity('all'); setFilterUnit('all'); setFilterSearch(''); }}
           style={{ ...btnGhost, color: colors.muted }}
         >clear</button>
       )}
