@@ -111,19 +111,27 @@ export const staffModule = {
     { key: 'employment_allowance_p',  label: 'Employment allowance (annual £)',  unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 500000 },
     { key: 'vacancy_rate_pct',        label: 'Vacancy / agency cover %',         unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 8 },
     { key: 'agency_premium_pct',      label: 'Agency premium %',                 unit: 'pct',   kind: 'scalar', scope: 'group', defaultValue: 30 },
-    // Over-staffing buffer: lets you carry headcount above the statutory
-    // ratio (e.g. for break cover, peer support, quality of provision).
-    // 0% = manage to ratio. 10% = 10% more practitioners than required.
-    { key: 'overstaff_pct',           label: 'Over-staffing % (above statutory ratio)', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 0 },
+    // Over-staffing buffer — ON-FLOOR enhancement only: paid breaks, peer
+    // support, quality of provision, i.e. carrying MORE adults in the room
+    // than the ratio demands at any given moment.
+    //
+    // It must NOT be used for holiday or sickness cover. Whole-day absence
+    // is already funded by `standard_hours_per_year`: dividing the required
+    // adult-hours by an employee's PRODUCTIVE hours (net of leave) is what
+    // buys the extra contracts that keep the floor covered while people are
+    // off. Using this buffer for the same thing double-counts absence.
+    { key: 'overstaff_pct',           label: 'Over-staffing % — on-floor only (breaks/quality, NOT holiday cover)', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 0 },
     { key: 'real_living_wage_hourly_p', label: 'Real Living Wage (£/hr)',        unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 1290 },
     { key: 'nmw_21plus_hourly_p',     label: 'NMW — 21+ (NLW) £/hr',             unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 1221 },
     { key: 'nmw_18to20_hourly_p',     label: 'NMW — 18-20 £/hr',                 unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 1000 },
     { key: 'nmw_under18_hourly_p',    label: 'NMW — under 18 £/hr',              unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 755 },
     { key: 'nmw_apprentice_hourly_p', label: 'NMW — apprentice £/hr',            unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 755 },
-    // Productive hours ONE employee delivers in a year (net of holidays).
-    // Drives the ratio→headcount conversion: a room open longer than one
-    // contract covers needs more than one employee per floor position.
-    { key: 'standard_hours_per_year', label: 'Productive hours per employee / year', unit: 'hours', kind: 'scalar', scope: 'group', defaultValue: 1820 },
+    // Productive hours ONE employee actually delivers on the floor in a
+    // year, NET of holiday, sickness and training. This is what funds
+    // absence cover: 1,820 on a 40-hour contract implies 6.5 weeks a year
+    // off, so the model holds enough contracts to keep the room covered
+    // while people are away. Raise it if absence is not backfilled.
+    { key: 'standard_hours_per_year', label: 'Productive hours per employee / year (net of holiday & sickness)', unit: 'hours', kind: 'scalar', scope: 'group', defaultValue: 1820 },
 
     // ── Floor-time factors (share of a head's time that stands in the
     //    statutory ratio). 1 = fully counted, 0 = never counted, 0.5 =
