@@ -17,6 +17,7 @@
 // applies a refill curve back to the base ramp over `refill_months`.
 
 import { curveForBand, occupancyOnCurve } from '../occupancy.js';
+import { placesForBand } from '../capacity.js';
 
 export const AGE_BANDS = ['babies', 'twos', 'three_to_five', 'after_school'];
 
@@ -77,6 +78,17 @@ export const locationsModule = {
     // version. These entity-scoped drivers override it per version —
     // leave blank to use the location default. defaultValue null means
     // seeding creates the (blank) rows without values.
+    // ── Per-VERSION registered places (per location) ──────────────
+    // capacity_by_age_band lives on fc_entity, which is forecast-level and
+    // therefore shared by every version — editing the room split in one
+    // version used to rewrite it for all of them. These entity-scoped
+    // drivers override it per version; blank = the location default.
+    ...AGE_BANDS.map(b => ({
+      key: `capacity.places.${b}`,
+      label: `Registered places — ${AGE_BAND_LABELS[b]} (blank = location default)`,
+      unit: 'count', kind: 'scalar', scope: 'entity', defaultValue: null,
+    })),
+
     { key: 'ramp.starting_occupancy_pct', label: 'Ramp override — opening occupancy % (blank = location default)', unit: 'pct',   kind: 'scalar', scope: 'entity', defaultValue: null },
     { key: 'ramp.target_occupancy_pct',   label: 'Ramp override — target occupancy % (blank = location default)',  unit: 'pct',   kind: 'scalar', scope: 'entity', defaultValue: null },
     { key: 'ramp.months_to_target',       label: 'Ramp override — months to target (blank = location default)',    unit: 'count', kind: 'scalar', scope: 'entity', defaultValue: null },
@@ -85,6 +97,7 @@ export const locationsModule = {
     // Per-entity, per-band occupancy — the number every view reads.
     // amount_p = percent × 100 (85.25% → 8525); tags.age_band set.
     { nominal_type: 'metric.occupancy_pct', label: 'Occupancy %', by_entity: true },
+    { nominal_type: 'metric.capacity_places', label: 'Registered places (effective this version)', by_entity: true },
   ],
 
   compute(ctx) {
@@ -112,10 +125,14 @@ export const locationsModule = {
     const map = {};
     const out = [];
 
+    // Effective registered places per entity/band for THIS version. Stashed
+    // on ctx so downstream modules use the same numbers, and emitted so views
+    // and exports can read them rather than re-deriving.
+    const capacityByEntity = {};
+
     for (const e of ctx.entities) {
       const cfg = e.config || {};
       const opn = cfg.opening_month_offset ?? 0;
-      const cap = cfg.capacity_by_age_band || {};
 
       // Per-VERSION ramp overrides — entity-scoped drivers, read directly
       // (not via resolve(), which can't distinguish "no value" from 0).
@@ -131,6 +148,13 @@ export const locationsModule = {
         target: readOverride('ramp.target_occupancy_pct'),
         months: readOverride('ramp.months_to_target'),
       };
+
+      // Effective registered places for THIS version (blank = location default)
+      const cap = {};
+      for (const band of AGE_BANDS) {
+        cap[band] = placesForBand(e, band, readOverride(`capacity.places.${band}`));
+      }
+      capacityByEntity[e.key] = cap;
 
       // Per-band ramp curves — shared helper (lib/occupancy.js).
       // Layering, top first: per-BAND per-location values (capacity.*
@@ -246,10 +270,23 @@ export const locationsModule = {
             tags: { age_band: band },
           });
         }
+        // Effective places for this version, from the site's opening month on,
+        // so exports/views never have to resolve the override themselves.
+        for (const t of ctx.periods) {
+          if (t < opn) continue;
+          out.push({
+            module_key: 'locations', entity_id: e.id, period: t,
+            nominal_type: 'metric.capacity_places',
+            line_label: `Registered places — ${AGE_BAND_LABELS[band]}`,
+            amount_p: cap[band],
+            tags: { age_band: band },
+          });
+        }
       }
     }
 
     ctx.occupancyPct = map;
+    ctx.capacityByEntity = capacityByEntity;
     return out;
   },
 };

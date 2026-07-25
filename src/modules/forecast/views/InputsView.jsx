@@ -7,6 +7,7 @@ import {
   seedPackDefaults,
   createGroup, deleteGroup, assignEntityToGroup,
   saveNurseryDefaults, loadNurseryDefaults, clearNurseryDefaults,
+  saveCapacityOverride,
 } from '../lib/queries';
 import { modulesFor } from '../lib/packs';
 import { curveForBand, ACQUIRED_TYPES } from '../lib/occupancy.js';
@@ -1262,15 +1263,22 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
   const onSave = async () => {
     setBusy(true);
     try {
+      const places = {
+        babies: Number(form.cap_babies) || 0,
+        twos: Number(form.cap_twos) || 0,
+        three_to_five: Number(form.cap_three_to_five) || 0,
+        after_school: Number(form.cap_after_school) || 0,
+      };
       const config = {
         la_council_id: form.la_council_id,
         sq_ft: Number(form.sq_ft) || 0,
-        capacity_by_age_band: {
-          babies: Number(form.cap_babies) || 0,
-          twos: Number(form.cap_twos) || 0,
-          three_to_five: Number(form.cap_three_to_five) || 0,
-          after_school: Number(form.cap_after_school) || 0,
-        },
+        // On the shared location record this is only the DEFAULT split. New
+        // locations set it; edits leave it alone and write a per-version
+        // override instead (below), so changing the rooms in one version can
+        // no longer rewrite every other version.
+        capacity_by_age_band: form.id
+          ? (entity.config?.capacity_by_age_band || places)
+          : places,
         opening_month_offset: Number(form.opening_month_offset) || 0,
         acquisition_type: form.acquisition_type,
         lease_or_buy: form.lease_or_buy,
@@ -1309,6 +1317,13 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
           // Don't block save if seeding fails — surface a soft warning.
           console.warn('Auto-seed of entity drivers failed:', seedErr);
         }
+      }
+
+      // Pin the room split to THIS version. Written explicitly (not left
+      // blank to inherit) so a later change to another version's split can't
+      // move this one.
+      if (scenarioId && saved?.id) {
+        await saveCapacityOverride({ scenario_id: scenarioId, entity_id: saved.id, places });
       }
 
       onSaved();
@@ -1360,7 +1375,12 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
           To vary the ramp per version (e.g. a slower ramp in "Budget"), set the
           "Ramp override" drivers on the Inputs → Drivers → locations tab of that version.
         </p>
-        <h3 style={{ fontFamily: serifStack, fontSize: 16, color: colors.ink, margin: '20px 0 10px' }}>Capacity by age band</h3>
+        <h3 style={{ fontFamily: serifStack, fontSize: 16, color: colors.ink, margin: '20px 0 4px' }}>Capacity by age band</h3>
+        <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 10px' }}>
+          Registered places apply to <strong>this version only</strong> — other versions keep their
+          own split. Everything else on this form (LA, sq ft, opening month, lease terms) is shared
+          by every version of the forecast.
+        </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
           <Field label="0-2"><input type="number" value={form.cap_babies} onChange={setNum('cap_babies')} style={inputStyle} /></Field>
           <Field label="2-3"><input type="number" value={form.cap_twos} onChange={setNum('cap_twos')} style={inputStyle} /></Field>

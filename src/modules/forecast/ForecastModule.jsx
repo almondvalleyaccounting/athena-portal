@@ -3,7 +3,9 @@ import {
   listForecasts, createForecast, updateForecast, listVersions, listScenarios,
   loadOutputs, loadFindings, listEntities, listGroups, listEntityGroupAssignments,
   copyForecast, createVersionFrom, renameVersion, deleteVersion, searchClients,
+  loadCapacityOverrides,
 } from './lib/queries';
+import { withEffectiveCapacity } from './lib/capacity';
 import { recomputeScenario } from './lib/recompute';
 import { PACKS } from './lib/packs';
 import { btnDark, btnOutline, colors, fontStack, inputStyle, KPI, Pill, selectStyle, serifStack } from './components/ui';
@@ -63,7 +65,8 @@ export default function ForecastModule() {
   const [showEdit, setShowEdit] = useState(false);
   const [showExport, setShowExport] = useState(false);
 
-  const [entities, setEntities] = useState([]);
+  const [entitiesRaw, setEntities] = useState([]);
+  const [capacityOverrides, setCapacityOverrides] = useState({});
   const [groups, setGroups] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [filter, setFilter] = useState({ kind: 'all' });
@@ -72,6 +75,15 @@ export default function ForecastModule() {
     const n = forecast?.horizon_months || 60;
     return Array.from({ length: n }, (_, i) => i);
   }, [forecast?.horizon_months]);
+
+  // Registered places are overridable per VERSION, but fc_entity is
+  // forecast-level and shared by all of them. Overlay the selected version's
+  // override here, once, so every view and export reads the right split off
+  // entity.config without having to know the override exists.
+  const entities = useMemo(
+    () => withEffectiveCapacity(entitiesRaw, capacityOverrides),
+    [entitiesRaw, capacityOverrides],
+  );
 
   useEffect(() => { (async () => {
     try { setForecasts(await listForecasts()); } catch (e) { setErr(e.message); }
@@ -84,10 +96,14 @@ export default function ForecastModule() {
     const base = scenarios.find(s => s.kind === 'base') || scenarios[0];
     setScenario(base || null);
     if (base) {
-      setOutputs(await loadOutputs(base.id));
-      setFindings(await loadFindings(base.id));
+      const [outs, finds, caps] = await Promise.all([
+        loadOutputs(base.id),
+        loadFindings(base.id),
+        loadCapacityOverrides(base.id).catch(() => ({})),
+      ]);
+      setOutputs(outs); setFindings(finds); setCapacityOverrides(caps);
     } else {
-      setOutputs([]); setFindings([]);
+      setOutputs([]); setFindings([]); setCapacityOverrides({});
     }
   };
 

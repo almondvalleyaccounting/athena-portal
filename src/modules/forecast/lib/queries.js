@@ -288,6 +288,48 @@ export async function setDriverValue(driver_id, period, value) {
 }
 
 /**
+ * Per-version registered places: { [entity_id]: { [band]: value } }.
+ * Only rows with a value are returned, so a missing band means "use the
+ * location default" (see lib/capacity.js).
+ */
+export async function loadCapacityOverrides(scenario_id) {
+  if (!scenario_id) return {};
+  const { data, error } = await supabase
+    .from('fc_driver')
+    .select('id, entity_id, driver_key, fc_driver_value(period, value)')
+    .eq('scenario_id', scenario_id)
+    .like('driver_key', 'capacity.places.%');
+  if (error) throw error;
+  const out = {};
+  for (const d of data || []) {
+    if (!d.entity_id) continue;
+    const hit = (d.fc_driver_value || []).find(v => v.period === -1);
+    if (hit == null || hit.value == null || hit.value === '') continue;
+    const band = d.driver_key.slice('capacity.places.'.length);
+    (out[d.entity_id] ||= {})[band] = Number(hit.value);
+  }
+  return out;
+}
+
+/**
+ * Write the current version's registered-places override for one location.
+ * `places` is { band: number }. Values are always written explicitly so the
+ * version is pinned against later edits to the location default.
+ */
+export async function saveCapacityOverride({ scenario_id, entity_id, places }) {
+  for (const [band, value] of Object.entries(places || {})) {
+    const driver = await upsertDriver({
+      scenario_id, entity_id,
+      module_key: 'locations',
+      driver_key: `capacity.places.${band}`,
+      label: `Registered places — ${band} (blank = location default)`,
+      unit: 'count', kind: 'scalar', expression: null,
+    });
+    await setDriverValue(driver.id, -1, Number(value) || 0);
+  }
+}
+
+/**
  * Remove a driver's value row — returns a blank-by-default driver (e.g.
  * the ramp/capacity overrides) to "use the default" state.
  */

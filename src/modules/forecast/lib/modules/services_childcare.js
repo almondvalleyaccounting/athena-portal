@@ -82,7 +82,9 @@ export const servicesChildcareModule = {
 
     for (const e of ctx.entities) {
       const cfg = e.config || {};
-      const cap = cfg.capacity_by_age_band || {};
+      // Effective places for THIS version (locations.js resolved the
+      // per-version override); config is only the location default.
+      const cap = ctx.capacityByEntity?.[e.key] || cfg.capacity_by_age_band || {};
       const occByBand = ctx.occupancyPct?.[e.key] || {};
 
       for (const band of AGE_BANDS_LIST) {
@@ -157,7 +159,7 @@ export const servicesChildcareModule = {
     // Stash children_attending for staff module
     const childrenMap = {};
     for (const e of ctx.entities) {
-      const cap = e.config?.capacity_by_age_band || {};
+      const cap = ctx.capacityByEntity?.[e.key] || e.config?.capacity_by_age_band || {};
       const occ = ctx.occupancyPct?.[e.key] || {};
       childrenMap[e.key] = {};
       for (const band of AGE_BANDS_LIST) {
