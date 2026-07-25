@@ -299,10 +299,11 @@ export const staffModule = {
         if (hcCook > 0) emit(e.id, t, 'cook', `Cooks (${hcCook})`, hcCook, monthlyCost(hcCook, sal.cook), null, 0);
 
         // Direct staff: exact floor positions per band → employee-
-        // equivalents via hours coverage → whole heads once, at ENTITY
-        // level. Rounding at the entity (not per room) reflects that staff
-        // flex across rooms and part-time contracts are normal; rounding up
-        // in every room separately over-provided ~20-25%.
+        // equivalents via hours coverage → a FRACTIONAL establishment.
+        // Nursery contracts run from about 16 to 40 hours, so a requirement
+        // of 5.5 FTE is bought as five full-timers plus a half-time post —
+        // it is not rounded up to six. Rounding up (per room, or even once
+        // per setting) charged for staff that would never be hired.
         const childMap = ctx.childrenAttending?.[e.key] || {};
         const cov = coverageByEntity[e.key] || {};
         const empByBand = {}, floorByBand = {};
@@ -336,13 +337,16 @@ export const staffModule = {
                       + qualifiedPct * inclF.qualified
                       + apprenticePct * inclF.apprentice;
         const totalStaffed = directCover > 0
-          ? Math.ceil(directCover / (wFactor > 0 ? wFactor : 1))
+          ? r2(directCover / (wFactor > 0 ? wFactor : 1))
           : 0;
 
-        // Allocate at entity level, with proper rounding (round + residual)
-        const hcSeniorTotal = Math.round(totalStaffed * seniorPct);
-        const hcQualTotal   = Math.round(totalStaffed * qualifiedPct);
-        const hcAppTotal    = Math.max(0, totalStaffed - hcSeniorTotal - hcQualTotal);
+        // Split by mix, fractionally — rounding each role to whole heads
+        // distorted the mix badly at small establishments (a 20/50/30 mix
+        // on 8 heads came out 25/50/25). Apprentice takes the residual so
+        // the three always sum back to the establishment.
+        const hcSeniorTotal = r2(totalStaffed * seniorPct);
+        const hcQualTotal   = r2(totalStaffed * qualifiedPct);
+        const hcAppTotal    = Math.max(0, r2(totalStaffed - hcSeniorTotal - hcQualTotal));
 
         // Distribute back to bands proportional to band requirement.
         // Per-band emit retains the age_band tag for the dashboard split.
