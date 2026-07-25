@@ -142,6 +142,10 @@ export const staffModule = {
     { nominal_type: 'metric.ratio_provided',  label: 'Employees provided (floor-time weighted)', by_entity: false },
     { nominal_type: 'metric.ratio_compliance',label: 'Ratio compliance (× required)', by_entity: false },
     { nominal_type: 'metric.floor_positions', label: 'Adults required on floor (statutory)', by_entity: false },
+    // Emitted so views can split any staff_cost back into base wage vs
+    // on-costs without re-resolving the NI / pension / cover drivers.
+    // amount_p = factor × 10000 (1.20832 → 12083).
+    { nominal_type: 'metric.staff_load_factor', label: 'Staff on-cost load factor (×10000)', by_entity: false },
   ],
 
   compute(ctx) {
@@ -400,6 +404,7 @@ export const staffModule = {
       out.push({ module_key: 'staff', period: t, nominal_type: 'metric.ratio_provided',  line_label: 'Employees provided',  amount_p: r1(groupProvidedTotal) });
       out.push({ module_key: 'staff', period: t, nominal_type: 'metric.ratio_compliance',line_label: 'Ratio compliance (×)',   amount_p: Math.round(compliance * 10000) });
       out.push({ module_key: 'staff', period: t, nominal_type: 'metric.floor_positions', line_label: 'Adults required on floor', amount_p: r1(groupFloorTotal) });
+      out.push({ module_key: 'staff', period: t, nominal_type: 'metric.staff_load_factor', line_label: 'Staff on-cost load factor', amount_p: Math.round(loadFactor * 10000) });
     }
 
     ctx.practitionersByEntity = practitionersByEntity;

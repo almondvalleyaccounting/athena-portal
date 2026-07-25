@@ -139,6 +139,11 @@ export default function PnlByBandView({
     const revPrivate = zero(), revFunded = zero(), roomStaff = zero();
     const roomByRole = {};
     const central = Object.fromEntries(CENTRAL_LINES.map(l => [l.key, 0]));
+    // Staffing metrics: headcount-months and the un-inflated cost behind
+    // them. The NI relief carries no headcount and is a firm-level credit,
+    // so it's excluded from per-FTE figures; pre-opening staffing likewise.
+    const hcMonths = zero(), staffCostForFte = zero();
+    const nMonths = yearPeriods.length || 1;
 
     for (const r of outputs) {
       if (!setP.has(r.period) || !inScope(r)) continue;
@@ -158,11 +163,17 @@ export default function PnlByBandView({
           const amt = Number(r.amount_p) * fc;
           if (r.module_key === 'pre_opening') { central.preOpening += amt; break; }
           const role = r.tags?.role;
+          const hc = Number(r.tags?.headcount) || 0;
+          const forFte = role !== 'employment_allowance';
           if (band && roomStaff[band] != null) {
             roomStaff[band] += amt;
+            hcMonths[band] += hc;
+            if (forFte) staffCostForFte[band] += amt;
             (roomByRole[role] ||= zero())[band] += amt;
             break;
           }
+          hcMonths[CENTRAL] += hc;
+          if (forFte) staffCostForFte[CENTRAL] += amt;
           if (role === 'cook') central.cook += amt;
           else if (role === 'setting_manager' || role === 'assistant_manager') central.siteMgmt += amt;
           else if (role === 'employment_allowance') central.niRelief += amt;
@@ -255,6 +266,30 @@ export default function PnlByBandView({
       ebitda[c] = contribution[c] - (allocated[c] || 0);
     }
 
+    // ── Operating metrics ───────────────────────────────────────────
+    // Load factor turns fully-loaded cost back into base wage. Emitted per
+    // period by the staff module; fall back to 1 (wage == loaded) if the
+    // stored outputs predate it, so the row degrades rather than lying.
+    const lfRow = outputs.find(o => o.nominal_type === 'metric.staff_load_factor' && setP.has(o.period));
+    const loadFactor = lfRow ? Number(lfRow.amount_p) / 10000 : null;
+
+    const maxKids = {}, avgKids = {}, capPct = {}, staffFte = {}, wagePerFte = {}, loadedPerFte = {};
+    for (const c of cols) {
+      if (c === CENTRAL) {
+        maxKids[c] = null; avgKids[c] = null; capPct[c] = null;
+      } else {
+        maxKids[c] = scopedEntities.reduce((s, e) => s + (e.config?.capacity_by_age_band?.[c] || 0), 0);
+        avgKids[c] = wKidsActual[c] || 0;
+        capPct[c] = maxKids[c] > 0 ? avgKids[c] / maxKids[c] * 100 : null;
+      }
+      const fte = (hcMonths[c] || 0) / nMonths;
+      staffFte[c] = fte;
+      // Annualise: cost over the window scaled to 12 months, per average FTE.
+      const annualised = fte > 0 ? (staffCostForFte[c] || 0) / nMonths * 12 / fte : null;
+      loadedPerFte[c] = annualised;
+      wagePerFte[c] = (annualised != null && loadFactor) ? annualised / loadFactor : null;
+    }
+
     const pnl = (nt) => outputs.filter(o => o.nominal_type === nt && setP.has(o.period)
       && (!entityIds || o.entity_id == null || entityIds.has(o.entity_id)))
       .reduce((s, o) => s + Number(o.amount_p), 0);
@@ -265,12 +300,14 @@ export default function PnlByBandView({
       cols, activeBands, revPrivate, revFunded, roomStaff, roomByRole,
       lineRows, centralTotal, unallocated, allocated,
       revenue, contribution, ebitda, revCheck, ebitdaCheck,
+      maxKids, avgKids, capPct, staffFte, wagePerFte, loadedPerFte, loadFactor,
     };
   }, [outputs, yearPeriods, entityIds, scopedEntities, defaultBasis, basisByLine, manualByLine]);
 
   const { cols, activeBands, revPrivate, revFunded, roomStaff, roomByRole,
           lineRows, centralTotal, unallocated, allocated,
-          revenue, contribution, ebitda, revCheck, ebitdaCheck } = model;
+          revenue, contribution, ebitda, revCheck, ebitdaCheck,
+          maxKids, avgKids, capPct, staffFte, wagePerFte, loadedPerFte, loadFactor } = model;
 
   const colLabel = (c) => c === CENTRAL ? 'Central' : AGE_BAND_LABELS[c] || c;
   const total = (m) => cols.reduce((s, c) => s + (m[c] || 0), 0);
@@ -417,6 +454,25 @@ export default function PnlByBandView({
             <SectionRow label="Result" nCols={nCols} />
             <Row label="EBITDA" m={ebitda} cols={cols} total={total} strong />
             <PctRow label="EBITDA margin" num={ebitda} den={revenue} cols={cols} total={total} />
+
+            <SectionRow label="Operating metrics" nCols={nCols} />
+            <MetricRow label="Max kids (registered places)" m={maxKids} cols={cols}
+              fmt={(v) => v.toLocaleString('en-GB')} agg="sum" />
+            <MetricRow label="Average kids (FTE)" m={avgKids} cols={cols}
+              fmt={(v) => v.toFixed(1)} agg="sum" />
+            <MetricRow label="Average capacity %" m={capPct} cols={cols}
+              fmt={(v) => `${v.toFixed(1)}%`}
+              aggValue={sumOf(avgKids, cols) > 0 && sumOf(maxKids, cols) > 0
+                ? sumOf(avgKids, cols) / sumOf(maxKids, cols) * 100 : null} />
+            <MetricRow label="Staff (average FTE)" m={staffFte} cols={cols}
+              fmt={(v) => v.toFixed(1)} agg="sum" hint="room staff by band; management, cook and exec in Central" />
+            <MetricRow label="Average wage per FTE (annual)" m={wagePerFte} cols={cols}
+              fmt={money}
+              aggValue={weightedPerFte(wagePerFte, staffFte, cols)} />
+            <MetricRow label="Average fully loaded cost per FTE (annual)" m={loadedPerFte} cols={cols}
+              fmt={money}
+              aggValue={weightedPerFte(loadedPerFte, staffFte, cols)}
+              hint={loadFactor ? `on-costs +${((loadFactor - 1) * 100).toFixed(1)}% (NI, pension, cover)` : undefined} />
           </tbody>
         </table>
       </div>
@@ -454,6 +510,40 @@ function Row({ label, m, cols, total, strong, negate, indent, basisCell }) {
       })}
       <td style={{ ...tdR, fontWeight: 700, borderLeft: `1px solid ${colors.border}`,
                    color: tot < 0 ? colors.red : colors.ink }}>{money(tot)}</td>
+    </tr>
+  );
+}
+
+const sumOf = (m, cols) => cols.reduce((s, c) => s + (m[c] || 0), 0);
+// Per-FTE averages can't be summed — re-weight by the FTE behind each one.
+const weightedPerFte = (perFte, fte, cols) => {
+  let num = 0, den = 0;
+  for (const c of cols) {
+    if (perFte[c] == null || !fte[c]) continue;
+    num += perFte[c] * fte[c]; den += fte[c];
+  }
+  return den > 0 ? num / den : null;
+};
+
+// Non-money metric row: `agg` 'sum' totals the columns, or pass an explicit
+// aggValue for figures that can't simply be added (rates, per-FTE averages).
+function MetricRow({ label, m, cols, fmt, agg, aggValue, hint }) {
+  const totalVal = aggValue !== undefined ? aggValue : (agg === 'sum' ? sumOf(m, cols) : null);
+  return (
+    <tr style={{ borderBottom: `1px dotted ${colors.borderSoft}` }}>
+      <td style={td}>
+        {label}
+        {hint && <span style={{ display: 'block', fontSize: 10, color: colors.muted }}>{hint}</span>}
+      </td>
+      <td style={td}></td>
+      {cols.map(c => (
+        <td key={c} style={{ ...tdR, borderLeft: c === CENTRAL ? `1px solid ${colors.border}` : undefined }}>
+          {m[c] == null ? '—' : fmt(m[c])}
+        </td>
+      ))}
+      <td style={{ ...tdR, fontWeight: 600, borderLeft: `1px solid ${colors.border}` }}>
+        {totalVal == null ? '—' : fmt(totalVal)}
+      </td>
     </tr>
   );
 }
