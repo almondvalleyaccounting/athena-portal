@@ -32,7 +32,10 @@ const DIRECT_ROLES = STAFF_ROWS.filter(r => r.group === 'direct');
 const CENTRAL_LINES = [
   { key: 'siteMgmt',     label: 'Site management (setting + assistant managers)' },
   { key: 'cook',         label: 'Cook / kitchen' },
-  { key: 'centralStaff', label: 'Central staff (exec / admin / NI relief)' },
+  { key: 'centralStaff', label: 'Central staff (exec / senior mgr / admin)' },
+  // Kept separate: netting a firm-wide NI credit into a small central
+  // salary line can flip it to income and reads as nonsense.
+  { key: 'niRelief',     label: 'Employment allowance (NI relief)' },
   { key: 'premises',     label: 'Premises (rent / SC / NDR / maintenance)' },
   { key: 'utilities',    label: 'Utilities' },
   { key: 'consumables',  label: 'Consumables & food' },
@@ -54,9 +57,10 @@ const basisLabel = (k) => BASES.find(b => b.key === k)?.label || k;
 const money = (p) => {
   if (p == null) return '—';
   const gbp = p / 100 || 0;
-  const s = Math.abs(gbp) >= 1000
-    ? Math.round(gbp).toLocaleString('en-GB')
-    : Math.abs(gbp).toFixed(0);
+  const abs = Math.abs(gbp);
+  // Format the magnitude only — the sign is carried by the prefix, so
+  // toLocaleString must never see a negative or you get "−£-18,125".
+  const s = abs >= 1000 ? Math.round(abs).toLocaleString('en-GB') : abs.toFixed(0);
   return (gbp < 0 ? '−£' : '£') + s;
 };
 const pct = (x) => (x == null || !isFinite(x)) ? '—' : `${x.toFixed(1)}%`;
@@ -161,6 +165,7 @@ export default function PnlByBandView({
           }
           if (role === 'cook') central.cook += amt;
           else if (role === 'setting_manager' || role === 'assistant_manager') central.siteMgmt += amt;
+          else if (role === 'employment_allowance') central.niRelief += amt;
           else central.centralStaff += amt;
           break;
         }
