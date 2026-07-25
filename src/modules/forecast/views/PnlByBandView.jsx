@@ -215,13 +215,15 @@ export default function PnlByBandView({
 
     // When allocating, spread each central line by the same shares so the
     // Central column genuinely clears to zero and every row stays additive.
+    // Not allocating: drop the band keys entirely so the band cells read
+    // "—" (not attributed) rather than a misleading £0.
     const centralLinesDisplay = allocating
       ? centralLines.map(([label, m]) => {
           const spread = { [CENTRAL]: 0 };
           for (const b of activeBands) spread[b] = m[CENTRAL] * (share[b] || 0);
           return [label, spread];
         })
-      : centralLines;
+      : centralLines.map(([label, m]) => [label, { [CENTRAL]: m[CENTRAL] }]);
 
     return {
       cols, activeBands, acc, centralLines: centralLinesDisplay, centralTotal, allocating, share,
