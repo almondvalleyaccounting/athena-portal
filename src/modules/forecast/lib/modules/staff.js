@@ -120,32 +120,43 @@ export const staffModule = {
     { key: 'nmw_18to20_hourly_p',     label: 'NMW — 18-20 £/hr',                 unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 1000 },
     { key: 'nmw_under18_hourly_p',    label: 'NMW — under 18 £/hr',              unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 755 },
     { key: 'nmw_apprentice_hourly_p', label: 'NMW — apprentice £/hr',            unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 755 },
-    { key: 'standard_hours_per_year', label: 'Standard hours per year',          unit: 'hours', kind: 'scalar', scope: 'group', defaultValue: 1820 },
+    // Productive hours ONE employee delivers in a year (net of holidays).
+    // Drives the ratio→headcount conversion: a room open longer than one
+    // contract covers needs more than one employee per floor position.
+    { key: 'standard_hours_per_year', label: 'Productive hours per employee / year', unit: 'hours', kind: 'scalar', scope: 'group', defaultValue: 1820 },
 
-    // ── Ratio inclusion flags (1 = counts toward statutory ratio) ──
-    { key: 'ratio_inclusion.senior_qualified',  label: 'Senior qualified counts toward ratio',  unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
-    { key: 'ratio_inclusion.qualified',         label: 'Qualified counts toward ratio',         unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
-    { key: 'ratio_inclusion.apprentice',        label: 'Apprentice counts toward ratio',        unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
-    { key: 'ratio_inclusion.setting_manager',   label: 'Setting manager counts toward ratio',   unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
-    { key: 'ratio_inclusion.assistant_manager', label: 'Assistant manager counts toward ratio', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
+    // ── Floor-time factors (share of a head's time that stands in the
+    //    statutory ratio). 1 = fully counted, 0 = never counted, 0.5 =
+    //    half their time on the floor. Management set > 0 ABSORBS part of
+    //    the ratio requirement instead of sitting on top of it.
+    { key: 'ratio_inclusion.senior_qualified',  label: 'Senior qualified — floor-time factor (1 = full)',  unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
+    { key: 'ratio_inclusion.qualified',         label: 'Qualified — floor-time factor (1 = full)',         unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
+    { key: 'ratio_inclusion.apprentice',        label: 'Apprentice — floor-time factor (1 = full)',        unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
+    { key: 'ratio_inclusion.setting_manager',   label: 'Setting manager — floor-time factor (1 = full)',   unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
+    { key: 'ratio_inclusion.assistant_manager', label: 'Assistant manager — floor-time factor (1 = full)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
   ],
 
   outputs: [
     { nominal_type: 'staff_cost', label: 'Staff cost (per role)', by_entity: true },
-    { nominal_type: 'metric.ratio_required',  label: 'Practitioners required (ratios)', by_entity: false },
-    { nominal_type: 'metric.ratio_provided',  label: 'Practitioners provided (counted roles)', by_entity: false },
+    { nominal_type: 'metric.ratio_required',  label: 'Employees required (ratio × hours cover)', by_entity: false },
+    { nominal_type: 'metric.ratio_provided',  label: 'Employees provided (floor-time weighted)', by_entity: false },
     { nominal_type: 'metric.ratio_compliance',label: 'Ratio compliance (× required)', by_entity: false },
+    { nominal_type: 'metric.floor_positions', label: 'Adults required on floor (statutory)', by_entity: false },
   ],
 
   compute(ctx) {
     const out = [];
 
-    // On-cost factor (loaded for the engine's existing CF/P&L pipeline)
+    // On-cost factor (loaded for the engine's existing CF/P&L pipeline).
+    // coverFactor is split out so the NI element can be isolated for the
+    // employment-allowance credit below.
     const niPct = ctx.resolve('employer_ni_pct', {}) / 100;
     const penPct = ctx.resolve('employer_pension_pct', {}) / 100;
     const vacPct = ctx.resolve('vacancy_rate_pct', {}) / 100;
     const agencyPct = ctx.resolve('agency_premium_pct', {}) / 100;
-    const loadFactor = (1 + niPct + penPct) * (1 + vacPct * agencyPct);
+    const coverFactor = 1 + vacPct * agencyPct;      // agency premium on covered vacancies
+    const loadFactor = (1 + niPct + penPct) * coverFactor;
+    const allowanceP = ctx.resolve('employment_allowance_p', {}) || 0;
 
     // Mix
     const seniorPct    = ctx.resolve('direct_mix.senior_pct', {}) / 100;
@@ -183,20 +194,58 @@ export const staffModule = {
     const hcSrMgr  = ctx.resolve('headcount.senior_managers', {}) || 0;
     const hcAdmin  = ctx.resolve('headcount.admin', {}) || 0;
 
-    // Ratio inclusion flags
-    const incl = {
-      senior_qualified:  ctx.resolve('ratio_inclusion.senior_qualified', {})  >= 1,
-      qualified:         ctx.resolve('ratio_inclusion.qualified', {})         >= 1,
-      apprentice:        ctx.resolve('ratio_inclusion.apprentice', {})        >= 1,
-      setting_manager:   ctx.resolve('ratio_inclusion.setting_manager', {})   >= 1,
-      assistant_manager: ctx.resolve('ratio_inclusion.assistant_manager', {}) >= 1,
+    // Floor-time factors — the share of a head's time that stands in the
+    // statutory ratio. Values are 0..1 (1 = fully counted, the default).
+    const f01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
+    const inclF = {
+      senior_qualified:  f01(ctx.resolve('ratio_inclusion.senior_qualified', {})),
+      qualified:         f01(ctx.resolve('ratio_inclusion.qualified', {})),
+      apprentice:        f01(ctx.resolve('ratio_inclusion.apprentice', {})),
+      setting_manager:   f01(ctx.resolve('ratio_inclusion.setting_manager', {})),
+      assistant_manager: f01(ctx.resolve('ratio_inclusion.assistant_manager', {})),
     };
 
     // Statutory ratios per band
     const ratios = {};
     for (const band of AGE_BANDS_LIST) ratios[band] = ctx.resolve(`ratio.${band}`, {}) || DEFAULT_RATIOS[band] || 8;
 
-    const monthlyCost = (hc, salary) => Math.round(hc * (salary / 12) * loadFactor);
+    // ── Ratio → employees: hours coverage ─────────────────────────
+    // A statutory ratio is a SIMULTANEOUS supervision requirement — one
+    // adult per N children *present* — not a headcount. Converting it into
+    // employees needs the room's open hours and each employee's productive
+    // hours:
+    //   adult-hours/yr = (children / ratio) × open_hrs_per_week × weeks
+    //   employees      = adult-hours/yr ÷ productive_hrs_per_employee
+    // A room open 50 hrs/week staffed on 1,820-hour contracts therefore
+    // needs ~1.4 employees per floor position, not 1. Treating a floor
+    // position as one employee silently under-staffs long opening hours.
+    const weeksPerYear = ctx.resolve('weeks_per_year', {}) || 51;
+    const hoursPerEmployee = ctx.resolve('standard_hours_per_year', {}) || 1820;
+    const coverageByEntity = {};
+    for (const e of (ctx.entities || [])) {
+      const perBand = {};
+      for (const band of AGE_BANDS_LIST) {
+        const hpw = ctx.resolve(`operating_hours_per_week.${band}`, { entity: e.key }) || 0;
+        // hpw 0 = band not offered. Fall back to 1:1 rather than silently
+        // staffing a room with nobody if hours are ever left unset.
+        perBand[band] = (hpw > 0 && hoursPerEmployee > 0)
+          ? (hpw * weeksPerYear) / hoursPerEmployee
+          : 1;
+      }
+      coverageByEntity[e.key] = perBand;
+    }
+
+    // Gross pay subject to employer NI, accumulated per period so the
+    // employment allowance can be capped at the NI actually incurred.
+    let niablePay = 0;
+    const monthlyCost = (hc, salary) => {
+      const pay = hc * (salary / 12) * coverFactor;
+      niablePay += pay;
+      return Math.round(pay * (1 + niPct + penPct));
+    };
+    // Employee counts are now fractional (fc_output.amount_p is numeric);
+    // 1dp keeps the emitted metrics readable for every consumer view.
+    const r1 = (x) => Math.round(x * 10) / 10;
     const emit = (entity_id, period, role, label, hc, amount, age_band) => {
       if (hc === 0 && amount === 0) return;
       out.push({
@@ -210,6 +259,8 @@ export const staffModule = {
     const practitionersByEntity = {};
 
     for (const t of ctx.periods) {
+      niablePay = 0;
+
       // Group-level roles
       if (hcExec > 0)  emit(null, t, 'executive',      `Executives (${hcExec})`,       hcExec,  monthlyCost(hcExec, sal.executive));
       if (hcSrMgr > 0) emit(null, t, 'senior_manager', `Senior managers (${hcSrMgr})`, hcSrMgr, monthlyCost(hcSrMgr, sal.senior_manager));
@@ -217,6 +268,7 @@ export const staffModule = {
 
       let groupRequiredTotal = 0;
       let groupProvidedTotal = 0;
+      let groupFloorTotal = 0;
 
       for (const e of (ctx.entities || [])) {
         const cfg = e.config || {};
@@ -233,25 +285,45 @@ export const staffModule = {
         const hcCook = ctx.resolve('headcount.cooks_per_site', { entity: e.key }) || 0;
         if (hcCook > 0) emit(e.id, t, 'cook', `Cooks (${hcCook})`, hcCook, monthlyCost(hcCook, sal.cook));
 
-        // Direct staff: required per band, then ENTITY-LEVEL allocation by mix.
-        // This avoids the floor-rounding skew you saw.
+        // Direct staff: exact floor positions per band → employee-
+        // equivalents via hours coverage → whole heads once, at ENTITY
+        // level. Rounding at the entity (not per room) reflects that staff
+        // flex across rooms and part-time contracts are normal; rounding up
+        // in every room separately over-provided ~20-25%.
         const childMap = ctx.childrenAttending?.[e.key] || {};
-        const reqByBand = {};
-        let totalReq = 0;
+        const cov = coverageByEntity[e.key] || {};
+        const empByBand = {};
+        let floorPositions = 0;   // adults required on the floor, simultaneous
+        let empRequired = 0;      // employees required to cover the open week
         for (const band of AGE_BANDS_LIST) {
           const children = childMap[band]?.[t] ?? 0;
           const ratio = ratios[band];
-          const required = (ratio > 0 && children > 0) ? Math.ceil(children / ratio) : 0;
-          reqByBand[band] = required;
-          totalReq += required;
+          if (!(ratio > 0) || children <= 0) { empByBand[band] = 0; continue; }
+          const positions = children / ratio;
+          const emp = positions * (cov[band] ?? 1);
+          empByBand[band] = emp;
+          floorPositions += positions;
+          empRequired += emp;
         }
         practitionersByEntity[e.key] ||= [];
-        practitionersByEntity[e.key][t] = totalReq;
+        practitionersByEntity[e.key][t] = empRequired;
 
-        // Apply over-staffing buffer (default 0% = manage strictly to ratio).
-        // The inflated total drives HC allocation; reqByBand still defines
-        // the band shape for distribution, so we keep the same age-mix.
-        const totalStaffed = Math.ceil(totalReq * (1 + overstaffPct));
+        // Over-staffing buffer applies to the requirement; management who
+        // genuinely stand in the ratio then ABSORB part of it, rather than
+        // sitting on top of a fully-staffed practitioner establishment.
+        const mgrCover = hcSetting * inclF.setting_manager
+                       + hcAsst * inclF.assistant_manager;
+        const staffedEmp = empRequired * (1 + overstaffPct);
+        const directCover = Math.max(0, staffedEmp - mgrCover);
+
+        // A direct head only contributes its role's floor-time factor, so
+        // covering `directCover` takes directCover ÷ weighted factor heads.
+        const wFactor = seniorPct * inclF.senior_qualified
+                      + qualifiedPct * inclF.qualified
+                      + apprenticePct * inclF.apprentice;
+        const totalStaffed = directCover > 0
+          ? Math.ceil(directCover / (wFactor > 0 ? wFactor : 1))
+          : 0;
 
         // Allocate at entity level, with proper rounding (round + residual)
         const hcSeniorTotal = Math.round(totalStaffed * seniorPct);
@@ -261,13 +333,14 @@ export const staffModule = {
         // Distribute back to bands proportional to band requirement.
         // Per-band emit retains the age_band tag for the dashboard split.
         const distribute = (totalHc, role, salary) => {
-          if (totalHc === 0 || totalReq === 0) return;
+          if (totalHc === 0 || empRequired <= 0) return;
           const monthlyPer = (salary / 12) * loadFactor;
+          const payPer = (salary / 12) * coverFactor;
           let allocated = 0;
           // Largest-remainder method: integer floors per band, then top-up
           // the largest residuals until we've allocated the whole total.
           const pieces = AGE_BANDS_LIST.map(band => {
-            const exact = totalHc * (reqByBand[band] / totalReq);
+            const exact = totalHc * ((empByBand[band] || 0) / empRequired);
             return { band, exact, base: Math.floor(exact), residual: exact - Math.floor(exact) };
           });
           let used = pieces.reduce((s, p) => s + p.base, 0);
@@ -281,6 +354,7 @@ export const staffModule = {
           for (const p of pieces) {
             if (p.base === 0) continue;
             const cost = Math.round(p.base * monthlyPer);
+            niablePay += p.base * payPer;
             emit(e.id, t, role, `${roleLabel(role)} — ${bandLabel(p.band)} (${p.base})`, p.base, cost, p.band);
             allocated += p.base;
           }
@@ -289,30 +363,43 @@ export const staffModule = {
         distribute(hcQualTotal,   'qualified',        sal.qualified);
         distribute(hcAppTotal,    'apprentice',       sal.apprentice);
 
-        // Provided headcount toward ratio compliance
-        let providedEntity = 0;
-        if (incl.setting_manager) providedEntity += hcSetting;
-        if (incl.assistant_manager) providedEntity += hcAsst;
-        if (incl.senior_qualified) providedEntity += hcSeniorTotal;
-        if (incl.qualified)        providedEntity += hcQualTotal;
-        if (incl.apprentice)       providedEntity += hcAppTotal;
+        // Employee-equivalents provided toward cover, weighted by how much
+        // of each role's time actually stands in the ratio.
+        const providedEntity = mgrCover
+          + hcSeniorTotal * inclF.senior_qualified
+          + hcQualTotal   * inclF.qualified
+          + hcAppTotal    * inclF.apprentice;
 
         // Per-entity ratio metrics (used by Capacities view)
-        if (totalReq > 0 || providedEntity > 0) {
-          const compEntity = totalReq > 0 ? providedEntity / totalReq : 1;
-          out.push({ module_key: 'staff', entity_id: e.id, period: t, nominal_type: 'metric.ratio_required', line_label: 'Practitioners required', amount_p: totalReq });
-          out.push({ module_key: 'staff', entity_id: e.id, period: t, nominal_type: 'metric.ratio_provided', line_label: 'Practitioners provided', amount_p: providedEntity });
+        if (empRequired > 0 || providedEntity > 0) {
+          const compEntity = empRequired > 0 ? providedEntity / empRequired : 1;
+          out.push({ module_key: 'staff', entity_id: e.id, period: t, nominal_type: 'metric.ratio_required', line_label: 'Employees required', amount_p: r1(empRequired) });
+          out.push({ module_key: 'staff', entity_id: e.id, period: t, nominal_type: 'metric.ratio_provided', line_label: 'Employees provided', amount_p: r1(providedEntity) });
           out.push({ module_key: 'staff', entity_id: e.id, period: t, nominal_type: 'metric.ratio_compliance', line_label: 'Ratio compliance (×)', amount_p: Math.round(compEntity * 10000) });
+          out.push({ module_key: 'staff', entity_id: e.id, period: t, nominal_type: 'metric.floor_positions', line_label: 'Adults required on floor', amount_p: r1(floorPositions) });
         }
 
-        groupRequiredTotal += totalReq;
+        groupRequiredTotal += empRequired;
         groupProvidedTotal += providedEntity;
+        groupFloorTotal += floorPositions;
+      }
+
+      // ── Employment allowance ──────────────────────────────────────
+      // Per-EMPLOYER annual relief against employer NI (not per site).
+      // Spread evenly over the year and capped at the NI actually incurred;
+      // emitted as a group-level credit so it nets off overhead staff cost.
+      if (allowanceP > 0 && niPct > 0) {
+        const credit = Math.min(allowanceP / 12, niablePay * niPct);
+        if (credit > 0) {
+          emit(null, t, 'employment_allowance', 'Employment allowance (NI relief)', 0, -Math.round(credit));
+        }
       }
 
       const compliance = groupRequiredTotal > 0 ? groupProvidedTotal / groupRequiredTotal : 1;
-      out.push({ module_key: 'staff', period: t, nominal_type: 'metric.ratio_required',  line_label: 'Practitioners required',  amount_p: groupRequiredTotal });
-      out.push({ module_key: 'staff', period: t, nominal_type: 'metric.ratio_provided',  line_label: 'Practitioners provided',  amount_p: groupProvidedTotal });
+      out.push({ module_key: 'staff', period: t, nominal_type: 'metric.ratio_required',  line_label: 'Employees required',  amount_p: r1(groupRequiredTotal) });
+      out.push({ module_key: 'staff', period: t, nominal_type: 'metric.ratio_provided',  line_label: 'Employees provided',  amount_p: r1(groupProvidedTotal) });
       out.push({ module_key: 'staff', period: t, nominal_type: 'metric.ratio_compliance',line_label: 'Ratio compliance (×)',   amount_p: Math.round(compliance * 10000) });
+      out.push({ module_key: 'staff', period: t, nominal_type: 'metric.floor_positions', line_label: 'Adults required on floor', amount_p: r1(groupFloorTotal) });
     }
 
     ctx.practitionersByEntity = practitionersByEntity;
@@ -368,25 +455,17 @@ export const staffModule = {
       const provided = provRow?.amount_p || 0;
       const shortBy  = required - provided;
 
-      // Re-read inclusion flags here (compute()'s `incl` is out of scope).
-      const incl = {
-        senior_qualified:  ctx.resolve('ratio_inclusion.senior_qualified', {})  >= 1,
-        qualified:         ctx.resolve('ratio_inclusion.qualified', {})         >= 1,
-        apprentice:        ctx.resolve('ratio_inclusion.apprentice', {})        >= 1,
-        setting_manager:   ctx.resolve('ratio_inclusion.setting_manager', {})   >= 1,
-        assistant_manager: ctx.resolve('ratio_inclusion.assistant_manager', {}) >= 1,
-      };
-
-      // Build the role-inclusion breakdown
+      // Re-read floor-time factors here (compute()'s `inclF` is out of scope).
+      const f01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
       const ROLES = [
-        { key: 'senior_qualified',  label: 'Senior qualified',  flag: incl.senior_qualified },
-        { key: 'qualified',         label: 'Qualified',         flag: incl.qualified },
-        { key: 'apprentice',        label: 'Apprentice',        flag: incl.apprentice },
-        { key: 'setting_manager',   label: 'Setting manager',   flag: incl.setting_manager },
-        { key: 'assistant_manager', label: 'Assistant manager', flag: incl.assistant_manager },
-      ];
-      const inList = ROLES.filter(r => r.flag).map(r => r.label).join(', ') || 'none';
-      const outList = ROLES.filter(r => !r.flag).map(r => r.label).join(', ') || 'none';
+        { key: 'senior_qualified',  label: 'Senior qualified' },
+        { key: 'qualified',         label: 'Qualified' },
+        { key: 'apprentice',        label: 'Apprentice' },
+        { key: 'setting_manager',   label: 'Setting manager' },
+        { key: 'assistant_manager', label: 'Assistant manager' },
+      ].map(r => ({ ...r, factor: f01(ctx.resolve(`ratio_inclusion.${r.key}`, {})) }));
+      const inList = ROLES.filter(r => r.factor > 0).map(r => `${r.label} ${r.factor}`).join(', ') || 'none';
+      const outList = ROLES.filter(r => r.factor === 0).map(r => r.label).join(', ') || 'none';
 
       findings.push({
         severity: 'error',
@@ -394,9 +473,10 @@ export const staffModule = {
         period: worstT,
         message:
           `Statutory ratio breach in ${breaches.length} of ${ctx.periods.length} period${breaches.length !== 1 ? 's' : ''}. ` +
-          `Worst at month ${worstT}: only ${provided} practitioners provided when ${required} are required (short by ${shortBy}, ${worstCompliance.toFixed(2)}× cover vs 1.00× statutory). ` +
-          `Roles counted toward the ratio: ${inList}. Roles not counted (could be enabled): ${outList}. ` +
-          `Fix: in Inputs → Drivers → staff, flip ratio_inclusion.<role> flags to 1 to include more roles (apprentices count ½-FTE in practice but the model treats inclusion as binary), increase the per-site setting / assistant manager headcount, or rebalance the direct mix % toward more senior/qualified vs apprentice.`,
+          `Worst at month ${worstT}: ${provided} employee-equivalents of floor cover provided when ${required} are required (short by ${shortBy.toFixed(1)}, ${worstCompliance.toFixed(2)}× cover vs 1.00× statutory). ` +
+          `Required is the statutory ratio grossed up for opening hours — adults on the floor × (open hours × weeks) ÷ productive hours per employee. ` +
+          `Floor-time factors in use: ${inList}. Roles contributing no floor cover: ${outList}. ` +
+          `Fix: in Inputs → Drivers → Staff, raise the per-site setting / assistant manager headcount, raise a role's floor-time factor toward 1, rebalance the direct mix % toward senior/qualified, or add an over-staffing %.`,
       });
     }
     // RLW info

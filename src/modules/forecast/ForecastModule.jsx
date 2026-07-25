@@ -10,6 +10,7 @@ import { btnDark, btnOutline, colors, fontStack, inputStyle, KPI, Pill, selectSt
 
 import InputsView from './views/InputsView';
 import OverviewView from './views/OverviewView';
+import PnlByBandView from './views/PnlByBandView';
 import StatementView from './views/StatementView';
 import { PNL_LINES, BS_LINES, CF_LINES } from './views/statementLines';
 import DealView from './views/DealView';
@@ -30,6 +31,7 @@ const TABS = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'overview',  label: 'Overview' },
   { key: 'pnl',       label: 'P&L' },
+  { key: 'pnl_band',  label: 'P&L by age band' },
   { key: 'bs',        label: 'Balance sheet' },
   { key: 'cf',        label: 'Cashflow' },
   { key: 'income',    label: 'Income' },
@@ -352,6 +354,11 @@ export default function ForecastModule() {
             )}
             {tab === 'overview' && (
               <OverviewView outputs={outputs} forecast={forecast} periods={periods} entities={entities} />
+            )}
+            {tab === 'pnl_band' && (
+              <PnlByBandView outputs={outputs} forecast={forecast} periods={periods}
+                entities={entities} groups={groups} assignments={assignments}
+                filter={filter} onFilterChange={setFilter} />
             )}
             {tab === 'la' && (
               <LaSettingsView />

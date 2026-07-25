@@ -81,6 +81,9 @@ export const STAFF_ROWS = [
   { role: 'senior_qualified',  label: 'Senior qualified',    group: 'direct' },
   { role: 'qualified',         label: 'Qualified',           group: 'direct' },
   { role: 'apprentice',        label: 'Apprentices',         group: 'direct' },
+  // Employer-level NI relief — a credit, so it carries a negative cost and
+  // no headcount. Listed so the staff detail total still ties to the P&L.
+  { role: 'employment_allowance', label: 'Employment allowance (NI relief)', group: 'mgmt' },
 ];
 
 export function buildStaffMatrix(outputs, grouped, entityIds) {
