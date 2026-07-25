@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   listForecasts, createForecast, updateForecast, listVersions, listScenarios,
   loadOutputs, loadFindings, listEntities, listGroups, listEntityGroupAssignments,
@@ -67,6 +67,7 @@ export default function ForecastModule() {
 
   const [entitiesRaw, setEntities] = useState([]);
   const [capacityOverrides, setCapacityOverrides] = useState({});
+  const recomputingRef = useRef(false);
   const [groups, setGroups] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [filter, setFilter] = useState({ kind: 'all' });
@@ -298,6 +299,12 @@ export default function ForecastModule() {
 
   const onRecompute = async () => {
     if (!scenario || !version || !forecastId) return;
+    // Belt as well as braces: persistOutputs is now safe under concurrency,
+    // but a driver edit auto-recomputing while a manual Recompute is still
+    // running is just wasted work — and it was how the duplicated-output bug
+    // got triggered in the first place.
+    if (recomputingRef.current) return;
+    recomputingRef.current = true;
     setBusy(true); setErr(null);
     try {
       await recomputeScenario({
@@ -307,6 +314,7 @@ export default function ForecastModule() {
       setFindings(await loadFindings(scenario.id));
       await reloadCapacityOverrides();
     } catch (e) { setErr(e.message); }
+    recomputingRef.current = false;
     setBusy(false);
   };
 

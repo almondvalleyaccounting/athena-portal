@@ -370,30 +370,45 @@ export async function updateDriver(driver_id, patch) {
 
 /** Replace materialised outputs for a scenario. */
 export async function persistOutputs(scenario_id, outputs) {
-  // Delete existing rows for this scenario, then insert fresh.
-  const { error: delErr } = await supabase
-    .from('fc_output').delete().eq('scenario_id', scenario_id);
-  if (delErr) throw delErr;
+  // INSERT-then-clean, stamped with a run id — deliberately NOT
+  // delete-then-insert.
+  //
+  // Deleting first is unsafe without a transaction: two overlapping
+  // recomputes interleave as delete / delete / insert / insert and leave two
+  // complete sets of outputs, silently doubling every figure in the model.
+  // That happened once in anger (sql/169). Inserting first and then removing
+  // rows carrying any other run id means concurrent runs resolve to whichever
+  // cleans up last — one complete set either way, and no window where the
+  // scenario has no outputs.
+  const run_id = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
 
-  if (outputs.length === 0) return;
+  if (outputs.length > 0) {
+    const rows = outputs.map(o => ({
+      scenario_id,
+      entity_id: o.entity_id || null,
+      period: o.period,
+      module_key: o.module_key,
+      nominal_type: o.nominal_type,
+      line_label: o.line_label,
+      amount_p: o.amount_p,
+      tags: o.tags || null,
+      run_id,
+    }));
 
-  const rows = outputs.map(o => ({
-    scenario_id,
-    entity_id: o.entity_id || null,
-    period: o.period,
-    module_key: o.module_key,
-    nominal_type: o.nominal_type,
-    line_label: o.line_label,
-    amount_p: o.amount_p,
-    tags: o.tags || null,
-  }));
-
-  // Chunk to avoid hitting row-size limits on big forecasts
-  const CHUNK = 500;
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const { error } = await supabase.from('fc_output').insert(rows.slice(i, i + CHUNK));
-    if (error) throw error;
+    // Chunk to avoid hitting row-size limits on big forecasts
+    const CHUNK = 500;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const { error } = await supabase.from('fc_output').insert(rows.slice(i, i + CHUNK));
+      if (error) throw error;
+    }
   }
+
+  // Drop the previous run (and anything from a concurrent one).
+  const { error: delErr } = await supabase
+    .from('fc_output').delete()
+    .eq('scenario_id', scenario_id)
+    .or(`run_id.is.null,run_id.neq.${run_id}`);
+  if (delErr) throw delErr;
 }
 
 export async function persistFindings(scenario_id, findings) {
