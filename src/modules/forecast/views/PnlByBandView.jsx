@@ -60,6 +60,8 @@ const money = (p) => {
   return (gbp < 0 ? '−£' : '£') + s;
 };
 const pct = (x) => (x == null || !isFinite(x)) ? '—' : `${x.toFixed(1)}%`;
+// Plain number: whole when it is one (a 1:3 ratio reads "3", not "3.0").
+const num = (v) => (Math.abs(v - Math.round(v)) < 0.05 ? String(Math.round(v)) : v.toFixed(1));
 
 function normalise(weights) {
   const total = Object.values(weights).reduce((s, v) => s + (v > 0 ? v : 0), 0);
@@ -287,21 +289,25 @@ export default function PnlByBandView({
     const lfRow = outputs.find(o => o.nominal_type === 'metric.staff_load_factor' && setP.has(o.period));
     const loadFactor = lfRow ? Number(lfRow.amount_p) / 10000 : null;
 
-    const maxKids = {}, avgKids = {}, capPct = {}, staffFte = {},
-          wagePerFte = {}, loadedPerFte = {}, kidsPerStaff = {}, kidsPerFloor = {};
+    const maxKids = {}, avgKids = {}, capPct = {}, staffFte = {}, wagePerFte = {},
+          loadedPerFte = {}, kidsPerStaff = {}, kidsPerFloor = {}, ftePerFloor = {};
     for (const c of cols) {
+      const fte = (hcMonths[c] || 0) / nMonths;
+      staffFte[c] = fte;
       if (c === CENTRAL) {
-        maxKids[c] = null; avgKids[c] = null; capPct[c] = null; kidsPerFloor[c] = null;
+        maxKids[c] = null; avgKids[c] = null; capPct[c] = null;
+        kidsPerFloor[c] = null; ftePerFloor[c] = null; kidsPerStaff[c] = null;
       } else {
         maxKids[c] = scopedEntities.reduce((s, e) => s + (e.config?.capacity_by_age_band?.[c] || 0), 0);
         avgKids[c] = wKidsActual[c] || 0;
         capPct[c] = maxKids[c] > 0 ? avgKids[c] / maxKids[c] * 100 : null;
         const floorAvg = (floorMonths[c] || 0) / nMonths;
         kidsPerFloor[c] = floorAvg > 0 ? avgKids[c] / floorAvg : null;
+        // The bridge between the two ratios: how many people you employ per
+        // adult the ratio needs standing in the room.
+        ftePerFloor[c] = floorAvg > 0 ? fte / floorAvg : null;
+        kidsPerStaff[c] = fte > 0 ? avgKids[c] / fte : null;
       }
-      const fte = (hcMonths[c] || 0) / nMonths;
-      staffFte[c] = fte;
-      kidsPerStaff[c] = (c !== CENTRAL && fte > 0) ? avgKids[c] / fte : null;
       const annualised = fte > 0 ? (staffCostForFte[c] || 0) / nMonths * 12 / fte : null;
       loadedPerFte[c] = annualised;
       wagePerFte[c] = (annualised != null && loadFactor) ? annualised / loadFactor : null;
@@ -321,7 +327,7 @@ export default function PnlByBandView({
       lineRows, centralTotal, unallocated, allocated,
       revenue, contribution, ebitda, revCheck, ebitdaCheck,
       maxKids, avgKids, capPct, staffFte, wagePerFte, loadedPerFte,
-      kidsPerStaff, kidsPerFloor, loadFactor,
+      kidsPerStaff, kidsPerFloor, ftePerFloor, loadFactor,
       totalKids, totalFloor, totalFte,
     };
   }, [outputs, yearPeriods, entityIds, scopedEntities, defaultBasis, basisByLine, manualByLine]);
@@ -329,8 +335,8 @@ export default function PnlByBandView({
   const { cols, activeBands, revPrivate, revFunded, roomStaff, roomByRole,
           lineRows, unallocated, allocated, revenue, contribution, ebitda,
           revCheck, ebitdaCheck, maxKids, avgKids, capPct, staffFte,
-          wagePerFte, loadedPerFte, kidsPerStaff, kidsPerFloor, loadFactor,
-          totalKids, totalFloor, totalFte } = model;
+          wagePerFte, loadedPerFte, kidsPerStaff, kidsPerFloor, ftePerFloor,
+          loadFactor, totalKids, totalFloor, totalFte } = model;
 
   const colLabel = (c) => c === CENTRAL ? 'Central' : AGE_BAND_LABELS[c] || c;
   const total = (m) => cols.reduce((s, c) => s + (m[c] || 0), 0);
@@ -436,11 +442,15 @@ export default function PnlByBandView({
                 <MetricRow label="Average capacity %" m={capPct} cols={cols} fmt={(v) => `${v.toFixed(1)}%`}
                   aggValue={totalKids > 0 && sumOf(maxKids, cols) > 0 ? totalKids / sumOf(maxKids, cols) * 100 : null} />
                 <MetricRow label="Children per adult on floor" m={kidsPerFloor} cols={cols}
-                  fmt={(v) => `1 : ${v.toFixed(1)}`} hint="statutory ratio the model staffed to"
+                  fmt={num} hint="the statutory ratio the model staffed to"
                   aggValue={totalFloor > 0 ? totalKids / totalFloor : null} />
+                <MetricRow label="Staff FTE employed per adult on floor" m={ftePerFloor} cols={cols}
+                  fmt={num}
+                  hint="one contract covers part of the open week, plus any over-staffing %, less management standing in the ratio"
+                  aggValue={totalFloor > 0 ? totalFte / totalFloor : null} />
                 <MetricRow label="Children per staff FTE employed" m={kidsPerStaff} cols={cols}
-                  fmt={(v) => `1 : ${v.toFixed(1)}`}
-                  hint="lower than the ratio above — a contract covers ~36 of the ~50 hours a room is open"
+                  fmt={num}
+                  hint="children per floor adult ÷ staff FTE per floor adult (the two rows above)"
                   aggValue={totalFte > 0 ? totalKids / totalFte : null} />
                 <MetricRow label="Staff (average FTE)" m={staffFte} cols={cols}
                   fmt={(v) => v.toFixed(1)} agg="sum" hint="room staff by band; management, cook and exec in Central" />
