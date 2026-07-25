@@ -209,9 +209,22 @@ export default function ForecastModule() {
     } catch (e) { setErr(e.message); }
   };
 
+  // Capacity overrides live on the scenario, so anything that can change a
+  // location or re-run the engine must refresh them too — otherwise the
+  // engine's outputs move to the new room split while the entity list the
+  // views read is still carrying the old one.
+  const reloadCapacityOverrides = async () => {
+    if (!scenario?.id) return;
+    try { setCapacityOverrides(await loadCapacityOverrides(scenario.id)); }
+    catch { /* leave the previous overlay in place */ }
+  };
+
   const reloadEntities = async () => {
     if (!forecastId) return;
-    try { setEntities(await listEntities(forecastId)); } catch (e) { setErr(e.message); }
+    try {
+      const [ents] = await Promise.all([listEntities(forecastId), reloadCapacityOverrides()]);
+      setEntities(ents);
+    } catch (e) { setErr(e.message); }
   };
 
   const onEdit = async (form) => {
@@ -292,6 +305,7 @@ export default function ForecastModule() {
       });
       setOutputs(await loadOutputs(scenario.id));
       setFindings(await loadFindings(scenario.id));
+      await reloadCapacityOverrides();
     } catch (e) { setErr(e.message); }
     setBusy(false);
   };
