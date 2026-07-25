@@ -250,13 +250,21 @@ export const staffModule = {
     // Employee counts are now fractional (fc_output.amount_p is numeric);
     // 1dp keeps the emitted metrics readable for every consumer view.
     const r1 = (x) => Math.round(x * 10) / 10;
-    const emit = (entity_id, period, role, label, hc, amount, age_band) => {
+    const r2 = (x) => Math.round(x * 100) / 100;
+    // `floorFactor` records how much of this row's time stands in the
+    // statutory ratio, so downstream views can tell floor cover from
+    // supervisory overhead without re-resolving drivers.
+    const emit = (entity_id, period, role, label, hc, amount, age_band, floorFactor) => {
       if (hc === 0 && amount === 0) return;
       out.push({
         module_key: 'staff', entity_id, period,
         nominal_type: 'staff_cost', line_label: label,
         amount_p: amount,
-        tags: { role, headcount: hc, ...(age_band ? { age_band } : {}) },
+        tags: {
+          role, headcount: hc,
+          ...(age_band ? { age_band } : {}),
+          ...(floorFactor != null ? { floor_factor: floorFactor } : {}),
+        },
       });
     };
 
@@ -281,13 +289,14 @@ export const staffModule = {
 
         // Per-site setting + assistant managers
         const hcSetting = ctx.resolve('headcount.setting_managers_per_site', { entity: e.key }) || 0;
-        if (hcSetting > 0) emit(e.id, t, 'setting_manager', `Setting managers (${hcSetting})`, hcSetting, monthlyCost(hcSetting, sal.setting_manager));
+        if (hcSetting > 0) emit(e.id, t, 'setting_manager', `Setting managers (${hcSetting})`, hcSetting, monthlyCost(hcSetting, sal.setting_manager), null, inclF.setting_manager);
 
         const hcAsst = ctx.resolve('headcount.assistant_managers_per_site', { entity: e.key }) || 0;
-        if (hcAsst > 0) emit(e.id, t, 'assistant_manager', `Assistant managers (${hcAsst})`, hcAsst, monthlyCost(hcAsst, sal.assistant_manager));
+        if (hcAsst > 0) emit(e.id, t, 'assistant_manager', `Assistant managers (${hcAsst})`, hcAsst, monthlyCost(hcAsst, sal.assistant_manager), null, inclF.assistant_manager);
 
+        // Cooks never stand in the statutory ratio.
         const hcCook = ctx.resolve('headcount.cooks_per_site', { entity: e.key }) || 0;
-        if (hcCook > 0) emit(e.id, t, 'cook', `Cooks (${hcCook})`, hcCook, monthlyCost(hcCook, sal.cook));
+        if (hcCook > 0) emit(e.id, t, 'cook', `Cooks (${hcCook})`, hcCook, monthlyCost(hcCook, sal.cook), null, 0);
 
         // Direct staff: exact floor positions per band → employee-
         // equivalents via hours coverage → whole heads once, at ENTITY
@@ -296,16 +305,17 @@ export const staffModule = {
         // in every room separately over-provided ~20-25%.
         const childMap = ctx.childrenAttending?.[e.key] || {};
         const cov = coverageByEntity[e.key] || {};
-        const empByBand = {};
+        const empByBand = {}, floorByBand = {};
         let floorPositions = 0;   // adults required on the floor, simultaneous
         let empRequired = 0;      // employees required to cover the open week
         for (const band of AGE_BANDS_LIST) {
           const children = childMap[band]?.[t] ?? 0;
           const ratio = ratios[band];
-          if (!(ratio > 0) || children <= 0) { empByBand[band] = 0; continue; }
+          if (!(ratio > 0) || children <= 0) { empByBand[band] = 0; floorByBand[band] = 0; continue; }
           const positions = children / ratio;
           const emp = positions * (cov[band] ?? 1);
           empByBand[band] = emp;
+          floorByBand[band] = positions;
           floorPositions += positions;
           empRequired += emp;
         }
@@ -336,31 +346,24 @@ export const staffModule = {
 
         // Distribute back to bands proportional to band requirement.
         // Per-band emit retains the age_band tag for the dashboard split.
+        // Split a role's establishment across bands PRO-RATA by each band's
+        // share of the staffing requirement. Whole-person allocation per room
+        // left small bands with none of a role (2 senior heads across 3 rooms
+        // gave the baby room zero), which distorted per-band cost. Staff flex
+        // across rooms — that's why the establishment is rounded once at the
+        // setting — so a fractional band split is the honest attribution.
         const distribute = (totalHc, role, salary) => {
           if (totalHc === 0 || empRequired <= 0) return;
           const monthlyPer = (salary / 12) * loadFactor;
           const payPer = (salary / 12) * coverFactor;
-          let allocated = 0;
-          // Largest-remainder method: integer floors per band, then top-up
-          // the largest residuals until we've allocated the whole total.
-          const pieces = AGE_BANDS_LIST.map(band => {
-            const exact = totalHc * ((empByBand[band] || 0) / empRequired);
-            return { band, exact, base: Math.floor(exact), residual: exact - Math.floor(exact) };
-          });
-          let used = pieces.reduce((s, p) => s + p.base, 0);
-          pieces.sort((a, b) => b.residual - a.residual);
-          let i = 0;
-          while (used < totalHc) {
-            pieces[i % pieces.length].base += 1;
-            used += 1;
-            i += 1;
-          }
-          for (const p of pieces) {
-            if (p.base === 0) continue;
-            const cost = Math.round(p.base * monthlyPer);
-            niablePay += p.base * payPer;
-            emit(e.id, t, role, `${roleLabel(role)} — ${bandLabel(p.band)} (${p.base})`, p.base, cost, p.band);
-            allocated += p.base;
+          const ff = inclF[role] ?? null;
+          for (const band of AGE_BANDS_LIST) {
+            const share = (empByBand[band] || 0) / empRequired;
+            if (share <= 0) continue;
+            const hc = totalHc * share;
+            niablePay += hc * payPer;
+            emit(e.id, t, role, `${roleLabel(role)} — ${bandLabel(band)} (${r2(hc)})`,
+              r2(hc), Math.round(hc * monthlyPer), band, ff);
           }
         };
         distribute(hcSeniorTotal, 'senior_qualified', sal.senior_qualified);
@@ -381,6 +384,17 @@ export const staffModule = {
           out.push({ module_key: 'staff', entity_id: e.id, period: t, nominal_type: 'metric.ratio_provided', line_label: 'Employees provided', amount_p: r1(providedEntity) });
           out.push({ module_key: 'staff', entity_id: e.id, period: t, nominal_type: 'metric.ratio_compliance', line_label: 'Ratio compliance (×)', amount_p: Math.round(compEntity * 10000) });
           out.push({ module_key: 'staff', entity_id: e.id, period: t, nominal_type: 'metric.floor_positions', line_label: 'Adults required on floor', amount_p: r1(floorPositions) });
+          // Per-band detail (tagged, like occupancy) so views can show the
+          // statutory on-floor ratio per room. Untagged rows are the totals —
+          // never sum tagged and untagged together.
+          for (const band of AGE_BANDS_LIST) {
+            if (!floorByBand[band]) continue;
+            out.push({
+              module_key: 'staff', entity_id: e.id, period: t,
+              nominal_type: 'metric.floor_positions', line_label: `Adults on floor — ${bandLabel(band)}`,
+              amount_p: Math.round(floorByBand[band] * 100) / 100, tags: { age_band: band },
+            });
+          }
         }
 
         groupRequiredTotal += empRequired;

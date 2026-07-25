@@ -1,18 +1,18 @@
 // P&L by age band — where the money is actually made.
 //
-// Revenue and room (ratio-driven) staff are the only things the engine tags
-// by age band, so those attribute directly — broken out to role level
-// (senior / qualified / apprentice). Everything else — site management, the
-// cook, premises, utilities, consumables, overheads, pre-opening — is
-// genuinely indirect and lands in a CENTRAL column. Each central line has
-// its OWN allocation basis, because the right driver differs per line: site
-// management tracks staffing, premises tracks floor space (≈ registered
-// places), catering tracks actual heads through the door.
+// Revenue and room staff are the only things the engine tags by age band, so
+// those attribute directly, broken out to role level. Management who stand in
+// the statutory ratio are floor cover too, so the ratio-contributing share of
+// their cost allocates automatically alongside room staff; only the
+// supervisory remainder is genuinely central. Everything else — cook,
+// premises, utilities, consumables, overheads, pre-opening — starts in
+// CENTRAL and is allocated on a per-line basis you set in the Allocation
+// sub-tab, because the right driver differs by cost.
 //
-// Raw `revenue` / `staff_cost` / `overhead` rows are PRE-inflation bases;
-// the P&L applies per-period inflation factors on top. We apply the same
-// factors (derived from the engine's own uplift rows) so this page ties to
-// the P&L exactly — the tie-out check at the foot proves it every render.
+// Raw `revenue` / `staff_cost` / `overhead` rows are PRE-inflation bases; the
+// P&L applies per-period inflation factors on top. We apply the same factors
+// (derived from the engine's own uplift rows) so this page ties to the P&L
+// exactly — the tie-out check at the foot proves it every render.
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { colors, fontStack, Section, Pill, selectStyle } from '../components/ui';
@@ -23,25 +23,22 @@ import { AGE_BANDS_LIST, AGE_BAND_LABELS } from '../lib/modules/locations.js';
 import { STAFF_ROWS } from '../lib/export/aggregations';
 
 const CENTRAL = '__central__';
-
-// Band-tagged practitioner roles, in the shared STAFF_ROWS order so this
-// page and the Staff detail page always name roles identically.
 const DIRECT_ROLES = STAFF_ROWS.filter(r => r.group === 'direct');
 
 // Central cost lines. `key` is the state/storage identity — keep stable.
+// `auto` lines are allocated by the model, not by the user.
 const CENTRAL_LINES = [
-  { key: 'siteMgmt',     label: 'Site management (setting + assistant managers)' },
-  { key: 'cook',         label: 'Cook / kitchen' },
-  { key: 'centralStaff', label: 'Central staff (exec / senior mgr / admin)' },
-  // Kept separate: netting a firm-wide NI credit into a small central
-  // salary line can flip it to income and reads as nonsense.
-  { key: 'niRelief',     label: 'Employment allowance (NI relief)' },
-  { key: 'premises',     label: 'Premises (rent / SC / NDR / maintenance)' },
-  { key: 'utilities',    label: 'Utilities' },
-  { key: 'consumables',  label: 'Consumables & food' },
-  { key: 'otherOh',      label: 'Other overheads' },
-  { key: 'centralAdmin', label: 'Central admin' },
-  { key: 'preOpening',   label: 'Pre-opening' },
+  { key: 'siteMgmtFloor', label: 'Site management — floor cover (in ratio)', auto: 'direct_staff' },
+  { key: 'siteMgmt',      label: 'Site management — supervisory (not in ratio)' },
+  { key: 'cook',          label: 'Cook / kitchen' },
+  { key: 'centralStaff',  label: 'Central staff (exec / senior mgr / admin)' },
+  { key: 'niRelief',      label: 'Employment allowance (NI relief)' },
+  { key: 'premises',      label: 'Premises (rent / SC / NDR / maintenance)' },
+  { key: 'utilities',     label: 'Utilities' },
+  { key: 'consumables',   label: 'Consumables & food' },
+  { key: 'otherOh',       label: 'Other overheads' },
+  { key: 'centralAdmin',  label: 'Central admin' },
+  { key: 'preOpening',    label: 'Pre-opening' },
 ];
 
 const BASES = [
@@ -50,7 +47,7 @@ const BASES = [
   { key: 'kids_actual',  label: 'Child count — actual' },
   { key: 'direct_staff', label: 'Direct staff cost' },
   { key: 'revenue',      label: 'Revenue' },
-  { key: 'manual',       label: 'Manual %' },
+  { key: 'manual',       label: 'Manual amounts' },
 ];
 const basisLabel = (k) => BASES.find(b => b.key === k)?.label || k;
 
@@ -58,15 +55,12 @@ const money = (p) => {
   if (p == null) return '—';
   const gbp = p / 100 || 0;
   const abs = Math.abs(gbp);
-  // Format the magnitude only — the sign is carried by the prefix, so
-  // toLocaleString must never see a negative or you get "−£-18,125".
+  // Format the magnitude only — the sign is carried by the prefix.
   const s = abs >= 1000 ? Math.round(abs).toLocaleString('en-GB') : abs.toFixed(0);
   return (gbp < 0 ? '−£' : '£') + s;
 };
 const pct = (x) => (x == null || !isFinite(x)) ? '—' : `${x.toFixed(1)}%`;
 
-// Normalise a weight map to shares summing to 1. Returns null when there's
-// nothing to go on, which means "leave this line in Central".
 function normalise(weights) {
   const total = Object.values(weights).reduce((s, v) => s + (v > 0 ? v : 0), 0);
   if (!(total > 0)) return null;
@@ -82,10 +76,9 @@ export default function PnlByBandView({
 }) {
   const horizonYears = Math.max(1, Math.ceil((forecast?.horizon_months || 60) / 12));
   const [year, setYear] = useState('1');
+  const [subTab, setSubTab] = useState('report');
 
-  // Allocation choices are a presentation lens rather than a modelled
-  // assumption, so they live in the browser per forecast.
-  const lsKey = `fc.pnlByBand.v2.${forecast?.id || 'none'}`;
+  const lsKey = `fc.pnlByBand.v3.${forecast?.id || 'none'}`;
   const [defaultBasis, setDefaultBasis] = useState('none');
   const [basisByLine, setBasisByLine] = useState({});
   const [manualByLine, setManualByLine] = useState({});
@@ -103,9 +96,7 @@ export default function PnlByBandView({
 
   const persist = (next) => {
     try {
-      localStorage.setItem(lsKey, JSON.stringify({
-        defaultBasis, basisByLine, manualByLine, ...next,
-      }));
+      localStorage.setItem(lsKey, JSON.stringify({ defaultBasis, basisByLine, manualByLine, ...next }));
     } catch { /* ignore */ }
   };
   const setDefault = (v) => { setDefaultBasis(v); persist({ defaultBasis: v }); };
@@ -139,10 +130,7 @@ export default function PnlByBandView({
     const revPrivate = zero(), revFunded = zero(), roomStaff = zero();
     const roomByRole = {};
     const central = Object.fromEntries(CENTRAL_LINES.map(l => [l.key, 0]));
-    // Staffing metrics: headcount-months and the un-inflated cost behind
-    // them. The NI relief carries no headcount and is a firm-level credit,
-    // so it's excluded from per-FTE figures; pre-opening staffing likewise.
-    const hcMonths = zero(), staffCostForFte = zero();
+    const hcMonths = zero(), staffCostForFte = zero(), floorMonths = zero();
     const nMonths = yearPeriods.length || 1;
 
     for (const r of outputs) {
@@ -159,6 +147,12 @@ export default function PnlByBandView({
           else revPrivate[tgt] += amt;
           break;
         }
+        case 'metric.floor_positions':
+          // Only the band-tagged rows; untagged ones are entity/group totals.
+          if (band && floorMonths[band] != null && r.entity_id != null) {
+            floorMonths[band] += Number(r.amount_p);
+          }
+          break;
         case 'staff_cost': {
           const amt = Number(r.amount_p) * fc;
           if (r.module_key === 'pre_opening') { central.preOpening += amt; break; }
@@ -175,7 +169,14 @@ export default function PnlByBandView({
           hcMonths[CENTRAL] += hc;
           if (forFte) staffCostForFte[CENTRAL] += amt;
           if (role === 'cook') central.cook += amt;
-          else if (role === 'setting_manager' || role === 'assistant_manager') central.siteMgmt += amt;
+          else if (role === 'setting_manager' || role === 'assistant_manager') {
+            // The share of their time that stands in the ratio IS floor
+            // cover, so it allocates with room staff; the rest is
+            // supervisory and stays central.
+            const ff = Math.max(0, Math.min(1, Number(r.tags?.floor_factor) || 0));
+            central.siteMgmtFloor += amt * ff;
+            central.siteMgmt += amt * (1 - ff);
+          }
           else if (role === 'employment_allowance') central.niRelief += amt;
           else central.centralStaff += amt;
           break;
@@ -183,7 +184,6 @@ export default function PnlByBandView({
         case 'overhead': {
           const amt = Number(r.amount_p) * fc;
           const lbl = r.line_label || '';
-          // Mirrors financial_core's bucketing so the totals tie.
           if (r.module_key === 'pre_opening') central.preOpening += amt;
           else if (lbl === 'Rent' || lbl === 'Service charge' || lbl === 'NDR' || lbl === 'Maintenance') central.premises += amt;
           else if (/utilit/i.test(lbl)) central.utilities += amt;
@@ -203,7 +203,6 @@ export default function PnlByBandView({
       scopedEntities.some(e => (e.config?.capacity_by_age_band?.[b] || 0) > 0)
       || revPrivate[b] || revFunded[b] || roomStaff[b]);
 
-    // ── Share maps, one per basis, computed once ────────────────────
     const occIdx = buildOccupancyIndex(outputs);
     const wKidsMax = {}, wKidsActual = {}, wDirect = {}, wRevenue = {};
     for (const b of activeBands) {
@@ -229,7 +228,6 @@ export default function PnlByBandView({
       revenue: normalise(wRevenue),
     };
 
-    // ── Per-line allocation ─────────────────────────────────────────
     const cols = [...activeBands, CENTRAL];
     const allocated = Object.fromEntries(cols.map(c => [c, 0]));
     const lineRows = [];
@@ -239,24 +237,43 @@ export default function PnlByBandView({
       const amt = central[line.key];
       if (amt === 0) continue;
       centralTotal += amt;
-      const effBasis = basisByLine[line.key] ?? defaultBasis;
-      const share = effBasis === 'manual'
-        ? normalise(Object.fromEntries(activeBands.map(b => [b, Math.max(0, Number(manualByLine[line.key]?.[b]) || 0)])))
-        : (effBasis === 'none' ? null : shareByBasis[effBasis]);
 
+      const effBasis = line.auto ? line.auto : (basisByLine[line.key] ?? defaultBasis);
       const spread = { [CENTRAL]: 0 };
-      if (share) {
+      let overTyped = 0;
+
+      if (effBasis === 'manual') {
+        // Type an amount per band; whatever isn't typed stays in Central.
+        let typed = 0;
         for (const b of activeBands) {
-          const v = amt * (share[b] || 0);
-          spread[b] = v;
+          const v = Math.round((Number(manualByLine[line.key]?.[b]) || 0) * 100);
+          spread[b] = v; typed += v;
           allocated[b] += v;
         }
+        const rest = amt - typed;
+        spread[CENTRAL] = rest;
+        allocated[CENTRAL] += rest;
+        unallocated += rest;
+        if (typed > amt) overTyped = typed - amt;
       } else {
-        spread[CENTRAL] = amt;
-        allocated[CENTRAL] += amt;
-        unallocated += amt;
+        const share = effBasis === 'none' ? null : shareByBasis[effBasis];
+        if (share) {
+          for (const b of activeBands) {
+            const v = amt * (share[b] || 0);
+            spread[b] = v;
+            allocated[b] += v;
+          }
+        } else {
+          spread[CENTRAL] = amt;
+          allocated[CENTRAL] += amt;
+          unallocated += amt;
+        }
       }
-      lineRows.push({ ...line, amt, effBasis, explicit: basisByLine[line.key] != null, allocatedOut: !!share, spread });
+      lineRows.push({
+        ...line, amt, effBasis, overTyped,
+        explicit: !line.auto && basisByLine[line.key] != null,
+        spread,
+      });
     }
 
     const revenue = {}, contribution = {}, ebitda = {};
@@ -267,28 +284,31 @@ export default function PnlByBandView({
     }
 
     // ── Operating metrics ───────────────────────────────────────────
-    // Load factor turns fully-loaded cost back into base wage. Emitted per
-    // period by the staff module; fall back to 1 (wage == loaded) if the
-    // stored outputs predate it, so the row degrades rather than lying.
     const lfRow = outputs.find(o => o.nominal_type === 'metric.staff_load_factor' && setP.has(o.period));
     const loadFactor = lfRow ? Number(lfRow.amount_p) / 10000 : null;
 
-    const maxKids = {}, avgKids = {}, capPct = {}, staffFte = {}, wagePerFte = {}, loadedPerFte = {};
+    const maxKids = {}, avgKids = {}, capPct = {}, staffFte = {},
+          wagePerFte = {}, loadedPerFte = {}, kidsPerStaff = {}, kidsPerFloor = {};
     for (const c of cols) {
       if (c === CENTRAL) {
-        maxKids[c] = null; avgKids[c] = null; capPct[c] = null;
+        maxKids[c] = null; avgKids[c] = null; capPct[c] = null; kidsPerFloor[c] = null;
       } else {
         maxKids[c] = scopedEntities.reduce((s, e) => s + (e.config?.capacity_by_age_band?.[c] || 0), 0);
         avgKids[c] = wKidsActual[c] || 0;
         capPct[c] = maxKids[c] > 0 ? avgKids[c] / maxKids[c] * 100 : null;
+        const floorAvg = (floorMonths[c] || 0) / nMonths;
+        kidsPerFloor[c] = floorAvg > 0 ? avgKids[c] / floorAvg : null;
       }
       const fte = (hcMonths[c] || 0) / nMonths;
       staffFte[c] = fte;
-      // Annualise: cost over the window scaled to 12 months, per average FTE.
+      kidsPerStaff[c] = (c !== CENTRAL && fte > 0) ? avgKids[c] / fte : null;
       const annualised = fte > 0 ? (staffCostForFte[c] || 0) / nMonths * 12 / fte : null;
       loadedPerFte[c] = annualised;
       wagePerFte[c] = (annualised != null && loadFactor) ? annualised / loadFactor : null;
     }
+    const totalKids = activeBands.reduce((s, b) => s + (avgKids[b] || 0), 0);
+    const totalFloor = activeBands.reduce((s, b) => s + (floorMonths[b] || 0), 0) / nMonths;
+    const totalFte = cols.reduce((s, c) => s + (staffFte[c] || 0), 0);
 
     const pnl = (nt) => outputs.filter(o => o.nominal_type === nt && setP.has(o.period)
       && (!entityIds || o.entity_id == null || entityIds.has(o.entity_id)))
@@ -300,18 +320,26 @@ export default function PnlByBandView({
       cols, activeBands, revPrivate, revFunded, roomStaff, roomByRole,
       lineRows, centralTotal, unallocated, allocated,
       revenue, contribution, ebitda, revCheck, ebitdaCheck,
-      maxKids, avgKids, capPct, staffFte, wagePerFte, loadedPerFte, loadFactor,
+      maxKids, avgKids, capPct, staffFte, wagePerFte, loadedPerFte,
+      kidsPerStaff, kidsPerFloor, loadFactor,
+      totalKids, totalFloor, totalFte,
     };
   }, [outputs, yearPeriods, entityIds, scopedEntities, defaultBasis, basisByLine, manualByLine]);
 
   const { cols, activeBands, revPrivate, revFunded, roomStaff, roomByRole,
-          lineRows, centralTotal, unallocated, allocated,
-          revenue, contribution, ebitda, revCheck, ebitdaCheck,
-          maxKids, avgKids, capPct, staffFte, wagePerFte, loadedPerFte, loadFactor } = model;
+          lineRows, unallocated, allocated, revenue, contribution, ebitda,
+          revCheck, ebitdaCheck, maxKids, avgKids, capPct, staffFte,
+          wagePerFte, loadedPerFte, kidsPerStaff, kidsPerFloor, loadFactor,
+          totalKids, totalFloor, totalFte } = model;
 
   const colLabel = (c) => c === CENTRAL ? 'Central' : AGE_BAND_LABELS[c] || c;
   const total = (m) => cols.reduce((s, c) => s + (m[c] || 0), 0);
-  const nCols = cols.length + 3;   // label + basis + bands/central + total
+  const nCols = cols.length + 2;   // label + bands/central + total
+
+  const basisNote = (line) =>
+    line.auto ? 'automatic — stands in ratio'
+      : line.effBasis === 'none' ? 'kept central'
+      : `by ${basisLabel(line.effBasis).toLowerCase()}`;
 
   return (
     <Section
@@ -329,29 +357,141 @@ export default function PnlByBandView({
         </div>
       }
     >
-      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 10px' }}>
-        Revenue and room staff attribute by age band — the only figures the model drives per band.
-        Everything else is indirect and starts in <strong>Central</strong>; set an allocation basis
-        per line in the <em>Allocate by</em> column, since the right driver differs by cost.
-        Contribution is revenue less room staff only.
+      <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${colors.border}`, marginBottom: 12 }}>
+        {[['report', 'Report'], ['alloc', 'Allocation method']].map(([k, lbl]) => (
+          <button key={k} onClick={() => setSubTab(k)} style={{
+            padding: '8px 14px', fontSize: 12, fontWeight: subTab === k ? 600 : 400,
+            color: subTab === k ? colors.ink : colors.muted, background: 'transparent', border: 'none',
+            borderBottom: `2px solid ${subTab === k ? colors.accent : 'transparent'}`,
+            cursor: 'pointer', fontFamily: fontStack,
+          }}>{lbl}</button>
+        ))}
+      </div>
+
+      {subTab === 'alloc' ? (
+        <AllocationPanel
+          lineRows={lineRows} activeBands={activeBands}
+          defaultBasis={defaultBasis} setDefault={setDefault}
+          basisByLine={basisByLine} setLineBasis={setLineBasis}
+          manualByLine={manualByLine} setLineManual={setLineManual}
+          resetOverrides={() => { setBasisByLine({}); persist({ basisByLine: {} }); }}
+        />
+      ) : (
+        <>
+          <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 10px' }}>
+            Revenue and room staff attribute by age band. Management who stand in the ratio are
+            allocated with them automatically; the rest is indirect and follows the bases set on the
+            <strong> Allocation method</strong> tab. Contribution is revenue less room staff only.
+          </p>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
+              <thead>
+                <tr>
+                  <th style={th}>&nbsp;</th>
+                  {cols.map(c => (
+                    <th key={c} style={{ ...th, textAlign: 'right', ...(c === CENTRAL ? { borderLeft: `1px solid ${colors.border}` } : {}) }}>
+                      {colLabel(c)}
+                    </th>
+                  ))}
+                  <th style={{ ...th, textAlign: 'right', borderLeft: `1px solid ${colors.border}` }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <SectionRow label="Income" nCols={nCols} />
+                <Row label="Private fees" m={revPrivate} cols={cols} total={total} />
+                <Row label="LA funded" m={revFunded} cols={cols} total={total} />
+                <Row label="Revenue" m={revenue} cols={cols} total={total} strong />
+
+                <SectionRow label="Room staff — ratio-driven, by role" nCols={nCols} />
+                {DIRECT_ROLES.filter(r => roomByRole[r.role]).map(r => (
+                  <Row key={r.role} label={r.label} m={roomByRole[r.role]} cols={cols} total={total} negate indent />
+                ))}
+                {Object.keys(roomByRole).filter(role => !DIRECT_ROLES.some(r => r.role === role)).map(role => (
+                  <Row key={role} label={role} m={roomByRole[role]} cols={cols} total={total} negate indent />
+                ))}
+                <Row label="Total room staff" m={roomStaff} cols={cols} total={total} negate strong />
+                <Row label="Contribution" m={contribution} cols={cols} total={total} strong />
+                <PctRow label="Contribution margin" num={contribution} den={revenue} cols={cols} total={total} />
+
+                <SectionRow label="Central costs" nCols={nCols} />
+                {lineRows.map(line => (
+                  <Row key={line.key} label={line.label} sub={basisNote(line)}
+                    m={line.spread} cols={cols} total={total} negate />
+                ))}
+                <Row label="Total central costs" m={allocated} cols={cols} total={total} negate strong />
+                {unallocated !== 0 && (
+                  <PlainRow nCols={nCols} text={`${money(unallocated)} left in Central — set a basis on those lines in the Allocation method tab.`} />
+                )}
+
+                <SectionRow label="Result" nCols={nCols} />
+                <Row label="EBITDA" m={ebitda} cols={cols} total={total} strong />
+                <PctRow label="EBITDA margin" num={ebitda} den={revenue} cols={cols} total={total} />
+
+                <SectionRow label="Operating metrics" nCols={nCols} />
+                <MetricRow label="Max kids (registered places)" m={maxKids} cols={cols}
+                  fmt={(v) => v.toLocaleString('en-GB')} agg="sum" />
+                <MetricRow label="Average kids (FTE)" m={avgKids} cols={cols}
+                  fmt={(v) => v.toFixed(1)} agg="sum" />
+                <MetricRow label="Average capacity %" m={capPct} cols={cols} fmt={(v) => `${v.toFixed(1)}%`}
+                  aggValue={totalKids > 0 && sumOf(maxKids, cols) > 0 ? totalKids / sumOf(maxKids, cols) * 100 : null} />
+                <MetricRow label="Children per adult on floor" m={kidsPerFloor} cols={cols}
+                  fmt={(v) => `1 : ${v.toFixed(1)}`} hint="statutory ratio the model staffed to"
+                  aggValue={totalFloor > 0 ? totalKids / totalFloor : null} />
+                <MetricRow label="Children per staff FTE employed" m={kidsPerStaff} cols={cols}
+                  fmt={(v) => `1 : ${v.toFixed(1)}`}
+                  hint="lower than the ratio above — a contract covers ~36 of the ~50 hours a room is open"
+                  aggValue={totalFte > 0 ? totalKids / totalFte : null} />
+                <MetricRow label="Staff (average FTE)" m={staffFte} cols={cols}
+                  fmt={(v) => v.toFixed(1)} agg="sum" hint="room staff by band; management, cook and exec in Central" />
+                <MetricRow label="Average wage per FTE (annual)" m={wagePerFte} cols={cols} fmt={money}
+                  aggValue={weightedPerFte(wagePerFte, staffFte, cols)} />
+                <MetricRow label="Average fully loaded cost per FTE (annual)" m={loadedPerFte} cols={cols} fmt={money}
+                  aggValue={weightedPerFte(loadedPerFte, staffFte, cols)}
+                  hint={loadFactor ? `on-costs +${((loadFactor - 1) * 100).toFixed(1)}% (NI, pension, cover)` : undefined} />
+              </tbody>
+            </table>
+          </div>
+
+          <p style={{ fontSize: 11, color: colors.muted, marginTop: 10 }}>
+            {Math.abs(revCheck) < 100 && Math.abs(ebitdaCheck) < 100
+              ? '✓ Ties to the P&L: revenue and EBITDA agree with the Profit & Loss tab for this scope and period.'
+              : `⚠ Tie-out variance vs P&L — revenue ${money(revCheck)}, EBITDA ${money(ebitdaCheck)}.`}
+            {' '}EBITDA excludes depreciation, interest and tax.
+          </p>
+        </>
+      )}
+    </Section>
+  );
+}
+
+// ── Allocation method sub-tab ───────────────────────────────────────────
+function AllocationPanel({
+  lineRows, activeBands, defaultBasis, setDefault,
+  basisByLine, setLineBasis, manualByLine, setLineManual, resetOverrides,
+}) {
+  const overrides = Object.keys(basisByLine).length;
+  return (
+    <div>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 12px' }}>
+        Choose how each indirect cost is pushed out to the age bands. With <em>Manual amounts</em>,
+        type what each band should carry and the balance stays in Central. Management time that
+        stands in the statutory ratio is allocated automatically and can't be overridden — it's
+        floor cover, not overhead.
       </p>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
         <span style={{ fontSize: 11, color: colors.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
           Default basis
         </span>
-        <select value={defaultBasis} onChange={(e) => setDefault(e.target.value)} style={{ ...selectStyle, minWidth: 200 }}>
+        <select value={defaultBasis} onChange={(e) => setDefault(e.target.value)} style={{ ...selectStyle, minWidth: 180 }}>
           {BASES.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
         </select>
-        <span style={{ fontSize: 11, color: colors.muted }}>
-          applies to any line left on <em>default</em>
-        </span>
-        {Object.keys(basisByLine).length > 0 && (
-          <button
-            onClick={() => { setBasisByLine({}); persist({ basisByLine: {} }); }}
-            style={{ background: 'transparent', border: `1px solid ${colors.border}`, borderRadius: 6,
-                     padding: '4px 10px', fontSize: 11, color: colors.muted, cursor: 'pointer', fontFamily: fontStack }}
-          >reset {Object.keys(basisByLine).length} override{Object.keys(basisByLine).length !== 1 ? 's' : ''}</button>
+        {overrides > 0 && (
+          <button onClick={resetOverrides} style={{
+            background: 'transparent', border: `1px solid ${colors.border}`, borderRadius: 6,
+            padding: '4px 10px', fontSize: 11, color: colors.muted, cursor: 'pointer', fontFamily: fontStack,
+          }}>reset {overrides} override{overrides !== 1 ? 's' : ''}</button>
         )}
       </div>
 
@@ -359,135 +499,78 @@ export default function PnlByBandView({
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
           <thead>
             <tr>
-              <th style={th}>&nbsp;</th>
-              <th style={{ ...th, minWidth: 150 }}>Allocate by</th>
-              {cols.map(c => (
-                <th key={c} style={{ ...th, textAlign: 'right', ...(c === CENTRAL ? { borderLeft: `1px solid ${colors.border}` } : {}) }}>
-                  {colLabel(c)}
-                </th>
-              ))}
-              <th style={{ ...th, textAlign: 'right', borderLeft: `1px solid ${colors.border}` }}>Total</th>
+              <th style={th}>Cost line</th>
+              <th style={{ ...th, textAlign: 'right' }}>Total</th>
+              <th style={th}>Allocate by</th>
+              {activeBands.map(b => <th key={b} style={{ ...th, textAlign: 'right' }}>{AGE_BAND_LABELS[b]}</th>)}
+              <th style={{ ...th, textAlign: 'right', borderLeft: `1px solid ${colors.border}` }}>Central</th>
             </tr>
           </thead>
           <tbody>
-            <SectionRow label="Income" nCols={nCols} />
-            <Row label="Private fees" m={revPrivate} cols={cols} total={total} />
-            <Row label="LA funded" m={revFunded} cols={cols} total={total} />
-            <Row label="Revenue" m={revenue} cols={cols} total={total} strong />
-
-            <SectionRow label="Room staff — ratio-driven, by role" nCols={nCols} />
-            {DIRECT_ROLES.filter(r => roomByRole[r.role]).map(r => (
-              <Row key={r.role} label={r.label} m={roomByRole[r.role]} cols={cols} total={total} negate indent />
-            ))}
-            {Object.keys(roomByRole).filter(role => !DIRECT_ROLES.some(r => r.role === role)).map(role => (
-              <Row key={role} label={role} m={roomByRole[role]} cols={cols} total={total} negate indent />
-            ))}
-            <Row label="Total room staff" m={roomStaff} cols={cols} total={total} negate strong />
-            <Row label="Contribution" m={contribution} cols={cols} total={total} strong />
-            <PctRow label="Contribution margin" num={contribution} den={revenue} cols={cols} total={total} />
-
-            <SectionRow label="Central costs" nCols={nCols} />
+            {lineRows.length === 0 && (
+              <tr><td colSpan={activeBands.length + 4} style={{ ...td, color: colors.muted }}>
+                No central costs in this period.
+              </td></tr>
+            )}
             {lineRows.map(line => (
-              <React.Fragment key={line.key}>
-                <Row
-                  label={line.label}
-                  m={line.spread}
-                  cols={cols}
-                  total={total}
-                  negate
-                  basisCell={
+              <tr key={line.key} style={{ borderBottom: `1px dotted ${colors.borderSoft}` }}>
+                <td style={td}>{line.label}</td>
+                <td style={tdR}>{money(line.amt)}</td>
+                <td style={td}>
+                  {line.auto ? (
+                    <Pill color={colors.green}>automatic</Pill>
+                  ) : (
                     <select
                       value={line.explicit ? line.effBasis : '__default__'}
                       onChange={(e) => setLineBasis(line.key, e.target.value)}
                       style={{
-                        padding: '3px 5px', fontSize: 11, fontFamily: fontStack, borderRadius: 6,
-                        border: `1px solid ${line.explicit ? colors.accent : colors.border}`,
-                        background: '#fff', maxWidth: 148,
+                        padding: '4px 6px', fontSize: 11, fontFamily: fontStack, borderRadius: 6,
+                        border: `1px solid ${line.explicit ? colors.accent : colors.border}`, background: '#fff',
                       }}
                     >
                       <option value="__default__">default · {basisLabel(defaultBasis)}</option>
                       {BASES.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
                     </select>
-                  }
-                />
-                {line.effBasis === 'manual' && (
-                  <tr>
-                    <td style={{ ...td, paddingLeft: 20, fontSize: 11, color: colors.muted, fontStyle: 'italic' }}>
-                      ↳ manual split
-                    </td>
-                    <td style={td}></td>
-                    {cols.map(c => (
-                      <td key={c} style={{ ...tdR, borderLeft: c === CENTRAL ? `1px solid ${colors.border}` : undefined }}>
-                        {c === CENTRAL ? (
-                          <span style={{ fontSize: 10, color: colors.muted }}>
-                            {line.allocatedOut ? '' : 'set a %'}
-                          </span>
-                        ) : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                            <input
-                              value={manualByLine[line.key]?.[c] ?? ''}
-                              onChange={(e) => setLineManual(line.key, c, e.target.value)}
-                              placeholder="0"
-                              inputMode="decimal"
-                              style={{ width: 48, padding: '2px 5px', textAlign: 'right', borderRadius: 5,
-                                       border: `1px solid ${colors.border}`, fontSize: 11, fontFamily: fontStack }}
-                            />
-                            <span style={{ fontSize: 10, color: colors.muted }}>%</span>
-                          </span>
-                        )}
-                      </td>
-                    ))}
-                    <td style={{ ...tdR, borderLeft: `1px solid ${colors.border}` }}>
-                      <Pill color={line.allocatedOut ? colors.green : colors.amber}>
-                        {activeBands.reduce((s, b) => s + (Number(manualByLine[line.key]?.[b]) || 0), 0).toFixed(0)}%
-                      </Pill>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
+                  )}
+                </td>
+                {activeBands.map(b => (
+                  <td key={b} style={tdR}>
+                    {line.effBasis === 'manual' && !line.auto ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                        <span style={{ fontSize: 10, color: colors.muted }}>£</span>
+                        <input
+                          value={manualByLine[line.key]?.[b] ?? ''}
+                          onChange={(e) => setLineManual(line.key, b, e.target.value)}
+                          placeholder="0"
+                          inputMode="decimal"
+                          style={{ width: 76, padding: '3px 6px', textAlign: 'right', borderRadius: 5,
+                                   border: `1px solid ${colors.border}`, fontSize: 11, fontFamily: fontStack }}
+                        />
+                      </span>
+                    ) : (
+                      <span style={{ color: colors.muted }}>{money(line.spread[b] ?? 0)}</span>
+                    )}
+                  </td>
+                ))}
+                <td style={{ ...tdR, borderLeft: `1px solid ${colors.border}`,
+                             color: (line.spread[CENTRAL] || 0) < 0 ? colors.red : colors.ink }}>
+                  {money(line.spread[CENTRAL] || 0)}
+                  {line.overTyped > 0 && (
+                    <span style={{ display: 'block', fontSize: 10, color: colors.red }}>
+                      over by {money(line.overTyped)}
+                    </span>
+                  )}
+                </td>
+              </tr>
             ))}
-            <Row label="Total central costs" m={allocated} cols={cols} total={total} negate strong />
-            {unallocated !== 0 && (
-              <PlainRow nCols={nCols} text={`${money(unallocated)} of central cost left in Central — set a basis on those lines to push it out to the bands.`} />
-            )}
-
-            <SectionRow label="Result" nCols={nCols} />
-            <Row label="EBITDA" m={ebitda} cols={cols} total={total} strong />
-            <PctRow label="EBITDA margin" num={ebitda} den={revenue} cols={cols} total={total} />
-
-            <SectionRow label="Operating metrics" nCols={nCols} />
-            <MetricRow label="Max kids (registered places)" m={maxKids} cols={cols}
-              fmt={(v) => v.toLocaleString('en-GB')} agg="sum" />
-            <MetricRow label="Average kids (FTE)" m={avgKids} cols={cols}
-              fmt={(v) => v.toFixed(1)} agg="sum" />
-            <MetricRow label="Average capacity %" m={capPct} cols={cols}
-              fmt={(v) => `${v.toFixed(1)}%`}
-              aggValue={sumOf(avgKids, cols) > 0 && sumOf(maxKids, cols) > 0
-                ? sumOf(avgKids, cols) / sumOf(maxKids, cols) * 100 : null} />
-            <MetricRow label="Staff (average FTE)" m={staffFte} cols={cols}
-              fmt={(v) => v.toFixed(1)} agg="sum" hint="room staff by band; management, cook and exec in Central" />
-            <MetricRow label="Average wage per FTE (annual)" m={wagePerFte} cols={cols}
-              fmt={money}
-              aggValue={weightedPerFte(wagePerFte, staffFte, cols)} />
-            <MetricRow label="Average fully loaded cost per FTE (annual)" m={loadedPerFte} cols={cols}
-              fmt={money}
-              aggValue={weightedPerFte(loadedPerFte, staffFte, cols)}
-              hint={loadFactor ? `on-costs +${((loadFactor - 1) * 100).toFixed(1)}% (NI, pension, cover)` : undefined} />
           </tbody>
         </table>
       </div>
-
-      <p style={{ fontSize: 11, color: colors.muted, marginTop: 10 }}>
-        {Math.abs(revCheck) < 100 && Math.abs(ebitdaCheck) < 100
-          ? '✓ Ties to the P&L: revenue and EBITDA agree with the Profit & Loss tab for this scope and period.'
-          : `⚠ Tie-out variance vs P&L — revenue ${money(revCheck)}, EBITDA ${money(ebitdaCheck)}.`}
-        {' '}EBITDA excludes depreciation, interest and tax. Manual splits are scaled pro-rata if they don't total 100%.
-      </p>
-    </Section>
+    </div>
   );
 }
 
-function Row({ label, m, cols, total, strong, negate, indent, basisCell }) {
+function Row({ label, sub, m, cols, total, strong, negate, indent }) {
   const v = (c) => {
     const raw = m[c];
     if (raw == null) return null;
@@ -496,8 +579,10 @@ function Row({ label, m, cols, total, strong, negate, indent, basisCell }) {
   const tot = negate ? -total(m) : total(m);
   return (
     <tr style={{ borderBottom: `1px dotted ${colors.borderSoft}`, background: strong ? colors.bgSoft : '#fff' }}>
-      <td style={{ ...td, fontWeight: strong ? 700 : 400, paddingLeft: indent ? 20 : 8 }}>{label}</td>
-      <td style={td}>{basisCell || null}</td>
+      <td style={{ ...td, fontWeight: strong ? 700 : 400, paddingLeft: indent ? 20 : 8 }}>
+        {label}
+        {sub && <span style={{ display: 'block', fontSize: 10, color: colors.muted }}>{sub}</span>}
+      </td>
       {cols.map(c => {
         const val = v(c);
         return (
@@ -525,8 +610,6 @@ const weightedPerFte = (perFte, fte, cols) => {
   return den > 0 ? num / den : null;
 };
 
-// Non-money metric row: `agg` 'sum' totals the columns, or pass an explicit
-// aggValue for figures that can't simply be added (rates, per-FTE averages).
 function MetricRow({ label, m, cols, fmt, agg, aggValue, hint }) {
   const totalVal = aggValue !== undefined ? aggValue : (agg === 'sum' ? sumOf(m, cols) : null);
   return (
@@ -535,7 +618,6 @@ function MetricRow({ label, m, cols, fmt, agg, aggValue, hint }) {
         {label}
         {hint && <span style={{ display: 'block', fontSize: 10, color: colors.muted }}>{hint}</span>}
       </td>
-      <td style={td}></td>
       {cols.map(c => (
         <td key={c} style={{ ...tdR, borderLeft: c === CENTRAL ? `1px solid ${colors.border}` : undefined }}>
           {m[c] == null ? '—' : fmt(m[c])}
@@ -553,7 +635,6 @@ function PctRow({ label, num, den, cols, total }) {
   return (
     <tr style={{ borderBottom: `1px dotted ${colors.borderSoft}` }}>
       <td style={{ ...td, color: colors.muted }}>{label}</td>
-      <td style={td}></td>
       {cols.map(c => (
         <td key={c} style={{ ...tdR, color: colors.muted,
                              borderLeft: c === CENTRAL ? `1px solid ${colors.border}` : undefined }}>
