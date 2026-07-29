@@ -300,6 +300,22 @@ Supabase Auth settings.
    1 and 2 are privilege-only and reversible; §3 rewrites
    `search_entities_for_wizard` and `merge_people` with guards. Verification
    queries are at the foot of the file.
+
+   Dry-run end-to-end in a rolled-back transaction: signed-in non-admin staff
+   see identical row counts on all twelve views plus the wizard search, and
+   `anon` is denied everywhere. Two things that dry run caught, both now fixed
+   in the file and worth knowing if you write similar migrations:
+
+   - **`security_invoker` breaks three of the twelve views** —
+     `v_gmail_connections`, `v_reminder_autoqueue`, `v_bug_review_config` go to
+     0 rows for staff, because their base tables have RLS with no SELECT policy
+     (or a portal-admin-only one). The bypass is those views' *purpose*. They
+     keep SECURITY DEFINER and get an in-view `is_active_staff()` guard instead
+     — which `v_gmail_connections` already had, so it needs no change at all.
+   - **`REVOKE … FROM anon` alone does nothing here.** `proacl` shows both a
+     PUBLIC grant (`=X/postgres`) and an explicit `anon=X`. Revoking one leaves
+     the other; a first draft left 68 of 80 functions still anon-executable.
+     Must be `REVOKE … FROM public, anon`.
 2. **Decide on the disclosure question for finding 1.** Supabase logs
    (`postgrest` request logs) will show whether any anon-role request ever hit
    those view paths from outside the app. Worth pulling before the retention
