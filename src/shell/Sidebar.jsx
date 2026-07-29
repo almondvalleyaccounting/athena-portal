@@ -112,7 +112,12 @@ export default function Sidebar() {
 
   const isOwner = profile?.can_manage_portal === true;
   const canImport = profile?.can_import_data === true || profile?.is_portal_admin === true;
-  const canAdminTasks = profile?.can_view_onboarding === true || profile?.is_portal_admin === true;
+  // Anyone with Work sees the Admin Task List — it's practice admin, part of
+  // the same day job as the planner. Onboarding/portal-admin stay in the OR so
+  // they keep access without needing the work_planner flag.
+  const canAdminTasks = profile?.work_planner === true
+    || profile?.can_view_onboarding === true
+    || profile?.is_portal_admin === true;
   // Settings group (formerly "Admin") — personal settings for everyone,
   // admin-only screens gated per child. /admin/* routes stay as-is.
   const adminChildren = [
@@ -282,9 +287,9 @@ export default function Sidebar() {
           let kids = visibleChildren(mod.children);
           // Admin Task List lives under Work now — it's practice admin (BM
           // task keying, escalations), not system admin. Its OR-based
-          // permission (can_view_onboarding OR is_portal_admin) doesn't fit
-          // the AND-only modules.config model, so it's injected here rather
-          // than declared as a static child.
+          // permission (see canAdminTasks above) doesn't fit the AND-only
+          // modules.config model, so it's injected here rather than declared
+          // as a static child.
           if (mod.id === 'work-planner' && canAdminTasks) {
             kids = [...kids, { id: 'wp-tasks', label: 'Admin Task List', route: '/planner/tasks' }];
           }
