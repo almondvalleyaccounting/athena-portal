@@ -1,5 +1,28 @@
 -- 170_security_hardening.sql
 --
+-- ██ APPLIED TO PRODUCTION 2026-07-30. Rollback: sql/170_rollback.sql ██
+--
+-- Post-apply verification, run against prod after applying:
+--   anon-executable SECURITY DEFINER fns = 12 (the RLS helpers only)
+--   views with ANY anon privilege        = 0
+--   non-admin staff, every view unchanged from baseline:
+--     job_schedule 2034  email_recon 640  client_groups 626  group_links 1115
+--     group_pairs 1779   bm_load 1954     allocations 915    cadence 909
+--     capacity 264       MAILBOXES 3      autoqueue 1        bug_cfg 1
+--     wizard_search 5
+--   portal admin: mailboxes 3
+--   anon: every view and RPC DENIED (job schedule, email recon, client groups,
+--     client directory, bulk dedupe, merge_people, send_chasers), entities 0,
+--     is_active_staff() still callable returning false so RLS evaluates cleanly
+--
+-- A follow-up addendum (migration security_hardening_170b_revoke_residual_anon_
+-- view_privs) also revoked anon's leftover INSERT/UPDATE/DELETE/TRUNCATE/
+-- REFERENCES/TRIGGER/MAINTAIN on the same twelve views. Unusable in practice —
+-- writing through a view also needs SELECT on its WHERE columns, and anon
+-- probing returned "permission denied" — but it meant a future SELECT grant
+-- would silently restore a write path into bug_review_config and
+-- reminder_autoqueue_config, which are auto-updatable and run as owner.
+--
 -- Closes the unauthenticated data-exposure hole found in the 2026-07-29 audit
 -- (see docs/SECURITY_AUDIT_2026-07-29.md, findings 1-4).
 --

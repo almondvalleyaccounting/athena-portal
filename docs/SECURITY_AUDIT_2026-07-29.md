@@ -294,9 +294,23 @@ Supabase Auth settings.
 
 ---
 
+## Status
+
+**Findings 1–4 are CLOSED in production as of 2026-07-30** —
+`sql/170_security_hardening.sql` plus the 170b addendum. Verified after
+applying: `anon` is denied on all twelve views and every non-helper SECURITY
+DEFINER function (12 remain executable, all RLS predicate helpers), holds zero
+privileges on those views, and reads 0 rows from `entities`. Non-admin staff
+row counts are unchanged on all twelve views plus the wizard search. Rollback:
+`sql/170_rollback.sql`.
+
+Findings 5–9 remain open.
+
+---
+
 ## Next steps, in order
 
-1. **Apply `sql/170_security_hardening.sql`.** Closes findings 1–4. Sections
+1. ~~**Apply `sql/170_security_hardening.sql`.**~~ **Done 2026-07-30.** Sections
    1 and 2 are privilege-only and reversible; §3 rewrites
    `search_entities_for_wizard` and `merge_people` with guards. Verification
    queries are at the foot of the file.
