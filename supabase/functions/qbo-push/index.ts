@@ -243,6 +243,15 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: "Some services are not yet mapped to QBO items", missing_mappings: missingMappings }, 409);
     }
 
+    // Mandatory: a configured sales VAT code. buildLineItem simply omits
+    // TaxCodeRef when this is null, which QBO accepts — producing a silent
+    // zero-VAT invoice or recurring template rather than an error. Refuse
+    // instead: a wrong-VAT document that looks fine is worse than a blocked
+    // push. (The 2026-07-21 reconnect wiped this setting; see sql/171.)
+    if (!defaultTaxCodeId) {
+      return jsonResponse({ success: false, error: "No sales VAT code is configured on the QuickBooks connection, so VAT cannot be applied. Set qbo_connections.default_tax_code_id before committing." }, 409);
+    }
+
     // Mandatory: client email + address must be present before we create
     // anything in QBO.
     if (missingContact.length > 0) {

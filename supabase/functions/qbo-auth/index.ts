@@ -211,6 +211,20 @@ async function handleCallback(url: URL) {
   }
 
   // ── Billing mode: full token storage (existing behaviour) ──
+  // Reconnecting supersedes the old row rather than updating it, so the
+  // per-realm billing settings have to be carried across by hand. They are
+  // not re-enterable anywhere in the UI, and losing the tax code silently
+  // breaks every push (QBO rejects the invoice with "error while calculating
+  // tax" once the code falls back to a guess). Read before superseding.
+  const { data: prior } = await sb
+    .from("qbo_connections")
+    .select("default_tax_code_id, default_tax_code_name, default_due_date_offset_days")
+    .eq("realm_id", realmId)
+    .not("default_tax_code_id", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   await sb.from("qbo_connections").update({
     status: "disconnected",
     updated_at: new Date().toISOString(),
@@ -226,6 +240,9 @@ async function handleCallback(url: URL) {
     scope: tokens.scope || "com.intuit.quickbooks.accounting",
     connected_by: userId || null,
     status: "active",
+    default_tax_code_id: prior?.default_tax_code_id ?? null,
+    default_tax_code_name: prior?.default_tax_code_name ?? null,
+    default_due_date_offset_days: prior?.default_due_date_offset_days ?? 14,
   });
   if (insertErr) {
     console.error("Failed to store QBO connection:", insertErr);

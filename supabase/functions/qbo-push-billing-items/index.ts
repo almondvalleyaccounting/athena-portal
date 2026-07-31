@@ -622,10 +622,24 @@ async function resolveStandardTaxCode(): Promise<string | null> {
   const qr = (result?.QueryResponse as Record<string, unknown>) || {};
   const codes = (qr.TaxCode as Array<Record<string, unknown>>) || [];
 
-  const active = codes.filter((c) => c.Active !== false);
-  const byTwenty = active.find((c) => /20/.test(String(c.Name || "")));
+  // A UK company's TaxCode list is mostly codes that are NOT usable on a
+  // plain domestic sales invoice: reverse charge (RC), EC goods/services,
+  // imports, CIS. Several are named "20.0% ..." too, so a bare /20/ match can
+  // land on one — QBO then rejects the invoice with "error while calculating
+  // tax". Keep only codes that carry a sales rate and aren't special-scheme.
+  const SPECIAL = /\b(RC|EC[GS]?|MPCC|import|reverse|CIS)\b/i;
+  const usable = codes.filter((c) => {
+    if (c.Active === false) return false;
+    const salesRates = (c.SalesTaxRateList as { TaxRateDetail?: unknown[] } | undefined)?.TaxRateDetail;
+    if (!Array.isArray(salesRates) || salesRates.length === 0) return false;
+    return !SPECIAL.test(String(c.Name || ""));
+  });
+
+  const exactStandard = usable.find((c) => /^20(\.0+)?%\s*S$/i.test(String(c.Name || "").trim()));
+  if (exactStandard) return String(exactStandard.Id);
+  const byTwenty = usable.find((c) => /20/.test(String(c.Name || "")));
   if (byTwenty) return String(byTwenty.Id);
-  const byStandard = active.find((c) => /\bS\b/.test(String(c.Name || "")) || /standard/i.test(String(c.Description || "")));
+  const byStandard = usable.find((c) => /\bS\b/.test(String(c.Name || "")) || /standard/i.test(String(c.Description || "")));
   if (byStandard) return String(byStandard.Id);
   return null;
 }
