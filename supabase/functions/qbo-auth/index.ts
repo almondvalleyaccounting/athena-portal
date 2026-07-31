@@ -249,11 +249,13 @@ async function handleCallback(url: URL) {
     return redirect(`${PORTAL_URL}${base}?qbo=error&message=Failed+to+store+connection`);
   }
 
+  // audit_log's actor column is user_id — "performed_by" silently failed the
+  // insert, which is why the 2026-07-21 reconnect left no audit trail.
   await sb.from("audit_log").insert({
     action: "qbo_connected",
     entity_type: "qbo_connection",
     detail: { realm_id: realmId, company_name: companyName },
-    performed_by: userId || null,
+    user_id: userId || null,
   });
 
   return redirect(`${PORTAL_URL}${base}?qbo=connected`);
