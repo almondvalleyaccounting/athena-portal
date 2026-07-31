@@ -33,7 +33,10 @@ export default function BillingPage() {
   const [selected, setSelected] = useState(new Set());
   const [showPushConfirm, setShowPushConfirm] = useState(false);
   const [pushing, setPushing] = useState(false);
-  const [sendMode, setSendMode] = useState('send'); // 'send' | 'draft'
+  const [sendMode, setSendMode] = useState('send'); // bulk default for rows not set individually
+  // Per-item send/draft, keyed by billing_item_id. A row only appears here
+  // once it's been toggled on its own; everything else follows sendMode.
+  const [sendModes, setSendModes] = useState({});
   const [dueDays, setDueDays] = useState(14);
   const [pushResults, setPushResults] = useState(null); // { summary, results } | { error }
   const [preview, setPreview] = useState(null); // dry-run plan rows
@@ -214,6 +217,14 @@ export default function BillingPage() {
   const contactOf = (id) => contacts[id] || { email: '', line1: '', line2: '', city: '', postcode: '' };
   const setContact = (id, patch) => setContacts((prev) => ({ ...prev, [id]: { ...contactOf(id), ...patch } }));
   const isContactReady = (id) => { const c = contactOf(id); return !!(c.email?.trim() && c.line1?.trim() && c.postcode?.trim()); };
+  // Send/draft resolves per item: its own choice if it has one, else the bulk
+  // default. An item with no email can only ever be a draft.
+  const sendModeOf = (id) => sendModes[id] || sendMode;
+  const willSendItem = (id) => sendModeOf(id) === 'send' && !!contactOf(id).email?.trim();
+  const setSendModeFor = (id, mode) => setSendModes((prev) => ({ ...prev, [id]: mode }));
+  // The bulk buttons are a "set everything to this" action, not a separate
+  // setting — otherwise a per-row choice made earlier would silently survive.
+  const setAllSendModes = (mode) => { setSendMode(mode); setSendModes({}); };
 
   // Turn the editor rows into the stored line array + invoice totals + a
   // short `service` summary for the list view.
@@ -286,6 +297,10 @@ export default function BillingPage() {
   // Email + address (line 1 + postcode) are mandatory before any push.
   const notReadyTargets = pushTargets.filter((i) => !isContactReady(i.id));
   const allContactsReady = pushTargets.length > 0 && notReadyTargets.length === 0;
+  // How the batch currently splits, for the bulk buttons and the submit label.
+  const sendCount = pushTargets.filter((i) => willSendItem(i.id)).length;
+  const draftCount = pushTargets.length - sendCount;
+  const mixedSend = sendCount > 0 && draftCount > 0;
 
   const handleBatchPush = async () => {
     setPushing(true);
@@ -306,12 +321,18 @@ export default function BillingPage() {
         }).eq('id', entId)
       ));
 
+      // Resolve every row explicitly rather than relying on the bulk flag, so
+      // what the modal showed is exactly what the push does.
+      const sendMap = {};
+      for (const it of pushTargets) sendMap[it.id] = sendModeOf(it.id) === 'send';
+
       const result = await pushBillingItems(
         pushTargets.map((i) => i.id),
         sendMode === 'send',
         profile?.id,
         false,
         Number(dueDays) >= 0 ? Number(dueDays) : 14,
+        sendMap,
       );
       setPushResults(result);
       await loadData();
@@ -330,7 +351,7 @@ export default function BillingPage() {
   // draft) before committing. Doesn't depend on sendMode — the send/draft
   // line is derived client-side from the plan's has_email flag.
   useEffect(() => {
-    if (!showPushConfirm) { setPreview(null); setPreviewError(null); setContacts({}); setContactIndex(0); return; }
+    if (!showPushConfirm) { setPreview(null); setPreviewError(null); setContacts({}); setContactIndex(0); setSendModes({}); return; }
     let cancelled = false;
     const ids = pushTargets.map((i) => i.id);
     if (ids.length === 0) return;
@@ -615,16 +636,79 @@ export default function BillingPage() {
               You are about to create QuickBooks invoices for <b>{pushTargets.length} approved billing item{pushTargets.length!==1?'s':''}</b> (VAT at the standard 20% rate).
             </p>
 
-            {/* Send mode */}
+            {/* Send mode — bulk setter. Each row can still be flipped
+                individually in the Send column of the list below. */}
             <div style={{display:'flex',gap:8,marginBottom:16}}>
-              <button onClick={()=>setSendMode('send')} style={{...modeBtn, ...(sendMode==='send'?modeBtnActive:{})}}>
-                <div style={{fontWeight:600,fontSize:13}}>Create &amp; send now</div>
-                <div style={{fontSize:11,color:'#64748b'}}>Email each invoice to the client immediately</div>
+              <button onClick={()=>setAllSendModes('send')} style={{...modeBtn, ...(sendMode==='send'&&!mixedSend?modeBtnActive:{})}}>
+                <div style={{fontWeight:600,fontSize:13}}>Send all now</div>
+                <div style={{fontSize:11,color:'#64748b'}}>Email every invoice to the client immediately</div>
               </button>
-              <button onClick={()=>setSendMode('draft')} style={{...modeBtn, ...(sendMode==='draft'?modeBtnActive:{})}}>
-                <div style={{fontWeight:600,fontSize:13}}>Create as draft</div>
+              <button onClick={()=>setAllSendModes('draft')} style={{...modeBtn, ...(sendMode==='draft'&&!mixedSend?modeBtnActive:{})}}>
+                <div style={{fontWeight:600,fontSize:13}}>All as drafts</div>
                 <div style={{fontSize:11,color:'#64748b'}}>Don&apos;t send — you&apos;ll send these from QBO later</div>
               </button>
+            </div>
+
+            {/* The invoices being pushed. Top of the modal: this is the thing
+                being confirmed, and the Send column is where each one is set
+                to email now or hold as a draft. */}
+            <div style={{background:'#f8fafc',borderRadius:8,padding:'8px 14px',marginBottom:20,maxHeight:380,overflowY:'auto'}}>
+              {previewLoading && <div style={{fontSize:12,color:'#94a3b8',padding:'4px 0'}}>Checking QuickBooks…</div>}
+              {previewError && <div style={{fontSize:12,color:'#b91c1c',padding:'4px 0'}}>Couldn&apos;t load preview: {previewError}</div>}
+              {/* Header */}
+              <div style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,padding:'4px 0',fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.04em',borderBottom:'1px solid #e5e7eb'}}>
+                <span>Client</span><span>Service</span><span>Type</span><span>Customer</span><span>Send</span>
+                <span style={{textAlign:'right'}}>Net</span><span style={{textAlign:'right'}}>VAT</span><span style={{textAlign:'right'}}>Gross</span>
+              </div>
+              {pushTargets.map((item,idx)=>{
+                const p = preview?.find((r)=>r.billing_item_id===item.id);
+                // Send/ready derive from the LIVE edited contact, not the
+                // pre-edit dry-run, so the row reflects gaps the user is fixing.
+                const cc = contactOf(item.id);
+                const liveEmail = cc.email?.trim();
+                const ready = isContactReady(item.id);
+                const mode = sendModeOf(item.id);
+                const willSend = willSendItem(item.id);
+                const isCurrent = Math.min(contactIndex,pushTargets.length-1)===idx;
+                return (
+                  <div key={item.id} onClick={()=>setContactIndex(idx)} style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,alignItems:'center',padding:'7px 4px',borderBottom:'1px solid #f1f5f9',fontSize:12,cursor:'pointer',background:isCurrent?'#eff6ff':'transparent',borderRadius:6}}>
+                    <span style={ellip} title={entityMap[item.entity_id]?.name}>{!ready && <span style={{color:'#b45309'}} title="Needs email + address">⚠ </span>}{entityMap[item.entity_id]?.name||'—'}</span>
+                    <span style={{...ellip,color:(p?.unmapped?.length>0)?'#b45309':'#475569'}} title={(p?.unmapped?.length>0)?`No QuickBooks product mapped for: ${p.unmapped.join(', ')} — map it (qbo_service_items) before pushing or this line will error`:(item.description||item.service)}>{(p?.unmapped?.length>0)?<span title="Service not mapped to a QuickBooks product">⚠ </span>:null}{item.service}</span>
+                    <span style={{color:'#64748b'}}>One-off</span>
+                    <span style={{color:p?.customer_action==='create'?'#b45309':'#475569',fontWeight:500}}>{!p?'…':p.customer_action==='create'?'New':'Existing'}</span>
+                    {/* Per-item send/draft. Clicking must not also move the
+                        contact editor, hence stopPropagation. */}
+                    <span onClick={(e)=>e.stopPropagation()} style={{display:'flex',alignItems:'center',gap:4,minWidth:0}}>
+                      <span style={{display:'inline-flex',border:'1px solid #e5e7eb',borderRadius:6,overflow:'hidden',flexShrink:0}}>
+                        <button
+                          onClick={()=>setSendModeFor(item.id,'send')}
+                          disabled={pushing||!liveEmail}
+                          title={liveEmail?`Email this invoice to ${liveEmail} on push`:'Needs an email before it can be sent'}
+                          style={{...sendToggleBtn, ...(mode==='send'&&liveEmail?sendToggleSend:{}), opacity:liveEmail?1:0.4, cursor:liveEmail?'pointer':'not-allowed'}}
+                        >Send</button>
+                        <button
+                          onClick={()=>setSendModeFor(item.id,'draft')}
+                          disabled={pushing}
+                          title="Create it in QuickBooks but don't email it"
+                          style={{...sendToggleBtn, borderLeft:'1px solid #e5e7eb', ...(mode==='draft'||!liveEmail?sendToggleDraft:{})}}
+                        >Draft</button>
+                      </span>
+                      {willSend && <span style={{...ellip,color:'#059669',fontSize:11}} title={liveEmail}>→ {liveEmail}</span>}
+                      {mode==='send' && !liveEmail && <span style={{color:'#b45309',fontSize:11}} title="No email on file — this will be created as a draft">no email</span>}
+                    </span>
+                    <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.net_amount)}</span>
+                    <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.vat_amount)}</span>
+                    <span style={{textAlign:'right',fontFamily:'monospace',fontWeight:600,color:'#0f172a'}}>{fmt(item.gross_amount)}</span>
+                  </div>
+                );
+              })}
+              {/* Totals */}
+              <div style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,padding:'8px 0 0',borderTop:'2px solid #e5e7eb',marginTop:2,fontSize:13,fontWeight:700}}>
+                <span style={{gridColumn:'1 / 6'}}>Total ({pushTargets.length})</span>
+                <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.net_amount||0),0))}</span>
+                <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.vat_amount||0),0))}</span>
+                <span style={{textAlign:'right',fontFamily:'monospace',color:'#0e7fe0'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.gross_amount||0),0))}</span>
+              </div>
             </div>
 
             {/* Payment terms */}
@@ -714,48 +798,6 @@ export default function BillingPage() {
                 )}
               </div>
             )}
-            <div style={{background:'#f8fafc',borderRadius:8,padding:'8px 14px',marginBottom:20,maxHeight:380,overflowY:'auto'}}>
-              {previewLoading && <div style={{fontSize:12,color:'#94a3b8',padding:'4px 0'}}>Checking QuickBooks…</div>}
-              {previewError && <div style={{fontSize:12,color:'#b91c1c',padding:'4px 0'}}>Couldn&apos;t load preview: {previewError}</div>}
-              {/* Header */}
-              <div style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,padding:'4px 0',fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.04em',borderBottom:'1px solid #e5e7eb'}}>
-                <span>Client</span><span>Service</span><span>Type</span><span>Customer</span><span>Send</span>
-                <span style={{textAlign:'right'}}>Net</span><span style={{textAlign:'right'}}>VAT</span><span style={{textAlign:'right'}}>Gross</span>
-              </div>
-              {pushTargets.map((item,idx)=>{
-                const p = preview?.find((r)=>r.billing_item_id===item.id);
-                // Send/ready derive from the LIVE edited contact, not the
-                // pre-edit dry-run, so the row reflects gaps the user is fixing.
-                const cc = contactOf(item.id);
-                const liveEmail = cc.email?.trim();
-                const ready = isContactReady(item.id);
-                const willSend = sendMode==='send' && !!liveEmail;
-                const sendText = willSend ? `Now → ${liveEmail}`
-                  : (sendMode==='send' && !liveEmail) ? 'Later (no email)'
-                  : 'Later (manual)';
-                const sendColor = willSend ? '#059669' : (sendMode==='send' && !liveEmail) ? '#b45309' : '#64748b';
-                const isCurrent = Math.min(contactIndex,pushTargets.length-1)===idx;
-                return (
-                  <div key={item.id} onClick={()=>setContactIndex(idx)} style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,alignItems:'center',padding:'7px 4px',borderBottom:'1px solid #f1f5f9',fontSize:12,cursor:'pointer',background:isCurrent?'#eff6ff':'transparent',borderRadius:6}}>
-                    <span style={ellip} title={entityMap[item.entity_id]?.name}>{!ready && <span style={{color:'#b45309'}} title="Needs email + address">⚠ </span>}{entityMap[item.entity_id]?.name||'—'}</span>
-                    <span style={{...ellip,color:(p?.unmapped?.length>0)?'#b45309':'#475569'}} title={(p?.unmapped?.length>0)?`No QuickBooks product mapped for: ${p.unmapped.join(', ')} — map it (qbo_service_items) before pushing or this line will error`:(item.description||item.service)}>{(p?.unmapped?.length>0)?<span title="Service not mapped to a QuickBooks product">⚠ </span>:null}{item.service}</span>
-                    <span style={{color:'#64748b'}}>One-off</span>
-                    <span style={{color:p?.customer_action==='create'?'#b45309':'#475569',fontWeight:500}}>{!p?'…':p.customer_action==='create'?'New':'Existing'}</span>
-                    <span style={{...ellip,color:sendColor}} title={liveEmail||sendText}>{sendText}</span>
-                    <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.net_amount)}</span>
-                    <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.vat_amount)}</span>
-                    <span style={{textAlign:'right',fontFamily:'monospace',fontWeight:600,color:'#0f172a'}}>{fmt(item.gross_amount)}</span>
-                  </div>
-                );
-              })}
-              {/* Totals */}
-              <div style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,padding:'8px 0 0',borderTop:'2px solid #e5e7eb',marginTop:2,fontSize:13,fontWeight:700}}>
-                <span style={{gridColumn:'1 / 6'}}>Total ({pushTargets.length})</span>
-                <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.net_amount||0),0))}</span>
-                <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.vat_amount||0),0))}</span>
-                <span style={{textAlign:'right',fontFamily:'monospace',color:'#0e7fe0'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.gross_amount||0),0))}</span>
-              </div>
-            </div>
             {!allContactsReady && pushTargets.length>0 && !previewLoading && (
               <p style={{fontSize:12,color:'#b45309',marginBottom:8}}>
                 {notReadyTargets.length} {notReadyTargets.length===1?'item needs':'items need'} an email + address (line 1 + postcode) before you can push.
@@ -764,7 +806,10 @@ export default function BillingPage() {
             <div style={{display:'flex',gap:10}}>
               <button onClick={()=>{setShowPushConfirm(false);setPushResults(null);}} style={{...btnOutline,flex:1}}>{pushResults && !pushResults.error ? 'Close' : 'Cancel'}</button>
               <button onClick={handleBatchPush} disabled={pushing || !allContactsReady} style={{...btnPrimary,flex:1,background:'#059669',justifyContent:'center',opacity:(pushing||!allContactsReady)?0.5:1}}>
-                {pushing?'Pushing...':(sendMode==='send'?'Create & send':'Create drafts')}
+                {pushing ? 'Pushing...'
+                  : mixedSend ? `Send ${sendCount} · draft ${draftCount}`
+                  : sendCount > 0 ? `Create & send ${sendCount}`
+                  : `Create ${draftCount} draft${draftCount!==1?'s':''}`}
               </button>
             </div>
           </div>
@@ -866,7 +911,11 @@ const btnOutline = {display:'inline-flex',alignItems:'center',gap:4,padding:'8px
 const inputStyle = {width:'100%',padding:'8px 12px',fontSize:13,border:'1px solid #e5e7eb',borderRadius:8,outline:'none',fontFamily:"'Outfit', sans-serif",boxSizing:'border-box'};
 const modeBtn = {flex:1,textAlign:'left',padding:'10px 12px',borderRadius:10,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",color:'#0f172a'};
 const navBtn = {padding:'2px 8px',borderRadius:6,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",fontSize:13,color:'#475569'};
-const INVOICE_COLS = '1.5fr 1.1fr 0.6fr 0.8fr 1.8fr 0.8fr 0.7fr 0.85fr';
+const INVOICE_COLS = '1.4fr 1fr 0.55fr 0.7fr 2.2fr 0.8fr 0.7fr 0.85fr';
+// Per-row Send/Draft toggle in the push-confirm list.
+const sendToggleBtn = {padding:'3px 8px',fontSize:11,fontWeight:600,border:'none',background:'#fff',color:'#94a3b8',cursor:'pointer',fontFamily:"'Outfit', sans-serif",lineHeight:1.5};
+const sendToggleSend = {background:'#059669',color:'#fff'};
+const sendToggleDraft = {background:'#e2e8f0',color:'#334155'};
 const LINE_COLS = '1.3fr 1.8fr 0.9fr 0.9fr 0.9fr 32px';
 // A fresh, empty editor line.
 function blankLine() { return { service: '', description: '', net: '', vat: '', gross: '', vatManual: false }; }

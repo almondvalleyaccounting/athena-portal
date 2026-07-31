@@ -17,9 +17,12 @@ import { getServiceClient, qboFetch, qboQuery, logSync, jsonResponse, corsHeader
 //   -> the live recurring template's BillEmail/BillAddr -> a group member's
 //   address. A portal-user address is surfaced as a read-only hint.
 //
-// Input: { billing_item_ids: string[], send: boolean, dry_run?: boolean, due_days?: number, initiated_by?: string }
+// Input: { billing_item_ids: string[], send: boolean, send_map?: Record<id, boolean>,
+//          dry_run?: boolean, due_days?: number, initiated_by?: string }
 //   send=true  -> create + email the invoice (QBO SendInvoice)
 //   send=false -> create only; team sends from QBO later
+//   send_map   -> per-item override of `send`, keyed by billing_item_id, so a
+//                 single batch can mix invoices to email now with drafts
 //   due_days   -> payment terms; DueDate = invoice date + due_days (default 14)
 //   dry_run=true -> read-only plan (no QBO/DB writes).
 //
@@ -52,7 +55,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "POST required" }, 405);
   }
 
-  let body: { billing_item_ids?: string[]; send?: boolean; dry_run?: boolean; refresh?: boolean; list_invoices?: boolean; check_settings?: boolean; assign_numbers?: boolean; entity_id?: string; due_days?: number; initiated_by?: string };
+  let body: { billing_item_ids?: string[]; send?: boolean; send_map?: Record<string, boolean>; dry_run?: boolean; refresh?: boolean; list_invoices?: boolean; check_settings?: boolean; assign_numbers?: boolean; entity_id?: string; due_days?: number; initiated_by?: string };
   try {
     body = await req.json();
   } catch {
@@ -61,6 +64,11 @@ Deno.serve(async (req) => {
 
   const ids = Array.isArray(body.billing_item_ids) ? body.billing_item_ids : [];
   const send = body.send !== false; // default to sending
+  // Per-item send/draft override, keyed by billing_item_id. The confirm
+  // modal sets one per row; `send` is only the fallback for ids it omits.
+  const sendMap = (body.send_map && typeof body.send_map === "object") ? body.send_map : null;
+  const sendFor = (id: string): boolean =>
+    (sendMap && Object.prototype.hasOwnProperty.call(sendMap, id)) ? !!sendMap[id] : send;
   // Invoice payment terms: due N days after the invoice date (default 14).
   const dueDays = Number.isFinite(Number(body.due_days)) && Number(body.due_days) >= 0 ? Number(body.due_days) : 14;
   const sb = getServiceClient();
@@ -385,9 +393,10 @@ Deno.serve(async (req) => {
       const qboDocNumber = created_.Invoice.DocNumber != null ? String(created_.Invoice.DocNumber) : null;
       let qboEmailStatus = created_.Invoice.EmailStatus ? String(created_.Invoice.EmailStatus) : null;
 
-      // 5. Send now, or leave as draft.
+      // 5. Send now, or leave as draft — per-item choice from the modal.
+      const sendThis = sendFor(item.id);
       let finalStatus: ItemResult["status"];
-      if (send && email) {
+      if (sendThis && email) {
         const sendResp = await qboFetch(`invoice/${qboInvoiceId}/send?sendTo=${encodeURIComponent(email)}`, {
           method: "POST",
         });
@@ -425,7 +434,7 @@ Deno.serve(async (req) => {
         status: finalStatus,
         qbo_invoice_id: qboInvoiceId,
         qbo_doc_number: qboDocNumber,
-        reason: finalStatus === "created_unsent" && send && !email ? "no client email on file - created as draft" : undefined,
+        reason: finalStatus === "created_unsent" && sendThis && !email ? "no client email on file - created as draft" : undefined,
       });
 
       await logSync({
