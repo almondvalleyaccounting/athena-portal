@@ -29,6 +29,7 @@ import {
   formatGBP,
   GroupCompany,
   LineItem,
+  money,
   renderBreakdownHtml,
   renderGroupBreakdownHtml,
 } from "../_shared/email-format.ts";
@@ -73,10 +74,19 @@ function renderEmailHtml(opts: {
 
   const ref = escapeHtml(String(quote.quote_ref ?? ""));
   const client = escapeHtml(String(quote.relationship_group ?? "Client"));
-  const monthly = formatGBP(quote.monthly_gross as number);
-  const annual = formatGBP(quote.annual_total as number);
   const validUntil = formatDateGB(quote.valid_until as string);
   const breakdownBlock = renderBreakdownHtml(lineItems);
+
+  // quotes.annual_total is NET. It was previously labelled "Annual total (inc
+  // VAT)", which made the monthly DD look like it was over 10 months or
+  // carrying interest (12 x DD did not equal the stated annual). Show the net
+  // annual, the VAT, and the gross annual as three separate lines, and derive
+  // the gross annual from the DD so 12 x DD always reconciles exactly.
+  const monthlyGross = Number(quote.monthly_gross) || 0;
+  const annualNet = Number(quote.annual_total) || 0;
+  const annualGross = money(monthlyGross * 12);
+  const annualVat = money(annualGross - annualNet);
+  const monthly = formatGBP(monthlyGross);
 
   const acceptBlock = acceptUrl
     ? `
@@ -124,12 +134,20 @@ function renderEmailHtml(opts: {
                     <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${client}</td>
                   </tr>
                   <tr>
-                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Monthly DD (inc VAT)</td>
-                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;font-weight:600;">${monthly}</td>
+                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Annual total (net)</td>
+                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${formatGBP(annualNet)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">VAT at 20%</td>
+                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${formatGBP(annualVat)}</td>
                   </tr>
                   <tr>
                     <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Annual total (inc VAT)</td>
-                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${annual}</td>
+                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;font-weight:600;">${formatGBP(annualGross)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Monthly Direct Debit (inc VAT)<div style="font-size:11px;color:#94a3b8;margin-top:2px;">12 instalments of ${monthly}</div></td>
+                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;font-weight:600;">${monthly}</td>
                   </tr>
                   ${
                     validUntil
@@ -140,6 +158,12 @@ function renderEmailHtml(opts: {
                       : ""
                   }
                 </table>
+                <div style="font-size:12px;color:#64748b;line-height:1.5;margin-top:10px;">
+                  Your fee is collected in <strong>12 equal monthly instalments</strong> by Direct Debit:
+                  12 &times; ${monthly} = ${formatGBP(annualGross)}, the annual total including VAT.
+                  Paying monthly costs no more than paying annually &mdash; no interest, credit charge or
+                  instalment fee is added.
+                </div>
               </td>
             </tr>
             ${breakdownBlock}
@@ -177,6 +201,10 @@ function renderGroupEmailHtml(opts: {
   const { messageHtml, groupName, groupRef, monthlyGross, annualTotal, companies, acceptUrl, validUntil } = opts;
   const breakdownBlock = renderGroupBreakdownHtml(companies);
   const validUntilStr = formatDateGB(validUntil);
+  // annualTotal is the sum of quotes.annual_total, which is NET — see the note
+  // in renderEmailHtml. Gross annual is derived from the DD so 12 x DD ties.
+  const annualGross = money(monthlyGross * 12);
+  const annualVat = money(annualGross - annualTotal);
 
   const acceptBlock = acceptUrl
     ? `
@@ -228,12 +256,20 @@ function renderGroupEmailHtml(opts: {
                     <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${companies.length}</td>
                   </tr>
                   <tr>
-                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Total monthly DD (inc VAT)</td>
-                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;font-weight:600;">${formatGBP(monthlyGross)}</td>
+                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Total annual (net)</td>
+                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${formatGBP(annualTotal)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">VAT at 20%</td>
+                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${formatGBP(annualVat)}</td>
                   </tr>
                   <tr>
                     <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Total annual (inc VAT)</td>
-                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${formatGBP(annualTotal)}</td>
+                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;font-weight:600;">${formatGBP(annualGross)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Total monthly Direct Debit (inc VAT)<div style="font-size:11px;color:#94a3b8;margin-top:2px;">12 instalments of ${formatGBP(monthlyGross)}</div></td>
+                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;font-weight:600;">${formatGBP(monthlyGross)}</td>
                   </tr>
                   ${
                     validUntilStr
@@ -244,6 +280,12 @@ function renderGroupEmailHtml(opts: {
                       : ""
                   }
                 </table>
+                <div style="font-size:12px;color:#64748b;line-height:1.5;margin-top:10px;">
+                  Fees are collected in <strong>12 equal monthly instalments</strong> by Direct Debit:
+                  12 &times; ${formatGBP(monthlyGross)} = ${formatGBP(annualGross)}, the annual total including VAT.
+                  Paying monthly costs no more than paying annually &mdash; no interest, credit charge or
+                  instalment fee is added.
+                </div>
               </td>
             </tr>
             ${breakdownBlock}

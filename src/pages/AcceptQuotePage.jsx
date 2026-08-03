@@ -55,25 +55,46 @@ function Card({ children }) {
   );
 }
 
+const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
 function SummaryTable({ quote }) {
+  // annual_total is NET. It used to be labelled "inc VAT", which left clients
+  // unable to reconcile it against the monthly Direct Debit and asking whether
+  // we collect over 10 months or charge interest over 12. Show net, VAT and
+  // gross as separate lines, with the gross derived from the DD so 12 x DD ties.
+  const monthlyGross = money(quote.monthly_gross);
+  const annualNet = money(quote.annual_total);
+  const annualGross = money(monthlyGross * 12);
   const rows = [
     ['Reference', quote.quote_ref],
     ['Client', quote.relationship_group || '—'],
-    ['Monthly Direct Debit (inc VAT)', formatGBP(quote.monthly_gross)],
-    ['Annual total (inc VAT)', formatGBP(quote.annual_total)],
+    ['Annual total (net)', formatGBP(annualNet)],
+    ['VAT at 20%', formatGBP(money(annualGross - annualNet))],
+    ['Annual total (inc VAT)', formatGBP(annualGross)],
+    ['Monthly Direct Debit (inc VAT)', formatGBP(monthlyGross)],
   ];
   if (quote.valid_until) rows.push(['Valid until', formatDateGB(quote.valid_until)]);
+  const bold = (k) => k.startsWith('Monthly') || k === 'Annual total (inc VAT)';
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 16 }}>
-      <tbody>
-        {rows.map(([k, v], i) => (
-          <tr key={k} style={{ borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
-            <td style={{ padding: '10px 0', color: '#64748b' }}>{k}</td>
-            <td style={{ padding: '10px 0', color: '#0f172a', textAlign: 'right', fontWeight: k.startsWith('Monthly') ? 600 : 400 }}>{v}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 16 }}>
+        <tbody>
+          {rows.map(([k, v], i) => (
+            <tr key={k} style={{ borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
+              <td style={{ padding: '10px 0', color: '#64748b' }}>{k}</td>
+              <td style={{ padding: '10px 0', color: '#0f172a', textAlign: 'right', fontWeight: bold(k) ? 600 : 400 }}>{v}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {monthlyGross > 0 && (
+        <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5, marginTop: 10 }}>
+          Collected in <strong>12 equal monthly instalments</strong> by Direct Debit:
+          12 × {formatGBP(monthlyGross)} = {formatGBP(annualGross)}, the annual total including VAT.
+          No interest, credit charge or instalment fee is added for paying monthly.
+        </div>
+      )}
+    </>
   );
 }
 
@@ -90,8 +111,8 @@ function GroupSummaryTable({ group }) {
         <thead>
           <tr style={{ background: '#f8fafc' }}>
             <th style={{ textAlign: 'left', padding: '8px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Company</th>
-            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Monthly DD</th>
-            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Annual</th>
+            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Monthly DD (inc VAT)</th>
+            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Annual (net)</th>
           </tr>
         </thead>
         <tbody>
@@ -103,12 +124,18 @@ function GroupSummaryTable({ group }) {
             </tr>
           ))}
           <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f8fafc' }}>
-            <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 700 }}>Group total (inc VAT)</td>
+            <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 700 }}>Group total</td>
             <td style={{ padding: '10px 12px', color: '#0f172a', textAlign: 'right', fontWeight: 700 }}>{formatGBP(group.monthly_gross)}</td>
             <td style={{ padding: '10px 12px', color: '#0f172a', textAlign: 'right', fontWeight: 700 }}>{formatGBP(group.annual_total)}</td>
           </tr>
         </tbody>
       </table>
+      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5, marginTop: 10 }}>
+        Collected in <strong>12 equal monthly instalments</strong> by Direct Debit:
+        12 × {formatGBP(money(group.monthly_gross))} = {formatGBP(money(money(group.monthly_gross) * 12))} a year
+        including VAT ({formatGBP(money(group.annual_total))} net plus VAT at 20%).
+        No interest, credit charge or instalment fee is added for paying monthly.
+      </div>
       {group.valid_until && (
         <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Valid until {formatDateGB(group.valid_until)}</div>
       )}

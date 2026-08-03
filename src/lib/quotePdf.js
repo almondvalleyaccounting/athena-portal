@@ -15,6 +15,7 @@ const FOOTER_TEXT = [
 ];
 
 const hFmt = (n) => Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 // Build a single reference for a group quote from the group name, e.g.
 // "LauraWrightGroup_20260603" — rather than concatenating every member
@@ -74,7 +75,8 @@ const QUOTE_TERMS = [
   {
     h: 'Fees, VAT and payment',
     p: [
-      'Recurring fees are payable monthly in advance by Direct Debit, unless we agree otherwise in writing. All fees are subject to VAT at the prevailing rate (currently 20%). One-off setup fees are payable on commencement of the engagement.',
+      'Recurring fees are quoted as an annual amount and collected in twelve equal monthly instalments, payable monthly in advance by Direct Debit, unless we agree otherwise in writing. Each instalment is the annual fee including VAT divided by twelve. Paying by monthly instalments costs no more than paying annually: no interest, credit charge, instalment fee or other surcharge is added, and the collection runs over all twelve months of the year rather than a shorter period.',
+      'All fees are subject to VAT at the prevailing rate (currently 20%). Where a figure is described as "net" it excludes VAT; where it is described as "inc VAT" it includes it. One-off setup fees are payable on commencement of the engagement and are invoiced separately from the monthly Direct Debit.',
       'We reserve the right to suspend work where fees are overdue. Amounts unpaid beyond their due date may be subject to interest at the statutory rate under the Late Payment of Commercial Debts (Interest) Act 1998.',
     ],
   },
@@ -199,12 +201,21 @@ export async function generateQuotePdf(quote, lineItems, options = {}) {
     if (y + n > 268) { drawFooter(doc, pw, margin, cw); doc.addPage(); y = margin; }
   };
 
-  // Column positions — right-aligned number columns, all same width (22mm)
-  const numW = 22;
-  const grossR = margin + cw;
-  const vatR = grossR - numW;
-  const mNetR = vatR - numW;
-  const annualR = mNetR - numW;
+  // Column positions — right-aligned number columns, all same width.
+  // Two groups: Annual (Net | VAT | Inc VAT) then Monthly (Net | Inc VAT).
+  // Showing the annual figure *including* VAT is what makes the monthly
+  // instalment reconcilable: 12 x monthly inc VAT = annual inc VAT. Without
+  // it, clients compared an annual NET figure against a monthly GROSS one and
+  // concluded we were charging interest, or collecting over 10 months.
+  const numW = 21;
+  const mIncR = margin + cw;
+  const mNetR = mIncR - numW;
+  const aIncR = mNetR - numW;
+  const aVatR = aIncR - numW;
+  const aNetR = aVatR - numW;
+  const numsL = aNetR - numW;      // left edge of the number block
+  const annualL = numsL;           // annual group spans numsL..aIncR
+  const monthlyL = aIncR;          // monthly group spans aIncR..mIncR
 
   // ── Logo ──
   const logo = await getLogoBase64();
@@ -228,42 +239,52 @@ export async function generateQuotePdf(quote, lineItems, options = {}) {
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...GRAY);
   doc.text(`Quote Reference: ${quote.quote_ref || ''}`, margin, y); y += 4;
-  doc.text(`Quote Date: ${new Date(quote.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`, margin, y); y += 4;
+  const quoteDate = quote.created_at ? new Date(quote.created_at) : null;
+  if (quoteDate && !isNaN(quoteDate.getTime())) {
+    doc.text(`Quote Date: ${quoteDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`, margin, y);
+    y += 4;
+  }
   if (quote.valid_until) {
     doc.text(`Valid Until: ${new Date(quote.valid_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`, margin, y);
     y += 4;
   }
 
   // ── Space before table ──
-  y += 10;
+  y += 9;
 
-  // ── Column headers ──
-  // "Cost Per Month" spanning header
+  // VAT rate note — stated once, on the face of the quote.
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'italic');
+  doc.setTextColor(...GRAY);
+  doc.text('All figures in £.   VAT at 20%.', margin + cw, y, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  y += 2.5;
+
+  // ── Column group headers ──
   doc.setFillColor(...OCEAN_100);
-  doc.rect(mNetR - numW, y, numW * 3, 5, 'F');
+  doc.rect(annualL, y, aIncR - annualL, 5, 'F');
+  doc.rect(monthlyL, y, mIncR - monthlyL, 5, 'F');
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...OCEAN_700);
-  doc.text('Cost Per Month', mNetR + numW * 0.5, y + 3.5, { align: 'center' });
+  doc.text('Annual Cost', (annualL + aIncR) / 2, y + 3.5, { align: 'center' });
+  doc.text('Monthly Cost (Annual ÷ 12)', (monthlyL + mIncR) / 2, y + 3.5, { align: 'center' });
+  // White gap between the two bands so they read as separate blocks
+  doc.setDrawColor(...WHITE);
+  doc.setLineWidth(0.7);
+  doc.line(monthlyL, y, monthlyL, y + 5);
   y += 7;
 
   // Sub-headers
   doc.setFontSize(7);
-  doc.text('Annual Net', annualR - 1, y, { align: 'right' });
-  doc.text('Monthly Net', mNetR - 1, y, { align: 'right' });
-  doc.text('VAT', vatR - 1, y, { align: 'right' });
-  doc.text('Monthly Gross', grossR - 1, y, { align: 'right' });
-  y += 3;
-
-  // Currency symbols
-  doc.setFontSize(6);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...GRAY);
-  doc.text('\u00A3', annualR - 1, y, { align: 'right' });
-  doc.text('\u00A3', mNetR - 1, y, { align: 'right' });
-  doc.text('\u00A3', vatR - 1, y, { align: 'right' });
-  doc.text('\u00A3', grossR - 1, y, { align: 'right' });
-  y += 3;
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...OCEAN_700);
+  doc.text('Net', aNetR - 1, y, { align: 'right' });
+  doc.text('VAT', aVatR - 1, y, { align: 'right' });
+  doc.text('Inc VAT', aIncR - 1, y, { align: 'right' });
+  doc.text('Net', mNetR - 1, y, { align: 'right' });
+  doc.text('Inc VAT', mIncR - 1, y, { align: 'right' });
+  y += 3.5;
 
   // Header separator
   doc.setDrawColor(...OCEAN_700);
@@ -271,49 +292,36 @@ export async function generateQuotePdf(quote, lineItems, options = {}) {
   doc.line(margin, y, margin + cw, y);
   y += 5;
 
-  // ── All Inclusive Monthly Fee (headline) ──
   const monthlyNet = Number(quote.monthly_net) || 0;
-  const monthlyVat = Number(quote.monthly_vat) || 0;
   const monthlyGross = Number(quote.monthly_gross) || 0;
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(...OCEAN_700);
-  doc.text('All Inclusive Monthly Fee', margin, y);
-  doc.setFontSize(11);
-  doc.text(hFmt(monthlyNet), mNetR - 1, y, { align: 'right' });
-  doc.text(hFmt(monthlyVat), vatR - 1, y, { align: 'right' });
-  doc.setFontSize(12);
-  doc.text(hFmt(monthlyGross), grossR - 1, y, { align: 'right' });
-  y += 4;
-
-  // Double line under headline
-  doc.setDrawColor(...OCEAN_700);
-  doc.setLineWidth(0.6);
-  doc.line(margin, y, margin + cw, y);
-  y += 8;
 
   // ── Service rows ──
   const recurring = lineItems.filter(l => l.is_recurring && !l.service_id?.startsWith('software'));
   const softwareItems = lineItems.filter(l => l.service_id?.startsWith('software'));
   const setupItems = lineItems.filter(l => !l.is_recurring);
 
-  const drawRow = (name, annual, bold = false) => {
+  // Draws one fee row across both column groups. Figures derive from the annual
+  // net, so each row reconciles: monthly inc VAT is annual / 10 (annual x 1.2
+  // / 12), which lands exactly on a penny for whole-pound fees. The total row
+  // passes `override` so the monthly figures actually billed are the ones shown
+  // and the annual inc VAT is exactly 12 x the Direct Debit.
+  const drawRow = (name, annual, opts = {}) => {
+    const { bold = false, override = null } = opts;
     checkPage(7);
-    const mN = annual / 12;
-    const mV = mN * 0.2;
-    const mG = mN + mV;
+    const mInc = override ? override.monthlyInc : r2(annual / 10);
+    const mNet = override ? override.monthlyNet : r2(annual / 12);
+    const inc = r2(mInc * 12);
+    const vat = r2(inc - annual);
 
-    doc.setFontSize(8);
+    doc.setFontSize(bold ? 8.5 : 8);
     doc.setFont('helvetica', bold ? 'bold' : 'normal');
     doc.setTextColor(...(bold ? OCEAN_700 : DARK));
     doc.text(name, margin + 2, y);
-
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
-    doc.text(hFmt(annual), annualR - 1, y, { align: 'right' });
-    doc.text(hFmt(mN), mNetR - 1, y, { align: 'right' });
-    doc.text(hFmt(mV), vatR - 1, y, { align: 'right' });
-    doc.text(hFmt(mG), grossR - 1, y, { align: 'right' });
+    doc.text(hFmt(annual), aNetR - 1, y, { align: 'right' });
+    doc.text(hFmt(vat), aVatR - 1, y, { align: 'right' });
+    doc.text(hFmt(inc), aIncR - 1, y, { align: 'right' });
+    doc.text(hFmt(mNet), mNetR - 1, y, { align: 'right' });
+    doc.text(hFmt(mInc), mIncR - 1, y, { align: 'right' });
     y += 5.5;
   };
 
@@ -329,9 +337,9 @@ export async function generateQuotePdf(quote, lineItems, options = {}) {
   const totalAccountancy = recurring.reduce((s, l) => s + (Number(l.annual_amount) || 0), 0);
   doc.setDrawColor(...OCEAN_700);
   doc.setLineWidth(0.4);
-  doc.line(annualR - numW, y, margin + cw, y);
+  doc.line(numsL, y, margin + cw, y);
   y += 4;
-  drawRow('Total Accountancy Costs', totalAccountancy, true);
+  drawRow('Total Accountancy Costs', totalAccountancy, { bold: true });
   y += 2;
 
   // ── Software ──
@@ -342,21 +350,63 @@ export async function generateQuotePdf(quote, lineItems, options = {}) {
 
   // ── Total Cost Including Software ──
   const totalAll = Number(quote.annual_total) || 0;
+  const totalAllInc = r2(monthlyGross * 12);
   doc.setDrawColor(...OCEAN_700);
   doc.setLineWidth(0.5);
-  doc.line(annualR - numW, y, margin + cw, y);
+  doc.line(numsL, y, margin + cw, y);
   y += 4;
-  drawRow('Total Cost Including Software', totalAll, true);
+  drawRow('Total Cost Including Software', totalAll, {
+    bold: true,
+    override: { monthlyNet, monthlyInc: monthlyGross },
+  });
   // Double underline
   doc.setLineWidth(0.8);
-  doc.line(annualR - numW, y, margin + cw, y);
+  doc.line(numsL, y, margin + cw, y);
   y += 1.5;
-  doc.line(annualR - numW, y, margin + cw, y);
-  y += 6;
+  doc.line(numsL, y, margin + cw, y);
+  y += 9;
+
+  // ── How you pay ──
+  // Spells the instalment arithmetic out in full. This block exists because the
+  // figures alone invited the question "is that only over 10 months, or is
+  // there interest for paying over 12?".
+  if (monthlyGross > 0) {
+    checkPage(32);
+    const boxH = 10;
+    doc.setFillColor(...OCEAN_700);
+    doc.rect(margin, y, cw, boxH, 'F');
+    doc.setTextColor(...WHITE);
+    doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Monthly Direct Debit', margin + 4, y + 6.6);
+    doc.setFontSize(13);
+    doc.text(`£${hFmt(monthlyGross)}`, margin + cw - 4, y + 6.8, { align: 'right' });
+    y += boxH + 5;
+
+    const notes = [
+      `Payable in 12 equal monthly instalments of £${hFmt(monthlyGross)} including VAT. Twelve instalments of £${hFmt(monthlyGross)} come to £${hFmt(totalAllInc)} — the annual total including VAT shown above.`,
+      'Paying monthly costs no more than paying annually: no interest, credit charge or instalment fee is added.',
+    ];
+    if (setupItems.length > 0) {
+      notes.push('Any one-off setup fees are invoiced separately on commencement and are not part of the monthly Direct Debit.');
+    }
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...DARK);
+    notes.forEach((n) => {
+      doc.splitTextToSize(n, cw).forEach((line) => {
+        checkPage(5);
+        doc.text(line, margin, y);
+        y += 3.6;
+      });
+      y += 1.4;
+    });
+    y += 4;
+  }
 
   // ── Setup fees ──
   if (setupItems.length > 0) {
-    checkPage(15 + setupItems.length * 6);
+    checkPage(24 + setupItems.length * 6);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...OCEAN_700);
@@ -372,43 +422,35 @@ export async function generateQuotePdf(quote, lineItems, options = {}) {
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(...DARK);
       doc.text(l.description, margin + 2, y);
-      doc.text(hFmt(amt), annualR - 1, y, { align: 'right' });
+      doc.text(hFmt(amt), aNetR - 1, y, { align: 'right' });
       y += 5.5;
     });
 
-    // Setup subtotal (net)
+    // Setup total across Net | VAT | Inc VAT, in the same columns as above
+    const setupVat = r2(setupTotal * 0.2);
     y += 1;
     doc.setDrawColor(...OCEAN_700);
     doc.setLineWidth(0.4);
-    doc.line(annualR - numW, y, annualR, y);
+    doc.line(numsL, y, aIncR, y);
     y += 4;
-    doc.setFontSize(8);
+    doc.setFontSize(8.5);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...OCEAN_700);
     doc.text('Total Setup Fees', margin + 2, y);
-    doc.text(hFmt(setupTotal), annualR - 1, y, { align: 'right' });
-    y += 5.5;
-
-    // VAT on setup fees
-    const setupVat = Math.round(setupTotal * 0.2 * 100) / 100;
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...DARK);
-    doc.text('VAT (20%)', margin + 2, y);
-    doc.text(hFmt(setupVat), annualR - 1, y, { align: 'right' });
-    y += 2;
-    doc.setDrawColor(...OCEAN_700);
-    doc.setLineWidth(0.4);
-    doc.line(annualR - numW, y, annualR, y);
-    y += 4;
-
-    // Total inc VAT
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...OCEAN_700);
-    doc.text('Total Setup Fees Inc VAT', margin + 2, y);
-    doc.text(hFmt(setupTotal + setupVat), annualR - 1, y, { align: 'right' });
+    doc.text(hFmt(setupTotal), aNetR - 1, y, { align: 'right' });
+    doc.text(hFmt(setupVat), aVatR - 1, y, { align: 'right' });
+    doc.text(hFmt(setupTotal + setupVat), aIncR - 1, y, { align: 'right' });
     y += 2;
     doc.setLineWidth(0.5);
-    doc.line(annualR - numW, y, annualR, y);
+    doc.line(numsL, y, aIncR, y);
+    y += 1.5;
+    doc.line(numsL, y, aIncR, y);
+    y += 6;
+
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...DARK);
+    doc.text(`Payable on commencement: £${hFmt(setupTotal + setupVat)} including VAT.`, margin, y);
   }
 
   // ── Footer ──
@@ -744,6 +786,29 @@ export async function generateGroupQuotePdf(group, quotes, entities, discounts =
   doc.setDrawColor(...OCEAN_700);
   doc.setLineWidth(0.3);
   doc.rect(margin, boxY, cw, y - boxY);
+  y += 6;
+
+  // ── How you pay ──
+  // Ties the monthly Direct Debit back to the annual total, so nobody has to
+  // work out whether the instalments run over twelve months or carry interest.
+  if (groupMonthlyGross > 0) {
+    const ddAnnual = r2(groupMonthlyGross * 12);
+    const notes = [
+      `Payable in 12 equal monthly instalments of £${hFmt(groupMonthlyGross)} including VAT across the group. Twelve instalments of £${hFmt(groupMonthlyGross)} come to £${hFmt(ddAnnual)} — the grand total including VAT shown above.`,
+      'Paying monthly costs no more than paying annually: no interest, credit charge or instalment fee is added.',
+    ];
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...DARK);
+    notes.forEach((n) => {
+      doc.splitTextToSize(n, cw).forEach((line) => {
+        checkPage(5);
+        doc.text(line, margin, y);
+        y += 3.6;
+      });
+      y += 1.4;
+    });
+  }
 
   // ── Footer ──
   drawFooter(doc, pw, margin, cw);
@@ -761,51 +826,12 @@ export async function generateGroupQuotePdfBase64(group, quotes, entities, disco
   return doc.output('datauristring').split(',')[1];
 }
 
-// Returns base64-encoded PDF for email attachment (individual)
+// Returns base64-encoded PDF for email attachment (individual).
+// This used to build its own cut-down layout, so the PDF a client received by
+// email differed from the one staff previewed and exported — and that cut-down
+// version put "Annual Total (Net)" directly above the Direct Debit with no
+// annual inc-VAT figure to bridge them. There is now one client-facing layout.
 export async function generateQuotePdfBase64(quote, lineItems) {
-  const { jsPDF } = await import('jspdf');
-  const doc = new jsPDF('p', 'mm', 'a4');
-  const pw = 210, margin = 18, cw = pw - margin * 2;
-  let y = margin;
-  const numW = 22;
-  const grossR = margin + cw;
-  const annualR = grossR - numW * 3;
-
-  const recurring = lineItems.filter(l => l.is_recurring);
-
-  doc.setTextColor(...OCEAN_700);
-  doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-  doc.text(quote.relationship_group || 'Client', margin, y + 8); y += 14;
-  doc.setFontSize(12);
-  doc.text('Services Quote', margin, y); y += 8;
-  doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...GRAY);
-  doc.text(`Ref: ${quote.quote_ref}  |  ${new Date(quote.created_at).toLocaleDateString('en-GB')}`, margin, y); y += 8;
-
-  recurring.forEach(l => {
-    doc.setFontSize(8); doc.setTextColor(...DARK);
-    doc.text(l.description, margin + 2, y);
-    doc.text(hFmt(Number(l.annual_amount)), annualR - 1, y, { align: 'right' });
-    y += 5;
-  });
-  y += 3;
-
-  doc.setFillColor(...OCEAN_700);
-  doc.rect(margin, y, cw, 18, 'F');
-  y += 5;
-  doc.setTextColor(...WHITE); doc.setFontSize(8);
-  doc.text('Annual Total (Net)', margin + 3, y); doc.text(hFmt(Number(quote.annual_total)), margin + cw - 3, y, { align: 'right' }); y += 5;
-  doc.text('Monthly (Net)', margin + 3, y); doc.text(hFmt(Number(quote.monthly_net)), margin + cw - 3, y, { align: 'right' }); y += 5;
-  doc.setFillColor(245, 197, 24);
-  doc.rect(margin, y - 2, cw, 8, 'F');
-  doc.setTextColor(...OCEAN_700); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-  doc.text('Monthly Direct Debit (Inc VAT)', margin + 3, y + 2); doc.text(hFmt(Number(quote.monthly_gross)), margin + cw - 3, y + 2, { align: 'right' });
-
-  // Footer
-  drawFooter(doc, pw, margin, cw);
-
-  // Standard terms & conditions
-  drawTermsPages(doc, pw, margin, cw);
-
+  const doc = await generateQuotePdf(quote, lineItems, { returnDoc: true });
   return doc.output('datauristring').split(',')[1];
 }

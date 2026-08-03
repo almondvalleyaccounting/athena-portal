@@ -26,6 +26,7 @@ import {
   formatGBP,
   GroupCompany,
   LineItem,
+  money,
   renderBreakdownHtml,
   renderGroupBreakdownHtml,
 } from "../_shared/email-format.ts";
@@ -84,7 +85,12 @@ function summaryTableHtml(quote: QuoteSummary): string {
   const ref = escapeHtml(String(quote.quote_ref ?? ""));
   const client = escapeHtml(String(quote.relationship_group ?? "Client"));
   const monthly = formatGBP(quote.monthly_gross);
-  const annual = formatGBP(quote.annual_total);
+  // annual_total is NET — it was previously labelled "inc VAT", which made the
+  // monthly Direct Debit look like it carried interest or ran over 10 months.
+  const monthlyGross = money(quote.monthly_gross);
+  const annualNet = money(quote.annual_total);
+  const annualGross = money(monthlyGross * 12);
+  const annualVat = money(annualGross - annualNet);
   return `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
            style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;font-size:13px;margin-top:16px;">
@@ -100,12 +106,20 @@ function summaryTableHtml(quote: QuoteSummary): string {
         <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${client}</td>
       </tr>
       <tr>
-        <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Monthly DD (inc VAT)</td>
-        <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;font-weight:600;">${monthly}</td>
+        <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Annual total (net)</td>
+        <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${formatGBP(annualNet)}</td>
+      </tr>
+      <tr>
+        <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">VAT at 20%</td>
+        <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${formatGBP(annualVat)}</td>
       </tr>
       <tr>
         <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Annual total (inc VAT)</td>
-        <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${annual}</td>
+        <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;font-weight:600;">${formatGBP(annualGross)}</td>
+      </tr>
+      <tr>
+        <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Monthly Direct Debit (inc VAT)<div style="font-size:11px;color:#94a3b8;margin-top:2px;">12 instalments of ${monthly}</div></td>
+        <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;font-weight:600;">${monthly}</td>
       </tr>
     </table>`;
 }
@@ -246,8 +260,10 @@ function groupSummaryTableHtml(opts: {
       ${r("Reference", opts.groupRef)}
       ${r("Group", opts.groupName)}
       ${r("Companies", String(opts.companyCount))}
-      ${r("Total monthly DD (inc VAT)", formatGBP(opts.monthlyGross), true)}
-      ${r("Total annual (inc VAT)", formatGBP(opts.annualTotal))}
+      ${r("Total annual (net)", formatGBP(opts.annualTotal))}
+      ${r("VAT at 20%", formatGBP(money(money(opts.monthlyGross) * 12 - money(opts.annualTotal))))}
+      ${r("Total annual (inc VAT)", formatGBP(money(money(opts.monthlyGross) * 12)), true)}
+      ${r("Total monthly Direct Debit (inc VAT)", formatGBP(opts.monthlyGross), true)}
     </table>`;
 }
 

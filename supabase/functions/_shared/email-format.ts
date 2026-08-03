@@ -22,6 +22,15 @@ export function formatGBP(n: number | string | null | undefined): string {
   );
 }
 
+// Rounds to whole pence. Use before any figure a client might check with a
+// calculator, so 12 x the monthly Direct Debit ties exactly to the annual
+// total we quote.
+export function money(n: number | string | null | undefined): number {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 0;
+  return Math.round(v * 100) / 100;
+}
+
 export function formatDateGB(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);

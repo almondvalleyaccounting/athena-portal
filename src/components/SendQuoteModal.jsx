@@ -8,8 +8,13 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
   const [recipientEmail, setRecipientEmail] = useState('');
   const [subject, setSubject] = useState(`Services Quote: ${quote.relationship_group || 'Client'}`);
   const expiryStr = quote.valid_until ? new Date(quote.valid_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  // Lead with the instalment arithmetic. The annual figure held on the quote is
+  // NET, so quoting it next to a gross Direct Debit without spelling out the
+  // VAT step reads as though the monthly amount carries interest.
+  const monthlyGross = Number(quote.monthly_gross) || 0;
+  const annualGross = Math.round(monthlyGross * 12 * 100) / 100;
   const [message, setMessage] = useState(
-    `Dear Client,\n\nPlease find attached your services quote from Almond Valley Accounting.\n\nQuote Reference: ${quote.quote_ref}\nMonthly Direct Debit: \u00A3${Number(quote.monthly_gross).toFixed(2)} (inc VAT)${expiryStr ? `\nThis quote is valid until ${expiryStr}.` : ''}\n\nPlease don't hesitate to get in touch if you have any questions.\n\nKind regards,\n${profile?.name || 'Almond Valley Accounting'}`
+    `Dear Client,\n\nPlease find attached your services quote from Almond Valley Accounting.\n\nQuote Reference: ${quote.quote_ref}\nMonthly Direct Debit: \u00A3${monthlyGross.toFixed(2)} (inc VAT)\nThis is 12 equal monthly instalments \u2014 12 \u00D7 \u00A3${monthlyGross.toFixed(2)} = \u00A3${annualGross.toFixed(2)} a year including VAT. Nothing extra is added for paying monthly.${expiryStr ? `\n\nThis quote is valid until ${expiryStr}.` : ''}\n\nPlease don't hesitate to get in touch if you have any questions.\n\nKind regards,\n${profile?.name || 'Almond Valley Accounting'}`
   );
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
