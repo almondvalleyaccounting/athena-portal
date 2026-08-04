@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Archive, ArchiveRestore, BookUser, ChevronDown, ChevronRight,
+  Archive, ArchiveRestore, BookUser, CalendarPlus, ChevronDown, ChevronRight,
   Forward as ForwardIcon, Inbox as InboxIcon, Layers, Mail, MailOpen, Paperclip,
   PenSquare, Plus, RefreshCw, Reply as ReplyIcon, ReplyAll as ReplyAllIcon,
   Search, Send, Sparkles, Tag, Trash2, X,
@@ -19,6 +19,7 @@ const font = "'Outfit', sans-serif";
 // summarise in one call (Gmail's own threads.list ceiling).
 const PAGE_SIZES = [50, 100, 250, 500];
 const SERVER_PAGE = 100;
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
 // Pseudo-mailbox: merge every mailbox this person can see into one list.
 // Gmail's system label ids (INBOX, SENT, …) are the same in every account, so
@@ -36,6 +37,8 @@ const SYSTEM_LABELS = [
   { id: 'ALL', label: 'All mail' },
   { id: 'TRASH', label: 'Bin' },
 ];
+
+const fmtClock = (ms) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
 function fmtDate(ms) {
   if (!ms) return '';
@@ -370,6 +373,12 @@ export default function EmailView() {
   const [listLoading, setListLoading] = useState(false);
   const [q, setQ] = useState('');
   const [qDraft, setQDraft] = useState('');
+  // Deliberately not persisted: every new search starts scoped to the folder,
+  // so widening to the whole account is always a conscious choice.
+  const [searchAll, setSearchAll] = useState(false);
+  const [compact, setCompact] = useState(() => localStorage.getItem('comms_compact') === '1');
+  const [autoRefresh, setAutoRefresh] = useState(() => localStorage.getItem('comms_auto') !== '0');
+  const [lastChecked, setLastChecked] = useState(null);
   const [sort, setSort] = useState(() => localStorage.getItem('comms_email_sort') || 'date');
   const [hideOwn, setHideOwn] = useState(() => localStorage.getItem('comms_hide_own') !== '0');
   const [pageSize, setPageSize] = useState(
@@ -486,17 +495,16 @@ export default function EmailView() {
   // "500" stays roughly 500 rows in total rather than 500 each. A newer load
   // (mailbox switch, label change) bumps the generation and the older walk
   // drops its results rather than interleaving them.
-  // What to ask Gmail for. CRITICAL: threads.list ignores labelIds whenever a
-  // q is also supplied — passing both silently widens the result to the whole
-  // account, which is how "hide my own sent mail" turned the inbox into all
-  // mail back to 2017. So it's one or the other: a query carries its own
-  // folder ("in:inbox"), and labelIds is only used when there's no query.
+  // What to ask Gmail for. labelIds and q are ANDed by threads.list, so a
+  // search stays inside the folder you're looking at — searching the inbox
+  // used to return the entire account back to 2017, which is never what you
+  // meant by typing in the inbox. "All mail" opts out, per search.
   const listQuery = useMemo(() => {
-    if (q) return { q }; // a user search deliberately spans the mailbox
-    if (labelId === 'INBOX' && hideOwn) return { q: 'in:inbox -from:me' };
-    if (labelId === 'ALL') return {};
-    return { labelIds: [labelId] };
-  }, [q, labelId, hideOwn]);
+    const folder = labelId === 'ALL' ? {} : { labelIds: [labelId] };
+    if (q) return searchAll ? { q } : { ...folder, q };
+    if (labelId === 'INBOX' && hideOwn) return { ...folder, q: '-from:me' };
+    return folder;
+  }, [q, searchAll, labelId, hideOwn]);
 
   const loadThreads = useCallback(async ({ append } = {}) => {
     if (!activeMailboxes.length) return;
@@ -550,6 +558,43 @@ export default function EmailView() {
   }, [activeMailboxes, listQuery, pageSize, mailboxLabel]);
 
   const hasMore = Object.values(pageTokens).some(Boolean);
+
+  // Background send/receive. Only the first page per mailbox — re-walking a
+  // 500-row view every five minutes would burn ~5,000 Gmail quota units for a
+  // handful of new messages. New threads are merged in and existing ones
+  // refreshed (so read/unread keeps up), leaving the deeper pool untouched.
+  const busyRef = useRef(false);
+  useEffect(() => { busyRef.current = listLoading; }, [listLoading]);
+
+  const checkForMail = useCallback(async () => {
+    if (!activeMailboxes.length || busyRef.current) return;
+    const gen = loadGen.current; // observe, never cancel, an in-flight walk
+    const incoming = [];
+    await Promise.all(activeMailboxes.map(async (mb) => {
+      try {
+        const res = await gmail.listThreads(mb, { ...listQuery, maxResults: 50 });
+        if (gen !== loadGen.current) return;
+        incoming.push(...(res.threads || []).map((t) => ({ ...t, mailbox: mb })));
+      } catch { /* a background check stays quiet */ }
+    }));
+    if (gen !== loadGen.current) return;
+    if (incoming.length) {
+      setThreads((prev) => {
+        const byId = new Map(prev.map((t) => [t.id, t]));
+        for (const t of incoming) byId.set(t.id, t);
+        return [...byId.values()];
+      });
+    }
+    setLastChecked(Date.now());
+  }, [activeMailboxes, listQuery]);
+
+  useEffect(() => {
+    if (!autoRefresh) return undefined;
+    const id = setInterval(() => {
+      if (!document.hidden) checkForMail();
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [autoRefresh, checkForMail]);
 
   // Gmail can only return newest-first per mailbox, so ordering is applied here
   // over the conversations loaded so far ("Load more" extends the pool) — which
@@ -720,7 +765,8 @@ export default function EmailView() {
     try {
       const res = await gmail.getThread(mb, summary.id);
       res.thread.messages = [...res.thread.messages].sort((a, b) => b.internalDate - a.internalDate);
-      setThread({ ...res.thread, mailbox: mb });
+      const opened = { ...res.thread, mailbox: mb };
+      setThread(opened);
       setComposer(null);
       if (paneRef.current) paneRef.current.scrollTop = 0;
       if (summary.unread) {
@@ -728,8 +774,10 @@ export default function EmailView() {
           .then(() => setThreads((prev) => prev.map((t) => (t.id === summary.id ? { ...t, unread: false } : t))))
           .catch(() => { /* read-state is cosmetic */ });
       }
+      return opened;
     } catch (e) {
       setError(e.message);
+      return null;
     } finally {
       setThreadLoading(false);
     }
@@ -874,6 +922,57 @@ export default function EmailView() {
     if (paneRef.current) paneRef.current.scrollTop = 0;
   }, [latestMsg, thread, threadMailbox, sendFrom, signatures]);
 
+  // ── Row actions ──
+  // Reply/forward from a list row needs the full latest message (for the quote)
+  // and the thread's own mailbox, so it opens the thread first and lets the
+  // normal composer run once it's there — one code path for both entry points.
+  const pendingCompose = useRef(null);
+  useEffect(() => {
+    if (!thread || !pendingCompose.current) return;
+    const mode = pendingCompose.current;
+    pendingCompose.current = null;
+    startComposer(mode);
+  }, [thread, startComposer]);
+
+  const rowCompose = useCallback(async (t, mode) => {
+    pendingCompose.current = mode;
+    const opened = await openThread(t);
+    if (!opened) pendingCompose.current = null; // don't fire on the next open
+  }, [openThread]);
+
+  const rowTrash = useCallback(async (t) => {
+    try {
+      await gmail.trashThread(t.mailbox, t.id);
+      setThreads((prev) => prev.filter((x) => x.id !== t.id));
+      setThread((prev) => (prev?.id === t.id ? null : prev));
+      flash('Moved to bin.', async () => {
+        await gmail.untrashThread(t.mailbox, t.id).catch(() => {});
+        loadThreads();
+      });
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [loadThreads]);
+
+  // Diarise: hand the thread to Google Calendar's own event editor, prefilled.
+  // Nothing is created or invited from here — the invite is saved and sent by
+  // whoever clicked, in Google's UI, which is where that decision belongs.
+  const diarise = useCallback((t) => {
+    const other = parseAddress(t.counterpartFrom || t.from);
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: t.subject || '(no subject)',
+      details: [
+        t.snippet || '',
+        '',
+        `From: ${t.from}`,
+        `Email: https://mail.google.com/mail/?authuser=${t.mailbox}#all/${t.id}`,
+      ].join('\n'),
+    });
+    if (other.email) params.set('add', other.email);
+    window.open(`https://calendar.google.com/calendar/render?${params.toString()}`, '_blank', 'noopener');
+  }, []);
+
   const sendComposer = useCallback(async () => {
     if (!composer?.to?.trim() || !composer?.subject?.trim()) { setError('To and subject are required.'); return; }
     setSending(true);
@@ -966,7 +1065,12 @@ export default function EmailView() {
     staffId: profile?.id, kind: mailboxObj.kind, displayName: mailboxObj.display_name,
   }) : '#';
 
-  const selectLabel = (id) => { setQ(''); setQDraft(''); setLabelId(id); };
+  const selectLabel = (id) => { setQ(''); setQDraft(''); setSearchAll(false); setLabelId(id); };
+
+  // What the search box says it's searching.
+  const currentFolderName = SYSTEM_LABELS.find((s) => s.id === labelId)?.label
+    || labelById[labelId]?.name.split('/').pop()
+    || 'this folder';
 
   const renderTreeNode = (node, depth) => {
     const isActive = node.label && labelId === node.label.id && !q;
@@ -1186,8 +1290,10 @@ export default function EmailView() {
         </div>
       </div>
 
-      {/* ── Middle: thread list ── */}
-      <div style={{ width: 385, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
+      {/* ── Middle: thread list ── Wider than it was: one-line rows need room
+          for sender + subject + the hover actions, and the reading pane was
+          sprawling past a comfortable measure on a wide monitor. */}
+      <div style={{ width: 560, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}>
             <Search size={14} color="#94a3b8" />
@@ -1195,12 +1301,25 @@ export default function EmailView() {
               value={qDraft}
               onChange={(e) => setQDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') setQ(qDraft.trim()); }}
-              placeholder={isAll ? 'Search all mailboxes — Enter' : 'Search this mailbox — Enter'}
+              placeholder={`Search ${searchAll ? 'all mail' : currentFolderName} — Enter`}
               style={{ flex: 1, padding: '8px 0', fontSize: 13, fontFamily: font, border: 'none', outline: 'none', minWidth: 0 }}
             />
-            {q && <button onClick={() => { setQ(''); setQDraft(''); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', fontSize: 11 }}>clear</button>}
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: searchAll ? tones.info.fg : '#94a3b8', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              title={`Search every message in the mailbox instead of just ${currentFolderName}`}
+            >
+              <input type="checkbox" checked={searchAll} onChange={(e) => setSearchAll(e.target.checked)} style={{ cursor: 'pointer' }} />
+              All mail
+            </label>
+            {q && <button onClick={() => { setQ(''); setQDraft(''); setSearchAll(false); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', fontSize: 11 }}>clear</button>}
           </div>
-          <button onClick={() => loadThreads()} title="Refresh" style={btnIcon}><RefreshCw size={14} /></button>
+          <button
+            onClick={() => { setLastChecked(Date.now()); loadThreads(); }}
+            title={`Send / receive${lastChecked ? ` — last checked ${fmtClock(lastChecked)}` : ''}`}
+            style={btnIcon}
+          >
+            <RefreshCw size={14} />
+          </button>
         </div>
 
         {/* Sort + inbox noise filter */}
@@ -1241,11 +1360,30 @@ export default function EmailView() {
               {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }} title="One line per email">
+            <input
+              type="checkbox"
+              checked={compact}
+              onChange={(e) => { setCompact(e.target.checked); localStorage.setItem('comms_compact', e.target.checked ? '1' : '0'); }}
+              style={{ cursor: 'pointer' }}
+            />
+            Compact
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }} title="Check for new mail every 5 minutes (first page only)">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => { setAutoRefresh(e.target.checked); localStorage.setItem('comms_auto', e.target.checked ? '1' : '0'); }}
+              style={{ cursor: 'pointer' }}
+            />
+            Auto 5m
+          </label>
           <span style={{ color: '#94a3b8', marginLeft: 'auto' }}>
             {listLoading && threads.length > 0
               ? `${threads.length} loaded…`
               : `${threads.length}${hasMore ? ' — Load more' : ''}`}
-            {isAll ? ` across ${activeMailboxes.length} mailboxes` : ''}
+            {isAll ? ` across ${activeMailboxes.length}` : ''}
+            {lastChecked ? ` · ${fmtClock(lastChecked)}` : ''}
           </span>
         </div>
 
@@ -1317,49 +1455,96 @@ export default function EmailView() {
             const isOpen = thread?.id === t.id;
             const userLabelChips = (t.labelIds || []).filter((id) => labelById[id]?.type === 'user').slice(0, 2);
             const sug = suggestionFor(t);
+            const sender = (
+              <span style={{ fontWeight: t.unread ? 700 : 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(compact ? { flex: '0 0 150px' } : { flex: 1 }) }}>
+                {party.own && <Send size={10} color="#94a3b8" style={{ marginRight: 4, verticalAlign: -1 }} title="You sent the latest message" />}
+                {party.name}{t.messageCount > 1 ? ` (${t.messageCount})` : ''}
+                {party.to && <span style={{ fontWeight: 400, color: '#94a3b8' }}> → {party.to}</span>}
+              </span>
+            );
+            const subject = (
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(compact ? { flex: 1, minWidth: 0 } : {}) }}>
+                <span style={{ fontWeight: t.unread ? 700 : 500, color: '#1e293b' }}>{t.subject}</span>
+                <span style={{ color: '#94a3b8' }}> — {t.snippet}</span>
+              </span>
+            );
+            const marks = (
+              <>
+                {isAll && (
+                  <span style={{ ...chipStyle('neutral'), flexShrink: 0 }} title={t.mailbox}>
+                    {mailboxLabel[t.mailbox] || t.mailbox}
+                  </span>
+                )}
+                {userLabelChips.map((id) => <span key={id} style={{ ...chipStyle('teal'), flexShrink: 0 }}>{labelById[id].name.split('/').pop()}</span>)}
+                {sug && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); acceptSuggestion(t, sug); }}
+                    disabled={sweepBusy}
+                    title={`Tag ${sug.labels.map((l) => `“${l.name}”`).join(' + ')} and archive`}
+                    style={suggChipBtn}
+                  >
+                    <Sparkles size={10} /> {sug.labels.map((l) => l.name.split('/').pop()).join(' + ')}
+                  </button>
+                )}
+              </>
+            );
+            // Actions sit under the date and swap in on hover, so a dense list
+            // stays readable. group-hover rather than React state: re-rendering
+            // 500 rows on every mouse move would crawl.
+            const actions = (
+              <span className="relative flex-shrink-0" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                <span className="group-hover:invisible" style={{ fontSize: 10.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                  {fmtDate(t.internalDate)}
+                </span>
+                <span
+                  className="invisible group-hover:visible"
+                  style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 2, background: isOpen ? tones.info.bg : '#fff', paddingLeft: 6, borderRadius: 6 }}
+                >
+                  {[
+                    { key: 'reply', title: 'Reply', Icon: ReplyIcon, run: () => rowCompose(t, 'reply') },
+                    { key: 'replyAll', title: 'Reply all', Icon: ReplyAllIcon, run: () => rowCompose(t, 'replyAll') },
+                    { key: 'forward', title: 'Forward', Icon: ForwardIcon, run: () => rowCompose(t, 'forward') },
+                    { key: 'diarise', title: 'Diarise — open a prefilled Google Calendar event', Icon: CalendarPlus, run: () => diarise(t) },
+                    { key: 'trash', title: 'Move to bin', Icon: Trash2, run: () => rowTrash(t), danger: true },
+                  ].map(({ key, title, Icon, run, danger }) => (
+                    <button
+                      key={key}
+                      title={title}
+                      onClick={(e) => { e.stopPropagation(); run(); }}
+                      style={{ ...rowActionBtn, ...(danger ? { color: '#b91c1c' } : {}) }}
+                    >
+                      <Icon size={13} />
+                    </button>
+                  ))}
+                </span>
+              </span>
+            );
             return (
               <div
                 key={t.id}
                 onClick={() => openThread(t)}
-                style={{ display: 'flex', gap: 8, padding: '8px 10px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: isOpen ? tones.info.bg : t.unread ? '#fff' : '#fafbfc' }}
+                className="group"
+                style={{ display: 'flex', gap: 8, padding: compact ? '5px 10px' : '8px 10px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: isOpen ? tones.info.bg : t.unread ? '#fff' : '#fafbfc' }}
               >
                 <input
                   type="checkbox"
                   checked={selected.has(t.id)}
                   onChange={() => toggleSelect(t.id)}
                   onClick={(e) => e.stopPropagation()}
-                  style={{ marginTop: 3, cursor: 'pointer' }}
+                  style={{ marginTop: compact ? 1 : 3, cursor: 'pointer', flexShrink: 0 }}
                 />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                    <span style={{ fontSize: 12.5, fontWeight: t.unread ? 700 : 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                      {party.own && <Send size={10} color="#94a3b8" style={{ marginRight: 4, verticalAlign: -1 }} title="You sent the latest message" />}
-                      {party.name}{t.messageCount > 1 ? ` (${t.messageCount})` : ''}
-                      {party.to && <span style={{ fontWeight: 400, color: '#94a3b8' }}> → {party.to}</span>}
-                    </span>
-                    {isAll && (
-                      <span style={{ ...chipStyle('neutral'), flexShrink: 0 }} title={t.mailbox}>
-                        {mailboxLabel[t.mailbox] || t.mailbox}
-                      </span>
-                    )}
-                    {userLabelChips.map((id) => <span key={id} style={{ ...chipStyle('teal'), flexShrink: 0 }}>{labelById[id].name.split('/').pop()}</span>)}
-                    {sug && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); acceptSuggestion(t, sug); }}
-                        disabled={sweepBusy}
-                        title={`Tag ${sug.labels.map((l) => `“${l.name}”`).join(' + ')} and archive`}
-                        style={suggChipBtn}
-                      >
-                        <Sparkles size={10} /> {sug.labels.map((l) => l.name.split('/').pop()).join(' + ')}
-                      </button>
-                    )}
-                    <span style={{ fontSize: 10.5, color: '#94a3b8', flexShrink: 0 }}>{fmtDate(t.internalDate)}</span>
+                {compact ? (
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+                    {sender}{subject}{marks}{actions}
                   </div>
-                  <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <span style={{ fontWeight: t.unread ? 700 : 500, color: '#1e293b' }}>{t.subject}</span>
-                    <span style={{ color: '#94a3b8' }}> — {t.snippet}</span>
+                ) : (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12.5 }}>
+                      {sender}{marks}{actions}
+                    </div>
+                    <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject}</div>
                   </div>
-                </div>
+                )}
               </div>
             );
           })}
@@ -1466,6 +1651,13 @@ const suggChipBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 10.5, fontWeight: 700,
   color: tones.teal.fg, background: tones.teal.bg, border: `1px dashed ${tones.teal.solid}`, borderRadius: 999,
   cursor: 'pointer', fontFamily: font, flexShrink: 0, whiteSpace: 'nowrap',
+};
+
+// Hover-revealed per-row action.
+const rowActionBtn = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 22, height: 22, padding: 0, border: '1px solid #e2e8f0', borderRadius: 5,
+  background: '#fff', cursor: 'pointer', color: '#475569',
 };
 
 const railBtn = {
