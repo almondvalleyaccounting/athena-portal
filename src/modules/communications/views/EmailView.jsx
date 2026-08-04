@@ -309,6 +309,32 @@ function forwardBody(msg) {
   return `---------- Forwarded message ----------\nFrom: ${msg.from}\nDate: ${msg.date}\nSubject: ${msg.subject}\nTo: ${msg.to}\n\n${text}`;
 }
 
+// Recipients of a thread's latest message: [first, count].
+function recipients(t) {
+  const parts = String(t.to || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return [parts.length ? parseAddress(parts[0]) : null, parts.length];
+}
+
+const recipientKey = (t) => (recipients(t)[0]?.email || '').toLowerCase();
+
+// Who a list row is about. Our own outbound mail can carry both SENT and
+// INBOX (anything sent to a list this mailbox is on), so a row that named the
+// latest sender read as inbound mail from ourselves. Name the other side
+// instead — the person we replied to, or the recipient when the thread is
+// only ours.
+function rowParty(t, mailbox, showRecipient) {
+  const last = parseAddress(t.from);
+  const own = last.email.toLowerCase() === mailbox;
+  const [rcpt, count] = recipients(t);
+  const toLabel = rcpt ? `To ${rcpt.name}${count > 1 ? ` +${count - 1}` : ''}` : null;
+  if (showRecipient && toLabel) return { name: toLabel, own };
+  if (own) {
+    if (t.counterpartFrom) return { name: parseAddress(t.counterpartFrom).name, own };
+    if (toLabel) return { name: toLabel, own };
+  }
+  return { name: last.name, own };
+}
+
 export default function EmailView() {
   const { profile } = useAuth();
   const isAdmin = profile?.is_portal_admin || profile?.can_manage_portal;
@@ -322,6 +348,8 @@ export default function EmailView() {
   const [listLoading, setListLoading] = useState(false);
   const [q, setQ] = useState('');
   const [qDraft, setQDraft] = useState('');
+  const [sort, setSort] = useState(() => localStorage.getItem('comms_email_sort') || 'date');
+  const [hideOwn, setHideOwn] = useState(() => localStorage.getItem('comms_hide_own') !== '0');
   const [thread, setThread] = useState(null);
   const [threadLoading, setThreadLoading] = useState(false);
   const [composer, setComposer] = useState(null);
@@ -415,9 +443,12 @@ export default function EmailView() {
     setListLoading(true);
     setError(null);
     try {
+      // Gmail matches a label or query against any message in the thread, so
+      // "-from:me" drops threads that are only our own sent mail while keeping
+      // conversations we happen to have replied to last.
       const res = await gmail.listThreads(mailbox, {
         labelIds: q || labelId === 'ALL' ? undefined : [labelId],
-        q: q || undefined,
+        q: q || (labelId === 'INBOX' && hideOwn ? '-from:me' : undefined),
         pageToken,
       });
       setThreads((prev) => (append ? [...prev, ...res.threads] : res.threads));
@@ -429,7 +460,20 @@ export default function EmailView() {
     } finally {
       setListLoading(false);
     }
-  }, [mailbox, labelId, q]);
+  }, [mailbox, labelId, q, hideOwn]);
+
+  // Gmail can only return newest-first, so any other order is applied to the
+  // conversations loaded so far ("Load more" extends the pool).
+  const showRecipient = sort === 'recipient' || labelId === 'SENT' || labelId === 'DRAFT';
+  const visibleThreads = useMemo(() => {
+    if (sort !== 'recipient') return threads;
+    return [...threads].sort((a, b) => {
+      const ka = recipientKey(a);
+      const kb = recipientKey(b);
+      if (!ka !== !kb) return ka ? -1 : 1; // unaddressed rows last
+      return ka.localeCompare(kb) || b.internalDate - a.internalDate;
+    });
+  }, [threads, sort]);
 
   useEffect(() => { setThread(null); setComposer(null); loadLabels(); }, [mailbox, loadLabels]);
   useEffect(() => { setThread(null); loadThreads(); }, [loadThreads]);
@@ -1017,6 +1061,40 @@ export default function EmailView() {
           <button onClick={() => loadThreads()} title="Refresh" style={btnIcon}><RefreshCw size={14} /></button>
         </div>
 
+        {/* Sort + inbox noise filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, color: '#64748b', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            Sort
+            <select
+              value={sort}
+              onChange={(e) => { setSort(e.target.value); localStorage.setItem('comms_email_sort', e.target.value); }}
+              style={{ padding: '3px 6px', fontSize: 11.5, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#334155' }}
+            >
+              <option value="date">Newest first</option>
+              <option value="recipient">Recipient email (A–Z)</option>
+            </select>
+          </label>
+          {labelId === 'INBOX' && !q && (
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
+              title="Threads that are only your own outbound mail — Gmail files these in the inbox when they go to a list this mailbox is on"
+            >
+              <input
+                type="checkbox"
+                checked={hideOwn}
+                onChange={(e) => { setHideOwn(e.target.checked); localStorage.setItem('comms_hide_own', e.target.checked ? '1' : '0'); }}
+                style={{ cursor: 'pointer' }}
+              />
+              Hide my own sent mail
+            </label>
+          )}
+          {sort === 'recipient' && (
+            <span style={{ color: '#94a3b8' }}>
+              {threads.length} loaded{nextPage ? ' — Load more to sort further' : ''}
+            </span>
+          )}
+        </div>
+
         {/* Auto-suggested tags: eyeball, then one-click clear */}
         {labelId === 'INBOX' && !q && (suggested.length > 0 || learnBusy || tagRules.length === 0) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#fefce8', border: '1px solid #fde047', borderRadius: 8, fontSize: 12, flexWrap: 'wrap' }}>
@@ -1078,8 +1156,8 @@ export default function EmailView() {
               {q ? 'No results.' : 'Nothing here — inbox zero 🎉'}
             </div>
           )}
-          {threads.map((t) => {
-            const from = parseAddress(t.from);
+          {visibleThreads.map((t) => {
+            const party = rowParty(t, mailbox, showRecipient);
             const isOpen = thread?.id === t.id;
             const userLabelChips = (t.labelIds || []).filter((id) => labelById[id]?.type === 'user').slice(0, 2);
             const sug = suggestionFor(t);
@@ -1099,7 +1177,8 @@ export default function EmailView() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                     <span style={{ fontSize: 12.5, fontWeight: t.unread ? 700 : 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                      {from.name}{t.messageCount > 1 ? ` (${t.messageCount})` : ''}
+                      {party.own && <Send size={10} color="#94a3b8" style={{ marginRight: 4, verticalAlign: -1 }} title="You sent the latest message" />}
+                      {party.name}{t.messageCount > 1 ? ` (${t.messageCount})` : ''}
                     </span>
                     {userLabelChips.map((id) => <span key={id} style={{ ...chipStyle('accent'), flexShrink: 0 }}>{labelById[id].name.split('/').pop()}</span>)}
                     {sug && (
