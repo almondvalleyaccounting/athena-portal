@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Loader, Plus, X, TrendingUp, Info, ChevronDown, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Loader, Plus, X, TrendingUp, Info, ChevronDown, ArrowUpRight, ArrowDownRight, Sparkles, Check } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import { money, shortDate, OUTFIT, cardStyle, inputStyle } from './dashboardData';
+import { suggestOwnerCosts } from './ownerCostSuggestions';
 
 /*
   Underlying Performance tab — custom analysis that normalises reported profit
@@ -20,6 +21,12 @@ import { money, shortDate, OUTFIT, cardStyle, inputStyle } from './dashboardData
   dashboard_oneoff_items, keyed on realm_id (RLS: any active staff; AVA's own
   books gated to can_view_practice_financials). Account amounts come from the
   windowed `pl_detail` metric (leaf rows carry the QBO account id).
+
+  Owner-cost codes can also be SUGGESTED from the nominal hierarchy (dividends,
+  director's pay, home office — see ownerCostSuggestions.js). Suggestions never
+  move a number by themselves: they render as tick boxes and only count once
+  confirmed. A rejected suggestion is stored back on the same table with
+  status = 'dismissed' so it stops being offered.
 
   Built as a config-driven view (group_key / kinds) so more custom groups and
   KPIs can be layered on later without a rebuild.
@@ -39,7 +46,7 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
 
   const [accounts, setAccounts] = useState([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
-  const [ownerRows, setOwnerRows] = useState([]);   // dashboard_adjustment_accounts
+  const [adjRows, setAdjRows] = useState([]);        // dashboard_adjustment_accounts (both statuses)
   const [oneoffs, setOneoffs] = useState([]);        // dashboard_oneoff_items
   const [cfgLoading, setCfgLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -55,7 +62,7 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
         supabase.from('dashboard_oneoff_items').select('*')
           .eq('realm_id', realmId).order('entry_date', { ascending: false }),
       ]);
-      setOwnerRows(oa || []);
+      setAdjRows(oa || []);
       setOneoffs(oo || []);
     } catch { /* silent */ }
     setCfgLoading(false);
@@ -73,7 +80,7 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
     setAccountsLoading(false);
   }, [realmId]);
 
-  useEffect(() => { setAccounts([]); setOwnerRows([]); setOneoffs([]); }, [realmId]);
+  useEffect(() => { setAccounts([]); setAdjRows([]); setOneoffs([]); }, [realmId]);
   useEffect(() => { loadConfig(); }, [loadConfig]);
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
 
@@ -82,6 +89,12 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
     for (const a of accounts) m[a.id] = a;
     return m;
   }, [accounts]);
+
+  // Confirmed owner costs drive the maths; dismissed rows only mute suggestions.
+  // `status` may be absent on rows written before sql/174, so default to active.
+  const statusOf = (r) => r.status || 'active';
+  const ownerRows = useMemo(() => adjRows.filter((r) => statusOf(r) === 'active'), [adjRows]);
+  const dismissedRows = useMemo(() => adjRows.filter((r) => statusOf(r) === 'dismissed'), [adjRows]);
 
   /* Adjustment maths ---------------------------------------------- */
   const calc = useMemo(() => {
@@ -153,21 +166,62 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
     const prior = build(priorReportedNet, priorReportedRevenue, priorOwnerAddBack, ownerIncomeTaggedFrom(priorById), priorOneoffCost, priorOneoffIncome);
 
     return {
-      owner, ownerAddBack, oo, oneoffCost, oneoffIncome,
+      owner, ownerAddBack, oo, oneoffCost, oneoffIncome, rowsById,
       ...cur, prior,
     };
   }, [plDetail, plRange, plDetailPrior, plRangePrior, ownerRows, oneoffs, accountsById, meta]);
 
+  /* Suggested owner costs — nominal codes that look like director personal items
+     but haven't been confirmed or rejected yet. Amounts come from the same
+     period P&L the maths uses, so the tile shows what accepting would move. */
+  const suggestions = useMemo(() => suggestOwnerCosts(accounts, {
+    taggedIds: new Set(ownerRows.map((r) => r.account_id)),
+    dismissedIds: new Set(dismissedRows.map((r) => r.account_id)),
+    amountFor: (id) => {
+      const row = calc.rowsById?.[id];
+      const acct = accountsById[id];
+      return {
+        amount: row?.amount ?? 0,
+        income: acct ? acct.classification === 'Revenue' : isIncomeGroup(row?.group),
+      };
+    },
+  }), [accounts, ownerRows, dismissedRows, calc.rowsById, accountsById]);
+
   /* Mutations ------------------------------------------------------ */
-  const addOwnerAccount = async (accountId) => {
-    const a = accountsById[accountId];
-    if (!a || !realmId) return;
+  // One writer for both statuses. Upsert (not insert) because a code may already
+  // have a dismissed row from an earlier suggestion round — confirming it later
+  // has to flip that row, not collide with it.
+  const writeAdj = async (entries, status) => {
+    if (!realmId || !entries.length) return;
     setBusy(true);
     try {
-      await supabase.from('dashboard_adjustment_accounts').insert({
-        realm_id: realmId, group_key: GROUP, account_id: a.id,
-        acct_num: a.acct_num, account_name: a.name, created_by: profile?.id || null,
-      });
+      await supabase.from('dashboard_adjustment_accounts').upsert(
+        entries.map((e) => {
+          const a = accountsById[e.account_id];
+          return {
+            realm_id: realmId, group_key: GROUP, account_id: e.account_id,
+            acct_num: a?.acct_num || e.acct_num || null,
+            account_name: a?.name || e.account_name || null,
+            status, suggested_rule: e.rule_key || null,
+            created_by: profile?.id || null,
+          };
+        }),
+        { onConflict: 'realm_id,group_key,account_id' },
+      );
+      await loadConfig();
+    } catch { /* silent */ }
+    setBusy(false);
+  };
+
+  const addOwnerAccount = (accountId) => writeAdj([{ account_id: accountId }], 'active');
+  const confirmSuggestions = (picked) => writeAdj(picked, 'active');
+  const dismissSuggestions = (picked) => writeAdj(picked, 'dismissed');
+  const restoreDismissed = async () => {
+    if (!dismissedRows.length) return;
+    setBusy(true);
+    try {
+      await supabase.from('dashboard_adjustment_accounts').delete()
+        .in('id', dismissedRows.map((r) => r.id));
       await loadConfig();
     } catch { /* silent */ }
     setBusy(false);
@@ -244,6 +298,14 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
         <WaterfallRow label="Underlying profit for the owner" value={calc.underlyingNet} currency={currency} kind="total" />
       </div>
 
+      {/* Suggested owner costs — proposal only, ticks make it real */}
+      {suggestions.length > 0 && (
+        <SuggestionCard
+          suggestions={suggestions} currency={currency} busy={busy}
+          onConfirm={confirmSuggestions} onDismiss={dismissSuggestions}
+        />
+      )}
+
       {/* Owner costs config */}
       <div style={cardStyle}>
         <SectionHead
@@ -274,6 +336,12 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
           </div>
         )}
         <AddAccount accounts={accounts} loading={accountsLoading} exclude={ownerIdSet} onAdd={addOwnerAccount} />
+        {dismissedRows.length > 0 && (
+          <p style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', margin: '10px 0 0' }}>
+            {dismissedRows.length} suggested code{dismissedRows.length === 1 ? '' : 's'} marked as not personal.{' '}
+            <button onClick={restoreDismissed} disabled={busy} style={linkBtn}>Show them again</button>
+          </p>
+        )}
       </div>
 
       {/* One-off adjustments config */}
@@ -299,6 +367,124 @@ const iconBtn = {
   background: 'none', border: 'none', cursor: 'pointer', padding: '4px',
   display: 'inline-flex', alignItems: 'center',
 };
+
+const linkBtn = {
+  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+  fontFamily: OUTFIT, fontSize: 'inherit', fontWeight: 600, color: '#0369a1',
+  textDecoration: 'underline',
+};
+
+/* Suggested owner costs.
+
+   Codes the nominal hierarchy says look like director personal items. High-
+   confidence rules (dividends, director's pay, home office) come pre-ticked so
+   confirming is one click; the softer ones start unticked. Nothing here is in
+   the maths until "Confirm" is pressed — that's the human in the loop. */
+function SuggestionCard({ suggestions, currency, busy, onConfirm, onDismiss }) {
+  const [ticked, setTicked] = useState(null);
+
+  // Re-seed the ticks whenever the underlying suggestion set changes (client
+  // switch, period change, a code just confirmed), keyed on the ids on show.
+  const key = suggestions.map((s) => s.account_id).join(',');
+  const seeded = useMemo(
+    () => new Set(suggestions.filter((s) => s.preTick).map((s) => s.account_id)),
+    [key], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const marks = ticked?.key === key ? ticked.set : seeded;
+  const setMarks = (set) => setTicked({ key, set });
+
+  const toggle = (id) => {
+    const next = new Set(marks);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setMarks(next);
+  };
+  const picked = suggestions.filter((s) => marks.has(s.account_id));
+  const rest = suggestions.filter((s) => !marks.has(s.account_id));
+  // What confirming the ticked codes would add back (income tags come off).
+  const impact = picked.reduce((s, x) => s + (x.income ? -x.amount : x.amount), 0);
+
+  return (
+    <div style={{ ...cardStyle, borderColor: '#fcd34d', backgroundColor: '#fffbeb' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Sparkles size={17} style={{ color: '#b45309' }} />
+        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+          Suggested director personal items
+        </span>
+        <span style={{ fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: '#b45309', marginLeft: 'auto' }}>
+          {suggestions.length} to review
+        </span>
+      </div>
+      <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#92400e', margin: '4px 0 10px', display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
+        <Info size={13} style={{ flexShrink: 0, marginTop: '1px' }} />
+        These nominal codes look like the owner taking money out rather than costs of trading. Nothing is
+        adjusted until you confirm — tick what should come out of underlying profit.
+      </p>
+
+      <div style={{ marginBottom: '12px' }}>
+        {suggestions.map((s) => {
+          const on = marks.has(s.account_id);
+          return (
+            <label key={s.account_id} style={{
+              display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '9px 0',
+              borderBottom: '1px solid #fef3c7', cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox" checked={on} onChange={() => toggle(s.account_id)}
+                style={{ width: '16px', height: '16px', marginTop: '2px', accentColor: '#0369a1', cursor: 'pointer', flexShrink: 0 }}
+              />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+                  {acctLabel(s.acct_num, s.account_name)}
+                </span>
+                <span style={{
+                  fontFamily: OUTFIT, fontSize: '10.5px', fontWeight: 700, marginLeft: '8px',
+                  padding: '2px 6px', borderRadius: '5px', backgroundColor: '#fef3c7', color: '#92400e',
+                  whiteSpace: 'nowrap',
+                }}>{s.rule_label}</span>
+                {s.income && <span style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#b45309', marginLeft: '6px' }}>· income</span>}
+                <span style={{ display: 'block', fontFamily: OUTFIT, fontSize: '12px', color: '#78716c', marginTop: '2px' }}>
+                  {s.why}
+                </span>
+              </span>
+              <span style={{
+                marginLeft: 'auto', paddingLeft: '10px', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600,
+                color: Math.abs(s.amount) > 0.005 ? '#334155' : '#a8a29e', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+              }}>
+                {money(s.amount, currency)}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <button
+          onClick={() => onConfirm(picked)} disabled={!picked.length || busy}
+          style={{ ...addBtn, opacity: picked.length && !busy ? 1 : 0.5, cursor: picked.length && !busy ? 'pointer' : 'not-allowed' }}
+        >
+          <Check size={14} /> Confirm {picked.length} as owner cost{picked.length === 1 ? '' : 's'}
+        </button>
+        {rest.length > 0 && (
+          <button
+            onClick={() => onDismiss(rest)} disabled={busy}
+            style={{
+              ...addBtn, borderColor: '#e7e5e4', backgroundColor: '#ffffff', color: '#78716c',
+              opacity: busy ? 0.5 : 1, cursor: busy ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <X size={14} /> {rest.length} unticked {rest.length === 1 ? 'is' : 'are'} not personal
+          </button>
+        )}
+        {picked.length > 0 && (
+          <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#92400e', marginLeft: 'auto' }}>
+            Adds {money(impact, currency)} back to underlying profit
+          </span>
+        )}
+        {busy && <Loader size={14} style={{ color: '#b45309', animation: 'spin 1s linear infinite' }} />}
+      </div>
+    </div>
+  );
+}
 
 function Tile({ label, value, text, currency, accent, delta }) {
   return (
