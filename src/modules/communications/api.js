@@ -105,6 +105,12 @@ export async function loadTagRules(mailbox) {
 // little learning.
 export function recordTagRule(mailbox, senderEmail, label) {
   if (!mailbox || !senderEmail || !label?.id) return;
+  // Never learn a colleague→client rule. Internal mail is *about* a client and
+  // which one is in the wording, so the address predicts nothing — tagging
+  // Raymond's email to a client by hand must not teach the inbox to suggest
+  // that client for everything else he sends.
+  const ownDomain = String(mailbox).split('@')[1];
+  if (ownDomain && String(senderEmail).toLowerCase().endsWith(`@${ownDomain}`)) return;
   supabase.rpc('record_comms_tag', {
     p_mailbox: mailbox,
     p_sender: senderEmail,

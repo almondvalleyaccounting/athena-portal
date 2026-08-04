@@ -350,6 +350,12 @@ Deno.serve(async (req) => {
       case "learn_labels": {
         const maxThreads = Math.min(Math.max(Number(body.maxThreads) || 400, 50), 800);
         const self = tok.accountEmail.toLowerCase();
+        // Colleagues are skipped, not just ourselves: a message from a
+        // teammate is *about* a client, and which client lives in the wording
+        // rather than the address. Learning "raymond@ → this client" would
+        // teach the inbox to suggest whichever client he last wrote about.
+        const selfDomain = self.split("@")[1] || "";
+        const internal = (e: string) => !!selfDomain && e.endsWith(`@${selfDomain}`);
         const labelData = await gmailFetch(tok.accessToken, "/labels");
         const userLabelById = new Map<string, string>();
         for (const l of labelData.labels || []) {
@@ -393,7 +399,7 @@ Deno.serve(async (req) => {
             const labelsOn = new Set<string>();
             for (const m of t.messages || []) {
               const e = extractEmail(header(m.payload?.headers, "From"));
-              if (e && e !== self) senders.add(e);
+              if (e && e !== self && !internal(e)) senders.add(e);
               for (const lid of m.labelIds || []) {
                 if (userLabelById.has(lid)) labelsOn.add(lid);
               }

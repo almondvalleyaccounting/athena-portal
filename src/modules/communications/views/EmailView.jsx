@@ -608,12 +608,19 @@ export default function EmailView() {
 
   const suggestTag = useMemo(() => buildTagSuggester(tagRules), [tagRules]);
 
+  // Our own domain, taken from the connected mailbox rather than hardcoded.
+  const ownDomain = (mailbox.split('@')[1] || '').toLowerCase();
+
   // Suggestions for one inbox thread — every entity the SENDER has been filed
   // under, keyed on their address, narrowed to labels that still exist.
   const suggestionFor = useCallback((t) => {
     if (isAll || labelId !== 'INBOX' || q) return null;
     const sender = parseAddress(t.counterpartFrom || t.from).email.toLowerCase();
     if (!sender || sender === mailbox) return null;
+    // A colleague's email is *about* a client rather than from one, and which
+    // client is in the wording, not the address — so there's nothing here to
+    // infer from and we don't guess. These still get tagged by hand.
+    if (ownDomain && sender.endsWith(`@${ownDomain}`)) return null;
     const labelsFor = suggestTag(sender)
       .map((s) => {
         const byId = labelById[s.label_id];
@@ -623,7 +630,7 @@ export default function EmailView() {
       .filter(Boolean);
     if (!labelsFor.length) return null;
     return { labels: labelsFor, sender };
-  }, [isAll, labelId, q, suggestTag, labelById, userLabels, mailbox]);
+  }, [isAll, labelId, q, suggestTag, labelById, userLabels, mailbox, ownDomain]);
 
   const suggested = useMemo(
     () => threads.map((t) => ({ t, sug: suggestionFor(t) })).filter((x) => x.sug),
