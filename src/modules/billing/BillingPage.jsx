@@ -15,10 +15,10 @@ const STATUS_CONFIG = {
   rejected: { label: 'Rejected', colour: '#dc2626', bg: '#fef2f2' },
   not_required: { label: 'Not required', colour: '#7c3aed', bg: '#f5f3ff' },
 };
-// Line services offered on an ad-hoc bill. Each must resolve to a QBO
-// product through qbo_service_items (matched on service_id OR qbo_item_name,
-// lowercased) or the push errors — so prefer the exact QBO product name.
-const SERVICES = ['Admin','Accounts Production','Corporation Tax','Self Assessment','VAT Returns','Bookkeeping','Payroll','Management Accounts','Company Secretarial','Registered Office','Software Licences','Advisory','SA302s','Accountant Certificates'];
+// Line services are loaded from qbo_service_items — a service is offered
+// only if it maps to a real QBO product, so a bill can no longer be raised
+// against a service the push would have to guess at. Maintain the list at
+// /manage/billing/products.
 
 export default function BillingPage() {
   const { profile } = useAuth();
@@ -27,6 +27,7 @@ export default function BillingPage() {
   const [highlightActive, setHighlightActive] = useState(!!highlightId);
   const [items, setItems] = useState([]);
   const [entities, setEntities] = useState([]);
+  const [services, setServices] = useState([]); // mapped ad-hoc line labels
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('pipeline'); // default to pipeline
@@ -86,13 +87,18 @@ export default function BillingPage() {
 
   const loadData = async () => {
     try {
-      const [{ data: bills }, { data: ents }, { data: staff }] = await Promise.all([
+      const [{ data: bills }, { data: ents }, { data: staff }, { data: svcRows }] = await Promise.all([
         supabase.from('billing_items').select('*').order('created_at', { ascending: false }),
         supabase.from('entities').select('id, name').order('name'),
         supabase.from('staff_profiles').select('*').order('name'),
+        // Ad-hoc line labels that actually map to a QBO product. Fee-engine
+        // service ids are excluded — they're slugs, not something to pick
+        // from on a one-off bill.
+        supabase.from('qbo_service_items').select('service_id, qbo_item_name').eq('is_adhoc', true),
       ]);
       setItems(bills || []);
       setEntities(ents || []);
+      setServices((svcRows || []).map((r) => r.service_id).sort((a, b) => a.localeCompare(b)));
       setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email || 'Unknown' })));
       // On first load, silently re-confirm invoice number + sent status from
       // QBO for pushed bills that don't have them yet (or aren't sent yet).
@@ -456,9 +462,11 @@ export default function BillingPage() {
         <div key={idx} style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:6,alignItems:'flex-start'}}>
           <select value={l.service} onChange={(e)=>changeLineField(idx,'service',e.target.value)} style={inputStyle}>
             <option value="">Select...</option>
-            {/* Include a copied QBO service name even if it isn't in our list. */}
-            {l.service && !SERVICES.includes(l.service) && <option value={l.service}>{l.service}</option>}
-            {SERVICES.map((s)=><option key={s} value={s}>{s}</option>)}
+            {/* Keep a service the line already carries — copied from a QBO
+                invoice, or mapped since this bill was drafted — so editing an
+                old bill can't silently blank its line. */}
+            {l.service && !services.includes(l.service) && <option value={l.service}>{l.service} (not mapped)</option>}
+            {services.map((s)=><option key={s} value={s}>{s}</option>)}
           </select>
           {/* Textarea so multi-line QBO descriptions keep their line breaks. */}
           <textarea value={l.description} onChange={(e)=>changeLineField(idx,'description',e.target.value)} placeholder="Optional..." rows={2} style={{...inputStyle,resize:'vertical',minHeight:38,lineHeight:1.4}}/>

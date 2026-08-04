@@ -253,15 +253,12 @@ Deno.serve(async (req) => {
         contactCache.set(cacheKey, contact);
       }
 
-      // Each distinct line service must resolve to a QBO item — via the map
-      // first, else an existing item of the same name. Anything left over is
-      // UNMAPPED and would block the push, so surface it in the plan.
+      // Each distinct line service must resolve to a QBO item through the
+      // map. Anything left over is UNMAPPED and will block the push, so
+      // surface it in the plan. Mirrors resolveQboItemId exactly — no name
+      // lookup, since a same-named item is not evidence of a mapping.
       const lineServices = [...new Set(normalizeLines(item).map((l) => l.service))];
-      const unmapped: string[] = [];
-      for (const s of lineServices) {
-        if (serviceMap.has(s.toLowerCase().trim())) continue;
-        if (!(await qboRecordExists("Item", "Name", s.substring(0, 100)))) unmapped.push(s);
-      }
+      const unmapped = lineServices.filter((s) => !serviceMap.has(s.toLowerCase().trim()));
 
       plan.push({
         billing_item_id: item.id,
@@ -356,7 +353,7 @@ Deno.serve(async (req) => {
       for (const l of lines) {
         let qboItemId = itemCache.get(l.service);
         if (!qboItemId) {
-          qboItemId = await resolveQboItemId(l.service, serviceMap);
+          qboItemId = resolveQboItemId(l.service, serviceMap);
           itemCache.set(l.service, qboItemId);
         }
         lineItems.push({
@@ -801,15 +798,6 @@ async function ensureCustomerContactDetails(customerId: string, email: string | 
   if (!resp.ok) throw new Error(`Failed to update QBO customer contact details: ${resp.status} ${await resp.text()}`);
 }
 
-// Read-only existence check for the dry-run plan.
-async function qboRecordExists(table: string, field: string, value: string): Promise<boolean> {
-  const escaped = value.replace(/'/g, "\\'");
-  const result = await qboQuery(`SELECT Id FROM ${table} WHERE ${field} = '${escaped}'`) as Record<string, unknown>;
-  const qr = (result?.QueryResponse as Record<string, unknown>) || {};
-  const rows = (qr[table] as Array<unknown>) || [];
-  return rows.length > 0;
-}
-
 async function ensureQboCustomer(
   sb: ReturnType<typeof getServiceClient>,
   entity: Record<string, unknown> | null,
@@ -864,19 +852,15 @@ async function loadServiceItemMap(sb: ReturnType<typeof getServiceClient>): Prom
   return map;
 }
 
-// Resolve a billing line's service to a real QBO item id: the explicit map
-// first, then an exact QBO Item.Name match, otherwise ERROR. We deliberately
-// never auto-create an item — a silent "Admin"-style catch-all with no proper
-// income account is exactly the mis-mapping this replaced. The error names
-// the service so the fix (add a qbo_service_items row) is obvious.
-async function resolveQboItemId(service: string, serviceMap: Map<string, string>): Promise<string> {
+// Resolve a billing line's service to a real QBO item id through the explicit
+// map, or ERROR. Two fallbacks used to sit here and both mis-coded revenue:
+// auto-creating an item (which QBO put on a catch-all income account), and an
+// exact Item.Name lookup — which quietly found those very auto-created items
+// long after the auto-create was removed. A name collision is not a mapping.
+// The error names the service so the fix (map it at /manage/billing/products)
+// is obvious, and nothing reaches QuickBooks until it's mapped.
+function resolveQboItemId(service: string, serviceMap: Map<string, string>): string {
   const mapped = serviceMap.get(service.toLowerCase().trim());
   if (mapped) return mapped;
-  const name = service.substring(0, 100);
-  const escaped = name.replace(/'/g, "\\'");
-  const result = await qboQuery(`SELECT Id FROM Item WHERE Name = '${escaped}'`) as Record<string, unknown>;
-  const qr = (result?.QueryResponse as Record<string, unknown>) || {};
-  const items = (qr.Item as Array<Record<string, unknown>>) || [];
-  if (items.length > 0) return String(items[0].Id);
-  throw new Error(`No QuickBooks product mapped for service "${service}". Add a mapping in qbo_service_items before billing — nothing was created in QuickBooks.`);
+  throw new Error(`No QuickBooks product mapped for service "${service}". Map it at /manage/billing/products before billing — nothing was created in QuickBooks.`);
 }
