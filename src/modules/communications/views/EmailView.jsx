@@ -20,6 +20,12 @@ const font = "'Outfit', sans-serif";
 const PAGE_SIZES = [50, 100, 250, 500];
 const SERVER_PAGE = 100;
 
+// Pseudo-mailbox: merge every mailbox this person can see into one list.
+// Gmail's system label ids (INBOX, SENT, …) are the same in every account, so
+// the folders still work across a merge; user labels and the learned tag rules
+// are per-account, so those features stand down while it's on.
+const ALL_MAILBOXES = '*';
+
 // System labels worth showing, in order. 'ALL' is our pseudo-label —
 // no labelIds filter, i.e. all mail including archived.
 const SYSTEM_LABELS = [
@@ -322,6 +328,10 @@ function recipients(t) {
 
 const recipientKey = (t) => (recipients(t)[0]?.email || '').toLowerCase();
 
+// Sort key for "who is this from" — the other party, so a thread we replied to
+// last still files under them rather than under us.
+const senderKey = (t) => parseAddress(t.counterpartFrom || t.from).email.toLowerCase();
+
 // Who a list row is about. Our own outbound mail can carry both SENT and
 // INBOX (anything sent to a list this mailbox is on), so a row that named the
 // latest sender read as inbound mail from ourselves. Name the other side
@@ -331,13 +341,17 @@ function rowParty(t, mailbox, showRecipient) {
   const last = parseAddress(t.from);
   const own = last.email.toLowerCase() === mailbox;
   const [rcpt, count] = recipients(t);
-  const toLabel = rcpt ? `To ${rcpt.name}${count > 1 ? ` +${count - 1}` : ''}` : null;
-  if (showRecipient && toLabel) return { name: toLabel, own };
-  if (own) {
-    if (t.counterpartFrom) return { name: parseAddress(t.counterpartFrom).name, own };
-    if (toLabel) return { name: toLabel, own };
-  }
-  return { name: last.name, own };
+  const rcptLabel = rcpt ? `${rcpt.name}${count > 1 ? ` +${count - 1}` : ''}` : null;
+  // We replied last: name the person we're talking to, not ourselves.
+  if (own && t.counterpartFrom) return { name: parseAddress(t.counterpartFrom).name, own };
+  // Nothing but our own mail on the thread (Sent, or an unanswered send).
+  if (own && rcptLabel) return { name: `To ${rcptLabel}`, own };
+  // Inbound: always the sender. Sorting by recipient keys on an address that
+  // isn't the sender's, so that gets shown alongside rather than instead —
+  // but only when it isn't this mailbox, because "to me" in my own inbox is
+  // noise. What's left is the useful case: mail you were merely cc'd on.
+  const informative = showRecipient && rcpt && rcpt.email.toLowerCase() !== mailbox;
+  return { name: last.name, own, to: informative ? rcptLabel : null };
 }
 
 export default function EmailView() {
@@ -349,7 +363,10 @@ export default function EmailView() {
   const [labels, setLabels] = useState([]);
   const [labelId, setLabelId] = useState('INBOX');
   const [threads, setThreads] = useState([]);
-  const [nextPage, setNextPage] = useState(null);
+  const [pageTokens, setPageTokens] = useState({}); // mailbox → next page token
+  // Same map in a ref: "Load more" needs the tokens from the batch that just
+  // landed, and the loader is deliberately not re-memoised per batch.
+  const tokensRef = useRef({});
   const [listLoading, setListLoading] = useState(false);
   const [q, setQ] = useState('');
   const [qDraft, setQDraft] = useState('');
@@ -384,17 +401,31 @@ export default function EmailView() {
   });
   const paneRef = useRef(null);
 
+  const isAll = mailbox === ALL_MAILBOXES;
   const mailboxObj = useMemo(
     () => (mailboxes || []).find((m) => m.account_email === mailbox) || null,
     [mailboxes, mailbox],
   );
+  // Mailboxes the list is currently reading from, and a short label per address
+  // for the per-row chip in merged mode.
+  const activeMailboxes = useMemo(() => {
+    if (isAll) return (mailboxes || []).map((m) => m.account_email);
+    return mailbox ? [mailbox] : [];
+  }, [isAll, mailboxes, mailbox]);
+  const mailboxLabel = useMemo(() => Object.fromEntries(
+    (mailboxes || []).map((m) => [m.account_email, m.display_name || m.account_email.split('@')[0]]),
+  ), [mailboxes]);
+  // Where a "New email" comes from when no single mailbox is selected.
+  const sendFrom = isAll
+    ? ((mailboxes || []).find((m) => m.kind === 'personal' && m.owner_staff_id === profile?.id)
+      || (mailboxes || [])[0])?.account_email || ''
+    : mailbox;
   const labelById = useMemo(() => Object.fromEntries(labels.map((l) => [l.id, l])), [labels]);
   const userLabels = useMemo(
     () => labels.filter((l) => l.type === 'user' && l.labelListVisibility !== 'labelHide'),
     [labels],
   );
   const labelTree = useMemo(() => buildLabelTree(userLabels), [userLabels]);
-  const sigText = useMemo(() => effectiveSignature(signatures, mailbox), [signatures, mailbox]);
 
   const flash = (text, undo = null) => {
     setNotice({ text, undo });
@@ -414,6 +445,7 @@ export default function EmailView() {
       const rows = await listMailboxes(profile);
       setMailboxes(rows);
       const stored = localStorage.getItem('comms_mailbox');
+      if (stored === ALL_MAILBOXES && rows.length > 1) { setMailbox(ALL_MAILBOXES); return; }
       const preferred =
         rows.find((m) => m.account_email === stored) ||
         rows.find((m) => m.kind === 'personal' && m.owner_staff_id === profile?.id) ||
@@ -435,7 +467,7 @@ export default function EmailView() {
 
   // ── Labels + threads ──
   const loadLabels = useCallback(async () => {
-    if (!mailbox) return [];
+    if (!mailbox || isAll) { setLabels([]); return []; }
     try {
       const res = await gmail.listLabels(mailbox);
       setLabels(res.labels || []);
@@ -445,64 +477,90 @@ export default function EmailView() {
       setError(e.code === 'no_gmail_connection' ? null : `Labels: ${e.message}`);
       return [];
     }
-  }, [mailbox]);
+  }, [mailbox, isAll]);
 
   // Gmail's own cap is 100 threads per call (each one costs a metadata fetch),
   // so a bigger page size is walked server-page by server-page and appended as
-  // it lands — rows show up in batches instead of after one long wait. A newer
-  // load (mailbox switch, label change) bumps the generation and the older
-  // walk drops its results rather than interleaving them.
-  const loadThreads = useCallback(async ({ append, pageToken } = {}) => {
-    if (!mailbox) return;
+  // it lands — rows show up in batches instead of after one long wait. Merged
+  // mode walks every mailbox at once and splits the page size between them, so
+  // "500" stays roughly 500 rows in total rather than 500 each. A newer load
+  // (mailbox switch, label change) bumps the generation and the older walk
+  // drops its results rather than interleaving them.
+  const loadThreads = useCallback(async ({ append } = {}) => {
+    if (!activeMailboxes.length) return;
     const gen = ++loadGen.current;
     setListLoading(true);
     setError(null);
-    let added = 0;
-    let missed = 0;
-    try {
-      let token = pageToken;
-      let replace = !append;
-      do {
-        // Gmail matches a label or query against any message in the thread, so
-        // "-from:me" drops threads that are only our own sent mail while keeping
-        // conversations we happen to have replied to last.
-        // eslint-disable-next-line no-await-in-loop
-        const res = await gmail.listThreads(mailbox, {
-          labelIds: q || labelId === 'ALL' ? undefined : [labelId],
-          q: q || (labelId === 'INBOX' && hideOwn ? '-from:me' : undefined),
-          pageToken: token,
-          maxResults: Math.min(SERVER_PAGE, pageSize - added),
-        });
-        if (gen !== loadGen.current) return; // superseded — drop these rows
-        setThreads((prev) => (replace ? res.threads : [...prev, ...res.threads]));
-        setNextPage(res.nextPageToken || null);
-        if (replace) setSelected(new Set());
-        replace = false;
-        added += res.threads.length;
-        missed += res.missed || 0;
-        token = res.nextPageToken || null;
-      } while (token && added < pageSize);
-      if (missed) flash(`${missed} conversation${missed === 1 ? '' : 's'} couldn't be loaded — refresh to retry.`);
-    } catch (e) {
-      if (gen !== loadGen.current) return;
-      if (e.code !== 'no_gmail_connection') setError(e.message);
-      if (!append && !added) { setThreads([]); setNextPage(null); }
-    } finally {
-      if (gen === loadGen.current) setListLoading(false);
+    if (!append) {
+      setThreads([]);
+      setSelected(new Set());
+      tokensRef.current = {};
+      setPageTokens({});
     }
-  }, [mailbox, labelId, q, hideOwn, pageSize]);
+    const perBox = Math.max(1, Math.ceil(pageSize / activeMailboxes.length));
+    let missed = 0;
+    let failure = null;
+    await Promise.all(activeMailboxes.map(async (mb) => {
+      let token = append ? tokensRef.current[mb] : undefined;
+      if (append && !token) return; // this mailbox is already exhausted
+      let added = 0;
+      try {
+        do {
+          // Gmail matches a label or query against any message in the thread, so
+          // "-from:me" drops threads that are only our own sent mail while keeping
+          // conversations we happen to have replied to last.
+          // eslint-disable-next-line no-await-in-loop
+          const res = await gmail.listThreads(mb, {
+            labelIds: q || labelId === 'ALL' ? undefined : [labelId],
+            q: q || (labelId === 'INBOX' && hideOwn ? '-from:me' : undefined),
+            pageToken: token,
+            maxResults: Math.min(SERVER_PAGE, perBox - added),
+          });
+          if (gen !== loadGen.current) return; // superseded — drop these rows
+          const rows = (res.threads || []).map((t) => ({ ...t, mailbox: mb }));
+          setThreads((prev) => [...prev, ...rows]);
+          token = res.nextPageToken || null;
+          tokensRef.current = { ...tokensRef.current, [mb]: token };
+          setPageTokens(tokensRef.current);
+          added += rows.length;
+          missed += res.missed || 0;
+          if (!rows.length) break; // a token with nothing behind it
+        } while (token && added < perBox);
+      } catch (e) {
+        if (e.code !== 'no_gmail_connection') {
+          failure = activeMailboxes.length > 1 ? `${mailboxLabel[mb] || mb}: ${e.message}` : e.message;
+        }
+      }
+    }));
+    if (gen !== loadGen.current) return;
+    if (failure) setError(failure);
+    if (missed) flash(`${missed} conversation${missed === 1 ? '' : 's'} couldn't be loaded — refresh to retry.`);
+    setListLoading(false);
+    // pageTokens is read for "Load more" only; including it would re-fire the
+    // load effect on every batch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMailboxes, labelId, q, hideOwn, pageSize, mailboxLabel]);
 
-  // Gmail can only return newest-first, so any other order is applied to the
-  // conversations loaded so far ("Load more" extends the pool).
+  const hasMore = Object.values(pageTokens).some(Boolean);
+
+  // Gmail can only return newest-first per mailbox, so ordering is applied here
+  // over the conversations loaded so far ("Load more" extends the pool) — which
+  // is also what interleaves a merged view into one timeline.
   const showRecipient = sort === 'recipient' || labelId === 'SENT' || labelId === 'DRAFT';
   const visibleThreads = useMemo(() => {
-    if (sort !== 'recipient') return threads;
-    return [...threads].sort((a, b) => {
-      const ka = recipientKey(a);
-      const kb = recipientKey(b);
-      if (!ka !== !kb) return ka ? -1 : 1; // unaddressed rows last
-      return ka.localeCompare(kb) || b.internalDate - a.internalDate;
-    });
+    const list = [...threads];
+    const key = sort === 'recipient' ? recipientKey : sort === 'sender' ? senderKey : null;
+    if (key) {
+      list.sort((a, b) => {
+        const ka = key(a);
+        const kb = key(b);
+        if (!ka !== !kb) return ka ? -1 : 1; // rows with no address last
+        return ka.localeCompare(kb) || b.internalDate - a.internalDate;
+      });
+    } else {
+      list.sort((a, b) => b.internalDate - a.internalDate);
+    }
+    return list;
   }, [threads, sort]);
 
   useEffect(() => { setThread(null); setComposer(null); loadLabels(); }, [mailbox, loadLabels]);
@@ -512,7 +570,7 @@ export default function EmailView() {
   // Sender→label rules learned from this mailbox's history + every manual
   // tag. First visit with no rules kicks off a background history scan.
   const refreshTagRules = useCallback(async () => {
-    if (!mailbox) return [];
+    if (!mailbox || isAll) { setTagRules([]); return []; }
     try {
       const rules = await loadTagRules(mailbox);
       setTagRules(rules);
@@ -521,7 +579,7 @@ export default function EmailView() {
       setTagRules([]);
       return [];
     }
-  }, [mailbox]);
+  }, [mailbox, isAll]);
 
   const doLearnTags = useCallback(async (silent = false) => {
     setLearnBusy(true);
@@ -538,7 +596,7 @@ export default function EmailView() {
   }, [mailbox]);
 
   useEffect(() => {
-    if (!mailbox) return;
+    if (!mailbox || isAll) return; // rules are per-account
     (async () => {
       const rules = await refreshTagRules();
       if (!rules.length && !autoLearned.current.has(mailbox)) {
@@ -546,42 +604,52 @@ export default function EmailView() {
         doLearnTags(true);
       }
     })();
-  }, [mailbox, refreshTagRules, doLearnTags]);
+  }, [mailbox, isAll, refreshTagRules, doLearnTags]);
 
   const suggestTag = useMemo(() => buildTagSuggester(tagRules), [tagRules]);
 
-  // Suggestion for one inbox thread — only labels that still exist.
+  // Suggestions for one inbox thread — every entity the SENDER has been filed
+  // under, keyed on their address, narrowed to labels that still exist.
   const suggestionFor = useCallback((t) => {
-    if (labelId !== 'INBOX' || q) return null;
+    if (isAll || labelId !== 'INBOX' || q) return null;
     const sender = parseAddress(t.counterpartFrom || t.from).email.toLowerCase();
     if (!sender || sender === mailbox) return null;
-    const s = suggestTag(sender);
-    if (!s) return null;
-    let label = labelById[s.label_id];
-    if (!label || label.type !== 'user') {
-      label = userLabels.find((l) => l.name === s.label_name) || null;
-    }
-    if (!label) return null;
-    return { label, sender };
-  }, [labelId, q, suggestTag, labelById, userLabels, mailbox]);
+    const labelsFor = suggestTag(sender)
+      .map((s) => {
+        const byId = labelById[s.label_id];
+        if (byId?.type === 'user') return byId;
+        return userLabels.find((l) => l.name === s.label_name) || null;
+      })
+      .filter(Boolean);
+    if (!labelsFor.length) return null;
+    return { labels: labelsFor, sender };
+  }, [isAll, labelId, q, suggestTag, labelById, userLabels, mailbox]);
 
   const suggested = useMemo(
     () => threads.map((t) => ({ t, sug: suggestionFor(t) })).filter((x) => x.sug),
     [threads, suggestionFor],
   );
 
+  // Applies the whole suggested set in one modify, then archives.
+  const applySuggestion = useCallback(async (t, sug) => {
+    await gmail.modifyThread(t.mailbox, t.id, {
+      addLabelIds: sug.labels.map((l) => l.id),
+      removeLabelIds: ['INBOX'],
+    });
+    for (const l of sug.labels) recordTagRule(t.mailbox, sug.sender, l);
+    setThreads((prev) => prev.filter((x) => x.id !== t.id));
+    setSelected((prev) => { const n = new Set(prev); n.delete(t.id); return n; });
+    setThread((prev) => (prev?.id === t.id ? null : prev));
+  }, []);
+
   const acceptSuggestion = useCallback(async (t, sug) => {
     try {
-      await gmail.modifyThread(mailbox, t.id, { addLabelIds: [sug.label.id], removeLabelIds: ['INBOX'] });
-      recordTagRule(mailbox, sug.sender, sug.label);
-      setThreads((prev) => prev.filter((x) => x.id !== t.id));
-      setSelected((prev) => { const n = new Set(prev); n.delete(t.id); return n; });
-      setThread((prev) => (prev?.id === t.id ? null : prev));
-      flash(`Tagged “${sug.label.name}” & archived.`);
+      await applySuggestion(t, sug);
+      flash(`Tagged ${sug.labels.map((l) => `“${l.name}”`).join(' + ')} & archived.`);
     } catch (e) {
       setError(e.message);
     }
-  }, [mailbox]);
+  }, [applySuggestion]);
 
   const acceptAllSuggestions = useCallback(async () => {
     setSweepBusy(true);
@@ -589,9 +657,7 @@ export default function EmailView() {
     let failed = 0;
     for (const { t, sug } of suggested) {
       try {
-        await gmail.modifyThread(mailbox, t.id, { addLabelIds: [sug.label.id], removeLabelIds: ['INBOX'] });
-        recordTagRule(mailbox, sug.sender, sug.label);
-        setThreads((prev) => prev.filter((x) => x.id !== t.id));
+        await applySuggestion(t, sug);
         done++;
       } catch {
         failed++;
@@ -600,7 +666,7 @@ export default function EmailView() {
     setSweepBusy(false);
     setSelected(new Set());
     flash(`Cleared ${done} conversation${done === 1 ? '' : 's'} as suggested${failed ? ` (${failed} failed)` : ''}.`);
-  }, [suggested, mailbox]);
+  }, [suggested, applySuggestion]);
 
   // Ensure a label path exists, creating each missing level ("Tax/VAT"
   // creates "Tax" then "Tax/VAT"). Returns the leaf label.
@@ -630,17 +696,20 @@ export default function EmailView() {
   }, [labels, mailbox, loadLabels]);
 
   // ── Thread (preview pane) ──
+  // Every thread carries the mailbox it came from, so a merged list can still
+  // read, reply to and file each conversation against the right account.
   const openThread = useCallback(async (summary) => {
+    const mb = summary.mailbox || mailbox;
     setThreadLoading(true);
     setError(null);
     try {
-      const res = await gmail.getThread(mailbox, summary.id);
+      const res = await gmail.getThread(mb, summary.id);
       res.thread.messages = [...res.thread.messages].sort((a, b) => b.internalDate - a.internalDate);
-      setThread(res.thread);
+      setThread({ ...res.thread, mailbox: mb });
       setComposer(null);
       if (paneRef.current) paneRef.current.scrollTop = 0;
       if (summary.unread) {
-        gmail.modifyThread(mailbox, summary.id, { removeLabelIds: ['UNREAD'] })
+        gmail.modifyThread(mb, summary.id, { removeLabelIds: ['UNREAD'] })
           .then(() => setThreads((prev) => prev.map((t) => (t.id === summary.id ? { ...t, unread: false } : t))))
           .catch(() => { /* read-state is cosmetic */ });
       }
@@ -653,10 +722,11 @@ export default function EmailView() {
 
   const latestMsg = thread?.messages?.[0] || null;
   const threadInTrash = !!thread && thread.messages.some((m) => m.labelIds.includes('TRASH'));
+  const threadMailbox = thread?.mailbox || mailbox;
 
   const archiveThread = useCallback(async (threadId, restore = false) => {
     try {
-      await gmail.modifyThread(mailbox, threadId, restore
+      await gmail.modifyThread(threadMailbox, threadId, restore
         ? { addLabelIds: ['INBOX'] }
         : { removeLabelIds: ['INBOX'] });
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
@@ -667,42 +737,42 @@ export default function EmailView() {
         ? 'Archiving needs the upgraded Gmail permission — reconnect this mailbox.'
         : e.message);
     }
-  }, [mailbox]);
+  }, [threadMailbox]);
 
   // Delete = Gmail bin (recoverable ~30 days), never permanent.
   const trashThread = useCallback(async (threadId) => {
     try {
-      await gmail.trashThread(mailbox, threadId);
+      await gmail.trashThread(threadMailbox, threadId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
       setThread(null);
       flash('Moved to bin.', async () => {
-        await gmail.untrashThread(mailbox, threadId).catch(() => {});
+        await gmail.untrashThread(threadMailbox, threadId).catch(() => {});
         loadThreads();
       });
     } catch (e) {
       setError(e.message);
     }
-  }, [mailbox, loadThreads]);
+  }, [threadMailbox, loadThreads]);
 
   const restoreThread = useCallback(async (threadId) => {
     try {
-      await gmail.untrashThread(mailbox, threadId);
+      await gmail.untrashThread(threadMailbox, threadId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
       setThread(null);
       flash('Restored from bin.');
     } catch (e) {
       setError(e.message);
     }
-  }, [mailbox]);
+  }, [threadMailbox]);
 
   const tagThread = useCallback(async (label) => {
     if (!thread) return;
     try {
-      await gmail.modifyThread(mailbox, thread.id, { addLabelIds: [label.id] });
+      await gmail.modifyThread(threadMailbox, thread.id, { addLabelIds: [label.id] });
       const sender = thread.messages
         .map((m) => parseAddress(m.from).email.toLowerCase())
-        .find((e) => e && e !== mailbox);
-      recordTagRule(mailbox, sender, label);
+        .find((e) => e && e !== threadMailbox);
+      recordTagRule(threadMailbox, sender, label);
       setThread((prev) => (prev ? {
         ...prev,
         messages: prev.messages.map((m) => ({ ...m, labelIds: [...new Set([...m.labelIds, label.id])] })),
@@ -721,44 +791,51 @@ export default function EmailView() {
     return next;
   });
 
+  const boxOf = useCallback(
+    (id) => threads.find((t) => t.id === id)?.mailbox || mailbox,
+    [threads, mailbox],
+  );
+
   const bulkModify = useCallback(async ({ addLabelIds = [], removeLabelIds = [], verb }) => {
     setBulkBusy(true);
     setError(null);
     let failed = 0;
     for (const id of selected) {
       try {
-        await gmail.modifyThread(mailbox, id, { addLabelIds, removeLabelIds });
+        await gmail.modifyThread(boxOf(id), id, { addLabelIds, removeLabelIds });
       } catch { failed++; }
     }
     setBulkBusy(false);
     flash(`${verb} ${selected.size - failed} conversation${selected.size - failed === 1 ? '' : 's'}${failed ? ` (${failed} failed)` : ''}.`);
     setSelected(new Set());
     loadThreads();
-  }, [selected, mailbox, loadThreads]);
+  }, [selected, boxOf, loadThreads]);
 
   const bulkTrash = useCallback(async () => {
     setBulkBusy(true);
     setError(null);
-    const ids = [...selected];
+    const ids = [...selected].map((id) => [id, boxOf(id)]);
     let failed = 0;
-    for (const id of ids) {
-      try { await gmail.trashThread(mailbox, id); } catch { failed++; }
+    for (const [id, mb] of ids) {
+      try { await gmail.trashThread(mb, id); } catch { failed++; }
     }
     setBulkBusy(false);
     setSelected(new Set());
     flash(`Binned ${ids.length - failed} conversation${ids.length - failed === 1 ? '' : 's'}.`, async () => {
-      for (const id of ids) await gmail.untrashThread(mailbox, id).catch(() => {});
+      for (const [id, mb] of ids) await gmail.untrashThread(mb, id).catch(() => {});
       loadThreads();
     });
     loadThreads();
-  }, [selected, mailbox, loadThreads]);
+  }, [selected, boxOf, loadThreads]);
 
   // ── Composer ──
   const startComposer = useCallback((mode) => {
     setError(null);
-    const sig = sigText ? `\n\n${sigText}` : '';
+    // Signature belongs to the account the mail actually leaves from.
+    const sigBody = effectiveSignature(signatures, mode === 'new' ? sendFrom : threadMailbox);
+    const sig = sigBody ? `\n\n${sigBody}` : '';
     if (mode === 'new') {
-      setComposer({ mode, to: '', cc: '', subject: '', body: `${sig}` });
+      setComposer({ mode, to: '', cc: '', subject: '', body: `${sig}`, mailbox: sendFrom });
       return;
     }
     if (!latestMsg) return;
@@ -771,23 +848,23 @@ export default function EmailView() {
       let cc = '';
       if (mode === 'replyAll') {
         const others = [latestMsg.to, latestMsg.cc].filter(Boolean).join(', ')
-          .split(',').map((s) => parseAddress(s).email).filter((e) => e && e.toLowerCase() !== mailbox);
+          .split(',').map((s) => parseAddress(s).email).filter((e) => e && e.toLowerCase() !== threadMailbox);
         cc = [...new Set(others)].join(', ');
       }
-      setComposer({ mode, to, cc, subject: reSubject, body: `${sig}\n\n${quoteBody(latestMsg)}`, threadId: thread.id, inReplyTo: latestMsg.messageIdHeader, references });
+      setComposer({ mode, to, cc, subject: reSubject, body: `${sig}\n\n${quoteBody(latestMsg)}`, threadId: thread.id, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox });
     } else if (mode === 'forward') {
       const fwdSubject = /^fwd?:/i.test(subject) ? subject : `Fwd: ${subject}`;
-      setComposer({ mode, to: '', cc: '', subject: fwdSubject, body: `${sig}\n\n${forwardBody(latestMsg)}` });
+      setComposer({ mode, to: '', cc: '', subject: fwdSubject, body: `${sig}\n\n${forwardBody(latestMsg)}`, mailbox: threadMailbox });
     }
     if (paneRef.current) paneRef.current.scrollTop = 0;
-  }, [latestMsg, thread, mailbox, sigText]);
+  }, [latestMsg, thread, threadMailbox, sendFrom, signatures]);
 
   const sendComposer = useCallback(async () => {
     if (!composer?.to?.trim() || !composer?.subject?.trim()) { setError('To and subject are required.'); return; }
     setSending(true);
     setError(null);
     try {
-      await gmail.send(mailbox, {
+      await gmail.send(composer.mailbox || mailbox, {
         to: composer.to.trim().replace(/,\s*$/, ''),
         cc: composer.cc?.trim().replace(/,\s*$/, '') || undefined,
         subject: composer.subject.trim(),
@@ -799,13 +876,13 @@ export default function EmailView() {
       const wasReply = !!composer.threadId;
       setComposer(null);
       flash('Sent.');
-      if (wasReply && thread) openThread({ id: thread.id, unread: false });
+      if (wasReply && thread) openThread({ id: thread.id, mailbox: threadMailbox, unread: false });
     } catch (e) {
       setError(`Send failed: ${e.message}`);
     } finally {
       setSending(false);
     }
-  }, [composer, mailbox, thread, openThread]);
+  }, [composer, mailbox, thread, threadMailbox, openThread]);
 
   // ── Contacts sync / signature save ──
   const doSyncContacts = useCallback(async () => {
@@ -915,7 +992,7 @@ export default function EmailView() {
       <div style={{ border: '1px solid #94a3b8', borderRadius: 10, background: '#fff', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
-            {composer.mode === 'new' ? 'New email' : composer.mode === 'forward' ? 'Forward' : composer.mode === 'replyAll' ? 'Reply all' : 'Reply'} — from {mailboxObj?.display_name || mailbox}
+            {composer.mode === 'new' ? 'New email' : composer.mode === 'forward' ? 'Forward' : composer.mode === 'replyAll' ? 'Reply all' : 'Reply'} — from {mailboxLabel[composer.mailbox] || composer.mailbox || mailbox}
           </span>
           <button onClick={() => setComposer(null)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={14} /></button>
         </div>
@@ -951,13 +1028,16 @@ export default function EmailView() {
               <button onClick={() => startComposer('reply')} title="Reply" style={btnIcon}><ReplyIcon size={14} /> Reply</button>
               <button onClick={() => startComposer('replyAll')} title="Reply all" style={btnIcon}><ReplyAllIcon size={14} /> All</button>
               <button onClick={() => startComposer('forward')} title="Forward" style={btnIcon}><ForwardIcon size={14} /> Forward</button>
-              <LabelPicker
-                labels={userLabels}
-                onPick={tagThread}
-                onCreate={ensureLabel}
-                align="right"
-                trigger={<button title="Tag with a label" style={btnIcon}><Tag size={13} /> Tag</button>}
-              />
+              {/* Labels are per-account, so tagging waits for a single mailbox. */}
+              {!isAll && (
+                <LabelPicker
+                  labels={userLabels}
+                  onPick={tagThread}
+                  onCreate={ensureLabel}
+                  align="right"
+                  trigger={<button title="Tag with a label" style={btnIcon}><Tag size={13} /> Tag</button>}
+                />
+              )}
               {thread.messages.some((m) => m.labelIds.includes('INBOX'))
                 ? <button onClick={() => archiveThread(thread.id)} title="Archive (remove from inbox)" style={btnIcon}><Archive size={14} /> Archive</button>
                 : !threadInTrash && <button onClick={() => archiveThread(thread.id, true)} title="Move back to inbox" style={btnIcon}><ArchiveRestore size={14} /> To inbox</button>}
@@ -970,11 +1050,14 @@ export default function EmailView() {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {[...new Set(thread.messages.flatMap((m) => m.labelIds))]
               .filter((id) => labelById[id]?.type === 'user')
-              .map((id) => <span key={id} style={chipStyle('accent')}>{labelById[id].name}</span>)}
+              .map((id) => <span key={id} style={chipStyle('teal')}>{labelById[id].name}</span>)}
+            {isAll && (
+              <span style={chipStyle('neutral')}>{mailboxLabel[threadMailbox] || threadMailbox}</span>
+            )}
           </div>
           {composer && renderComposer()}
           {thread.messages.map((m, i) => (
-            <MessageCard key={m.id} msg={m} mailbox={mailbox} defaultOpen={i === 0} />
+            <MessageCard key={m.id} msg={m} mailbox={threadMailbox} defaultOpen={i === 0} />
           ))}
         </>
       );
@@ -995,34 +1078,46 @@ export default function EmailView() {
           onChange={(e) => setMailbox(e.target.value)}
           style={{ padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', fontWeight: 600, color: '#0f172a' }}
         >
+          {mailboxes.length > 1 && (
+            <option value={ALL_MAILBOXES}>All mailboxes ({mailboxes.length})</option>
+          )}
           {mailboxes.map((m) => (
             <option key={m.account_email} value={m.account_email}>
               {m.display_name || m.account_email}{m.kind === 'shared' ? ' (shared)' : ''}
             </option>
           ))}
         </select>
-        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: -2, paddingLeft: 2 }}>{mailboxObj?.account_email}</div>
+        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: -2, paddingLeft: 2 }}>
+          {isAll ? activeMailboxes.join(', ') : mailboxObj?.account_email}
+        </div>
 
-        {/* Mailbox tools — directly under the switcher */}
+        {/* Mailbox tools — directly under the switcher. Contacts, signature and
+            reconnect all act on one account, so they wait for a single pick. */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
           {(!myPersonal || isAdmin) && (
             <button onClick={() => setAddOpen((o) => !o)} style={{ ...railBtn, border: '1px dashed #94a3b8' }}>
               <Plus size={12} /> Add mailbox
             </button>
           )}
-          <a
-            href={reconnectUrl}
-            onClick={(e) => { if (!window.confirm(`Reconnect ${mailboxObj?.account_email}? You'll be sent to Google to re-approve — sign in as that account. This refreshes the mailbox's permissions.`)) e.preventDefault(); }}
-            style={{ ...railBtn, textDecoration: 'none', ...(needsReconnect ? { border: '1px solid #fcd34d', background: '#fffbeb', color: '#92400e' } : {}) }}
-          >
-            <RefreshCw size={12} /> Reconnect{needsReconnect ? ' ⚠' : ''}
-          </a>
-          <button onClick={doSyncContacts} disabled={syncBusy} style={railBtn}>
-            <BookUser size={12} /> {syncBusy ? 'Syncing…' : 'Contacts'}
-          </button>
-          <button onClick={openSigEditor} style={railBtn}>
-            <PenSquare size={12} /> Signature
-          </button>
+          {!isAll && (
+            <a
+              href={reconnectUrl}
+              onClick={(e) => { if (!window.confirm(`Reconnect ${mailboxObj?.account_email}? You'll be sent to Google to re-approve — sign in as that account. This refreshes the mailbox's permissions.`)) e.preventDefault(); }}
+              style={{ ...railBtn, textDecoration: 'none', ...(needsReconnect ? { border: `1px solid ${tones.info.border}`, background: tones.info.bg, color: tones.info.fg } : {}) }}
+            >
+              <RefreshCw size={12} /> Reconnect{needsReconnect ? ' ⚠' : ''}
+            </a>
+          )}
+          {!isAll && (
+            <button onClick={doSyncContacts} disabled={syncBusy} style={railBtn}>
+              <BookUser size={12} /> {syncBusy ? 'Syncing…' : 'Contacts'}
+            </button>
+          )}
+          {!isAll && (
+            <button onClick={openSigEditor} style={railBtn}>
+              <PenSquare size={12} /> Signature
+            </button>
+          )}
         </div>
         {addOpen && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, border: '1px solid #e2e8f0', borderRadius: 8, background: '#f8fafc' }}>
@@ -1054,7 +1149,9 @@ export default function EmailView() {
         </button>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {SYSTEM_LABELS.filter((s) => s.id === 'INBOX' || s.id === 'ALL' || labelById[s.id]).map((s) => (
+          {/* System label ids are identical in every Gmail account, so the
+              merged view offers the full set even with no labels loaded. */}
+          {SYSTEM_LABELS.filter((s) => isAll || s.id === 'INBOX' || s.id === 'ALL' || labelById[s.id]).map((s) => (
             <button
               key={s.id}
               onClick={() => selectLabel(s.id)}
@@ -1083,7 +1180,7 @@ export default function EmailView() {
               value={qDraft}
               onChange={(e) => setQDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') setQ(qDraft.trim()); }}
-              placeholder="Search this mailbox — Enter"
+              placeholder={isAll ? 'Search all mailboxes — Enter' : 'Search this mailbox — Enter'}
               style={{ flex: 1, padding: '8px 0', fontSize: 13, fontFamily: font, border: 'none', outline: 'none', minWidth: 0 }}
             />
             {q && <button onClick={() => { setQ(''); setQDraft(''); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', fontSize: 11 }}>clear</button>}
@@ -1102,6 +1199,7 @@ export default function EmailView() {
             >
               <option value="date">Newest first</option>
               <option value="recipient">Recipient email (A–Z)</option>
+              <option value="sender">Sender email (A–Z)</option>
             </select>
           </label>
           {labelId === 'INBOX' && !q && (
@@ -1131,19 +1229,20 @@ export default function EmailView() {
           <span style={{ color: '#94a3b8', marginLeft: 'auto' }}>
             {listLoading && threads.length > 0
               ? `${threads.length} loaded…`
-              : `${threads.length}${nextPage ? ' — Load more' : ''}`}
+              : `${threads.length}${hasMore ? ' — Load more' : ''}`}
+            {isAll ? ` across ${activeMailboxes.length} mailboxes` : ''}
           </span>
         </div>
 
         {/* Auto-suggested tags: eyeball, then one-click clear */}
-        {labelId === 'INBOX' && !q && (suggested.length > 0 || learnBusy || tagRules.length === 0) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#fefce8', border: '1px solid #fde047', borderRadius: 8, fontSize: 12, flexWrap: 'wrap' }}>
-            <Sparkles size={13} color="#a16207" style={{ flexShrink: 0 }} />
+        {!isAll && labelId === 'INBOX' && !q && (suggested.length > 0 || learnBusy || tagRules.length === 0) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: tones.teal.bg, border: `1px solid ${tones.teal.border}`, borderRadius: 8, fontSize: 12, flexWrap: 'wrap' }}>
+            <Sparkles size={13} color={tones.teal.solid} style={{ flexShrink: 0 }} />
             {learnBusy ? (
-              <span style={{ color: '#a16207' }}>Learning from this mailbox&apos;s labelled history…</span>
+              <span style={{ color: tones.teal.fg }}>Learning from this mailbox&apos;s labelled history…</span>
             ) : suggested.length > 0 ? (
               <>
-                <span style={{ fontWeight: 700, color: '#854d0e' }}>
+                <span style={{ fontWeight: 700, color: tones.teal.fg }}>
                   {suggested.length} suggested tag{suggested.length === 1 ? '' : 's'}
                 </span>
                 <button disabled={sweepBusy} onClick={acceptAllSuggestions} style={sweepBtn}>
@@ -1151,7 +1250,7 @@ export default function EmailView() {
                 </button>
               </>
             ) : (
-              <span style={{ color: '#a16207' }}>No tag suggestions yet.</span>
+              <span style={{ color: tones.teal.fg }}>No tag suggestions yet.</span>
             )}
             <button
               disabled={learnBusy || sweepBusy}
@@ -1166,26 +1265,28 @@ export default function EmailView() {
 
         {/* Bulk action bar */}
         {selected.size > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 8, fontSize: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 700, color: '#0c4a6e' }}>{selected.size} selected</span>
-            <LabelPicker
-              labels={userLabels}
-              onPick={(label) => {
-                for (const id of selected) {
-                  const t = threads.find((x) => x.id === id);
-                  const sender = t ? parseAddress(t.counterpartFrom || t.from).email.toLowerCase() : '';
-                  if (sender && sender !== mailbox) recordTagRule(mailbox, sender, label);
-                }
-                bulkModify({ addLabelIds: [label.id], removeLabelIds: ['INBOX'], verb: `Tagged “${label.name}” & archived` });
-              }}
-              onCreate={ensureLabel}
-              trigger={<button disabled={bulkBusy} style={bulkBtn}><Tag size={12} /> Tag + archive ▾</button>}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: tones.info.bg, border: `1px solid ${tones.info.border}`, borderRadius: 8, fontSize: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 700, color: tones.info.fg }}>{selected.size} selected</span>
+            {!isAll && (
+              <LabelPicker
+                labels={userLabels}
+                onPick={(label) => {
+                  for (const id of selected) {
+                    const t = threads.find((x) => x.id === id);
+                    const sender = t ? parseAddress(t.counterpartFrom || t.from).email.toLowerCase() : '';
+                    if (sender && sender !== mailbox) recordTagRule(mailbox, sender, label);
+                  }
+                  bulkModify({ addLabelIds: [label.id], removeLabelIds: ['INBOX'], verb: `Tagged “${label.name}” & archived` });
+                }}
+                onCreate={ensureLabel}
+                trigger={<button disabled={bulkBusy} style={bulkBtn}><Tag size={12} /> Tag + archive ▾</button>}
+              />
+            )}
             <button disabled={bulkBusy} onClick={() => bulkModify({ removeLabelIds: ['INBOX'], verb: 'Archived' })} style={bulkBtn}><Archive size={12} /> Archive</button>
             <button disabled={bulkBusy} onClick={() => bulkModify({ removeLabelIds: ['UNREAD'], verb: 'Marked read' })} style={bulkBtn}><MailOpen size={12} /> Read</button>
             <button disabled={bulkBusy} onClick={bulkTrash} style={{ ...bulkBtn, color: '#b91c1c', borderColor: '#fca5a5' }}><Trash2 size={12} /> Delete</button>
             <button disabled={bulkBusy} onClick={() => setSelected(new Set())} style={{ ...bulkBtn, marginLeft: 'auto' }}>Clear</button>
-            {bulkBusy && <span style={{ color: '#0c4a6e' }}>Working…</span>}
+            {bulkBusy && <span style={{ color: tones.info.fg }}>Working…</span>}
           </div>
         )}
 
@@ -1197,7 +1298,7 @@ export default function EmailView() {
             </div>
           )}
           {visibleThreads.map((t) => {
-            const party = rowParty(t, mailbox, showRecipient);
+            const party = rowParty(t, t.mailbox || mailbox, showRecipient);
             const isOpen = thread?.id === t.id;
             const userLabelChips = (t.labelIds || []).filter((id) => labelById[id]?.type === 'user').slice(0, 2);
             const sug = suggestionFor(t);
@@ -1205,7 +1306,7 @@ export default function EmailView() {
               <div
                 key={t.id}
                 onClick={() => openThread(t)}
-                style={{ display: 'flex', gap: 8, padding: '8px 10px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: isOpen ? '#eff6ff' : t.unread ? '#fff' : '#fafbfc' }}
+                style={{ display: 'flex', gap: 8, padding: '8px 10px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: isOpen ? tones.info.bg : t.unread ? '#fff' : '#fafbfc' }}
               >
                 <input
                   type="checkbox"
@@ -1219,16 +1320,22 @@ export default function EmailView() {
                     <span style={{ fontSize: 12.5, fontWeight: t.unread ? 700 : 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                       {party.own && <Send size={10} color="#94a3b8" style={{ marginRight: 4, verticalAlign: -1 }} title="You sent the latest message" />}
                       {party.name}{t.messageCount > 1 ? ` (${t.messageCount})` : ''}
+                      {party.to && <span style={{ fontWeight: 400, color: '#94a3b8' }}> → {party.to}</span>}
                     </span>
-                    {userLabelChips.map((id) => <span key={id} style={{ ...chipStyle('accent'), flexShrink: 0 }}>{labelById[id].name.split('/').pop()}</span>)}
+                    {isAll && (
+                      <span style={{ ...chipStyle('neutral'), flexShrink: 0 }} title={t.mailbox}>
+                        {mailboxLabel[t.mailbox] || t.mailbox}
+                      </span>
+                    )}
+                    {userLabelChips.map((id) => <span key={id} style={{ ...chipStyle('teal'), flexShrink: 0 }}>{labelById[id].name.split('/').pop()}</span>)}
                     {sug && (
                       <button
                         onClick={(e) => { e.stopPropagation(); acceptSuggestion(t, sug); }}
                         disabled={sweepBusy}
-                        title={`Tag “${sug.label.name}” and archive`}
+                        title={`Tag ${sug.labels.map((l) => `“${l.name}”`).join(' + ')} and archive`}
                         style={suggChipBtn}
                       >
-                        <Sparkles size={10} /> {sug.label.name.split('/').pop()}
+                        <Sparkles size={10} /> {sug.labels.map((l) => l.name.split('/').pop()).join(' + ')}
                       </button>
                     )}
                     <span style={{ fontSize: 10.5, color: '#94a3b8', flexShrink: 0 }}>{fmtDate(t.internalDate)}</span>
@@ -1241,9 +1348,9 @@ export default function EmailView() {
               </div>
             );
           })}
-          {nextPage && (
-            <button onClick={() => loadThreads({ append: true, pageToken: nextPage })} disabled={listLoading}
-              style={{ width: '100%', padding: 10, fontSize: 12, fontWeight: 600, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: font }}>
+          {hasMore && (
+            <button onClick={() => loadThreads({ append: true })} disabled={listLoading}
+              style={{ width: '100%', padding: 10, fontSize: 12, fontWeight: 600, color: tones.info.solid, background: 'none', border: 'none', cursor: 'pointer', fontFamily: font }}>
               {listLoading ? 'Loading…' : 'Load more'}
             </button>
           )}
@@ -1253,11 +1360,11 @@ export default function EmailView() {
       {/* ── Right: preview pane ── */}
       <div style={{ flex: 1, minWidth: 380, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
         {needsReconnect && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: tones.info.bg, border: `1px solid ${tones.info.border}`, borderRadius: 8, fontSize: 12, color: tones.info.fg }}>
             {mailboxObj?.status !== 'active'
               ? <span>This mailbox&apos;s connection is broken ({mailboxObj?.error_message || mailboxObj?.status}).</span>
               : <span>This mailbox was connected with an older permission set — a quick reconnect unlocks everything.</span>}
-            <a href={reconnectUrl} style={{ marginLeft: 'auto', fontWeight: 700, color: '#92400e' }}>Reconnect</a>
+            <a href={reconnectUrl} style={{ marginLeft: 'auto', fontWeight: 700, color: tones.info.fg }}>Reconnect</a>
           </div>
         )}
         {error && (
@@ -1329,20 +1436,20 @@ const btnIcon = {
 
 const bulkBtn = {
   display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', fontSize: 12, fontWeight: 600,
-  border: '1px solid #93c5fd', background: '#fff', borderRadius: 6, cursor: 'pointer',
-  fontFamily: font, color: '#0c4a6e',
+  border: `1px solid ${tones.info.border}`, background: '#fff', borderRadius: 6, cursor: 'pointer',
+  fontFamily: font, color: tones.info.fg,
 };
 
 const sweepBtn = {
   display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', fontSize: 12, fontWeight: 600,
-  border: '1px solid #eab308', background: '#fff', borderRadius: 6, cursor: 'pointer',
-  fontFamily: font, color: '#854d0e',
+  border: `1px solid ${tones.teal.solid}`, background: '#fff', borderRadius: 6, cursor: 'pointer',
+  fontFamily: font, color: tones.teal.fg,
 };
 
 // One-click "tag as suggested + archive" chip on an inbox row.
 const suggChipBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 10.5, fontWeight: 700,
-  color: '#854d0e', background: '#fef9c3', border: '1px dashed #eab308', borderRadius: 999,
+  color: tones.teal.fg, background: tones.teal.bg, border: `1px dashed ${tones.teal.solid}`, borderRadius: 999,
   cursor: 'pointer', fontFamily: font, flexShrink: 0, whiteSpace: 'nowrap',
 };
 

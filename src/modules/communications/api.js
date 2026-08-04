@@ -123,18 +123,22 @@ const FREEMAIL = new Set([
   'mail.com', 'protonmail.com', 'proton.me',
 ]);
 
-// rules → suggest(senderEmail) → { label_id, label_name } | null.
-// Exact sender match wins (most-used label, recency tiebreak); otherwise a
-// company-domain match, but only when one label clearly dominates.
+// rules → suggest(senderEmail) → [{ label_id, label_name }, …] (empty if none).
+//
+// One person often belongs to several entities — Connor Steven is CS Abode
+// Architects, CS Abode Developments *and* Connor Steven the individual — and
+// which one a given email is about isn't something the sender address can tell
+// us. So an exact sender match returns EVERY label that sender has been filed
+// under (most-used first) and the caller tags them all; picking one would be
+// wrong more often than tagging the set. Falling back to the company domain is
+// a weaker signal, so that still only offers the one dominant label.
 export function buildTagSuggester(rules) {
   const bySender = new Map();
   const domainAgg = new Map();
   for (const r of rules) {
-    const cur = bySender.get(r.sender_email);
-    if (!cur || r.times_used > cur.times_used ||
-        (r.times_used === cur.times_used && (r.last_used_at || '') > (cur.last_used_at || ''))) {
-      bySender.set(r.sender_email, r);
-    }
+    const list = bySender.get(r.sender_email) || [];
+    list.push(r);
+    bySender.set(r.sender_email, list);
     if (r.sender_domain && !FREEMAIL.has(r.sender_domain)) {
       let m = domainAgg.get(r.sender_domain);
       if (!m) { m = new Map(); domainAgg.set(r.sender_domain, m); }
@@ -155,12 +159,19 @@ export function buildTagSuggester(rules) {
   }
   return (senderEmail) => {
     const email = String(senderEmail || '').toLowerCase();
-    if (!email) return null;
+    if (!email) return [];
     const exact = bySender.get(email);
-    if (exact) return { label_id: exact.label_id, label_name: exact.label_name };
+    if (exact?.length) {
+      const seen = new Set();
+      return [...exact]
+        .sort((a, b) => b.times_used - a.times_used
+          || (b.last_used_at || '').localeCompare(a.last_used_at || ''))
+        .filter((r) => !seen.has(r.label_id) && seen.add(r.label_id))
+        .map((r) => ({ label_id: r.label_id, label_name: r.label_name }));
+    }
     const dom = byDomain.get(email.split('@')[1] || '');
-    if (dom) return { label_id: dom.label_id, label_name: dom.label_name };
-    return null;
+    if (dom) return [{ label_id: dom.label_id, label_name: dom.label_name }];
+    return [];
   };
 }
 

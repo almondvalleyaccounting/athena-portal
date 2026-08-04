@@ -7,6 +7,9 @@
 //   info    — sky     : neutral interactive, focus, QBO template
 //   accent  — purple  : uplift / pending changes (anything in the
 //                       "future fee book" flow)
+//   teal    — teal    : email labels/tags and machine suggestions — a cool
+//                       tone that reads as "the system proposes" without the
+//                       alarm of amber or the fee-book meaning of purple
 //   neutral — slate   : muted text, all, archived, off-state
 //
 // Each tone exposes:
@@ -25,6 +28,7 @@ export const tones = {
   danger:  { bg: '#fee2e2', fg: '#b91c1c', border: '#fca5a5', solid: '#b91c1c', onSolid: '#fff' },
   info:    { bg: '#dbeafe', fg: '#0c4a6e', border: '#93c5fd', solid: '#0e7fe0', onSolid: '#fff' },
   accent:  { bg: '#ede9fe', fg: '#5b21b6', border: '#c4b5fd', solid: '#7c3aed', onSolid: '#fff' },
+  teal:    { bg: '#ccfbf1', fg: '#115e59', border: '#5eead4', solid: '#0d9488', onSolid: '#fff' },
   neutral: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1', solid: '#0f172a', onSolid: '#fff' },
 };
 
