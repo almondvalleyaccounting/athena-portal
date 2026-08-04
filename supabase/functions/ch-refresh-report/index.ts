@@ -9,6 +9,11 @@
 // changed. Threatening changes (strike-off, liquidation, administration,
 // dissolution) are highlighted and — when present — the email goes to ALL
 // active staff rather than just the configured recipients.
+//
+// The email only goes out when something needs looking at: a real error, a
+// client under threat, or a night the refresh didn't run. Clean nights are
+// silent — the run detail is on the CH dashboard in Athena either way.
+// Prospects mid-onboarding never count as errors (see IGNORED_FOR_ERRORS).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendEmail } from "../_shared/resend.ts";
@@ -94,7 +99,24 @@ Deno.serve(async (req) => {
     const threats = changes.filter((c) =>
       THREAT_RE.test(c.new_status || "") || THREAT_RE.test(c.new_detail || ""));
 
-    const errors: { name: string; error: string }[] = (run?.errors || []);
+    // Prospects mid-onboarding are not an error worth an email. Their company
+    // number is often provisional or wrong until they're properly on board, so
+    // a nightly "not found" for them is noise. Former clients go for the same
+    // reason the status changes above do — we do no work for them.
+    const IGNORED_FOR_ERRORS = new Set(["prospect", ...FORMER]);
+    const rawErrors: { name: string; error: string; entity_id?: string }[] = (run?.errors || []);
+    const errorEntityIds = [...new Set(rawErrors.map((e) => e.entity_id).filter(Boolean))] as string[];
+    const ignoredIds = new Set<string>();
+    if (errorEntityIds.length) {
+      const { data: errEntities } = await service.from("entities")
+        .select("id, entity_status").in("id", errorEntityIds);
+      for (const e of errEntities || []) {
+        if (IGNORED_FOR_ERRORS.has(e.entity_status)) ignoredIds.add(e.id);
+      }
+    }
+    // An error with no entity_id can't be classified — keep it rather than hide it.
+    const errors = rawErrors.filter((e) => !(e.entity_id && ignoredIds.has(e.entity_id)));
+    const suppressedErrors = rawErrors.length - errors.length;
     const warnings: string[] = [...new Set(run?.warnings || [])] as string[];
 
     // Daily data-quality sweep: raise admin tasks for suspected duplicate
@@ -119,7 +141,11 @@ Deno.serve(async (req) => {
       ? Math.round((new Date(run.last_chunk_at).getTime() - new Date(run.started_at).getTime()) / 60000)
       : null;
 
-    const ok = run && (run.errors || []).length === 0;
+    const ok = run && errors.length === 0;
+
+    // Nothing wrong → no email. Status changes on their own are not a reason to
+    // write to anyone: they already land on the Triage Board.
+    const worthSending = errors.length > 0 || threats.length > 0 || !run;
     const subject = threats.length
       ? `⚠ Companies House: ${threats.length} client${threats.length === 1 ? "" : "s"} under threat — nightly refresh report`
       : run
@@ -188,16 +214,17 @@ Deno.serve(async (req) => {
 
     if (dryRun) {
       return jsonResponse({
-        dry_run: true, subject,
-        recipients: recipients.map((r) => r.email),
+        dry_run: true, subject, worth_sending: worthSending,
+        recipients: worthSending ? recipients.map((r) => r.email) : [],
         changes: changes.length, threats: threats.length, errors: errors.length,
+        suppressed_errors: suppressedErrors,
         dup_tasks_raised: dupTasksRaised, html,
       });
     }
 
     let sent = 0;
     const sendErrors: unknown[] = [];
-    if (recipients.length) {
+    if (worthSending && recipients.length) {
       const res = await sendEmail({
         to: recipients.map((r) => r.email),
         subject, html, text,
@@ -215,10 +242,20 @@ Deno.serve(async (req) => {
     }
     await service.from("audit_log").insert({
       action: "ch_refresh_report", entity_type: "system", entity_id: null,
-      detail: { run_date: runDate, sent_to: recipients.map((r) => r.email), threats: threats.length, changes: changes.length, errors: errors.length, dup_tasks_raised: dupTasksRaised },
+      detail: {
+        run_date: runDate, sent_to: sent ? recipients.map((r) => r.email) : [],
+        emailed: worthSending, threats: threats.length, changes: changes.length,
+        errors: errors.length, suppressed_errors: suppressedErrors,
+        dup_tasks_raised: dupTasksRaised,
+      },
     });
 
-    return jsonResponse({ success: true, sent, recipients: recipients.map((r) => r.email), threats: threats.length, send_errors: sendErrors });
+    return jsonResponse({
+      success: true, sent, emailed: worthSending,
+      recipients: sent ? recipients.map((r) => r.email) : [],
+      threats: threats.length, errors: errors.length,
+      suppressed_errors: suppressedErrors, send_errors: sendErrors,
+    });
   } catch (err: any) {
     return jsonResponse({ error: err?.message || String(err) }, 500);
   }
