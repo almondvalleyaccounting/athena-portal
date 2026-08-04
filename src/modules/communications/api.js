@@ -73,8 +73,8 @@ async function callGmail(action, payload = {}) {
 export const gmail = {
   listLabels: (mailbox) => callGmail('list_labels', { mailbox }),
   createLabel: (mailbox, name) => callGmail('create_label', { mailbox, name }),
-  listThreads: (mailbox, { labelIds, q, pageToken } = {}) =>
-    callGmail('list_threads', { mailbox, labelIds, q, pageToken }),
+  listThreads: (mailbox, { labelIds, q, pageToken, maxResults } = {}) =>
+    callGmail('list_threads', { mailbox, labelIds, q, pageToken, maxResults }),
   getThread: (mailbox, threadId) => callGmail('get_thread', { mailbox, threadId }),
   send: (mailbox, opts) => callGmail('send', { mailbox, ...opts }),
   modifyThread: (mailbox, threadId, { addLabelIds, removeLabelIds }) =>

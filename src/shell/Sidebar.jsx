@@ -276,7 +276,11 @@ export default function Sidebar() {
       </div>
 
       {/* ── Module navigation ── */}
-      <nav className="flex-1 px-0" style={{ padding: collapsed ? '0' : '0 8px' }}>
+      {/* min-h-0 + overflow-y-auto: the nav is taller than the viewport once
+          enough modules are expanded. Without an internal scroll it overflowed
+          the h-screen shell and made the whole document scroll, which dragged
+          viewport-height pages (the email panes) up out of view. */}
+      <nav className="flex-1 min-h-0 overflow-y-auto px-0" style={{ padding: collapsed ? '0' : '0 8px' }}>
         {/* Main modules */}
         {mainModules.map((mod) => {
           const IconComp = ICON_MAP[mod.icon] || Receipt;

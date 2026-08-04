@@ -299,8 +299,12 @@ export default function AppShell() {
   // ── Authenticated with profile — render shell ──
   return (
     <AuthContext.Provider value={{ session, profile, handleLogout }}>
+      {/* overflow-hidden: the shell owns exactly one viewport. Every scroll
+          region lives inside <main> (or the sidebar nav), so the document
+          itself must never scroll — if it does, full-height pages get pushed
+          off the bottom of the window. */}
       <div
-        className="h-screen flex"
+        className="h-screen flex overflow-hidden"
         style={{ backgroundColor: '#fafafa' }}
       >
         {/* Sidebar */}

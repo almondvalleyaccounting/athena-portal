@@ -164,18 +164,26 @@ function buildMime(opts: {
 }
 
 // Fetch thread summaries in small batches to stay inside Gmail's per-user
-// rate quota (threads.get costs 10 units, 250 units/sec allowed).
+// rate quota (threads.get costs 10 units, 250 units/sec allowed), so a chunk
+// of 10 is 100 units. Small pages go at full tilt; anything bigger paces
+// itself, because a get lost to a 429 would silently drop a conversation from
+// the list. One retry, then it's counted and reported as `missed`.
 async function fetchThreadSummaries(accessToken: string, ids: string[], selfEmail = "") {
   const summaries: any[] = [];
   const CHUNK = 10;
+  const pace = ids.length > CHUNK * 2 ? 300 : 0;
+  let missed = 0;
+  const meta = (id: string) =>
+    gmailFetch(accessToken, `/threads/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`);
   for (let i = 0; i < ids.length; i += CHUNK) {
     const chunk = ids.slice(i, i + CHUNK);
     const got = await Promise.all(chunk.map((id) =>
-      gmailFetch(accessToken, `/threads/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`)
-        .catch(() => null)
+      meta(id).catch(() =>
+        new Promise((r) => setTimeout(r, 500)).then(() => meta(id)).catch(() => null))
     ));
-    for (const t of got) {
-      if (!t) continue;
+    if (pace && i + CHUNK < ids.length) await new Promise((r) => setTimeout(r, pace));
+    for (const t of got as any[]) {
+      if (!t) { missed++; continue; }
       const msgs = t.messages || [];
       const first = msgs[0];
       const last = msgs[msgs.length - 1];
@@ -204,7 +212,7 @@ async function fetchThreadSummaries(accessToken: string, ids: string[], selfEmai
     }
   }
   summaries.sort((a, b) => b.internalDate - a.internalDate);
-  return summaries;
+  return { summaries, missed };
 }
 
 Deno.serve(async (req) => {
@@ -261,12 +269,13 @@ Deno.serve(async (req) => {
         for (const l of body.labelIds || []) params.append("labelIds", String(l));
         if (body.q) params.set("q", String(body.q));
         if (body.pageToken) params.set("pageToken", String(body.pageToken));
-        params.set("maxResults", String(Math.min(Number(body.maxResults) || 25, 50)));
+        params.set("maxResults", String(Math.min(Number(body.maxResults) || 25, 100)));
         const list = await gmailFetch(tok.accessToken, `/threads?${params.toString()}`);
         const ids = (list.threads || []).map((t: any) => t.id);
-        const threads = await fetchThreadSummaries(tok.accessToken, ids, tok.accountEmail.toLowerCase());
+        const { summaries, missed } = await fetchThreadSummaries(
+          tok.accessToken, ids, tok.accountEmail.toLowerCase());
         return jsonResponse({
-          success: true, threads,
+          success: true, threads: summaries, missed,
           nextPageToken: list.nextPageToken || null,
           resultSizeEstimate: list.resultSizeEstimate || 0,
         });

@@ -15,6 +15,11 @@ import {
 
 const font = "'Outfit', sans-serif";
 
+// How many conversations to load per view, and the most comms-gmail will
+// summarise in one call (Gmail's own threads.list ceiling).
+const PAGE_SIZES = [50, 100, 250, 500];
+const SERVER_PAGE = 100;
+
 // System labels worth showing, in order. 'ALL' is our pseudo-label —
 // no labelIds filter, i.e. all mail including archived.
 const SYSTEM_LABELS = [
@@ -350,6 +355,10 @@ export default function EmailView() {
   const [qDraft, setQDraft] = useState('');
   const [sort, setSort] = useState(() => localStorage.getItem('comms_email_sort') || 'date');
   const [hideOwn, setHideOwn] = useState(() => localStorage.getItem('comms_hide_own') !== '0');
+  const [pageSize, setPageSize] = useState(
+    () => PAGE_SIZES.find((n) => n === Number(localStorage.getItem('comms_page_size'))) || 50,
+  );
+  const loadGen = useRef(0);
   const [thread, setThread] = useState(null);
   const [threadLoading, setThreadLoading] = useState(false);
   const [composer, setComposer] = useState(null);
@@ -438,29 +447,50 @@ export default function EmailView() {
     }
   }, [mailbox]);
 
+  // Gmail's own cap is 100 threads per call (each one costs a metadata fetch),
+  // so a bigger page size is walked server-page by server-page and appended as
+  // it lands — rows show up in batches instead of after one long wait. A newer
+  // load (mailbox switch, label change) bumps the generation and the older
+  // walk drops its results rather than interleaving them.
   const loadThreads = useCallback(async ({ append, pageToken } = {}) => {
     if (!mailbox) return;
+    const gen = ++loadGen.current;
     setListLoading(true);
     setError(null);
+    let added = 0;
+    let missed = 0;
     try {
-      // Gmail matches a label or query against any message in the thread, so
-      // "-from:me" drops threads that are only our own sent mail while keeping
-      // conversations we happen to have replied to last.
-      const res = await gmail.listThreads(mailbox, {
-        labelIds: q || labelId === 'ALL' ? undefined : [labelId],
-        q: q || (labelId === 'INBOX' && hideOwn ? '-from:me' : undefined),
-        pageToken,
-      });
-      setThreads((prev) => (append ? [...prev, ...res.threads] : res.threads));
-      setNextPage(res.nextPageToken);
-      if (!append) setSelected(new Set());
+      let token = pageToken;
+      let replace = !append;
+      do {
+        // Gmail matches a label or query against any message in the thread, so
+        // "-from:me" drops threads that are only our own sent mail while keeping
+        // conversations we happen to have replied to last.
+        // eslint-disable-next-line no-await-in-loop
+        const res = await gmail.listThreads(mailbox, {
+          labelIds: q || labelId === 'ALL' ? undefined : [labelId],
+          q: q || (labelId === 'INBOX' && hideOwn ? '-from:me' : undefined),
+          pageToken: token,
+          maxResults: Math.min(SERVER_PAGE, pageSize - added),
+        });
+        if (gen !== loadGen.current) return; // superseded — drop these rows
+        setThreads((prev) => (replace ? res.threads : [...prev, ...res.threads]));
+        setNextPage(res.nextPageToken || null);
+        if (replace) setSelected(new Set());
+        replace = false;
+        added += res.threads.length;
+        missed += res.missed || 0;
+        token = res.nextPageToken || null;
+      } while (token && added < pageSize);
+      if (missed) flash(`${missed} conversation${missed === 1 ? '' : 's'} couldn't be loaded — refresh to retry.`);
     } catch (e) {
+      if (gen !== loadGen.current) return;
       if (e.code !== 'no_gmail_connection') setError(e.message);
-      if (!append) { setThreads([]); setNextPage(null); }
+      if (!append && !added) { setThreads([]); setNextPage(null); }
     } finally {
-      setListLoading(false);
+      if (gen === loadGen.current) setListLoading(false);
     }
-  }, [mailbox, labelId, q, hideOwn]);
+  }, [mailbox, labelId, q, hideOwn, pageSize]);
 
   // Gmail can only return newest-first, so any other order is applied to the
   // conversations loaded so far ("Load more" extends the pool).
@@ -1088,11 +1118,21 @@ export default function EmailView() {
               Hide my own sent mail
             </label>
           )}
-          {sort === 'recipient' && (
-            <span style={{ color: '#94a3b8' }}>
-              {threads.length} loaded{nextPage ? ' — Load more to sort further' : ''}
-            </span>
-          )}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }} title="Conversations fetched per view. Bigger pages take longer and are what the sort works across.">
+            Load
+            <select
+              value={pageSize}
+              onChange={(e) => { setPageSize(Number(e.target.value)); localStorage.setItem('comms_page_size', e.target.value); }}
+              style={{ padding: '3px 6px', fontSize: 11.5, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#334155' }}
+            >
+              {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+          <span style={{ color: '#94a3b8', marginLeft: 'auto' }}>
+            {listLoading && threads.length > 0
+              ? `${threads.length} loaded…`
+              : `${threads.length}${nextPage ? ' — Load more' : ''}`}
+          </span>
         </div>
 
         {/* Auto-suggested tags: eyeball, then one-click clear */}
