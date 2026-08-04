@@ -464,7 +464,6 @@ export default function ClientRemindersPage() {
   // reason: 'not_client' (return we file but not a practice client) or
   // 'client_excluded' (a client we've chosen not to remind, with a note).
   const setIgnore = async (row, reason) => {
-    if (!(profile?.can_manage_portal || profile?.is_portal_admin)) return;
     const u = rowUtr(row);
     if (!u) { setError('That row has no 10-digit UTR to exclude.'); return; }
     let note = null;
@@ -482,7 +481,6 @@ export default function ClientRemindersPage() {
 
   // Undo an exclusion — put the client back in the reminder run.
   const removeIgnore = async (row) => {
-    if (!(profile?.can_manage_portal || profile?.is_portal_admin)) return;
     const u = rowUtr(row);
     if (!u) return;
     const { error } = await supabase.from('tax_reminder_ignore').delete().eq('utr', u);
@@ -572,9 +570,7 @@ export default function ClientRemindersPage() {
     loadRows(batchId);
   };
 
-  const canManage = profile?.can_manage_portal === true || profile?.is_portal_admin === true;
   const toggleAutoQueue = async () => {
-    if (!canManage) return;
     const next = !(autoQueue?.enabled);
     // Persisted via a SECURITY DEFINER RPC (a direct table update is blocked
     // by RLS-on-write and silently no-ops, so the flag reverted on refresh).
@@ -619,20 +615,18 @@ export default function ClientRemindersPage() {
             </span>
           )
         )}
-        {canManage && (
-          <button
-            onClick={toggleAutoQueue}
-            title="Every 15 minutes during January & July, auto-fill the queue (opt-in invites for undecided clients, reminders for opted-in). Queue only — you still review and release."
-            style={{
-              padding: '2px 10px', fontSize: 11, fontWeight: 600, borderRadius: 999, cursor: 'pointer', fontFamily: font,
-              background: autoQueue?.enabled ? '#f0fdf4' : '#f1f5f9',
-              color: autoQueue?.enabled ? '#166534' : '#64748b',
-              border: `1px solid ${autoQueue?.enabled ? '#bbf7d0' : '#e2e8f0'}`,
-            }}
-          >
-            ⟳ Auto-queue (Jan & Jul): {autoQueue?.enabled ? 'ON' : 'OFF'}
-          </button>
-        )}
+        <button
+          onClick={toggleAutoQueue}
+          title="Every 15 minutes during January & July, auto-fill the queue (opt-in invites for undecided clients, reminders for opted-in). Queue only — you still review and release."
+          style={{
+            padding: '2px 10px', fontSize: 11, fontWeight: 600, borderRadius: 999, cursor: 'pointer', fontFamily: font,
+            background: autoQueue?.enabled ? '#f0fdf4' : '#f1f5f9',
+            color: autoQueue?.enabled ? '#166534' : '#64748b',
+            border: `1px solid ${autoQueue?.enabled ? '#bbf7d0' : '#e2e8f0'}`,
+          }}
+        >
+          ⟳ Auto-queue (Jan & Jul): {autoQueue?.enabled ? 'ON' : 'OFF'}
+        </button>
       </div>
       <p style={{ fontSize: 12.5, color: '#64748b', margin: '0 0 16px', maxWidth: 760 }}>
         Personal-tax payment reminders (31 July payments on account, 31 January balancing payments).
@@ -796,10 +790,6 @@ export default function ClientRemindersPage() {
                       <td style={td}>
                         {!rowUtr(row) ? (
                           <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>—</span>
-                        ) : !canManage ? (
-                          <span style={{ fontSize: 10.5, fontWeight: 600, color: rowIgnored ? '#b91c1c' : '#166534' }}>
-                            {rowIgnored ? (ignoreReason(row) === 'client_excluded' ? 'Client — excluded' : 'Not a client') : 'Reminding'}
-                          </span>
                         ) : (
                           <select
                             value={ignoreReason(row)}

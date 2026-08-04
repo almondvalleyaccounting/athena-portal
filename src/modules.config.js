@@ -56,7 +56,7 @@ export const MODULES = [
       { id: 'comms-email', label: 'Email', route: '/comms/email' },
       { id: 'comms-sms', label: 'Text Messages', route: '/comms/sms' },
       { id: 'comms-whatsapp', label: 'WhatsApp', route: '/comms/whatsapp' },
-      { id: 'comms-reminders', label: 'Client Tax Reminders', route: '/comms/reminders', permissions: ['can_manage_portal'] },
+      { id: 'comms-reminders', label: 'Client Tax Reminders', route: '/comms/reminders' },
       { id: 'comms-preferences', label: 'Client Preferences', route: '/comms/preferences' },
     ],
   },

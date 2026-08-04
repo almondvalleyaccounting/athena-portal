@@ -9,14 +9,18 @@ import ClientRemindersPage from '../reminders/ClientRemindersPage';
 
 const font = "'Outfit', sans-serif";
 
-// Tabs carry an optional `perm` — a staff_profiles boolean flag that
-// must be true for the tab (and its route) to show. Client Reminders is
-// owner-scoped (can_manage_portal); the rest are open to all staff.
+// Access is decided once, at this module: anyone who can open Communications
+// gets every sub-module, and full powers inside each. Tabs may still carry a
+// `perm` (a staff_profiles boolean) if that ever needs narrowing again.
+//
+// Per-account privacy is enforced a level down, not here: the Email tab only
+// lists shared mailboxes plus your own (api.js listMailboxes), and comms-gmail
+// refuses to read someone else's personal mailbox.
 const TABS = [
   { path: '/comms/email', label: 'Email' },
   { path: '/comms/sms', label: 'Text Messages' },
   { path: '/comms/whatsapp', label: 'WhatsApp' },
-  { path: '/comms/reminders', label: 'Client Tax Reminders', perm: 'can_manage_portal' },
+  { path: '/comms/reminders', label: 'Client Tax Reminders' },
   { path: '/comms/preferences', label: 'Client Preferences' },
 ];
 
@@ -30,7 +34,6 @@ export default function CommunicationsModule() {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile } = useAuth();
-  const canReminders = profile?.can_manage_portal === true;
   const tabs = TABS.filter((t) => !t.perm || profile?.[t.perm] === true);
 
   return (
@@ -56,10 +59,7 @@ export default function CommunicationsModule() {
           <Route path="sms" element={<MessagesView channel="sms" />} />
           <Route path="whatsapp" element={<MessagesView channel="whatsapp" />} />
           <Route path="preferences" element={<PreferencesView />} />
-          <Route
-            path="reminders"
-            element={canReminders ? <ClientRemindersPage /> : <Navigate to="/comms/email" replace />}
-          />
+          <Route path="reminders" element={<ClientRemindersPage />} />
           <Route path="*" element={<Navigate to="/comms/email" replace />} />
         </Routes>
       </div>

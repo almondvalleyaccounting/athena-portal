@@ -27,7 +27,13 @@
 // A reminder is skipped when the payment row has no readable UTR (we
 // never send bank details without a reference). Former clients
 // (nlac/archived) and manual exclusions (tax_reminder_ignore) are
-// hard-stopped. Deployed verify_jwt OFF; self-verifies a manager JWT.
+// hard-stopped.
+//
+// Deployed verify_jwt OFF, so it verifies the caller itself: any ACTIVE
+// staff member. Access to Client Tax Reminders is decided once, at the
+// Communications module, and everyone inside can queue/release/drop.
+// Mailbox choice is still owner-gated — you cannot send from someone
+// else's personal mailbox.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getValidGmailToken, base64UrlEncode, corsHeaders, formatSender } from "../_shared/gmail-client.ts";
@@ -159,6 +165,15 @@ function buildMime(to: string, subject: string, text: string, html: string, from
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+type MailToken = { accessToken: string; accountEmail: string; displayName: string | null; kind: string; ownerStaffId: string | null };
+
+// Someone else's personal mailbox is not yours to send from. Shared mailboxes
+// (info@, accounts@) are fair game for anyone in the module; a portal admin can
+// use any, matching comms-gmail so a broken connection stays diagnosable.
+function personalMailboxDenied(token: MailToken, userId: string, isAdmin: boolean): boolean {
+  return token.kind === "personal" && token.ownerStaffId !== userId && !isAdmin;
+}
+
 // ── Handler ──────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -166,14 +181,17 @@ Deno.serve(async (req) => {
 
   const service = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // ── Auth: staff JWT with can_manage_portal (verify_jwt is OFF) ──
+  // ── Auth: any active staff member (verify_jwt is OFF, so check here) ──
+  // Access is decided at the Communications module: everyone who can open
+  // Client Tax Reminders can queue, release and drop. There is no view-only
+  // tier, so this is an is_active check rather than can_manage_portal.
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return json({ success: false, error: "Missing authorization" }, 401);
   const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
   const { data: { user }, error: authErr } = await anon.auth.getUser();
   if (authErr || !user) return json({ success: false, error: "Invalid token" }, 401);
-  const { data: prof } = await service.from("staff_profiles").select("is_portal_admin, can_manage_portal").eq("id", user.id).single();
-  if (!prof || !(prof.is_portal_admin || prof.can_manage_portal)) return json({ success: false, error: "Not authorised" }, 403);
+  const { data: prof } = await service.from("staff_profiles").select("is_active, is_portal_admin").eq("id", user.id).single();
+  if (!prof?.is_active) return json({ success: false, error: "Not authorised" }, 403);
 
   let body: {
     mode?: string; kind?: string; comm_type?: string; targets?: Target[];
@@ -196,9 +214,12 @@ Deno.serve(async (req) => {
     const ids = Array.isArray(body.ids) ? body.ids.slice(0, 200) : [];
     if (!ids.length) return json({ success: false, error: "ids required" }, 400);
 
-    let token: { accessToken: string; accountEmail: string; displayName: string | null };
+    let token: MailToken;
     try { token = await getValidGmailToken(mailbox); }
     catch (e) { return json({ success: false, error: `No usable Gmail connection: ${(e as Error).message}`, code: "no_gmail_connection" }, 400); }
+    if (personalMailboxDenied(token, user.id, prof.is_portal_admin === true)) {
+      return json({ success: false, error: `${token.accountEmail} is someone else's personal mailbox — pick a shared one.` }, 403);
+    }
 
     const { data: rows } = await service.from("reminder_emails")
       .select("id, kind, comm_type, entity_id, payment_id, to_email, subject, body_html, body_text, is_resend")
@@ -298,10 +319,13 @@ Deno.serve(async (req) => {
   }
 
   // Gmail is only needed when we actually send now (mode 'send').
-  let token: { accessToken: string; accountEmail: string; displayName: string | null } | null = null;
+  let token: MailToken | null = null;
   if (mode === "send") {
     try { token = await getValidGmailToken(mailbox); }
     catch (e) { return json({ success: false, error: `No usable Gmail connection: ${(e as Error).message}`, code: "no_gmail_connection" }, 400); }
+    if (personalMailboxDenied(token, user.id, prof.is_portal_admin === true)) {
+      return json({ success: false, error: `${token.accountEmail} is someone else's personal mailbox — pick a shared one.` }, 403);
+    }
   }
 
   let sent = 0;

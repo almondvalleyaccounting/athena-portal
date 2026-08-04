@@ -61,7 +61,6 @@ function PrefChip({ status }) {
 
 export default function PreferencesView() {
   const { profile } = useAuth();
-  const canManage = profile?.can_manage_portal === true;
 
   const [commTypes, setCommTypes] = useState([]);
   const [prefs, setPrefs] = useState([]);
@@ -134,7 +133,7 @@ export default function PreferencesView() {
   }, [typeScoped, statusFilter, search]);
 
   const setPreference = async (row, status) => {
-    if (!canManage || !status || status === row.status) return;
+    if (!status || status === row.status) return;
     const now = new Date().toISOString();
     const rec = {
       entity_id: row.entity_id,
@@ -212,14 +211,14 @@ export default function PreferencesView() {
               <th style={th}>Status</th>
               <th style={th}>Decided</th>
               <th style={th}>Source</th>
-              {canManage && <th style={th}>Set</th>}
+              <th style={th}>Set</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td style={td} colSpan={canManage ? 6 : 5}>Loading…</td></tr>
+              <tr><td style={td} colSpan={6}>Loading…</td></tr>
             ) : visible.length === 0 ? (
-              <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={canManage ? 6 : 5}>No recorded preferences match.</td></tr>
+              <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={6}>No recorded preferences match.</td></tr>
             ) : visible.map((r) => (
               <tr key={`${r.entity_id}:${r.comm_type}`}>
                 <td style={{ ...td, fontWeight: 600 }}>{r.entity.name}</td>
@@ -232,20 +231,18 @@ export default function PreferencesView() {
                     <span style={{ color: '#94a3b8' }}> · {staffById[r.decided_by]}</span>
                   )}
                 </td>
-                {canManage && (
-                  <td style={td}>
-                    <select
-                      value=""
-                      onChange={(e) => { setPreference(r, e.target.value); e.target.value = ''; }}
-                      style={selStyle}
-                    >
-                      <option value="">Change…</option>
-                      <option value="opted_in">Opted in</option>
-                      <option value="opted_out">Opted out</option>
-                      <option value="pending">Pending</option>
-                    </select>
-                  </td>
-                )}
+                <td style={td}>
+                  <select
+                    value=""
+                    onChange={(e) => { setPreference(r, e.target.value); e.target.value = ''; }}
+                    style={selStyle}
+                  >
+                    <option value="">Change…</option>
+                    <option value="opted_in">Opted in</option>
+                    <option value="opted_out">Opted out</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                </td>
               </tr>
             ))}
           </tbody>

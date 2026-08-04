@@ -70,22 +70,23 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
   const [focusId, setFocusId] = useState(null);
-  const canManage = profile?.can_manage_portal === true || profile?.is_portal_admin === true;
 
-  // Sending mailboxes (staff-safe view — no tokens).
+  // Sending mailboxes (staff-safe view — no tokens). Shared mailboxes plus
+  // your own personal one: someone else's personal mailbox isn't yours to
+  // send from, and comms-gmail would refuse it anyway.
   useEffect(() => {
     (async () => {
       const { data } = await supabase
         .from('v_gmail_connections')
-        .select('account_email, is_practice_default, status')
+        .select('account_email, is_practice_default, status, kind, owner_staff_id')
         .eq('status', 'active')
         .order('is_practice_default', { ascending: false });
-      const list = data || [];
+      const list = (data || []).filter((m) => m.kind === 'shared' || m.owner_staff_id === profile?.id);
       setMailboxes(list);
       const def = list.find((m) => m.is_practice_default) || list[0];
       if (def) setMailbox((cur) => cur || def.account_email);
     })();
-  }, []);
+  }, [profile?.id]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,20 +116,24 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
   const toggleAll = () => setSelected(allSel ? new Set() : new Set(rows.map((r) => r.id)));
 
   const drop = async () => {
-    if (!canManage || !selected.size) return;
+    if (!selected.size) return;
     if (!window.confirm(`Drop ${selected.size} queued email${selected.size === 1 ? '' : 's'}? They won't be sent.`)) return;
     setBusy(true); setError(null);
     const ids = [...selected];
-    const { error: e } = await supabase.from('reminder_emails').update({ status: 'dropped' }).in('id', ids);
+    // Ask for the changed rows back: an RLS-blocked update reports no error,
+    // it just changes nothing, and this used to be reported as a success.
+    const { data: done, error: e } = await supabase
+      .from('reminder_emails').update({ status: 'dropped' }).in('id', ids).select('id');
     setBusy(false);
     if (e) { setError(`Could not drop: ${e.message}`); return; }
-    setNotice(`${ids.length} dropped.`);
+    if (!done?.length) { setError("Nothing was dropped — the queue rows wouldn't update. Tell Bobby."); return; }
+    setNotice(`${done.length} dropped.`);
     setSelected(new Set());
     load(); onChanged && onChanged();
   };
 
   const release = async () => {
-    if (!canManage || !selected.size || !mailbox) return;
+    if (!selected.size || !mailbox) return;
     if (!window.confirm(`Release ${selected.size} email${selected.size === 1 ? '' : 's'} from ${mailbox} now? They will be sent to clients.`)) return;
     setBusy(true); setError(null); setNotice(null);
     try {
@@ -177,7 +182,6 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
 
         {error && <div style={{ ...card, padding: '9px 12px', marginBottom: 10, background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c', fontSize: 12.5 }}>{error}</div>}
         {notice && <div style={{ ...card, padding: '9px 12px', marginBottom: 10, background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534', fontSize: 12.5 }}>{notice}</div>}
-        {isQueued && !canManage && <div style={{ ...card, padding: '9px 12px', marginBottom: 10, background: '#f8fafc', color: '#475569', fontSize: 12 }}>Reviewing only — releasing is limited to portal managers.</div>}
 
         <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0 }}>
           {/* list */}
@@ -279,7 +283,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
 
         {isQueued && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
-            <button onClick={drop} disabled={!canManage || !selected.size || busy} style={btnDanger(canManage && selected.size > 0 && !busy)}>
+            <button onClick={drop} disabled={!selected.size || busy} style={btnDanger(selected.size > 0 && !busy)}>
               Drop selected
             </button>
             <div style={{ flex: 1 }} />
@@ -293,7 +297,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
               ))}
             </select>
             <button onClick={onClose} style={btnGhost}>Close</button>
-            <button onClick={release} disabled={!canManage || !selected.size || !mailbox || busy} style={btnPrimary(canManage && selected.size > 0 && !!mailbox && !busy)}>
+            <button onClick={release} disabled={!selected.size || !mailbox || busy} style={btnPrimary(selected.size > 0 && !!mailbox && !busy)}>
               {busy ? 'Working…' : `Release ${selected.size || ''} now`}
             </button>
           </div>

@@ -40,7 +40,6 @@ const TOKENS = ['{{first_name}}', '{{amount}}', '{{due_date}}', '{{payment_ref}}
 
 export default function EmailTemplatesModal({ commType = 'tax_reminders', onClose }) {
   const { profile } = useAuth();
-  const canEdit = profile?.can_manage_portal === true || profile?.is_portal_admin === true;
 
   const [kind, setKind] = useState('promo');
   const [rows, setRows] = useState({}); // kind -> { subject, body_html, body_text }
@@ -79,16 +78,19 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
   const preview = useMemo(() => buildEmailPreview(draft, sampleTemplateVars()), [draft]);
 
   const save = async () => {
-    if (!canEdit || !dirty) return;
+    if (!dirty) return;
     setSaving(true);
     setError(null);
     const now = new Date().toISOString();
-    const { error: e } = await supabase
+    // .select() so a write that changed nothing can't be reported as saved.
+    const { data: done, error: e } = await supabase
       .from('comm_templates')
       .update({ subject: draft.subject, body_html: draft.body_html, body_text: draft.body_text, updated_by: profile?.id || null, updated_at: now })
-      .eq('comm_type', commType).eq('kind', kind);
+      .eq('comm_type', commType).eq('kind', kind)
+      .select('kind');
     setSaving(false);
     if (e) { setError(`Could not save: ${e.message}`); return; }
+    if (!done?.length) { setError('Nothing was saved — the template row would not update. Tell Bobby.'); return; }
     setRows((cur) => ({ ...cur, [kind]: { kind, ...draft } }));
     setSavedAt(now);
   };
@@ -102,11 +104,6 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer', fontFamily: font }}>×</button>
         </div>
 
-        {!canEdit && (
-          <div style={{ ...card, padding: '9px 12px', marginBottom: 12, background: '#f8fafc', color: '#475569', fontSize: 12 }}>
-            You can review the templates here. Editing is limited to portal managers.
-          </div>
-        )}
         {error && (
           <div style={{ ...card, padding: '9px 12px', marginBottom: 12, background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c', fontSize: 12.5 }}>{error}</div>
         )}
@@ -141,21 +138,18 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
               <input
                 style={input}
                 value={draft.subject}
-                disabled={!canEdit}
                 onChange={(e) => setDraft((d) => ({ ...d, subject: e.target.value }))}
               />
               <label style={{ ...label, marginTop: 12 }}>Body — HTML</label>
               <textarea
                 style={{ ...input, minHeight: 200, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 11.5, lineHeight: 1.45, resize: 'vertical' }}
                 value={draft.body_html}
-                disabled={!canEdit}
                 onChange={(e) => setDraft((d) => ({ ...d, body_html: e.target.value }))}
               />
               <label style={{ ...label, marginTop: 12 }}>Body — plain text</label>
               <textarea
                 style={{ ...input, minHeight: 130, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 11.5, lineHeight: 1.45, resize: 'vertical' }}
                 value={draft.body_text}
-                disabled={!canEdit}
                 onChange={(e) => setDraft((d) => ({ ...d, body_text: e.target.value }))}
               />
               <div style={{ marginTop: 10, fontSize: 11, color: '#94a3b8', lineHeight: 1.7 }}>
@@ -190,11 +184,9 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
           {dirty && !savedAt && <span style={{ fontSize: 12, color: '#92400e' }}>Unsaved changes</span>}
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={btnGhost}>Close</button>
-          {canEdit && (
-            <button onClick={save} disabled={!dirty || saving} style={btnPrimary(dirty && !saving)}>
-              {saving ? 'Saving…' : 'Save changes'}
-            </button>
-          )}
+          <button onClick={save} disabled={!dirty || saving} style={btnPrimary(dirty && !saving)}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
         </div>
       </div>
     </div>
