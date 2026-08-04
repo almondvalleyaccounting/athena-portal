@@ -91,7 +91,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
     setLoading(true);
     let q = supabase
       .from('reminder_emails')
-      .select('id, kind, entity_id, to_email, subject, body_html, queued_at, sent_at, status, clicked_at, clicked_link, clicked_choice, reply_seen_at')
+      .select('id, kind, entity_id, to_email, subject, body_html, queued_at, sent_at, status, clicked_at, clicked_link, clicked_choice, reply_seen_at, is_resend')
       .eq('comm_type', commType).eq('status', view);
     q = view === 'sent'
       ? q.order('sent_at', { ascending: false }).limit(1000)
@@ -212,10 +212,22 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
                     <td style={td}>{(() => {
                       const m = KIND_META[r.kind] || { label: r.kind, bg: '#f1f5f9', color: '#64748b', border: '#e2e8f0' };
                       return (
-                        <span style={{
-                          display: 'inline-block', fontSize: 10.5, fontWeight: 600, padding: '2px 8px',
-                          borderRadius: 999, background: m.bg, color: m.color, border: `1px solid ${m.border}`, whiteSpace: 'nowrap',
-                        }}>{m.label}</span>
+                        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{
+                            display: 'inline-block', fontSize: 10.5, fontWeight: 600, padding: '2px 8px',
+                            borderRadius: 999, background: m.bg, color: m.color, border: `1px solid ${m.border}`, whiteSpace: 'nowrap',
+                          }}>{m.label}</span>
+                          {r.is_resend && (
+                            <span
+                              title="A deliberate extra copy — this client had already been emailed for this batch (or this was a test send to a staff mailbox)"
+                              style={{
+                                display: 'inline-block', fontSize: 10.5, fontWeight: 600, padding: '2px 8px',
+                                borderRadius: 999, background: '#fffbeb', color: '#92400e',
+                                border: '1px solid #fde68a', whiteSpace: 'nowrap',
+                              }}
+                            >again</span>
+                          )}
+                        </span>
                       );
                     })()}</td>
                     <td style={{ ...td, color: '#64748b' }}>{fmtWhen(isQueued ? r.queued_at : r.sent_at)}</td>

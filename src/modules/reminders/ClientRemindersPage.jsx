@@ -101,13 +101,18 @@ const overlayStyle = {
 };
 
 // ── Confirm-send modal ────────────────────────────────────────────────
-function ConfirmSendModal({ mode, targets, dueDate, template, profile, onClose, onDone }) {
+function ConfirmSendModal({ mode, targets, dueDate, template, profile, alreadySent = [], onClose, onDone }) {
   // targets: [{ paymentId, entityId, name, email, amount, ref }]
+  // alreadySent: entity ids that have already had this kind of email for the
+  // current batch — the once-per-run block will refuse them unless overridden.
   const [sending, setSending] = useState(false);
   const [testState, setTestState] = useState(null); // null | 'sending' | 'ok' | error string
   const [err, setErr] = useState(null);
+  const [resend, setResend] = useState(false);
   const isPromo = mode === 'promo';
   const first = targets[0];
+  const sentSet = useMemo(() => new Set(alreadySent), [alreadySent]);
+  const repeats = targets.filter((t) => sentSet.has(t.entityId));
 
   // Preview renders the real template (what the edge function sends), with
   // the first recipient's actual values substituted in.
@@ -158,6 +163,7 @@ function ConfirmSendModal({ mode, targets, dueDate, template, profile, onClose, 
       const data = await invoke({
         mode: 'queue',
         targets: targets.map((t) => ({ entity_id: t.entityId, payment_id: t.paymentId })),
+        allow_resend: resend || undefined,
       });
       onDone(data);
     } catch (ex) {
@@ -205,6 +211,28 @@ function ConfirmSendModal({ mode, targets, dueDate, template, profile, onClose, 
           dangerouslySetInnerHTML={{ __html: preview.html }}
         />
 
+        {/* Manual override for the once-per-run block — for "I never got it",
+            a bounced address now corrected, or a client asking again. */}
+        <label style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 14, cursor: 'pointer',
+          padding: '9px 12px', borderRadius: 8,
+          background: resend ? '#fffbeb' : '#f8fafc',
+          border: `1px solid ${resend ? '#fde68a' : '#e5e7eb'}`,
+        }}>
+          <input type="checkbox" checked={resend} onChange={(e) => setResend(e.target.checked)} style={{ marginTop: 2 }} />
+          <span style={{ fontSize: 12.5, color: resend ? '#92400e' : '#475569' }}>
+            <strong>Send again</strong> — queue another copy even if they've already had this
+            run's email.
+            {repeats.length > 0 && (
+              <span style={{ display: 'block', marginTop: 3 }}>
+                {repeats.length === 1
+                  ? `${repeats[0].name} has already been emailed for this batch — without this, they'll be skipped.`
+                  : `${repeats.length} of these have already been emailed for this batch — without this, they'll be skipped.`}
+              </span>
+            )}
+          </span>
+        </label>
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button
             onClick={sendTest}
@@ -219,7 +247,7 @@ function ConfirmSendModal({ mode, targets, dueDate, template, profile, onClose, 
           <button onClick={queueAll} disabled={sending || !targets.length} style={btnPrimary(!sending && targets.length > 0)}>
             {sending
               ? 'Adding…'
-              : `Add ${targets.length} to queue`}
+              : resend ? `Queue ${targets.length} again` : `Add ${targets.length} to queue`}
           </button>
         </div>
       </div>
@@ -241,6 +269,8 @@ export default function ClientRemindersPage() {
   const [entities, setEntities] = useState([]);
   const [prefsByEntity, setPrefsByEntity] = useState({});
   const [lastEmailByEntity, setLastEmailByEntity] = useState({});
+  // entity ids already emailed (first send) for the selected batch, per kind
+  const [emailedThisBatch, setEmailedThisBatch] = useState({ promo: new Set(), reminder: new Set() });
   const [gmailConn, setGmailConn] = useState(null); // row | null (none) | 'hidden' (RLS blocked)
 
   const [selected, setSelected] = useState(() => new Set());
@@ -343,14 +373,26 @@ export default function ClientRemindersPage() {
   }, []);
 
   const loadRows = useCallback(async (id) => {
-    if (!id) { setRows([]); return; }
-    const { data, error: e } = await supabase
-      .from('tax_payments_due')
-      .select('*')
-      .eq('batch_id', id)
-      .order('client_name_raw');
+    if (!id) { setRows([]); setEmailedThisBatch({ promo: new Set(), reminder: new Set() }); return; }
+    const [{ data, error: e }, { data: sentRows }] = await Promise.all([
+      supabase.from('tax_payments_due').select('*').eq('batch_id', id).order('client_name_raw'),
+      // Who has already had each kind of email for this batch — a first send,
+      // not a resend. These are the clients the once-per-run block will refuse
+      // unless "Send again" is ticked.
+      supabase.from('reminder_emails')
+        .select('entity_id, kind, status, is_resend')
+        .eq('comm_type', COMM_TYPE).eq('batch_id', id).eq('is_resend', false)
+        .in('status', ['queued', 'sent']),
+    ]);
     if (e) { setError(`Could not load batch rows: ${e.message}`); return; }
     setRows(data || []);
+    const promo = new Set();
+    const reminder = new Set();
+    for (const r of sentRows || []) {
+      if (r.kind === 'promo') promo.add(r.entity_id);
+      else if (r.kind === 'reminder' || r.kind === 'no_utr') reminder.add(r.entity_id);
+    }
+    setEmailedThisBatch({ promo, reminder });
   }, []);
 
   useEffect(() => { loadShared(); }, [loadShared]);
@@ -913,6 +955,7 @@ export default function ClientRemindersPage() {
           dueDate={batch ? batch.due_date : null}
           template={templatesByKind[confirm.mode]}
           profile={profile}
+          alreadySent={[...(emailedThisBatch[confirm.mode] || [])]}
           onClose={() => setConfirm(null)}
           onDone={onSendDone}
         />

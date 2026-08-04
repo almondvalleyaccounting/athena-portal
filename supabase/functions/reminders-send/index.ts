@@ -18,12 +18,16 @@
 //   * 'send'    — (default) render + send immediately; used for the
 //                 "send test to me" preview. Returns { sent, ... }.
 //
+// body.allow_resend (mode 'queue' only) is the manual override: queue a
+// second copy for a client who has already had this run's email, flagged
+// is_resend so it's exempt from the once-per-batch indexes and visible as
+// a deliberate resend. It does NOT override the one-at-a-time queue index,
+// the former-client stop, or tax_reminder_ignore.
+//
 // A reminder is skipped when the payment row has no readable UTR (we
 // never send bank details without a reference). Former clients
-// (nlac/archived) are hard-stopped at queue AND release.
-//
-// Deployed with verify_jwt OFF; verifies the caller itself: a staff JWT
-// whose staff_profiles row has can_manage_portal (or is_portal_admin).
+// (nlac/archived) and manual exclusions (tax_reminder_ignore) are
+// hard-stopped. Deployed verify_jwt OFF; self-verifies a manager JWT.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getValidGmailToken, base64UrlEncode, corsHeaders, formatSender } from "../_shared/gmail-client.ts";
@@ -174,6 +178,7 @@ Deno.serve(async (req) => {
   let body: {
     mode?: string; kind?: string; comm_type?: string; targets?: Target[];
     ids?: string[]; due_date?: string; test_recipient?: string; mailbox?: string;
+    allow_resend?: boolean;
   };
   try { body = await req.json(); } catch { return json({ success: false, error: "Invalid JSON" }, 400); }
 
@@ -183,6 +188,8 @@ Deno.serve(async (req) => {
 
   const mode = body.mode === "queue" || body.mode === "release" ? body.mode : "send";
   const commType = body.comm_type || "tax_reminders";
+  // Manual "send it again" override — queueing only, never the test send.
+  const allowResend = mode === "queue" && body.allow_resend === true;
 
   // ── RELEASE: send the stored body of queued rows ──────────────────────
   if (mode === "release") {
@@ -194,7 +201,7 @@ Deno.serve(async (req) => {
     catch (e) { return json({ success: false, error: `No usable Gmail connection: ${(e as Error).message}`, code: "no_gmail_connection" }, 400); }
 
     const { data: rows } = await service.from("reminder_emails")
-      .select("id, kind, comm_type, entity_id, payment_id, to_email, subject, body_html, body_text")
+      .select("id, kind, comm_type, entity_id, payment_id, to_email, subject, body_html, body_text, is_resend")
       .in("id", ids).eq("status", "queued");
 
     let sent = 0;
@@ -245,7 +252,7 @@ Deno.serve(async (req) => {
         user_id: user.id,
         action: r.kind === "promo" ? "reminder_promo_sent" : "reminder_sent",
         entity_type: "entity", entity_id: r.entity_id,
-        detail: { comm_type: r.comm_type, to: r.to_email, subject: r.subject, released: true, reminder_email_id: r.id, payment_id: r.payment_id || null, gmail_message_id: sentMsg.id || null },
+        detail: { comm_type: r.comm_type, to: r.to_email, subject: r.subject, released: true, resend: r.is_resend === true, reminder_email_id: r.id, payment_id: r.payment_id || null, gmail_message_id: sentMsg.id || null },
       });
       sent++;
     }
@@ -384,12 +391,22 @@ Deno.serve(async (req) => {
         to_email: to, subject: content.subject, token: tok,
         body_html: content.html, body_text: content.text,
         status: "queued", queued_at: now, queued_by: user.id,
+        is_resend: allowResend,
       });
       if (qErr) {
-        // Unique-index backstop: this client already has a queued email, or a
-        // reminder / offer for this batch. Skip rather than duplicate.
+        // Unique-index backstop. Which index tripped changes what the sender
+        // should do, so say it plainly rather than "already queued or emailed".
         if ((qErr as { code?: string }).code === "23505") {
-          skipped.push({ entity_id: entityId, reason: "already queued or emailed for this run" }); continue;
+          const { data: waiting } = await service.from("reminder_emails")
+            .select("id").eq("entity_id", entityId).eq("comm_type", commType)
+            .eq("status", "queued").maybeSingle();
+          skipped.push({
+            entity_id: entityId,
+            reason: waiting
+              ? "an email for this client is already waiting in the queue — release or drop it first"
+              : "already emailed for this run — tick “Send again” to queue another copy",
+          });
+          continue;
         }
         errors.push({ entity_id: entityId, error: `Could not queue: ${qErr.message}` }); continue;
       }
@@ -404,6 +421,10 @@ Deno.serve(async (req) => {
         batch_id: payment?.batch_id || promoBatchId || null, payment_id: payment?.id || null,
         to_email: to, subject: content.subject, token: tok,
         body_html: content.html, body_text: content.text, status: "sent",
+        // A test to ourselves is an extra copy, not the client's one email for
+        // the run — so it must not consume their per-batch slot (and must not
+        // be blocked by it when they've already had the real thing).
+        is_resend: isTest,
       })
       .select("id")
       .single();
