@@ -486,6 +486,18 @@ export default function EmailView() {
   // "500" stays roughly 500 rows in total rather than 500 each. A newer load
   // (mailbox switch, label change) bumps the generation and the older walk
   // drops its results rather than interleaving them.
+  // What to ask Gmail for. CRITICAL: threads.list ignores labelIds whenever a
+  // q is also supplied — passing both silently widens the result to the whole
+  // account, which is how "hide my own sent mail" turned the inbox into all
+  // mail back to 2017. So it's one or the other: a query carries its own
+  // folder ("in:inbox"), and labelIds is only used when there's no query.
+  const listQuery = useMemo(() => {
+    if (q) return { q }; // a user search deliberately spans the mailbox
+    if (labelId === 'INBOX' && hideOwn) return { q: 'in:inbox -from:me' };
+    if (labelId === 'ALL') return {};
+    return { labelIds: [labelId] };
+  }, [q, labelId, hideOwn]);
+
   const loadThreads = useCallback(async ({ append } = {}) => {
     if (!activeMailboxes.length) return;
     const gen = ++loadGen.current;
@@ -506,13 +518,9 @@ export default function EmailView() {
       let added = 0;
       try {
         do {
-          // Gmail matches a label or query against any message in the thread, so
-          // "-from:me" drops threads that are only our own sent mail while keeping
-          // conversations we happen to have replied to last.
           // eslint-disable-next-line no-await-in-loop
           const res = await gmail.listThreads(mb, {
-            labelIds: q || labelId === 'ALL' ? undefined : [labelId],
-            q: q || (labelId === 'INBOX' && hideOwn ? '-from:me' : undefined),
+            ...listQuery,
             pageToken: token,
             maxResults: Math.min(SERVER_PAGE, perBox - added),
           });
@@ -539,7 +547,7 @@ export default function EmailView() {
     // pageTokens is read for "Load more" only; including it would re-fire the
     // load effect on every batch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMailboxes, labelId, q, hideOwn, pageSize, mailboxLabel]);
+  }, [activeMailboxes, listQuery, pageSize, mailboxLabel]);
 
   const hasMore = Object.values(pageTokens).some(Boolean);
 
