@@ -15,7 +15,10 @@ const STATUS_CONFIG = {
   rejected: { label: 'Rejected', colour: '#dc2626', bg: '#fef2f2' },
   not_required: { label: 'Not required', colour: '#7c3aed', bg: '#f5f3ff' },
 };
-const SERVICES = ['Admin','Accounts Production','Corporation Tax','Self Assessment','VAT Returns','Bookkeeping','Payroll','Management Accounts','Company Secretarial','Advisory','SA302s','Accountant Certificates'];
+// Line services offered on an ad-hoc bill. Each must resolve to a QBO
+// product through qbo_service_items (matched on service_id OR qbo_item_name,
+// lowercased) or the push errors — so prefer the exact QBO product name.
+const SERVICES = ['Admin','Accounts Production','Corporation Tax','Self Assessment','VAT Returns','Bookkeeping','Payroll','Management Accounts','Company Secretarial','Registered Office','Software Licences','Advisory','SA302s','Accountant Certificates'];
 
 export default function BillingPage() {
   const { profile } = useAuth();
