@@ -91,7 +91,8 @@ export default function QuoteFormPage({ mode = 'new' }) {
     let cancelled = false;
     (async () => {
       const [{ data: maps }, { data: billing }] = await Promise.all([
-        supabase.from('qbo_service_items').select('service_id, qbo_item_name'),
+        // Canonical rows only — is_adhoc rows reuse item names (see sql/175).
+        supabase.from('qbo_service_items').select('service_id, qbo_item_name').eq('is_adhoc', false),
         supabase.from('live_billing')
           .select('entity_id, monthly_net, services, entity:entities(id, name)')
           .eq('status', 'active'),

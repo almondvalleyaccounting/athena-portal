@@ -25,7 +25,9 @@ export default function BillingComparisonPanel({ items, title = 'Quote vs curren
       const [{ data: billing }, { data: mapRows }] = await Promise.all([
         supabase.from('live_billing').select('entity_id, services, last_synced_qbo, created_at')
           .in('entity_id', entityIds).eq('status', 'active'),
-        supabase.from('qbo_service_items').select('service_id, qbo_item_name'),
+        // is_adhoc rows map free-text /billing line labels and deliberately
+        // reuse an item name, which would make the reverse map ambiguous.
+        supabase.from('qbo_service_items').select('service_id, qbo_item_name').eq('is_adhoc', false),
       ]);
       if (cancelled) return;
       // Latest active billing row per entity.
