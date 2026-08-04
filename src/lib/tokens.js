@@ -30,7 +30,10 @@ export const tones = {
   danger:  { bg: '#fee2e2', fg: '#b91c1c', border: '#fca5a5', solid: '#b91c1c', onSolid: '#fff' },
   info:    { bg: '#dbeafe', fg: '#0c4a6e', border: '#93c5fd', solid: '#0e7fe0', onSolid: '#fff' },
   accent:  { bg: '#ede9fe', fg: '#5b21b6', border: '#c4b5fd', solid: '#7c3aed', onSolid: '#fff' },
-  teal:    { bg: '#cffafe', fg: '#155e75', border: '#67e8f9', solid: '#0891b2', onSolid: '#fff' },
+  // solid is the specified #4aaecf; bg/border/fg are tints and a shade of that
+  // same hue (~195°) so chips and icons read as one colour. onSolid is ink, not
+  // white: #4aaecf is light enough that white text on it lands at 2.5:1.
+  teal:    { bg: '#e1f4fa', fg: '#17566b', border: '#a5d8e9', solid: '#4aaecf', onSolid: '#0a3542' },
   neutral: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1', solid: '#0f172a', onSolid: '#fff' },
 };
 
