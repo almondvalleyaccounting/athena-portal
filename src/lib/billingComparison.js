@@ -30,13 +30,48 @@ function normalizeId(id) {
   return s;
 }
 
+// The QBO catalogue is a hierarchy, so a pull stores the fully-qualified name
+// — "Accounts:Accounts & Corporation Tax" — while qbo_service_items holds the
+// bare item name. Match on the leaf so both forms line up, and so live_billing
+// rows captured before and after the products were nested still agree.
+//
+// The deeper fragility: live_billing.services identifies a service by NAME,
+// not by QBO item id, so renaming a product orphans every row captured before
+// the rename. The 2026-08-04 catalogue rebuild renamed 14 items, so their
+// former names are mapped here. Matching on item id would remove the need for
+// this list entirely — worth doing next time the pull is touched.
+const RENAMED = {
+  'annual statutory accounts & business tax': 'accounts & corporation tax',
+  'sole trader accounts': 'statutory accounts - sole trader',
+  'dormant company accounts': 'statutory accounts - dormant ltd company',
+  'self assessment tax return': 'tax returns - individual',
+  'mtd return': 'tax returns - mtd',
+  'bookkeeping & vat returns': 'bookkeeping (vat registered)',
+  'finance director services': 'fractional cfo',
+  'annual review meeting': 'review meetings',
+  'annual confirmation statement': 'confirmation statement',
+  'registrations/amendments': 'hmrc registrations',
+  'software licences': 'software',
+  'all inclusive accountancy & tax services package (vat registered)':
+    'all inclusive fees - ltd companies (vat registered)',
+  'all inclusive accountancy & tax services package (not vat registered)':
+    'all inclusive fees - ltd companies (not vat registered)',
+  'all inclusive accountancy & tax services package - self employed, no vat':
+    'all inclusive fees - sole traders',
+};
+
+function leafName(v) {
+  const leaf = String(v || '').split(':').pop().toLowerCase().trim();
+  return RENAMED[leaf] || leaf;
+}
+
 // itemName(lower) → athena service id. Two QBO items map from two services
 // (Payroll, Bookkeeping & VAT) — prefer the primary.
 function buildReverseMap(maps) {
   const PRIMARY = { payroll: 1, bookkeeping_vat: 1 };
   const byName = {};
   for (const m of maps || []) {
-    const key = (m.qbo_item_name || '').toLowerCase().trim();
+    const key = leafName(m.qbo_item_name);
     if (!key) continue;
     (byName[key] = byName[key] || []).push(m.service_id);
   }
@@ -68,7 +103,10 @@ export function compareQuoteToBilling(quoteLines, liveServices, maps) {
   const liveById = {};
   for (const s of liveServices || []) {
     const raw = String(s.service_id || '');
-    const id = rev[raw.toLowerCase().trim()] || normalizeId(raw);
+    // live_billing.service_id is either a QBO item name (bare or fully
+    // qualified) or, on older rows, an Athena slug — try the reverse map on
+    // the leaf first, then fall back to treating it as a slug.
+    const id = rev[leafName(raw)] || normalizeId(raw);
     if (!id) continue;
     liveById[id] = (liveById[id] || 0) + annualOf(s);
     if (!labelById[id]) labelById[id] = SERVICE_LABELS[id] || s.description || raw;
