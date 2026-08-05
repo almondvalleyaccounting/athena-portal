@@ -1,55 +1,103 @@
 // The service vocabularies that can end up on a QuickBooks invoice, in one
 // place. Both the ad-hoc bill editor (/billing) and the product mapping page
-// (/manage/billing/products) read from here, so a label can never exist in
-// the editor without also appearing on the mapping screen.
+// (/manage/billing/products) read from here.
 //
-// Nothing here decides where revenue codes — qbo_service_items does. These
-// are only the candidate service ids the mapping page must offer a row for.
+// qbo_service_items in the database is the authority — the bill dropdown is
+// built from it, and nothing here decides where revenue codes. These arrays
+// only seed the mapping page's candidate rows, so a service whose mapping gets
+// deleted can still be found and re-mapped. They mirror the QBO catalogue as
+// rebuilt on 2026-08-04; anything absent from both the arrays and the table
+// simply isn't billable.
 
-// Ad-hoc bill line labels. Historically a hardcoded array inside
-// BillingPage; the editor now only offers the ones that are actually mapped,
-// so this is the list of labels staff *could* have, not the ones they get.
-// Three labels are deliberately absent. 'Admin' was retired in sql/178 — it
-// coded to a catch-all account and, as a label, hid what the work actually
-// was. 'Advisory' and 'Company Secretarial' followed in sql/179: both are
-// category names in the rebuilt QBO hierarchy, and billing against a category
-// is precisely what put revenue on a catch-all to begin with. Pick the leaf.
+// Ad-hoc bill line labels. One per billable QBO leaf, so a one-off bill can
+// always be coded to what the work actually was.
+//
+// Deliberately absent: 'Admin' (sql/178), 'Advisory' and 'Company Secretarial'
+// (sql/179). The first coded to a catch-all income account; the other two are
+// category names in the rebuilt hierarchy, and billing against a category is
+// what put revenue on a catch-all to begin with. Also absent are the All
+// Inclusive packages and the Retainer — recurring bundles, not one-off work.
 export const ADHOC_SERVICES = [
-  'Accounts Production',
-  'Corporation Tax',
-  'Self Assessment',
-  'VAT Returns',
-  'Bookkeeping',
-  'Payroll',
-  'Management Accounts',
-  'Registered Office',
-  'Software',
-  'SA302s',
   'Accountant Certificates',
+  'Accounts Production',
+  'Bespoke Analysis',
+  'Billable Hours',
+  'Bookkeeping',
+  'Bookkeeping (non-VAT registered)',
+  'Business Plans',
+  'Companies House Amendments',
+  'Company Formation',
+  'Confirmation Statement',
+  'Corporation Tax',
+  'Fee Protection Insurance',
+  'Fractional CFO',
+  'HMRC Registrations',
+  'ID Verification',
+  'Management Accounts',
+  'Payroll',
+  'Registered Office',
+  'Review Meetings',
+  'SA302s',
+  'Self Assessment',
+  'Software',
+  'Statutory Accounts - Dormant Ltd Company',
+  'Statutory Accounts - LLP',
+  'Statutory Accounts - Partnership',
+  'Statutory Accounts - Property',
+  'Tax Returns - LLP',
+  'Tax Returns - Partnership (SA800)',
+  'VAT Returns',
 ];
 
-// Fee-engine service ids (quotes -> live billing). Labels mirror
-// SERVICE_LABELS in src/lib/billingComparison.js.
+// Fee-engine service ids (quotes -> live billing). These are the canonical
+// side of the quote-vs-live reverse map: one per QBO item.
 export const FEE_ENGINE_SERVICES = [
+  // accounts and tax
   { id: 'accounts_ct', label: 'Accounts & CT' },
+  { id: 'ltd_accounts', label: 'Statutory Accounts — Ltd' },
+  { id: 'llp_accounts', label: 'Statutory Accounts — LLP' },
+  { id: 'partnership_accounts', label: 'Statutory Accounts — Partnership' },
+  { id: 'property_accounts', label: 'Statutory Accounts — Property' },
   { id: 'sole_trader_accounts', label: 'Sole Trader Accounts' },
-  { id: 'mtd_returns', label: 'MTD Returns' },
-  { id: 'confirmation_statement', label: 'Confirmation Statement' },
+  { id: 'dormant_accounts', label: 'Dormant Accounts' },
+  { id: 'ct600', label: 'CT600' },
+  { id: 'llp_tax_return', label: 'Tax Returns — LLP' },
+  { id: 'partnership_tax_return', label: 'Tax Returns — Partnership' },
   { id: 'directors_tax_return', label: "Directors' Tax Returns" },
+  { id: 'mtd_returns', label: 'MTD Returns' },
+  // bookkeeping and payroll
   { id: 'bookkeeping_vat', label: 'Bookkeeping & VAT' },
+  { id: 'bookkeeping_novat', label: 'Bookkeeping (non-VAT)' },
   { id: 'vat_returns', label: 'VAT Returns' },
   { id: 'payroll', label: 'Payroll' },
   { id: 'auto_enrolment', label: 'Auto-Enrolment' },
   { id: 'modulr', label: 'Modulr' },
+  // advisory
   { id: 'management_accounts', label: 'Management Accounts' },
   { id: 'review_meetings', label: 'Review Meetings' },
-  { id: 'budgeting', label: 'Budgeting & Forecasting' },
   { id: 'fractional_cfo', label: 'Fractional CFO' },
-  { id: 'registered_office', label: 'Registered Office' },
-  { id: 'software', label: 'Software' },
-  { id: 'software_accounting', label: 'Software (accounting)' },
+  { id: 'bespoke_analysis', label: 'Bespoke Analysis' },
+  { id: 'business_plans', label: 'Business Plans' },
+  { id: 'billable_hours', label: 'Billable Hours' },
+  { id: 'budgeting', label: 'Budgeting & Forecasting' },
+  // company secretarial
+  { id: 'confirmation_statement', label: 'Confirmation Statement' },
   { id: 'setup_formation', label: 'Company Formation' },
   { id: 'setup_hmrc', label: 'HMRC Registrations' },
+  { id: 'companies_house_amendments', label: 'Companies House Amendments' },
+  { id: 'id_verification', label: 'ID Verification' },
+  { id: 'registered_office', label: 'Registered Office' },
+  // all inclusive bundles
+  { id: 'all_inclusive_ltd_vat', label: 'All Inclusive — Ltd (VAT reg)' },
+  { id: 'all_inclusive_ltd_novat', label: 'All Inclusive — Ltd (not VAT reg)' },
+  { id: 'all_inclusive_sole_trader', label: 'All Inclusive — Sole Trader' },
+  { id: 'all_inclusive_llp', label: 'All Inclusive — LLP' },
+  { id: 'all_inclusive_partnership', label: 'All Inclusive — Partnership' },
+  { id: 'retainer', label: 'Accountancy Services Retainer' },
+  // other
+  { id: 'software', label: 'Software' },
+  { id: 'software_accounting', label: 'Software (accounting)' },
+  { id: 'fee_protection', label: 'Fee Protection Insurance' },
 ];
 
 // Every service id the mapping page should show a row for: the fee-engine
