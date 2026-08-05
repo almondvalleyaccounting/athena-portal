@@ -378,13 +378,18 @@ export default function AdminTasksPage() {
 
       if (newFiles.length) await uploadTaskFiles(inserted.id, newFiles);
 
-      if (newBillable) {
+      // 'Admin' used to stand in when no service was picked. It's no longer a
+      // billable code, so a billable task needs a real service — the task
+      // itself still saves, only the bill is held back.
+      if (newBillable && !newService) {
+        setError('Pick a service for this task before billing it — Admin is no longer a billable code.');
+      } else if (newBillable) {
         // Standard fee from the price book if the amount was left blank.
         const net = parseFloat(newBillAmount) || feeFor(newService) || 0;
         const vat = Math.round(net * VAT_RATE * 100) / 100;
         const gross = Math.round((net + vat) * 100) / 100;
         const { data: bill, error: billErr } = await supabase.from('billing_items').insert({
-          entity_id: newClient, service: newService || 'Admin', description: newTitle.trim(),
+          entity_id: newClient, service: newService, description: newTitle.trim(),
           net_amount: net, vat_amount: vat, gross_amount: gross,
           status: 'draft', created_by: profile?.id || null,
         }).select('id').single();
@@ -405,6 +410,9 @@ export default function AdminTasksPage() {
   // the Billing Module for accept/send) and moves the task to Bill & Hold.
   async function addBillToTask(t) {
     if (!t.entity_id) { setError('Add a client to the task before billing it.'); return; }
+    // See addTask: 'Admin' is no longer billable, so the task must carry a real
+    // service before a bill can be raised off it.
+    if (!t.service_id) { setError(`Set a service on "${t.title}" before billing it — pick the service the work actually was.`); return; }
     const std = feeFor(t.service_id);
     const raw = window.prompt(`Net amount to bill for "${t.title}" (excl. VAT):`, std != null ? String(std) : '');
     if (raw === null) return;
@@ -413,7 +421,7 @@ export default function AdminTasksPage() {
     const vat = Math.round(net * VAT_RATE * 100) / 100;
     const gross = Math.round((net + vat) * 100) / 100;
     const { data: bill, error: be } = await supabase.from('billing_items').insert({
-      entity_id: t.entity_id, service: t.service_id || 'Admin', description: t.title,
+      entity_id: t.entity_id, service: t.service_id, description: t.title,
       net_amount: net, vat_amount: vat, gross_amount: gross,
       status: 'draft', created_by: profile?.id || null,
     }).select('id').single();

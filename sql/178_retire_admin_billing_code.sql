@@ -1,0 +1,31 @@
+-- 178: Retire 'Admin' as a billable code.
+--
+-- Bobby's call, 2026-08-04: admin work should be billed under the service it
+-- actually was, not a catch-all. 'Admin' mapped to QBO item 40 "Company
+-- Administration", which QBO had already deactivated (11 July) and which sat
+-- on the generic 19 Services account — so an Admin bill would have failed at
+-- push anyway.
+--
+-- Deleting the row is what removes it: the /billing line dropdown is built
+-- from qbo_service_items where is_adhoc, so an unmapped label is not offered.
+-- 'Admin' is also dropped from ADHOC_SERVICES in billingServices.js so it no
+-- longer appears as a mappable candidate on /manage/billing/products.
+--
+-- The three places that defaulted a bill line to 'Admin' when a task had no
+-- service (AdminTaskDetailPage, AdminTasksPage x2) now refuse to raise the
+-- bill instead, so the coding decision happens at entry rather than surfacing
+-- as a push error later.
+--
+-- Existing rows are left alone deliberately. 5 drafts still carry service
+-- 'Admin' and will show "(not mapped)" in the editor and be blocked at push
+-- until someone re-codes them — which is the intended prompt, since only the
+-- person who did the work knows what it should be:
+--   G Bell Catering Ltd                        50.00
+--   Glenburn Investments Ltd                  200.00
+--   Hair By Kirsty Ltd                         75.00
+--   Premier Move Removals And Storage Ltd       0.01
+--   Hogganfield Caravan Park Ltd                0.01
+-- Plus one already pushed (J K Landscaping, 110.00, invoice 9519) and one
+-- marked not_required (Ready Capital) — both left as they are.
+
+delete from public.qbo_service_items where service_id = 'Admin';

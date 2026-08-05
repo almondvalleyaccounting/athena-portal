@@ -129,6 +129,10 @@ export default function AdminTaskDetailPage() {
 
   const addBill = async () => {
     if (!form.entity_id) { setError('Set a client on the task before billing it.'); return; }
+    // 'Admin' used to be the fallback code here. It's no longer billable — it
+    // mapped to a QBO item on a catch-all income account — so the service has
+    // to be a real one, chosen now rather than discovered at push time.
+    if (!form.service_id) { setError('Set the task\'s service before billing it — pick the service the work actually was.'); return; }
     const std = feeFor(form.service_id);
     const raw = window.prompt('Net amount to bill (excl. VAT):', std != null ? String(std) : '');
     if (raw === null) return;
@@ -137,7 +141,7 @@ export default function AdminTaskDetailPage() {
     const vat = Math.round(net * VAT_RATE * 100) / 100;
     const gross = Math.round((net + vat) * 100) / 100;
     const { data: b, error: be } = await supabase.from('billing_items').insert({
-      entity_id: form.entity_id, service: form.service_id || 'Admin', description: form.title.trim(),
+      entity_id: form.entity_id, service: form.service_id, description: form.title.trim(),
       net_amount: net, vat_amount: vat, gross_amount: gross, status: 'draft', created_by: profile?.id || null,
     }).select('id').single();
     if (be) { setError(be.message); return; }

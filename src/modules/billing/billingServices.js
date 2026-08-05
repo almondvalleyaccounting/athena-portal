@@ -9,8 +9,10 @@
 // Ad-hoc bill line labels. Historically a hardcoded array inside
 // BillingPage; the editor now only offers the ones that are actually mapped,
 // so this is the list of labels staff *could* have, not the ones they get.
+// 'Admin' was deliberately retired (sql/178). It coded to a QBO item on a
+// catch-all income account, and as a catch-all label it hid what the work
+// actually was — bill the real service instead.
 export const ADHOC_SERVICES = [
-  'Admin',
   'Accounts Production',
   'Corporation Tax',
   'Self Assessment',
