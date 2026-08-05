@@ -9,9 +9,11 @@
 // Ad-hoc bill line labels. Historically a hardcoded array inside
 // BillingPage; the editor now only offers the ones that are actually mapped,
 // so this is the list of labels staff *could* have, not the ones they get.
-// 'Admin' was deliberately retired (sql/178). It coded to a QBO item on a
-// catch-all income account, and as a catch-all label it hid what the work
-// actually was — bill the real service instead.
+// Three labels are deliberately absent. 'Admin' was retired in sql/178 — it
+// coded to a catch-all account and, as a label, hid what the work actually
+// was. 'Advisory' and 'Company Secretarial' followed in sql/179: both are
+// category names in the rebuilt QBO hierarchy, and billing against a category
+// is precisely what put revenue on a catch-all to begin with. Pick the leaf.
 export const ADHOC_SERVICES = [
   'Accounts Production',
   'Corporation Tax',
@@ -20,10 +22,8 @@ export const ADHOC_SERVICES = [
   'Bookkeeping',
   'Payroll',
   'Management Accounts',
-  'Company Secretarial',
   'Registered Office',
-  'Software Licences',
-  'Advisory',
+  'Software',
   'SA302s',
   'Accountant Certificates',
 ];

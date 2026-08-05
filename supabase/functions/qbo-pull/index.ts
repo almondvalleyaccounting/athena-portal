@@ -36,9 +36,11 @@ Deno.serve(async (req) => {
       "Item",
     );
     const nowIso = new Date().toISOString();
+    const seenItemIds: string[] = [];
     for (const item of qboItems) {
       const qboItemId = String(item.Id || "");
       if (!qboItemId) continue;
+      seenItemIds.push(qboItemId);
       await sb.from("qbo_items").upsert({
         qbo_item_id: qboItemId,
         name: String(item.Name || item.FullyQualifiedName || ""),
@@ -49,6 +51,22 @@ Deno.serve(async (req) => {
         active: item.Active !== false,
         last_seen: nowIso,
       }, { onConflict: "qbo_item_id" });
+    }
+
+    // Anything not in this pull has been deactivated in QBO. `SELECT * FROM
+    // Item` returns active items only, so without this the mirror keeps a
+    // retired item marked active for ever — which is how a deleted product
+    // stayed selectable in the mapping UI, and how two items ended up sharing
+    // a name after a rebuild renamed the live one.
+    //
+    // Guarded on a plausible pull: if QBO returned nothing (auth blip, partial
+    // failure) we must not flag the entire catalogue inactive.
+    if (seenItemIds.length > 5) {
+      const { error: deactErr } = await sb.from("qbo_items")
+        .update({ active: false })
+        .eq("active", true)
+        .not("qbo_item_id", "in", `(${seenItemIds.join(",")})`);
+      if (deactErr) console.error("qbo_items deactivate sweep failed:", deactErr.message);
     }
 
     // ──────────────────────────────────────────────────────────
