@@ -9,6 +9,7 @@ import {
 } from './lib';
 import EmailTemplatesModal from './EmailTemplatesModal';
 import ReminderQueueModal from './ReminderQueueModal';
+import ManualPaymentModal from './ManualPaymentModal';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
@@ -279,11 +280,12 @@ export default function ClientRemindersPage() {
   const [templatesByKind, setTemplatesByKind] = useState({}); // 'promo'|'reminder' -> template row
   const [showTemplates, setShowTemplates] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
+  const [showManualAdd, setShowManualAdd] = useState(false);
   const [queuedCount, setQueuedCount] = useState(0);
   const [autoQueue, setAutoQueue] = useState(null); // { enabled, last_run_at } | null
   const [bmEmailByEntity, setBmEmailByEntity] = useState({}); // entity_id -> BM contact email fallback
   const [ignoreByUtr, setIgnoreByUtr] = useState(() => new Map()); // utr -> reason ('not_client' | 'client_excluded')
-  const [filters, setFilters] = useState({ q: '', pref: 'all', paid: 'all', match: 'all' });
+  const [filters, setFilters] = useState({ q: '', pref: 'all', paid: 'all', match: 'all', source: 'all' });
 
   const entityById = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e])), [entities]);
   const batch = batches.find((b) => b.id === batchId) || null;
@@ -459,6 +461,31 @@ export default function ClientRemindersPage() {
     setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, status: next } : r)));
   };
 
+  // Manually added rows (source='manual') are the ones we keyed in ourselves,
+  // so their amount is ours to correct — an imported amount is left alone so
+  // the batch stays a faithful copy of the TaxCalc export.
+  const setManualAmount = async (row, raw) => {
+    const n = Number(String(raw).replace(/[£,\s]/g, ''));
+    if (!Number.isFinite(n) || n <= 0) { setError('Enter the amount as a number greater than zero.'); return; }
+    if (Number(row.amount) === n) return;
+    const { error: e } = await supabase.from('tax_payments_due').update({ amount: n }).eq('id', row.id);
+    if (e) { setError(`Could not save the amount: ${e.message}`); return; }
+    setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, amount: n } : r)));
+    setNotice(`Amount for ${entityById[row.entity_id]?.name || row.client_name_raw} set to £${fmtMoney(n)}.`);
+  };
+
+  // Remove a hand-keyed row entirely — for one added by mistake or against
+  // the wrong client. Imported rows aren't deletable (re-import the batch).
+  const deleteManualRow = async (row) => {
+    const who = entityById[row.entity_id]?.name || row.client_name_raw;
+    if (!window.confirm(`Remove the hand-added £${fmtMoney(row.amount)} payment for ${who} from this batch?`)) return;
+    const { error: e } = await supabase.from('tax_payments_due').delete().eq('id', row.id);
+    if (e) { setError(`Could not remove that row: ${e.message}`); return; }
+    setRows((rs) => rs.filter((r) => r.id !== row.id));
+    setSelected((s) => { const n = new Set(s); n.delete(row.id); return n; });
+    setNotice(`Removed the hand-added payment for ${who}.`);
+  };
+
   // Manually exclude a client from reminders, with a reason. Persists in
   // tax_reminder_ignore (survives re-imports) and is changeable later.
   // reason: 'not_client' (return we file but not a practice client) or
@@ -517,6 +544,7 @@ export default function ClientRemindersPage() {
       if (filters.match === 'matched' && !r.entity_id) return false;
       if (filters.match === 'unmatched' && (r.entity_id || isIgnored(r))) return false;
       if (filters.match === 'ignored' && !isIgnored(r)) return false;
+      if (filters.source !== 'all' && (r.source || 'taxcalc') !== filters.source) return false;
       if (q) {
         const ent = r.entity_id ? entityById[r.entity_id] : null;
         const hay = [r.client_name_raw, ent && ent.name, emailOf(r), r.reference_raw]
@@ -662,6 +690,16 @@ export default function ClientRemindersPage() {
           </span>
         )}
         <div style={{ flex: 1 }} />
+        <button
+          onClick={() => setShowManualAdd(true)}
+          disabled={!batch}
+          style={{ ...btnGhost, opacity: batch ? 1 : 0.5, cursor: batch ? 'pointer' : 'default' }}
+          title={batch
+            ? 'Add a client whose payment figures aren’t in the TaxCalc export — e.g. someone who joined after their return was filed elsewhere'
+            : 'Select a batch first'}
+        >
+          + Add client by hand
+        </button>
         <button onClick={() => setShowQueue(true)} style={btnGhost}>
           Review queue{queuedCount ? ` (${queuedCount})` : ''}
         </button>
@@ -711,6 +749,7 @@ export default function ClientRemindersPage() {
               ['match', [['all', 'All matches'], ['matched', 'Matched'], ['unmatched', 'Unmatched'], ['ignored', 'Ignored']]],
               ['pref', [['all', 'Any preference'], ['opted_in', 'Opted in'], ['opted_out', 'Opted out'], ['pending', 'Pending'], ['not_asked', 'Not asked']]],
               ['paid', [['all', 'Any status'], ['unpaid', 'Unpaid'], ['paid', 'Paid']]],
+              ['source', [['all', 'Any source'], ['taxcalc', 'From TaxCalc'], ['manual', 'Added by hand']]],
             ].map(([key, opts]) => (
               <select
                 key={key}
@@ -722,8 +761,8 @@ export default function ClientRemindersPage() {
               </select>
             ))}
             <span style={{ fontSize: 12, color: '#94a3b8' }}>{visibleRows.length} of {rows.length}</span>
-            {(filters.q || filters.pref !== 'all' || filters.paid !== 'all' || filters.match !== 'all') && (
-              <button onClick={() => setFilters({ q: '', pref: 'all', paid: 'all', match: 'all' })} style={btnGhost}>Clear</button>
+            {(filters.q || filters.pref !== 'all' || filters.paid !== 'all' || filters.match !== 'all' || filters.source !== 'all') && (
+              <button onClick={() => setFilters({ q: '', pref: 'all', paid: 'all', match: 'all', source: 'all' })} style={btnGhost}>Clear</button>
             )}
           </div>
           <div style={{ overflowX: 'auto' }}>
@@ -733,7 +772,7 @@ export default function ClientRemindersPage() {
                   <th style={{ ...th, width: 30 }}>
                     <input type="checkbox" checked={!!allSelected} onChange={toggleAll} />
                   </th>
-                  <th style={th}>TaxCalc</th>
+                  <th style={th}>Payment row</th>
                   <th style={th}>Matched (BM)</th>
                   <th style={th}>Reminder</th>
                   <th style={th}>Email</th>
@@ -756,15 +795,45 @@ export default function ClientRemindersPage() {
                   const paidMeta = PAID_META[row.status] || PAID_META.unpaid;
                   const res = row.entity_id ? rowResults[row.entity_id] : null;
                   const rowIgnored = isIgnored(row);
+                  const isManual = (row.source || 'taxcalc') === 'manual';
                   return (
                     <tr key={row.id} style={{ background: selected.has(row.id) ? '#f8fbff' : 'transparent' }}>
                       <td style={td}>
                         <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleRow(row.id)} />
                       </td>
-                      {/* TaxCalc Client — the raw imported name + UTR */}
+                      {/* The payment row itself — imported name + UTR, or a
+                          hand-keyed row (removable, amount editable). */}
                       <td style={td}>
-                        <span style={{ fontWeight: 600 }}>{row.client_name_raw}</span>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 600 }}>{row.client_name_raw}</span>
+                          {isManual && (
+                            <span
+                              title={row.status_note || 'Keyed in by hand — not from the TaxCalc export'}
+                              style={{
+                                padding: '1px 7px', fontSize: 10.5, fontWeight: 600, borderRadius: 999,
+                                background: '#eff6ff', color: ACCENT, border: '1px solid #bfdbfe',
+                              }}
+                            >
+                              by hand
+                            </span>
+                          )}
+                          {isManual && (
+                            <button
+                              onClick={() => deleteManualRow(row)}
+                              title="Remove this hand-added row from the batch"
+                              style={{
+                                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                fontFamily: font, fontSize: 12, color: '#cbd5e1', lineHeight: 1,
+                              }}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
                         {row.reference_raw && <div style={{ fontSize: 11, color: '#94a3b8' }}>{row.reference_raw}</div>}
+                        {isManual && row.status_note && (
+                          <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>{row.status_note}</div>
+                        )}
                       </td>
                       {/* Athena (BM) Client — the matched client picker */}
                       <td style={td}>
@@ -827,7 +896,24 @@ export default function ClientRemindersPage() {
                         )}
                       </td>
                       <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                        {row.amount != null ? `£${fmtMoney(row.amount)}` : '—'}
+                        {isManual ? (
+                          <input
+                            key={`amt-${row.id}-${row.amount}`}
+                            defaultValue={row.amount != null ? Number(row.amount).toFixed(2) : ''}
+                            onBlur={(e) => setManualAmount(row, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                            title="Hand-added amount — edit and press Enter or click away to save"
+                            inputMode="decimal"
+                            style={{
+                              width: 82, padding: '3px 6px', fontSize: 12.5, fontFamily: font,
+                              textAlign: 'right', color: '#1e293b', background: '#fff',
+                              border: '1px solid #bfdbfe', borderRadius: 6,
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          />
+                        ) : (
+                          row.amount != null ? `£${fmtMoney(row.amount)}` : '—'
+                        )}
                       </td>
                       {/* Preference — status chip only */}
                       <td style={td}>
@@ -955,6 +1041,22 @@ export default function ClientRemindersPage() {
         <EmailTemplatesModal
           commType={COMM_TYPE}
           onClose={() => { setShowTemplates(false); loadShared(); }}
+        />
+      )}
+
+      {showManualAdd && batch && (
+        <ManualPaymentModal
+          batch={batch}
+          entities={entities}
+          rows={rows || []}
+          emailOf={emailOf}
+          profileId={profile?.id}
+          onClose={() => setShowManualAdd(false)}
+          onSaved={(name) => {
+            setShowManualAdd(false);
+            setNotice(`${name} added to ${batch.label}. They still need to opt in before a reminder can go out.`);
+            loadRows(batchId);
+          }}
         />
       )}
 
