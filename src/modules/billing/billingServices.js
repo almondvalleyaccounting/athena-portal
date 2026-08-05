@@ -19,6 +19,7 @@
 // Inclusive packages and the Retainer — recurring bundles, not one-off work.
 export const ADHOC_SERVICES = [
   'Accountant Certificates',
+  'Accounts & Corporation Tax',
   'Accounts Production',
   'Bespoke Analysis',
   'Billable Hours',
@@ -44,7 +45,9 @@ export const ADHOC_SERVICES = [
   'Statutory Accounts - LLP',
   'Statutory Accounts - Partnership',
   'Statutory Accounts - Property',
+  'Statutory Accounts - Sole Trader',
   'Tax Returns - LLP',
+  'Tax Returns - MTD',
   'Tax Returns - Partnership (SA800)',
   'VAT Returns',
 ];
