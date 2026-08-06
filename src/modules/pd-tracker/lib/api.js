@@ -515,6 +515,110 @@ export async function deleteAction(id) {
   if (error) throw error;
 }
 
+// ── Private 1-2-1 prep notes (sql/183) ───────────────────────────────────
+// These are the ONLY pd_* rows that aren't visible to all active staff:
+// RLS is author_id = auth.uid(), so the person a note is about can never read
+// it. The UI must never present them as shared.
+
+export const PREP_KINDS = [
+  { key: 'work',        label: 'Work',        hint: 'Jobs, clients, capacity, quality — what we need to talk through.' },
+  { key: 'development', label: 'Development', hint: 'Growth, behaviours, feedback to give, career conversation.' },
+];
+
+export const WORK_FEED_SOURCES = [
+  { key: 'bm_job',          label: 'Client jobs' },
+  { key: 'job_review',      label: 'Job review' },
+  { key: 'onboarding_step', label: 'Onboarding' },
+  { key: 'planner_task',    label: 'Planner' },
+  { key: 'quick_task',      label: 'Quick tasks' },
+  { key: 'objective',       label: 'Objectives' },
+  { key: 'bug',             label: 'Bugs' },
+  { key: 'issue',           label: 'Issues' },
+];
+
+// Every note I hold on one person (open, parked and already-discussed).
+export async function loadPrepNotes(authorId, subjectId) {
+  const { data, error } = await supabase
+    .from('pd_prep_notes')
+    .select('*')
+    .eq('author_id', authorId)
+    .eq('subject_id', subjectId)
+    .order('pinned', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+// Open-note counts per subject, for the "who have I got points for?" strip.
+export async function loadPrepNoteCounts(authorId) {
+  const { data, error } = await supabase
+    .from('pd_prep_notes')
+    .select('subject_id, kind')
+    .eq('author_id', authorId)
+    .eq('status', 'open');
+  if (error) throw error;
+  const counts = {};
+  for (const r of data || []) {
+    const c = counts[r.subject_id] || (counts[r.subject_id] = { work: 0, development: 0, total: 0 });
+    c[r.kind] = (c[r.kind] || 0) + 1;
+    c.total += 1;
+  }
+  return counts;
+}
+
+export async function createPrepNote(row) {
+  const { data, error } = await supabase
+    .from('pd_prep_notes')
+    .insert(row)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updatePrepNote(id, patch) {
+  const { data, error } = await supabase
+    .from('pd_prep_notes')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deletePrepNote(id) {
+  const { error } = await supabase.from('pd_prep_notes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// Carry a set of prep notes into a logged 1-2-1: they stop being agenda and
+// become the record of what was raised. Still private to the author.
+export async function markPrepNotesDiscussed(ids, oneToOneId) {
+  if (!ids || ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from('pd_prep_notes')
+    .update({ status: 'discussed', discussed_at: new Date().toISOString(), one_to_one_id: oneToOneId || null })
+    .in('id', ids)
+    .select();
+  if (error) throw error;
+  return data || [];
+}
+
+// Everything currently on a person's plate, across modules (v_staff_work_feed).
+// Rows the caller has no permission to see are filtered out by the underlying
+// tables' RLS, not by this query.
+export async function loadWorkFeed(staffId) {
+  const { data, error } = await supabase
+    .from('v_staff_work_feed')
+    .select('*')
+    .eq('staff_id', staffId)
+    .order('sort_date', { ascending: true, nullsFirst: false })
+    .limit(600);
+  if (error) throw error;
+  return data || [];
+}
+
 export async function loadKudos(staffId) {
   const { data, error } = await supabase
     .from('pd_kudos')

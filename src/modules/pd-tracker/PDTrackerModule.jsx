@@ -1,6 +1,6 @@
 import React from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Network, Target, BookOpen, MessageSquare, Sparkles, ShieldCheck, UserCog, Share2, ScrollText } from 'lucide-react';
+import { LayoutDashboard, Network, Target, BookOpen, MessageSquare, Sparkles, ShieldCheck, UserCog, Share2, ScrollText, NotebookPen } from 'lucide-react';
 import { useAuth } from '../../shell/AppShell';
 import DashboardView from './views/DashboardView';
 import MyRoleView from './views/MyRoleView';
@@ -8,6 +8,7 @@ import SkillsView from './views/SkillsView';
 import ObjectivesView from './views/ObjectivesView';
 import CPDView from './views/CPDView';
 import OneToOnesView from './views/OneToOnesView';
+import PrepView from './views/PrepView';
 import MandatoryView from './views/MandatoryView';
 import RolesView from './views/RolesView';
 import SharingView from './views/SharingView';
@@ -20,6 +21,7 @@ const TABS = [
   { id: 'objectives',     label: 'Objectives',      path: '/team/pd/objectives',      icon: Target },
   { id: 'cpd',            label: 'CPD log',         path: '/team/pd/cpd',             icon: BookOpen },
   { id: 'one-to-ones',    label: '1-2-1s',          path: '/team/pd/one-to-ones',     icon: MessageSquare },
+  { id: 'prep',           label: '1-2-1 prep',      path: '/team/pd/prep',            icon: NotebookPen },
   { id: 'mandatory',      label: 'Mandatory',       path: '/team/pd/mandatory',       icon: ShieldCheck },
   { id: 'sharing',        label: 'Sharing',         path: '/team/pd/sharing',         icon: Share2 },
   { id: 'roles',          label: 'Roles',           path: '/team/pd/roles',           icon: UserCog, adminOnly: true },
@@ -76,6 +78,7 @@ export default function PDTrackerModule() {
           <Route path="objectives" element={<ObjectivesView />} />
           <Route path="cpd" element={<CPDView />} />
           <Route path="one-to-ones" element={<OneToOnesView />} />
+          <Route path="prep" element={<PrepView />} />
           <Route path="mandatory" element={<MandatoryView />} />
           <Route path="sharing" element={<SharingView />} />
           {isAdmin && <Route path="roles" element={<RolesView />} />}

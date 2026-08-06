@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, MessageSquare, Check, CircleDot } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Plus, Trash2, MessageSquare, Check, CircleDot, Lock, NotebookPen } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { Card, SectionTitle, Button, Input, Textarea, Select, Pill, EmptyState, FONT, SERIF } from '../components/ui';
 import {
   loadOneToOnes, createOneToOne, deleteOneToOne, updateOneToOne,
   loadActions, createAction, updateAction, deleteAction, loadStaff,
   loadOneToOneComments, addOneToOneComment, loadGrantsToMe,
+  loadPrepNotes, markPrepNotesDiscussed, PREP_KINDS,
 } from '../lib/api';
 
 const MOOD_EMOJI = { 1: '😞', 2: '😕', 3: '😐', 4: '🙂', 5: '😄' };
@@ -23,6 +25,9 @@ export default function OneToOnesView() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [grantsToMe, setGrantsToMe] = useState([]);
+  // My private prep notes for whoever is selected (never shown to them).
+  const [prepNotes, setPrepNotes] = useState([]);
+  const [agendaIds, setAgendaIds] = useState([]);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -61,6 +66,13 @@ export default function OneToOnesView() {
     })();
   }, [selectedStaffId]);
 
+  useEffect(() => {
+    if (!selectedStaffId || !profile?.id) { setPrepNotes([]); return; }
+    loadPrepNotes(profile.id, selectedStaffId)
+      .then((rows) => setPrepNotes(rows.filter((n) => n.status === 'open')))
+      .catch((e) => console.error(e));
+  }, [selectedStaffId, profile?.id]);
+
   const viewingSelf = selectedStaffId === profile?.id;
 
   const addComment = async (meetingId, body) => {
@@ -95,6 +107,15 @@ export default function OneToOnesView() {
         due_date: a.due_date || null,
       })));
       if (createdActions.length) setActions((p) => [...createdActions, ...p]);
+      // Prep notes ticked off as covered stop being agenda and get pinned to
+      // this meeting. They stay private — nothing is copied into the record.
+      if (agendaIds.length) {
+        try {
+          await markPrepNotesDiscussed(agendaIds, saved.id);
+          setPrepNotes((p) => p.filter((n) => !agendaIds.includes(n.id)));
+          setAgendaIds([]);
+        } catch (e) { console.error(e); }
+      }
       setDraft(emptyDraft()); setShowForm(false);
     } catch (e) { console.error(e); }
   };
@@ -140,8 +161,23 @@ export default function OneToOnesView() {
               {accessibleStaff.map((s) => <option key={s.id} value={s.id}>{s.name}{s.id === profile?.id ? ' (you)' : ''}</option>)}
             </Select>
           )}
+          <Link
+            to="/team/pd/prep"
+            title="Private notes only you can see"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none',
+              fontFamily: FONT, fontSize: 12.5, fontWeight: 600,
+              color: prepNotes.length ? '#0e7fe0' : '#64748b',
+              border: '1px solid ' + (prepNotes.length ? '#bfdbfe' : '#e5e7eb'),
+              background: prepNotes.length ? '#eff6ff' : '#fff',
+              borderRadius: 10, padding: '9px 14px',
+            }}
+          >
+            <NotebookPen size={13} />
+            {prepNotes.length ? `${prepNotes.length} prep note${prepNotes.length === 1 ? '' : 's'}` : 'My prep notes'}
+          </Link>
           {!showForm && (
-            <Button variant="accent" onClick={() => setShowForm(true)}>
+            <Button variant="accent" onClick={() => setShowForm(true)} style={{ whiteSpace: 'nowrap' }}>
               <Plus size={14} style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
               New 1-2-1
             </Button>
@@ -187,6 +223,46 @@ export default function OneToOnesView() {
                     <Trash2 size={12} />
                   </button>
                 </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {showForm && prepNotes.length > 0 && (
+        <Card style={{ marginBottom: 12, borderColor: '#e0e7ff', background: '#f8fafc' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Lock size={13} color="#475569" />
+            <div style={{ fontFamily: SERIF, fontSize: 17, color: '#0f172a' }}>Your private agenda ({prepNotes.length})</div>
+          </div>
+          <p style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', margin: '0 0 12px' }}>
+            Prep notes only you can see. Tick the ones you cover — they move to &ldquo;discussed&rdquo; against this meeting.
+            Nothing here is copied into the shared record.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {prepNotes.map((n) => {
+              const ticked = agendaIds.includes(n.id);
+              const kind = PREP_KINDS.find((k) => k.key === n.kind);
+              return (
+                <label key={n.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={ticked}
+                    onChange={() => setAgendaIds((p) => ticked ? p.filter((x) => x !== n.id) : [...p, n.id])}
+                    style={{ marginTop: 3, width: 15, height: 15, cursor: 'pointer', accentColor: '#0e7fe0' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <Pill bg={n.kind === 'work' ? '#eff6ff' : '#f5f3ff'} fg={n.kind === 'work' ? '#0e7fe0' : '#7c3aed'}>
+                      {kind?.label || n.kind}
+                    </Pill>
+                    <span style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', marginLeft: 8, whiteSpace: 'pre-wrap' }}>{n.body}</span>
+                    {n.link_label && (
+                      <span style={{ fontFamily: FONT, fontSize: 11.5, color: '#94a3b8', display: 'block', marginTop: 2 }}>
+                        re: {n.link_label}
+                      </span>
+                    )}
+                  </span>
+                </label>
               );
             })}
           </div>
