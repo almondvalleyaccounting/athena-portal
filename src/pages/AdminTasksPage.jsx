@@ -15,6 +15,18 @@ const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
 const VAT_RATE = 0.20;
 
+// A bill amount can be left blank or £0 — that's the "bill this, figure to be
+// decided" case, and it's the honest way to raise a placeholder (the team used
+// to type £0.01 to get past this). Only a negative or unreadable figure is
+// wrong. The Billing module won't let a £0.00 bill be approved or pushed, so
+// the amount still has to be settled before it reaches QuickBooks.
+function billAmountOk(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return true;
+  const n = parseFloat(s);
+  return Number.isFinite(n) && n >= 0;
+}
+
 /*
   Sophie's workspace — everything from her world on one page:
   - Tasks to key into BrightManager (auto-captured + manual), each with an
@@ -362,7 +374,7 @@ export default function AdminTasksPage() {
 
   async function addManual(asDraft = false) {
     if (!newTitle.trim() || savingTask) return;
-    if (newBillable && (!newClient || !((parseFloat(newBillAmount) > 0) || (feeFor(newService) > 0)))) return;
+    if (newBillable && (!newClient || !billAmountOk(newBillAmount))) return;
     setSavingTask(true);
     try {
       // Draft → held off the live list. Otherwise a billable task starts in
@@ -384,8 +396,11 @@ export default function AdminTasksPage() {
       if (newBillable && !newService) {
         setError('Pick a service for this task before billing it — Admin is no longer a billable code.');
       } else if (newBillable) {
-        // Standard fee from the price book if the amount was left blank.
-        const net = parseFloat(newBillAmount) || feeFor(newService) || 0;
+        // Standard fee from the price book if the amount was left blank — but a
+        // typed 0 means 0 (it used to fall through to the standard fee, which
+        // silently priced a bill nobody had priced).
+        const typed = String(newBillAmount ?? '').trim();
+        const net = typed === '' ? (feeFor(newService) || 0) : (parseFloat(typed) || 0);
         const vat = Math.round(net * VAT_RATE * 100) / 100;
         const gross = Math.round((net + vat) * 100) / 100;
         const { data: bill, error: billErr } = await supabase.from('billing_items').insert({
@@ -414,10 +429,12 @@ export default function AdminTasksPage() {
     // service before a bill can be raised off it.
     if (!t.service_id) { setError(`Set a service on "${t.title}" before billing it — pick the service the work actually was.`); return; }
     const std = feeFor(t.service_id);
-    const raw = window.prompt(`Net amount to bill for "${t.title}" (excl. VAT):`, std != null ? String(std) : '');
+    const raw = window.prompt(`Net amount to bill for "${t.title}" (excl. VAT) — enter 0 if the figure isn't settled yet:`, std != null ? String(std) : '');
     if (raw === null) return;
-    const net = parseFloat(raw);
-    if (!(net > 0)) { setError('Enter a valid net amount.'); return; }
+    // 0 raises it as a £0.00 draft to be priced in the Billing module, which
+    // won't let a £0.00 bill be approved or pushed.
+    const net = String(raw).trim() === '' ? 0 : parseFloat(raw);
+    if (!Number.isFinite(net) || net < 0) { setError('Enter a net amount of 0 or more.'); return; }
     const vat = Math.round(net * VAT_RATE * 100) / 100;
     const gross = Math.round((net + vat) * 100) / 100;
     const { data: bill, error: be } = await supabase.from('billing_items').insert({
@@ -800,14 +817,14 @@ export default function AdminTasksPage() {
               {canPipeline && (
                 <button
                   onClick={() => addManual(true)}
-                  disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !((parseFloat(newBillAmount) > 0) || (feeFor(newService) > 0))))}
+                  disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !billAmountOk(newBillAmount)))}
                   title="Save as a draft — held off the live list until you release it"
                   style={{ ...btn('ghost'), opacity: (savingTask || !newTitle.trim()) ? 0.6 : 1 }}
                 >Save as draft</button>
               )}
               <button
                 onClick={() => addManual(false)}
-                disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !((parseFloat(newBillAmount) > 0) || (feeFor(newService) > 0))))}
+                disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !billAmountOk(newBillAmount)))}
                 style={{ ...btn('primary'), opacity: (savingTask || !newTitle.trim()) ? 0.6 : 1 }}
               >{savingTask ? 'Adding…' : (newBillable ? 'Add & bill' : 'Add task')}</button>
             </div>

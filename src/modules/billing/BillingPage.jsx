@@ -363,7 +363,11 @@ export default function BillingPage() {
   const pushTargets = selectedApproved.length > 0 ? selectedApproved : approvedItems;
   // Email + address (line 1 + postcode) are mandatory before any push.
   const notReadyTargets = pushTargets.filter((i) => !isContactReady(i.id));
-  const allContactsReady = pushTargets.length > 0 && notReadyTargets.length === 0;
+  // A £0.00 placeholder can't be approved (see isPriced), so this only catches
+  // rows approved before that rule existed — but a £0.00 invoice must never
+  // reach QuickBooks, so it's checked at the terminal step too.
+  const unpricedTargets = pushTargets.filter((i) => !isPriced(i));
+  const allContactsReady = pushTargets.length > 0 && notReadyTargets.length === 0 && unpricedTargets.length === 0;
   // How the batch currently splits, for the bulk buttons and the submit label.
   const sendCount = pushTargets.filter((i) => willSendItem(i.id)).length;
   const draftCount = pushTargets.length - sendCount;
@@ -552,6 +556,7 @@ export default function BillingPage() {
         <button onClick={addLine} style={{...btnOutline,gap:5}}><Plus size={14}/> Add line</button>
         <span style={{fontSize:11,color:'#94a3b8'}}>
           Qty × Rate = Amount — fill in any two and the third works itself out. Sums work too: type <code style={calcHint}>100*10</code> then Tab.
+          {' '}Not sure of the figure yet? Put <b>0</b> in Amount — it saves as a £0.00 placeholder and can&apos;t be approved until it&apos;s priced.
         </span>
       </div>
 
@@ -722,6 +727,7 @@ export default function BillingPage() {
                   <span style={{fontWeight:500,color:'#0f172a',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clientName} — {[descPreview, item.service].filter(Boolean).join(' · ') || item.service}</span>
                   <span style={{fontWeight:600,color:'#0f172a',flexShrink:0}}>{fmt(item.gross_amount)}</span>
                   <CommentTag count={cmts.length} compact/>
+                  <UnpricedTag item={item} compact/>
                   <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 6px',borderRadius:4,flexShrink:0}}>{sc.label}</span>
                   <QboInvoiceTag item={item}/>
                   <span style={{fontSize:10,color:'#94a3b8',flexShrink:0}}>{addedBy} · {dateStr}</span>
@@ -764,6 +770,7 @@ export default function BillingPage() {
                       <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 8px',borderRadius:6}}>{sc.label}</span>
                       <QboInvoiceTag item={item}/>
                       <CommentTag count={cmts.length}/>
+                      <UnpricedTag item={item}/>
                       <span>Added by {addedBy}</span>
                       <span>{dateStr}</span>
                       {lines.length>1 && <span>{lines.length} lines</span>}
@@ -870,7 +877,7 @@ export default function BillingPage() {
                     </span>
                     <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.net_amount)}</span>
                     <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.vat_amount)}</span>
-                    <span style={{textAlign:'right',fontFamily:'monospace',fontWeight:600,color:'#0f172a'}}>{fmt(item.gross_amount)}</span>
+                    <span title={isPriced(item)?undefined:"No amount on this bill yet — it can't be pushed"} style={{textAlign:'right',fontFamily:'monospace',fontWeight:600,color:isPriced(item)?'#0f172a':'#b45309'}}>{isPriced(item)?fmt(item.gross_amount):'⚠ £0.00'}</span>
                   </div>
                 );
               })}
@@ -970,9 +977,14 @@ export default function BillingPage() {
                 )}
               </div>
             )}
-            {!allContactsReady && pushTargets.length>0 && !previewLoading && (
+            {notReadyTargets.length>0 && pushTargets.length>0 && !previewLoading && (
               <p style={{fontSize:12,color:'#b45309',marginBottom:8}}>
                 {notReadyTargets.length} {notReadyTargets.length===1?'item needs':'items need'} an email + address (line 1 + postcode) before you can push.
+              </p>
+            )}
+            {unpricedTargets.length>0 && (
+              <p style={{fontSize:12,color:'#b45309',marginBottom:8}}>
+                {unpricedTargets.length} {unpricedTargets.length===1?'item has':'items have'} no amount yet (£0.00). Price {unpricedTargets.length===1?'it':'them'} or mark {unpricedTargets.length===1?'it':'them'} not required — a £0.00 invoice can&apos;t go to QuickBooks.
               </p>
             )}
             <div style={{display:'flex',gap:10}}>
@@ -1097,6 +1109,18 @@ function CommentTag({ count, compact }) {
   );
 }
 
+// A bill raised without a figure. Deliberately not styled as an error — it's a
+// normal step ("raise it now, price it later") that just isn't finished.
+function UnpricedTag({ item, compact }) {
+  if (isPriced(item) || item.status === 'pushed' || item.status === 'not_required') return null;
+  return (
+    <span
+      title="No amount on this bill yet — put a figure on it before it can be approved or pushed"
+      style={{fontSize:10,fontWeight:600,color:'#b45309',background:'#fffbeb',padding:compact?'2px 6px':'2px 8px',borderRadius:compact?4:6,flexShrink:0}}
+    >Amount TBC</span>
+  );
+}
+
 // The internal conversation about a bill. Athena-only: the QBO push reads the
 // bill's lines and nothing else, so none of this can reach the client.
 function BillComments({ comments, staffMap, meId, draft, onDraft, onAdd, onDelete, busy }) {
@@ -1190,12 +1214,16 @@ function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   const s = item.status;
   const sz = compact?12:14;
   const b = {background:'none',border:'none',cursor:'pointer',padding:compact?2:4,borderRadius:4,display:'inline-flex',alignItems:'center',transition:'all 0.12s'};
+  // A £0.00 bill is a placeholder — raise it by all means, but it can't be
+  // approved until someone puts a figure on it.
+  const priced = isPriced(item);
   return (
     <div style={{display:'flex',gap:compact?3:5,alignItems:'center',flexShrink:0}}>
       {/* Approve — solid green so it's unmissable (was a faint grey tick). */}
       {s==='draft' && (
-        <button onClick={()=>onStatus(item,'approved')} title="Approve"
-          style={{display:'inline-flex',alignItems:'center',gap:4,background:'#059669',color:'#fff',border:'none',borderRadius:6,cursor:'pointer',padding:compact?'2px 7px':'5px 10px',fontSize:compact?10:12,fontWeight:600,fontFamily:"'Outfit', sans-serif"}}>
+        <button onClick={()=>priced && onStatus(item,'approved')} disabled={!priced}
+          title={priced?'Approve':"Needs an amount first — a £0.00 bill can't be approved or pushed"}
+          style={{display:'inline-flex',alignItems:'center',gap:4,background:priced?'#059669':'#e2e8f0',color:priced?'#fff':'#94a3b8',border:'none',borderRadius:6,cursor:priced?'pointer':'not-allowed',padding:compact?'2px 7px':'5px 10px',fontSize:compact?10:12,fontWeight:600,fontFamily:"'Outfit', sans-serif"}}>
           <Check size={sz} strokeWidth={3}/>{!compact && 'Approve'}
         </button>
       )}
@@ -1224,6 +1252,12 @@ const DETAIL_COLS = '1.1fr 2.2fr 0.4fr 0.7fr 0.7fr 0.6fr 0.7fr';
 const calcHint = { background: '#f1f5f9', borderRadius: 4, padding: '1px 4px', fontFamily: 'monospace', color: '#475569' };
 // A fresh, empty editor line.
 function blankLine() { return { service: '', description: '', qty: '', rate: '', net: '', vat: '', gross: '', vatManual: false, touch: [] }; }
+
+// Has someone actually put a figure on this bill? £0.00 is a legitimate way to
+// raise one ("bill this, amount to be decided") — it just can't be approved or
+// pushed until it's priced. Nothing about it is an error, so it's a state to
+// show, not a validation failure.
+function isPriced(item) { return Number(item?.net_amount) > 0; }
 
 // Comment rows → { [billing_item_id]: [oldest … newest] }.
 function groupComments(rows) {

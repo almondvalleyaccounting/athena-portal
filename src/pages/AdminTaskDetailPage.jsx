@@ -134,10 +134,12 @@ export default function AdminTaskDetailPage() {
     // to be a real one, chosen now rather than discovered at push time.
     if (!form.service_id) { setError('Set the task\'s service before billing it — pick the service the work actually was.'); return; }
     const std = feeFor(form.service_id);
-    const raw = window.prompt('Net amount to bill (excl. VAT):', std != null ? String(std) : '');
+    const raw = window.prompt('Net amount to bill (excl. VAT) — enter 0 if the figure isn\'t settled yet:', std != null ? String(std) : '');
     if (raw === null) return;
-    const net = parseFloat(raw);
-    if (!(net > 0)) { setError('Enter a valid net amount.'); return; }
+    // 0 raises it as a £0.00 draft to be priced in the Billing module, which
+    // won't let a £0.00 bill be approved or pushed.
+    const net = String(raw).trim() === '' ? 0 : parseFloat(raw);
+    if (!Number.isFinite(net) || net < 0) { setError('Enter a net amount of 0 or more.'); return; }
     const vat = Math.round(net * VAT_RATE * 100) / 100;
     const gross = Math.round((net + vat) * 100) / 100;
     const { data: b, error: be } = await supabase.from('billing_items').insert({
