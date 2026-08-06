@@ -33,6 +33,9 @@ export default function BillingPage() {
   const [commentBusy, setCommentBusy] = useState(null); // item id being posted
   const [entities, setEntities] = useState([]);
   const [services, setServices] = useState([]); // mapped ad-hoc line labels
+  // Each product's standard invoice-line description, as held on the QuickBooks
+  // product (sql/187). Picking a service fills an empty Description with it.
+  const [serviceDefaults, setServiceDefaults] = useState({});
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('pipeline'); // default to pipeline
@@ -101,13 +104,16 @@ export default function BillingPage() {
         // Ad-hoc line labels that actually map to a QBO product. Fee-engine
         // service ids are excluded — they're slugs, not something to pick
         // from on a one-off bill.
-        supabase.from('qbo_service_items').select('service_id, qbo_item_name').eq('is_adhoc', true),
+        supabase.from('qbo_service_items').select('service_id, qbo_item_name, default_description').eq('is_adhoc', true),
         supabase.from('billing_item_comments').select('*').order('created_at'),
       ]);
       setItems(bills || []);
       setComments(groupComments(cmts));
       setEntities(ents || []);
       setServices((svcRows || []).map((r) => r.service_id).sort((a, b) => a.localeCompare(b)));
+      setServiceDefaults(Object.fromEntries((svcRows || [])
+        .filter((r) => r.default_description)
+        .map((r) => [r.service_id, r.default_description])));
       setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email || 'Unknown' })));
       // On first load, silently re-confirm invoice number + sent status from
       // QBO for pushed bills that don't have them yet (or aren't sent yet).
@@ -223,6 +229,17 @@ export default function BillingPage() {
   // amount drives VAT (auto 20%) unless the user types a VAT figure
   // (vatManual); gross is always net + VAT.
   const changeLineField = (idx, key, value) => setFormLines((prev) => prev.map((l, i) => i === idx ? { ...l, [key]: value } : l));
+  // Picking a service pulls through the standard description held on the
+  // QuickBooks product. A description that's empty, or that was filled in this
+  // way and not since touched (descAuto), is replaced when the service changes;
+  // anything typed by hand stays exactly as typed.
+  const changeLineService = (idx, value) => setFormLines((prev) => prev.map((l, i) => {
+    if (i !== idx) return l;
+    const std = serviceDefaults[value] || '';
+    const takeStd = !String(l.description || '').trim() || l.descAuto;
+    return { ...l, service: value, description: takeStd ? std : l.description, descAuto: takeStd && !!std };
+  }));
+  const changeLineDescription = (idx, value) => setFormLines((prev) => prev.map((l, i) => i === idx ? { ...l, description: value, descAuto: false } : l));
   const changeLineCalc = (idx, field, value) => setFormLines((prev) => prev.map((l, i) => i === idx ? applyCalc(l, field, value) : l));
   const changeLineVat = (idx, value) => setFormLines((prev) => prev.map((l, i) => {
     if (i !== idx) return l;
@@ -550,7 +567,7 @@ export default function BillingPage() {
       </div>
       {formLines.map((l,idx)=>(
         <div key={idx} style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:6,alignItems:'flex-start'}}>
-          <select value={l.service} onChange={(e)=>changeLineField(idx,'service',e.target.value)} style={inputStyle}>
+          <select value={l.service} onChange={(e)=>changeLineService(idx,e.target.value)} style={inputStyle}>
             <option value="">Select...</option>
             {/* Keep a service the line already carries — copied from a QBO
                 invoice, or mapped since this bill was drafted — so editing an
@@ -559,7 +576,14 @@ export default function BillingPage() {
             {services.map((s)=><option key={s} value={s}>{s}</option>)}
           </select>
           {/* Textarea so multi-line QBO descriptions keep their line breaks. */}
-          <textarea value={l.description} onChange={(e)=>changeLineField(idx,'description',e.target.value)} placeholder="Optional..." rows={2} style={{...inputStyle,resize:'vertical',minHeight:38,lineHeight:1.4}}/>
+          <textarea
+            value={l.description}
+            onChange={(e)=>changeLineDescription(idx,e.target.value)}
+            placeholder={serviceDefaults[l.service] ? 'Standard description — type over it if this one differs' : 'Optional...'}
+            title={l.descAuto ? "The QuickBooks product's standard description — edit it freely" : undefined}
+            rows={2}
+            style={{...inputStyle,resize:'vertical',minHeight:38,lineHeight:1.4,color:l.descAuto?'#475569':undefined}}
+          />
           <CalcInput value={l.qty} onChange={(v)=>changeLineCalc(idx,'qty',v)} dp={4} placeholder="1" style={numInput}/>
           <CalcInput value={l.rate} onChange={(v)=>changeLineCalc(idx,'rate',v)} dp={4} placeholder="0.00" style={numInput}/>
           <CalcInput value={l.net} onChange={(v)=>changeLineCalc(idx,'net',v)} dp={2} placeholder="0.00" style={numInput}/>
@@ -1299,7 +1323,10 @@ const LINE_COLS = '1.6fr 1.6fr 0.5fr 0.72fr 0.8fr 0.72fr 0.8fr 30px';
 const DETAIL_COLS = '1.5fr 1.9fr 0.4fr 0.7fr 0.7fr 0.6fr 0.7fr';
 const calcHint = { background: '#f1f5f9', borderRadius: 4, padding: '1px 4px', fontFamily: 'monospace', color: '#475569' };
 // A fresh, empty editor line.
-function blankLine() { return { service: '', description: '', qty: '', rate: '', net: '', vat: '', gross: '', vatManual: false, touch: [] }; }
+// descAuto: the description was pulled through from the QuickBooks product and
+// hasn't been touched since, so changing the service may replace it. Stored and
+// copied-in lines leave it unset — that text is somebody's own wording.
+function blankLine() { return { service: '', description: '', qty: '', rate: '', net: '', vat: '', gross: '', vatManual: false, descAuto: false, touch: [] }; }
 
 // Has someone actually put a figure on this bill? £0.00 is a legitimate way to
 // raise one ("bill this, amount to be decided") — it just can't be approved or
