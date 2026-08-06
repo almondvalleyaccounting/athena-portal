@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw, History, Ban, RotateCcw, ChevronRight, ChevronDown } from 'lucide-react';
+import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw, History, Ban, RotateCcw, ChevronRight, ChevronDown, MessageSquare } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { pushBillingItems, refreshBillingItems, fetchClientInvoices, fetchQboSettings } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
@@ -26,6 +26,11 @@ export default function BillingPage() {
   const highlightId = searchParams.get('highlight');
   const [highlightActive, setHighlightActive] = useState(!!highlightId);
   const [items, setItems] = useState([]);
+  // Internal-only commentary, keyed by billing_item_id. Athena-only: nothing
+  // here is read by the QBO push, so it never reaches the client.
+  const [comments, setComments] = useState({});
+  const [commentDrafts, setCommentDrafts] = useState({}); // per-item box in the thread
+  const [commentBusy, setCommentBusy] = useState(null); // item id being posted
   const [entities, setEntities] = useState([]);
   const [services, setServices] = useState([]); // mapped ad-hoc line labels
   const [staffList, setStaffList] = useState([]);
@@ -55,6 +60,7 @@ export default function BillingPage() {
   const [formClient, setFormClient] = useState('');
   // Multi-line bill editor. One client, N service lines → one QBO invoice.
   const [formLines, setFormLines] = useState([blankLine()]);
+  const [formNote, setFormNote] = useState(''); // internal comment posted on save
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const autoRefreshedRef = useRef(false); // only auto-refresh once per mount
@@ -88,7 +94,7 @@ export default function BillingPage() {
 
   const loadData = async () => {
     try {
-      const [{ data: bills }, { data: ents }, { data: staff }, { data: svcRows }] = await Promise.all([
+      const [{ data: bills }, { data: ents }, { data: staff }, { data: svcRows }, { data: cmts }] = await Promise.all([
         supabase.from('billing_items').select('*').order('created_at', { ascending: false }),
         supabase.from('entities').select('id, name').order('name'),
         supabase.from('staff_profiles').select('*').order('name'),
@@ -96,8 +102,10 @@ export default function BillingPage() {
         // service ids are excluded — they're slugs, not something to pick
         // from on a one-off bill.
         supabase.from('qbo_service_items').select('service_id, qbo_item_name').eq('is_adhoc', true),
+        supabase.from('billing_item_comments').select('*').order('created_at'),
       ]);
       setItems(bills || []);
+      setComments(groupComments(cmts));
       setEntities(ents || []);
       setServices((svcRows || []).map((r) => r.service_id).sort((a, b) => a.localeCompare(b)));
       setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email || 'Unknown' })));
@@ -160,7 +168,40 @@ export default function BillingPage() {
   }, [filtered]);
 
   const fmt = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n || 0);
-  const resetForm = () => { setFormClient(''); setFormLines([blankLine()]); };
+  const resetForm = () => { setFormClient(''); setFormLines([blankLine()]); setFormNote(''); };
+
+  // ── Internal comments ─────────────────────────────────────────────────────
+  // Stays in Athena: the push reads billing_items.lines only, so a comment has
+  // no route to QuickBooks or the client.
+  const commentsOf = (id) => comments[id] || [];
+  const postComment = async (itemId, body) => {
+    const text = (body || '').trim();
+    if (!text || !itemId) return false;
+    setCommentBusy(itemId);
+    try {
+      const { data, error } = await supabase.from('billing_item_comments')
+        .insert({ billing_item_id: itemId, author_id: profile?.id, body: text })
+        .select('*').single();
+      if (error) throw error;
+      setComments((prev) => ({ ...prev, [itemId]: [...(prev[itemId] || []), data] }));
+      return true;
+    } catch (e) { console.error('[Billing] comment error:', e); return false; }
+    finally { setCommentBusy(null); }
+  };
+  const handleAddComment = async (itemId) => {
+    if (!await postComment(itemId, commentDrafts[itemId])) return;
+    setCommentDrafts((prev) => ({ ...prev, [itemId]: '' }));
+    // A bill with something to say about it should be readable straight away.
+    setExpanded((prev) => new Set(prev).add(itemId));
+  };
+  const handleDeleteComment = async (c) => {
+    if (!window.confirm('Delete this comment?')) return;
+    try {
+      const { error } = await supabase.from('billing_item_comments').delete().eq('id', c.id);
+      if (error) throw error;
+      setComments((prev) => ({ ...prev, [c.billing_item_id]: (prev[c.billing_item_id] || []).filter((x) => x.id !== c.id) }));
+    } catch (e) { console.error('[Billing] comment delete error:', e); }
+  };
 
   // Multi-line editor helpers. Qty × Rate = Amount (see applyCalc); the
   // amount drives VAT (auto 20%) unless the user types a VAT figure
@@ -269,11 +310,14 @@ export default function BillingPage() {
     setSaving(true);
     const { lines, totals, summary } = buildLinesPayload();
     try {
-      await supabase.from('billing_items').insert({
+      const { data: created, error } = await supabase.from('billing_items').insert({
         entity_id: formClient, service: summary, description: null,
         net_amount: totals.net, vat_amount: totals.vat, gross_amount: totals.gross,
         lines, status: 'draft', created_by: profile?.id,
-      });
+      }).select('id').single();
+      if (error) throw error;
+      // The note typed alongside the bill becomes its first comment.
+      if (formNote.trim() && created?.id) await postComment(created.id, formNote);
       resetForm(); setShowAdd(false); await loadData();
     } catch (e) { console.error(e); }
     setSaving(false);
@@ -289,6 +333,7 @@ export default function BillingPage() {
         net_amount: totals.net, vat_amount: totals.vat, gross_amount: totals.gross,
         lines,
       }).eq('id', item.id);
+      if (formNote.trim()) await postComment(item.id, formNote);
       resetForm(); setEditingId(null); await loadData();
     } catch (e) { console.error(e); }
     setSaving(false);
@@ -407,6 +452,7 @@ export default function BillingPage() {
   const startEdit = (item) => {
     setEditingId(item.id); setShowAdd(false);
     setFormClient(item.entity_id || '');
+    setFormNote(''); // the note box is always a fresh comment, never an edit of an old one
     // A stored VAT figure only counts as "manual" if it differs from the
     // standard rate — otherwise editing Net must keep auto-recalculating VAT.
     const isManualVat = (net, vat) => {
@@ -507,6 +553,38 @@ export default function BillingPage() {
         <span style={{fontSize:11,color:'#94a3b8'}}>
           Qty × Rate = Amount — fill in any two and the third works itself out. Sums work too: type <code style={calcHint}>100*10</code> then Tab.
         </span>
+      </div>
+
+      {/* Internal comment. Context for whoever reviews the bill — what the work
+          actually was, why it's being charged, anything odd about the amount.
+          Never leaves Athena. */}
+      <div style={{marginTop:16,borderTop:'1px solid #f1f5f9',paddingTop:12}}>
+        <label style={formLabel}>
+          <span style={{display:'inline-flex',alignItems:'center',gap:5}}><MessageSquare size={12}/> Comment for whoever reviews this</span>
+        </label>
+        {/* When editing, show what's already been said so the same thing isn't
+            typed twice — and so a reply reads in context. */}
+        {editingId && commentsOf(editingId).length > 0 && (
+          <div style={{marginBottom:8,display:'flex',flexDirection:'column',gap:6}}>
+            {commentsOf(editingId).map((c)=>(
+              <div key={c.id} style={{fontSize:12,color:'#475569',background:'#f8fafc',borderRadius:8,padding:'7px 10px',whiteSpace:'pre-line'}}>
+                <span style={{fontWeight:600,color:'#0f172a'}}>{staffMap[c.author_id]?.name||'Unknown'}</span>
+                <span style={{color:'#94a3b8',fontSize:11}}> · {commentDate(c.created_at)}</span>
+                <div>{c.body}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <textarea
+          value={formNote}
+          onChange={(e)=>setFormNote(e.target.value)}
+          rows={2}
+          placeholder="e.g. rebuilt 14 months of bookkeeping after the old bookkeeper left — agreed with the client on the call"
+          style={{...inputStyle,resize:'vertical',minHeight:44,lineHeight:1.5}}
+        />
+        <p style={{fontSize:11,color:'#94a3b8',marginTop:4}}>
+          Internal only — stays in Athena. It isn&apos;t sent to QuickBooks and the client never sees it. Use the line <b>Description</b> above for anything that should appear on the invoice.
+        </p>
       </div>
 
       {/* Totals + actions */}
@@ -628,6 +706,7 @@ export default function BillingPage() {
             // description is usually empty — fall back to the lines rather
             // than showing "No description" on a bill that has plenty.
             const lines = itemLines(item);
+            const cmts = commentsOf(item.id);
             const descPreview = item.description || lines.map((l)=>l.description).filter(Boolean).join(' · ');
             // Stop the checkbox and the action buttons from also toggling
             // the expander they sit inside.
@@ -642,6 +721,7 @@ export default function BillingPage() {
                   {isOpen?<ChevronDown size={13} style={{color:'#94a3b8',flexShrink:0}}/>:<ChevronRight size={13} style={{color:'#cbd5e1',flexShrink:0}}/>}
                   <span style={{fontWeight:500,color:'#0f172a',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clientName} — {[descPreview, item.service].filter(Boolean).join(' · ') || item.service}</span>
                   <span style={{fontWeight:600,color:'#0f172a',flexShrink:0}}>{fmt(item.gross_amount)}</span>
+                  <CommentTag count={cmts.length} compact/>
                   <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 6px',borderRadius:4,flexShrink:0}}>{sc.label}</span>
                   <QboInvoiceTag item={item}/>
                   <span style={{fontSize:10,color:'#94a3b8',flexShrink:0}}>{addedBy} · {dateStr}</span>
@@ -649,7 +729,19 @@ export default function BillingPage() {
                     <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} compact/>
                   </span>
                 </div>
-                {isOpen && <BillLines lines={lines} fmt={fmt}/>}
+                {isOpen && (
+                  <>
+                    <BillLines lines={lines} fmt={fmt}/>
+                    <BillComments
+                      comments={cmts} staffMap={staffMap} meId={profile?.id}
+                      draft={commentDrafts[item.id]||''}
+                      onDraft={(v)=>setCommentDrafts((prev)=>({...prev,[item.id]:v}))}
+                      onAdd={()=>handleAddComment(item.id)}
+                      onDelete={handleDeleteComment}
+                      busy={commentBusy===item.id}
+                    />
+                  </>
+                )}
               </div>
             );
 
@@ -671,6 +763,7 @@ export default function BillingPage() {
                     <div style={{fontSize:11,color:'#94a3b8',marginTop:4,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                       <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 8px',borderRadius:6}}>{sc.label}</span>
                       <QboInvoiceTag item={item}/>
+                      <CommentTag count={cmts.length}/>
                       <span>Added by {addedBy}</span>
                       <span>{dateStr}</span>
                       {lines.length>1 && <span>{lines.length} lines</span>}
@@ -684,7 +777,19 @@ export default function BillingPage() {
                     <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange}/>
                   </span>
                 </div>
-                {isOpen && <BillLines lines={lines} fmt={fmt}/>}
+                {isOpen && (
+                  <>
+                    <BillLines lines={lines} fmt={fmt}/>
+                    <BillComments
+                      comments={cmts} staffMap={staffMap} meId={profile?.id}
+                      draft={commentDrafts[item.id]||''}
+                      onDraft={(v)=>setCommentDrafts((prev)=>({...prev,[item.id]:v}))}
+                      onAdd={()=>handleAddComment(item.id)}
+                      onDelete={handleDeleteComment}
+                      busy={commentBusy===item.id}
+                    />
+                  </>
+                )}
               </div>
             );
           })}
@@ -978,6 +1083,71 @@ function BillLines({ lines, fmt }) {
   );
 }
 
+// How many internal comments a bill carries, so the ones with something to
+// read stand out in the list without having to open every tile.
+function CommentTag({ count, compact }) {
+  if (!count) return null;
+  return (
+    <span
+      title={`${count} internal comment${count!==1?'s':''} — open the tile to read${count!==1?' them':''}`}
+      style={{display:'inline-flex',alignItems:'center',gap:3,fontSize:10,fontWeight:600,color:'#7c3aed',background:'#f5f3ff',padding:'2px 6px',borderRadius:compact?4:6,flexShrink:0}}
+    >
+      <MessageSquare size={compact?10:11}/> {count}
+    </span>
+  );
+}
+
+// The internal conversation about a bill. Athena-only: the QBO push reads the
+// bill's lines and nothing else, so none of this can reach the client.
+function BillComments({ comments, staffMap, meId, draft, onDraft, onAdd, onDelete, busy }) {
+  return (
+    <div style={{ borderTop: '1px solid #f1f5f9', background: '#fbfaff', padding: '10px 18px 12px' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.04em', marginBottom:8 }}>
+        <MessageSquare size={11}/> Internal comments
+        <span style={{ fontWeight:500, textTransform:'none', letterSpacing:0, fontSize:11, color:'#a5a3b8' }}>· stays in Athena, never sent to QuickBooks or the client</span>
+      </div>
+      {comments.length === 0 && (
+        <p style={{ fontSize:12, color:'#cbd5e1', fontStyle:'italic', margin:'0 0 8px' }}>Nothing yet — add anything the approver should know about this bill.</p>
+      )}
+      {comments.length > 0 && (
+        <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
+          {comments.map((c)=>(
+            <div key={c.id} style={{ background:'#fff', border:'1px solid #ede9fe', borderRadius:8, padding:'8px 10px' }}>
+              <div style={{ display:'flex', alignItems:'baseline', gap:6, marginBottom:2 }}>
+                <span style={{ fontSize:12, fontWeight:600, color:'#0f172a' }}>{staffMap[c.author_id]?.name || 'Unknown'}</span>
+                <span style={{ fontSize:11, color:'#94a3b8' }}>{commentDate(c.created_at)}</span>
+                {/* Only the author can remove their own comment (RLS enforces it too). */}
+                {c.author_id === meId && (
+                  <button onClick={()=>onDelete(c)} title="Delete this comment" style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', padding:2, display:'inline-flex' }}>
+                    <Trash2 size={12} style={{ color:'#cbd5e1' }}/>
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize:12, color:'#475569', whiteSpace:'pre-line', lineHeight:1.5 }}>{c.body}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display:'flex', gap:8, alignItems:'flex-end' }}>
+        <textarea
+          value={draft}
+          onChange={(e)=>onDraft(e.target.value)}
+          onKeyDown={(e)=>{ if ((e.metaKey||e.ctrlKey) && e.key==='Enter') { e.preventDefault(); onAdd(); } }}
+          rows={2}
+          placeholder="Add a comment…"
+          style={{ ...inputStyle, flex:1, resize:'vertical', minHeight:40, lineHeight:1.5, background:'#fff' }}
+        />
+        <button
+          onClick={onAdd}
+          disabled={busy || !draft.trim()}
+          title="Ctrl/⌘ + Enter"
+          style={{ ...btnPrimary, padding:'8px 12px', fontSize:12, opacity:(busy||!draft.trim())?0.4:1, cursor:(busy||!draft.trim())?'default':'pointer' }}
+        >{busy ? 'Saving…' : 'Comment'}</button>
+      </div>
+    </div>
+  );
+}
+
 // Number box that also does sums: type "100*10" and it becomes 1000 when
 // you Tab or hit Enter. A plain number behaves exactly as before and keeps
 // updating the rest of the line as you type; an expression is held locally
@@ -1054,6 +1224,25 @@ const DETAIL_COLS = '1.1fr 2.2fr 0.4fr 0.7fr 0.7fr 0.6fr 0.7fr';
 const calcHint = { background: '#f1f5f9', borderRadius: 4, padding: '1px 4px', fontFamily: 'monospace', color: '#475569' };
 // A fresh, empty editor line.
 function blankLine() { return { service: '', description: '', qty: '', rate: '', net: '', vat: '', gross: '', vatManual: false, touch: [] }; }
+
+// Comment rows → { [billing_item_id]: [oldest … newest] }.
+function groupComments(rows) {
+  const out = {};
+  (rows || []).forEach((c) => { (out[c.billing_item_id] = out[c.billing_item_id] || []).push(c); });
+  return out;
+}
+
+// "2:14pm" today, "Tue 2:14pm" this week, "5 Aug" beyond that — a comment's
+// age matters more than its exact timestamp.
+function commentDate(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const time = d.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' });
+  const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+  if (days === 0) return time;
+  if (days < 7) return `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${time}`;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + (d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : '');
+}
 
 // The stored lines for a bill, or a single line rebuilt from the legacy
 // top-level fields for anything raised before multi-line bills existed.
