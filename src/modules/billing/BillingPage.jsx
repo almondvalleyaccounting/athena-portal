@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw, History, Ban, RotateCcw } from 'lucide-react';
+import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw, History, Ban, RotateCcw, ChevronRight, ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { pushBillingItems, refreshBillingItems, fetchClientInvoices, fetchQboSettings } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
@@ -35,6 +35,7 @@ export default function BillingPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [selected, setSelected] = useState(new Set());
+  const [expanded, setExpanded] = useState(new Set()); // tiles showing their line detail
   const [showPushConfirm, setShowPushConfirm] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [sendMode, setSendMode] = useState('send'); // bulk default for rows not set individually
@@ -161,16 +162,11 @@ export default function BillingPage() {
   const fmt = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n || 0);
   const resetForm = () => { setFormClient(''); setFormLines([blankLine()]); };
 
-  // Multi-line editor helpers. Net drives VAT (auto 20%) unless the user
-  // types a VAT figure (vatManual); gross is always net + VAT.
+  // Multi-line editor helpers. Qty × Rate = Amount (see applyCalc); the
+  // amount drives VAT (auto 20%) unless the user types a VAT figure
+  // (vatManual); gross is always net + VAT.
   const changeLineField = (idx, key, value) => setFormLines((prev) => prev.map((l, i) => i === idx ? { ...l, [key]: value } : l));
-  const changeLineNet = (idx, value) => setFormLines((prev) => prev.map((l, i) => {
-    if (i !== idx) return l;
-    const net = parseFloat(value) || 0;
-    if (l.vatManual) { const vat = parseFloat(l.vat) || 0; return { ...l, net: value, gross: value === '' ? '' : (net + vat).toFixed(2) }; }
-    const vat = Math.round(net * VAT_RATE * 100) / 100;
-    return { ...l, net: value, vat: value === '' ? '' : vat.toFixed(2), gross: value === '' ? '' : (net + vat).toFixed(2) };
-  }));
+  const changeLineCalc = (idx, field, value) => setFormLines((prev) => prev.map((l, i) => i === idx ? applyCalc(l, field, value) : l));
   const changeLineVat = (idx, value) => setFormLines((prev) => prev.map((l, i) => {
     if (i !== idx) return l;
     const net = parseFloat(l.net) || 0; const vat = parseFloat(value) || 0;
@@ -211,14 +207,22 @@ export default function BillingPage() {
     const ls = (inv.lines || []).map((l) => {
       const net = Number(l.amount) || 0;
       const vat = Math.round(net * VAT_RATE * 100) / 100;
+      // QBO carries the split, so bring the qty/rate across rather than
+      // flattening a "12 × £50" line into a bare £600.
+      const qty = Number(l.qty) > 0 ? Number(l.qty) : 1;
+      const rate = Number(l.unit_price) || (qty ? net / qty : net);
       return {
         service: l.service || '', description: l.description || '',
+        qty: net ? fmtNum(qty, 4) : '', rate: net ? fmtNum(rate, 4) : '',
         net: net ? String(net) : '', vat: net ? vat.toFixed(2) : '', gross: net ? (net + vat).toFixed(2) : '',
-        vatManual: false,
+        vatManual: false, touch: ['qty', 'rate'],
       };
     });
     setFormLines(ls.length ? ls : [blankLine()]);
-    setShowAdd(true); setEditingId(null);
+    // Copying into a bill that's open for editing has to stay an edit.
+    // Forcing the Add form here saved a second bill and left the original
+    // sitting behind it — a silent duplicate.
+    if (!editingId) setShowAdd(true);
     setShowInvoicePicker(false);
   };
 
@@ -244,7 +248,16 @@ export default function BillingPage() {
         const net = parseFloat(l.net) || 0;
         const vat = l.vat !== '' ? (parseFloat(l.vat) || 0) : Math.round(net * VAT_RATE * 100) / 100;
         const gross = Math.round((net + vat) * 100) / 100;
-        return { service: l.service, description: l.description.trim() || null, net, vat, gross };
+        // Only keep the qty/rate split if it actually multiplies out to the
+        // amount — a stale pair would put a line on the QBO invoice that
+        // doesn't agree with what was approved here.
+        const q = parseFloat(l.qty), r = parseFloat(l.rate);
+        const split = Number.isFinite(q) && q > 0 && Number.isFinite(r) && Math.abs(q * r - net) < 0.005;
+        return {
+          service: l.service, description: l.description.trim() || null,
+          qty: split ? q : 1, rate: split ? r : net,
+          net, vat, gross,
+        };
       });
     const totals = lines.reduce((t, l) => ({ net: t.net + l.net, vat: t.vat + l.vat, gross: t.gross + l.gross }), { net: 0, vat: 0, gross: 0 });
     const summary = lines.length === 1 ? lines[0].service : `${lines[0].service} +${lines.length - 1} more`;
@@ -401,20 +414,27 @@ export default function BillingPage() {
       return Math.abs(vatNum - Math.round(netNum * VAT_RATE * 100) / 100) > 0.005;
     };
     // Load the stored lines, or build a single line from the legacy fields.
+    // A stored line's qty/rate are treated as the pair you last set, so
+    // editing either one moves the amount (rather than re-splitting it).
     const ls = Array.isArray(item.lines) && item.lines.length
       ? item.lines.map((l) => ({
           service: l.service || '', description: l.description || '',
+          ...splitOf(l.qty, l.rate, l.net),
           net: l.net != null ? String(l.net) : '', vat: l.vat != null ? String(l.vat) : '',
           gross: l.gross != null ? String(l.gross) : '', vatManual: isManualVat(l.net, l.vat),
+          touch: ['qty', 'rate'],
         }))
       : [{
           service: item.service || '', description: item.description || '',
+          ...splitOf(null, null, item.net_amount),
           net: String(item.net_amount || ''), vat: String(item.vat_amount || ''),
           gross: String(item.gross_amount || ''), vatManual: isManualVat(item.net_amount, item.vat_amount),
+          touch: ['qty', 'rate'],
         }];
     setFormLines(ls.length ? ls : [blankLine()]);
   };
 
+  const toggleExpand = (id) => setExpanded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const toggleSelect = (id) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const toggleSelectAll = () => { if (selected.size === filtered.length) setSelected(new Set()); else setSelected(new Set(filtered.map((i) => i.id))); };
 
@@ -456,7 +476,8 @@ export default function BillingPage() {
       {/* Line items header */}
       <div style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:4,paddingRight:2}}>
         <span style={formLabel}>Service *</span><span style={formLabel}>Description</span>
-        <span style={formLabel}>Net (£) *</span><span style={formLabel}>VAT (£)</span><span style={formLabel}>Gross (£)</span><span/>
+        <span style={formLabel}>Qty</span><span style={formLabel}>Rate (£)</span>
+        <span style={formLabel}>Amount (£) *</span><span style={formLabel}>VAT (£)</span><span style={formLabel}>Gross (£)</span><span/>
       </div>
       {formLines.map((l,idx)=>(
         <div key={idx} style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:6,alignItems:'flex-start'}}>
@@ -470,16 +491,23 @@ export default function BillingPage() {
           </select>
           {/* Textarea so multi-line QBO descriptions keep their line breaks. */}
           <textarea value={l.description} onChange={(e)=>changeLineField(idx,'description',e.target.value)} placeholder="Optional..." rows={2} style={{...inputStyle,resize:'vertical',minHeight:38,lineHeight:1.4}}/>
-          <input type="number" step="0.01" value={l.net} placeholder="0.00" style={inputStyle} onChange={(e)=>changeLineNet(idx,e.target.value)}/>
-          <input type="number" step="0.01" value={l.vat} placeholder="0.00" style={inputStyle} onChange={(e)=>changeLineVat(idx,e.target.value)}/>
-          <input value={l.gross} placeholder="0.00" style={{...inputStyle,background:'#f8fafc'}} readOnly/>
+          <CalcInput value={l.qty} onChange={(v)=>changeLineCalc(idx,'qty',v)} dp={4} placeholder="1" style={numInput}/>
+          <CalcInput value={l.rate} onChange={(v)=>changeLineCalc(idx,'rate',v)} dp={4} placeholder="0.00" style={numInput}/>
+          <CalcInput value={l.net} onChange={(v)=>changeLineCalc(idx,'net',v)} dp={2} placeholder="0.00" style={numInput}/>
+          <CalcInput value={l.vat} onChange={(v)=>changeLineVat(idx,v)} dp={2} placeholder="0.00" style={numInput}/>
+          <input value={l.gross} placeholder="0.00" style={{...numInput,background:'#f8fafc'}} readOnly/>
           <button onClick={()=>removeLine(idx)} disabled={formLines.length===1} title="Remove line"
             style={{background:'none',border:'none',cursor:formLines.length===1?'default':'pointer',padding:4,opacity:formLines.length===1?0.3:1,display:'inline-flex'}}>
             <Trash2 size={15} style={{color:'#94a3b8'}}/>
           </button>
         </div>
       ))}
-      <button onClick={addLine} style={{...btnOutline,gap:5,marginTop:2}}><Plus size={14}/> Add line</button>
+      <div style={{display:'flex',alignItems:'center',gap:12,marginTop:2}}>
+        <button onClick={addLine} style={{...btnOutline,gap:5}}><Plus size={14}/> Add line</button>
+        <span style={{fontSize:11,color:'#94a3b8'}}>
+          Qty × Rate = Amount — fill in any two and the third works itself out. Sums work too: type <code style={calcHint}>100*10</code> then Tab.
+        </span>
+      </div>
 
       {/* Totals + actions */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:16,borderTop:'1px solid #f1f5f9',paddingTop:12}}>
@@ -495,7 +523,7 @@ export default function BillingPage() {
   );
 
   return (
-    <div style={{maxWidth:1000,margin:'0 auto',padding:'32px 24px',fontFamily:"'Outfit', sans-serif"}}>
+    <div style={{maxWidth:1080,margin:'0 auto',padding:'32px 24px',fontFamily:"'Outfit', sans-serif"}}>
       {/* Header */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
         <div>
@@ -595,40 +623,68 @@ export default function BillingPage() {
             const dateStr = new Date(item.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
             const isSelected = selected.has(item.id);
             const isHighlighted = highlightActive && item.id === highlightId;
+            const isOpen = expanded.has(item.id);
+            // The team types descriptions per line, so the item-level
+            // description is usually empty — fall back to the lines rather
+            // than showing "No description" on a bill that has plenty.
+            const lines = itemLines(item);
+            const descPreview = item.description || lines.map((l)=>l.description).filter(Boolean).join(' · ');
+            // Stop the checkbox and the action buttons from also toggling
+            // the expander they sit inside.
+            const swallow = (e)=>e.stopPropagation();
 
             if (compact) return (
-              <div key={item.id} id={`billing-item-${item.id}`} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',background:isHighlighted?'#eff6ff':isSelected?'#eff6ff':'#fff',borderRadius:8,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,fontSize:12,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
-                <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:13,height:13,cursor:'pointer',accentColor:'#0e7fe0',flexShrink:0}}/>
-                <span style={{fontWeight:500,color:'#0f172a',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clientName} — {[item.description, item.service].filter(Boolean).join(' · ') || item.service}</span>
-                <span style={{fontWeight:600,color:'#0f172a',flexShrink:0}}>{fmt(item.gross_amount)}</span>
-                <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 6px',borderRadius:4,flexShrink:0}}>{sc.label}</span>
-                <QboInvoiceTag item={item}/>
-                <span style={{fontSize:10,color:'#94a3b8',flexShrink:0}}>{addedBy} · {dateStr}</span>
-                <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} compact/>
+              <div key={item.id} id={`billing-item-${item.id}`} style={{background:isHighlighted?'#eff6ff':isSelected?'#eff6ff':'#fff',borderRadius:8,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
+                <div onClick={()=>toggleExpand(item.id)} title={isOpen?'Hide detail':'Show the line detail'} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',fontSize:12,cursor:'pointer'}}>
+                  <span onClick={swallow} style={{display:'inline-flex',flexShrink:0}}>
+                    <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:13,height:13,cursor:'pointer',accentColor:'#0e7fe0'}}/>
+                  </span>
+                  {isOpen?<ChevronDown size={13} style={{color:'#94a3b8',flexShrink:0}}/>:<ChevronRight size={13} style={{color:'#cbd5e1',flexShrink:0}}/>}
+                  <span style={{fontWeight:500,color:'#0f172a',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clientName} — {[descPreview, item.service].filter(Boolean).join(' · ') || item.service}</span>
+                  <span style={{fontWeight:600,color:'#0f172a',flexShrink:0}}>{fmt(item.gross_amount)}</span>
+                  <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 6px',borderRadius:4,flexShrink:0}}>{sc.label}</span>
+                  <QboInvoiceTag item={item}/>
+                  <span style={{fontSize:10,color:'#94a3b8',flexShrink:0}}>{addedBy} · {dateStr}</span>
+                  <span onClick={swallow} style={{display:'inline-flex',flexShrink:0}}>
+                    <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} compact/>
+                  </span>
+                </div>
+                {isOpen && <BillLines lines={lines} fmt={fmt}/>}
               </div>
             );
 
             return (
-              <div key={item.id} id={`billing-item-${item.id}`} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'14px 18px',background:isSelected?'#eff6ff':'#fff',borderRadius:12,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
-                <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0',marginTop:3,flexShrink:0}}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:500,color:'#0f172a',marginBottom:2}}>{clientName}</div>
-                  <div style={{fontSize:12,color:'#64748b'}}>
-                    {item.description || <span style={{fontStyle:'italic',color:'#cbd5e1'}}>No description</span>}
-                    {item.service && <span style={{color:'#0f172a',fontWeight:500}}> · {item.service}</span>}
+              <div key={item.id} id={`billing-item-${item.id}`} style={{background:isSelected?'#eff6ff':'#fff',borderRadius:12,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
+                <div onClick={()=>toggleExpand(item.id)} title={isOpen?'Hide detail':'Show the line detail'} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'14px 18px',cursor:'pointer'}}>
+                  <span onClick={swallow} style={{display:'inline-flex',marginTop:3,flexShrink:0}}>
+                    <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0'}}/>
+                  </span>
+                  <span style={{marginTop:3,flexShrink:0,display:'inline-flex'}}>
+                    {isOpen?<ChevronDown size={14} style={{color:'#94a3b8'}}/>:<ChevronRight size={14} style={{color:'#cbd5e1'}}/>}
+                  </span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:500,color:'#0f172a',marginBottom:2}}>{clientName}</div>
+                    <div style={{fontSize:12,color:'#64748b',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:isOpen?'normal':'nowrap'}}>
+                      {descPreview || <span style={{fontStyle:'italic',color:'#cbd5e1'}}>No description</span>}
+                      {item.service && <span style={{color:'#0f172a',fontWeight:500}}> · {item.service}</span>}
+                    </div>
+                    <div style={{fontSize:11,color:'#94a3b8',marginTop:4,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                      <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 8px',borderRadius:6}}>{sc.label}</span>
+                      <QboInvoiceTag item={item}/>
+                      <span>Added by {addedBy}</span>
+                      <span>{dateStr}</span>
+                      {lines.length>1 && <span>{lines.length} lines</span>}
+                    </div>
                   </div>
-                  <div style={{fontSize:11,color:'#94a3b8',marginTop:4,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-                    <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 8px',borderRadius:6}}>{sc.label}</span>
-                    <QboInvoiceTag item={item}/>
-                    <span>Added by {addedBy}</span>
-                    <span>{dateStr}</span>
+                  <div style={{textAlign:'right',flexShrink:0}}>
+                    <div style={{fontSize:16,fontWeight:700,color:'#0f172a'}}>{fmt(item.gross_amount)}</div>
+                    <div style={{fontSize:10,color:'#64748b'}}>{fmt(item.net_amount)} + {fmt(item.vat_amount)} VAT</div>
                   </div>
+                  <span onClick={swallow} style={{display:'inline-flex',flexShrink:0}}>
+                    <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange}/>
+                  </span>
                 </div>
-                <div style={{textAlign:'right',flexShrink:0}}>
-                  <div style={{fontSize:16,fontWeight:700,color:'#0f172a'}}>{fmt(item.gross_amount)}</div>
-                  <div style={{fontSize:10,color:'#64748b'}}>{fmt(item.net_amount)} + {fmt(item.vat_amount)} VAT</div>
-                </div>
-                <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange}/>
+                {isOpen && <BillLines lines={lines} fmt={fmt}/>}
               </div>
             );
           })}
@@ -896,6 +952,70 @@ function QboInvoiceTag({ item }) {
   );
 }
 
+// The line detail behind a tile — what the team actually typed, without
+// having to open the bill for editing.
+function BillLines({ lines, fmt }) {
+  return (
+    <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa', padding: '8px 18px 10px', borderRadius: '0 0 11px 11px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: DETAIL_COLS, gap: 10, padding: '2px 0 4px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #eef2f7' }}>
+        <span>Service</span><span>Description</span>
+        <span style={{ textAlign: 'right' }}>Qty</span><span style={{ textAlign: 'right' }}>Rate</span>
+        <span style={{ textAlign: 'right' }}>Net</span><span style={{ textAlign: 'right' }}>VAT</span><span style={{ textAlign: 'right' }}>Gross</span>
+      </div>
+      {lines.map((l, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: DETAIL_COLS, gap: 10, padding: '6px 0', fontSize: 12, borderBottom: i < lines.length - 1 ? '1px solid #f1f5f9' : 'none', alignItems: 'baseline' }}>
+          <span style={{ fontWeight: 500, color: '#0f172a' }}>{l.service || '—'}</span>
+          {/* pre-line so multi-line descriptions read as they were typed. */}
+          <span style={{ color: '#475569', whiteSpace: 'pre-line' }}>{l.description || <span style={{ fontStyle: 'italic', color: '#cbd5e1' }}>No description</span>}</span>
+          <span style={{ textAlign: 'right', fontFamily: 'monospace', color: '#64748b' }}>{fmtNum(l.qty ?? 1, 4) || '1'}</span>
+          <span style={{ textAlign: 'right', fontFamily: 'monospace', color: '#64748b' }}>{fmt(l.rate != null ? l.rate : l.net)}</span>
+          <span style={{ textAlign: 'right', fontFamily: 'monospace', color: '#64748b' }}>{fmt(l.net)}</span>
+          <span style={{ textAlign: 'right', fontFamily: 'monospace', color: '#64748b' }}>{fmt(l.vat)}</span>
+          <span style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>{fmt(l.gross)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Number box that also does sums: type "100*10" and it becomes 1000 when
+// you Tab or hit Enter. A plain number behaves exactly as before and keeps
+// updating the rest of the line as you type; an expression is held locally
+// until it's committed, so the line doesn't flicker through "100".
+function CalcInput({ value, onChange, dp = 2, placeholder, style }) {
+  const [draft, setDraft] = useState(null);
+  const [bad, setBad] = useState(false);
+  const text = draft !== null ? draft : (value ?? '');
+  const handleChange = (e) => {
+    const raw = e.target.value;
+    setBad(false);
+    if (isExpression(raw)) { setDraft(raw); return; }
+    setDraft(null);
+    onChange(raw);
+  };
+  const commit = () => {
+    if (draft === null) return;
+    const n = evalArithmetic(draft);
+    // An unfinished sum stays put and goes red rather than silently
+    // reverting — the typed figure isn't lost.
+    if (n === null) { setBad(true); return; }
+    setDraft(null); setBad(false);
+    onChange(fmtNum(n, dp));
+  };
+  return (
+    <input
+      value={text}
+      inputMode="decimal"
+      placeholder={placeholder}
+      onChange={handleChange}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
+      style={bad ? { ...style, borderColor: '#dc2626', background: '#fef2f2' } : style}
+      title={bad ? "That isn't a sum this can work out" : undefined}
+    />
+  );
+}
+
 function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   const s = item.status;
   const sz = compact?12:14;
@@ -920,6 +1040,8 @@ function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
 const btnPrimary ={display:'inline-flex',alignItems:'center',gap:5,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#0f172a',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
 const btnOutline = {display:'inline-flex',alignItems:'center',gap:4,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#fff',color:'#0f172a',border:'1px solid #e5e7eb',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
 const inputStyle = {width:'100%',padding:'8px 12px',fontSize:13,border:'1px solid #e5e7eb',borderRadius:8,outline:'none',fontFamily:"'Outfit', sans-serif",boxSizing:'border-box'};
+// Narrower gutters for the qty/rate/amount boxes — seven columns on one row.
+const numInput = {...inputStyle,padding:'8px 7px',textAlign:'right'};
 const modeBtn = {flex:1,textAlign:'left',padding:'10px 12px',borderRadius:10,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",color:'#0f172a'};
 const navBtn = {padding:'2px 8px',borderRadius:6,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",fontSize:13,color:'#475569'};
 const INVOICE_COLS = '1.4fr 1fr 0.55fr 0.7fr 2.2fr 0.8fr 0.7fr 0.85fr';
@@ -927,9 +1049,131 @@ const INVOICE_COLS = '1.4fr 1fr 0.55fr 0.7fr 2.2fr 0.8fr 0.7fr 0.85fr';
 const sendToggleBtn = {padding:'3px 8px',fontSize:11,fontWeight:600,border:'none',background:'#fff',color:'#94a3b8',cursor:'pointer',fontFamily:"'Outfit', sans-serif",lineHeight:1.5};
 const sendToggleSend = {background:'#059669',color:'#fff'};
 const sendToggleDraft = {background:'#e2e8f0',color:'#334155'};
-const LINE_COLS = '1.3fr 1.8fr 0.9fr 0.9fr 0.9fr 32px';
+const LINE_COLS = '1.15fr 1.7fr 0.5fr 0.72fr 0.8fr 0.72fr 0.8fr 30px';
+const DETAIL_COLS = '1.1fr 2.2fr 0.4fr 0.7fr 0.7fr 0.6fr 0.7fr';
+const calcHint = { background: '#f1f5f9', borderRadius: 4, padding: '1px 4px', fontFamily: 'monospace', color: '#475569' };
 // A fresh, empty editor line.
-function blankLine() { return { service: '', description: '', net: '', vat: '', gross: '', vatManual: false }; }
+function blankLine() { return { service: '', description: '', qty: '', rate: '', net: '', vat: '', gross: '', vatManual: false, touch: [] }; }
+
+// The stored lines for a bill, or a single line rebuilt from the legacy
+// top-level fields for anything raised before multi-line bills existed.
+function itemLines(item) {
+  if (Array.isArray(item.lines) && item.lines.length) return item.lines;
+  return [{
+    service: item.service || '', description: item.description || '',
+    qty: 1, rate: item.net_amount || 0,
+    net: item.net_amount || 0, vat: item.vat_amount || 0, gross: item.gross_amount || 0,
+  }];
+}
+
+// Qty/rate for the editor, falling back to "1 × the amount" for lines
+// stored before the split existed (or where it no longer multiplies out).
+function splitOf(qty, rate, net) {
+  const n = Number(net) || 0;
+  const q = Number(qty), r = Number(rate);
+  const ok = Number.isFinite(q) && q > 0 && Number.isFinite(r) && Math.abs(q * r - n) < 0.005;
+  return ok ? { qty: fmtNum(q, 4), rate: fmtNum(r, 4) } : { qty: n ? '1' : '', rate: n ? fmtNum(n, 4) : '' };
+}
+
+// Trim a number to at most `dp` decimals without leaving trailing zeros —
+// 10 stays "10", 33.333333 becomes "33.3333".
+function fmtNum(n, dp) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '';
+  const s = v.toFixed(dp);
+  return s.includes('.') ? s.replace(/0+$/, '').replace(/\.$/, '') : s;
+}
+
+// Qty × Rate = Amount. The two boxes you filled in most recently are held
+// and the third is worked out, so: type an amount on a fresh line and you
+// get 1 × that amount; then type a rate and the quantity falls out of it;
+// type a quantity and a rate instead and the amount is calculated.
+const CALC_FIELDS = ['qty', 'rate', 'net'];
+function applyCalc(line, field, value) {
+  const touch = [field, ...(line.touch || []).filter((f) => f !== field)].slice(0, 3);
+  const next = { ...line, [field]: value, touch };
+  const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+
+  // Which box gives way? Normally the one left untouched longest; on a line
+  // that's only had a single figure entered, assume a quantity of one.
+  let target = touch.length >= 2 ? CALC_FIELDS.find((f) => f !== touch[0] && f !== touch[1]) : null;
+  if (!target) {
+    if (field === 'qty') target = num(next.rate) != null ? 'net' : (num(next.net) != null ? 'rate' : null);
+    else if (field === 'rate') target = num(next.net) != null ? 'qty' : 'net';
+    else target = 'rate';
+    if (field !== 'qty' && num(next.qty) == null) next.qty = value === '' ? '' : '1';
+  }
+
+  const qty = num(next.qty), rate = num(next.rate), net = num(next.net);
+  if (value === '' && field !== 'qty') {
+    // Clearing the amount or the rate clears what was derived from it,
+    // rather than leaving a stale figure behind.
+    if (target === 'net') next.net = '';
+    if (target === 'rate') next.rate = '';
+  } else if (target === 'net' && qty != null && rate != null) next.net = fmtNum(Math.round(qty * rate * 100) / 100, 2);
+  else if (target === 'rate' && net != null && qty) next.rate = fmtNum(net / qty, 4);
+  else if (target === 'qty' && net != null && rate) next.qty = fmtNum(net / rate, 4);
+  return withVat(next);
+}
+
+// Keep VAT + gross in step with the line's amount. A hand-typed VAT figure
+// is left alone; otherwise it's the standard rate.
+function withVat(line) {
+  const net = parseFloat(line.net);
+  if (line.net === '' || !Number.isFinite(net)) return { ...line, vat: line.vatManual ? line.vat : '', gross: '' };
+  const vat = line.vatManual ? (parseFloat(line.vat) || 0) : Math.round(net * VAT_RATE * 100) / 100;
+  return { ...line, vat: line.vatManual ? line.vat : vat.toFixed(2), gross: (net + vat).toFixed(2) };
+}
+
+// Anything that isn't a plain decimal is treated as a sum to work out.
+function isExpression(raw) {
+  const s = String(raw).trim();
+  return s !== '' && !/^-?\d*\.?\d*$/.test(s);
+}
+
+// Work out "100*10", "(120+30)*4", "=250/3". Hand-rolled rather than eval'd
+// so a typo in a billing box can never run anything. Returns null if it
+// isn't a sum this understands.
+function evalArithmetic(input) {
+  const s = String(input).trim().replace(/^=/, '').replace(/[£,\s]/g, '');
+  if (!s || !/^[0-9+\-*/().]+$/.test(s)) return null;
+  let i = 0;
+  const peek = () => s[i];
+  const factor = () => {
+    if (peek() === '+') { i++; return factor(); }
+    if (peek() === '-') { i++; const v = factor(); return v === null ? null : -v; }
+    if (peek() === '(') {
+      i++; const v = expr();
+      if (peek() !== ')') return null;
+      i++; return v;
+    }
+    const start = i;
+    while (i < s.length && /[0-9.]/.test(s[i])) i++;
+    if (i === start) return null;
+    const n = parseFloat(s.slice(start, i));
+    return Number.isFinite(n) ? n : null;
+  };
+  const term = () => {
+    let v = factor();
+    while (peek() === '*' || peek() === '/') {
+      const op = s[i++]; const r = factor();
+      if (v === null || r === null || (op === '/' && r === 0)) return null;
+      v = op === '*' ? v * r : v / r;
+    }
+    return v;
+  };
+  function expr() {
+    let v = term();
+    while (peek() === '+' || peek() === '-') {
+      const op = s[i++]; const r = term();
+      if (v === null || r === null) return null;
+      v = op === '+' ? v + r : v - r;
+    }
+    return v;
+  }
+  const out = expr();
+  return (i === s.length && out !== null && Number.isFinite(out)) ? out : null;
+}
 const ellip = { overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' };
 const modeBtnActive = {borderColor:'#059669',background:'#f0fdf4',boxShadow:'0 0 0 1px #059669'};
 const formLabel = {display:'block',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',marginBottom:4,fontFamily:"'Outfit', sans-serif"};

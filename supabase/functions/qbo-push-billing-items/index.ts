@@ -347,7 +347,9 @@ Deno.serve(async (req) => {
 
       // 3. Build the invoice lines. Each billing line becomes one QBO
       //    SalesItemLineDetail at its net amount + the sales VAT code, so
-      //    QBO computes VAT. Ensure a QBO item per distinct service.
+      //    QBO computes VAT. Qty/rate carry through where the line has a
+      //    genuine split, so "10 x £100" invoices as that rather than a flat
+      //    £1,000. Ensure a QBO item per distinct service.
       const lines = normalizeLines(item);
       const lineItems: Array<Record<string, unknown>> = [];
       for (const l of lines) {
@@ -360,7 +362,7 @@ Deno.serve(async (req) => {
           DetailType: "SalesItemLineDetail",
           Amount: l.net,
           Description: l.description || l.service,
-          SalesItemLineDetail: { ItemRef: { value: qboItemId }, Qty: 1, UnitPrice: l.net, TaxCodeRef: { value: taxCodeId } },
+          SalesItemLineDetail: { ItemRef: { value: qboItemId }, Qty: l.qty, UnitPrice: l.rate, TaxCodeRef: { value: taxCodeId } },
         });
       }
       const net = lines.reduce((s, l) => s + l.net, 0);
@@ -481,20 +483,30 @@ function addDays(isoDate: string, days: number): string {
 // Normalize a billing_item's lines: use the stored multi-line array, else
 // fall back to a single line built from the legacy service/net fields so
 // pre-multi-line rows still push correctly.
-function normalizeLines(item: Record<string, unknown>): Array<{ service: string; description: string | null; net: number }> {
+function normalizeLines(item: Record<string, unknown>): Array<{ service: string; description: string | null; net: number; qty: number; rate: number }> {
   const raw = Array.isArray(item.lines) ? (item.lines as Array<Record<string, unknown>>) : null;
   if (raw && raw.length) {
-    return raw.map((l) => ({
-      service: String(l.service || "Professional Services"),
-      description: (l.description as string) || null,
-      net: Number(l.net) || 0,
-    }));
+    return raw.map((l) => {
+      const net = Number(l.net) || 0;
+      return { service: String(l.service || "Professional Services"), description: (l.description as string) || null, net, ...splitOf(l.qty, l.rate, net) };
+    });
   }
+  const net = Number(item.net_amount) || 0;
   return [{
     service: String(item.service || "Professional Services"),
     description: (item.description as string) || null,
-    net: Number(item.net_amount) || 0,
+    net,
+    ...splitOf(null, null, net),
   }];
+}
+
+// A line's qty/rate only reach QBO if they actually multiply out to the
+// approved amount — anything else (a legacy line with no split, a stale
+// pair) invoices as one unit at the amount, exactly as before.
+function splitOf(qty: unknown, rate: unknown, net: number): { qty: number; rate: number } {
+  const q = Number(qty), r = Number(rate);
+  const ok = Number.isFinite(q) && q > 0 && Number.isFinite(r) && Math.abs(q * r - net) < 0.005;
+  return ok ? { qty: q, rate: r } : { qty: 1, rate: net };
 }
 
 // Build a QBO BillAddr from the entity's billing_* fields. Returns null
