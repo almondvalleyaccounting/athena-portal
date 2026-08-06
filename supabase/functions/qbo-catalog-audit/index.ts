@@ -22,6 +22,47 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "POST or GET required" }, 405);
   }
 
+  const body = await req.json().catch(() => ({}));
+
+  // Recurring-template schedule audit. qbo-pull's template path hardcodes
+  // cadence 'monthly' and annual = monthly x 12, never reading the template's
+  // actual interval — so an annually-scheduled template is recorded 12x too
+  // high. This reports the real schedule per template so the damage can be
+  // measured and the pull corrected.
+  if (body.templates) {
+    const txns = await pageAll("RecurringTransaction", "SELECT * FROM RecurringTransaction");
+    const rows = txns.map((t) => {
+      const inner = (t.Invoice || t.SalesReceipt || t) as Record<string, unknown>;
+      const info = (inner.RecurringInfo || t.RecurringInfo) as Record<string, unknown> | undefined;
+      const sched = (info?.ScheduleInfo as Record<string, unknown>) || {};
+      const cust = (inner.CustomerRef as Record<string, unknown>) || {};
+      const lines = ((inner.Line as Array<Record<string, unknown>>) || [])
+        .filter((l) => l.DetailType === "SalesItemLineDetail");
+      return {
+        template_id: String(t.Id ?? inner.Id ?? ""),
+        name: info?.Name ? String(info.Name) : null,
+        active: info?.Active !== false,
+        customer: cust.name ? String(cust.name) : null,
+        customer_id: cust.value ? String(cust.value) : null,
+        interval_type: sched.IntervalType ? String(sched.IntervalType) : null,
+        num_interval: sched.NumInterval != null ? Number(sched.NumInterval) : null,
+        days_before: sched.DaysBefore != null ? Number(sched.DaysBefore) : null,
+        next_date: info?.NextDate ? String(info.NextDate) : null,
+        total_amt: Number(inner.TotalAmt) || 0,
+        line_total: lines.reduce((s, l) => s + (Number(l.Amount) || 0), 0),
+      };
+    });
+    const byInterval: Record<string, { templates: number; line_total: number }> = {};
+    for (const r of rows) {
+      if (!r.active) continue;
+      const k = `${r.interval_type || "unknown"}/${r.num_interval ?? "?"}`;
+      byInterval[k] = byInterval[k] || { templates: 0, line_total: 0 };
+      byInterval[k].templates += 1;
+      byInterval[k].line_total = Math.round((byInterval[k].line_total + r.line_total) * 100) / 100;
+    }
+    return jsonResponse({ success: true, total: rows.length, by_interval: byInterval, templates: rows });
+  }
+
   try {
     // Income and Other Income only — the accounts a sales item can post to.
     // Inactive accounts are included deliberately: an item can still point at

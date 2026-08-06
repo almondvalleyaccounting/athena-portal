@@ -295,8 +295,22 @@ Deno.serve(async (req) => {
 
         // Normalise per-occurrence amount to a monthly equivalent using
         // the template's ScheduleInfo. Defaults to monthly if absent.
-        const schedule = (innerTxn.ScheduleInfo || txn.ScheduleInfo) as Record<string, unknown> | undefined;
-        const factor = monthlyFactor(schedule);
+        // ScheduleInfo is nested under RecurringInfo, not at the top level.
+        // This used to read innerTxn.ScheduleInfo, which is always undefined —
+        // so monthlyFactor fell back to its default of 1 and EVERY template
+        // was treated as monthly, whatever its real schedule. An annual
+        // template was therefore recorded at 12x: Stand Jacey's £500-a-year
+        // template read as £500/month = £6,000/year. scheduleInfo above is
+        // derived correctly; reuse it.
+        const factor = monthlyFactor(scheduleInfo);
+        // Occurrences per year, so the services can carry the true cadence
+        // rather than claiming monthly for a template that bills yearly.
+        // cadence stays a two-value field (monthly | annual) to match the
+        // invoice-inference path; cadence_months carries the real interval,
+        // so quarterly reads as annual/3 rather than being flattened.
+        const perYear = factor * 12;
+        const tplCadence = perYear >= 12 ? "monthly" as const : "annual" as const;
+        const tplCadenceMonths = Math.max(1, Math.round(12 / (perYear || 12)));
         const monthlyNet = Math.round(totalAmount * factor * 100) / 100;
         const monthlyVat = Math.round(monthlyNet * 0.2 * 100) / 100;
         const monthlyGross = Math.round((monthlyNet + monthlyVat) * 100) / 100;
@@ -383,8 +397,8 @@ Deno.serve(async (req) => {
           return {
             service_id: sid,
             description: String(l.Description || ""),
-            cadence: "monthly" as const,
-            cadence_months: 1,
+            cadence: tplCadence,
+            cadence_months: tplCadenceMonths,
             monthly_amount: monthly,
             annual_amount: Math.round(monthly * 12 * 100) / 100,
             approval_status: "approved" as const,
