@@ -207,6 +207,7 @@ Deno.serve(async (req) => {
       created: 0, updated: 0, skipped: 0, matched: 0,
       errors: [] as string[], unmatched_customers: [] as string[],
       one_off_created: 0, one_off_skipped: 0,
+      duplicates_cancelled: 0,
     };
 
     // ScheduleInfo → monthly factor. Any QBO recurring template stores
@@ -258,9 +259,10 @@ Deno.serve(async (req) => {
         if (!isActive || !hasNextRun) {
           const txnId = String(txn.Id || innerTxn.Id || "");
           if (txnId) {
-            await sb.from("live_billing")
+            const { error: unlinkErr } = await sb.from("live_billing")
               .update({ qbo_recurring_txn_id: null, qbo_sync_status: "synced", last_synced_qbo: now })
               .eq("qbo_recurring_txn_id", txnId);
+            if (unlinkErr) stats.errors.push(`RecTxn ${txnId} (dormant unlink): ${unlinkErr.message}`);
           }
           stats.skipped++;
           continue;
@@ -339,26 +341,53 @@ Deno.serve(async (req) => {
         // services could "win" and overwrite the template's acknowledged
         // flags. Bug surfaced as the Import tab forgetting acknowledged
         // duplicates after every QBO refresh.
-        let priorRow: { services: unknown } | null = null;
-        const priorByTxn = await sb
+        // Rows already linked to this template. This used to be
+        // .maybeSingle(), which ERRORS when more than one row matches —
+        // and the error was silently discarded, so the code fell through
+        // to "no existing row" and inserted a fresh duplicate. Four
+        // templates with legacy dup rows therefore minted one new row
+        // EACH per nightly pull (~100 phantom rows, ~£23k/mo of phantom
+        // recurring by 2026-08-06, sql/188). Fetch the whole set, pick a
+        // canonical row, and cancel the surplus so the book self-heals.
+        const { data: linkedRowsRaw, error: linkedErr } = await sb
           .from("live_billing")
-          .select("services")
+          .select("id, status, services")
           .eq("qbo_recurring_txn_id", txnId)
-          .maybeSingle();
-        if (priorByTxn.data) {
-          priorRow = priorByTxn.data;
-        } else {
-          const { data: orphan } = await sb
+          .order("last_synced_qbo", { ascending: false, nullsFirst: false });
+        if (linkedErr) throw new Error(`linked-row lookup: ${linkedErr.message}`);
+        const linkedRows = (linkedRowsRaw || []) as Array<{ id: string; status: string; services: unknown }>;
+        const canonical = linkedRows.find((r) => r.status === "active") || linkedRows[0] || null;
+        const extraActive = canonical
+          ? linkedRows.filter((r) => r.status === "active" && r.id !== canonical.id)
+          : [];
+        if (extraActive.length > 0) {
+          const { error: dupErr } = await sb
             .from("live_billing")
-            .select("services")
+            .update({ status: "cancelled", qbo_sync_status: "synced", last_synced_qbo: now })
+            .in("id", extraActive.map((r) => r.id));
+          if (dupErr) throw new Error(`duplicate cancel: ${dupErr.message}`);
+          stats.duplicates_cancelled += extraActive.length;
+        }
+
+        // No linked row → fall back to the entity's biggest unlinked
+        // manual row (orphan-attach). One row serves as BOTH the prior-
+        // services source and the write target below — previously two
+        // separate lookups with different orderings could pick two
+        // different rows.
+        let orphan: { id: string; services: unknown } | null = null;
+        if (!canonical) {
+          const { data: orphanArr, error: orphanErr } = await sb
+            .from("live_billing")
+            .select("id, services")
             .eq("entity_id", entity.id)
             .eq("status", "active")
             .is("qbo_recurring_txn_id", null)
-            .order("last_synced_qbo", { ascending: false, nullsFirst: false })
-            .limit(1)
-            .maybeSingle();
-          priorRow = orphan;
+            .order("monthly_net", { ascending: false })
+            .limit(1);
+          if (orphanErr) throw new Error(`orphan lookup: ${orphanErr.message}`);
+          orphan = (orphanArr && orphanArr[0]) || null;
         }
+        const priorRow: { services: unknown } | null = canonical || orphan;
         const priorTplServicesById = new Map<string, Record<string, unknown>>();
         for (const s of (priorRow?.services as Array<Record<string, unknown>> | null) || []) {
           if (s.service_id) priorTplServicesById.set(String(s.service_id), s);
@@ -384,9 +413,10 @@ Deno.serve(async (req) => {
         // via the review queue.
         const services = lines.map((l: Record<string, unknown>) => {
           const detail = l.SalesItemLineDetail as Record<string, unknown> | undefined;
+          const itemRef = detail?.ItemRef as Record<string, unknown> | undefined;
           const perOccurrence = Number(l.Amount) || 0;
           const monthly = Math.round(perOccurrence * factor * 100) / 100;
-          const sid = detail?.ItemRef ? String((detail.ItemRef as Record<string, unknown>).name || "service") : "service";
+          const sid = itemRef ? String(itemRef.name || "service") : "service";
           const prior = priorTplServicesById.get(sid);
           const preserved: Record<string, unknown> = {};
           if (prior) {
@@ -406,36 +436,27 @@ Deno.serve(async (req) => {
             approved_at: now,
             billing_type: "recurring" as const,
             ...preserved,
+            // QBO item ID, fresh from the template each pull — the durable
+            // join key. service_id above is the item NAME, which broke 456
+            // service entries when the 2026-08-04 rebuild renamed 14 items
+            // (see billingComparison.js RENAMED). Consumers should migrate
+            // to matching on qbo_item_id; set AFTER ...preserved so the
+            // live value always wins over a stale preserved one.
+            ...(itemRef?.value != null ? { qbo_item_id: String(itemRef.value) } : {}),
           };
         });
 
-        // Find the row to write into. Preference order:
-        //   1. Existing row already linked to THIS template (txn id)
-        //   2. The entity's invoice-inferred row that has no template
-        //      yet — attach the template to it rather than insert a
-        //      duplicate.
-        //   3. Otherwise insert a new row.
-        let { data: existing } = await sb
-          .from("live_billing")
-          .select("id")
-          .eq("qbo_recurring_txn_id", txnId)
-          .maybeSingle();
-
-        if (!existing) {
-          const { data: orphan } = await sb
-            .from("live_billing")
-            .select("id")
-            .eq("entity_id", entity.id)
-            .eq("status", "active")
-            .is("qbo_recurring_txn_id", null)
-            .order("monthly_net", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (orphan) existing = orphan;
-        }
+        // Write into the canonical linked row, else the orphan found
+        // above (attach the template to it rather than insert a
+        // duplicate), else insert a new row. Writes are CHECKED — an
+        // unchecked write + unconditional stats.updated++ is how a
+        // check-constraint rejection stayed invisible for 3.5 months
+        // (sql/182); a thrown error lands in stats.errors via the
+        // per-template catch below.
+        const existing = canonical || orphan;
 
         if (existing) {
-          await sb.from("live_billing").update({
+          const { error: upErr } = await sb.from("live_billing").update({
             qbo_recurring_txn_id: txnId,
             billing_type: "recurring",
             monthly_net: monthlyNet,
@@ -447,9 +468,10 @@ Deno.serve(async (req) => {
             last_synced_qbo: now,
             qbo_sync_status: "synced",
           }).eq("id", existing.id);
+          if (upErr) throw new Error(`live_billing update: ${upErr.message}`);
           stats.updated++;
         } else {
-          await sb.from("live_billing").insert({
+          const { error: insErr } = await sb.from("live_billing").insert({
             entity_id: entity.id,
             billing_type: "recurring",
             monthly_net: monthlyNet,
@@ -463,6 +485,7 @@ Deno.serve(async (req) => {
             last_synced_qbo: now,
             qbo_sync_status: "synced",
           });
+          if (insErr) throw new Error(`live_billing insert: ${insErr.message}`);
           stats.created++;
         }
 

@@ -1,48 +1,109 @@
-import { getServiceClient, qboFetch, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
+// Synced from the DEPLOYED version (v9) on 2026-08-06. The repo copy had
+// fallen behind the deployment: the deployed function gained monthly
+// granularity ({ granularity: "monthly", months_back }) writing one row
+// per (month, account) to plan_qbo_pl_cache, plus structured error
+// responses ("QBO rejected the access token — reconnect QuickBooks") —
+// none of which the repo copy had. Deploying from the old repo copy
+// would have silently removed the monthly P&L feed the Planning module
+// reads (loadMonthlyActuals). Diff against the deployment before any
+// future edit + deploy.
+//
+// Known debt (left as-is to keep this a pure sync): the delete-then-
+// insert cache writes are unchecked — if the insert fails after the
+// delete succeeded, the cache for the period silently empties.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Pulls last 12 months Profit & Loss from QBO, flattens expense rows,
-// and writes them to plan_qbo_pl_cache keyed on the LTM period.
-// Returns the flattened accounts so the caller can seed overhead lines.
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const QBO_CLIENT_ID = Deno.env.get("QBO_CLIENT_ID")!;
+const QBO_CLIENT_SECRET = Deno.env.get("QBO_CLIENT_SECRET")!;
+const QBO_API_BASE = Deno.env.get("QBO_API_BASE") || "https://quickbooks.api.intuit.com";
+const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 
-type Row = Record<string, unknown> & {
-  type?: string;
-  group?: string;
-  Header?: { ColData?: Array<{ value?: string }> };
-  ColData?: Array<{ value?: string }>;
-  Summary?: { ColData?: Array<{ value?: string }> };
-  Rows?: { Row?: Row[] };
+function sb() { return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY); }
+
+async function refreshToken(client, conn) {
+  const basicAuth = btoa(`${QBO_CLIENT_ID}:${QBO_CLIENT_SECRET}`);
+  const resp = await fetch(QBO_TOKEN_URL, {
+    method: "POST",
+    headers: { "Authorization": `Basic ${basicAuth}`, "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: conn.refresh_token }),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    await client.from("qbo_connections").update({ status: "error", error_message: `Token refresh failed: ${resp.status} ${err}`, updated_at: new Date().toISOString() }).eq("id", conn.id);
+    throw new Error(`QBO token refresh failed: ${resp.status} ${err}`);
+  }
+  const tokens = await resp.json();
+  const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+  await client.from("qbo_connections").update({
+    access_token: tokens.access_token, refresh_token: tokens.refresh_token,
+    token_expires_at: expiresAt.toISOString(), last_refreshed_at: new Date().toISOString(),
+    status: "active", error_message: null, updated_at: new Date().toISOString(),
+  }).eq("id", conn.id);
+  return tokens;
+}
+
+async function getValidToken() {
+  const client = sb();
+  const { data: conn, error } = await client.from("qbo_connections").select("*").eq("status", "active").single();
+  if (error || !conn) throw new Error("No active QBO connection");
+  const expiresAt = new Date(conn.token_expires_at);
+  if (expiresAt.getTime() - Date.now() < 10 * 60 * 1000) {
+    const t = await refreshToken(client, conn);
+    return { accessToken: t.access_token, realmId: conn.realm_id };
+  }
+  return { accessToken: conn.access_token, realmId: conn.realm_id };
+}
+
+async function qboFetch(path) {
+  const { accessToken, realmId } = await getValidToken();
+  const url = `${QBO_API_BASE}/v3/company/${realmId}/${path}`;
+  let resp = await fetch(url, { headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } });
+  if (resp.status === 401) {
+    const client = sb();
+    const { data: conn } = await client.from("qbo_connections").select("*").eq("status", "active").single();
+    if (conn) {
+      await refreshToken(client, conn);
+      const { accessToken: newTok } = await getValidToken();
+      resp = await fetch(url, { headers: { "Authorization": `Bearer ${newTok}`, "Accept": "application/json" } });
+    }
+  }
+  return resp;
+}
+
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-function firstDayOfMonth(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1);
-}
-function addMonths(d: Date, m: number): Date {
-  return new Date(d.getFullYear(), d.getMonth() + m, 1);
-}
-function fmtDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+function jr(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...cors } });
 }
 
-function flattenExpenseRows(rows: Row[] | undefined, out: Array<{ name: string; amount: number }>) {
+function fmt(d) { return d.toISOString().slice(0, 10); }
+function addMonths(d, n) { const x = new Date(d); x.setMonth(x.getMonth() + n); return x; }
+function lastDay(y, m) { return new Date(y, m + 1, 0); }
+
+function flattenRows(rows, headers, out, section) {
   if (!rows) return;
   for (const r of rows) {
-    // Detail row with a name + amount
-    if (r.ColData && Array.isArray(r.ColData)) {
-      const name = r.ColData[0]?.value?.trim();
-      const amtStr = r.ColData[r.ColData.length - 1]?.value;
-      const amt = parseFloat(amtStr || "0");
-      if (name && !isNaN(amt)) {
-        out.push({ name, amount: amt });
+    if (r.ColData && Array.isArray(r.ColData) && r.type !== "Section") {
+      const name = (r.ColData[0]?.value || "").trim();
+      if (!name) continue;
+      const values = [];
+      for (let i = 1; i < Math.min(r.ColData.length, headers.length); i++) {
+        const v = parseFloat(r.ColData[i]?.value || "0");
+        values.push(isNaN(v) ? 0 : v);
       }
+      out.push({ name, values, section });
     }
-    // Nested section
-    if (r.Rows?.Row) {
-      flattenExpenseRows(r.Rows.Row, out);
-    }
+    if (r.Rows?.Row) flattenRows(r.Rows.Row, headers, out, r.group || section);
   }
 }
 
-function findSection(rows: Row[] | undefined, groupName: string): Row | null {
+function findSection(rows, groupName) {
   if (!rows) return null;
   for (const r of rows) {
     if (r.group === groupName) return r;
@@ -53,88 +114,112 @@ function findSection(rows: Row[] | undefined, groupName: string): Row | null {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
-  if (req.method !== "POST") return jsonResponse({ success: false, error: "POST required" }, 405);
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  if (req.method !== "POST") return jr({ success: false, error: "POST required" }, 405);
+
+  const body = await req.json().catch(() => ({}));
+  const granularity = body.granularity || "ltm";
+  const monthsBack = Number(body.months_back || 12);
 
   try {
-    // Period = last 12 full months ending last month
     const now = new Date();
-    const endMonthStart = firstDayOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-    const startMonthStart = addMonths(endMonthStart, -11);
-    const endDate = new Date(endMonthStart.getFullYear(), endMonthStart.getMonth() + 1, 0); // last day of end month
-    const start = fmtDate(startMonthStart);
-    const end = fmtDate(endDate);
+    const endMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const startMonthStart = new Date(endMonthStart.getFullYear(), endMonthStart.getMonth() - (monthsBack - 1), 1);
+    const endDate = lastDay(endMonthStart.getFullYear(), endMonthStart.getMonth());
+    const start = fmt(startMonthStart);
+    const end = fmt(endDate);
 
-    const resp = await qboFetch(
-      `reports/ProfitAndLoss?start_date=${start}&end_date=${end}&accounting_method=Accrual&minorversion=75`,
-    );
+    if (granularity === "monthly") {
+      const path = `reports/ProfitAndLoss?start_date=${start}&end_date=${end}&accounting_method=Accrual&summarize_column_by=Month`;
+      const resp = await qboFetch(path);
+      if (!resp.ok) {
+        const text = await resp.text();
+        let friendly = `QBO returned ${resp.status}`;
+        if (text.includes("UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM")) friendly = "QBO rejected the access token — reconnect QuickBooks.";
+        return jr({ success: false, error: friendly, raw: text.slice(0, 600), status: resp.status });
+      }
+      const report = await resp.json();
+      const cols = report.Columns?.Column || [];
+      const headers = cols.map((c) => c.ColTitle || c.ColType);
+      const rows = report.Rows?.Row || [];
+
+      const sections = ["Income", "Expenses", "COGS", "OtherExpenses"];
+      const flat = [];
+      for (const sec of sections) {
+        const node = findSection(rows, sec);
+        if (node?.Rows?.Row) flattenRows(node.Rows.Row, headers, flat, sec);
+      }
+
+      const monthCount = headers.length - 2;
+      const client = sb();
+      await client.from("plan_qbo_pl_cache").delete().gte("period_start", start).lte("period_end", end);
+
+      const inserts = [];
+      const monthsList = [];
+      for (let i = 0; i < monthCount; i++) {
+        const mStart = addMonths(startMonthStart, i);
+        const mEnd = lastDay(mStart.getFullYear(), mStart.getMonth());
+        monthsList.push({ start: fmt(mStart), end: fmt(mEnd) });
+      }
+
+      for (const r of flat) {
+        for (let i = 0; i < Math.min(r.values.length, monthCount); i++) {
+          if (r.values[i] === 0) continue;
+          inserts.push({
+            period_start: monthsList[i].start,
+            period_end: monthsList[i].end,
+            account_name: r.name,
+            account_type: r.section,
+            amount: r.values[i],
+          });
+        }
+      }
+      if (inserts.length) await client.from("plan_qbo_pl_cache").insert(inserts);
+
+      return jr({
+        success: true, granularity: "monthly",
+        period: { start, end }, months: monthsList.length,
+        accounts: flat.length, cells_written: inserts.length,
+      });
+    }
+
+    const path = `reports/ProfitAndLoss?start_date=${start}&end_date=${end}&accounting_method=Accrual`;
+    const resp = await qboFetch(path);
     if (!resp.ok) {
-      const body = await resp.text();
-      return jsonResponse({ success: false, error: `QBO P&L failed: ${resp.status} ${body}` }, 500);
+      const text = await resp.text();
+      let friendly = `QBO returned ${resp.status}`;
+      if (text.includes("UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM")) friendly = "QBO rejected the access token — reconnect QuickBooks.";
+      return jr({ success: false, error: friendly, raw: text.slice(0, 600), status: resp.status });
     }
-    const report = await resp.json() as Record<string, unknown>;
-    const rows = ((report.Rows as Record<string, unknown>)?.Row as Row[]) || [];
-
-    // Find expense sections — QBO P&L typically has "Expenses" and sometimes "OtherExpenses" / "COGS"
-    const expensesSection = findSection(rows, "Expenses");
-    const cogsSection = findSection(rows, "COGS");
-    const otherExpensesSection = findSection(rows, "OtherExpenses");
-
-    const expenses: Array<{ name: string; amount: number; section: string }> = [];
-    if (expensesSection?.Rows?.Row) {
-      const tmp: Array<{ name: string; amount: number }> = [];
-      flattenExpenseRows(expensesSection.Rows.Row, tmp);
-      for (const e of tmp) expenses.push({ ...e, section: "Expenses" });
-    }
-    if (cogsSection?.Rows?.Row) {
-      const tmp: Array<{ name: string; amount: number }> = [];
-      flattenExpenseRows(cogsSection.Rows.Row, tmp);
-      for (const e of tmp) expenses.push({ ...e, section: "COGS" });
-    }
-    if (otherExpensesSection?.Rows?.Row) {
-      const tmp: Array<{ name: string; amount: number }> = [];
-      flattenExpenseRows(otherExpensesSection.Rows.Row, tmp);
-      for (const e of tmp) expenses.push({ ...e, section: "OtherExpenses" });
+    const report = await resp.json();
+    const cols = report.Columns?.Column || [];
+    const headers = cols.map((c) => c.ColTitle || c.ColType);
+    const rows = report.Rows?.Row || [];
+    const sections = ["Expenses", "COGS", "OtherExpenses", "Income"];
+    const flat = [];
+    for (const sec of sections) {
+      const node = findSection(rows, sec);
+      if (node?.Rows?.Row) flattenRows(node.Rows.Row, headers, flat, sec);
     }
 
-    // Income for reference
-    const incomeSection = findSection(rows, "Income");
-    const income: Array<{ name: string; amount: number }> = [];
-    if (incomeSection?.Rows?.Row) flattenExpenseRows(incomeSection.Rows.Row, income);
+    const expenses = flat.filter((r) => r.section !== "Income").map((r) => ({ name: r.name, amount: r.values.reduce((a, b) => a + b, 0), section: r.section }));
+    const income = flat.filter((r) => r.section === "Income").map((r) => ({ name: r.name, amount: r.values.reduce((a, b) => a + b, 0) }));
 
-    // Write to cache
-    const sb = getServiceClient();
-    // Clear existing cache for this period
-    await sb.from("plan_qbo_pl_cache").delete().eq("period_start", start).eq("period_end", end);
-    const rowsToInsert = [
-      ...expenses.map((e) => ({
-        period_start: start,
-        period_end: end,
-        account_name: e.name,
-        account_type: e.section,
-        amount: e.amount,
-      })),
-      ...income.map((i) => ({
-        period_start: start,
-        period_end: end,
-        account_name: i.name,
-        account_type: "Income",
-        amount: i.amount,
-      })),
+    const client = sb();
+    await client.from("plan_qbo_pl_cache").delete().eq("period_start", start).eq("period_end", end);
+    const toInsert = [
+      ...expenses.map((e) => ({ period_start: start, period_end: end, account_name: e.name, account_type: e.section, amount: e.amount })),
+      ...income.map((i) => ({ period_start: start, period_end: end, account_name: i.name, account_type: "Income", amount: i.amount })),
     ];
-    if (rowsToInsert.length > 0) {
-      await sb.from("plan_qbo_pl_cache").insert(rowsToInsert);
-    }
+    if (toInsert.length) await client.from("plan_qbo_pl_cache").insert(toInsert);
 
-    return jsonResponse({
-      success: true,
-      period: { start, end },
-      expenses,
-      income,
+    return jr({
+      success: true, granularity: "ltm", period: { start, end },
+      expenses, income,
       total_expenses: expenses.reduce((s, e) => s + e.amount, 0),
       total_income: income.reduce((s, i) => s + i.amount, 0),
     });
   } catch (err) {
-    return jsonResponse({ success: false, error: (err as Error).message }, 500);
+    return jr({ success: false, error: err.message });
   }
 });

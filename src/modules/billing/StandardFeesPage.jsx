@@ -14,7 +14,10 @@ const font = "'Outfit', sans-serif";
 // Standard fees price book (admin-only: can_view_client_fees).
 // Each row is a named task mapped to an Athena product with a standard
 // net fee. The QBO product column is derived read-only: task → Athena
-// product (service_id) → athena_product_qbo_map → qbo_items.
+// product (service_id) → qbo_service_items → qbo_items. It used to read
+// athena_product_qbo_map, which sql/176 DROPPED when qbo_service_items
+// became the single product map — the select then errored silently
+// (destructured to null) and the QBO column just showed blank.
 // RLS on standard_fees enforces the same gate at the data layer
 // (sql/121), so this page-level redirect is presentation.
 export default function StandardFeesPage() {
@@ -38,7 +41,7 @@ export default function StandardFeesPage() {
     const [{ data: fees }, { data: svcMaps }, { data: prodMaps }, { data: items }] = await Promise.all([
       supabase.from('standard_fees').select('*').order('task_name'),
       supabase.from('billing_service_mappings').select('service_id'),
-      supabase.from('athena_product_qbo_map').select('service_id, qbo_item_id'),
+      supabase.from('qbo_service_items').select('service_id, qbo_item_id'),
       supabase.from('qbo_items').select('qbo_item_id, name, unit_price'),
     ]);
     setRows(fees || []);
