@@ -634,7 +634,7 @@ export default function BillingPage() {
             const swallow = (e)=>e.stopPropagation();
 
             if (compact) return (
-              <div key={item.id} id={`billing-item-${item.id}`} style={{background:isHighlighted?'#eff6ff':isSelected?'#eff6ff':'#fff',borderRadius:8,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
+              <div key={item.id} id={`billing-item-${item.id}`} style={{background:isHighlighted?'#eff6ff':isSelected?'#eff6ff':'#fff',borderRadius:8,overflow:'hidden',border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
                 <div onClick={()=>toggleExpand(item.id)} title={isOpen?'Hide detail':'Show the line detail'} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',fontSize:12,cursor:'pointer'}}>
                   <span onClick={swallow} style={{display:'inline-flex',flexShrink:0}}>
                     <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:13,height:13,cursor:'pointer',accentColor:'#0e7fe0'}}/>
@@ -654,7 +654,7 @@ export default function BillingPage() {
             );
 
             return (
-              <div key={item.id} id={`billing-item-${item.id}`} style={{background:isSelected?'#eff6ff':'#fff',borderRadius:12,border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
+              <div key={item.id} id={`billing-item-${item.id}`} style={{background:isSelected?'#eff6ff':'#fff',borderRadius:12,overflow:'hidden',border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
                 <div onClick={()=>toggleExpand(item.id)} title={isOpen?'Hide detail':'Show the line detail'} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'14px 18px',cursor:'pointer'}}>
                   <span onClick={swallow} style={{display:'inline-flex',marginTop:3,flexShrink:0}}>
                     <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0'}}/>
@@ -956,7 +956,7 @@ function QboInvoiceTag({ item }) {
 // having to open the bill for editing.
 function BillLines({ lines, fmt }) {
   return (
-    <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa', padding: '8px 18px 10px', borderRadius: '0 0 11px 11px' }}>
+    <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa', padding: '8px 18px 10px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: DETAIL_COLS, gap: 10, padding: '2px 0 4px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #eef2f7' }}>
         <span>Service</span><span>Description</span>
         <span style={{ textAlign: 'right' }}>Qty</span><span style={{ textAlign: 'right' }}>Rate</span>
