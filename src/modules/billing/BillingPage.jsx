@@ -6,6 +6,7 @@ import { pushBillingItems, refreshBillingItems, fetchClientInvoices, fetchQboSet
 import { useAuth } from '../../shell/AppShell';
 import NewClientModal from '../../components/NewClientModal';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
+import ServicePicker from './ServicePicker';
 
 const VAT_RATE = 0.20;
 const STATUS_CONFIG = {
@@ -32,7 +33,7 @@ export default function BillingPage() {
   const [commentDrafts, setCommentDrafts] = useState({}); // per-item box in the thread
   const [commentBusy, setCommentBusy] = useState(null); // item id being posted
   const [entities, setEntities] = useState([]);
-  const [services, setServices] = useState([]); // mapped ad-hoc line labels
+  const [services, setServices] = useState([]); // mapped ad-hoc line options: {id, label, category}
   // Each product's standard invoice-line description, as held on the QuickBooks
   // product (sql/187). Picking a service fills an empty Description with it.
   const [serviceDefaults, setServiceDefaults] = useState({});
@@ -104,13 +105,17 @@ export default function BillingPage() {
         // Ad-hoc line labels that actually map to a QBO product. Fee-engine
         // service ids are excluded — they're slugs, not something to pick
         // from on a one-off bill.
-        supabase.from('qbo_service_items').select('service_id, qbo_item_name, default_description').eq('is_adhoc', true),
+        supabase.from('qbo_service_items').select('service_id, qbo_item_name, default_description, qbo_category').eq('is_adhoc', true),
         supabase.from('billing_item_comments').select('*').order('created_at'),
       ]);
       setItems(bills || []);
       setComments(groupComments(cmts));
       setEntities(ents || []);
-      setServices((svcRows || []).map((r) => r.service_id).sort((a, b) => a.localeCompare(b)));
+      // The label a line carries IS the service id — it's what resolves to a
+      // QBO product on the push. The category only groups the picker.
+      setServices((svcRows || [])
+        .map((r) => ({ id: r.service_id, label: r.service_id, category: r.qbo_category }))
+        .sort((a, b) => a.label.localeCompare(b.label)));
       setServiceDefaults(Object.fromEntries((svcRows || [])
         .filter((r) => r.default_description)
         .map((r) => [r.service_id, r.default_description])));
@@ -567,14 +572,16 @@ export default function BillingPage() {
       </div>
       {formLines.map((l,idx)=>(
         <div key={idx} style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:6,alignItems:'flex-start'}}>
-          <select value={l.service} onChange={(e)=>changeLineService(idx,e.target.value)} style={inputStyle}>
-            <option value="">Select...</option>
-            {/* Keep a service the line already carries — copied from a QBO
-                invoice, or mapped since this bill was drafted — so editing an
-                old bill can't silently blank its line. */}
-            {l.service && !services.includes(l.service) && <option value={l.service}>{l.service} (not mapped)</option>}
-            {services.map((s)=><option key={s} value={s}>{s}</option>)}
-          </select>
+          {/* Searchable and grouped by QuickBooks category. A service the line
+              already carries but that isn't in the list — copied from a QBO
+              invoice, or unmapped since this bill was drafted — is kept and
+              flagged, so editing an old bill can't silently blank its line. */}
+          <ServicePicker
+            value={l.service}
+            options={services}
+            onChange={(v)=>changeLineService(idx,v)}
+            style={inputStyle}
+          />
           {/* Textarea so multi-line QBO descriptions keep their line breaks. */}
           <textarea
             value={l.description}
@@ -1401,6 +1408,14 @@ function applyCalc(line, field, value) {
     else target = 'rate';
     if (field !== 'qty' && num(next.qty) == null) next.qty = value === '' ? '' : '1';
   }
+
+  // A rate typed against a blank quantity means one of them — the same
+  // "assume a quantity of one" rule the fallback above uses, applied to the
+  // touch-driven branch too. Without it a line whose stored amount was £0.00
+  // sits there ignoring every rate you type: splitOf only recovers a quantity
+  // from a non-zero amount, so the £0.00 placeholders come back with the
+  // quantity empty and nothing for the rate to multiply.
+  if (target === 'net' && num(next.qty) == null && num(next.rate) != null) next.qty = '1';
 
   const qty = num(next.qty), rate = num(next.rate), net = num(next.net);
   if (value === '' && field !== 'qty') {

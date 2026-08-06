@@ -9,6 +9,23 @@
 // rebuilt on 2026-08-04; anything absent from both the arrays and the table
 // simply isn't billable.
 
+// The QuickBooks grouping items, in the order the service picker shows them.
+// Categories come from the database (qbo_service_items.qbo_category, sql/189);
+// this only fixes their order, which is by how often a one-off bill lands in
+// each rather than alphabetical — Accounts and Tax Returns are most of the
+// work, All Inclusive is recurring bundles that never appear on an ad-hoc bill.
+// A category in QBO but missing here still shows, sorted in after these.
+export const QBO_CATEGORY_ORDER = [
+  'Accounts',
+  'Tax Returns',
+  'Bookkeeping',
+  'Payroll Related',
+  'Advisory',
+  'Company Secretarial',
+  'All Inclusive',
+  'Other',
+];
+
 // Ad-hoc bill line labels. One per billable QBO leaf, so a one-off bill can
 // always be coded to what the work actually was.
 //
