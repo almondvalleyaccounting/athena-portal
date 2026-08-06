@@ -170,6 +170,22 @@ export default function BillingPage() {
   const fmt = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n || 0);
   const resetForm = () => { setFormClient(''); setFormLines([blankLine()]); setFormNote(''); };
 
+  // The bill editor is one modal in two modes: new, or editing the bill whose
+  // id is in editingId. The two can't both be open — starting an edit clears
+  // the add form and vice versa.
+  const formOpen = showAdd || !!editingId;
+  const closeForm = () => { setShowAdd(false); setEditingId(null); resetForm(); };
+
+  // Escape closes it — but not while a modal it opened is on top (the
+  // past-invoice picker or the new-client form), which would leave the child
+  // sitting in front of nothing.
+  useEffect(() => {
+    if (!formOpen || showInvoicePicker || showNewClient) return;
+    const onKey = (e) => { if (e.key === 'Escape') closeForm(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [formOpen, showInvoicePicker, showNewClient]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Internal comments ─────────────────────────────────────────────────────
   // Stays in Athena: the push reads billing_items.lines only, so a comment has
   // no route to QuickBooks or the client.
@@ -503,8 +519,11 @@ export default function BillingPage() {
     a.download=`billing-${new Date().toISOString().split('T')[0]}.csv`; a.click(); URL.revokeObjectURL(url);
   };
 
+  // The bill editor's innards. Always shown inside the modal below — editing
+  // used to load the bill into a panel at the top of the page, which read as
+  // "nothing happened" unless you knew to scroll up.
   const renderForm = (onSubmit, submitLabel, onCancel) => (
-    <div style={{ background:'#fff', borderRadius:12, border:'1px solid #e5e7eb', padding:'20px 24px', marginBottom:20 }}>
+    <div>
       {/* Client (one per bill → one invoice). Type-to-filter + A-Z jumper;
           the inline "+ Add" routes to the New Client modal. */}
       <div style={{marginBottom:14}}>
@@ -553,7 +572,7 @@ export default function BillingPage() {
         </div>
       ))}
       <div style={{display:'flex',alignItems:'center',gap:12,marginTop:2}}>
-        <button onClick={addLine} style={{...btnOutline,gap:5}}><Plus size={14}/> Add line</button>
+        <button onClick={addLine} style={{...btnOutline,gap:5,flexShrink:0,whiteSpace:'nowrap'}}><Plus size={14}/> Add line</button>
         <span style={{fontSize:11,color:'#94a3b8'}}>
           Qty × Rate = Amount — fill in any two and the third works itself out. Sums work too: type <code style={calcHint}>100*10</code> then Tab.
           {' '}Not sure of the figure yet? Put <b>0</b> in Amount — it saves as a £0.00 placeholder and can&apos;t be approved until it&apos;s priced.
@@ -656,8 +675,34 @@ export default function BillingPage() {
         );
       })()}
 
-      {showAdd && renderForm(handleAdd, 'Add', ()=>{setShowAdd(false);resetForm();})}
-      {editingId && !showAdd && renderForm(()=>handleUpdate(items.find((i)=>i.id===editingId)), 'Save', ()=>{setEditingId(null);resetForm();})}
+      {/* Add / edit a bill — a modal, so clicking Edit puts the bill in front of
+          you instead of loading a panel above the fold. z-index sits under the
+          new-client and past-invoice modals (both 1000), which open from
+          inside this one. */}
+      {formOpen && (
+        <div style={{position:'fixed',inset:0,zIndex:900,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'32px 24px',overflowY:'auto'}}>
+          {/* No close-on-backdrop-click: a stray click shouldn't throw away a
+              half-typed bill. Cancel, the ×, or Escape close it. */}
+          <div style={{background:'#fff',borderRadius:16,padding:'24px 28px 22px',maxWidth:1000,width:'100%',boxShadow:'0 20px 60px rgba(0,0,0,0.18)',margin:'auto 0'}}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,marginBottom:16}}>
+              <div>
+                <h2 style={{fontFamily:"'Playfair Display', serif",fontSize:20,fontWeight:500,color:'#0f172a',margin:0}}>
+                  {editingId ? 'Edit bill' : 'New bill'}
+                </h2>
+                <p style={{fontSize:12,color:'#94a3b8',margin:'3px 0 0'}}>
+                  {editingId
+                    ? `${entityMap[items.find((i)=>i.id===editingId)?.entity_id]?.name || 'Client'} — one invoice per bill, one line per thing being charged`
+                    : 'One client per bill — it becomes one QuickBooks invoice with a line per service'}
+                </p>
+              </div>
+              <button onClick={closeForm} title="Close (Esc)" style={{background:'none',border:'none',cursor:'pointer',padding:4,display:'inline-flex',color:'#94a3b8',fontSize:20,lineHeight:1,fontFamily:"'Outfit', sans-serif"}}>×</button>
+            </div>
+            {editingId
+              ? renderForm(()=>handleUpdate(items.find((i)=>i.id===editingId)), 'Save', closeForm)
+              : renderForm(handleAdd, 'Add', closeForm)}
+          </div>
+        </div>
+      )}
 
       {/* Filter tabs */}
       <div style={{display:'flex',gap:2,marginBottom:16,borderBottom:'1px solid #e5e7eb'}}>
@@ -1247,8 +1292,11 @@ const INVOICE_COLS = '1.4fr 1fr 0.55fr 0.7fr 2.2fr 0.8fr 0.7fr 0.85fr';
 const sendToggleBtn = {padding:'3px 8px',fontSize:11,fontWeight:600,border:'none',background:'#fff',color:'#94a3b8',cursor:'pointer',fontFamily:"'Outfit', sans-serif",lineHeight:1.5};
 const sendToggleSend = {background:'#059669',color:'#fff'};
 const sendToggleDraft = {background:'#e2e8f0',color:'#334155'};
-const LINE_COLS = '1.15fr 1.7fr 0.5fr 0.72fr 0.8fr 0.72fr 0.8fr 30px';
-const DETAIL_COLS = '1.1fr 2.2fr 0.4fr 0.7fr 0.7fr 0.6fr 0.7fr';
+// Wider service column than the rest of the row needs: the product names run
+// to "Business Accounts and Corporation Tax Combined" (sql/186), and a picker
+// you can't read the end of is a picker you can choose wrongly from.
+const LINE_COLS = '1.6fr 1.6fr 0.5fr 0.72fr 0.8fr 0.72fr 0.8fr 30px';
+const DETAIL_COLS = '1.5fr 1.9fr 0.4fr 0.7fr 0.7fr 0.6fr 0.7fr';
 const calcHint = { background: '#f1f5f9', borderRadius: 4, padding: '1px 4px', fontFamily: 'monospace', color: '#475569' };
 // A fresh, empty editor line.
 function blankLine() { return { service: '', description: '', qty: '', rate: '', net: '', vat: '', gross: '', vatManual: false, touch: [] }; }
