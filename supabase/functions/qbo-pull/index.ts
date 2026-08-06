@@ -806,17 +806,32 @@ Deno.serve(async (req) => {
           qbo_sync_status: "synced",
         };
 
+        // Check the write. This used to be fire-and-forget with an
+        // unconditional stats.updated++, which hid a check-constraint
+        // rejection for 3.5 months: billing_type 'annual' was not in the
+        // allowed list (sql/182), so every all-annual-cadence customer's row
+        // silently failed to update and froze — 65 rows, £244k of stated
+        // annual value, still carrying pre-rebuild names and a 12x annual
+        // overstatement. A pull that cannot write must say so.
         if (existingRow) {
-          await sb.from("live_billing").update(writeFields).eq("id", existingRow.id);
-          stats.updated++;
+          const { error: upErr } = await sb.from("live_billing").update(writeFields).eq("id", existingRow.id);
+          if (upErr) {
+            stats.errors.push(`${entity.name} (live_billing update): ${upErr.message}`);
+          } else {
+            stats.updated++;
+          }
         } else {
-          await sb.from("live_billing").insert({
+          const { error: insErr } = await sb.from("live_billing").insert({
             entity_id: entity.id,
             status: "active",
             ...writeFields,
           });
-          stats.one_off_created++;
-          stats.created++;
+          if (insErr) {
+            stats.errors.push(`${entity.name} (live_billing insert): ${insErr.message}`);
+          } else {
+            stats.one_off_created++;
+            stats.created++;
+          }
         }
 
         if (!entity.qbo_customer_id) {
