@@ -19,12 +19,22 @@
 // Inclusive packages and the Retainer — recurring bundles, not one-off work.
 export const ADHOC_SERVICES = [
   'Accountant Certificates',
-  'Accounts & Corporation Tax',
-  'Accounts Production',
   'Bespoke Analysis',
   'Billable Hours',
   'Bookkeeping',
   'Bookkeeping (non-VAT registered)',
+  // Renamed from 'Statutory Accounts …' and 'Accounts Production' on
+  // 2026-08-06 (sql/186) — the QBO products were renamed to match, so the term
+  // the client reads on an invoice is the term the team picks here. 'Business
+  // Accounts - Ltd Companies' IS the old 'Accounts Production': same QBO item
+  // (#59), not a new product.
+  'Business Accounts - Dormant Ltd Company',
+  'Business Accounts - LLP',
+  'Business Accounts - Ltd Companies',
+  'Business Accounts - Partnership',
+  'Business Accounts - Property',
+  'Business Accounts - Sole Trader',
+  'Business Accounts and Corporation Tax Combined',
   'Business Plans',
   'Companies House Amendments',
   'Company Formation',
@@ -41,11 +51,6 @@ export const ADHOC_SERVICES = [
   'SA302s',
   'Self Assessment',
   'Software',
-  'Statutory Accounts - Dormant Ltd Company',
-  'Statutory Accounts - LLP',
-  'Statutory Accounts - Partnership',
-  'Statutory Accounts - Property',
-  'Statutory Accounts - Sole Trader',
   'Tax Returns - LLP',
   'Tax Returns - MTD',
   'Tax Returns - Partnership (SA800)',
@@ -56,11 +61,14 @@ export const ADHOC_SERVICES = [
 // side of the quote-vs-live reverse map: one per QBO item.
 export const FEE_ENGINE_SERVICES = [
   // accounts and tax
-  { id: 'accounts_ct', label: 'Accounts & CT' },
-  { id: 'ltd_accounts', label: 'Statutory Accounts — Ltd' },
-  { id: 'llp_accounts', label: 'Statutory Accounts — LLP' },
-  { id: 'partnership_accounts', label: 'Statutory Accounts — Partnership' },
-  { id: 'property_accounts', label: 'Statutory Accounts — Property' },
+  // Ids are slugs and never change — quotes, standard fees, entity fees and
+  // live billing all key off them. Only the labels moved to "Business
+  // Accounts" (sql/186).
+  { id: 'accounts_ct', label: 'Business Accounts & CT' },
+  { id: 'ltd_accounts', label: 'Business Accounts — Ltd' },
+  { id: 'llp_accounts', label: 'Business Accounts — LLP' },
+  { id: 'partnership_accounts', label: 'Business Accounts — Partnership' },
+  { id: 'property_accounts', label: 'Business Accounts — Property' },
   { id: 'sole_trader_accounts', label: 'Sole Trader Accounts' },
   { id: 'dormant_accounts', label: 'Dormant Accounts' },
   { id: 'ct600', label: 'CT600' },
