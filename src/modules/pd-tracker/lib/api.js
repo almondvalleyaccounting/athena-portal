@@ -619,6 +619,121 @@ export async function loadWorkFeed(staffId) {
   return data || [];
 }
 
+// ── Contributions to my prep notes (sql/184) ─────────────────────────────
+// "Ask Tracy for feedback on Sophie." Three lanes, all RLS-enforced:
+// requester sees the ask + every contribution; contributor sees the ask + only
+// what they wrote; the subject sees nothing at all.
+
+// Asks I've sent about one person.
+export async function loadPrepRequestsBySubject(requesterId, subjectId) {
+  const { data, error } = await supabase
+    .from('pd_prep_feedback_requests')
+    .select('*, responder:responder_id(id, name)')
+    .eq('requester_id', requesterId)
+    .eq('subject_id', subjectId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+// Asks pointed at me — my inbox, regardless of who they're about.
+export async function loadPrepRequestsForMe(responderId) {
+  const { data, error } = await supabase
+    .from('pd_prep_feedback_requests')
+    .select('*, requester:requester_id(id, name), subject:subject_id(id, name)')
+    .eq('responder_id', responderId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createPrepRequests({ requester_id, subject_id, responder_ids, message }) {
+  const rows = (responder_ids || []).map((rid) => ({
+    requester_id, subject_id, responder_id: rid, message: message?.trim() || null,
+  }));
+  if (!rows.length) return [];
+  const { data, error } = await supabase
+    .from('pd_prep_feedback_requests')
+    .insert(rows)
+    .select('*, responder:responder_id(id, name)');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function updatePrepRequest(id, patch) {
+  const { data, error } = await supabase
+    .from('pd_prep_feedback_requests')
+    .update(patch)
+    .eq('id', id)
+    .select('*, requester:requester_id(id, name), subject:subject_id(id, name), responder:responder_id(id, name)')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deletePrepRequest(id) {
+  const { error } = await supabase.from('pd_prep_feedback_requests').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// Everything colleagues have contributed to my prep on one person.
+export async function loadPrepContributions(requesterId, subjectId) {
+  const { data, error } = await supabase
+    .from('pd_prep_contributions')
+    .select('*, contributor:contributor_id(id, name)')
+    .eq('requester_id', requesterId)
+    .eq('subject_id', subjectId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+// What I've contributed to other people's prep (so I can see/edit my own words).
+export async function loadMyPrepContributions(contributorId) {
+  const { data, error } = await supabase
+    .from('pd_prep_contributions')
+    .select('*, subject:subject_id(id, name), requester:requester_id(id, name)')
+    .eq('contributor_id', contributorId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+// Answer a request. Marks it answered in the same round trip.
+export async function addPrepContribution({ request, contributor_id, kind, body }) {
+  const { data, error } = await supabase
+    .from('pd_prep_contributions')
+    .insert({
+      request_id: request.id,
+      requester_id: request.requester_id,
+      subject_id: request.subject_id,
+      contributor_id,
+      kind,
+      body: body.trim(),
+    })
+    .select('*, contributor:contributor_id(id, name)')
+    .single();
+  if (error) throw error;
+  await updatePrepRequest(request.id, { status: 'answered', responded_at: new Date().toISOString() });
+  return data;
+}
+
+export async function updatePrepContribution(id, patch) {
+  const { data, error } = await supabase
+    .from('pd_prep_contributions')
+    .update(patch)
+    .eq('id', id)
+    .select('*, contributor:contributor_id(id, name)')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deletePrepContribution(id) {
+  const { error } = await supabase.from('pd_prep_contributions').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function loadKudos(staffId) {
   const { data, error } = await supabase
     .from('pd_kudos')

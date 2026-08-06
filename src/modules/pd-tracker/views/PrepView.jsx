@@ -2,13 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Lock, Plus, Trash2, Pin, PinOff, Check, ChevronDown, ChevronRight,
-  Search, ExternalLink, NotebookPen, Archive, RotateCcw,
+  Search, ExternalLink, NotebookPen, Archive, RotateCcw, UserPlus, Inbox, X, CornerDownLeft,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { Card, SectionTitle, Button, Input, Textarea, Select, Pill, EmptyState, FONT, SERIF } from '../components/ui';
 import {
   loadStaff, loadPrepNotes, createPrepNote, updatePrepNote, deletePrepNote,
   loadWorkFeed, PREP_KINDS, WORK_FEED_SOURCES,
+  loadPrepRequestsBySubject, loadPrepRequestsForMe, createPrepRequests,
+  updatePrepRequest, deletePrepRequest,
+  loadPrepContributions, addPrepContribution, deletePrepContribution,
 } from '../lib/api';
 
 // Private prep space: the notes I build up between 1-2-1s. Nobody else can
@@ -22,6 +25,12 @@ export default function PrepView() {
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [loadingFeed, setLoadingFeed] = useState(false);
   const [showDiscussed, setShowDiscussed] = useState(false);
+  // Input I've asked colleagues for about this person, and what came back.
+  const [requests, setRequests] = useState([]);
+  const [contributions, setContributions] = useState([]);
+  const [asking, setAsking] = useState(false);
+  // Asks pointed at me — independent of who I'm preparing for.
+  const [inbox, setInbox] = useState([]);
 
   useEffect(() => {
     loadStaff()
@@ -49,6 +58,22 @@ export default function PrepView() {
       .catch((e) => console.error(e))
       .finally(() => setLoadingFeed(false));
   }, [subjectId]);
+
+  useEffect(() => {
+    if (!subjectId || !profile?.id) { setRequests([]); setContributions([]); return; }
+    setAsking(false);
+    Promise.all([
+      loadPrepRequestsBySubject(profile.id, subjectId),
+      loadPrepContributions(profile.id, subjectId),
+    ])
+      .then(([r, c]) => { setRequests(r); setContributions(c); })
+      .catch((e) => console.error(e));
+  }, [subjectId, profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    loadPrepRequestsForMe(profile.id).then(setInbox).catch((e) => console.error(e));
+  }, [profile?.id]);
 
   const subject = staff.find((s) => s.id === subjectId);
   const subjectName = subject?.id === profile?.id ? 'yourself' : (subject?.name || '—');
@@ -79,9 +104,59 @@ export default function PrepView() {
     } catch (e) { console.error(e); }
   };
 
+  const sendRequests = async (responderIds, message) => {
+    try {
+      const saved = await createPrepRequests({
+        requester_id: profile.id, subject_id: subjectId, responder_ids: responderIds, message,
+      });
+      setRequests((p) => [...saved, ...p]);
+      setAsking(false);
+    } catch (e) { console.error(e); }
+  };
+
+  const cancelRequest = async (id) => {
+    if (!window.confirm('Withdraw this request?')) return;
+    try {
+      await deletePrepRequest(id);
+      setRequests((p) => p.filter((r) => r.id !== id));
+    } catch (e) { console.error(e); }
+  };
+
+  const dropContribution = async (id) => {
+    if (!window.confirm('Remove this contribution from your prep?')) return;
+    try {
+      await deletePrepContribution(id);
+      setContributions((p) => p.filter((c) => c.id !== id));
+    } catch (e) { console.error(e); }
+  };
+
+  // Pull a colleague's point into my own notes so it joins the 1-2-1 agenda.
+  // Attribution is kept in the text — I can reword it from there.
+  const adoptContribution = (c) => add({
+    kind: c.kind,
+    body: `${c.contributor?.name || 'A colleague'}: ${c.body}`,
+  });
+
+  const answerRequest = async (request, kind, body) => {
+    try {
+      await addPrepContribution({ request, contributor_id: profile.id, kind, body });
+      setInbox((p) => p.map((r) => (r.id === request.id
+        ? { ...r, status: 'answered', responded_at: new Date().toISOString() }
+        : r)));
+    } catch (e) { console.error(e); }
+  };
+
+  const declineRequest = async (request) => {
+    try {
+      const saved = await updatePrepRequest(request.id, { status: 'declined', responded_at: new Date().toISOString() });
+      setInbox((p) => p.map((r) => (r.id === request.id ? { ...r, ...saved } : r)));
+    } catch (e) { console.error(e); }
+  };
+
   const open = notes.filter((n) => n.status === 'open');
   const parked = notes.filter((n) => n.status === 'parked');
   const discussed = notes.filter((n) => n.status === 'discussed');
+  const adoptedBodies = useMemo(() => new Set(notes.map((n) => n.body)), [notes]);
 
   return (
     <div style={{ padding: '32px 32px 80px', maxWidth: 1180, margin: '0 auto' }}>
@@ -98,8 +173,18 @@ export default function PrepView() {
               <option key={s.id} value={s.id}>{s.name}{s.id === profile?.id ? ' (you)' : ''}</option>
             ))}
           </Select>
+          <Button variant="ghost" onClick={() => setAsking((v) => !v)} style={{ whiteSpace: 'nowrap' }}>
+            <UserPlus size={13} style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
+            Ask for input
+          </Button>
         </div>
       </div>
+
+      <InboxPanel
+        inbox={inbox}
+        onAnswer={answerRequest}
+        onDecline={declineRequest}
+      />
 
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22,
@@ -114,6 +199,30 @@ export default function PrepView() {
           {' '}Anything you want to share goes in the 1-2-1 record itself.
         </span>
       </div>
+
+      {asking && (
+        <AskPanel
+          staff={staff.filter((s) => s.id !== subjectId && s.id !== profile?.id)}
+          subjectName={subject?.name || ''}
+          alreadyAsked={requests.filter((r) => r.status === 'open').map((r) => r.responder_id)}
+          onSend={sendRequests}
+          onCancel={() => setAsking(false)}
+        />
+      )}
+
+      {requests.length > 0 && (
+        <RequestStrip requests={requests} onCancel={cancelRequest} />
+      )}
+
+      {contributions.length > 0 && (
+        <ContributionsPanel
+          contributions={contributions}
+          subjectName={subject?.name || ''}
+          adoptedBodies={adoptedBodies}
+          onAdopt={adoptContribution}
+          onDelete={dropContribution}
+        />
+      )}
 
       {/* Two note columns */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
@@ -179,6 +288,213 @@ export default function PrepView() {
           link_url: item.url || null,
         })}
       />
+    </div>
+  );
+}
+
+// ── Asking colleagues for input ────────────────────────────────────────────
+
+function AskPanel({ staff, subjectName, alreadyAsked, onSend, onCancel }) {
+  const [picked, setPicked] = useState([]);
+  const [message, setMessage] = useState('');
+
+  const toggle = (id) => setPicked((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
+
+  return (
+    <Card style={{ marginBottom: 16, borderColor: '#bfdbfe' }}>
+      <div style={{ fontFamily: SERIF, fontSize: 17, color: '#0f172a', marginBottom: 4 }}>
+        Ask colleagues about {subjectName || 'this person'}
+      </div>
+      <p style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', margin: '0 0 12px' }}>
+        They&rsquo;ll be told what it&rsquo;s for and that it comes to you privately. They won&rsquo;t see your notes,
+        each other&rsquo;s answers, or anything else about your prep — and {subjectName || 'the person'} is never told
+        the request exists.
+      </p>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+        {staff.map((s) => {
+          const on = picked.includes(s.id);
+          const pending = alreadyAsked.includes(s.id);
+          return (
+            <button
+              key={s.id}
+              onClick={() => toggle(s.id)}
+              style={{
+                fontFamily: FONT, fontSize: 12.5, fontWeight: 600,
+                padding: '6px 13px', borderRadius: 999, cursor: 'pointer',
+                border: '1px solid ' + (on ? '#0e7fe0' : '#e5e7eb'),
+                background: on ? '#eff6ff' : '#fff',
+                color: on ? '#0e7fe0' : '#475569',
+              }}
+            >
+              {on && <Check size={11} style={{ marginRight: 5, verticalAlign: 'text-bottom' }} />}
+              {s.name}
+              {pending && <span style={{ color: '#94a3b8', fontWeight: 400 }}> · asked</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <Textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        placeholder={`What would you like them to comment on? e.g. "How have you found working with ${subjectName || 'them'} on the VAT jobs this quarter?"`}
+        style={{ minHeight: 62, fontSize: 13 }}
+      />
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+        <Button variant="accent" disabled={picked.length === 0} onClick={() => onSend(picked, message)}>
+          Send to {picked.length || 'no one'}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function RequestStrip({ requests, onCancel }) {
+  const tone = { open: ['#fffbeb', '#b45309'], answered: ['#f0fdf4', '#15803d'], declined: ['#f8fafc', '#64748b'] };
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+      <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#94a3b8' }}>
+        Asked
+      </span>
+      {requests.map((r) => {
+        const [bg, fg] = tone[r.status] || tone.declined;
+        return (
+          <span key={r.id} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontFamily: FONT, fontSize: 12, background: bg, color: fg,
+            border: '1px solid ' + bg, borderRadius: 999, padding: '4px 6px 4px 12px',
+          }}>
+            <strong style={{ fontWeight: 600 }}>{r.responder?.name || 'Someone'}</strong>
+            <span style={{ opacity: 0.8 }}>{r.status}</span>
+            {r.status === 'open' && (
+              <button onClick={() => onCancel(r.id)} title="Withdraw" style={{ background: 'none', border: 'none', cursor: 'pointer', color: fg, padding: 2, lineHeight: 0 }}>
+                <X size={12} />
+              </button>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function ContributionsPanel({ contributions, subjectName, adoptedBodies, onAdopt, onDelete }) {
+  return (
+    <Card style={{ marginBottom: 24, borderColor: '#e0e7ff' }}>
+      <div style={{ fontFamily: SERIF, fontSize: 17, color: '#0f172a', marginBottom: 4 }}>
+        From colleagues ({contributions.length})
+      </div>
+      <p style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', margin: '0 0 14px' }}>
+        Input you asked for on {subjectName || 'this person'}. Only you and the person who wrote it can see it.
+        Pull anything you want to raise into your own notes.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {contributions.map((c) => {
+          const adopted = adoptedBodies.has(`${c.contributor?.name || 'A colleague'}: ${c.body}`);
+          const kind = PREP_KINDS.find((k) => k.key === c.kind);
+          return (
+            <div key={c.id} style={{ border: '1px solid #f1f5f9', borderRadius: 10, padding: '10px 12px', background: '#fbfcfe' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
+                  {c.contributor?.name || 'A colleague'}
+                </span>
+                <Pill bg={c.kind === 'work' ? '#eff6ff' : '#f5f3ff'} fg={c.kind === 'work' ? '#0e7fe0' : '#7c3aed'}>
+                  {kind?.label || c.kind}
+                </Pill>
+                <span style={{ fontFamily: FONT, fontSize: 11, color: '#cbd5e1' }}>
+                  {new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                </span>
+              </div>
+              <div style={{ fontFamily: FONT, fontSize: 13, color: '#1e293b', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{c.body}</div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, marginTop: 8 }}>
+                <button
+                  onClick={() => !adopted && onAdopt(c)}
+                  disabled={adopted}
+                  style={{
+                    fontFamily: FONT, fontSize: 12, fontWeight: 600,
+                    background: 'none', border: 'none', padding: '2px 6px',
+                    color: adopted ? '#94a3b8' : '#0e7fe0', cursor: adopted ? 'default' : 'pointer',
+                  }}
+                >
+                  {adopted ? '✓ in my notes' : <><CornerDownLeft size={11} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />Add to my notes</>}
+                </button>
+                <IconBtn title="Remove from my prep" onClick={() => onDelete(c.id)}><Trash2 size={12} /></IconBtn>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// My inbox: colleagues asking me to contribute to THEIR prep.
+function InboxPanel({ inbox, onAnswer, onDecline }) {
+  const [expanded, setExpanded] = useState(true);
+  const openOnes = inbox.filter((r) => r.status === 'open');
+  if (openOnes.length === 0) return null;
+
+  return (
+    <Card style={{ marginBottom: 18, borderColor: '#fde68a', background: '#fffbeb' }}>
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}
+      >
+        <Inbox size={15} color="#b45309" />
+        <span style={{ fontFamily: SERIF, fontSize: 17, color: '#0f172a' }}>
+          {openOnes.length} colleague{openOnes.length === 1 ? '' : 's'} asked for your input
+        </span>
+        {expanded ? <ChevronDown size={14} color="#b45309" /> : <ChevronRight size={14} color="#b45309" />}
+      </button>
+      {expanded && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+          {openOnes.map((r) => (
+            <InboxItem key={r.id} request={r} onAnswer={onAnswer} onDecline={onDecline} />
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function InboxItem({ request, onAnswer, onDecline }) {
+  const [body, setBody] = useState('');
+  const [kind, setKind] = useState('work');
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 14px' }}>
+      <div style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', marginBottom: 2 }}>
+        <strong>{request.requester?.name || 'A colleague'}</strong> would like your input on{' '}
+        <strong>{request.subject?.name || 'a colleague'}</strong>
+      </div>
+      {request.message && (
+        <div style={{ fontFamily: FONT, fontSize: 12.5, color: '#475569', fontStyle: 'italic', margin: '6px 0 8px', whiteSpace: 'pre-wrap' }}>
+          &ldquo;{request.message}&rdquo;
+        </div>
+      )}
+      <div style={{ fontFamily: FONT, fontSize: 11.5, color: '#94a3b8', marginBottom: 10 }}>
+        Goes to {request.requester?.name || 'them'} only — {request.subject?.name || 'the person'} will not see it, and neither will anyone else asked.
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        <Select value={kind} onChange={(e) => setKind(e.target.value)} style={{ width: 140, fontSize: 13, padding: '8px 10px' }}>
+          {PREP_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+        </Select>
+        <Textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="Your feedback…"
+          style={{ minHeight: 56, fontSize: 13 }}
+        />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+        <Button variant="ghost" onClick={() => onDecline(request)}>Decline</Button>
+        <Button variant="accent" disabled={!body.trim()} onClick={() => { onAnswer(request, kind, body); setBody(''); }}>
+          Send privately
+        </Button>
+      </div>
     </div>
   );
 }
