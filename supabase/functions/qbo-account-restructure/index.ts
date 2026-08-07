@@ -48,6 +48,9 @@ const RENAMES: Array<{ id: string; from: string; to: string }> = [
   { id: "260", from: "Statutory Accounts - LLP",         to: "Business Accounts - LLP" },
   { id: "261", from: "Statutory Accounts - Partnership", to: "Business Accounts - Partnership" },
   { id: "262", from: "Statutory Accounts - Property",    to: "Business Accounts - Property" },
+  // Not a sql/186 leftover — just a typo that has been in the chart since the
+  // account was created, and reads back on the P&L.
+  { id: "252", from: "ID Verifcation",                   to: "ID Verification" },
 ];
 
 const ITEM_MOVES: Array<{ id: string; expectName: string; toAccountId: string }> = [
