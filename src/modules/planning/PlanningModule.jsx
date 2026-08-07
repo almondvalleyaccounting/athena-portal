@@ -12,6 +12,7 @@ import {
 import { buildProjection, computePipelineContribution, fmtGBP, fmtPct } from './lib/projection';
 
 import BaselineView from './views/BaselineView';
+import PricingView from './views/PricingView';
 import OverviewView from './views/OverviewView';
 import RevenueView from './views/RevenueView';
 import StaffView from './views/StaffView';
@@ -225,6 +226,7 @@ export default function PlanningModule() {
           {/* Baseline lands first on purpose: the trust layer decides
               whether the rest of the module is worth reading today. */}
           <Route index element={<BaselineView />} />
+          <Route path="pricing" element={<PricingView />} />
           <Route path="overview" element={<OverviewView />} />
           <Route path="revenue" element={<RevenueView />} />
           <Route path="staff" element={<StaffView />} />
@@ -320,6 +322,7 @@ function Tabs() {
   // Absolute paths — relative paths stack on top of the current URL in v6.
   const tabs = [
     { to: '/planning', label: 'Baseline', end: true },
+    { to: '/planning/pricing', label: 'Pricing' },
     { to: '/planning/overview', label: 'Overview' },
     { to: '/planning/revenue', label: 'Revenue & clients' },
     { to: '/planning/staff', label: 'Staff' },
