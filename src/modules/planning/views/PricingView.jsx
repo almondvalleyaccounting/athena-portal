@@ -151,8 +151,21 @@ export default function PricingView() {
       : { tone: 'ok', text: `Staged ${ok} client${ok !== 1 ? 's' : ''}. Review and release on Billing Review → Change.` });
   }
 
+  const timeCoveredClients = rows.filter((r) => r.hoursLtm > 0).length;
+
   return (
     <div>
+      {/* Costing honesty: with no time capture, margin-based pricing is
+          opinion, not data. Say so once, loudly, rather than letting a
+          column of "no time data" whisper it. */}
+      {rows.length > 10 && timeCoveredClients < rows.length * 0.1 && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 12.5, color: '#92400e', lineHeight: 1.6 }}>
+          <b>Margins are blind right now:</b> the last twelve months hold time entries for only {timeCoveredClients} of {rows.length} clients,
+          so the margin and £/hr columns are empty for nearly everyone. The uplift workflow works regardless — but pricing decisions can't
+          be cost-informed until either the team logs time in Athena, or we cost clients from planned effort per service instead
+          (a decision for the People phase of the planning overhaul).
+        </div>
+      )}
       {/* Round modeller */}
       <div style={{ ...card, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div>
