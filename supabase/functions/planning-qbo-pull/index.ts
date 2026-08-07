@@ -1,3 +1,8 @@
+// v11 (2026-08-07): adds granularity "balance_sheet" — mirrors QBO's
+// Balance Sheet report into plan_bs_cache, one row per leaf account per
+// snapshot date, section = nearest report group (BankAccounts, AR,
+// OtherCurrentLiabilities, …). Feeds the Planning module's Cash & Owner
+// page (cash position, VAT/CT provisions to the report date).
 // v10 (2026-08-07). History: the repo copy had fallen behind the
 // deployment — deployed v9 gained monthly granularity ({ granularity:
 // "monthly", months_back }) writing one row per (month, account) to
@@ -124,6 +129,38 @@ Deno.serve(async (req) => {
     const endDate = lastDay(endMonthStart.getFullYear(), endMonthStart.getMonth());
     const start = fmt(startMonthStart);
     const end = fmt(endDate);
+
+    if (granularity === "balance_sheet") {
+      const asOf = fmt(new Date());
+      const resp = await qboFetch(`reports/BalanceSheet?end_date=${asOf}&accounting_method=Accrual`);
+      if (!resp.ok) {
+        const text = await resp.text();
+        let friendly = `QBO returned ${resp.status}`;
+        if (text.includes("UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM")) friendly = "QBO rejected the access token — reconnect QuickBooks.";
+        return jr({ success: false, error: friendly, raw: text.slice(0, 600), status: resp.status });
+      }
+      const report = await resp.json();
+      const cols = report.Columns?.Column || [];
+      const headers = cols.map((c) => c.ColTitle || c.ColType);
+      const rows = report.Rows?.Row || [];
+      // Walk the whole tree; every leaf carries its nearest group so the
+      // client can classify (BankAccounts → cash, /vat/i → VAT, …).
+      // Section-total rows are excluded by flattenRows, so no double count.
+      const flat = [];
+      flattenRows(rows, headers, flat, "root");
+
+      const client = sb();
+      const del = await client.from("plan_bs_cache").delete().eq("snapshot_date", asOf);
+      if (del.error) return jr({ success: false, error: `bs cache clear failed: ${del.error.message}` });
+      const inserts = flat
+        .map((r) => ({ snapshot_date: asOf, account_name: r.name, section: r.section, amount: r.values[r.values.length - 1] ?? 0 }))
+        .filter((r) => r.amount !== 0);
+      if (inserts.length) {
+        const ins = await client.from("plan_bs_cache").insert(inserts);
+        if (ins.error) return jr({ success: false, error: `bs cache write failed AFTER clearing ${asOf} — snapshot is empty until a successful re-run: ${ins.error.message}` });
+      }
+      return jr({ success: true, granularity: "balance_sheet", snapshot_date: asOf, accounts: inserts.length });
+    }
 
     if (granularity === "monthly") {
       const path = `reports/ProfitAndLoss?start_date=${start}&end_date=${end}&accounting_method=Accrual&summarize_column_by=Month`;

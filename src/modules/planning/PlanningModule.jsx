@@ -13,6 +13,7 @@ import { buildProjection, computePipelineContribution, fmtGBP, fmtPct } from './
 
 import BaselineView from './views/BaselineView';
 import PricingView from './views/PricingView';
+import CashView from './views/CashView';
 import OverviewView from './views/OverviewView';
 import RevenueView from './views/RevenueView';
 import StaffView from './views/StaffView';
@@ -227,6 +228,7 @@ export default function PlanningModule() {
               whether the rest of the module is worth reading today. */}
           <Route index element={<BaselineView />} />
           <Route path="pricing" element={<PricingView />} />
+          <Route path="cash" element={<CashView />} />
           <Route path="overview" element={<OverviewView />} />
           <Route path="revenue" element={<RevenueView />} />
           <Route path="staff" element={<StaffView />} />
@@ -323,6 +325,7 @@ function Tabs() {
   const tabs = [
     { to: '/planning', label: 'Baseline', end: true },
     { to: '/planning/pricing', label: 'Pricing' },
+    { to: '/planning/cash', label: 'Cash & Owner' },
     { to: '/planning/overview', label: 'Overview' },
     { to: '/planning/revenue', label: 'Revenue & clients' },
     { to: '/planning/staff', label: 'Staff' },

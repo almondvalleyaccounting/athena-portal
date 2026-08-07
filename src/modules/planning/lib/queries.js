@@ -223,6 +223,42 @@ export async function loadBaselineHealth() {
   return data;
 }
 
+// Latest balance-sheet snapshot (plan_bs_cache, written by
+// planning-qbo-pull v11 granularity 'balance_sheet').
+export async function loadBsCache() {
+  const { data: latest, error: e1 } = await supabase
+    .from('plan_bs_cache')
+    .select('snapshot_date')
+    .order('snapshot_date', { ascending: false })
+    .limit(1);
+  if (e1) throw e1;
+  const snap = latest?.[0]?.snapshot_date;
+  if (!snap) return [];
+  const { data, error } = await supabase
+    .from('plan_bs_cache')
+    .select('snapshot_date, account_name, section, amount')
+    .eq('snapshot_date', snap);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function pullQboBalanceSheet() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/planning-qbo-pull`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ granularity: 'balance_sheet' }),
+  });
+  const text = await resp.text();
+  try { return JSON.parse(text); } catch { throw new Error(`QBO balance sheet pull: ${resp.status} ${text.slice(0, 200)}`); }
+}
+
 // When the monthly P&L cache was last refreshed from QBO.
 export async function loadPlCacheFreshness() {
   const { data, error } = await supabase
