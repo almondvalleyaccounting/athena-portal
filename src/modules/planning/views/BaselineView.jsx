@@ -79,13 +79,22 @@ export default function BaselineView() {
   const lastClosed = last3[last3.length - 1] || null;
   const lastClosedIncome = lastClosed ? incomeByMonth.get(lastClosed) : null;
   const lastClosedOneOffs = lastClosed && oneOffs ? (oneOffs.get(lastClosed) || 0) : null;
-  // Implied recurring = what landed as income minus known Athena one-offs.
-  // Still slightly generous: bank interest, Modulr and any invoice raised
-  // outside Athena stay inside it — footnoted below.
+  // Implied recurring+annual = what landed as income minus known Athena
+  // one-offs. Two DIFFERENT comparisons, deliberately:
+  //   floor check (monthly)  — implied vs the CONTRACTED base only. Annual
+  //     work lands lumpy, so a single month can never be fairly compared
+  //     against a run-rate that smooths "annual ÷ 12"; but income should
+  //     never fall below what the templates alone generate.
+  //   book check (LTM)       — trailing-12 income vs the annualised
+  //     run-rate. Fair at year scale, though today's run-rate reflects a
+  //     book that grew/uplifted through the year, so a modest shortfall
+  //     is expected in a growing firm.
   const impliedRecurring = lastClosedIncome != null && lastClosedOneOffs != null
     ? lastClosedIncome - lastClosedOneOffs : null;
-  const driftPct = impliedRecurring != null && totalMonthly > 0
-    ? (impliedRecurring - totalMonthly) / totalMonthly : null;
+  const floorDrift = impliedRecurring != null && contractedMonthly > 0
+    ? (impliedRecurring - contractedMonthly) / contractedMonthly : null;
+  const bookDrift = closedMonths.length >= 12 && totalMonthly > 0
+    ? (ltmIncome - totalMonthly * 12) / (totalMonthly * 12) : null;
 
   // ── Status logic ──
   const statuses = useMemo(() => {
@@ -116,26 +125,36 @@ export default function BaselineView() {
       text: `Monthly P&L last fetched from QBO ${fmtWhen(plFreshness)}. Actuals overlay and this page's reconciliation read from it.`,
       action: { label: pulling ? 'Refreshing…' : 'Refresh P&L now', onClick: refreshPl },
     });
-    if (driftPct != null) {
-      const abs = Math.abs(driftPct);
+    if (floorDrift != null) {
+      // Income should never fall below what the templates alone generate;
+      // a POSITIVE number is normal (annual work landing on top).
       s.push({
-        key: 'recon',
-        label: 'Run-rate vs P&L',
-        level: abs <= 0.075 ? 'green' : abs <= 0.15 ? 'amber' : 'red',
-        text: `Implied recurring income in ${lastClosed} was ${fmtGBP(impliedRecurring)} vs the current run-rate of ${fmtGBP(totalMonthly)} (${driftPct >= 0 ? '+' : ''}${(driftPct * 100).toFixed(1)}%). Fee changes since ${lastClosed} and non-Athena income account for small drift.`,
+        key: 'floor',
+        label: 'Contracted floor check',
+        level: floorDrift >= -0.05 ? 'green' : floorDrift >= -0.15 ? 'amber' : 'red',
+        text: `${lastClosed}: income net of Athena one-offs was ${fmtGBP(impliedRecurring)} vs the contracted base of ${fmtGBP(contractedMonthly)} (${floorDrift >= 0 ? '+' : ''}${(floorDrift * 100).toFixed(1)}%). ${floorDrift >= 0 ? 'The templates are collecting; the surplus is annual and other work.' : 'Income came in BELOW what the templates alone should generate — check failed direct debits or paused templates.'}`,
       });
     } else {
       s.push({
-        key: 'recon',
-        label: 'Run-rate vs P&L',
+        key: 'floor',
+        label: 'Contracted floor check',
         level: 'amber',
         text: oneOffs === null
-          ? 'One-off invoice data not readable from this account — reconciliation is income-only, so treat drift with caution.'
+          ? 'One-off invoice data not readable from this account — the floor check needs it, so treat this page with caution.'
           : 'No closed-month P&L data cached yet — refresh the P&L to enable reconciliation.',
       });
     }
+    if (bookDrift != null) {
+      const abs = Math.abs(bookDrift);
+      s.push({
+        key: 'book',
+        label: 'Whole-book check (LTM)',
+        level: abs <= 0.10 ? 'green' : abs <= 0.20 ? 'amber' : 'red',
+        text: `Last 12 months' income ${fmtGBP(ltmIncome)} vs the annualised run-rate ${fmtGBP(totalMonthly * 12)} (${bookDrift >= 0 ? '+' : ''}${(bookDrift * 100).toFixed(1)}%). Today's run-rate reflects a book that grew and took uplifts through the year, so a modest shortfall is expected in a growing firm.`,
+      });
+    }
     return s;
-  }, [health, plFreshness, driftPct, impliedRecurring, lastClosed, totalMonthly, oneOffs, pulling]);
+  }, [health, plFreshness, floorDrift, bookDrift, impliedRecurring, lastClosed, contractedMonthly, totalMonthly, ltmIncome, oneOffs, pulling]);
 
   const worst = statuses.some((s) => s.level === 'red') ? 'red'
     : statuses.some((s) => s.level === 'amber') ? 'amber' : 'green';
@@ -200,9 +219,10 @@ export default function BaselineView() {
       <div style={{ ...card, marginTop: 16 }}>
         <h3 style={h3}>Does the book tie to the P&L?</h3>
         <p style={sub}>
-          Each closed month: what QBO's accrual P&L says landed as income, minus one-off invoices pushed from Athena,
-          leaves the income the recurring book should explain. Bank interest, Modulr fees and invoices raised outside
-          Athena are not stripped out, so a small positive drift is normal.
+          Each closed month: QBO's accrual P&L income, minus one-off invoices pushed from Athena, should never fall
+          below the <b>contracted base</b> — what the templates alone generate. Anything above the floor is annual
+          and other work, which lands lumpy (year-end season, SA rush), so big positive months are normal and the
+          smoothed run-rate is only compared at whole-year scale (see the data-health checks below).
         </p>
         {last3.length === 0 ? (
           <div style={{ fontSize: 12.5, color: GREY }}>No closed-month P&L data cached — use "Refresh P&L now" below.</div>
@@ -214,9 +234,9 @@ export default function BaselineView() {
                   <th style={{ ...th, textAlign: 'left' }}>Month</th>
                   <th style={th}>P&L income</th>
                   <th style={th}>Athena one-offs</th>
-                  <th style={th}>Implied recurring</th>
-                  <th style={th}>Run-rate today</th>
-                  <th style={th}>Drift</th>
+                  <th style={th}>Recurring + annual</th>
+                  <th style={th}>Contracted base</th>
+                  <th style={th}>vs floor</th>
                 </tr>
               </thead>
               <tbody>
@@ -224,15 +244,17 @@ export default function BaselineView() {
                   const inc = incomeByMonth.get(k) || 0;
                   const oo = oneOffs ? (oneOffs.get(k) || 0) : null;
                   const implied = oo != null ? inc - oo : null;
-                  const drift = implied != null && totalMonthly > 0 ? (implied - totalMonthly) / totalMonthly : null;
-                  const driftColour = drift == null ? GREY : Math.abs(drift) <= 0.075 ? GREEN : Math.abs(drift) <= 0.15 ? AMBER : RED;
+                  const drift = implied != null && contractedMonthly > 0 ? (implied - contractedMonthly) / contractedMonthly : null;
+                  // Positive = annual work landing on top of the floor: healthy.
+                  // Negative beyond tolerance = the templates aren't collecting.
+                  const driftColour = drift == null ? GREY : drift >= -0.05 ? GREEN : drift >= -0.15 ? AMBER : RED;
                   return (
                     <tr key={k} style={{ borderTop: '1px solid #f1f5f9' }}>
                       <td style={{ ...td, textAlign: 'left', color: '#64748b' }}>{k}</td>
                       <td style={td}>{fmtGBP(inc)}</td>
                       <td style={td}>{oo == null ? '—' : fmtGBP(oo)}</td>
                       <td style={{ ...td, fontWeight: 600 }}>{implied == null ? '—' : fmtGBP(implied)}</td>
-                      <td style={td}>{fmtGBP(totalMonthly)}</td>
+                      <td style={td}>{fmtGBP(contractedMonthly)}</td>
                       <td style={{ ...td, color: driftColour, fontWeight: 700 }}>
                         {drift == null ? '—' : `${drift >= 0 ? '+' : ''}${(drift * 100).toFixed(1)}%`}
                       </td>
@@ -243,7 +265,7 @@ export default function BaselineView() {
             </table>
           </div>
         )}
-        <IncomeChart incomeByMonth={incomeByMonth} closedMonths={closedMonths} runRate={totalMonthly} />
+        <IncomeChart incomeByMonth={incomeByMonth} closedMonths={closedMonths} runRate={totalMonthly} contracted={contractedMonthly} />
       </div>
 
       {/* Data health */}
@@ -323,8 +345,9 @@ function LegendDot({ colour, label }) {
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 2, background: colour }} />{label}</span>;
 }
 
-// 12 closed months of income as bars, with the current run-rate as a line.
-function IncomeChart({ incomeByMonth, closedMonths, runRate }) {
+// 12 closed months of income as bars, with the smoothed run-rate and the
+// contracted floor as reference lines.
+function IncomeChart({ incomeByMonth, closedMonths, runRate, contracted }) {
   const keys = closedMonths.slice(-12);
   if (keys.length < 3) return null;
   const vals = keys.map((k) => incomeByMonth.get(k) || 0);
@@ -338,6 +361,15 @@ function IncomeChart({ incomeByMonth, closedMonths, runRate }) {
         <div style={{ position: 'absolute', right: 0, top: H - (runRate / max) * H - 16, fontSize: 10, color: '#0e7fe0', fontWeight: 600 }}>
           run-rate {fmtGBP(runRate)}
         </div>
+        {/* Contracted floor line */}
+        {contracted > 0 && (
+          <>
+            <div style={{ position: 'absolute', left: 0, right: 0, top: H - (contracted / max) * H, borderTop: '2px dashed #059669', zIndex: 1 }} />
+            <div style={{ position: 'absolute', left: 0, top: H - (contracted / max) * H + 3, fontSize: 10, color: '#059669', fontWeight: 600 }}>
+              contracted floor {fmtGBP(contracted)}
+            </div>
+          </>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${keys.length}, 1fr)`, gap: 6, alignItems: 'end', height: '100%' }}>
           {keys.map((k, i) => (
             <div key={k} title={`${k}: ${fmtGBP(vals[i])}`}
