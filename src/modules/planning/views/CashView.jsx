@@ -253,6 +253,9 @@ export default function CashView() {
             {bs.provisionAccounts.map((a, i) => (
               <Row key={`p${i}`} label={`${a.name} (${a.kind})`} value={fmtGBP(a.amount)} icon={<AlertTriangle size={13} style={{ color: AMBER }} />} />
             ))}
+            {bs.clientMoneyAccounts.map((a, i) => (
+              <Row key={`cm${i}`} label={`${a.name} — client money, excluded`} value={fmtGBP(a.amount)} icon={<Info size={13} style={{ color: GREY }} />} />
+            ))}
             {bs.debtors !== 0 && <Row label="Trade debtors" value={fmtGBP(bs.debtors)} icon={<Info size={13} style={{ color: GREY }} />} />}
             {bs.unclassified.length > 0 && (
               <div style={{ fontSize: 11.5, color: AMBER, marginTop: 6 }}>

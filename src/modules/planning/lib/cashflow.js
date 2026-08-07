@@ -32,8 +32,8 @@ export function ctOnAnnualProfit(p) {
 // Anything liability-ish that doesn't match a pattern is surfaced, not hidden.
 export function classifyBalanceSheet(rows) {
   const out = {
-    cash: 0, debtors: 0, vat: 0, paye: 0, ct: 0, directorsLoan: 0,
-    cashAccounts: [], provisionAccounts: [], unclassified: [],
+    cash: 0, clientMonies: 0, debtors: 0, vat: 0, paye: 0, ct: 0, directorsLoan: 0,
+    cashAccounts: [], clientMoneyAccounts: [], provisionAccounts: [], unclassified: [],
     snapshotDate: rows[0]?.snapshot_date || null,
   };
   for (const r of rows || []) {
@@ -41,8 +41,16 @@ export function classifyBalanceSheet(rows) {
     const section = String(r.section || '');
     const amount = Number(r.amount) || 0;
     if (/bank/i.test(section)) {
-      out.cash += amount;
-      out.cashAccounts.push({ name, amount });
+      // Client-money accounts are NOT the firm's cash — they hold client
+      // tax monies in transit (the same trap that poisons Sales by
+      // Customer). Track them separately, never in the drawable balance.
+      if (/client/i.test(name)) {
+        out.clientMonies += amount;
+        out.clientMoneyAccounts.push({ name, amount });
+      } else {
+        out.cash += amount;
+        out.cashAccounts.push({ name, amount });
+      }
     } else if (/^AR$|receivable/i.test(section)) {
       out.debtors += amount;
     } else if (/liab|credit ?card|^AP$/i.test(section)) {
