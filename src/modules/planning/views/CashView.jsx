@@ -97,9 +97,33 @@ export default function CashView() {
     [overheadLines]
   );
 
+  // ACTUAL accrual-basis profit since the fiscal year start, from the QBO
+  // P&L cache — drives the in-year CT accrual (real income minus real
+  // expenses, not the plan's modelled costs).
+  const actualYtd = useMemo(() => {
+    const yeMonth = Number(scenario?.fiscal_year_end_month ?? 9);
+    const now = new Date();
+    const fyStart = new Date(now.getFullYear(), yeMonth, 1); // month AFTER year end
+    if (fyStart > now) fyStart.setFullYear(fyStart.getFullYear() - 1);
+    const fyStartKey = fyStart.toISOString().slice(0, 7);
+    const thisMonth = now.toISOString().slice(0, 7);
+    const byMonth = new Map();
+    for (const a of monthlyActuals || []) {
+      const s = String(a.period_start).slice(0, 10), e = String(a.period_end).slice(0, 10);
+      if (s.slice(0, 7) !== e.slice(0, 7)) continue; // skip LTM summary rows
+      const k = s.slice(0, 7);
+      if (k < fyStartKey || k >= thisMonth) continue;
+      const amt = Number(a.amount) || 0;
+      const cur = byMonth.get(k) || 0;
+      byMonth.set(k, a.account_type === 'Income' ? cur + amt : cur - amt);
+    }
+    if (byMonth.size === 0) return null;
+    return { profit: [...byMonth.values()].reduce((s, v) => s + v, 0), months: byMonth.size };
+  }, [monthlyActuals, scenario]);
+
   const fc = useMemo(() => buildCashForecast({
-    scenario, contractedNetMonthly, otherNetMonthly, grossPayrollMonthly, dividendsMonthly, overheadNetMonthly, bs,
-  }), [scenario, contractedNetMonthly, otherNetMonthly, grossPayrollMonthly, dividendsMonthly, overheadNetMonthly, bs]);
+    scenario, contractedNetMonthly, otherNetMonthly, grossPayrollMonthly, dividendsMonthly, overheadNetMonthly, bs, actualYtd,
+  }), [scenario, contractedNetMonthly, otherNetMonthly, grossPayrollMonthly, dividendsMonthly, overheadNetMonthly, bs, actualYtd]);
 
   const modelFed = grossPayrollMonthly > 0 && overheadNetMonthly > 0;
   const safe = fc.safeDraw;
@@ -124,7 +148,11 @@ export default function CashView() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 8 }}>
         <Kpi label="Cash today" value={fmtGBP(fc.cashNow)} sub={`Balance sheet ${bs.snapshotDate || '—'} · ${bs.cashAccounts.length} account${bs.cashAccounts.length !== 1 ? 's' : ''}`} />
         <Kpi label="VAT ring-fenced" value={fmtGBP(fc.provisionsNow.vat)} sub="Provision to the report date" colour={AMBER} />
-        <Kpi label="CT ring-fenced" value={fmtGBP(fc.provisionsNow.ct)} sub={`incl. in-year accrual at ${(fc.assumptions.effCtRate * 100).toFixed(1)}%`} colour={AMBER} />
+        <Kpi label="CT ring-fenced" value={fmtGBP(fc.provisionsNow.ct)}
+          sub={fc.assumptions.ctBasis === 'actual'
+            ? `${fmtGBP(fc.priorCt)} prior yr + ${fmtGBP(fc.assumptions.inYearCtProvisionNow)} on actual YTD profit ${fmtGBP(actualYtd?.profit || 0)} @ ${(fc.assumptions.effCtRate * 100).toFixed(1)}%`
+            : `incl. in-year accrual at ${(fc.assumptions.effCtRate * 100).toFixed(1)}% (modelled — no P&L actuals)`}
+          colour={AMBER} />
         <Kpi label={`Payroll floor (${fc.assumptions.floorMonths} mo)`} value={fmtGBP(fc.floor)} sub={`${fmtGBP(grossPayrollMonthly)}/mo fully-loaded`} />
         <div style={{ background: safe > 0 ? '#f0fdf4' : '#fef2f2', border: `1px solid ${safe > 0 ? '#bbf7d0' : '#fecaca'}`, borderRadius: 12, padding: '14px 16px' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: safeColour, textTransform: 'uppercase', letterSpacing: 0.5 }}>Safe to draw</div>

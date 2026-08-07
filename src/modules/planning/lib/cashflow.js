@@ -74,6 +74,13 @@ export function buildCashForecast({
   dividendsMonthly = 0,
   overheadNetMonthly = 0,
   bs = { cash: 0, vat: 0, ct: 0, paye: 0, snapshotDate: null },
+  // ACTUAL accrual-basis profit since the fiscal year start, from the QBO
+  // P&L cache: { profit, months }. When present it drives the CT accrual —
+  // the modelled profit (income minus plan costs) reads as pure margin
+  // while the Staff/Overheads tabs are unfed, which once inflated the CT
+  // ring-fence to £139.8k against a true ~£46.5k (caught by Bobby,
+  // 2026-08-07).
+  actualYtd = null,
 }) {
   const debtorDays = Number(scenario?.cash_debtor_days ?? 30);
   const floorMonths = Number(scenario?.cash_floor_months ?? 6);
@@ -146,12 +153,24 @@ export function buildCashForecast({
   if (priorCt > 0) pushEvent(ctPayDate, -priorCt, `CT (year to ${lastYe.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })})`, 'ct');
 
   // In-year CT accrues as a provision (paid beyond most horizons).
-  const monthlyProfit = Math.max(0, contractedNetMonthly + otherNetMonthly - grossPayrollMonthly - overheadNetMonthly);
+  // Prefer ACTUAL YTD profit from the P&L cache; fall back to the modelled
+  // profit only when no actuals exist.
+  const monthsSinceYe = (today.getFullYear() - lastYe.getFullYear()) * 12 + (today.getMonth() - lastYe.getMonth());
+  let monthlyProfit;
+  let ctBasis;
+  if (actualYtd && actualYtd.months > 0) {
+    monthlyProfit = Math.max(0, actualYtd.profit / actualYtd.months);
+    ctBasis = 'actual';
+  } else {
+    monthlyProfit = Math.max(0, contractedNetMonthly + otherNetMonthly - grossPayrollMonthly - overheadNetMonthly);
+    ctBasis = 'modelled';
+  }
   const annualProfit = monthlyProfit * 12;
   const effCtRate = annualProfit > 0 ? ctOnAnnualProfit(annualProfit) / annualProfit : 0;
   const monthlyCtAccrual = monthlyProfit * effCtRate;
-  const monthsSinceYe = (today.getFullYear() - lastYe.getFullYear()) * 12 + (today.getMonth() - lastYe.getMonth());
-  const inYearCtProvisionNow = monthlyCtAccrual * Math.max(0, monthsSinceYe);
+  const inYearCtProvisionNow = ctBasis === 'actual'
+    ? Math.max(0, actualYtd.profit) * effCtRate
+    : monthlyCtAccrual * Math.max(0, monthsSinceYe);
 
   events.sort((a, b) => a.date - b.date);
 
@@ -221,7 +240,7 @@ export function buildCashForecast({
   const safeDraw = Math.min(safeDrawNow, headroomMin);
 
   return {
-    assumptions: { debtorDays, floorMonths, payePct, vatablePct, yeMonth, monthlyNetVat, monthlyCtAccrual, effCtRate },
+    assumptions: { debtorDays, floorMonths, payePct, vatablePct, yeMonth, monthlyNetVat, monthlyCtAccrual, effCtRate, ctBasis, inYearCtProvisionNow },
     provisionsNow,
     floor,
     cashNow: Number(bs.cash) || 0,
