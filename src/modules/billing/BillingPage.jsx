@@ -60,6 +60,11 @@ export default function BillingPage() {
   // Seeded from the dry-run plan's resolved contact, editable before push.
   const [contacts, setContacts] = useState({});
   const [contactIndex, setContactIndex] = useState(0); // which target is being edited
+  // Which QBO customer each unmapped client should invoice, keyed by entity_id:
+  // a customer id to link, or 'new' to create one. Only clients the dry-run
+  // couldn't map appear here — the mapping is a per-client decision, so it's
+  // keyed by entity rather than by bill.
+  const [custChoice, setCustChoice] = useState({});
 
   const [formClient, setFormClient] = useState('');
   // Multi-line bill editor. One client, N service lines → one QBO invoice.
@@ -309,6 +314,38 @@ export default function BillingPage() {
   const contactOf = (id) => contacts[id] || { email: '', line1: '', line2: '', city: '', postcode: '' };
   const setContact = (id, patch) => setContacts((prev) => ({ ...prev, [id]: { ...contactOf(id), ...patch } }));
   const isContactReady = (id) => { const c = contactOf(id); return !!(c.email?.trim() && c.line1?.trim() && c.postcode?.trim()); };
+
+  // ── QBO customer mapping (push-confirm modal) ──
+  // The dry-run says which QBO customer each bill will land on. Where it
+  // couldn't map one, the user picks: link an existing customer or create a
+  // new one. Left undecided, the push is blocked rather than guessing —
+  // Athena's "Surname, Firstname" rarely matches a trading name in QBO, so
+  // an unguarded create makes a duplicate customer.
+  const planOf = (itemId) => preview?.find((r) => r.billing_item_id === itemId) || null;
+  const custChoiceOf = (entityId) => custChoice[entityId] || '';
+  const setCustChoiceFor = (entityId, value) => setCustChoice((prev) => ({ ...prev, [entityId]: value }));
+  // Undecided only counts once the dry-run has actually come back.
+  const needsCustomerChoice = (item) => {
+    const p = planOf(item.id);
+    return !!p && p.customer_action === 'create' && !custChoiceOf(item.entity_id);
+  };
+  // What the row will do, resolved from the plan plus any pick made here.
+  const customerTargetOf = (item) => {
+    const p = planOf(item.id);
+    if (!p) return null;
+    if (p.customer_action !== 'create') {
+      // A stored id QBO no longer returns is a broken mapping, not a customer.
+      if (p.customer_missing) return { mode: 'missing', name: null, id: p.qbo_customer_id, source: p.customer_source, inactive: false };
+      return { mode: 'existing', name: p.qbo_customer_name || '(unnamed customer)', id: p.qbo_customer_id, source: p.customer_source, inactive: p.customer_inactive };
+    }
+    const choice = custChoiceOf(item.entity_id);
+    if (choice && choice !== 'new') {
+      const c = (p.customer_candidates || []).find((x) => String(x.id) === String(choice));
+      return { mode: 'link', name: c?.name || `Customer ${choice}`, id: choice, source: 'picked', inactive: c ? !c.active : false };
+    }
+    if (choice === 'new') return { mode: 'new', name: entityMap[item.entity_id]?.name || '—', id: null, source: null, inactive: false };
+    return { mode: 'undecided', name: null, id: null, source: null, inactive: false };
+  };
   // Send/draft resolves per item: its own choice if it has one, else the bulk
   // default. An item with no email can only ever be a draft.
   const sendModeOf = (id) => sendModes[id] || sendMode;
@@ -405,7 +442,9 @@ export default function BillingPage() {
   // rows approved before that rule existed — but a £0.00 invoice must never
   // reach QuickBooks, so it's checked at the terminal step too.
   const unpricedTargets = pushTargets.filter((i) => !isPriced(i));
-  const allContactsReady = pushTargets.length > 0 && notReadyTargets.length === 0 && unpricedTargets.length === 0;
+  // Clients with no QBO customer mapped and no decision made yet.
+  const unmappedTargets = pushTargets.filter((i) => needsCustomerChoice(i));
+  const allContactsReady = pushTargets.length > 0 && notReadyTargets.length === 0 && unpricedTargets.length === 0 && unmappedTargets.length === 0;
   // How the batch currently splits, for the bulk buttons and the submit label.
   const sendCount = pushTargets.filter((i) => willSendItem(i.id)).length;
   const draftCount = pushTargets.length - sendCount;
@@ -435,6 +474,18 @@ export default function BillingPage() {
       const sendMap = {};
       for (const it of pushTargets) sendMap[it.id] = sendModeOf(it.id) === 'send';
 
+      // Customer mapping decisions, per client. Only unmapped clients appear:
+      // either link the customer the user picked, or carry the explicit
+      // go-ahead to create one. The push rejects anything else.
+      const linkCustomer = {};
+      const newCustomerOk = {};
+      for (const it of pushTargets) {
+        const t = customerTargetOf(it);
+        if (!t || !it.entity_id) continue;
+        if (t.mode === 'link') linkCustomer[it.entity_id] = String(t.id);
+        else if (t.mode === 'new') newCustomerOk[it.entity_id] = true;
+      }
+
       const result = await pushBillingItems(
         pushTargets.map((i) => i.id),
         sendMode === 'send',
@@ -442,6 +493,7 @@ export default function BillingPage() {
         false,
         Number(dueDays) >= 0 ? Number(dueDays) : 14,
         sendMap,
+        { linkCustomer, newCustomerOk },
       );
       setPushResults(result);
       await loadData();
@@ -460,7 +512,7 @@ export default function BillingPage() {
   // draft) before committing. Doesn't depend on sendMode — the send/draft
   // line is derived client-side from the plan's has_email flag.
   useEffect(() => {
-    if (!showPushConfirm) { setPreview(null); setPreviewError(null); setContacts({}); setContactIndex(0); setSendModes({}); return; }
+    if (!showPushConfirm) { setPreview(null); setPreviewError(null); setContacts({}); setContactIndex(0); setSendModes({}); setCustChoice({}); return; }
     let cancelled = false;
     const ids = pushTargets.map((i) => i.id);
     if (ids.length === 0) return;
@@ -470,6 +522,17 @@ export default function BillingPage() {
         if (cancelled) return;
         const plan = res?.plan || [];
         setPreview(plan);
+        // A client with no QBO customer AND no near matches is unambiguous —
+        // default it to "create". Where QBO does hold something similar the
+        // choice stays blank, so the push waits for the user to look at it.
+        setCustChoice((prev) => {
+          const next = { ...prev };
+          for (const p of plan) {
+            if (p.customer_action !== 'create' || !p.entity_id || next[p.entity_id]) continue;
+            if (!(p.customer_candidates || []).length) next[p.entity_id] = 'new';
+          }
+          return next;
+        });
         // Seed each item's contact from the resolved dry-run values
         // (Athena → QBO → recurring template → group member). Don't clobber
         // anything the user has already edited this session.
@@ -912,7 +975,7 @@ export default function BillingPage() {
               {previewError && <div style={{fontSize:12,color:'#b91c1c',padding:'4px 0'}}>Couldn&apos;t load preview: {previewError}</div>}
               {/* Header */}
               <div style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,padding:'4px 0',fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.04em',borderBottom:'1px solid #e5e7eb'}}>
-                <span>Client</span><span>Service</span><span>Type</span><span>Customer</span><span>Send</span>
+                <span>Client</span><span>Service</span><span>Type</span><span>QuickBooks customer</span><span>Send</span>
                 <span style={{textAlign:'right'}}>Net</span><span style={{textAlign:'right'}}>VAT</span><span style={{textAlign:'right'}}>Gross</span>
               </div>
               {pushTargets.map((item,idx)=>{
@@ -930,7 +993,26 @@ export default function BillingPage() {
                     <span style={ellip} title={entityMap[item.entity_id]?.name}>{!ready && <span style={{color:'#b45309'}} title="Needs email + address">⚠ </span>}{entityMap[item.entity_id]?.name||'—'}</span>
                     <span style={{...ellip,color:(p?.unmapped?.length>0)?'#b45309':'#475569'}} title={(p?.unmapped?.length>0)?`No QuickBooks product mapped for: ${p.unmapped.join(', ')} — map it (qbo_service_items) before pushing or this line will error`:(item.description||item.service)}>{(p?.unmapped?.length>0)?<span title="Service not mapped to a QuickBooks product">⚠ </span>:null}{item.service}</span>
                     <span style={{color:'#64748b'}}>One-off</span>
-                    <span style={{color:p?.customer_action==='create'?'#b45309':'#475569',fontWeight:500}}>{!p?'…':p.customer_action==='create'?'New':'Existing'}</span>
+                    {/* Which QBO customer this invoice lands on, BY NAME.
+                        "Existing" alone hid the thing worth checking: the
+                        Athena client and the QBO customer are often named
+                        differently (trading names), and that's only spottable
+                        if the name is on screen before the push. */}
+                    {(() => {
+                      const t = customerTargetOf(item);
+                      if (!p || !t) return <span style={{color:'#94a3b8'}}>…</span>;
+                      if (t.mode==='undecided') return <span style={{...ellip,color:'#b45309',fontWeight:600}} title="No QuickBooks customer mapped — pick one below before pushing">⚠ Not mapped</span>;
+                      if (t.mode==='missing') return <span style={{...ellip,color:'#b91c1c',fontWeight:600}} title={`This client is mapped to QuickBooks customer #${t.id}, which QuickBooks no longer returns. The push will fail on it — fix the mapping on the client record.`}>⚠ #{t.id} not in QBO</span>;
+                      if (t.mode==='new') return <span style={{...ellip,color:'#b45309',fontWeight:500}} title={`Will create a new QuickBooks customer: ${t.name}`}>New · {t.name}</span>;
+                      const via = t.source==='picked' ? 'linking to this customer now'
+                        : t.source==='name_match' ? 'matched on name — not yet stored against the client'
+                        : 'stored mapping on the client record';
+                      return (
+                        <span style={{...ellip,color:'#475569',fontWeight:500}} title={`Invoice goes to QuickBooks customer "${t.name}"${t.id?` (#${t.id})`:''} — ${via}${t.inactive?' · this customer is INACTIVE in QuickBooks':''}`}>
+                          {t.inactive && <span style={{color:'#b45309'}} title="Inactive in QuickBooks">⚠ </span>}{t.name}
+                        </span>
+                      );
+                    })()}
                     {/* Per-item send/draft. Clicking must not also move the
                         contact editor, hence stopPropagation. */}
                     <span onClick={(e)=>e.stopPropagation()} style={{display:'flex',alignItems:'center',gap:4,minWidth:0}}>
@@ -1002,6 +1084,62 @@ export default function BillingPage() {
                   </div>
                   <div style={{fontSize:13,fontWeight:600,color:'#0f172a',marginBottom:8}}>{name} — {curTarget.service}</div>
 
+                  {/* QuickBooks customer — stated plainly, because the email
+                      and address below get written onto THIS customer record,
+                      not just onto the invoice. */}
+                  {(() => {
+                    const t = customerTargetOf(curTarget);
+                    if (!cp || !t) return null;
+                    const cands = cp.customer_candidates || [];
+                    const mapped = t.mode==='existing' || t.mode==='link';
+                    const tone = t.mode==='missing' ? {bg:'#fef2f2',br:'#fecaca'} : mapped ? {bg:'#f0f9ff',br:'#bae6fd'} : {bg:'#fffbeb',br:'#fde68a'};
+                    return (
+                      <div style={{marginBottom:10,padding:'8px 10px',borderRadius:8,background:tone.bg,border:`1px solid ${tone.br}`}}>
+                        <label style={{...formLabel,marginBottom:4}}>QuickBooks customer</label>
+                        {t.mode==='missing' ? (
+                          <div style={{fontSize:12,color:'#b91c1c'}}>
+                            This client is mapped to QuickBooks customer <b>#{t.id}</b>, which QuickBooks no longer returns — it may have been deleted or merged. Clear or correct the mapping on the client record before pushing; this bill will error otherwise.
+                          </div>
+                        ) : mapped ? (
+                          <>
+                            <div style={{fontSize:13,fontWeight:600,color:'#0f172a'}}>
+                              {t.name}{t.id && <span style={{fontWeight:400,color:'#64748b'}}> · #{t.id}</span>}
+                            </div>
+                            <div style={{fontSize:11,color:'#64748b',marginTop:2}}>
+                              {t.source==='stored' ? 'Mapped on the client record'
+                                : t.source==='name_match' ? 'Matched on name'
+                                : 'Will be linked to this client on push'}
+                              {t.name && t.name.toLowerCase() !== name.toLowerCase() && ' — note the QuickBooks name differs from the Athena name'}
+                              {t.inactive && ' · inactive in QuickBooks'}
+                            </div>
+                            <div style={{fontSize:11,color:'#64748b',marginTop:4}}>The email and address below are saved onto this customer in QuickBooks, so they apply to its future invoices too.</div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{fontSize:12,color:'#92400e',marginBottom:6}}>
+                              No QuickBooks customer is mapped to <b>{name}</b>.
+                              {cands.length>0 ? ` ${cands.length} similar ${cands.length===1?'customer':'customers'} already exist — link the right one rather than creating a duplicate.` : ' Nothing similar found in QuickBooks.'}
+                            </div>
+                            <select
+                              value={custChoiceOf(curTarget.entity_id)}
+                              onChange={(e)=>setCustChoiceFor(curTarget.entity_id,e.target.value)}
+                              disabled={pushing}
+                              style={{...inputStyle,marginBottom:0}}
+                            >
+                              <option value="">Choose the QuickBooks customer…</option>
+                              {cands.map((c)=>(
+                                <option key={c.id} value={c.id}>
+                                  Link to: {c.name}{c.active?'':' (inactive)'}{c.address_label?` — ${c.address_label}`:''}
+                                </option>
+                              ))}
+                              <option value="new">Create a new customer called &quot;{name}&quot;</option>
+                            </select>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   <label style={formLabel}>Email *</label>
                   {cp?.email_options?.length>0 && (
                     <select value="" onChange={(e)=>{ if(e.target.value) setContact(id,{email:e.target.value}); }} disabled={pushing} style={{...inputStyle,marginBottom:6,color:'#64748b'}}>
@@ -1056,6 +1194,11 @@ export default function BillingPage() {
             {notReadyTargets.length>0 && pushTargets.length>0 && !previewLoading && (
               <p style={{fontSize:12,color:'#b45309',marginBottom:8}}>
                 {notReadyTargets.length} {notReadyTargets.length===1?'item needs':'items need'} an email + address (line 1 + postcode) before you can push.
+              </p>
+            )}
+            {unmappedTargets.length>0 && !previewLoading && (
+              <p style={{fontSize:12,color:'#b45309',marginBottom:8}}>
+                {unmappedTargets.length===1?'1 client has':`${unmappedTargets.length} clients have`} no QuickBooks customer mapped ({unmappedTargets.map((i)=>entityMap[i.entity_id]?.name||'—').join(', ')}). Pick the customer to link — or confirm a new one — in the billing contact panel above.
               </p>
             )}
             {unpricedTargets.length>0 && (
@@ -1318,7 +1461,10 @@ const inputStyle = {width:'100%',padding:'8px 12px',fontSize:13,border:'1px soli
 const numInput = {...inputStyle,padding:'8px 7px',textAlign:'right'};
 const modeBtn = {flex:1,textAlign:'left',padding:'10px 12px',borderRadius:10,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",color:'#0f172a'};
 const navBtn = {padding:'2px 8px',borderRadius:6,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",fontSize:13,color:'#475569'};
-const INVOICE_COLS = '1.4fr 1fr 0.55fr 0.7fr 2.2fr 0.8fr 0.7fr 0.85fr';
+// Client · Service · Type · QuickBooks customer · Send · Net · VAT · Gross.
+// The customer column carries a full QBO customer name, so it needs room —
+// truncating it to "GJ Cummins Plumbing a…" defeats the point of showing it.
+const INVOICE_COLS = '1.3fr 0.9fr 0.5fr 1.5fr 1.9fr 0.8fr 0.7fr 0.85fr';
 // Per-row Send/Draft toggle in the push-confirm list.
 const sendToggleBtn = {padding:'3px 8px',fontSize:11,fontWeight:600,border:'none',background:'#fff',color:'#94a3b8',cursor:'pointer',fontFamily:"'Outfit', sans-serif",lineHeight:1.5};
 const sendToggleSend = {background:'#059669',color:'#fff'};

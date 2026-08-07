@@ -56,10 +56,19 @@ export async function pushToQbo(billingId, initiatedBy, opts = {}) {
  *  send=true emails the invoice immediately; send=false creates a draft.
  *  sendMap ({ [billingItemId]: boolean }) overrides `send` per item, so one
  *  batch can mix invoices to email now with drafts to send later.
- *  dryRun=true returns a read-only plan (no QBO/DB writes) for confirmation. */
-export async function pushBillingItems(billingItemIds, send, initiatedBy, dryRun = false, dueDays = 14, sendMap = null) {
+ *  dryRun=true returns a read-only plan (no QBO/DB writes) for confirmation.
+ *  opts.linkCustomer ({ [entityId]: qboCustomerId }) maps a client to an
+ *  existing QBO customer; opts.newCustomerOk ({ [entityId]: true }) is the
+ *  explicit go-ahead to create one. Without either, the push refuses to
+ *  create a customer for an unmapped client rather than risk a duplicate. */
+export async function pushBillingItems(billingItemIds, send, initiatedBy, dryRun = false, dueDays = 14, sendMap = null, opts = {}) {
   const { data, error } = await supabase.functions.invoke('qbo-push-billing-items', {
-    body: { billing_item_ids: billingItemIds, send, send_map: sendMap || undefined, initiated_by: initiatedBy, dry_run: dryRun, due_days: dueDays },
+    body: {
+      billing_item_ids: billingItemIds, send, send_map: sendMap || undefined,
+      initiated_by: initiatedBy, dry_run: dryRun, due_days: dueDays,
+      link_customer: opts.linkCustomer || undefined,
+      new_customer_ok: opts.newCustomerOk || undefined,
+    },
   });
   if (error) throw error;
   return data;
