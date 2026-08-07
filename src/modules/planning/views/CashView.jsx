@@ -211,7 +211,7 @@ export default function CashView() {
                   cash_floor_months: scenario?.cash_floor_months ?? 6,
                   cash_paye_pct: scenario?.cash_paye_pct ?? 30,
                   cash_overhead_vatable_pct: scenario?.cash_overhead_vatable_pct ?? 70,
-                  fiscal_year_end_month: scenario?.fiscal_year_end_month ?? 3,
+                  fiscal_year_end_month: scenario?.fiscal_year_end_month ?? 9,
                 })}>Edit</button>
               : <div style={{ display: 'flex', gap: 6 }}>
                   <button style={btnOutline} onClick={() => setEdit(null)}>Cancel</button>
@@ -234,7 +234,7 @@ export default function CashView() {
             <Info size={13} style={{ flexShrink: 0, marginTop: 1 }} />
             <span>
               VAT quarters Mar/Jun/Sep/Dec, paid a month and 7 days later. Net VAT ≈ {fmtGBP(fc.assumptions.monthlyNetVat)}/mo.
-              Year-end defaults to March — a guess, correct it if wrong. CT pays 9 months and a day after year-end.
+              Year-end is September (confirmed 2026-08-07; edit here if it ever changes). CT pays 9 months and a day after year-end.
             </span>
           </div>
         </div>

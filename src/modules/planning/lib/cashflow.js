@@ -79,7 +79,7 @@ export function buildCashForecast({
   const floorMonths = Number(scenario?.cash_floor_months ?? 6);
   const payePct = Number(scenario?.cash_paye_pct ?? 30) / 100;
   const vatablePct = Number(scenario?.cash_overhead_vatable_pct ?? 70) / 100;
-  const yeMonth = Number(scenario?.fiscal_year_end_month ?? 3); // 1-12
+  const yeMonth = Number(scenario?.fiscal_year_end_month ?? 9); // 1-12; September per Bobby 2026-08-07
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const horizonDays = 370;
