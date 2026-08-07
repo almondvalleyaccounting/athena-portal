@@ -194,7 +194,7 @@ export async function deleteClientOverride(id) {
 export async function loadClientBillings() {
   const { data, error } = await supabase
     .from('live_billing')
-    .select('id, entity_id, monthly_net, annual_total, services, status, entities:entity_id (name)')
+    .select('id, entity_id, monthly_net, annual_total, services, status, billing_type, qbo_recurring_txn_id, entities:entity_id (name)')
     .eq('status', 'active');
   if (error) throw error;
   return (data || []).map((r) => ({
@@ -204,7 +204,57 @@ export async function loadClientBillings() {
     monthly_net: Number(r.monthly_net) || 0,
     annual_total: Number(r.annual_total) || 0,
     services: r.services,
+    billing_type: r.billing_type,
+    // Contracted = backed by a QBO recurring template (a signed instruction
+    // QBO will execute). Everything else is invoice-inference — an estimate.
+    // Downstream views should never blend the two silently.
+    template_linked: !!r.qbo_recurring_txn_id,
   }));
+}
+
+// ── Baseline trust layer ──────────────────────────────────
+
+// One row of aggregates over active live_billing (sql/189):
+// contracted vs inferred split + the health signals (duplicate template
+// sets, stale rows, sync freshness).
+export async function loadBaselineHealth() {
+  const { data, error } = await supabase.from('v_plan_baseline_health').select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+// When the monthly P&L cache was last refreshed from QBO.
+export async function loadPlCacheFreshness() {
+  const { data, error } = await supabase
+    .from('plan_qbo_pl_cache')
+    .select('fetched_at')
+    .order('fetched_at', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return data?.[0]?.fetched_at || null;
+}
+
+// One-off invoices pushed through Athena's billing module, by month.
+// Used to explain the gap between P&L income and the recurring run-rate.
+// Returns Map<'YYYY-MM', net £>. RLS may hide billing_items from some
+// roles — callers should treat a failure as "unknown", not zero.
+export async function loadOneOffsByMonth(monthsBack = 13) {
+  const start = new Date();
+  start.setMonth(start.getMonth() - monthsBack);
+  start.setDate(1);
+  const { data, error } = await supabase
+    .from('billing_items')
+    .select('pushed_at, net_amount')
+    .eq('status', 'pushed')
+    .gte('pushed_at', start.toISOString());
+  if (error) throw error;
+  const byMonth = new Map();
+  for (const r of data || []) {
+    if (!r.pushed_at) continue;
+    const key = String(r.pushed_at).slice(0, 7);
+    byMonth.set(key, (byMonth.get(key) || 0) + (Number(r.net_amount) || 0));
+  }
+  return byMonth;
 }
 
 export async function loadStaffProfiles() {

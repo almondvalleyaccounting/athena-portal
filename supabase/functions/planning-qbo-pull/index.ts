@@ -1,16 +1,12 @@
-// Synced from the DEPLOYED version (v9) on 2026-08-06. The repo copy had
-// fallen behind the deployment: the deployed function gained monthly
-// granularity ({ granularity: "monthly", months_back }) writing one row
-// per (month, account) to plan_qbo_pl_cache, plus structured error
-// responses ("QBO rejected the access token — reconnect QuickBooks") —
-// none of which the repo copy had. Deploying from the old repo copy
-// would have silently removed the monthly P&L feed the Planning module
-// reads (loadMonthlyActuals). Diff against the deployment before any
-// future edit + deploy.
-//
-// Known debt (left as-is to keep this a pure sync): the delete-then-
-// insert cache writes are unchecked — if the insert fails after the
-// delete succeeded, the cache for the period silently empties.
+// v10 (2026-08-07). History: the repo copy had fallen behind the
+// deployment — deployed v9 gained monthly granularity ({ granularity:
+// "monthly", months_back }) writing one row per (month, account) to
+// plan_qbo_pl_cache, plus structured error responses, none of which the
+// repo had. Repo was synced from v9 on 2026-08-06; v10 then made the
+// delete-then-insert cache writes CHECKED — previously a failed insert
+// after a successful delete silently emptied the cache for the period
+// and the caller was told success. Diff against the deployment before
+// any future edit + deploy.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -152,7 +148,8 @@ Deno.serve(async (req) => {
 
       const monthCount = headers.length - 2;
       const client = sb();
-      await client.from("plan_qbo_pl_cache").delete().gte("period_start", start).lte("period_end", end);
+      const del = await client.from("plan_qbo_pl_cache").delete().gte("period_start", start).lte("period_end", end);
+      if (del.error) return jr({ success: false, error: `cache clear failed: ${del.error.message}` });
 
       const inserts = [];
       const monthsList = [];
@@ -174,7 +171,15 @@ Deno.serve(async (req) => {
           });
         }
       }
-      if (inserts.length) await client.from("plan_qbo_pl_cache").insert(inserts);
+      if (inserts.length) {
+        const ins = await client.from("plan_qbo_pl_cache").insert(inserts);
+        if (ins.error) {
+          // The delete above already succeeded, so the cache for this
+          // period is now EMPTY — say so loudly rather than reporting
+          // success over a hollowed-out cache.
+          return jr({ success: false, error: `cache write failed AFTER clearing ${start}..${end} — cache is empty until a successful re-run: ${ins.error.message}` });
+        }
+      }
 
       return jr({
         success: true, granularity: "monthly",
@@ -206,12 +211,18 @@ Deno.serve(async (req) => {
     const income = flat.filter((r) => r.section === "Income").map((r) => ({ name: r.name, amount: r.values.reduce((a, b) => a + b, 0) }));
 
     const client = sb();
-    await client.from("plan_qbo_pl_cache").delete().eq("period_start", start).eq("period_end", end);
+    const del = await client.from("plan_qbo_pl_cache").delete().eq("period_start", start).eq("period_end", end);
+    if (del.error) return jr({ success: false, error: `cache clear failed: ${del.error.message}` });
     const toInsert = [
       ...expenses.map((e) => ({ period_start: start, period_end: end, account_name: e.name, account_type: e.section, amount: e.amount })),
       ...income.map((i) => ({ period_start: start, period_end: end, account_name: i.name, account_type: "Income", amount: i.amount })),
     ];
-    if (toInsert.length) await client.from("plan_qbo_pl_cache").insert(toInsert);
+    if (toInsert.length) {
+      const ins = await client.from("plan_qbo_pl_cache").insert(toInsert);
+      if (ins.error) {
+        return jr({ success: false, error: `cache write failed AFTER clearing ${start}..${end} — cache is empty until a successful re-run: ${ins.error.message}` });
+      }
+    }
 
     return jr({
       success: true, granularity: "ltm", period: { start, end },
