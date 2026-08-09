@@ -15,6 +15,18 @@ export async function fetchSchemes() {
   return data || [];
 }
 
+// A client can hold more than one PAYE scheme (the scrape raises a
+// `second_scheme` exception when it spots one), so this returns a list.
+export async function fetchSchemesForEntity(entityId) {
+  const { data, error } = await supabase
+    .from('v_hmrc_paye_clients')
+    .select('*')
+    .eq('entity_id', entityId)
+    .order('total_debt', { ascending: false, nullsFirst: false });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function fetchLastRun() {
   const { data, error } = await supabase
     .from('v_hmrc_runs')

@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import { approvedServicesOf, feeTotals, underBillingOf } from './feeRollup';
 import ClientCommsTab from './ClientCommsTab';
+import ClientHmrcPanel from '../hmrc/ClientHmrcPanel';
 
 const TIME_PERIODS = [
   { value: '1', label: 'Last month' },
@@ -450,6 +451,12 @@ export default function ClientDetailView() {
       {recon && recon.status !== 'ok' && (
         <EmailReconPanel recon={recon} />
       )}
+
+      {/* What HMRC's own records say about this client (sql/197). Renders
+          nothing unless they hold a PAYE scheme on our agent list, so it sits
+          above the compliance panel without pushing it down for the majority
+          who have no scheme. */}
+      <ClientHmrcPanel entityId={id} />
 
       {/* Compliance & deadlines — open BrightManager jobs for this client.
           The home-screen deadline alerts link here, so the thing that was
