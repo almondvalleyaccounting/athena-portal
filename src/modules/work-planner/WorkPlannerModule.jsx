@@ -37,6 +37,7 @@ import AllocationsView from './views/AllocationsView';
 import EstimatesView from './views/EstimatesView';
 import CapacityView from './views/CapacityView';
 import ReadyNowView from './views/ReadyNowView';
+import DriftView from './views/DriftView';
 
 // ── Context ──
 const WorkPlannerContext = createContext(null);
@@ -45,6 +46,7 @@ export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 // ── Tab config ──
 const TASK_PLANNER_TABS = [
   { id: 'ready',    label: 'Ready Now',   path: '/planner/ready' },
+  { id: 'drift',    label: 'Drifting',    path: '/planner/drift' },
   { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting' },
   { id: 'mytasks',  label: 'My Tasks',    path: '/planner' },
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
@@ -861,6 +863,9 @@ export default function WorkPlannerModule() {
               entityList={entityList}
               staffList={staffList}
             />
+          )}
+          {activeTab === 'drift' && (
+            <DriftView />
           )}
           {activeTab === 'waiting' && (
             <WaitingView />

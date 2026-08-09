@@ -98,6 +98,7 @@ export function useDirectorDashboard(enabled) {
         chRefreshRes,
         feeGapsPriorityRes,
         feeGapsIndividualsRes,
+        driftRes,
       ] = await Promise.all([
         // ONE definition of every deadline number — v_deadline_buckets is
         // shared with the Monday digest, so the two can never drift again.
@@ -224,6 +225,16 @@ export function useDirectorDashboard(enabled) {
           .select('entity_id', { count: 'exact', head: true })
           .eq('tier', 3)
           .eq('review_status', 'pending'),
+        // Bookkeeping drift (sql/198–202). Only the rows worth a director's
+        // attention: files WE keep that are past tolerance, plus anything on a
+        // never-drift tier, plus files the sweep couldn't read at all — an
+        // unreadable file must never pass as a healthy one.
+        supabase
+          .from('v_bk_drift_board')
+          .select('entity_id, entity_name, books_owner, tier, drift_status, days_over_tolerance,'
+            + ' reconciled_to, posted_to, frontier_basis, assignee_name, case_state, case_id')
+          .in('drift_status', ['breach', 'critical', 'unknown'])
+          .order('days_over_tolerance', { ascending: false }),
       ]);
 
       if (cancelled) return;
@@ -340,6 +351,18 @@ export function useDirectorDashboard(enabled) {
             individuals: feeGapsIndividualsRes.count ?? 0,
           },
           triage: (triageRes.data || []).filter(notFormer),
+          // Split the way the drift board splits: "ours" is a work queue,
+          // "theirs" is information about a client-kept file. Only ours and
+          // never-drift clients earn a row in the attention queue.
+          drift: (() => {
+            const all = driftRes.data || [];
+            return {
+              ours: all.filter((r) => r.books_owner === 'us'),
+              priority: all.filter((r) => r.tier !== 'standard'),
+              unknown: all.filter((r) => r.drift_status === 'unknown'),
+              theirsCount: all.filter((r) => r.books_owner !== 'us').length,
+            };
+          })(),
           // null = the nightly refresh has no row for today (did not run)
           chRefresh: (chRefreshRes.data || [])[0] || null,
           bmDataAsOf: freshRow?.last_seen_at || null,

@@ -61,6 +61,10 @@ export default function ClientDashboardPage() {
   const [flash, setFlash] = useState(null);
   const [tab, setTab] = useState('overview');
   const [favourites, setFavourites] = useState(new Set());
+  // Latest drift snapshot for the selected realm — how current the file is, as
+  // opposed to how messy it is. Read from the nightly sweep, not pulled live:
+  // the frontier measurement is far too heavy to run on a page load.
+  const [drift, setDrift] = useState(null);
 
   // Date-filter state.
   const today = useMemo(() => new Date(), []);
@@ -165,12 +169,37 @@ export default function ClientDashboardPage() {
     } catch {
       setCacheRows([]);
     }
+    try {
+      const { data: snap } = await supabase
+        .from('bk_drift_snapshots')
+        .select('*')
+        .eq('realm_id', realm)
+        .order('snapshot_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (snap?.entity_id) {
+        // Scored fields (tolerance, status) live on the board view; the raw
+        // snapshot carries the frontiers. Merge so the strip has both, and
+        // fall back to the snapshot alone for a client not under watch.
+        const { data: scored } = await supabase
+          .from('v_bk_drift_board')
+          .select('drift_status, days_over_tolerance, recon_age_days, posted_age_days, tolerance_days')
+          .eq('entity_id', snap.entity_id)
+          .maybeSingle();
+        setDrift({ ...snap, ...(scored || {}) });
+      } else {
+        setDrift(snap || null);
+      }
+    } catch {
+      setDrift(null);
+    }
     setLoading(false);
   };
 
   const onSelect = (realm) => {
     setRealmId(realm);
     setCacheRows([]);
+    setDrift(null);
     setPeriodData(null);
     setAsAtData(null);
     asAtLoadedRef.current = null;
@@ -473,7 +502,12 @@ export default function ClientDashboardPage() {
                 <AgedTab data={asAtData?.ap_asat} title="Aged creditors (payables)" sameLabel="Same suppliers"
                   label="aged creditors" currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
               )}
-              {tab === 'health' && <HealthTab health={fileHealth} currency={periodCurrency} empty={emptyProps} />}
+              {tab === 'health' && (
+                <>
+                  <CurrencyStrip drift={drift} />
+                  <HealthTab health={fileHealth} currency={periodCurrency} empty={emptyProps} />
+                </>
+              )}
 
               {/* Per-metric errors (partial pull) */}
               {partialErrors && (
@@ -1071,6 +1105,109 @@ function AgedTab({ data, title, sameLabel, label, currency, loading, empty }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <AgedSection title={title} data={data} currency={currency} sameLabel={sameLabel} />
+    </div>
+  );
+}
+
+/* ─── File currency strip ───────────────────────────────────────── */
+// How far forward the books actually reach, from the nightly drift sweep
+// (sql/198–202). The health flags below say whether the file is MESSY; this
+// says whether it is CURRENT, which is the question that was missing — a
+// spotless file reconciled to March is not a healthy file.
+const DRIFT_TONE = {
+  ok:       { bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d', label: 'On track' },
+  watch:    { bg: '#fefce8', border: '#fef08a', text: '#a16207', label: 'Watch' },
+  breach:   { bg: '#fff7ed', border: '#fed7aa', text: '#c2410c', label: 'Past tolerance' },
+  critical: { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c', label: 'Critical' },
+  paused:   { bg: '#f8fafc', border: '#e2e8f0', text: '#64748b', label: 'Paused' },
+  unknown:  { bg: '#f5f3ff', border: '#ddd6fe', text: '#6d28d9', label: 'Unknown' },
+};
+
+function Chip({ label, value, sub, muted }) {
+  return (
+    <div style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '10px 12px', minWidth: '140px', flex: '1 1 140px' }}>
+      <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
+      <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: muted ? '#94a3b8' : '#0f172a' }}>{value}</div>
+      {sub && <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#64748b', marginTop: '1px' }}>{sub}</div>}
+    </div>
+  );
+}
+
+function CurrencyStrip({ drift }) {
+  if (!drift) return null;
+  const d = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—');
+  const tone = DRIFT_TONE[drift.drift_status] || DRIFT_TONE.unknown;
+  const accounts = Array.isArray(drift.bank_accounts) ? drift.bank_accounts.filter((a) => a.live) : [];
+
+  return (
+    <div style={{ ...cardStyle, marginBottom: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+          How current is this file?
+        </span>
+        <span style={{
+          marginLeft: 'auto', fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: tone.text,
+          backgroundColor: tone.bg, border: `1px solid ${tone.border}`, borderRadius: '999px', padding: '3px 10px',
+        }}>
+          {tone.label}
+          {drift.days_over_tolerance > 0 ? ` · ${drift.days_over_tolerance} days over` : ''}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+        <Chip label="Reconciled to" value={d(drift.reconciled_to)} muted={!drift.reconciled_to}
+          sub={drift.reconciled_to ? `${drift.recon_age_days} days ago` : 'nothing in 6 months'} />
+        <Chip label="Posted to" value={d(drift.posted_to)} muted={!drift.posted_to}
+          sub={drift.posted_to ? `${drift.posted_age_days} days ago` : 'nothing in 120 days'} />
+        <Chip label="Last touched" value={drift.touched_at ? d(drift.touched_at) : 'Over 30 days'}
+          muted={!drift.touched_at} sub={drift.touched_at ? 'file was edited' : 'nobody has opened it'} />
+        <Chip label="Volume vs normal"
+          value={drift.volume_ratio != null ? `${Math.round(drift.volume_ratio * 100)}%` : '—'}
+          muted={drift.volume_ratio == null}
+          sub={drift.baseline_monthly ? `normally ~${Math.round(drift.baseline_monthly)}/mth` : 'no baseline yet'} />
+      </div>
+
+      {Array.isArray(drift.notes) && drift.notes.length > 0 && (
+        <ul style={{ margin: '12px 0 0', paddingLeft: '18px' }}>
+          {drift.notes.map((n, i) => (
+            <li key={i} style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#475569', marginBottom: '3px' }}>{n}</li>
+          ))}
+        </ul>
+      )}
+
+      {accounts.length > 0 && (
+        <div style={{ overflowX: 'auto', marginTop: '12px' }}>
+          <table style={{ borderCollapse: 'collapse', minWidth: '420px' }}>
+            <thead>
+              <tr>
+                {['Account', 'Last transaction', 'Last reconciled'].map((h, i) => (
+                  <th key={h} style={{
+                    fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', fontWeight: 600,
+                    textAlign: i === 0 ? 'left' : 'right', padding: '5px 10px', whiteSpace: 'nowrap',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((a) => (
+                <tr key={a.id}>
+                  <td style={{ fontFamily: OUTFIT, fontSize: '12.5px', padding: '5px 10px', color: '#0f172a' }}>
+                    {a.name}{!a.active && <span style={{ color: '#94a3b8', fontSize: '11px' }}> · dormant</span>}
+                  </td>
+                  <td style={{
+                    fontFamily: OUTFIT, fontSize: '12.5px', padding: '5px 10px', textAlign: 'right',
+                    color: a.days_since_txn > 45 ? '#c2410c' : '#475569', fontVariantNumeric: 'tabular-nums',
+                  }}>{d(a.last_txn)}</td>
+                  <td style={{
+                    fontFamily: OUTFIT, fontSize: '12.5px', padding: '5px 10px', textAlign: 'right',
+                    color: a.last_reconciled ? '#475569' : '#b91c1c', fontVariantNumeric: 'tabular-nums',
+                  }}>{a.last_reconciled ? d(a.last_reconciled) : 'never'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

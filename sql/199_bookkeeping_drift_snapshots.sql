@@ -90,6 +90,10 @@ create index if not exists        bk_snap_date_idx   on public.bk_drift_snapshot
 
 /* ── Scoring ─────────────────────────────────────────────────────────────── */
 
+-- SUPERSEDED: the view below was revised by 202 after the first live sweep —
+-- see that file for why (a null reconciliation frontier turned out to mean two
+-- different things). Kept here as the original definition.
+--
 -- The latest snapshot per client, joined to the watch config and to the next
 -- filing deadline, scored.
 --

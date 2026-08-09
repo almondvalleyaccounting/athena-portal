@@ -842,6 +842,53 @@ function buildAttentionItems(data, navigate) {
     }
   });
 
+  // Bookkeeping drift. Only files we keep, and only ones already past
+  // tolerance — the board itself carries the watch and breach detail. Rows name
+  // the frontier and the gap, because "X is drifting" tells nobody what to do.
+  const drift = data.drift || { ours: [], priority: [], unknown: [], theirsCount: 0 };
+  const driftAction = drift.ours.filter((r) => r.drift_status !== 'unknown');
+  driftAction.slice(0, 6).forEach((r) => {
+    const frontier = r.frontier_basis === 'posted' ? r.posted_to : r.reconciled_to;
+    const isPriority = r.tier !== 'standard';
+    items.push({
+      id: `drift-${r.entity_id}`,
+      group: r.drift_status === 'critical' || isPriority ? 'critical' : 'action',
+      accent: r.drift_status === 'critical' || isPriority ? '#ef4444' : '#f97316',
+      icon: AlertTriangle,
+      title: `${r.entity_name} — books ${r.frontier_basis === 'posted' ? 'posted' : 'reconciled'} only to ${
+        frontier ? shortDate(frontier) : 'nothing in six months'}`,
+      subtitle: `${r.days_over_tolerance} days past tolerance${
+        isPriority ? ' · never-drift client' : ''}${
+        r.assignee_name ? ` · ${r.assignee_name.split(' ')[0]}` : ' · unassigned'}${
+        r.case_state === 'acknowledged' ? ' · acknowledged' : ''}`,
+      onClick: () => navigate('/planner/drift'),
+    });
+  });
+  if (driftAction.length > 6) {
+    items.push({
+      id: 'drift-more',
+      group: 'action',
+      accent: '#f97316',
+      icon: AlertTriangle,
+      title: `${plural(driftAction.length - 6, 'more client')} with bookkeeping past tolerance`,
+      subtitle: 'Open the drifting board for the full list',
+      onClick: () => navigate('/planner/drift'),
+    });
+  }
+  // A file the sweep couldn't read is not a healthy file. It gets its own row
+  // rather than quietly vanishing from the counts.
+  if (drift.unknown.length > 0) {
+    items.push({
+      id: 'drift-unknown',
+      group: 'waiting',
+      accent: '#8b5cf6',
+      icon: AlertTriangle,
+      title: `${plural(drift.unknown.length, 'QuickBooks file')} couldn't be read last night`,
+      subtitle: 'Drift is unknown for these — usually a connection that needs re-authorising',
+      onClick: () => navigate('/planner/drift'),
+    });
+  }
+
   data.onboarding.issues.forEach((o) => {
     items.push({
       id: `onb-${o.id}`,
@@ -968,6 +1015,8 @@ function attentionSummary(data) {
   if (data.quotes.pendingApproval.length > 0) seg.push(`${p(data.quotes.pendingApproval.length, 'approval')} waiting`);
   if (data.quotes.expiring.length > 0) seg.push(`${p(data.quotes.expiring.length, 'quote')} expiring`);
   if (data.billingNeedsReview > 0) seg.push(p(data.billingNeedsReview, 'billing review'));
+  const driftOurs = (data.drift?.ours || []).filter((r) => r.drift_status !== 'unknown').length;
+  if (driftOurs > 0) seg.push(`${p(driftOurs, 'client')} drifting`);
   if (data.feeGaps?.priority > 0) seg.push(`${data.feeGaps.priority} fee gap${data.feeGaps.priority === 1 ? '' : 's'}`);
   if (data.qboUnmapped > 0) seg.push(`${data.qboUnmapped} QBO unmapped`);
   if (data.serviceRequests.length > 0) seg.push(p(data.serviceRequests.length, 'service request'));
