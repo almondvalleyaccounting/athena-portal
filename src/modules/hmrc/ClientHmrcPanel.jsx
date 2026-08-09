@@ -180,7 +180,7 @@ function Figure({ label, value, sub, colour, big }) {
   return (
     <div>
       <div style={{ fontSize: 9.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
-      <div style={{ fontSize: big ? 22 : 16, fontWeight: 700, color, marginTop: 1 }}>{value}</div>
+      <div style={{ fontSize: big ? 22 : 16, fontWeight: 700, color: colour, marginTop: 1 }}>{value}</div>
       {sub && <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 1 }}>{sub}</div>}
     </div>
   );
