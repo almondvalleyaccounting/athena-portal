@@ -359,21 +359,46 @@ async function reconRealm(sb: any, realmId: string, start: string, end: string, 
 
   const employer = matched[0];
 
-  // Not every employer posts to QuickBooks. A Xero or FreeAgent client will
-  // have a QBO company with a matching name (an old file, or a migration), and
-  // checking its payroll journals against a ledger BrightPay never posts to
-  // reports every period as missing. Skip, do not flag.
-  if (employer.destination !== "quickbooks") {
-    return { ...base, employer: employer.sheet_name, task_count: 0, findings: [],
-      skipped: `posts to ${employer.destination}, not QuickBooks` };
-  }
-
   const { data: tasks, error: taskErr } = await sb.rpc("payroll_recon_tasks", {
     p_employer_id: employer.id, p_start: start, p_end: end,
   });
   if (taskErr) throw new Error(`payroll_recon_tasks: ${taskErr.message}`);
 
   const posted = (tasks || []).filter((t: any) => t.state === "posted" || t.state === "verified");
+
+  // Nothing from BrightPay in this ledger at all, yet tasks claim postings.
+  // Reporting one "missing" per task would be noise and would not say which of
+  // the two very different causes it is, so look further back and name it:
+  //
+  //   journals before the window, none in it  -> BrightPay has STOPPED reaching
+  //     this QuickBooks company (KEM: fine to February, nothing since)
+  //   none ever                               -> this client almost certainly
+  //     posts somewhere else (MTG posts to Xero)
+  //
+  // This is evidence rather than the employer.destination field, which is
+  // seeded from posting history in the Journal Log and defaults to
+  // 'quickbooks' on a miss — so it cannot be trusted to answer this.
+  if (posted.length > 0 && base.brightpay_count === 0) {
+    const back = new Date(start);
+    back.setUTCFullYear(back.getUTCFullYear() - 1);
+    const lookback = back.toISOString().slice(0, 10);
+    const hist = (await fetchJournals(sb, realmId, lookback, start))
+      .map(probeEntry).filter((j) => j.source === "brightpay");
+
+    const f = hist.length
+      ? {
+          kind: "stopped_posting", severity: "high",
+          detail: `No BrightPay journals between ${start} and ${end}, but ${hist.length} before it — the last dated ${hist.map((j) => j.txn_date).sort().pop()}. ${posted.length} task(s) record a posting that is not in this ledger.`,
+          data: { last_seen: hist.map((j) => j.txn_date).sort().pop(), tasks: posted.length },
+        }
+      : {
+          kind: "no_brightpay_journals", severity: "medium",
+          detail: `No BrightPay journals in this QuickBooks company at all, checked back to ${lookback}. This client most likely posts to a different system — check before treating it as missing.`,
+          data: { checked_from: lookback, tasks: posted.length },
+        };
+    return { ...base, employer: employer.sheet_name, task_count: posted.length, findings: [f] };
+  }
+
   const findings = reconcile(posted, journals);
 
   for (const t of (tasks || [])) {
@@ -461,15 +486,17 @@ Deno.serve(async (req) => {
       const haveToken = new Set((toks || []).map((t: any) => t.realm_id));
 
       const norm = (s: string | null) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      // Only QuickBooks-destined employers make a realm worth calling.
-      const qboEmployers = (employers || []).filter((e: any) => e.destination === "quickbooks");
-      const empKeys = qboEmployers.flatMap((e: any) =>
+      // Deliberately NOT filtered on employer.destination — that field is
+      // seeded from posting history and defaults to 'quickbooks' on a miss, so
+      // it would both exclude real QBO clients and admit non-QBO ones. The
+      // no-journals-at-all branch in reconRealm answers the question properly.
+      const empKeys = (employers || []).flatMap((e: any) =>
         [e.destination_company, e.brightpay_name, e.sheet_name].map(norm).filter(Boolean));
       const realmSet = new Set(empKeys);
 
       let candidates = (conns || []).filter((c: any) => {
         if (!haveToken.has(c.realm_id)) return false;
-        if (qboEmployers.some((e: any) => e.destination_realm === c.realm_id)) return true;
+        if ((employers || []).some((e: any) => e.destination_realm === c.realm_id)) return true;
         const k = norm(c.company_name);
         return realmSet.has(k) || realmSet.has(k + "ltd") || realmSet.has(k + "limited")
           || [...realmSet].some((ek) => ek + "ltd" === k || ek + "limited" === k);

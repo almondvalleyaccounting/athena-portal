@@ -27,7 +27,7 @@ const RESEND_FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "info@almondvalle
 const RESEND_FROM_NAME = Deno.env.get("RESEND_FROM_NAME") || "Almond Valley Accounting";
 const ATHENA_URL = Deno.env.get("ATHENA_URL") || "https://portal.almondvalleyaccounting.co.uk";
 
-const REPORTABLE = ["duplicate", "missing", "amount_mismatch"];
+const REPORTABLE = ["duplicate", "missing", "stopped_posting", "amount_mismatch"];
 
 function jr(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     }
 
     const dupes = report.filter((f) => f.kind === "duplicate");
-    const missing = report.filter((f) => f.kind === "missing");
+    const missing = report.filter((f) => f.kind === "missing" || f.kind === "stopped_posting");
     const mismatch = report.filter((f) => f.kind === "amount_mismatch");
     const dupeValue = dupes.reduce((a, f) => a + Number(f.data?.amount ?? 0), 0);
 
@@ -129,9 +129,9 @@ Deno.serve(async (req) => {
           <td style="padding:4px 10px;color:#64748b;white-space:nowrap;vertical-align:top;">${esc(f.period || "")}</td>
           <td style="padding:4px 10px;white-space:nowrap;vertical-align:top;">
             <span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;
-              background:${f.kind === "duplicate" ? "#fee2e2" : f.kind === "missing" ? "#fef3c7" : "#e0e7ff"};
-              color:${f.kind === "duplicate" ? "#991b1b" : f.kind === "missing" ? "#92400e" : "#3730a3"};">
-              ${f.kind === "duplicate" ? "DUPLICATE" : f.kind === "missing" ? "MISSING" : "MISMATCH"}
+              background:${f.kind === "duplicate" ? "#fee2e2" : (f.kind === "missing" || f.kind === "stopped_posting") ? "#fef3c7" : "#e0e7ff"};
+              color:${f.kind === "duplicate" ? "#991b1b" : (f.kind === "missing" || f.kind === "stopped_posting") ? "#92400e" : "#3730a3"};">
+              ${f.kind === "duplicate" ? "DUPLICATE" : f.kind === "missing" ? "MISSING" : f.kind === "stopped_posting" ? "STOPPED" : "MISMATCH"}
             </span>
           </td>
           <td style="padding:4px 10px;vertical-align:top;">${esc(f.detail)}</td>
