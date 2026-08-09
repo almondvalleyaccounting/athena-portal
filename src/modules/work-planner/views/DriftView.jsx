@@ -143,11 +143,13 @@ function DetailPanel({ row, staff, onAssign, onPause, onAcknowledge, onDismiss, 
           value={row.uncleared_count ?? '—'}
           sub={row.oldest_uncleared ? `oldest ${shortDate(row.oldest_uncleared)}` : null}
         />
+        {/* Trailing quarter, not the month in progress — most of this portfolio
+            is written up quarterly, so the current month is empty by design. */}
         <Frontier
           label="Volume vs normal"
-          value={row.volume_ratio != null ? `${Math.round(row.volume_ratio * 100)}%` : '—'}
-          sub={row.baseline_monthly ? `normally ~${Math.round(row.baseline_monthly)}/mth` : 'no baseline yet'}
-          muted={row.volume_ratio == null}
+          value={row.volume_ratio_90d != null ? `${Math.round(row.volume_ratio_90d * 100)}%` : '—'}
+          sub={row.baseline_monthly ? `last 90 days vs ~${Math.round(row.baseline_monthly)}/mth` : 'no baseline yet'}
+          muted={row.volume_ratio_90d == null}
         />
       </div>
 
@@ -329,8 +331,12 @@ function Row({ row, open, onToggle, children }) {
             {row.entity_name}
           </div>
           <div style={{ fontFamily: FONT, fontSize: '11.5px', color: '#94a3b8' }}>
-            {row.frontier_basis === 'posted' ? 'Posted to ' : 'Reconciled to '}
-            {row.frontier_basis === 'posted' ? shortDate(row.posted_to) : shortDate(row.reconciled_to)}
+            {/* "Reconciled to —" reads as missing data. Say what it is. */}
+            {row.frontier_basis === 'posted'
+              ? `Posted to ${shortDate(row.posted_to)}`
+              : row.reconciled_to
+                ? `Reconciled to ${shortDate(row.reconciled_to)}`
+                : 'Never reconciled in six months'}
             {row.assignee_name ? ` · ${row.assignee_name.split(' ')[0]}` : ' · unassigned'}
           </div>
         </div>
@@ -343,7 +349,7 @@ function Row({ row, open, onToggle, children }) {
           )}
           {row.volume_shortfall && (
             <SoftFlag icon={TrendingDown} label="Volume down"
-              title={`Running at ${Math.round((row.volume_ratio || 0) * 100)}% of this client's normal monthly volume`} />
+              title={`Last 90 days running at ${Math.round((row.volume_ratio_90d || 0) * 100)}% of this client's normal`} />
           )}
           {row.feed_gap && (
             <SoftFlag icon={Wifi} label="Feed gap"
@@ -457,6 +463,63 @@ function LinkPanel({ rows, entities, onLink, onDismiss, onRescan }) {
   );
 }
 
+/* ── Queued nudges ────────────────────────────────────────────── */
+// The whole point of holding the nudges is being able to read them first, so
+// the queue is legible from the board rather than only in the database.
+function NudgeQueue({ nudges, staff, armed }) {
+  const [open, setOpen] = useState(false);
+  if (!nudges.length) return null;
+
+  const nameOf = (id) => staff.find((s) => s.id === id)?.name || 'nobody (no owner set)';
+  const byRecipient = nudges.reduce((acc, n) => {
+    (acc[n.recipient_id] ||= []).push(n);
+    return acc;
+  }, {});
+
+  return (
+    <div style={{ ...card, marginBottom: '14px', borderColor: '#ddd6fe', backgroundColor: '#faf5ff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: FONT, fontSize: '13.5px', fontWeight: 700, color: '#5b21b6' }}>
+            {nudges.length} {nudges.length === 1 ? 'nudge is' : 'nudges are'} queued and {armed ? 'will send' : 'held'}
+          </div>
+          <div style={{ fontFamily: FONT, fontSize: '11.5px', color: '#6d28d9' }}>
+            {Object.entries(byRecipient)
+              .map(([id, list]) => `${nameOf(id).split(' ')[0]} ${list.length}`)
+              .join(' · ')}
+          </div>
+        </div>
+        <button onClick={() => setOpen(!open)} style={btnGhost}>{open ? 'Hide' : 'Read the queue'}</button>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {Object.entries(byRecipient).map(([id, list]) => (
+            <div key={id}>
+              <div style={{ fontFamily: FONT, fontSize: '12px', fontWeight: 700, color: '#0f172a', margin: '6px 0 4px' }}>
+                To {nameOf(id)}
+              </div>
+              {list.map((n) => (
+                <div key={n.id} style={{
+                  padding: '8px 10px', backgroundColor: '#fff', borderRadius: '10px',
+                  border: '1px solid #f1f5f9', marginBottom: '5px',
+                }}>
+                  <div style={{ fontFamily: FONT, fontSize: '12.5px', fontWeight: 600, color: '#0f172a' }}>
+                    {n.subject}
+                  </div>
+                  <div style={{ fontFamily: FONT, fontSize: '11.5px', color: '#64748b', whiteSpace: 'pre-line' }}>
+                    {n.body}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Section ──────────────────────────────────────────────────── */
 
 function Section({ title, subtitle, rows, expanded, setExpanded, detailProps, staff }) {
@@ -505,6 +568,7 @@ export default function DriftView() {
   const [staff, setStaff] = useState([]);
   const [entities, setEntities] = useState([]);
   const [settings, setSettings] = useState(null);
+  const [nudges, setNudges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
   const [mineOnly, setMineOnly] = useState(false);
@@ -516,12 +580,15 @@ export default function DriftView() {
     setLoading(true);
     setError(null);
     try {
-      const [board, linkRows, staffRows, entRows, cfg] = await Promise.all([
+      const [board, linkRows, staffRows, entRows, cfg, nudgeRows] = await Promise.all([
         supabase.from('v_bk_drift_board').select('*'),
         supabase.from('v_bk_realm_link_review').select('*').order('company_name'),
         supabase.from('staff_profiles').select('id, name, is_active').order('name'),
         supabase.from('entities').select('id, name').order('name'),
         supabase.from('bk_drift_settings').select('*').maybeSingle(),
+        supabase.from('bk_drift_nudges')
+          .select('id, kind, recipient_id, subject, body, queued_at')
+          .eq('state', 'queued').order('queued_at', { ascending: false }),
       ]);
       if (board.error) throw board.error;
       setRows(board.data || []);
@@ -529,6 +596,7 @@ export default function DriftView() {
       setStaff((staffRows.data || []).filter((s) => s.is_active !== false));
       setEntities(entRows.data || []);
       setSettings(cfg.data || null);
+      setNudges(nudgeRows.data || []);
     } catch (e) {
       setError(e.message || 'Could not load the drift board');
     }
@@ -620,6 +688,8 @@ export default function DriftView() {
           </span>
         </div>
       )}
+
+      <NudgeQueue nudges={nudges} staff={staff} armed={settings?.nudges_armed === true} />
 
       <LinkPanel
         rows={links}

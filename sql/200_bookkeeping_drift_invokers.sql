@@ -51,11 +51,20 @@ begin
 end;
 $$;
 
--- Self-chunking driver, same as run_journal_recon_chunk. A starter opens the
--- run; a continuation picks up the unfinished one every few minutes until the
--- estate is covered. Chunked because Intuit throttles per realm and edge
+-- Self-chunking driver, in the shape of run_journal_recon_chunk. A starter opens
+-- the run; a continuation picks up the unfinished one every few minutes until
+-- the estate is covered. Chunked because Intuit throttles per realm and edge
 -- functions time out: 12 realms per invocation leaves headroom at ~6 API calls
 -- each (7 in the month the baseline is rebuilt).
+--
+-- The offset is counted from what has ACTUALLY been snapshotted today, not from
+-- a running total on the run row. The continuation fires every five minutes and
+-- a slow chunk can still be in flight when the next starts; with a counter,
+-- two overlapping chunks each added 12 while covering the same 12 realms, and
+-- the chunk after that skipped 12 clients — who then had no snapshot for the
+-- day and silently disappeared from the board. Counting real rows makes overlap
+-- harmless repeated work instead of a hole, and retries a failed chunk rather
+-- than stepping over it.
 create or replace function public.run_bk_drift_chunk(p_start_new boolean default false)
 returns bigint
 language plpgsql security definer
@@ -63,16 +72,17 @@ set search_path = public, extensions, net, vault
 as $$
 declare v_id bigint; v_done int;
 begin
-  select id, realms_checked + realms_error into v_id, v_done
+  select id into v_id
   from public.bk_drift_runs where finished_at is null
   order by id desc limit 1;
 
-  if v_id is null then
-    if not p_start_new then return null; end if;
-    return public.run_bk_drift_batch(0, 12, null, 'cron');
-  end if;
+  if v_id is null and not p_start_new then return null; end if;
 
-  return public.run_bk_drift_batch(v_done, 12, v_id, 'cron');
+  select count(*) into v_done
+  from public.bk_drift_snapshots
+  where snapshot_date = current_date;
+
+  return public.run_bk_drift_batch(coalesce(v_done, 0), 12, v_id, 'cron');
 end;
 $$;
 

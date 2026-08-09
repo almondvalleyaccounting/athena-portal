@@ -183,7 +183,7 @@ export default function ClientDashboardPage() {
         // fall back to the snapshot alone for a client not under watch.
         const { data: scored } = await supabase
           .from('v_bk_drift_board')
-          .select('drift_status, days_over_tolerance, recon_age_days, posted_age_days, tolerance_days')
+          .select('drift_status, days_over_tolerance, recon_age_days, posted_age_days, tolerance_days, volume_ratio_90d')
           .eq('entity_id', snap.entity_id)
           .maybeSingle();
         setDrift({ ...snap, ...(scored || {}) });
@@ -1155,16 +1155,19 @@ function CurrencyStrip({ drift }) {
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-        <Chip label="Reconciled to" value={d(drift.reconciled_to)} muted={!drift.reconciled_to}
-          sub={drift.reconciled_to ? `${drift.recon_age_days} days ago` : 'nothing in 6 months'} />
+        <Chip label="Reconciled to" value={drift.reconciled_to ? d(drift.reconciled_to) : 'Never'}
+          muted={!drift.reconciled_to}
+          sub={drift.reconciled_to ? `${drift.recon_age_days} days ago` : 'nothing in the last 6 months'} />
         <Chip label="Posted to" value={d(drift.posted_to)} muted={!drift.posted_to}
           sub={drift.posted_to ? `${drift.posted_age_days} days ago` : 'nothing in 120 days'} />
         <Chip label="Last touched" value={drift.touched_at ? d(drift.touched_at) : 'Over 30 days'}
           muted={!drift.touched_at} sub={drift.touched_at ? 'file was edited' : 'nobody has opened it'} />
+        {/* Trailing quarter — for a client written up quarterly the month in
+            progress is empty by design and says nothing. */}
         <Chip label="Volume vs normal"
-          value={drift.volume_ratio != null ? `${Math.round(drift.volume_ratio * 100)}%` : '—'}
-          muted={drift.volume_ratio == null}
-          sub={drift.baseline_monthly ? `normally ~${Math.round(drift.baseline_monthly)}/mth` : 'no baseline yet'} />
+          value={drift.volume_ratio_90d != null ? `${Math.round(drift.volume_ratio_90d * 100)}%` : '—'}
+          muted={drift.volume_ratio_90d == null}
+          sub={drift.baseline_monthly ? `last 90 days vs ~${Math.round(drift.baseline_monthly)}/mth` : 'no baseline yet'} />
       </div>
 
       {Array.isArray(drift.notes) && drift.notes.length > 0 && (
