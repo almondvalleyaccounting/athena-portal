@@ -18,6 +18,9 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  // The scrape widened from the current tax year to seven, so the monthly grid
+  // is now a year at a time rather than one flat list.
+  const [year, setYear] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,6 +42,18 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
   const tier = TIERS[scheme.chase_tier] || TIERS[4];
   const monthly = (detail?.overdue || []).filter((o) => o.section === 'monthly');
   const additional = (detail?.overdue || []).filter((o) => o.section === 'additional');
+
+  const years = [...new Set((detail?.months || []).map((m) => m.tax_year))].sort().reverse();
+  const shownYear = year && years.includes(year) ? year : years[0];
+  const monthRows = (detail?.months || [])
+    .filter((m) => m.tax_year === shownYear)
+    .sort((a, b) => a.tax_month - b.tax_month);
+  const yearTotal = monthRows.reduce((t, m) => ({
+    charges: t.charges + Number(m.charges || 0),
+    credits: t.credits + Number(m.credits || 0),
+    payments: t.payments + Number(m.payments || 0),
+    amount_due: t.amount_due + Number(m.amount_due || 0),
+  }), { charges: 0, credits: 0, payments: 0, amount_due: 0 });
 
   return (
     <>
@@ -151,12 +166,32 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
               )}
 
               <Block
-                title={`This year's monthly position (${scheme.tax_year || ''})`}
-                subtitle={detail?.months?.length
+                title="Monthly position"
+                subtitle={years.length
                   ? 'What was charged, what was relieved by credits, what has been paid'
-                  : 'No monthly rows scraped for the current year'}
+                  : 'No monthly rows scraped for this scheme'}
+                aside={years.length > 1 && (
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {years.map((y) => (
+                      <button
+                        key={y}
+                        onClick={() => setYear(y)}
+                        style={{
+                          padding: '3px 9px', fontSize: 11, fontFamily: font, borderRadius: 999,
+                          cursor: 'pointer', whiteSpace: 'nowrap',
+                          fontWeight: y === shownYear ? 600 : 500,
+                          color: y === shownYear ? '#0f172a' : '#94a3b8',
+                          background: y === shownYear ? '#f1f5f9' : '#fff',
+                          border: `1px solid ${y === shownYear ? '#cbd5e1' : '#e5e7eb'}`,
+                        }}
+                      >
+                        {y}
+                      </button>
+                    ))}
+                  </div>
+                )}
               >
-                {detail?.months?.length > 0 && (
+                {monthRows.length > 0 && (
                   <table style={tableStyle}>
                     <thead>
                       <tr style={headRow}>
@@ -168,7 +203,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {detail.months.map((m) => (
+                      {monthRows.map((m) => (
                         <tr key={m.id} style={{ borderTop: '1px solid #f1f5f9', background: m.overdue ? '#fef2f2' : undefined }}>
                           <td style={td}>
                             <span style={{ fontWeight: 500 }}>{MONTH_NAMES[m.tax_month] || `M${m.tax_month}`}</span>
@@ -184,6 +219,17 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                           </td>
                         </tr>
                       ))}
+                      <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f8fafc' }}>
+                        <td style={{ ...td, fontWeight: 600, fontSize: 12 }}>{shownYear} total</td>
+                        <td style={{ ...tdNum, fontWeight: 600 }}>{fmtGbpDetailed(yearTotal.charges)}</td>
+                        <td style={{ ...tdNum, fontWeight: 600, color: yearTotal.credits > 0 ? '#059669' : '#cbd5e1' }}>
+                          {yearTotal.credits > 0 ? `-${fmtGbpDetailed(yearTotal.credits)}` : '—'}
+                        </td>
+                        <td style={{ ...tdNum, fontWeight: 600 }}>{fmtGbpDetailed(yearTotal.payments)}</td>
+                        <td style={{ ...tdNum, fontWeight: 700, color: yearTotal.amount_due > 0 ? '#b91c1c' : '#94a3b8' }}>
+                          {fmtGbpDetailed(yearTotal.amount_due)}
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 )}
@@ -291,10 +337,13 @@ function OverdueTable({ rows }) {
   );
 }
 
-function Block({ title, subtitle, children }) {
+function Block({ title, subtitle, aside, children }) {
   return (
     <div style={{ marginBottom: 22 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{title}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{title}</div>
+        {aside}
+      </div>
       {subtitle && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, marginBottom: 8 }}>{subtitle}</div>}
       {children && <div style={{ ...card, marginTop: 6 }}>{children}</div>}
     </div>
