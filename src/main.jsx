@@ -7,6 +7,7 @@ import HomeScreen from './shell/HomeScreen';
 import IdeasPage from './modules/ideas/IdeasPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import ClientDashboardPage from './modules/client-dashboard/ClientDashboardPage';
+import HmrcModule from './modules/hmrc/HmrcModule';
 import PortfolioDashboardPage from './modules/client-dashboard/PortfolioDashboardPage';
 import TriageBoardPage from './modules/triage/TriageBoardPage';
 import AdminPage from './shell/AdminPage';
@@ -89,6 +90,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/client-dashboard" element={<ClientDashboardPage />} />
           <Route path="/portfolio" element={<PortfolioDashboardPage />} />
+          {/* HMRC — what the agent-services scrape says about our clients (sql/197). */}
+          <Route path="/hmrc/*" element={<HmrcModule />} />
           <Route path="/triage" element={<TriageBoardPage />} />
           {/* Client Reminders moved under Communications (/comms/reminders).
               Keep old links, digest emails and bookmarks working. */}

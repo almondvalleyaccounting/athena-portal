@@ -109,6 +109,12 @@ export const MODULES = [
       { id: 'cw-dashboard', label: 'Client Dashboard', route: '/client-dashboard', permissions: ['can_view_reports'] },
       { id: 'cw-portfolio', label: 'Portfolio', route: '/portfolio', permissions: ['can_view_reports'] },
       { id: 'cw-reports', label: 'Client Reports', route: '/reports', permissions: ['can_view_reports'] },
+      {
+        id: 'cw-hmrc',
+        label: 'HMRC',
+        route: '/hmrc/paye',
+        matchPaths: ['/hmrc', '/hmrc/paye', '/hmrc/reconciliation', '/hmrc/authorisations'],
+      },
       { id: 'cw-forecast', label: 'Client Forecast', route: '/forecast', permissions: ['can_manage_portal'] },
     ],
   },
