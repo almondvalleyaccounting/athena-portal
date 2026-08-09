@@ -358,6 +358,16 @@ async function reconRealm(sb: any, realmId: string, start: string, end: string, 
   }
 
   const employer = matched[0];
+
+  // Not every employer posts to QuickBooks. A Xero or FreeAgent client will
+  // have a QBO company with a matching name (an old file, or a migration), and
+  // checking its payroll journals against a ledger BrightPay never posts to
+  // reports every period as missing. Skip, do not flag.
+  if (employer.destination !== "quickbooks") {
+    return { ...base, employer: employer.sheet_name, task_count: 0, findings: [],
+      skipped: `posts to ${employer.destination}, not QuickBooks` };
+  }
+
   const { data: tasks, error: taskErr } = await sb.rpc("payroll_recon_tasks", {
     p_employer_id: employer.id, p_start: start, p_end: end,
   });
@@ -451,13 +461,15 @@ Deno.serve(async (req) => {
       const haveToken = new Set((toks || []).map((t: any) => t.realm_id));
 
       const norm = (s: string | null) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      const empKeys = (employers || []).flatMap((e: any) =>
+      // Only QuickBooks-destined employers make a realm worth calling.
+      const qboEmployers = (employers || []).filter((e: any) => e.destination === "quickbooks");
+      const empKeys = qboEmployers.flatMap((e: any) =>
         [e.destination_company, e.brightpay_name, e.sheet_name].map(norm).filter(Boolean));
       const realmSet = new Set(empKeys);
 
       let candidates = (conns || []).filter((c: any) => {
         if (!haveToken.has(c.realm_id)) return false;
-        if ((employers || []).some((e: any) => e.destination_realm === c.realm_id)) return true;
+        if (qboEmployers.some((e: any) => e.destination_realm === c.realm_id)) return true;
         const k = norm(c.company_name);
         return realmSet.has(k) || realmSet.has(k + "ltd") || realmSet.has(k + "limited")
           || [...realmSet].some((ek) => ek + "ltd" === k || ek + "limited" === k);
