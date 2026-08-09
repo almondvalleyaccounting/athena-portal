@@ -248,8 +248,11 @@ Last, because it needs the most genuinely new work.
    Expense, for the owner-cost nominal pickers). PAYE control is a balance-sheet
    liability, so it is not reachable through the current metric — this needs a
    new account pull, not a config change.
-2. **`payroll.task` contains exactly one `hmrc` row.** There is effectively no
-   "what BrightPay says is due" side yet.
+2. **HMRC history is one month deep.** As of 09/08/2026 17:00 `payroll.task` holds
+   79 `hmrc` rows (44 posted, 35 not_required) covering 2026-07-06 → 2026-08-05
+   — up from 1 earlier the same day, as the run worked through. So the "what
+   BrightPay says is due" side now exists, but with a single period there is no
+   trend to compare against yet.
 
 ### Therefore: build it QBO-only first
 
@@ -334,8 +337,12 @@ drift; re-check before relying on it.
 | Realms with any cached metric | **4 of 128** (168 rows, 2026-07-20 → 2026-08-09) |
 | Cron jobs touching client realms | **none** |
 | `payroll.employer` | 99 rows — 96 quickbooks, 2 xero, 1 freeagent; `brightpay_slug` on all 99; `destination_realm` NULL on all 99 |
-| `payroll.task` | 149 `journal` (145 posted, 3 not_required, 1 failed) + 1 `hmrc` |
+| `payroll.task` | 150 `journal` (145 posted, 4 not_required, 1 failed) + 79 `hmrc` (44 posted, 35 not_required) |
 | Journal window | 2026-04-01 → 2026-07-31 |
+| HMRC window | 2026-07-06 → 2026-08-05 |
+| Tasks in `attempting` | **0** — nothing stranded mid-post |
+| Unclosed `payroll.run` rows | 6 (incl. run 718, 23 tasks, started 16:09 and never closed) |
+| Outstanding failure | Grit Coaching Ltd — July journal, no saved nominal ledger mapping |
 | Name match, active QBO employers | 72 of 96 (62 with live tokens) |
 | Name match, July-posted employers | **34 of 34** |
 | EA flagged `not_mapped` | LA Travel £2,030.27; Local Planet / Why Settle £1,743.47 |
