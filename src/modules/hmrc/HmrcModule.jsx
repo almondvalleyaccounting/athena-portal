@@ -10,6 +10,7 @@ import ClientStatementView from './ClientStatementView';
 import PaymentsView from './PaymentsView';
 import AllTaxesView from './AllTaxesView';
 import ClientTaxView from './ClientTaxView';
+import ByTaxView from './ByTaxView';
 import { font, dateTime } from './hmrcShared';
 
 // HMRC — what the taxman's own records say about our clients.
@@ -24,6 +25,9 @@ import { font, dateTime } from './hmrcShared';
 //   All taxes          practice-wide across all four heads — who is building debt
 //   Client             one client: every tax head plus the whole money ledger
 //   PAYE debt          who owes PAYE, and what have we done about it
+//   CT / VAT / SA      the same ranking for each of the other three heads. One
+//                      tab with a selector rather than three, to keep the bar
+//                      usable; PAYE stays separate because it carries triage
 //   Client statement   one client's account: months down, opening → charges →
 //                      credits → payments → closing, any date range. This is
 //                      where a year-end PAYE creditor comes from.
@@ -41,6 +45,7 @@ const TABS = [
   { to: '/hmrc/all',            label: 'All taxes' },
   { to: '/hmrc/client',         label: 'Client' },
   { to: '/hmrc/paye',           label: 'PAYE debt' },
+  { to: '/hmrc/by-tax',         label: 'CT · VAT · SA' },
   { to: '/hmrc/statement',      label: 'Client statement' },
   { to: '/hmrc/payments',       label: 'Payments' },
   { to: '/hmrc/balance',        label: 'Balance analysis' },
@@ -105,6 +110,7 @@ export default function HmrcModule() {
         <Route path="all" element={<AllTaxesView />} />
         <Route path="client" element={<ClientTaxView />} />
         <Route path="paye" element={<DebtView />} />
+        <Route path="by-tax" element={<ByTaxView />} />
         <Route path="statement" element={<ClientStatementView />} />
         <Route path="payments" element={<PaymentsView />} />
         {/* The Trend tab became the per-client statement. Keep old links alive. */}

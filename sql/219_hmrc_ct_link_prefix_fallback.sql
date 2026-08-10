@@ -1,0 +1,32 @@
+-- 219 — Resolve the last 3 Corporation Tax clients. Supersedes the view in sql/213.
+--
+-- 3 of 222 CT clients had no Athena entity, and they were not trivial:
+-- A & M Investments owed £10,625.72 across 30 periods, Osiris Educational
+-- £3,140.78 across 23. £13,667 that a client-ranked league table would have
+-- silently omitted, and 105 money movements with nobody to attribute them to.
+--
+-- Two fixes:
+--
+-- 1. Strip the legal suffix even with no preceding space. HMRC writes
+--    "A & M INVESTMENTS (ABERDEEN)LIMITED", so \s+ never fired and the key kept
+--    "limited" on the end. \s* alone resolved that one.
+--
+-- 2. Bidirectional prefix fallback, because HMRC TRUNCATES names and the
+--    truncation lands either side of the suffix strip:
+--      "LOCAL PLANET SOLUTIONS LIMIT"  -> localplanetsolutionslimit   (LONGER)
+--      "Local Planet Solutions Limited"-> localplanetsolutions
+--      "OSIRIS EDUCATIONAL WOODHALL"   -> osiriseducationalwoodhall   (SHORTER)
+--      "Osiris Educational Woodhall Spa Limited" -> osiriseducationalwoodhallspa
+--    Hence "either is a prefix of the other". Guarded: both keys 12+ characters
+--    AND exactly one candidate, so a short or ambiguous name can never match by
+--    accident. Recorded as link_method 'prefix' to stay distinguishable from an
+--    exact hit.
+--
+-- After: 222/222 linked (213 name, 6 company_number, 2 prefix, 1 conflict where
+-- company number and name disagree), 0 CT periods and 0 money movements without
+-- an entity (was 105). Corporation Tax owed rose £464,878.82 -> £478,545.53,
+-- exactly the £13,666.71 that had been invisible. Book total now £921,669.85.
+--
+-- The view body as applied is in the migration hmrc_ct_link_prefix_fallback:
+-- sql/213's v_hmrc_ct_link with \s* in both normalisations and a third `bypre`
+-- lateral join, ordered company_number -> name -> prefix.
