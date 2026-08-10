@@ -78,7 +78,10 @@ export default function ClientStatementView() {
   const [letter, setLetter] = useState(null);
   const [search, setSearch] = useState('');
   const [showDetail, setShowDetail] = useState(true);
-  const [openMonth, setOpenMonth] = useState(null);
+  // Which number is drilled into: { key: '2026-27-3', kind, category }. The
+  // statement is a summary, so every figure on it opens the rows behind it.
+  const [drill, setDrill] = useState(null);
+  const [lines, setLines] = useState([]);
 
   const [from, setFrom] = useState(taxYearStart());
   const [to, setTo] = useState(iso(new Date()));
@@ -107,7 +110,8 @@ export default function ClientStatementView() {
   }, [payeRef]);
 
   useEffect(() => {
-    if (!payeRef) { setRows([]); setPayments([]); setProof(null); return; }
+    if (!payeRef) { setRows([]); setPayments([]); setProof(null); setLines([]); return; }
+    setDrill(null);
     setLoading(true);
     Promise.all([
       // Filtered on period_END, the same rule the balance proof uses. Selecting
@@ -125,12 +129,19 @@ export default function ClientStatementView() {
       // The balance AT the end of the range — a different number from the
       // statement's closing, which is only what is still unpaid today.
       supabase.rpc('hmrc_paye_balance_at', { p_paye_ref: payeRef, p_as_at: to }),
+      // The individual charge/credit lines behind every monthly figure. A few
+      // hundred rows per client, so fetched once rather than per drill-down.
+      supabase.from('v_hmrc_paye_charge_lines').select('*')
+        .eq('paye_ref', payeRef)
+        .order('tax_year', { ascending: true })
+        .order('tax_month', { ascending: true }),
     ])
-      .then(([s, p, b]) => {
+      .then(([s, p, b, l]) => {
         if (s.error || p.error) { setError((s.error || p.error).message); return; }
         setRows(s.data || []);
         setPayments(p.data || []);
         setProof(b.error ? null : (b.data || [])[0] || null);
+        setLines(l.error ? [] : (l.data || []));
         setError('');
       })
       .catch((e) => setError(e.message || 'Could not load the statement'))
@@ -169,9 +180,6 @@ export default function ClientStatementView() {
     payments: t.payments + n(r.payments),
   }), { charges: 0, credits: 0, payments: 0 });
 
-  const paymentsFor = (r) => payments.filter(
-    (p) => p.allocated_year === r.tax_year && p.allocated_month === r.tax_month,
-  );
   const unallocated = payments.filter((p) => p.unallocated);
   const anyDetailBroken = rows.some((r) => r.detail_reconciles === false);
 
@@ -351,11 +359,17 @@ export default function ClientStatementView() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => {
-                  const pays = paymentsFor(r);
+                {rows.map((r, idx) => {
                   const key = `${r.tax_year}-${r.tax_month}`;
-                  const isOpen = openMonth === key;
                   const cols = 3 + (showDetail ? usedCharge.length + usedCredit.length : 0) + 4;
+                  const open = drill && drill.key === key;
+                  const cell = (kind, category) => ({
+                    active: open && drill.kind === kind && drill.category === category,
+                    onClick: () => setDrill(
+                      open && drill.kind === kind && drill.category === category
+                        ? null : { key, kind, category },
+                    ),
+                  });
                   return (
                     <React.Fragment key={key}>
                       <tr style={{ borderTop: '1px solid #f1f5f9', background: r.overdue ? '#fffbfa' : undefined }}>
@@ -368,75 +382,52 @@ export default function ClientStatementView() {
                           </span>
                         </td>
                         <td style={{ ...td, fontSize: 11.5, color: '#64748b' }}>{r.due_date}</td>
-                        <td style={{ ...tdNum, color: '#64748b' }}>{fmtGbpDetailed(r.opening)}</td>
-                        {showDetail && usedCharge.map(([k]) => (
-                          <td key={k} style={{ ...tdNum, color: n(r[k]) ? '#0f172a' : '#e2e8f0' }}>
-                            {n(r[k]) ? fmtGbpDetailed(r[k]) : '—'}
+                        <td style={tdNum}>
+                          <DrillCell value={r.opening} colour="#64748b" {...cell('opening')}
+                            hint="What was still owed going into this month — click for the months that make it up" />
+                        </td>
+                        {showDetail && usedCharge.map(([k, label]) => (
+                          <td key={k} style={tdNum}>
+                            <DrillCell value={r[k]} {...cell('charge', label)}
+                              hint={`${label} charged this month — click for HMRC's own lines`} />
                           </td>
                         ))}
-                        <td style={{ ...tdNum, fontWeight: 600, borderLeft: '1px solid #f1f5f9' }}>{fmtGbpDetailed(r.charges)}</td>
-                        {showDetail && usedCredit.map(([k]) => (
-                          <td key={k} style={{ ...tdNum, color: n(r[k]) ? '#059669' : '#e2e8f0' }}>
-                            {n(r[k]) ? fmtGbpDetailed(r[k]) : '—'}
+                        <td style={{ ...tdNum, borderLeft: '1px solid #f1f5f9' }}>
+                          <DrillCell value={r.charges} bold {...cell('charges')}
+                            hint="Everything HMRC charged this month — click for the breakdown" />
+                        </td>
+                        {showDetail && usedCredit.map(([k, label]) => (
+                          <td key={k} style={tdNum}>
+                            <DrillCell value={r[k]} colour="#059669" {...cell('credit', label)}
+                              hint={`${label} — click for HMRC's own lines`} />
                           </td>
                         ))}
-                        <td style={{ ...tdNum, color: n(r.credits) ? '#059669' : '#cbd5e1', borderLeft: '1px solid #f1f5f9' }}>
-                          {n(r.credits) ? `-${fmtGbpDetailed(r.credits)}` : '—'}
+                        <td style={{ ...tdNum, borderLeft: '1px solid #f1f5f9' }}>
+                          <DrillCell value={r.credits} colour="#059669" negate {...cell('credits')}
+                            hint="Everything that relieved this month's charge — click for the breakdown" />
                         </td>
                         <td style={tdNum}>
-                          {n(r.payments) ? (
-                            <button
-                              onClick={() => setOpenMonth(isOpen ? null : key)}
-                              title={pays.length
-                                ? `${pays.length} payment${pays.length === 1 ? '' : 's'} — click for dates`
-                                : 'No individual payments recorded against this month'}
-                              style={{
-                                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                fontFamily: font, fontSize: 12.5, color: '#0e7fe0',
-                                textDecoration: 'underline', textDecorationStyle: 'dotted',
-                              }}
-                            >
-                              -{fmtGbpDetailed(r.payments)}
-                            </button>
-                          ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                          <DrillCell value={r.payments} colour="#059669" negate {...cell('payments')}
+                            hint="Click to see each payment, its date, and everything else the same payment was set against" />
                         </td>
-                        <td style={{
-                          ...tdNum, fontWeight: 700, borderLeft: '1px solid #f1f5f9',
-                          color: n(r.closing) > 0 ? '#b91c1c' : '#0f172a',
-                        }}>
-                          {fmtGbpDetailed(r.closing)}
+                        <td style={{ ...tdNum, borderLeft: '1px solid #f1f5f9' }}>
+                          <DrillCell value={r.closing} bold zeroDash={false}
+                            colour={n(r.closing) > 0 ? '#b91c1c' : '#0f172a'} {...cell('closing')}
+                            hint="Still owed at the end of this month — click for the months it is made of" />
                         </td>
                       </tr>
-                      {isOpen && (
+                      {open && (
                         <tr style={{ background: '#f8fafc' }}>
-                          <td colSpan={cols} style={{ padding: '8px 14px' }}>
-                            {pays.length === 0 ? (
-                              <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                                HMRC shows {fmtGbpDetailed(r.payments)} against this month but no individual
-                                payment allocated to it — it may have been applied as part of a larger payment.
-                              </div>
-                            ) : (
-                              <table style={{ fontSize: 12, borderCollapse: 'collapse' }}>
-                                <thead>
-                                  <tr style={{ color: '#94a3b8', fontSize: 10, textTransform: 'uppercase' }}>
-                                    <th style={{ ...th, padding: '3px 10px 3px 0' }}>Received</th>
-                                    <th style={{ ...th, padding: '3px 10px' }}>Allocated to</th>
-                                    <th style={{ ...thNum, padding: '3px 0 3px 10px' }}>Amount</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {pays.map((p) => (
-                                    <tr key={p.id}>
-                                      <td style={{ padding: '3px 10px 3px 0', fontWeight: 500 }}>{p.received_on_text}</td>
-                                      <td style={{ padding: '3px 10px', color: '#475569' }}>{p.allocated_to || '—'}</td>
-                                      <td style={{ padding: '3px 0 3px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                                        {fmtGbpDetailed(p.amount)}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            )}
+                          <td colSpan={cols} style={{ padding: '10px 14px' }}>
+                            <DrillContent
+                              row={r}
+                              rows={rows}
+                              idx={idx}
+                              drill={drill}
+                              lines={lines}
+                              payments={payments}
+                              onClose={() => setDrill(null)}
+                            />
                           </td>
                         </tr>
                       )}
@@ -488,6 +479,268 @@ export default function ClientStatementView() {
         </div>
       )}
     </div>
+  );
+}
+
+// A figure on the statement that opens the rows behind it. Zero renders as a
+// dash and stays inert — there is nothing under it to look at.
+function DrillCell({ value, colour, bold, negate, active, onClick, hint, zeroDash = true }) {
+  const v = n(value);
+  if (v === 0 && zeroDash) return <span style={{ color: '#e2e8f0' }}>—</span>;
+  const text = negate && v !== 0 ? `-${fmtGbpDetailed(v)}` : fmtGbpDetailed(v);
+  return (
+    <button
+      onClick={onClick}
+      title={hint || ''}
+      style={{
+        background: active ? '#e0edfb' : 'none', border: 'none',
+        padding: active ? '1px 5px' : '1px 0', margin: 0, borderRadius: 4,
+        cursor: 'pointer', fontFamily: font, fontSize: 12.5,
+        fontWeight: bold ? 600 : 400,
+        color: colour || '#0f172a',
+        fontVariantNumeric: 'tabular-nums',
+        textDecoration: 'underline', textDecorationStyle: 'dotted',
+        textDecorationColor: '#cbd5e1',
+      }}
+    >
+      {text}
+    </button>
+  );
+}
+
+// What sits under a clicked figure. Charges and credits resolve to HMRC's own
+// charge lines; payments resolve to the whole bank payment, including the parts
+// allocated to OTHER months — that one-to-many is why a payment on the client's
+// bank statement rarely equals any single month's figure.
+function DrillContent({ row, rows, idx, drill, lines, payments, onClose }) {
+  const forMonth = lines.filter(
+    (l) => l.tax_year === row.tax_year && l.tax_month === row.tax_month,
+  );
+
+  const header = (title, sub) => (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: '#0f172a' }}>{title}</span>
+      {sub && <span style={{ fontSize: 11, color: '#94a3b8' }}>{sub}</span>}
+      <button onClick={onClose} style={{
+        marginLeft: 'auto', fontSize: 11, color: '#64748b', background: 'none',
+        border: 'none', cursor: 'pointer', fontFamily: font,
+      }}>close</button>
+    </div>
+  );
+
+  const lineTable = (rowsIn) => (
+    <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 460 }}>
+      <thead>
+        <tr style={{ color: '#94a3b8', fontSize: 10, textTransform: 'uppercase' }}>
+          <th style={{ ...th, padding: '3px 12px 3px 0' }}>HMRC line</th>
+          <th style={{ ...th, padding: '3px 12px' }}>Category</th>
+          <th style={{ ...thNum, padding: '3px 0 3px 12px' }}>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rowsIn.map((l) => (
+          <tr key={l.id} style={{ borderTop: '1px solid #eef2f6' }}>
+            <td style={{ padding: '3px 12px 3px 0', color: '#475569' }}>{l.line_type}</td>
+            <td style={{ padding: '3px 12px', color: '#94a3b8' }}>{l.category}</td>
+            <td style={{ padding: '3px 0 3px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+                         color: l.kind === 'credit' ? '#059669' : '#0f172a' }}>
+              {fmtGbpDetailed(l.amount)}
+            </td>
+          </tr>
+        ))}
+        <tr style={{ borderTop: '1px solid #cbd5e1', fontWeight: 600 }}>
+          <td style={{ padding: '4px 12px 3px 0' }}>Total</td>
+          <td />
+          <td style={{ padding: '4px 0 3px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+            {fmtGbpDetailed(rowsIn.reduce((s, l) => s + n(l.amount), 0))}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  );
+
+  const noDetail = (what) => (
+    <div style={{ fontSize: 12, color: '#94a3b8' }}>
+      HMRC gives no line detail for {what} in this month — only the monthly total shown above.
+    </div>
+  );
+
+  if (drill.kind === 'charges' || drill.kind === 'charge') {
+    const sel = drill.category
+      ? forMonth.filter((l) => l.kind === 'charge' && l.category === drill.category)
+      : forMonth.filter((l) => l.kind === 'charge');
+    return (
+      <>
+        {header(
+          drill.category ? `${drill.category} — ${MONTH_NAMES[row.tax_month]} ${row.tax_year}`
+                         : `Charges — ${MONTH_NAMES[row.tax_month]} ${row.tax_year}`,
+          `period ${row.period_start} to ${row.period_end}, due ${row.due_date}`,
+        )}
+        {sel.length ? lineTable(sel) : noDetail(drill.category || 'charges')}
+      </>
+    );
+  }
+
+  if (drill.kind === 'credits' || drill.kind === 'credit') {
+    const sel = drill.category
+      ? forMonth.filter((l) => l.kind === 'credit' && l.category === drill.category)
+      : forMonth.filter((l) => l.kind === 'credit');
+    return (
+      <>
+        {header(
+          drill.category ? `${drill.category} — ${MONTH_NAMES[row.tax_month]} ${row.tax_year}`
+                         : `Credits — ${MONTH_NAMES[row.tax_month]} ${row.tax_year}`,
+          'what relieved this month’s charge',
+        )}
+        {sel.length ? lineTable(sel) : noDetail(drill.category || 'credits')}
+      </>
+    );
+  }
+
+  if (drill.kind === 'payments') {
+    const mine = payments.filter(
+      (p) => p.allocated_year === row.tax_year && p.allocated_month === row.tax_month,
+    );
+    // One bank payment can be split across several PAYE months. Show the whole
+    // payment, marking which line belongs to the month you clicked, so the
+    // figure can be tied to the client's bank statement.
+    const dates = [...new Set(mine.map((p) => p.received_on_text))];
+    const siblings = payments.filter((p) => dates.includes(p.received_on_text));
+    if (mine.length === 0) {
+      return (
+        <>
+          {header(`Payments — ${MONTH_NAMES[row.tax_month]} ${row.tax_year}`)}
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>
+            HMRC shows {fmtGbpDetailed(row.payments)} against this month but no individual payment allocated
+            to it — it was probably applied as part of a larger payment HMRC has not itemised here.
+          </div>
+        </>
+      );
+    }
+    return (
+      <>
+        {header(
+          `Payments received for ${MONTH_NAMES[row.tax_month]} ${row.tax_year}`,
+          dates.length === 1
+            ? `everything received on ${dates[0]}`
+            : `everything received on ${dates.length} dates`,
+        )}
+        <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 520 }}>
+          <thead>
+            <tr style={{ color: '#94a3b8', fontSize: 10, textTransform: 'uppercase' }}>
+              <th style={{ ...th, padding: '3px 12px 3px 0' }}>Received</th>
+              <th style={{ ...th, padding: '3px 12px' }}>HMRC allocated it to</th>
+              <th style={{ ...thNum, padding: '3px 0 3px 12px' }}>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dates.map((d) => {
+              const onDate = siblings.filter((p) => p.received_on_text === d);
+              const total = onDate.reduce((s, p) => s + n(p.amount), 0);
+              return (
+                <React.Fragment key={d}>
+                  {onDate.map((p) => {
+                    const isThisMonth = p.allocated_year === row.tax_year
+                      && p.allocated_month === row.tax_month;
+                    return (
+                      <tr key={p.id} style={{
+                        borderTop: '1px solid #eef2f6',
+                        background: isThisMonth ? '#eef7ff' : undefined,
+                      }}>
+                        <td style={{ padding: '3px 12px 3px 0', fontWeight: 500 }}>{p.received_on_text}</td>
+                        <td style={{ padding: '3px 12px', color: '#475569' }}>
+                          {p.unallocated
+                            ? <span style={{ color: '#c2410c', fontWeight: 600 }}>Unallocated</span>
+                            : p.allocated_to}
+                          {isThisMonth && (
+                            <span style={{ fontSize: 10, color: '#0e7fe0', fontWeight: 600, marginLeft: 6 }}>
+                              this month
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '3px 0 3px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {fmtGbpDetailed(p.amount)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {onDate.length > 1 && (
+                    <tr style={{ fontWeight: 600 }}>
+                      <td style={{ padding: '3px 12px 6px 0', color: '#64748b', fontSize: 11 }}>
+                        Received on {d}
+                      </td>
+                      <td style={{ padding: '3px 12px 6px', color: '#94a3b8', fontSize: 11 }}>
+                        {onDate.length} allocations
+                      </td>
+                      <td style={{ padding: '3px 0 6px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {fmtGbpDetailed(total)}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, maxWidth: 640, lineHeight: 1.5 }}>
+          Rows without the blue mark are the same money set against other months. HMRC does not give us a
+          reliable payment reference, so these are grouped by the date received — usually one bank payment,
+          but two payments on the same day would appear together.
+        </div>
+      </>
+    );
+  }
+
+  // Opening and closing: which months the balance is actually made of.
+  const upto = drill.kind === 'closing' ? rows.slice(0, idx + 1) : rows.slice(0, idx);
+  const contributing = upto.filter((x) => n(x.movement) !== 0);
+  return (
+    <>
+      {header(
+        drill.kind === 'closing'
+          ? `Closing balance at ${row.period_end}`
+          : `Opening balance at ${row.period_start}`,
+        'the months inside this range that are still unpaid',
+      )}
+      {contributing.length === 0 ? (
+        <div style={{ fontSize: 12, color: '#94a3b8' }}>
+          Nothing in the range shown is unpaid. Any balance here was brought forward from before{' '}
+          {rows[0]?.period_start} — widen the date range to see it.
+        </div>
+      ) : (
+        <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 420 }}>
+          <thead>
+            <tr style={{ color: '#94a3b8', fontSize: 10, textTransform: 'uppercase' }}>
+              <th style={{ ...th, padding: '3px 12px 3px 0' }}>Month</th>
+              <th style={{ ...th, padding: '3px 12px' }}>Due</th>
+              <th style={{ ...thNum, padding: '3px 0 3px 12px' }}>Still unpaid</th>
+            </tr>
+          </thead>
+          <tbody>
+            {contributing.map((x) => (
+              <tr key={`${x.tax_year}-${x.tax_month}`} style={{ borderTop: '1px solid #eef2f6' }}>
+                <td style={{ padding: '3px 12px 3px 0' }}>
+                  {MONTH_NAMES[x.tax_month]} {String(x.period_start).slice(0, 4)}
+                  <span style={{ color: '#94a3b8', marginLeft: 5 }}>m{x.tax_month} · {x.tax_year}</span>
+                </td>
+                <td style={{ padding: '3px 12px', color: '#64748b' }}>{x.due_date}</td>
+                <td style={{ padding: '3px 0 3px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+                             color: n(x.movement) > 0 ? '#b91c1c' : '#059669' }}>
+                  {fmtGbpDetailed(x.movement)}
+                </td>
+              </tr>
+            ))}
+            <tr style={{ borderTop: '1px solid #cbd5e1', fontWeight: 600 }}>
+              <td style={{ padding: '4px 12px 3px 0' }}>Total from the months shown</td>
+              <td />
+              <td style={{ padding: '4px 0 3px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                {fmtGbpDetailed(contributing.reduce((s, x) => s + n(x.movement), 0))}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+    </>
   );
 }
 
