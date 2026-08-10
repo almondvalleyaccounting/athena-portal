@@ -11,6 +11,7 @@ import CompaniesHousePanel from '../components/CompaniesHousePanel';
 import ServicesPanel from '../components/ServicesPanel';
 import HandoverPanel from '../components/HandoverPanel';
 import CheckinPanel from '../components/CheckinPanel';
+import DateField from '../components/DateField';
 import {
   getOnboarding, listStaff, updateOnboarding, updateStep, addNote, addDirectorSa,
   isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES,
@@ -176,9 +177,9 @@ export default function OnboardingDetailView() {
               {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
             <label style={{ fontSize: 12, color: '#64748b' }}>Target</label>
-            <input
-              type="date" style={selectStyle} value={ob.target_date || ''}
-              onChange={(e) => handleObField({ target_date: e.target.value || null })}
+            <DateField
+              style={selectStyle} value={ob.target_date || ''} title="Target completion date"
+              onCommit={(target_date) => handleObField({ target_date })}
             />
           </div>
         </div>
@@ -313,9 +314,9 @@ export default function OnboardingDetailView() {
                             </span>
                             <span>
                               Requested{' '}
-                              <input
-                                type="date" style={selectStyle} value={step.requested_at || ''}
-                                onChange={(e) => patchStep(step, { requested_at: e.target.value || null })}
+                              <DateField
+                                style={selectStyle} value={step.requested_at || ''} title="Date requested"
+                                onCommit={(requested_at) => patchStep(step, { requested_at })}
                               />
                             </span>
                             {step.expected_days != null && <span style={{ color: '#94a3b8' }}>expect ~{step.expected_days}d</span>}

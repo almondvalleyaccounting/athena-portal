@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRightLeft, CheckCircle2, Plus, Settings2, X } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
+import DateField from './DateField';
 import {
   addHandoverArea, addNote, initHandovers, listHandoverDefaults,
   removeHandover, saveHandoverDefault, updateHandover,
@@ -139,9 +140,9 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
                   <option value="">Hand to…</option>
                   {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
-                <input
-                  type="date" style={input} value={h.due || ''} disabled={busy}
-                  onChange={(e) => run(() => updateHandover(h.id, { due: e.target.value || null }))}
+                <DateField
+                  style={input} value={h.due || ''} title="Handover due date"
+                  onCommit={(due) => run(() => updateHandover(h.id, { due }))}
                 />
                 {h.handover_to && (
                   <button

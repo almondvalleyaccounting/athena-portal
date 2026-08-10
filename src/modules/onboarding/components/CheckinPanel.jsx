@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { HeartHandshake, Send } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
+import DateField from './DateField';
 import { sendOnboardingEmail, updateOnboarding } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -81,9 +82,9 @@ export default function CheckinPanel({ ob, staff, onChanged }) {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
             <span style={{ fontSize: 12, color: '#64748b' }}>Due</span>
-            <input
-              type="date" style={input} value={ob.checkin_due || ''} disabled={busy}
-              onChange={(e) => save({ checkin_due: e.target.value || null })}
+            <DateField
+              style={input} value={ob.checkin_due || ''} title="Check-in due date"
+              onCommit={(checkin_due) => save({ checkin_due })}
             />
           </div>
 
