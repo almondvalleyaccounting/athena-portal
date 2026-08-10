@@ -110,9 +110,14 @@ export default function ClientStatementView() {
     if (!payeRef) { setRows([]); setPayments([]); setProof(null); return; }
     setLoading(true);
     Promise.all([
+      // Filtered on period_END, the same rule the balance proof uses. Selecting
+      // by period_start disagreed with it at a boundary: at a 31 May cut-off the
+      // table showed tax month 2 (6 May to 5 Jun) and a payment received 17 June
+      // against it, while the proof excluded the month and said nothing had been
+      // paid since. A period that has not ended is not yet a liability.
       supabase.from('v_hmrc_paye_client_statement').select('*')
         .eq('paye_ref', payeRef)
-        .gte('period_start', from).lte('period_start', to)
+        .gte('period_end', from).lte('period_end', to)
         .order('period_start', { ascending: true }),
       supabase.from('v_hmrc_paye_payment_detail').select('*')
         .eq('paye_ref', payeRef)
@@ -515,6 +520,16 @@ function BalanceProof({ proof, to, unallocated }) {
 
       <table style={{ fontSize: 12.5, borderCollapse: 'collapse', minWidth: 420 }}>
         <tbody>
+          {/* The derived opening balance — the plug that makes the walk tie to
+              HMRC's own overdue figure. Zero for most clients, which is itself
+              the evidence that starting from nothing is right for them. */}
+          {n(proof.opening_balance) !== 0 && (
+            <ProofRow
+              label="Opening balance brought forward (derived)"
+              value={proof.opening_balance}
+              hint="The balancing figure needed to tie to HMRC's debt — charges before our data, or items outside the monthly grid"
+            />
+          )}
           <ProofRow label={`Charged to ${prettyDate(to)} — ${proof.periods_counted} tax months`} value={proof.charges} />
           <ProofRow label="Less credits" value={-n(proof.credits)} green />
           <ProofRow label="Net charged" value={proof.net_charged} rule />
@@ -525,6 +540,16 @@ function BalanceProof({ proof, to, unallocated }) {
             value={paidAfter}
             hint="Money that makes today's position look settled but was still outstanding on the date"
           />
+          {/* Kept off the opening balance deliberately: HMRC writing a debt down
+              under time-to-pay is a later adjustment, not pre-history. */}
+          {n(proof.restatement) !== 0 && (
+            <ProofRow
+              label="HMRC restatement — time-to-pay arrangement"
+              value={proof.restatement}
+              green={n(proof.restatement) < 0}
+              hint="HMRC has restated the debt under a payment plan while the monthly charges stay unpaid in the grid"
+            />
+          )}
           <tr style={{ borderTop: '2px solid #cbd5e1' }}>
             <td style={{ padding: '6px 14px 2px 0', fontWeight: 700, color: '#0f172a' }}>
               Owed at {prettyDate(to)}
@@ -537,6 +562,22 @@ function BalanceProof({ proof, to, unallocated }) {
           </tr>
         </tbody>
       </table>
+
+      {/* Charged but not payable yet is never debt — HMRC's own figure counts
+          only what is overdue. Practice-wide this was £100,623 sitting inside
+          closing balances as though it were owed. */}
+      {n(proof.not_yet_due) !== 0 && (
+        <div style={{ fontSize: 11.5, color: '#0369a1', marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
+          A further <b>{fmtGbpDetailed(proof.not_yet_due)}</b> has been charged but is not yet due, so it is
+          not part of this balance and HMRC does not count it as debt either.
+        </div>
+      )}
+
+      {n(proof.balance_at) === n(proof.stated_debt_today) && (
+        <div style={{ fontSize: 11.5, color: '#166534', marginTop: 6, maxWidth: 720, lineHeight: 1.5 }}>
+          Ties to HMRC's own stated debt of {fmtGbpDetailed(proof.stated_debt_today)}.
+        </div>
+      )}
 
       <div style={{ fontSize: 11.5, color: isMinimum ? '#78350f' : '#64748b', marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
         {isMinimum ? (
