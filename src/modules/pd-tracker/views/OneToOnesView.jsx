@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Trash2, MessageSquare, Check, CircleDot, Lock, NotebookPen, Pencil, FileDown } from 'lucide-react';
+import {
+  Plus, Trash2, MessageSquare, Check, CircleDot, Lock, NotebookPen, Pencil, FileDown,
+  ChevronDown, ChevronRight,
+} from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { Card, SectionTitle, Button, Input, Textarea, Select, Pill, EmptyState, FONT, SERIF } from '../components/ui';
 import {
@@ -692,7 +695,7 @@ function PointsEditor({ section, rows, onChange }) {
                 onChange={(e) => set(idx, { headline: e.target.value })}
               />
               <Textarea
-                value={r.detail} placeholder="Detail (optional) — shows on hover and on the PDF"
+                value={r.detail} placeholder="Detail (optional) — opens under the headline, and prints in full on the PDF"
                 onChange={(e) => set(idx, { detail: e.target.value })}
                 style={{ minHeight: 54, fontSize: 13 }}
               />
@@ -714,47 +717,81 @@ function PointsEditor({ section, rows, onChange }) {
 }
 
 /*
-  The saved-summary tile. Headlines only — hovering (or tapping) one with a
-  detail opens it underneath, so the tile stays scannable.
+  The saved-summary tile.
+
+  Details used to open on hover, which fought itself: opening one pushed the
+  rows below it down, the pointer landed on a different row, that one opened,
+  and the tile jumped around under the mouse. Nothing here reacts to the
+  pointer now — details open on an explicit click and stay open, as many at a
+  time as you like, and "show detail" on the header opens the whole section at
+  once for reading straight through.
 */
 function PointsTile({ section, rows }) {
-  const [openIdx, setOpenIdx] = useState(null);
+  const withDetail = rows.filter((r) => (r.detail || '').trim());
+  const [openIds, setOpenIds] = useState(() => new Set());
+  const allOpen = withDetail.length > 0 && withDetail.every((r) => openIds.has(r.id));
+
+  const toggle = (id) => setOpenIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleAll = () => setOpenIds(allOpen ? new Set() : new Set(withDetail.map((r) => r.id)));
+
   return (
     <div style={{ background: section.bg, padding: 12, borderRadius: 10 }}>
-      <div style={{
-        fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#0f172a',
-        textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6,
-      }}>
-        {section.label}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 7 }}>
+        <div style={{
+          fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#0f172a',
+          textTransform: 'uppercase', letterSpacing: '0.04em',
+        }}>
+          {section.label}
+        </div>
+        {withDetail.length > 0 && (
+          <button
+            onClick={toggleAll}
+            style={{
+              marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              fontFamily: FONT, fontSize: 11, fontWeight: 600, color: '#475569', whiteSpace: 'nowrap',
+            }}
+          >
+            {allOpen ? 'Hide detail' : `Show detail (${withDetail.length})`}
+          </button>
+        )}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {rows.map((r, idx) => {
-          const hasDetail = !!(r.detail || '').trim();
-          const open = openIdx === idx;
+          const detail = (r.detail || '').trim();
+          const open = openIds.has(r.id);
           return (
-            <div
-              key={r.id || idx}
-              onMouseEnter={() => hasDetail && setOpenIdx(idx)}
-              onMouseLeave={() => hasDetail && setOpenIdx(null)}
-              onClick={() => hasDetail && setOpenIdx(open ? null : idx)}
-              style={{ cursor: hasDetail ? 'pointer' : 'default' }}
-            >
+            <div key={r.id || idx}>
               <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
                 <span style={{ color: '#64748b', fontSize: 13, lineHeight: 1.5 }}>•</span>
-                <span style={{
-                  fontFamily: FONT, fontSize: 13, color: '#1e293b', lineHeight: 1.5, flex: 1,
-                  borderBottom: hasDetail ? '1px dotted #94a3b8' : 'none',
-                }}>
+                <span style={{ fontFamily: FONT, fontSize: 13, color: '#1e293b', lineHeight: 1.5, flex: 1 }}>
                   {r.headline}
                 </span>
+                {detail && (
+                  <button
+                    onClick={() => toggle(r.id)}
+                    title={open ? 'Hide the detail' : 'Show the detail behind this'}
+                    style={{
+                      flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3,
+                      background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(15,23,42,0.1)',
+                      borderRadius: 7, padding: '1px 6px', cursor: 'pointer',
+                      fontFamily: FONT, fontSize: 10.5, fontWeight: 600, color: '#475569', lineHeight: 1.6,
+                    }}
+                  >
+                    {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />} detail
+                  </button>
+                )}
               </div>
-              {open && (
+              {detail && open && (
                 <div style={{
-                  margin: '4px 0 6px 14px', padding: '8px 10px', background: 'rgba(255,255,255,0.75)',
+                  margin: '5px 0 2px 14px', padding: '8px 10px', background: 'rgba(255,255,255,0.75)',
                   border: '1px solid rgba(15,23,42,0.08)', borderRadius: 8,
                   fontFamily: FONT, fontSize: 12.5, color: '#475569', lineHeight: 1.55, whiteSpace: 'pre-wrap',
                 }}>
-                  {r.detail}
+                  {detail}
                 </div>
               )}
             </div>
