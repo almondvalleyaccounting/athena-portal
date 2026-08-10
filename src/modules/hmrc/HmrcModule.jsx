@@ -5,6 +5,8 @@ import { fetchLastRun } from './hmrcApi';
 import DebtView from './DebtView';
 import ReconcileView from './ReconcileView';
 import AuthorisationsView from './AuthorisationsView';
+import BalanceView from './BalanceView';
+import TrendView from './TrendView';
 import { font, dateTime } from './hmrcShared';
 
 // HMRC — what the taxman's own records say about our clients.
@@ -17,11 +19,14 @@ import { font, dateTime } from './hmrcShared';
 //
 // Three tabs, because there are three distinct jobs:
 //   Debt            — who owes HMRC money, and what have we done about it
+//   Balance         — how each balance was arrived at: charges, credits, payments
 //   Reconciliation  — where the agent list and Athena disagree
 //   Authorisations  — schemes we can see but should not be able to
 
 const TABS = [
   { to: '/hmrc/paye',           label: 'PAYE debt',      end: false },
+  { to: '/hmrc/trend',          label: 'Trend',          end: false },
+  { to: '/hmrc/balance',        label: 'Balance analysis', end: false },
   { to: '/hmrc/reconciliation', label: 'Reconciliation', end: false },
   { to: '/hmrc/authorisations', label: 'Authorisations', end: false },
 ];
@@ -74,6 +79,8 @@ export default function HmrcModule() {
       <Routes>
         <Route index element={<Navigate to="/hmrc/paye" replace />} />
         <Route path="paye" element={<DebtView />} />
+        <Route path="trend" element={<TrendView />} />
+        <Route path="balance" element={<BalanceView />} />
         <Route path="reconciliation" element={<ReconcileView />} />
         <Route path="authorisations" element={<AuthorisationsView />} />
         <Route path="*" element={<Navigate to="/hmrc/paye" replace />} />

@@ -113,7 +113,7 @@ export const MODULES = [
         id: 'cw-hmrc',
         label: 'HMRC',
         route: '/hmrc/paye',
-        matchPaths: ['/hmrc', '/hmrc/paye', '/hmrc/reconciliation', '/hmrc/authorisations'],
+        matchPaths: ['/hmrc', '/hmrc/paye', '/hmrc/trend', '/hmrc/balance', '/hmrc/reconciliation', '/hmrc/authorisations'],
       },
       { id: 'cw-forecast', label: 'Client Forecast', route: '/forecast', permissions: ['can_manage_portal'] },
     ],

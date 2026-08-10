@@ -102,6 +102,31 @@ export async function setExceptionNote(id, note) {
   if (error) throw error;
 }
 
+// Balance Analysis reads two views: one row per scheme per tax year for the
+// bridge, and one row per assessed line for the make-up of a charge.
+//
+// Both come back in pounds like everything else here. The line view is a few
+// thousand rows across the practice, which is small enough to pull once and
+// pivot in the browser rather than round-tripping per client as you drill.
+export async function fetchBalanceByYear() {
+  const { data, error } = await supabase
+    .from('v_hmrc_paye_balance')
+    .select('*')
+    .order('paye_ref', { ascending: true })
+    .order('tax_year', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function fetchChargeLines() {
+  const { data, error } = await supabase
+    .from('v_hmrc_paye_charge_lines')
+    .select('*')
+    .order('tax_month', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function fetchAuthorisations() {
   const { data, error } = await supabase
     .from('v_hmrc_authorisation_review')
