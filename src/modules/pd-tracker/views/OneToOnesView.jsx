@@ -385,7 +385,7 @@ export default function OneToOnesView() {
               <Textarea value={draft.what_went_well} onChange={(e) => setDraft({ ...draft, what_went_well: e.target.value })} />
             </div>
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={lblStyle}>What didn't go so well?</label>
+              <label style={lblStyle}>Areas to target for improvement</label>
               <Textarea value={draft.what_didnt} onChange={(e) => setDraft({ ...draft, what_didnt: e.target.value })} />
             </div>
             <div style={{ gridColumn: '1 / -1' }}>
@@ -522,7 +522,7 @@ export default function OneToOnesView() {
                 {expanded && (
                   <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     {m.what_went_well && <Field label="What went well" value={m.what_went_well} bg="#dcfce7" />}
-                    {m.what_didnt && <Field label="What didn't" value={m.what_didnt} bg="#fee2e2" />}
+                    {m.what_didnt && <Field label="Areas to target for improvement" value={m.what_didnt} bg="#fee2e2" />}
                     {m.blockers && <Field label="Blockers" value={m.blockers} bg="#fef3c7" />}
                     {m.notes && <Field label="Notes" value={m.notes} bg="#f1f5f9" />}
                     {meetingActions.length > 0 && (

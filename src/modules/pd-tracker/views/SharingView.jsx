@@ -210,7 +210,7 @@ function RespondCard({ req, onRespond, onDecline }) {
       {m && (m.what_went_well || m.what_didnt || m.blockers) && (
         <div style={{ marginTop: 8, padding: 8, background: '#f8fafc', borderRadius: 8, fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
           {m.what_went_well && <div><strong>Went well:</strong> {m.what_went_well}</div>}
-          {m.what_didnt && <div><strong>Didn’t:</strong> {m.what_didnt}</div>}
+          {m.what_didnt && <div><strong>Areas to target for improvement:</strong> {m.what_didnt}</div>}
           {m.blockers && <div><strong>Blockers:</strong> {m.blockers}</div>}
         </div>
       )}
