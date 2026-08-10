@@ -149,14 +149,18 @@ select
   p.tax_year                                    as received_tax_year,
   p.received_on                                 as received_on_text,
   public.hmrc_safe_date(p.received_on)          as received_on,
-  nullif(p.allocated_to, '')                    as allocated_to,
+  -- HMRC signals "not applied" two ways: an empty allocation, or the literal
+  -- string 'UNALLOCATED'. Normalise both to null so the flag below is the single
+  -- source of truth and the column never shows a non-allocation as one.
+  case when upper(trim(coalesce(p.allocated_to, ''))) in ('', 'UNALLOCATED')
+       then null else p.allocated_to end        as allocated_to,
   p.allocated_year,
   p.allocated_month,
   case
     when p.allocated_year is not null and p.allocated_month is not null
     then public.hmrc_tax_period_start(p.allocated_year, p.allocated_month)
   end                                           as allocated_period_start,
-  (p.allocated_to is null or p.allocated_to = '') as unallocated,
+  (upper(trim(coalesce(p.allocated_to, ''))) in ('', 'UNALLOCATED')) as unallocated,
   round(p.amount / 100.0, 2)                    as amount
 from hmrc.payment p
 join hmrc.client c     on c.id = p.client_id
