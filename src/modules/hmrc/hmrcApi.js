@@ -31,6 +31,20 @@ export async function fetchSchemesForEntity(entityId) {
 // schemes), and an unscoped "newest run" made the PAYE pages report a CT run's
 // figures — "CORPORATION-TAX · 222 schemes seen" above a table of 141 PAYE
 // schemes. Pass the service the surface is actually about.
+// Clients whose figures come from an older scrape than the newest one for their
+// tax. A failed scrape leaves them on their last good data rather than blanking
+// them (see sql/214), so without this the failure is invisible.
+export async function fetchStaleClients() {
+  const { data, error } = await supabase
+    .from('v_hmrc_scrape_health')
+    .select('entity_id, entity_name, tax, reference, runs_behind, data_from')
+    .eq('stale', true)
+    .order('runs_behind', { ascending: false })
+    .order('entity_name', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
 // The latest run for EVERY service, newest first. The module covers four tax
 // heads now, so a single-service banner tells you nothing about the other three.
 export async function fetchLatestRunPerService() {

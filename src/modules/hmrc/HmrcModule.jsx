@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { Landmark } from 'lucide-react';
-import { fetchLatestRunPerService } from './hmrcApi';
+import { fetchLatestRunPerService, fetchStaleClients } from './hmrcApi';
 import DebtView from './DebtView';
 import ReconcileView from './ReconcileView';
 import AuthorisationsView from './AuthorisationsView';
@@ -53,10 +53,14 @@ const TABS = [
 
 export default function HmrcModule() {
   const [runs, setRuns] = useState([]);
+  const [stale, setStale] = useState([]);
   const [runError, setRunError] = useState(false);
 
   useEffect(() => {
     fetchLatestRunPerService().then(setRuns).catch(() => setRunError(true));
+    // Silent on failure: the staleness line is a health note, not the reason
+    // anyone opened this page.
+    fetchStaleClients().then(setStale).catch(() => {});
   }, []);
 
   return (
@@ -75,7 +79,7 @@ export default function HmrcModule() {
 
         {/* Everything on these tabs is only as current as the last scrape, so
             say so where it cannot be missed. */}
-        <RunBanner runs={runs} failed={runError} />
+        <RunBanner runs={runs} stale={stale} failed={runError} />
       </div>
 
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb', marginBottom: 18 }}>
@@ -116,7 +120,7 @@ export default function HmrcModule() {
 
 // One line per tax head, because each is scraped on its own cadence and a figure
 // is only as current as the run behind it.
-function RunBanner({ runs, failed }) {
+function RunBanner({ runs, stale = [], failed }) {
   if (failed) {
     return (
       <div style={{ ...banner, borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
@@ -168,6 +172,50 @@ function RunBanner({ runs, failed }) {
       {anyStale && (
         <div style={{ fontSize: 10.5, color: '#c2410c', marginTop: 3 }}>
           A tax head is over a month old — the sweep is meant to be monthly.
+        </div>
+      )}
+
+      <StaleLine stale={stale} />
+    </div>
+  );
+}
+
+// A client whose scrape failed keeps their previous figures rather than
+// vanishing, which is right but silent. This is the only place that says so.
+function StaleLine({ stale }) {
+  const [open, setOpen] = useState(false);
+  if (!stale || stale.length === 0) {
+    return (
+      <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 5, borderTop: '1px solid #eef2f6', paddingTop: 4 }}>
+        Every client current with the latest scrape of their taxes.
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginTop: 5, borderTop: '1px solid #eef2f6', paddingTop: 4 }}>
+      <button
+        onClick={() => setOpen(!open)}
+        title="These clients' figures come from an earlier scrape — the most recent one produced nothing for them"
+        style={{
+          background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: font,
+          fontSize: 10.5, fontWeight: 600, color: '#c2410c',
+          textDecoration: 'underline', textDecorationStyle: 'dotted',
+        }}
+      >
+        {stale.length} client{stale.length === 1 ? '' : 's'} on stale data{open ? ' —' : ' +'}
+      </button>
+      {open && (
+        <div style={{ marginTop: 3 }}>
+          {stale.map((s) => (
+            <div key={`${s.entity_id}-${s.tax}`} style={{ fontSize: 10.5, color: '#78350f', lineHeight: 1.6 }}>
+              {s.entity_name}
+              <span style={{ color: '#94a3b8' }}> · {(s.tax || '').replace('-', ' ')} · {s.runs_behind} behind</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3, maxWidth: 280, lineHeight: 1.45 }}>
+            Their last scrape produced no data, so earlier figures are still showing. Either it failed or
+            they genuinely have nothing — HMRC gives us no per-client reason.
+          </div>
         </div>
       )}
     </div>
