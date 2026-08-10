@@ -49,7 +49,9 @@ export default function HmrcModule() {
   const [runError, setRunError] = useState(false);
 
   useEffect(() => {
-    fetchLastRun().then(setRun).catch(() => setRunError(true));
+    // Every tab here is PAYE. Ask for the PAYE run explicitly, or the banner
+    // reports whichever service scraped most recently.
+    fetchLastRun('paye').then(setRun).catch(() => setRunError(true));
   }, []);
 
   return (

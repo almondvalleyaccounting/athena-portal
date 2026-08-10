@@ -27,10 +27,15 @@ export async function fetchSchemesForEntity(entityId) {
   return data || [];
 }
 
-export async function fetchLastRun() {
+// Scoped to a service. Corporation Tax started scraping on 2026-08-10 (222
+// schemes), and an unscoped "newest run" made the PAYE pages report a CT run's
+// figures — "CORPORATION-TAX · 222 schemes seen" above a table of 141 PAYE
+// schemes. Pass the service the surface is actually about.
+export async function fetchLastRun(service = 'paye') {
   const { data, error } = await supabase
     .from('v_hmrc_runs')
     .select('*')
+    .eq('service', service)
     .order('started_at', { ascending: false })
     .limit(1);
   if (error) throw error;
