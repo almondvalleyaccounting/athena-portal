@@ -320,6 +320,18 @@ function reconcile(tasks: any[], allJournals: any[]) {
 
 /* ── Per-realm run ────────────────────────────────────────────────── */
 
+const norm = (s: string | null) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// "Amy Plumbing Ltd" in BrightPay is "Amy Plumbing Limited" in QuickBooks, and
+// the other way round just as often. Comparing with the suffix attached - or
+// bolting one suffix onto one side only - misses every Ltd/Limited pair, which
+// cost five clients on the first run. Strip the suffix from BOTH sides.
+const stem = (k: string) => k.replace(/(limited|ltd|llp|plc)$/, "");
+function nameMatches(a: string, b: string) {
+  const x = stem(a || ""), y = stem(b || "");
+  return !!x && !!y && x === y;
+}
+
 async function reconRealm(sb: any, realmId: string, start: string, end: string, employers: any[]) {
   const { data: conn } = await sb.from("qbo_report_connections")
     .select("realm_id, company_name, is_practice").eq("realm_id", realmId).maybeSingle();
@@ -327,13 +339,11 @@ async function reconRealm(sb: any, realmId: string, start: string, end: string, 
   const raw = await fetchJournals(sb, realmId, start, end);
   const journals = raw.map(probeEntry);
 
-  const norm = (s: string | null) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const target = norm(conn?.company_name ?? "");
   const matched = (employers || []).filter((e: any) => {
     if (e.destination_realm) return e.destination_realm === realmId;
-    const keys = [e.destination_company, e.brightpay_name, e.sheet_name].map(norm);
-    return keys.some((k) => k && (k === target || k + "ltd" === target || k + "limited" === target
-      || target + "ltd" === k || target + "limited" === k));
+    return [e.destination_company, e.brightpay_name, e.sheet_name]
+      .map(norm).some((k) => nameMatches(k, target));
   });
 
   const base = {
@@ -485,7 +495,6 @@ Deno.serve(async (req) => {
       const { data: toks } = await sb.from("qbo_report_tokens").select("realm_id").eq("status", "active");
       const haveToken = new Set((toks || []).map((t: any) => t.realm_id));
 
-      const norm = (s: string | null) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
       // Deliberately NOT filtered on employer.destination — that field is
       // seeded from posting history and defaults to 'quickbooks' on a miss, so
       // it would both exclude real QBO clients and admit non-QBO ones. The
@@ -498,8 +507,7 @@ Deno.serve(async (req) => {
         if (!haveToken.has(c.realm_id)) return false;
         if ((employers || []).some((e: any) => e.destination_realm === c.realm_id)) return true;
         const k = norm(c.company_name);
-        return realmSet.has(k) || realmSet.has(k + "ltd") || realmSet.has(k + "limited")
-          || [...realmSet].some((ek) => ek + "ltd" === k || ek + "limited" === k);
+        return [...realmSet].some((ek: any) => nameMatches(ek, k));
       });
 
       if (Array.isArray(body.realms) && body.realms.length) {
@@ -541,6 +549,39 @@ Deno.serve(async (req) => {
             run_id: runId, realm_id: c.realm_id, company_name: c.company_name,
             kind: "check_failed", severity: "medium",
             detail: `Could not check this client: ${String((e as Error)?.message ?? e)}`.slice(0, 500),
+          });
+          found++;
+        }
+      }
+
+      // Coverage. A control check that records only problems cannot tell
+      // "checked and clean" from "never looked at" - and the monthly email
+      // would read as an all-clear over clients it never opened. On the last
+      // chunk, name every employer with postings in the window that no
+      // candidate realm resolved to.
+      const done0 = offset + limit >= candidates.length;
+      if (done0) {
+        const matchedIds = new Set<string>();
+        for (const c of candidates) {
+          const k = norm(c.company_name);
+          for (const e of (employers || [])) {
+            if (e.destination_realm === c.realm_id) { matchedIds.add(String(e.id)); continue; }
+            const keys = [e.destination_company, e.brightpay_name, e.sheet_name].map(norm);
+            if (keys.some((ek) => nameMatches(ek, k))) matchedIds.add(String(e.id));
+          }
+        }
+        for (const e of (employers || [])) {
+          if (matchedIds.has(String(e.id))) continue;
+          const { data: ts } = await sb.rpc("payroll_recon_tasks", {
+            p_employer_id: e.id, p_start: start, p_end: end,
+          });
+          const posted = (ts || []).filter((t: any) => t.state === "posted" || t.state === "verified");
+          if (!posted.length) continue;
+          rows.push({
+            run_id: runId, realm_id: "-", company_name: e.destination_company || e.sheet_name,
+            employer: e.sheet_name, kind: "not_checked", severity: "medium",
+            detail: `${posted.length} posting(s) recorded in ${start}..${end} but this client has no QuickBooks connection in Athena to check them against - so it was NOT verified either way.`,
+            data: { tasks: posted.length, destination: e.destination },
           });
           found++;
         }

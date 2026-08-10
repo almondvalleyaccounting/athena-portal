@@ -118,6 +118,10 @@ Deno.serve(async (req) => {
     const dupes = report.filter((f) => f.kind === "duplicate");
     const missing = report.filter((f) => f.kind === "missing" || f.kind === "stopped_posting");
     const mismatch = report.filter((f) => f.kind === "amount_mismatch");
+    // Coverage caveat. Not a row in the table (Bobby asked for duplicates and
+    // missing), but it must be stated: a control check that quietly skips
+    // clients reads as an all-clear over ledgers it never opened.
+    const notChecked = all.filter((f) => f.kind === "not_checked");
     const dupeValue = dupes.reduce((a, f) => a + Number(f.data?.amount ?? 0), 0);
 
     const windowLabel = `${run.window_start} to ${run.window_end}`;
@@ -155,6 +159,8 @@ Deno.serve(async (req) => {
     ${summary}
   </div>
 
+  ${notChecked.length ? `<p style="margin:0 0 14px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:13px;color:#92400e;"><strong>${notChecked.length} client${notChecked.length === 1 ? " was" : "s were"} not checked</strong> — no QuickBooks connection in Athena, so their postings were not verified either way: ${esc(notChecked.map((f) => f.employer).join(", "))}</p>` : ""}
+
   <p style="margin:0 0 6px;font-size:13px;color:#475569;">
     These are journals where QuickBooks disagrees with what the payroll run recorded.
     Each needs a person to decide what to do — nothing is corrected automatically.
@@ -181,8 +187,9 @@ Deno.serve(async (req) => {
 
     if (dryRun) {
       return jr({ ok: true, dry_run: true, run_id: runId, recipients, subject,
-        counts: { duplicates: dupes.length, missing: missing.length, mismatch: mismatch.length, other: otherCount },
-        duplicate_value: dupeValue, html_preview: html.slice(0, 1200) });
+        counts: { duplicates: dupes.length, missing: missing.length, mismatch: mismatch.length,
+                  not_checked: notChecked.length, other: otherCount },
+        duplicate_value: dupeValue });
     }
 
     const resp = await fetch("https://api.resend.com/emails", {
@@ -195,7 +202,7 @@ Deno.serve(async (req) => {
     });
     const rj = await resp.json().catch(() => ({}));
     return jr({ ok: resp.ok, run_id: runId, recipients, subject, email_id: rj?.id ?? null,
-      counts: { duplicates: dupes.length, missing: missing.length, mismatch: mismatch.length, other: otherCount },
+      counts: { duplicates: dupes.length, missing: missing.length, mismatch: mismatch.length, not_checked: notChecked.length, other: otherCount },
       error: resp.ok ? undefined : (rj?.message || rj) }, resp.ok ? 200 : 502);
   } catch (err) {
     return jr({ error: String((err as Error)?.message ?? err) }, 500);
