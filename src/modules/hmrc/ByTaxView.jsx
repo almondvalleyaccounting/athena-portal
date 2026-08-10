@@ -145,6 +145,23 @@ export default function ByTaxView() {
   const sum = (k, set = filtered) => set.reduce((s, r) => s + n(r[k]), 0);
   const meta = TAXES.find((t) => t.key === tax);
 
+  // The headline totals what is SHOWN, which is right for a ranking but means the
+  // default filter quietly drops clients in credit — and a credit is still part of
+  // the book. On Corporation Tax that is 29 clients holding £31,578: the filtered
+  // headline reads £510,124 while the practice position is £478,546. Two different
+  // numbers for the same words, one of them contradicting the All taxes tab.
+  // So whenever the filter is hiding credits, say so and give the net.
+  const credits = useMemo(() => {
+    const held = rows.filter((r) => n(r.total) < 0);
+    return {
+      clients: held.length,
+      value: held.reduce((s, r) => s + n(r.total), 0),
+      net: rows.reduce((s, r) => s + n(r.total), 0),
+      all: rows.length,
+    };
+  }, [rows]);
+  const creditsHidden = owingOnly && credits.clients > 0;
+
   // Rows the scrape returned but that carry no Athena client, so cannot be ranked.
   const orphaned = useMemo(() => {
     const src = tax === 'corporation-tax' ? ct : tax === 'vat' ? vat : sa;
@@ -242,6 +259,18 @@ export default function ByTaxView() {
           </>
         )}
       </div>
+
+      {creditsHidden && (
+        <div style={{
+          fontSize: 12, color: '#0369a1', background: '#f0f9ff', border: '1px solid #bae6fd',
+          borderRadius: 6, padding: '7px 10px', marginBottom: 12, maxWidth: 820, lineHeight: 1.55,
+        }}>
+          The headline totals the clients shown. {credits.clients} other client{credits.clients === 1 ? '' : 's'}
+          {' '}hold {fmtGbpDetailed(Math.abs(credits.value))} of credit, hidden by the filter. Net across all
+          {' '}{credits.all}: <b>{fmtGbpDetailed(credits.net)}</b> — the figure on the All taxes tab. Untick
+          {' '}<i>with a balance only</i> to reconcile the two.
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <SearchInput value={search} onChange={setSearch} placeholder="Client or reference…" style={{ minWidth: 240 }} />
