@@ -63,6 +63,20 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
   const monthRows = (detail?.months || [])
     .filter((m) => m.tax_year === shownYear)
     .sort((a, b) => a.tax_month - b.tax_month);
+  // The year picker used to filter ONLY the monthly grid, so a 2023-24 table sat
+  // above a list of 2026-27 credits with nothing saying so. Everything below the
+  // grid now follows the selected year too.
+  //
+  // Credits are matched on their own tax_year. Payments are matched on
+  // allocated_year — the year whose bills they actually reduced — which is not
+  // the year they arrived in: 142 payments received in 2026-27 are allocated to
+  // 2025-26, because that is what paying off arrears looks like.
+  const isLatestYear = shownYear === years[0];
+  const creditRows = (detail?.credits || []).filter((c) => c.tax_year === shownYear);
+  const paymentRows = (detail?.payments || []).filter(
+    (p) => p.allocated_year === shownYear || (!p.allocated_year && isLatestYear),
+  );
+
   const yearTotal = monthRows.reduce((t, m) => ({
     charges: t.charges + Number(m.charges || 0),
     credits: t.credits + Number(m.credits || 0),
@@ -255,12 +269,12 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
               </Block>
 
               <Block
-                title="Payments HMRC has received"
-                subtitle={detail?.payments?.length
-                  ? 'Most recent first, with the month HMRC allocated each one to'
-                  : 'No payments recorded against this scheme in the scraped year'}
+                title={`Payments allocated to ${shownYear}`}
+                subtitle={paymentRows.length
+                  ? 'The month HMRC set each one against — the date received can fall in a later year'
+                  : `No payments have been allocated to ${shownYear}.`}
               >
-                {detail?.payments?.length > 0 && (
+                {paymentRows.length > 0 && (
                   <table style={tableStyle}>
                     <thead>
                       <tr style={headRow}>
@@ -270,7 +284,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {detail.payments.map((p) => (
+                      {paymentRows.map((p) => (
                         <tr key={p.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                           <td style={{ ...td, whiteSpace: 'nowrap' }}>{p.received_on_text}</td>
                           <td style={{ ...td, fontSize: 12, color: '#475569' }}>
@@ -289,12 +303,16 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
               </Block>
 
               <Block
-                title="Credits applied"
-                subtitle={detail?.credits?.length
+                title={`Credits applied in ${shownYear}`}
+                subtitle={creditRows.length
                   ? 'Employment Allowance, statutory pay recovery, CIS suffered and early-payment interest'
-                  : 'No credits applied to this scheme'}
+                  // Not "no credits" — HMRC's credits page only covers the
+                  // current year, and saying nothing here would read as "this
+                  // client claimed no EA in 2023-24", which is a different and
+                  // wrong claim. The per-month totals above DO cover every year.
+                  : `HMRC only itemises credits for the current tax year${years[0] ? ` (${years[0]})` : ''}, so there is nothing to list for ${shownYear}. The Credits column in the table above still shows what relieved each month.`}
               >
-                {detail?.credits?.length > 0 && (
+                {creditRows.length > 0 && (
                   <table style={tableStyle}>
                     <thead>
                       <tr style={headRow}>
@@ -304,7 +322,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {detail.credits.map((c) => (
+                      {creditRows.map((c) => (
                         <tr key={c.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                           <td style={{ ...td, fontSize: 12 }}>{c.credit_type}</td>
                           <td style={{ ...td, fontSize: 12, color: '#475569' }}>{c.allocated_to || '—'}</td>
