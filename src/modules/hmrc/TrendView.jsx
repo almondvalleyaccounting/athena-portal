@@ -3,79 +3,119 @@ import { Download, TriangleAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fmtGbp, fmtGbpDetailed } from '../../lib/money';
 import { downloadCSV } from '../../lib/exportUtils';
-import { font, Stat, Chip, ErrorBar, th, thNum, td, tdNum, card } from './hmrcShared';
+import { font, TIERS, Stat, Chip, ErrorBar, th, thNum, td, tdNum, card, inputStyle } from './hmrcShared';
 
 // How the HMRC position was arrived at — the walk from nothing to what is owed
-// today, at three grains.
+// today, at three grains, filterable, and exportable for year-end work.
 //
-// Aggregation is done here in the browser rather than in three more views:
-// v_hmrc_paye_trend_monthly is one row per tax month (75 today, 12 a year
-// forever), so the whole series fits in one request and month / tax year /
-// total are just different groupings of it. Adding server-side rollups would be
-// three more definitions of the same number to keep in step.
+// Aggregation of the WALK is done here in the browser: hmrc_trend_monthly()
+// returns one row per tax month (75 today, 12 a year forever), so month / tax
+// year / total are just different groupings of one small result. The FILTERING
+// has to happen server-side though — you cannot filter a pre-aggregated total —
+// hence the RPC rather than a plain view read.
 //
 // The fetches live in this file rather than hmrcApi.js on purpose: that module
-// is being edited by a second session right now, and a self-contained component
-// cannot be broken by a concurrent rewrite of a shared file.
+// is shared with a second session, and a self-contained component cannot be
+// broken by a concurrent rewrite of a shared file.
 
 const MONTH_NAMES = ['', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
+const n = (v) => Number(v || 0);
 
-async function fetchTrend() {
-  const { data, error } = await supabase
-    .from('v_hmrc_paye_trend_monthly')
-    .select('*')
-    .order('tax_year', { ascending: true })
-    .order('tax_month', { ascending: true });
+const TIER_CHOICES = [
+  { value: 'all', label: 'All schemes', tiers: null },
+  { value: '1',   label: TIERS[1].label, tiers: [1] },
+  { value: '2',   label: TIERS[2].label, tiers: [2] },
+  { value: '3',   label: TIERS[3].label, tiers: [3] },
+  { value: 'owing', label: 'Owing', tiers: [1, 2, 3] },
+];
+
+async function fetchTrend({ entityIds, tiers, standings, managers }) {
+  const { data, error } = await supabase.rpc('hmrc_trend_monthly', {
+    p_entity_ids: entityIds && entityIds.length ? entityIds : null,
+    p_tiers:      tiers && tiers.length ? tiers : null,
+    p_standings:  standings && standings.length ? standings : null,
+    p_managers:   managers && managers.length ? managers : null,
+  });
   if (error) throw error;
   return data || [];
 }
 
-async function fetchStatedDebt() {
-  // The Debt tab's number, straight from HMRC's own stated position, so the two
-  // can be tied together rather than left to disagree quietly.
+async function fetchFilterOptions() {
   const { data, error } = await supabase
     .from('v_hmrc_paye_clients')
-    .select('total_debt');
+    .select('entity_id, entity_name, hmrc_name, paye_ref, standing, chase_tier')
+    .order('entity_name', { ascending: true, nullsFirst: false });
   if (error) throw error;
-  return (data || []).reduce((s, r) => s + Number(r.total_debt || 0), 0);
+  return data || [];
 }
 
-const n = (v) => Number(v || 0);
+async function fetchHistory() {
+  const { data, error } = await supabase
+    .from('v_hmrc_paye_debt_history')
+    .select('*')
+    .order('run_id', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
 
 export default function TrendView() {
   const [rows, setRows] = useState([]);
-  const [stated, setStated] = useState(null);
-  const [grain, setGrain] = useState('year'); // 'month' | 'year' | 'total'
+  const [schemes, setSchemes] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [grain, setGrain] = useState('year');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Filters
+  const [tierChoice, setTierChoice] = useState('all');
+  const [entityId, setEntityId] = useState('');
+  const [manager, setManager] = useState('');
+  const [standing, setStanding] = useState('');
+
   useEffect(() => {
-    Promise.all([fetchTrend(), fetchStatedDebt()])
-      .then(([t, s]) => { setRows(t); setStated(s); setError(''); })
+    Promise.all([fetchFilterOptions(), fetchHistory()])
+      .then(([s, h]) => { setSchemes(s); setHistory(h); })
+      .catch((e) => setError(e.message || 'Could not load filters'));
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    const choice = TIER_CHOICES.find((c) => c.value === tierChoice);
+    fetchTrend({
+      entityIds: entityId ? [entityId] : null,
+      tiers: choice?.tiers || null,
+      standings: standing ? [standing] : null,
+      managers: manager ? [manager] : null,
+    })
+      .then((t) => { setRows(t); setError(''); })
       .catch((e) => setError(e.message || 'Could not load the trend'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [tierChoice, entityId, manager, standing]);
+
+  const managers = useMemo(
+    () => [...new Set(schemes.map((s) => s.manager).filter(Boolean))].sort(),
+    [schemes],
+  );
 
   // Rows arrive oldest-first, which is the order the walk has to be built in:
   // each period's opening is the previous period's closing.
   const periods = useMemo(() => {
     if (rows.length === 0) return [];
 
+    const mk = (r, opening) => ({
+      charges: n(r.charges), credits: n(r.credits), payments: n(r.payments),
+      movement: n(r.still_due), closing: n(r.cumulative_due), opening,
+      schemesOwing: r.schemes_owing, bpSchemes: r.brightpay_schemes,
+      bpLiability: r.bp_liability === null ? null : n(r.bp_liability),
+      covered: r.brightpay_covered,
+    });
+
     if (grain === 'month') {
       return rows.map((r, i) => ({
         key: `${r.tax_year}-${r.tax_month}`,
         label: `${MONTH_NAMES[r.tax_month] || `M${r.tax_month}`} ${r.tax_year}`,
         sub: `month ${r.tax_month}`,
-        opening: i === 0 ? 0 : n(rows[i - 1].cumulative_due),
-        charges: n(r.charges),
-        credits: n(r.credits),
-        payments: n(r.payments),
-        movement: n(r.still_due),
-        closing: n(r.cumulative_due),
-        schemesOwing: r.schemes_owing,
-        bpSchemes: r.brightpay_schemes,
-        bpLiability: r.bp_liability === null ? null : n(r.bp_liability),
-        covered: r.brightpay_covered,
+        ...mk(r, i === 0 ? 0 : n(rows[i - 1].cumulative_due)),
       }));
     }
 
@@ -88,7 +128,7 @@ export default function TrendView() {
         return {
           key: y,
           label: y,
-          sub: `${inYear.length} month${inYear.length === 1 ? '' : 's'} scraped`,
+          sub: `${inYear.length} month${inYear.length === 1 ? '' : 's'}`,
           opening: firstIdx === 0 ? 0 : n(rows[firstIdx - 1].cumulative_due),
           charges: inYear.reduce((s, r) => s + n(r.charges), 0),
           credits: inYear.reduce((s, r) => s + n(r.credits), 0),
@@ -123,23 +163,34 @@ export default function TrendView() {
   }, [rows, grain]);
 
   const walkClosing = rows.length ? n(rows[rows.length - 1].cumulative_due) : 0;
-  // The walk sums what HMRC charged and never collected. HMRC's stated debt can
-  // differ — most of the gap sits on schemes with a time-to-pay arrangement,
-  // where HMRC restates the balance while the monthly charges stay unpaid in the
-  // grid. Showing the difference is the point; hiding it would make both numbers
-  // untrustworthy.
-  const difference = stated === null ? null : stated - walkClosing;
-
+  const charged = rows.reduce((s, r) => s + n(r.charges), 0);
+  const paid = rows.reduce((s, r) => s + n(r.payments), 0);
   const firstCovered = rows.find((r) => r.brightpay_covered);
+  const filtered = !!(entityId || manager || standing || tierChoice !== 'all');
+
+  // The stated-debt comparison only means anything unfiltered — the observed
+  // history is a whole-book figure and cannot be sliced by manager or tier.
+  const statedNow = history.length ? n(history[0].total_debt) : null;
+  const difference = (!filtered && statedNow !== null) ? statedNow - walkClosing : null;
+
+  const filterLabel = [
+    entityId && (schemes.find((s) => s.entity_id === entityId)?.entity_name || 'client'),
+    manager && `managed by ${manager}`,
+    standing && standing.replace('_', ' '),
+    tierChoice !== 'all' && TIER_CHOICES.find((c) => c.value === tierChoice)?.label,
+  ].filter(Boolean).join(' · ');
 
   const exportCsv = () => {
+    const stamp = new Date().toISOString().slice(0, 10);
     downloadCSV(
-      `hmrc-paye-trend-${grain}-${new Date().toISOString().slice(0, 10)}.csv`,
-      ['Period', 'Opening', 'Charged', 'Credits', 'Paid', 'Movement', 'Closing', 'Schemes owing', 'BrightPay liability'],
+      `hmrc-paye-trend-${grain}-${stamp}.csv`,
+      ['Period', 'Opening', 'Charged', 'Credits', 'Paid', 'Movement', 'Closing',
+       'Schemes owing', 'BrightPay liability', 'Filter'],
       periods.map((p) => [
         p.label, p.opening.toFixed(2), p.charges.toFixed(2), p.credits.toFixed(2),
         p.payments.toFixed(2), p.movement.toFixed(2), p.closing.toFixed(2),
         p.schemesOwing ?? '', p.bpLiability === null ? '' : p.bpLiability.toFixed(2),
+        filterLabel || 'all schemes',
       ]),
     );
   };
@@ -150,23 +201,29 @@ export default function TrendView() {
 
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
         How the HMRC position was arrived at. Each period opens with the balance brought forward, adds what
-        HMRC charged, takes off credits and payments, and closes with what was still owed. Roll it up by
-        month, by tax year, or in total.
+        HMRC charged, takes off credits and payments, and closes with what was still owed. Slice it by client,
+        manager or chase tier, roll it up by month, tax year or total, and export whatever is on screen.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 16 }}>
         <Stat label="Owed per the walk" value={fmtGbp(walkClosing)} colour="#b91c1c" big
               hint="Charges HMRC never collected, accumulated across every scraped month" />
-        <Stat label="HMRC's stated debt" value={stated === null ? '…' : fmtGbp(stated)} colour="#0f172a"
-              hint="The figure on the Debt tab, from HMRC's own position" />
-        <Stat label="Difference" value={difference === null ? '…' : fmtGbp(difference)}
+        <Stat label={filtered ? 'Stated debt (all)' : "HMRC's stated debt"}
+              value={statedNow === null ? '…' : fmtGbp(statedNow)} colour="#0f172a"
+              hint={filtered
+                ? 'Whole-book figure from the last scrape — cannot be filtered'
+                : 'From the last scrape, HMRC\'s own position'} />
+        <Stat label="Difference" value={difference === null ? '—' : fmtGbp(difference)}
               colour={difference && Math.abs(difference) > 1 ? '#c2410c' : '#059669'}
-              hint="Mostly schemes on a payment plan, where HMRC restates the balance" />
-        <Stat label="Charged all-time" value={fmtGbp(periods.length ? rows.reduce((s, r) => s + n(r.charges), 0) : 0)} colour="#64748b" />
-        <Stat label="Paid all-time" value={fmtGbp(periods.length ? rows.reduce((s, r) => s + n(r.payments), 0) : 0)} colour="#059669" />
+              hint={filtered
+                ? 'Only meaningful with no filters applied'
+                : 'Mostly schemes on a payment plan, where HMRC restates the balance'} />
+        <Stat label="Charged" value={fmtGbp(charged)} colour="#64748b" hint="Across the periods shown" />
+        <Stat label="Paid" value={fmtGbp(paid)} colour="#059669" hint="Across the periods shown" />
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+      {/* Grain */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <Chip value="month" label="By month" active={grain} onClick={setGrain} count={rows.length} />
         <Chip value="year" label="By tax year" active={grain} onClick={setGrain}
               count={new Set(rows.map((r) => r.tax_year)).size} />
@@ -186,8 +243,57 @@ export default function TrendView() {
         </button>
       </div>
 
-      {/* Where reconciliation can actually start. Everything before this is an
-          opening balance we carry rather than one we have verified. */}
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <select value={entityId} onChange={(e) => setEntityId(e.target.value)}
+                style={{ ...inputStyle, width: 'auto', maxWidth: 260 }}>
+          <option value="">Every scheme</option>
+          {schemes.filter((s) => s.entity_id).map((s) => (
+            <option key={s.entity_id} value={s.entity_id}>
+              {s.entity_name || s.hmrc_name} — {s.paye_ref}
+            </option>
+          ))}
+        </select>
+
+        <select value={manager} onChange={(e) => setManager(e.target.value)}
+                style={{ ...inputStyle, width: 'auto' }}>
+          <option value="">Any manager</option>
+          {managers.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+
+        <select value={standing} onChange={(e) => setStanding(e.target.value)}
+                style={{ ...inputStyle, width: 'auto' }}>
+          <option value="">Any standing</option>
+          <option value="client">Active clients</option>
+          <option value="former_client">Former clients</option>
+          <option value="not_a_client">Not in Athena</option>
+        </select>
+
+        {TIER_CHOICES.map((c) => (
+          <Chip key={c.value} value={c.value} label={c.label} active={tierChoice} onClick={setTierChoice}
+                colour={c.tiers?.length === 1 ? TIERS[c.tiers[0]].colour : undefined} />
+        ))}
+
+        {filtered && (
+          <button
+            onClick={() => { setEntityId(''); setManager(''); setStanding(''); setTierChoice('all'); }}
+            style={{
+              padding: '6px 11px', fontSize: 12, fontFamily: font, color: '#b91c1c',
+              background: '#fff', border: '1px solid #fecaca', borderRadius: 999, cursor: 'pointer',
+            }}
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {filtered && (
+        <div style={{ fontSize: 11.5, color: '#64748b', marginBottom: 12 }}>
+          Showing <b>{filterLabel}</b> — {rows.length} month{rows.length === 1 ? '' : 's'}
+        </div>
+      )}
+
+      {/* Where reconciliation can actually start. */}
       <div style={{
         display: 'flex', gap: 9, alignItems: 'flex-start',
         background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10,
@@ -197,15 +303,16 @@ export default function TrendView() {
         <div>
           {firstCovered ? (
             <>
-              BrightPay figures only exist from <b>{MONTH_NAMES[firstCovered.tax_month]} {firstCovered.tax_year}</b>.
+              BrightPay figures exist from <b>{MONTH_NAMES[firstCovered.tax_month]} {firstCovered.tax_year}</b>.
               Everything before that is HMRC's word alone — carry it as an opening balance rather than
               treating it as reconciled.
             </>
           ) : (
             <>
-              No month yet has both an HMRC charge and a BrightPay liability, so nothing here is reconciled
-              against BrightPay. HMRC's ledger currently ends a month behind BrightPay's records; the two
-              meet at the next scrape after HMRC posts the month. Until then this is HMRC's word alone.
+              No month here has both an HMRC charge and a BrightPay liability, so nothing is reconciled against
+              BrightPay yet. HMRC's ledger runs a month behind BrightPay's records; the two meet at the next
+              scrape after HMRC posts the month. Until then this is HMRC's word alone, and any year-end figure
+              taken from it is an opening balance, not a verified one.
             </>
           )}
         </div>
@@ -214,7 +321,7 @@ export default function TrendView() {
       {loading ? (
         <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading the trend…</div>
       ) : (
-        <div style={card}>
+        <div style={{ ...card, marginBottom: 22 }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
               <thead>
@@ -233,7 +340,7 @@ export default function TrendView() {
               <tbody>
                 {periods.length === 0 && (
                   <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
-                    No scraped months yet.
+                    Nothing matches these filters.
                   </td></tr>
                 )}
                 {[...periods].reverse().map((p) => (
@@ -273,9 +380,9 @@ export default function TrendView() {
                   </tr>
                   <tr style={{ background: '#f8fafc' }}>
                     <td colSpan={6} style={{ ...td, fontSize: 12, fontWeight: 600, color: '#0f172a' }}>
-                      HMRC's stated debt today
+                      HMRC's stated debt at the last scrape
                     </td>
-                    <td style={{ ...tdNum, fontWeight: 700, color: '#0f172a' }}>{fmtGbpDetailed(stated)}</td>
+                    <td style={{ ...tdNum, fontWeight: 700, color: '#0f172a' }}>{fmtGbpDetailed(statedNow)}</td>
                     <td colSpan={2} />
                   </tr>
                 </tfoot>
@@ -284,6 +391,81 @@ export default function TrendView() {
           </div>
         </div>
       )}
+
+      <ObservedHistory history={history} />
+    </div>
+  );
+}
+
+// One row per scrape. This is the only series that gives a TRUE balance at a
+// past date — the walk above says which charges are still unpaid today, which is
+// a different thing. hmrc.position keeps every run, so this covers every scrape
+// ever taken; it just needs runs to accumulate before it can answer "what did
+// they owe at the year end".
+function ObservedHistory({ history }) {
+  if (history.length === 0) return null;
+  const sameDay = new Set(history.map((h) => h.observed_on)).size === 1;
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Observed position history</div>
+      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, marginBottom: 8, maxWidth: 900, lineHeight: 1.5 }}>
+        What the whole book owed each time we looked. This is the series a year-end figure should come from —
+        the walk above tells you which charges are <i>still</i> unpaid, not what was outstanding on the day.
+        {sameDay && ' Every run so far is from the same day, so there is no movement to see yet.'}
+      </div>
+      <div style={card}>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+              <th style={th}>Observed</th>
+              <th style={{ ...th, textAlign: 'center' }}>Schemes</th>
+              <th style={{ ...th, textAlign: 'center' }}>Owing</th>
+              <th style={thNum}>Total debt</th>
+              <th style={thNum}>Change</th>
+              <th style={thNum}>Interest</th>
+              <th style={{ ...th, textAlign: 'center' }}>On plan</th>
+              <th style={{ ...th, textAlign: 'center' }}>Run</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((h) => (
+              <tr key={h.run_id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                <td style={td}>
+                  <span style={{ fontWeight: 500 }}>
+                    {new Date(h.finished_at || h.started_at).toLocaleString('en-GB', {
+                      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
+                  {h.clients_failed > 0 && (
+                    <span style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600, marginLeft: 6 }}>
+                      {h.clients_failed} failed
+                    </span>
+                  )}
+                </td>
+                <td style={{ ...td, textAlign: 'center', color: '#64748b', fontSize: 12 }}>{h.schemes}</td>
+                <td style={{ ...td, textAlign: 'center', color: '#64748b', fontSize: 12 }}>{h.schemes_owing}</td>
+                <td style={{ ...tdNum, fontWeight: 600 }}>{fmtGbpDetailed(h.total_debt)}</td>
+                <td style={{
+                  ...tdNum,
+                  color: h.debt_change === null ? '#cbd5e1'
+                       : n(h.debt_change) > 0 ? '#b91c1c'
+                       : n(h.debt_change) < 0 ? '#059669' : '#94a3b8',
+                }}>
+                  {h.debt_change === null ? '—'
+                    : n(h.debt_change) === 0 ? 'no change'
+                    : `${n(h.debt_change) > 0 ? '+' : ''}${fmtGbpDetailed(h.debt_change)}`}
+                </td>
+                <td style={{ ...tdNum, color: '#c2410c' }}>{fmtGbpDetailed(h.accruing_interest)}</td>
+                <td style={{ ...td, textAlign: 'center', color: '#64748b', fontSize: 12 }}>{h.schemes_on_plan}</td>
+                <td style={{ ...td, textAlign: 'center', color: '#94a3b8', fontSize: 11 }}>
+                  {h.run_minutes ? `${h.run_minutes}m` : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
