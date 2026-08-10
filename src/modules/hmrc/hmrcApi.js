@@ -38,24 +38,41 @@ export async function fetchLastRun() {
 }
 
 // The four drill-down sets for one scheme, in one round trip.
+//
+// Each set stands on its own. This used to throw if ANY of the four failed,
+// which meant one unparseable date in the payments view (HMRC's "Total payment
+// amount" footer row — see sql/206) blanked all four sections of the panel:
+// Puddleduck showed "no overdue monthly bills" while owing £4,532 across 9 of
+// them. A section we cannot load now reports itself and leaves the rest intact.
 export async function fetchSchemeDetail(payeRef) {
   const [overdue, months, payments, credits] = await Promise.all([
     supabase.from('v_hmrc_paye_overdue').select('*').eq('paye_ref', payeRef)
       .order('due_date', { ascending: true, nullsFirst: false }),
     supabase.from('v_hmrc_paye_months').select('*').eq('paye_ref', payeRef)
+      .order('tax_year', { ascending: false })
       .order('tax_month', { ascending: true }),
     supabase.from('v_hmrc_paye_payments').select('*').eq('paye_ref', payeRef)
       .order('received_on', { ascending: false, nullsFirst: false }),
     supabase.from('v_hmrc_paye_credits').select('*').eq('paye_ref', payeRef)
       .order('tax_month', { ascending: true, nullsFirst: false }),
   ]);
-  const err = overdue.error || months.error || payments.error || credits.error;
-  if (err) throw err;
+
+  const failures = [
+    ['overdue charges', overdue.error],
+    ['monthly position', months.error],
+    ['payments', payments.error],
+    ['credits', credits.error],
+  ].filter(([, e]) => e);
+
   return {
     overdue: overdue.data || [],
     months: months.data || [],
     payments: payments.data || [],
     credits: credits.data || [],
+    // Named so the panel can say which part is missing instead of silently
+    // rendering an empty state that looks like "nothing owed".
+    failed: failures.map(([label]) => label),
+    error: failures.length ? failures[0][1].message : null,
   };
 }
 

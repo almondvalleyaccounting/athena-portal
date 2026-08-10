@@ -27,7 +27,16 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
     setLoading(true);
     setDetail(null);
     fetchSchemeDetail(scheme.paye_ref)
-      .then((d) => { if (!cancelled) { setDetail(d); setError(''); } })
+      .then((d) => {
+        if (cancelled) return;
+        setDetail(d);
+        // A section that failed to load must SAY so. An empty table under
+        // "Overdue — monthly PAYE bills" reads as "nothing owed", which is the
+        // opposite of the truth when the fetch broke.
+        setError(d.failed?.length
+          ? `Could not load ${d.failed.join(', ')} for this scheme — the sections below are incomplete. ${d.error || ''}`.trim()
+          : '');
+      })
       .catch((e) => { if (!cancelled) setError(e.message || 'Could not load scheme detail'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -44,6 +53,12 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
   const additional = (detail?.overdue || []).filter((o) => o.section === 'additional');
 
   const years = [...new Set((detail?.months || []).map((m) => m.tax_year))].sort().reverse();
+  // Which years still carry a balance. The picker defaults to the most recent
+  // year, so without this an older year holding the actual arrears looks like it
+  // isn't there — the whole reason you opened the panel.
+  const yearsOwing = new Set(
+    (detail?.months || []).filter((m) => Number(m.amount_due) > 0).map((m) => m.tax_year),
+  );
   const shownYear = year && years.includes(year) ? year : years[0];
   const monthRows = (detail?.months || [])
     .filter((m) => m.tax_year === shownYear)
@@ -172,22 +187,26 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                   : 'No monthly rows scraped for this scheme'}
                 aside={years.length > 1 && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {years.map((y) => (
-                      <button
-                        key={y}
-                        onClick={() => setYear(y)}
-                        style={{
-                          padding: '3px 9px', fontSize: 11, fontFamily: font, borderRadius: 999,
-                          cursor: 'pointer', whiteSpace: 'nowrap',
-                          fontWeight: y === shownYear ? 600 : 500,
-                          color: y === shownYear ? '#0f172a' : '#94a3b8',
-                          background: y === shownYear ? '#f1f5f9' : '#fff',
-                          border: `1px solid ${y === shownYear ? '#cbd5e1' : '#e5e7eb'}`,
-                        }}
-                      >
-                        {y}
-                      </button>
-                    ))}
+                    {years.map((y) => {
+                      const owing = yearsOwing.has(y);
+                      return (
+                        <button
+                          key={y}
+                          onClick={() => setYear(y)}
+                          title={owing ? 'This year still has unpaid months' : 'Nothing outstanding in this year'}
+                          style={{
+                            padding: '3px 9px', fontSize: 11, fontFamily: font, borderRadius: 999,
+                            cursor: 'pointer', whiteSpace: 'nowrap',
+                            fontWeight: y === shownYear ? 600 : 500,
+                            color: y === shownYear ? '#0f172a' : owing ? '#b91c1c' : '#94a3b8',
+                            background: y === shownYear ? '#f1f5f9' : owing ? '#fef2f2' : '#fff',
+                            border: `1px solid ${y === shownYear ? '#cbd5e1' : owing ? '#fecaca' : '#e5e7eb'}`,
+                          }}
+                        >
+                          {y}{owing ? ' •' : ''}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               >
