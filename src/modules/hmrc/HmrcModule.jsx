@@ -1,25 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { Landmark } from 'lucide-react';
-import { fetchLastRun } from './hmrcApi';
+import { fetchLatestRunPerService } from './hmrcApi';
 import DebtView from './DebtView';
 import ReconcileView from './ReconcileView';
 import AuthorisationsView from './AuthorisationsView';
 import BalanceView from './BalanceView';
 import ClientStatementView from './ClientStatementView';
 import PaymentsView from './PaymentsView';
+import AllTaxesView from './AllTaxesView';
+import ClientTaxView from './ClientTaxView';
 import { font, dateTime } from './hmrcShared';
 
 // HMRC — what the taxman's own records say about our clients.
 //
 // A scraper walks the HMRC agent services list and writes into a private
 // `hmrc` schema; this module is the practice-facing side of it (sql/197 for the
-// read surface). PAYE is the only service scraped today, so the tabs are PAYE
-// shaped, but the underlying tables carry a `service` discriminator and the
-// intention is that VAT / CT / SA slot in beside it rather than replace it.
+// read surface). All four heads are scraped now — PAYE, Corporation Tax, VAT and
+// Self Assessment — each on its own run cadence, which is why the banner shows
+// one line per service rather than a single "last scrape".
 //
 // Each tab answers a different question:
-//   PAYE debt          who owes HMRC money, and what have we done about it
+//   All taxes          practice-wide across all four heads — who is building debt
+//   Client             one client: every tax head plus the whole money ledger
+//   PAYE debt          who owes PAYE, and what have we done about it
 //   Client statement   one client's account: months down, opening → charges →
 //                      credits → payments → closing, any date range. This is
 //                      where a year-end PAYE creditor comes from.
@@ -33,6 +37,9 @@ import { font, dateTime } from './hmrcShared';
 // noise on an operational screen; "Not our clients" is where they belong.
 
 const TABS = [
+  // Practice-wide first, then the client, then the PAYE detail surfaces.
+  { to: '/hmrc/all',            label: 'All taxes' },
+  { to: '/hmrc/client',         label: 'Client' },
   { to: '/hmrc/paye',           label: 'PAYE debt' },
   { to: '/hmrc/statement',      label: 'Client statement' },
   { to: '/hmrc/payments',       label: 'Payments' },
@@ -45,13 +52,11 @@ const TABS = [
 ];
 
 export default function HmrcModule() {
-  const [run, setRun] = useState(null);
+  const [runs, setRuns] = useState([]);
   const [runError, setRunError] = useState(false);
 
   useEffect(() => {
-    // Every tab here is PAYE. Ask for the PAYE run explicitly, or the banner
-    // reports whichever service scraped most recently.
-    fetchLastRun('paye').then(setRun).catch(() => setRunError(true));
+    fetchLatestRunPerService().then(setRuns).catch(() => setRunError(true));
   }, []);
 
   return (
@@ -62,15 +67,15 @@ export default function HmrcModule() {
             <Landmark size={22} style={{ color: '#64748b' }} /> HMRC
           </h1>
           <p style={{ fontSize: 13, color: '#64748b', maxWidth: 780, marginBottom: 14, lineHeight: 1.55 }}>
-            What HMRC's own records show for our clients, pulled from the agent services list.
-            Currently PAYE only — debt, arrears age, payment plans and the schemes where HMRC and
-            Athena disagree.
+            What HMRC's own records show for our clients, pulled from the agent services list —
+            PAYE, Corporation Tax, VAT and Self Assessment. Balances, how each one was arrived at,
+            repayments out, and credit moved between tax heads.
           </p>
         </div>
 
         {/* Everything on these tabs is only as current as the last scrape, so
             say so where it cannot be missed. */}
-        <RunBanner run={run} failed={runError} />
+        <RunBanner runs={runs} failed={runError} />
       </div>
 
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb', marginBottom: 18 }}>
@@ -92,7 +97,9 @@ export default function HmrcModule() {
       </div>
 
       <Routes>
-        <Route index element={<Navigate to="/hmrc/paye" replace />} />
+        <Route index element={<Navigate to="/hmrc/all" replace />} />
+        <Route path="all" element={<AllTaxesView />} />
+        <Route path="client" element={<ClientTaxView />} />
         <Route path="paye" element={<DebtView />} />
         <Route path="statement" element={<ClientStatementView />} />
         <Route path="payments" element={<PaymentsView />} />
@@ -101,13 +108,15 @@ export default function HmrcModule() {
         <Route path="balance" element={<BalanceView />} />
         <Route path="reconciliation" element={<ReconcileView />} />
         <Route path="authorisations" element={<AuthorisationsView />} />
-        <Route path="*" element={<Navigate to="/hmrc/paye" replace />} />
+        <Route path="*" element={<Navigate to="/hmrc/all" replace />} />
       </Routes>
     </div>
   );
 }
 
-function RunBanner({ run, failed }) {
+// One line per tax head, because each is scraped on its own cadence and a figure
+// is only as current as the run behind it.
+function RunBanner({ runs, failed }) {
   if (failed) {
     return (
       <div style={{ ...banner, borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
@@ -115,33 +124,52 @@ function RunBanner({ run, failed }) {
       </div>
     );
   }
-  if (!run) {
+  if (!runs || runs.length === 0) {
     return <div style={{ ...banner, color: '#94a3b8' }}>No scrape recorded yet.</div>;
   }
 
-  const stale = run.finished_at
-    ? (Date.now() - new Date(run.finished_at).getTime()) / 86400000 > 7
-    : false;
+  const staleDays = (r) => {
+    const at = r.finished_at || r.started_at;
+    return at ? (Date.now() - new Date(at).getTime()) / 86400000 : null;
+  };
+  // Monthly is the intended sweep, so a month is the point at which a head is
+  // out of date rather than merely not-just-run.
+  const anyStale = runs.some((r) => (staleDays(r) ?? 0) > 31);
 
   return (
     <div style={{
-      ...banner,
-      borderColor: stale ? '#fed7aa' : '#e5e7eb',
-      background: stale ? '#fff7ed' : '#f8fafc',
+      ...banner, minWidth: 300,
+      borderColor: anyStale ? '#fed7aa' : '#e5e7eb',
+      background: anyStale ? '#fff7ed' : '#f8fafc',
     }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-        Last scrape · {run.service?.toUpperCase()} {run.tax_year}
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3 }}>
+        Last scrape by tax
       </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: stale ? '#c2410c' : '#0f172a', marginTop: 3 }}>
-        {dateTime(run.finished_at || run.started_at)}
-        {stale && <span style={{ fontWeight: 500, fontSize: 11, marginLeft: 6 }}>— over a week old</span>}
-      </div>
-      <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
-        {run.clients_seen} scheme{run.clients_seen === 1 ? '' : 's'} seen · {run.clients_ok} read
-        {run.clients_failed > 0 && (
-          <span style={{ color: '#b91c1c', fontWeight: 600 }}> · {run.clients_failed} failed</span>
-        )}
-      </div>
+      {runs.map((r) => {
+        const d = staleDays(r);
+        const stale = (d ?? 0) > 31;
+        return (
+          <div key={r.service} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 11.5, lineHeight: 1.7 }}>
+            <span style={{ minWidth: 96, fontWeight: 600, color: '#0f172a' }}>
+              {(r.service || '').replace('-', ' ')}
+            </span>
+            <span style={{ color: stale ? '#c2410c' : '#64748b' }}>
+              {dateTime(r.finished_at || r.started_at)}
+            </span>
+            <span style={{ color: '#94a3b8' }}>
+              {r.clients_seen}
+              {r.clients_failed > 0 && (
+                <span style={{ color: '#b91c1c', fontWeight: 600 }}> · {r.clients_failed} failed</span>
+              )}
+            </span>
+          </div>
+        );
+      })}
+      {anyStale && (
+        <div style={{ fontSize: 10.5, color: '#c2410c', marginTop: 3 }}>
+          A tax head is over a month old — the sweep is meant to be monthly.
+        </div>
+      )}
     </div>
   );
 }

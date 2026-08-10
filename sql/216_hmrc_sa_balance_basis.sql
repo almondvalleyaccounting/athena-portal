@@ -1,0 +1,28 @@
+-- 216 — Self Assessment: use amount_due, and keep credit separate.
+--
+-- Supersedes the SA branch of the views in sql/215.
+--
+-- sa_position.total NETS credits against debits. Summed across the book it read
+-- as a £179 CREDIT while £11,477 was actually payable and £14,591 of credit sat
+-- available for repayment across 12 clients. Two different facts squashed into
+-- one misleading number, and it would have shown Self Assessment as a non-issue.
+--
+-- balance now uses amount_due — what HMRC says is payable — and
+-- available_for_repayment is carried as credit_available on its own. Netting them
+-- would hide exactly what Bobby wants to track: credit HMRC is holding that
+-- could be repaid or moved to another tax head.
+--
+-- Also note sa_position gained columns mid-build (available_for_repayment,
+-- amount_due, as_at) and lost summary_unavailable. The scraper's schema is moving;
+-- check information_schema before referencing its columns.
+--
+-- The view bodies as applied are in sql/215 with the SA branch replaced by:
+--   round(sum(p.amount_due) / 100.0, 2)              as balance
+--   round(sum(p.available_for_repayment) / 100.0, 2) as credit_available
+-- and credit_available threaded through v_hmrc_client_tax_summary and
+-- v_hmrc_client_totals. Both were dropped and recreated because the column list
+-- changed position.
+--
+-- After: total owed £908,003.14 (PAYE 151,125 + CT 464,879 + VAT 280,522 +
+-- SA 11,477), credit held £14,591, repaid to clients £1,550,965.
+-- 108 clients owe something, 32 of them on more than one tax head.

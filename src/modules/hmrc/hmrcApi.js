@@ -31,6 +31,19 @@ export async function fetchSchemesForEntity(entityId) {
 // schemes), and an unscoped "newest run" made the PAYE pages report a CT run's
 // figures — "CORPORATION-TAX · 222 schemes seen" above a table of 141 PAYE
 // schemes. Pass the service the surface is actually about.
+// The latest run for EVERY service, newest first. The module covers four tax
+// heads now, so a single-service banner tells you nothing about the other three.
+export async function fetchLatestRunPerService() {
+  const { data, error } = await supabase
+    .from('v_hmrc_runs')
+    .select('*')
+    .order('started_at', { ascending: false });
+  if (error) throw error;
+  const seen = new Map();
+  for (const r of data || []) if (!seen.has(r.service)) seen.set(r.service, r);
+  return [...seen.values()];
+}
+
 export async function fetchLastRun(service = 'paye') {
   const { data, error } = await supabase
     .from('v_hmrc_runs')
