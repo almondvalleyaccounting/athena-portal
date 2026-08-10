@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Trash2, MessageSquare, Check, CircleDot, Lock, NotebookPen } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, Check, CircleDot, Lock, NotebookPen, Pencil } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { Card, SectionTitle, Button, Input, Textarea, Select, Pill, EmptyState, FONT, SERIF } from '../components/ui';
 import {
@@ -21,7 +21,9 @@ export default function OneToOnesView() {
   const [comments, setComments] = useState([]);
   const [staff, setStaff] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState(emptyDraft());
+  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [grantsToMe, setGrantsToMe] = useState([]);
@@ -46,6 +48,9 @@ export default function OneToOnesView() {
       manager_id: '', duration_mins: 30,
       what_went_well: '', what_didnt: '', blockers: '', notes: '', mood: 4,
       newActions: [{ action: '', due_date: '' }],
+      // Only populated when editing a saved 1-2-1: the actions already on it.
+      existingActions: [],
+      removedActionIds: [],
     };
   }
 
@@ -83,6 +88,33 @@ export default function OneToOnesView() {
     } catch (e) { console.error(e); }
   };
 
+  const closeForm = () => {
+    setShowForm(false); setEditingId(null); setDraft(emptyDraft()); setAgendaIds([]);
+  };
+
+  const startEdit = (m) => {
+    setEditingId(m.id);
+    setExpandedId(null);
+    setAgendaIds([]);
+    setDraft({
+      meeting_date: (m.meeting_date || '').slice(0, 10),
+      manager_id: m.manager_id || '',
+      duration_mins: m.duration_mins ?? '',
+      what_went_well: m.what_went_well || '',
+      what_didnt: m.what_didnt || '',
+      blockers: m.blockers || '',
+      notes: m.notes || '',
+      mood: m.mood || 4,
+      newActions: [{ action: '', due_date: '' }],
+      existingActions: actions
+        .filter((a) => a.one_to_one_id === m.id)
+        .map((a) => ({ id: a.id, action: a.action || '', due_date: (a.due_date || '').slice(0, 10) })),
+      removedActionIds: [],
+    });
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const submit = async () => {
     const row = {
       staff_id: selectedStaffId,
@@ -95,9 +127,38 @@ export default function OneToOnesView() {
       notes: draft.notes.trim() || null,
       mood: Number(draft.mood) || null,
     };
+    setSaving(true);
     try {
-      const saved = await createOneToOne(row);
-      setMeetings((p) => [saved, ...p]);
+      let saved;
+      if (editingId) {
+        saved = await updateOneToOne(editingId, row);
+        setMeetings((p) => p.map((m) => m.id === editingId ? saved : m)
+          .sort((a, b) => (a.meeting_date < b.meeting_date ? 1 : -1)));
+
+        // Actions removed in the form go for real (and take their quick task).
+        for (const id of draft.removedActionIds) {
+          try {
+            await deleteAction(id);
+            setActions((p) => p.filter((x) => x.id !== id));
+          } catch (e) { console.error(e); }
+        }
+        // Wording / due date changes on the ones that stayed.
+        for (const a of draft.existingActions) {
+          const before = actions.find((x) => x.id === a.id);
+          if (!before) continue;
+          const text = a.action.trim();
+          const due = a.due_date || null;
+          if (!text || (text === before.action && due === (before.due_date || null))) continue;
+          try {
+            const updated = await updateAction(a.id, { action: text, due_date: due });
+            setActions((p) => p.map((x) => x.id === a.id ? updated : x));
+          } catch (e) { console.error(e); }
+        }
+      } else {
+        saved = await createOneToOne(row);
+        setMeetings((p) => [saved, ...p]);
+      }
+
       const validActions = draft.newActions.filter((a) => a.action.trim());
       const createdActions = await Promise.all(validActions.map((a) => createAction({
         one_to_one_id: saved.id,
@@ -116,8 +177,9 @@ export default function OneToOnesView() {
           setAgendaIds([]);
         } catch (e) { console.error(e); }
       }
-      setDraft(emptyDraft()); setShowForm(false);
+      closeForm();
     } catch (e) { console.error(e); }
+    setSaving(false);
   };
 
   const remove = async (id) => {
@@ -126,6 +188,7 @@ export default function OneToOnesView() {
       await deleteOneToOne(id);
       setMeetings((p) => p.filter((m) => m.id !== id));
       setActions((p) => p.filter((a) => a.one_to_one_id !== id));
+      if (editingId === id) closeForm();
     } catch (e) { console.error(e); }
   };
 
@@ -157,7 +220,7 @@ export default function OneToOnesView() {
         />
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {accessibleStaff.length > 1 && (
-            <Select value={selectedStaffId} onChange={(e) => { setSelectedStaffId(e.target.value); setExpandedId(null); setShowForm(false); }} style={{ minWidth: 180 }}>
+            <Select value={selectedStaffId} onChange={(e) => { setSelectedStaffId(e.target.value); setExpandedId(null); closeForm(); }} style={{ minWidth: 180 }}>
               {accessibleStaff.map((s) => <option key={s.id} value={s.id}>{s.name}{s.id === profile?.id ? ' (you)' : ''}</option>)}
             </Select>
           )}
@@ -271,6 +334,9 @@ export default function OneToOnesView() {
 
       {showForm && (
         <Card style={{ marginBottom: 24 }}>
+          <div style={{ fontFamily: SERIF, fontSize: 18, color: '#0f172a', marginBottom: 14 }}>
+            {editingId ? 'Edit 1-2-1' : 'New 1-2-1'}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <div>
               <label style={lblStyle}>Date</label>
@@ -329,6 +395,34 @@ export default function OneToOnesView() {
                 Each action is also added to the work planner as a Quick Task for the owner.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {draft.existingActions.map((a, idx) => (
+                  <div key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <Input
+                      value={a.action}
+                      onChange={(e) => {
+                        const next = [...draft.existingActions]; next[idx] = { ...next[idx], action: e.target.value };
+                        setDraft({ ...draft, existingActions: next });
+                      }}
+                    />
+                    <Input type="date" style={{ width: 160 }} value={a.due_date}
+                      onChange={(e) => {
+                        const next = [...draft.existingActions]; next[idx] = { ...next[idx], due_date: e.target.value };
+                        setDraft({ ...draft, existingActions: next });
+                      }}
+                    />
+                    <button
+                      title="Remove this action"
+                      onClick={() => setDraft({
+                        ...draft,
+                        existingActions: draft.existingActions.filter((x) => x.id !== a.id),
+                        removedActionIds: [...draft.removedActionIds, a.id],
+                      })}
+                      style={iconLink}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
                 {draft.newActions.map((a, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: 8 }}>
                     <Input
@@ -345,6 +439,7 @@ export default function OneToOnesView() {
                         setDraft({ ...draft, newActions: next });
                       }}
                     />
+                    {draft.existingActions.length > 0 && <span style={{ width: 21, flexShrink: 0 }} />}
                   </div>
                 ))}
                 <button onClick={() => setDraft({ ...draft, newActions: [...draft.newActions, { action: '', due_date: '' }] })} style={{
@@ -357,8 +452,10 @@ export default function OneToOnesView() {
             </div>
           </div>
           <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Button variant="ghost" onClick={() => { setShowForm(false); setDraft(emptyDraft()); }}>Cancel</Button>
-            <Button variant="primary" onClick={submit}>Save 1-2-1</Button>
+            <Button variant="ghost" onClick={closeForm}>Cancel</Button>
+            <Button variant="primary" onClick={submit} disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Save 1-2-1'}
+            </Button>
           </div>
         </Card>
       )}
@@ -389,9 +486,14 @@ export default function OneToOnesView() {
                       </div>
                     </div>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); remove(m.id); }} style={iconLink}>
-                    <Trash2 size={14} />
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <button title="Edit this 1-2-1" onClick={(e) => { e.stopPropagation(); startEdit(m); }} style={iconLink}>
+                      <Pencil size={14} />
+                    </button>
+                    <button title="Delete this 1-2-1" onClick={(e) => { e.stopPropagation(); remove(m.id); }} style={iconLink}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
                 {expanded && (
                   <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>

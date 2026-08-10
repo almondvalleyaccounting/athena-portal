@@ -498,6 +498,12 @@ export async function updateAction(id, patch) {
   // disappears from the planner; recreate isn't supported on un-complete).
   if (data?.quick_task_id && patch.status === 'done') {
     try { await supabase.from('quick_tasks').delete().eq('id', data.quick_task_id); } catch { /* silent */ }
+  } else if (data?.quick_task_id && ('action' in patch || 'due_date' in patch)) {
+    // Reworded or re-dated on an edit — keep the planner copy in step.
+    const qtPatch = {};
+    if ('action' in patch) qtPatch.title = patch.action;
+    if ('due_date' in patch) qtPatch.due_date = patch.due_date ? new Date(patch.due_date).toISOString() : null;
+    try { await supabase.from('quick_tasks').update(qtPatch).eq('id', data.quick_task_id); } catch { /* silent */ }
   }
   return data;
 }
