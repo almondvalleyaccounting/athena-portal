@@ -51,6 +51,22 @@ function taxYearStart(d = new Date()) {
   return iso(d >= boundary ? boundary : new Date(Date.UTC(y - 1, 3, 6)));
 }
 
+function shiftYears(isoDate, n) {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCFullYear(d.getUTCFullYear() + n);
+  return iso(d);
+}
+
+function shiftDays(isoDate, n) {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return iso(d);
+}
+
+const prettyDate = (isoDate) => (isoDate
+  ? new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  : '—');
+
 export default function ClientStatementView() {
   const [params, setParams] = useSearchParams();
   const [clients, setClients] = useState([]);
@@ -66,6 +82,8 @@ export default function ClientStatementView() {
 
   const [from, setFrom] = useState(taxYearStart());
   const [to, setTo] = useState(iso(new Date()));
+  const [yearEnd, setYearEnd] = useState(null);
+  const [proof, setProof] = useState(null);
 
   const payeRef = params.get('scheme') || '';
 
@@ -80,8 +98,16 @@ export default function ClientStatementView() {
       });
   }, []);
 
+  // The company accounting year, for the preset. Parsed from BrightManager task
+  // names because Athena holds no year-end column (sql/210).
   useEffect(() => {
-    if (!payeRef) { setRows([]); setPayments([]); return; }
+    if (!payeRef) { setYearEnd(null); return; }
+    supabase.from('v_hmrc_client_year_end').select('*').eq('paye_ref', payeRef).maybeSingle()
+      .then(({ data }) => setYearEnd(data || null));
+  }, [payeRef]);
+
+  useEffect(() => {
+    if (!payeRef) { setRows([]); setPayments([]); setProof(null); return; }
     setLoading(true);
     Promise.all([
       supabase.from('v_hmrc_paye_client_statement').select('*')
@@ -91,11 +117,15 @@ export default function ClientStatementView() {
       supabase.from('v_hmrc_paye_payment_detail').select('*')
         .eq('paye_ref', payeRef)
         .order('received_on', { ascending: true, nullsFirst: false }),
+      // The balance AT the end of the range — a different number from the
+      // statement's closing, which is only what is still unpaid today.
+      supabase.rpc('hmrc_paye_balance_at', { p_paye_ref: payeRef, p_as_at: to }),
     ])
-      .then(([s, p]) => {
+      .then(([s, p, b]) => {
         if (s.error || p.error) { setError((s.error || p.error).message); return; }
         setRows(s.data || []);
         setPayments(p.data || []);
+        setProof(b.error ? null : (b.data || [])[0] || null);
         setError('');
       })
       .catch((e) => setError(e.message || 'Could not load the statement'))
@@ -233,6 +263,21 @@ export default function ClientStatementView() {
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...inputStyle, width: 'auto', marginLeft: 6 }} />
         </label>
         <Preset label="This tax year" onClick={() => { setFrom(taxYearStart()); setTo(iso(new Date())); }} />
+        <Preset label="Last tax year" onClick={() => {
+          const start = taxYearStart();
+          setFrom(shiftYears(start, -1));
+          setTo(shiftDays(start, -1));   // 5 April
+        }} />
+        {/* Only offered when we can resolve one — a button that silently does
+            nothing is worse than no button. */}
+        <Preset
+          label={yearEnd?.year_end ? `Company year (to ${prettyDate(yearEnd.year_end)})` : 'Company year'}
+          disabled={!yearEnd?.year_end}
+          title={yearEnd?.year_end
+            ? `${prettyDate(yearEnd.year_start)} to ${prettyDate(yearEnd.year_end)}, from BrightManager`
+            : 'No year end found for this client in BrightManager'}
+          onClick={() => { setFrom(yearEnd.year_start); setTo(yearEnd.year_end); }}
+        />
         <Preset label="Last 12 months" onClick={() => {
           const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() - 1);
           setFrom(iso(d)); setTo(iso(new Date()));
@@ -419,28 +464,131 @@ export default function ClientStatementView() {
             </table>
           </div>
 
-          <div style={{ padding: '9px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12, color: '#64748b', whiteSpace: 'normal', lineHeight: 1.5 }}>
-            Owed to HMRC at <b>{rows[rows.length - 1].period_end}</b>: <b style={{ color: '#b91c1c' }}>{fmtGbpDetailed(closing)}</b>.
-            That is the PAYE creditor at that date on HMRC's own figures.
-            {unallocated.length > 0 && (
-              <> {unallocated.length} payment{unallocated.length === 1 ? '' : 's'} totalling{' '}
-                <b>{fmtGbpDetailed(unallocated.reduce((s, p) => s + n(p.amount), 0))}</b> are sitting unallocated
-                on this scheme — see the Payments tab.
-              </>
-            )}
-          </div>
+          {/* The statement's closing figure is the residue still unpaid TODAY.
+              For a set of accounts you need what was open ON the date, and the
+              difference is the money paid since. Puddleduck at 31 May 2026:
+              £249.01 still unpaid today, but £8,061.54 paid after that date, so
+              the creditor at the year end was £8,310.55 — 33x the figure the
+              closing column shows. Stating closing as "the PAYE creditor" was
+              wrong, so this replaces it with the worked proof. */}
+          <BalanceProof proof={proof} to={to} unallocated={unallocated} />
+
+          {unallocated.length > 0 && (
+            <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12, color: '#78350f', background: '#fffbeb', whiteSpace: 'normal', lineHeight: 1.5 }}>
+              {unallocated.length} payment{unallocated.length === 1 ? '' : 's'} totalling{' '}
+              <b>{fmtGbpDetailed(unallocated.reduce((s, p) => s + n(p.amount), 0))}</b> are sitting unallocated
+              on this scheme, reducing nothing — see the Payments tab.
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function Preset({ label, onClick }) {
+// The balance owed AT a date, shown as a working paper rather than a number.
+// Every line is evidenced: net charges from HMRC's monthly figures, payments
+// from its payment history with dates. The identity is
+//   balance at date = still unpaid today + paid after the date
+// which is what makes it arguable with a client or a reviewer.
+function BalanceProof({ proof, to, unallocated }) {
+  if (!proof) return null;
+  const isMinimum = proof.basis === 'minimum';
+  const paidAfter = n(proof.paid_after);
+
   return (
-    <button onClick={onClick} style={{
-      padding: '5px 10px', fontSize: 11.5, fontFamily: font, color: '#475569',
-      background: '#fff', border: '1px solid #e5e7eb', borderRadius: 999, cursor: 'pointer',
-    }}>{label}</button>
+    <div style={{ borderTop: '1px solid #e5e7eb', padding: '12px 14px', background: '#f8fafc' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+          Owed to HMRC at {prettyDate(to)}
+        </span>
+        <span style={{
+          fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
+          padding: '2px 7px', borderRadius: 999,
+          color: isMinimum ? '#92400e' : '#166534',
+          background: isMinimum ? '#fef3c7' : '#dcfce7',
+          border: `1px solid ${isMinimum ? '#fcd34d' : '#86efac'}`,
+        }}>
+          {isMinimum ? 'Minimum' : 'Proven'}
+        </span>
+      </div>
+
+      <table style={{ fontSize: 12.5, borderCollapse: 'collapse', minWidth: 420 }}>
+        <tbody>
+          <ProofRow label={`Charged to ${prettyDate(to)} — ${proof.periods_counted} tax months`} value={proof.charges} />
+          <ProofRow label="Less credits" value={-n(proof.credits)} green />
+          <ProofRow label="Net charged" value={proof.net_charged} rule />
+          <ProofRow label="Less paid against those months (to date)" value={-n(proof.payments_ever_allocated)} green />
+          <ProofRow label="Still unpaid today" value={proof.still_unpaid_today} rule />
+          <ProofRow
+            label={`Add back paid AFTER ${prettyDate(to)}${proof.paid_after_count ? ` — ${proof.paid_after_count} payment${proof.paid_after_count === 1 ? '' : 's'}` : ''}`}
+            value={paidAfter}
+            hint="Money that makes today's position look settled but was still outstanding on the date"
+          />
+          <tr style={{ borderTop: '2px solid #cbd5e1' }}>
+            <td style={{ padding: '6px 14px 2px 0', fontWeight: 700, color: '#0f172a' }}>
+              Owed at {prettyDate(to)}
+            </td>
+            <td style={{ padding: '6px 0 2px 14px', textAlign: 'right', fontWeight: 700, fontSize: 14,
+                         color: n(proof.balance_at) > 0 ? '#b91c1c' : '#059669',
+                         fontVariantNumeric: 'tabular-nums' }}>
+              {fmtGbpDetailed(proof.balance_at)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style={{ fontSize: 11.5, color: isMinimum ? '#78350f' : '#64748b', marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
+        {isMinimum ? (
+          <>
+            <b>At least</b> this much was outstanding. HMRC only returns payment dates for the current tax
+            year, so we hold none before {prettyDate(proof.earliest_payment_held)} — a payment made between{' '}
+            {prettyDate(to)} and then is invisible to us, which can only make the real figure higher. Treat it
+            as a floor, not a proven balance.
+          </>
+        ) : paidAfter > 0 ? (
+          <>Proven from dated payment records. {fmtGbpDetailed(paidAfter)} of what looks settled today was
+            actually paid after {prettyDate(to)}, so it belongs in the creditor at that date.</>
+        ) : (
+          <>Proven from dated payment records. Nothing has been paid since {prettyDate(to)} against those
+            months, so today's position and the position then are the same.</>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProofRow({ label, value, green, rule, hint }) {
+  return (
+    <tr style={rule ? { borderTop: '1px solid #cbd5e1' } : undefined}>
+      <td style={{ padding: '3px 14px 3px 0', color: rule ? '#0f172a' : '#64748b', fontWeight: rule ? 600 : 400 }} title={hint || ''}>
+        {label}
+      </td>
+      <td style={{
+        padding: '3px 0 3px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+        fontWeight: rule ? 600 : 400, color: green ? '#059669' : '#0f172a',
+      }}>
+        {fmtGbpDetailed(value)}
+      </td>
+    </tr>
+  );
+}
+
+function Preset({ label, onClick, disabled, title }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title || ''}
+      style={{
+        padding: '5px 10px', fontSize: 11.5, fontFamily: font,
+        color: disabled ? '#cbd5e1' : '#475569',
+        background: '#fff', border: '1px solid #e5e7eb', borderRadius: 999,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
