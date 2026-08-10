@@ -37,9 +37,11 @@ export default function DateField({ value, onCommit, style, title }) {
       onChange={(e) => {
         const next = e.target.value;
         setLocal(next);
-        // Cleared, or a full year typed / picked: save now so the date picker
-        // still feels instant. Mid-type years wait.
-        if (plausible(next)) commit(next);
+        // A full year typed, or a date picked: save now so the picker still
+        // feels instant. Mid-type years wait — and so does the empty value the
+        // input reports while a segment is being retyped, or backspacing one
+        // digit would wipe the saved date.
+        if (next && plausible(next)) commit(next);
       }}
       onBlur={(e) => {
         focused.current = false;
