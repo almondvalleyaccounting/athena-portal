@@ -456,15 +456,19 @@ export async function createAction(row) {
   const ownerId = row.owner_id || row.staff_id;
   let quickTaskId = null;
   try {
+    // service and source are CHECK-constrained on quick_tasks — 'PD' and
+    // 'pd_tracker' aren't allowed values, so every insert here was silently
+    // rejected and no 1-2-1 action ever reached anyone's planner. The notes
+    // line carries the provenance instead.
     const qt = {
       title: row.action,
-      service: 'PD',
+      service: 'Admin',
       assignee_id: ownerId,
       due_date: row.due_date ? new Date(row.due_date).toISOString() : null,
       duration: 15,
       notes: 'From 1-2-1 action',
       created_by: ownerId,
-      source: 'pd_tracker',
+      source: 'manual',
     };
     const { data: qtRow, error: qtErr } = await supabase
       .from('quick_tasks')
@@ -498,11 +502,13 @@ export async function updateAction(id, patch) {
   // disappears from the planner; recreate isn't supported on un-complete).
   if (data?.quick_task_id && patch.status === 'done') {
     try { await supabase.from('quick_tasks').delete().eq('id', data.quick_task_id); } catch { /* silent */ }
-  } else if (data?.quick_task_id && ('action' in patch || 'due_date' in patch)) {
-    // Reworded or re-dated on an edit — keep the planner copy in step.
+  } else if (data?.quick_task_id && ('action' in patch || 'due_date' in patch || 'owner_id' in patch)) {
+    // Reworded, re-dated or handed to someone else on an edit — keep the
+    // planner copy in step so it sits on the right person's list.
     const qtPatch = {};
     if ('action' in patch) qtPatch.title = patch.action;
     if ('due_date' in patch) qtPatch.due_date = patch.due_date ? new Date(patch.due_date).toISOString() : null;
+    if ('owner_id' in patch) qtPatch.assignee_id = patch.owner_id;
     try { await supabase.from('quick_tasks').update(qtPatch).eq('id', data.quick_task_id); } catch { /* silent */ }
   }
   return data;

@@ -108,7 +108,10 @@ export default function OneToOnesView() {
       newActions: [{ action: '', due_date: '' }],
       existingActions: actions
         .filter((a) => a.one_to_one_id === m.id)
-        .map((a) => ({ id: a.id, action: a.action || '', due_date: (a.due_date || '').slice(0, 10) })),
+        .map((a) => ({
+          id: a.id, action: a.action || '', due_date: (a.due_date || '').slice(0, 10),
+          owner_id: a.owner_id || m.staff_id,
+        })),
       removedActionIds: [],
     });
     setShowForm(true);
@@ -142,15 +145,17 @@ export default function OneToOnesView() {
             setActions((p) => p.filter((x) => x.id !== id));
           } catch (e) { console.error(e); }
         }
-        // Wording / due date changes on the ones that stayed.
+        // Wording / owner / due date changes on the ones that stayed.
         for (const a of draft.existingActions) {
           const before = actions.find((x) => x.id === a.id);
           if (!before) continue;
           const text = a.action.trim();
           const due = a.due_date || null;
-          if (!text || (text === before.action && due === (before.due_date || null))) continue;
+          const owner = a.owner_id || selectedStaffId;
+          if (!text) continue;
+          if (text === before.action && due === (before.due_date || null) && owner === (before.owner_id || selectedStaffId)) continue;
           try {
-            const updated = await updateAction(a.id, { action: text, due_date: due });
+            const updated = await updateAction(a.id, { action: text, due_date: due, owner_id: owner });
             setActions((p) => p.map((x) => x.id === a.id ? updated : x));
           } catch (e) { console.error(e); }
         }
@@ -162,8 +167,10 @@ export default function OneToOnesView() {
       const validActions = draft.newActions.filter((a) => a.action.trim());
       const createdActions = await Promise.all(validActions.map((a) => createAction({
         one_to_one_id: saved.id,
+        // staff_id anchors the action to whose 1-2-1 it came out of; owner_id
+        // is who actually has to do it — often, but not always, the same person.
         staff_id: selectedStaffId,
-        owner_id: selectedStaffId,
+        owner_id: a.owner_id || selectedStaffId,
         action: a.action.trim(),
         due_date: a.due_date || null,
       })));
@@ -276,6 +283,7 @@ export default function OneToOnesView() {
                     width: 22, height: 22, borderRadius: '50%', border: '2px solid #cbd5e1', background: '#fff',
                     cursor: 'pointer', flexShrink: 0,
                   }} />
+                  <OwnerChip staff={staff} ownerId={a.owner_id || selectedStaffId} />
                   <span style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', flex: 1 }}>{a.action}</span>
                   {a.due_date && (
                     <span style={{ fontFamily: FONT, fontSize: 11, color: overdue ? '#dc2626' : '#94a3b8' }}>
@@ -392,11 +400,19 @@ export default function OneToOnesView() {
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={lblStyle}>Actions agreed</label>
               <p style={{ fontFamily: FONT, fontSize: 11, color: '#94a3b8', margin: '-2px 0 8px' }}>
-                Each action is also added to the work planner as a Quick Task for the owner.
+                Pick who owns each one — it lands on their work planner as a Quick Task.
+                Write the action itself, not who's doing it (&ldquo;Send the Excel course list&rdquo;, not &ldquo;Sophie to send…&rdquo;).
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {draft.existingActions.map((a, idx) => (
                   <div key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <OwnerSelect
+                      staff={staff} value={a.owner_id}
+                      onChange={(v) => {
+                        const next = [...draft.existingActions]; next[idx] = { ...next[idx], owner_id: v };
+                        setDraft({ ...draft, existingActions: next });
+                      }}
+                    />
                     <Input
                       value={a.action}
                       onChange={(e) => {
@@ -424,7 +440,14 @@ export default function OneToOnesView() {
                   </div>
                 ))}
                 {draft.newActions.map((a, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: 8 }}>
+                  <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <OwnerSelect
+                      staff={staff} value={a.owner_id || selectedStaffId}
+                      onChange={(v) => {
+                        const next = [...draft.newActions]; next[idx] = { ...next[idx], owner_id: v };
+                        setDraft({ ...draft, newActions: next });
+                      }}
+                    />
                     <Input
                       value={a.action}
                       onChange={(e) => {
@@ -442,7 +465,7 @@ export default function OneToOnesView() {
                     {draft.existingActions.length > 0 && <span style={{ width: 21, flexShrink: 0 }} />}
                   </div>
                 ))}
-                <button onClick={() => setDraft({ ...draft, newActions: [...draft.newActions, { action: '', due_date: '' }] })} style={{
+                <button onClick={() => setDraft({ ...draft, newActions: [...draft.newActions, { action: '', due_date: '', owner_id: selectedStaffId }] })} style={{
                   fontFamily: FONT, fontSize: 12, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer',
                   textAlign: 'left', padding: '4px 0',
                 }}>
@@ -516,6 +539,7 @@ export default function OneToOnesView() {
                               }}>
                                 {a.status === 'done' && <Check size={11} strokeWidth={3} />}
                               </button>
+                              <OwnerChip staff={staff} ownerId={a.owner_id || m.staff_id} />
                               <span style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', textDecoration: a.status === 'done' ? 'line-through' : 'none', opacity: a.status === 'done' ? 0.6 : 1 }}>
                                 {a.action}
                               </span>
@@ -540,6 +564,40 @@ export default function OneToOnesView() {
         </div>
       )}
     </div>
+  );
+}
+
+/*
+  Who owns an action. A real staff member rather than a name buried in the
+  wording, so the action can sit on their to-do list — and so "what's
+  outstanding for X" is answerable without reading every 1-2-1.
+*/
+function OwnerSelect({ staff, value, onChange }) {
+  return (
+    <Select
+      value={value || ''} onChange={(e) => onChange(e.target.value)}
+      title="Who owns this action"
+      style={{ width: 150, flexShrink: 0 }}
+    >
+      {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+    </Select>
+  );
+}
+
+function OwnerChip({ staff, ownerId }) {
+  const name = staff.find((s) => s.id === ownerId)?.name;
+  if (!name) return null;
+  return (
+    <span
+      title={name}
+      style={{
+        fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#475569',
+        background: '#f1f5f9', border: '1px solid #e5e7eb', borderRadius: 999,
+        padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0,
+      }}
+    >
+      {name.split(/[\s,]+/)[0]}
+    </span>
   );
 }
 
