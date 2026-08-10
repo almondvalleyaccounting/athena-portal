@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Trash2, MessageSquare, Check, CircleDot, Lock, NotebookPen, Pencil } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, Check, CircleDot, Lock, NotebookPen, Pencil, FileDown } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { Card, SectionTitle, Button, Input, Textarea, Select, Pill, EmptyState, FONT, SERIF } from '../components/ui';
 import {
@@ -8,7 +8,9 @@ import {
   loadActions, createAction, updateAction, deleteAction, loadStaff,
   loadOneToOneComments, addOneToOneComment, loadGrantsToMe,
   loadPrepNotes, markPrepNotesDiscussed, PREP_KINDS,
+  POINT_SECTIONS, loadPoints, savePoints, pointsToColumns,
 } from '../lib/api';
+import { generateOneToOnePdf } from '../lib/oneToOnePdf';
 
 const MOOD_EMOJI = { 1: '😞', 2: '😕', 3: '😐', 4: '🙂', 5: '😄' };
 
@@ -18,12 +20,14 @@ export default function OneToOnesView() {
   const [selectedStaffId, setSelectedStaffId] = useState(profile?.id);
   const [meetings, setMeetings] = useState([]);
   const [actions, setActions] = useState([]);
+  const [points, setPoints] = useState([]);
   const [comments, setComments] = useState([]);
   const [staff, setStaff] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState(emptyDraft());
   const [saving, setSaving] = useState(false);
+  const [pdfFor, setPdfFor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [grantsToMe, setGrantsToMe] = useState([]);
@@ -45,13 +49,42 @@ export default function OneToOnesView() {
   function emptyDraft() {
     return {
       meeting_date: new Date().toISOString().slice(0, 10),
-      manager_id: '', duration_mins: 30,
-      what_went_well: '', what_didnt: '', blockers: '', notes: '', mood: 4,
+      manager_id: '', duration_mins: 30, mood: 4,
+      // One list of points per section — headline lands on the summary tile,
+      // detail is the fuller story behind it.
+      points: emptyPoints(),
       newActions: [{ action: '', due_date: '' }],
       // Only populated when editing a saved 1-2-1: the actions already on it.
       existingActions: [],
       removedActionIds: [],
     };
+  }
+
+  function emptyPoints() {
+    return Object.fromEntries(POINT_SECTIONS.map((s) => [s.key, []]));
+  }
+
+  // Saved points for one meeting, grouped by section and in order.
+  function pointsFor(meetingId) {
+    const grouped = emptyPoints();
+    for (const p of points) {
+      if (p.one_to_one_id !== meetingId) continue;
+      (grouped[p.section] = grouped[p.section] || []).push(p);
+    }
+    for (const k of Object.keys(grouped)) grouped[k].sort((a, b) => a.sort_order - b.sort_order);
+    return grouped;
+  }
+
+  // The same, shaped for the form (and with a blank row ready in any empty
+  // section so there's always somewhere to type).
+  function pointsForEdit(meetingId) {
+    const grouped = pointsFor(meetingId);
+    return Object.fromEntries(POINT_SECTIONS.map((s) => [
+      s.key,
+      grouped[s.key].length
+        ? grouped[s.key].map((p) => ({ headline: p.headline || '', detail: p.detail || '' }))
+        : [],
+    ]));
   }
 
   useEffect(() => {
@@ -65,7 +98,9 @@ export default function OneToOnesView() {
           loadStaff(),
         ]);
         setMeetings(m); setActions(a); setStaff(s);
-        setComments(await loadOneToOneComments(m.map((x) => x.id)));
+        const ids = m.map((x) => x.id);
+        const [c, p] = await Promise.all([loadOneToOneComments(ids), loadPoints(ids)]);
+        setComments(c); setPoints(p);
       } catch (e) { console.error(e); }
       setLoading(false);
     })();
@@ -100,11 +135,8 @@ export default function OneToOnesView() {
       meeting_date: (m.meeting_date || '').slice(0, 10),
       manager_id: m.manager_id || '',
       duration_mins: m.duration_mins ?? '',
-      what_went_well: m.what_went_well || '',
-      what_didnt: m.what_didnt || '',
-      blockers: m.blockers || '',
-      notes: m.notes || '',
       mood: m.mood || 4,
+      points: pointsForEdit(m.id),
       newActions: [{ action: '', due_date: '' }],
       existingActions: actions
         .filter((a) => a.one_to_one_id === m.id)
@@ -124,11 +156,10 @@ export default function OneToOnesView() {
       manager_id: draft.manager_id || null,
       meeting_date: draft.meeting_date,
       duration_mins: Number(draft.duration_mins) || null,
-      what_went_well: draft.what_went_well.trim() || null,
-      what_didnt: draft.what_didnt.trim() || null,
-      blockers: draft.blockers.trim() || null,
-      notes: draft.notes.trim() || null,
       mood: Number(draft.mood) || null,
+      // The text columns are a derived rendering of the points — kept in step
+      // so the dashboard teaser and 360 requests still have one field to read.
+      ...pointsToColumns(draft.points),
     };
     setSaving(true);
     try {
@@ -164,6 +195,12 @@ export default function OneToOnesView() {
         setMeetings((p) => [saved, ...p]);
       }
 
+      // Points are submitted whole, so the saved set replaces whatever was
+      // there — additions, edits, reordering and removals in one write.
+      await savePoints(saved.id, draft.points);
+      const freshPoints = await loadPoints([saved.id]);
+      setPoints((p) => [...p.filter((x) => x.one_to_one_id !== saved.id), ...freshPoints]);
+
       const validActions = draft.newActions.filter((a) => a.action.trim());
       const createdActions = await Promise.all(validActions.map((a) => createAction({
         one_to_one_id: saved.id,
@@ -189,12 +226,46 @@ export default function OneToOnesView() {
     setSaving(false);
   };
 
+  // The whole record, headlines and details together, as a PDF the person can
+  // keep. Everything on screen goes in — the tiles only show headlines.
+  const downloadPdf = async (m) => {
+    setPdfFor(m.id);
+    try {
+      const grouped = pointsFor(m.id);
+      await generateOneToOnePdf(m, {
+        staffName: staff.find((s) => s.id === m.staff_id)?.name,
+        managerName: staff.find((s) => s.id === m.manager_id)?.name,
+        sections: POINT_SECTIONS.map((s) => ({
+          key: s.key,
+          label: s.label,
+          // Fall back to the legacy text for meetings saved before points.
+          points: grouped[s.key].length
+            ? grouped[s.key]
+            : (m[s.column] ? [{ headline: m[s.column] }] : []),
+        })),
+        actions: actions.filter((a) => a.one_to_one_id === m.id).map((a) => ({
+          action: a.action,
+          owner_name: staff.find((s) => s.id === (a.owner_id || m.staff_id))?.name,
+          due_date: a.due_date,
+          status: a.status,
+        })),
+        comments: comments.filter((c) => c.one_to_one_id === m.id).map((c) => ({
+          author_name: c.author?.name,
+          created_at: c.created_at,
+          body: c.body,
+        })),
+      });
+    } catch (e) { console.error(e); }
+    setPdfFor(null);
+  };
+
   const remove = async (id) => {
     if (!window.confirm('Delete this 1-2-1 record?')) return;
     try {
       await deleteOneToOne(id);
       setMeetings((p) => p.filter((m) => m.id !== id));
       setActions((p) => p.filter((a) => a.one_to_one_id !== id));
+      setPoints((p) => p.filter((x) => x.one_to_one_id !== id));
       if (editingId === id) closeForm();
     } catch (e) { console.error(e); }
   };
@@ -380,22 +451,15 @@ export default function OneToOnesView() {
               </div>
             </div>
 
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={lblStyle}>What went well?</label>
-              <Textarea value={draft.what_went_well} onChange={(e) => setDraft({ ...draft, what_went_well: e.target.value })} />
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={lblStyle}>Areas to target for improvement</label>
-              <Textarea value={draft.what_didnt} onChange={(e) => setDraft({ ...draft, what_didnt: e.target.value })} />
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={lblStyle}>Blockers / where do you need help?</label>
-              <Textarea value={draft.blockers} onChange={(e) => setDraft({ ...draft, blockers: e.target.value })} />
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={lblStyle}>Other notes</label>
-              <Textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
-            </div>
+            {POINT_SECTIONS.map((s) => (
+              <div key={s.key} style={{ gridColumn: '1 / -1' }}>
+                <PointsEditor
+                  section={s}
+                  rows={draft.points[s.key] || []}
+                  onChange={(rows) => setDraft({ ...draft, points: { ...draft.points, [s.key]: rows } })}
+                />
+              </div>
+            ))}
 
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={lblStyle}>Actions agreed</label>
@@ -494,6 +558,7 @@ export default function OneToOnesView() {
             const mgr = staff.find((s) => s.id === m.manager_id);
             const meetingActions = actions.filter((a) => a.one_to_one_id === m.id);
             const expanded = expandedId === m.id;
+            const grouped = pointsFor(m.id);
             return (
               <Card key={m.id} style={{ padding: 16 }}>
                 <div onClick={() => setExpandedId(expanded ? null : m.id)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -511,6 +576,14 @@ export default function OneToOnesView() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <button
+                      title="Download this 1-2-1 as a PDF"
+                      onClick={(e) => { e.stopPropagation(); downloadPdf(m); }}
+                      disabled={pdfFor === m.id}
+                      style={iconLink}
+                    >
+                      <FileDown size={14} />
+                    </button>
                     <button title="Edit this 1-2-1" onClick={(e) => { e.stopPropagation(); startEdit(m); }} style={iconLink}>
                       <Pencil size={14} />
                     </button>
@@ -521,10 +594,17 @@ export default function OneToOnesView() {
                 </div>
                 {expanded && (
                   <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                    {m.what_went_well && <Field label="What went well" value={m.what_went_well} bg="#dcfce7" />}
-                    {m.what_didnt && <Field label="Areas to target for improvement" value={m.what_didnt} bg="#fee2e2" />}
-                    {m.blockers && <Field label="Blockers" value={m.blockers} bg="#fef3c7" />}
-                    {m.notes && <Field label="Notes" value={m.notes} bg="#f1f5f9" />}
+                    {POINT_SECTIONS.map((s) => {
+                      const rows = grouped[s.key];
+                      // Nothing typed as points, but text on the legacy column
+                      // (a meeting saved before points existed) — show it as-is.
+                      if (!rows.length) {
+                        return m[s.column]
+                          ? <Field key={s.key} label={s.label} value={m[s.column]} bg={s.bg} />
+                          : null;
+                      }
+                      return <PointsTile key={s.key} section={s} rows={rows} />;
+                    })}
                     {meetingActions.length > 0 && (
                       <div style={{ gridColumn: '1 / -1' }}>
                         <div style={lblStyle}>Actions</div>
@@ -564,6 +644,123 @@ export default function OneToOnesView() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/*
+  One section's points while editing. Each row is a headline — what lands on
+  the summary tile — plus an optional detail that stays off the tile and shows
+  on hover (and in full on the PDF).
+*/
+function PointsEditor({ section, rows, onChange }) {
+  const set = (idx, patch) => onChange(rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  const add = () => onChange([...rows, { headline: '', detail: '' }]);
+  const removeAt = (idx) => onChange(rows.filter((_, i) => i !== idx));
+  const move = (idx, by) => {
+    const to = idx + by;
+    if (to < 0 || to >= rows.length) return;
+    const next = [...rows];
+    [next[idx], next[to]] = [next[to], next[idx]];
+    onChange(next);
+  };
+
+  return (
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{
+        background: section.bg, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8,
+        fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#0f172a',
+        textTransform: 'uppercase', letterSpacing: '0.04em',
+      }}>
+        {section.label}
+        <span style={{ marginLeft: 'auto', fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: '#475569' }}>
+          {rows.length} point{rows.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {rows.map((r, idx) => (
+          <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 8 }}>
+              <button onClick={() => move(idx, -1)} disabled={idx === 0} title="Move up"
+                style={{ ...reorderBtn, color: idx === 0 ? '#e5e7eb' : '#94a3b8' }}>▲</button>
+              <button onClick={() => move(idx, 1)} disabled={idx === rows.length - 1} title="Move down"
+                style={{ ...reorderBtn, color: idx === rows.length - 1 ? '#e5e7eb' : '#94a3b8' }}>▼</button>
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <Input
+                value={r.headline} placeholder="Headline — this shows on the summary tile"
+                onChange={(e) => set(idx, { headline: e.target.value })}
+              />
+              <Textarea
+                value={r.detail} placeholder="Detail (optional) — shows on hover and on the PDF"
+                onChange={(e) => set(idx, { detail: e.target.value })}
+                style={{ minHeight: 54, fontSize: 13 }}
+              />
+            </div>
+            <button onClick={() => removeAt(idx)} title="Remove this point" style={{ ...iconLink, marginTop: 8 }}>
+              <Trash2 size={13} />
+            </button>
+          </div>
+        ))}
+        <button onClick={add} style={{
+          fontFamily: FONT, fontSize: 12, color: '#0e7fe0', background: 'none', border: 'none',
+          cursor: 'pointer', textAlign: 'left', padding: '2px 0',
+        }}>
+          + Add {rows.length ? 'another point' : 'a point'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/*
+  The saved-summary tile. Headlines only — hovering (or tapping) one with a
+  detail opens it underneath, so the tile stays scannable.
+*/
+function PointsTile({ section, rows }) {
+  const [openIdx, setOpenIdx] = useState(null);
+  return (
+    <div style={{ background: section.bg, padding: 12, borderRadius: 10 }}>
+      <div style={{
+        fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#0f172a',
+        textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6,
+      }}>
+        {section.label}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {rows.map((r, idx) => {
+          const hasDetail = !!(r.detail || '').trim();
+          const open = openIdx === idx;
+          return (
+            <div
+              key={r.id || idx}
+              onMouseEnter={() => hasDetail && setOpenIdx(idx)}
+              onMouseLeave={() => hasDetail && setOpenIdx(null)}
+              onClick={() => hasDetail && setOpenIdx(open ? null : idx)}
+              style={{ cursor: hasDetail ? 'pointer' : 'default' }}
+            >
+              <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
+                <span style={{ color: '#64748b', fontSize: 13, lineHeight: 1.5 }}>•</span>
+                <span style={{
+                  fontFamily: FONT, fontSize: 13, color: '#1e293b', lineHeight: 1.5, flex: 1,
+                  borderBottom: hasDetail ? '1px dotted #94a3b8' : 'none',
+                }}>
+                  {r.headline}
+                </span>
+              </div>
+              {open && (
+                <div style={{
+                  margin: '4px 0 6px 14px', padding: '8px 10px', background: 'rgba(255,255,255,0.75)',
+                  border: '1px solid rgba(15,23,42,0.08)', borderRadius: 8,
+                  fontFamily: FONT, fontSize: 12.5, color: '#475569', lineHeight: 1.55, whiteSpace: 'pre-wrap',
+                }}>
+                  {r.detail}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -658,4 +855,8 @@ const kickerStyle = {
 const bigNum = { fontFamily: SERIF, fontSize: 30, fontWeight: 500, color: '#0f172a', lineHeight: 1 };
 const iconLink = {
   background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', padding: 4,
+};
+const reorderBtn = {
+  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+  fontSize: 9, lineHeight: 1, height: 11,
 };

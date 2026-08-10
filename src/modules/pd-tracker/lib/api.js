@@ -419,6 +419,75 @@ export async function deleteOneToOne(id) {
   if (error) throw error;
 }
 
+/*
+  ── Discussion points (sql/211) ────────────────────────────────────────────
+  Each section of a 1-2-1 is a list of points, not a blob of text. The
+  headline is what lands on the summary tile; the detail is the fuller story,
+  revealed on hover and printed in full on the PDF.
+
+  The legacy text columns on pd_one_to_ones are kept in step as a plain-text
+  rendering of the headlines, so the dashboard teaser and the 360-feedback
+  request can keep reading one field. Points are the source of truth.
+*/
+export const POINT_SECTIONS = [
+  { key: 'went_well', column: 'what_went_well', label: 'What went well',                   bg: '#dcfce7' },
+  { key: 'improve',   column: 'what_didnt',     label: 'Areas to target for improvement',  bg: '#fef3c7' },
+  { key: 'blockers',  column: 'blockers',       label: 'Blockers',                         bg: '#fee2e2' },
+  { key: 'notes',     column: 'notes',          label: 'Other notes',                      bg: '#f1f5f9' },
+];
+
+export async function loadPoints(oneToOneIds) {
+  if (!oneToOneIds || oneToOneIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('pd_one_to_one_points')
+    .select('*')
+    .in('one_to_one_id', oneToOneIds)
+    .order('sort_order', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+// The text kept on the legacy column for a section — headlines only, one per
+// line, in the "- bullet" shape people were typing by hand.
+export function pointsToText(points) {
+  const lines = (points || []).map((p) => `- ${(p.headline || '').trim()}`).filter((l) => l !== '- ');
+  return lines.length ? lines.join('\n') : null;
+}
+
+// Replace every point on a meeting in one go. The form always submits the
+// full set, so a delete-then-insert keeps ordering and removals honest
+// without diffing row by row.
+export async function savePoints(oneToOneId, bySection) {
+  const rows = [];
+  for (const s of POINT_SECTIONS) {
+    (bySection[s.key] || []).forEach((p) => {
+      const headline = (p.headline || '').trim();
+      if (!headline) return;
+      rows.push({
+        one_to_one_id: oneToOneId,
+        section: s.key,
+        headline,
+        detail: (p.detail || '').trim() || null,
+        sort_order: rows.filter((r) => r.section === s.key).length,
+      });
+    });
+  }
+  const { error: delErr } = await supabase.from('pd_one_to_one_points').delete().eq('one_to_one_id', oneToOneId);
+  if (delErr) throw delErr;
+  if (rows.length) {
+    const { error } = await supabase.from('pd_one_to_one_points').insert(rows);
+    if (error) throw error;
+  }
+  return rows;
+}
+
+// The derived text columns for a meeting, from the same submitted points.
+export function pointsToColumns(bySection) {
+  const patch = {};
+  for (const s of POINT_SECTIONS) patch[s.column] = pointsToText(bySection[s.key]);
+  return patch;
+}
+
 export async function loadOneToOneComments(oneToOneIds) {
   if (!oneToOneIds || oneToOneIds.length === 0) return [];
   const { data, error } = await supabase
