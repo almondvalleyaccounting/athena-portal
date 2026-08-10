@@ -274,11 +274,16 @@ export async function addNote(requestId, body, { actorId } = {}) {
   await logActivity(requestId, 'note', body, actorId);
 }
 
-// Capture/patch a person's email (used by the Stage-3b guard so the £20+VAT
-// invoice always has a client email to send to).
-export async function setPersonEmail(personId, email) {
+// Capture/patch a person's email. Used wherever a chase is blocked for want of
+// an address — the Stage-3b invoice guard, the queue buttons, and the add/edit
+// controls on the tiles and detail page. Logged against the request when we
+// know which one prompted it, so the chase history shows where it came from.
+export async function setPersonEmail(personId, email, { requestId, actorId } = {}) {
   const clean = String(email || '').trim();
-  await supabase.from('people').update({ email: clean }).eq('id', personId);
+  if (!clean.includes('@')) throw new Error('That doesn’t look like an email address.');
+  const { error } = await supabase.from('people').update({ email: clean }).eq('id', personId);
+  if (error) throw error;
+  if (requestId) await logActivity(requestId, 'note', `Email set to ${clean}.`, actorId);
   return clean;
 }
 

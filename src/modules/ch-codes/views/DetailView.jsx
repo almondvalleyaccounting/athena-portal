@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Btn } from '../../../components/ui';
 import { chipStyle, tones } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
+import PersonEmail from '../components/PersonEmail';
 import {
   getChCodeRequest, stageMeta, recordDecision, recordIdPoaReceived,
   recordCodeReceived, markInformDirect, markEnteredBm, submitRequest, rejectRequest,
@@ -55,7 +56,7 @@ export default function DetailView() {
       const entered = window.prompt(`No email on file for ${req.person?.name || 'this director'}. Enter their email so the £20+VAT invoice can be sent:`, '');
       if (!entered || !entered.includes('@')) return;
       email = entered.trim();
-      await setPersonEmail(req.person_id, email);
+      await setPersonEmail(req.person_id, email, { requestId: req.id, actorId });
     }
     if (!window.confirm(`Record “we do it”? This raises a £20 + VAT ID-check invoice and sends it to ${email} now.`)) return;
     await run(() => recordDecision({ ...req, person: { ...req.person, email } }, 'paid', { actorId }));
@@ -120,10 +121,10 @@ export default function DetailView() {
 
       {error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
-      {!isEmail(req.person?.email) && !terminal && (
-        <div style={{ background: tones.warning.bg, color: tones.warning.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
-          No email on file for {req.person?.name} — add one to their people record so they can be emailed.
-        </div>
+      {!terminal && (
+        <PersonEmail
+          mode="banner" person={req.person} requestId={req.id} actorId={actorId} onSaved={load}
+        />
       )}
       {req.escalation_status === 'call_needed' && (
         <div style={{ background: tones.danger.bg, color: tones.danger.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>

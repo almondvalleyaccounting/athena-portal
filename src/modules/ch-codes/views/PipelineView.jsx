@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { chipStyle, pillStyle, tones } from '../../../lib/tokens';
 import ChSubNav from '../components/ChSubNav';
+import PersonEmail from '../components/PersonEmail';
 import { useAuth } from '../../../shell/AppShell';
 import {
   listChCodeRequests, CH_STAGES, stageMeta, commsOf, daysSince,
@@ -251,18 +252,45 @@ export default function PipelineView() {
     setBusyId(null);
   }
 
+  // Nothing can be sent without an address. Where we don't hold one, ask for it
+  // right here and save it against the person — otherwise Sophie has to go off
+  // to the people record and lose her place in the pipeline. Returns null if
+  // she cancels or types something that isn't an email.
+  async function ensureEmail(row, why) {
+    if (isEmail(row.person?.email)) return String(row.person.email).split(/[;,]/)[0].trim();
+    const entered = window.prompt(`No email on file for ${row.person?.name || 'this director'}. Enter their email ${why}:`, '');
+    if (entered === null) return null;
+    const clean = entered.trim();
+    if (!clean.includes('@')) { setError('That doesn’t look like an email address — nothing saved.'); return null; }
+    await setPersonEmail(row.person_id, clean, { requestId: row.id, actorId });
+    return clean;
+  }
+
+  // Queue one chaser for the person. Deliberately NOT via actGroup: a group can
+  // hold several companies, and one email covers the lot — fanning out would
+  // drop the same email on the queue once per company.
+  async function queueFor(group, first, kind, label) {
+    setBusyId(group.key); setError(null); setFlash(null);
+    try {
+      const email = await ensureEmail(first, `so the ${label.toLowerCase()} can be sent`);
+      if (email) {
+        await queueEmail({ ...first, person: { ...first.person, email } }, kind, { actorId });
+        await load();
+        setFlash(`${label} queued for ${first.person?.name || 'client'}.`);
+      }
+    } catch (e) { setError(e.message); }
+    setBusyId(null);
+  }
+
   // Stage 3b guard: make sure we hold a client email before raising/sending the invoice.
   // Raises one £20+VAT invoice per company in the group (billing is inherently
   // per-client, so a director of two companies is invoiced on each).
   async function decideWeDoIt(group) {
     const rep = group.rows[0];
-    let email = rep.person?.email;
-    if (!isEmail(email)) {
-      const entered = window.prompt(`No email on file for ${rep.person?.name || 'this director'}. Enter their email so the £20+VAT invoice can be sent:`, '');
-      if (!entered || !entered.includes('@')) return;
-      email = entered.trim();
-      await setPersonEmail(rep.person_id, email);
-    }
+    let email;
+    try { email = await ensureEmail(rep, 'so the £20+VAT invoice can be sent'); }
+    catch (e) { setError(e.message); return; }
+    if (!email) return;
     const companies = group.rows.map((r) => r.entity?.name).filter(Boolean).join(', ');
     if (!window.confirm(`Record “we do it” for ${rep.person?.name || 'this director'}?\n\nThis raises a £20 + VAT ID-check invoice for each company (${companies}) and sends it to ${email} now, and moves them to Stage 3b.`)) return;
     await actGroup(group, (row) => recordDecision({ ...row, person: { ...row.person, email } }, 'paid', { actorId }), `Decision recorded — invoice sent to ${email}.`);
@@ -309,7 +337,7 @@ export default function PipelineView() {
           const qd = queueDisabled(kind);
           return (
             <Btn key={kind} icon={Icon} label={label} tone={tone} disabled={busy || qd} title={queueTitle(kind, qd)}
-              onClick={() => actGroup(group, () => queueEmail(first, kind, { actorId }), `${label} queued for ${first.person?.name || 'client'}.`)} />
+              onClick={() => queueFor(group, first, kind, label)} />
           );
         })}
 
@@ -400,7 +428,9 @@ export default function PipelineView() {
         {chasing && <CommsChip r={rep} />}
         {rep.stage === 's3b_us' && group.rows.some((r) => r.billing_item_id) && <span style={chipStyle('accent')}>£20+VAT invoiced</span>}
         {rep.stage === 's5_entered' && rep.bm_code_mismatch && <span style={chipStyle('danger')}>BM mismatch</span>}
-        {!isEmail(first.person?.email) && !stageMeta(rep.stage).terminal && <span style={chipStyle('warning')}>no email</span>}
+        {!stageMeta(rep.stage).terminal && (
+          <PersonEmail person={first.person} requestId={first.id} actorId={actorId} onSaved={load} />
+        )}
         {group.rows.length > 1 && <span style={chipStyle('neutral')}>{group.rows.length} companies</span>}
       </>
     );
