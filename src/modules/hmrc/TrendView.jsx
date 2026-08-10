@@ -303,9 +303,12 @@ export default function TrendView() {
         <div>
           {firstCovered ? (
             <>
-              BrightPay figures exist from <b>{MONTH_NAMES[firstCovered.tax_month]} {firstCovered.tax_year}</b>.
-              Everything before that is HMRC's word alone — carry it as an opening balance rather than
-              treating it as reconciled.
+              {/* "Jun 2026-27" reads as a date that does not exist. Tax month
+                  and tax year are two different things and the label has to say
+                  which is which. */}
+              BrightPay figures exist from <b>month {firstCovered.tax_month} ({MONTH_NAMES[firstCovered.tax_month]})
+              of {firstCovered.tax_year}</b>. Everything before that is HMRC's word alone — carry it as an
+              opening balance rather than treating it as reconciled.
             </>
           ) : (
             <>
