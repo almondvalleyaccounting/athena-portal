@@ -6,7 +6,8 @@ import DebtView from './DebtView';
 import ReconcileView from './ReconcileView';
 import AuthorisationsView from './AuthorisationsView';
 import BalanceView from './BalanceView';
-import TrendView from './TrendView';
+import ClientStatementView from './ClientStatementView';
+import PaymentsView from './PaymentsView';
 import { font, dateTime } from './hmrcShared';
 
 // HMRC — what the taxman's own records say about our clients.
@@ -17,18 +18,30 @@ import { font, dateTime } from './hmrcShared';
 // shaped, but the underlying tables carry a `service` discriminator and the
 // intention is that VAT / CT / SA slot in beside it rather than replace it.
 //
-// Three tabs, because there are three distinct jobs:
-//   Debt            — who owes HMRC money, and what have we done about it
-//   Balance         — how each balance was arrived at: charges, credits, payments
-//   Reconciliation  — where the agent list and Athena disagree
-//   Authorisations  — schemes we can see but should not be able to
+// Each tab answers a different question:
+//   PAYE debt          who owes HMRC money, and what have we done about it
+//   Client statement   one client's account: months down, opening → charges →
+//                      credits → payments → closing, any date range. This is
+//                      where a year-end PAYE creditor comes from.
+//   Payments           the payment ledger, and what HMRC set each one against
+//   Balance analysis   per-scheme, per-tax-year version of the same walk
+//   Reconciliation     where the agent list and Athena disagree
+//   Not our clients    schemes HMRC still lets us act on with no active client
+//                      behind them — authorisation to hand back, or a record to fix
+//
+// Every list is ACTIVE CLIENTS ONLY (sql/207). Former and archived clients are
+// noise on an operational screen; "Not our clients" is where they belong.
 
 const TABS = [
-  { to: '/hmrc/paye',           label: 'PAYE debt',      end: false },
-  { to: '/hmrc/trend',          label: 'Trend',          end: false },
-  { to: '/hmrc/balance',        label: 'Balance analysis', end: false },
-  { to: '/hmrc/reconciliation', label: 'Reconciliation', end: false },
-  { to: '/hmrc/authorisations', label: 'Authorisations', end: false },
+  { to: '/hmrc/paye',           label: 'PAYE debt' },
+  { to: '/hmrc/statement',      label: 'Client statement' },
+  { to: '/hmrc/payments',       label: 'Payments' },
+  { to: '/hmrc/balance',        label: 'Balance analysis' },
+  { to: '/hmrc/reconciliation', label: 'Reconciliation' },
+  // Renamed from "Authorisations", which said nothing about what it is for.
+  // These are schemes HMRC still lets us act on that have no active client —
+  // authorisation to hand back, or a client record to correct.
+  { to: '/hmrc/authorisations', label: 'Not our clients' },
 ];
 
 export default function HmrcModule() {
@@ -79,7 +92,10 @@ export default function HmrcModule() {
       <Routes>
         <Route index element={<Navigate to="/hmrc/paye" replace />} />
         <Route path="paye" element={<DebtView />} />
-        <Route path="trend" element={<TrendView />} />
+        <Route path="statement" element={<ClientStatementView />} />
+        <Route path="payments" element={<PaymentsView />} />
+        {/* The Trend tab became the per-client statement. Keep old links alive. */}
+        <Route path="trend" element={<Navigate to="/hmrc/statement" replace />} />
         <Route path="balance" element={<BalanceView />} />
         <Route path="reconciliation" element={<ReconcileView />} />
         <Route path="authorisations" element={<AuthorisationsView />} />

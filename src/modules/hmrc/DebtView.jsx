@@ -7,7 +7,7 @@ import { useAuth } from '../../shell/AppShell';
 import { fetchSchemes, saveReview } from './hmrcApi';
 import SchemeDetailPanel from './SchemeDetailPanel';
 import {
-  font, TIERS, REVIEW_STATUSES, STANDINGS, Pill, Stat, Chip, BlurInput, ErrorBar,
+  font, TIERS, REVIEW_STATUSES, Pill, Stat, Chip, BlurInput, ErrorBar,
   ageLabel, shortDate, th, td, thNum, tdNum, card, inputStyle,
 } from './hmrcShared';
 
@@ -27,7 +27,6 @@ export default function DebtView() {
 
   const [tierFilter, setTierFilter] = useState('owing');   // 'owing' | '1' | '2' | '3' | 'clear' | 'all'
   const [statusFilter, setStatusFilter] = useState('open'); // 'open' | <status> | 'all'
-  const [standing, setStanding] = useState('client');       // 'client' | 'other' | 'all'
   const [search, setSearch] = useState('');
 
   const selectedRef = params.get('scheme');
@@ -64,15 +63,10 @@ export default function DebtView() {
     }
   }
 
-  // Former clients are excluded by default on every operational surface; they
-  // stay reachable here because a scheme we no longer act for can still be
-  // sitting on our agent list with a debt against it.
-  const byStanding = useMemo(
-    () => rows.filter((r) => (
-      standing === 'all' ? true : standing === 'client' ? r.standing === 'client' : r.standing !== 'client'
-    )),
-    [rows, standing],
-  );
+  // v_hmrc_paye_clients is active clients only (sql/207) — former and archived
+  // schemes never reach this list. They are dealt with on the "Not our clients"
+  // tab, which exists for exactly that. No standing selector needed.
+  const byStanding = rows;
 
   const matchesTier = (r) => {
     if (tierFilter === 'all') return true;
@@ -136,12 +130,11 @@ export default function DebtView() {
   const exportCsv = () => {
     downloadCSV(
       `hmrc-paye-debt-${new Date().toISOString().slice(0, 10)}.csv`,
-      ['Client', 'HMRC name', 'PAYE ref', 'Accounts Office ref', 'Standing', 'Chase tier',
+      ['Client', 'HMRC name', 'PAYE ref', 'Accounts Office ref', 'Chase tier',
        'Total owed', 'Accruing interest', 'Overdue items', 'Oldest arrears year', 'Days overdue',
        'Payment plan', 'Employment Allowance', 'Status', 'Notes'],
       filtered.map((r) => [
         r.entity_name || '', r.hmrc_name || '', r.paye_ref || '', r.accounts_office_ref || '',
-        STANDINGS[r.standing]?.label || r.standing,
         (TIERS[r.chase_tier] || {}).label || '',
         Number(r.total_debt || 0).toFixed(2), Number(r.accruing_interest || 0).toFixed(2),
         r.overdue_items ?? 0, r.oldest_overdue_year || '', r.days_oldest_overdue ?? '',
@@ -184,12 +177,6 @@ export default function DebtView() {
           <option value="open">Open — not signed off</option>
           {REVIEW_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           <option value="all">Any status</option>
-        </select>
-
-        <select value={standing} onChange={(e) => setStanding(e.target.value)} style={{ ...inputStyle, width: 'auto' }}>
-          <option value="client">Active clients</option>
-          <option value="other">Former / not in Athena</option>
-          <option value="all">Everyone on the agent list</option>
         </select>
 
         <div style={{ position: 'relative', minWidth: 220 }}>
@@ -251,7 +238,6 @@ export default function DebtView() {
                 {filtered.map((r) => {
                   const tier = TIERS[r.chase_tier] || TIERS[4];
                   const st = REVIEW_STATUSES.find((s) => s.value === r.review_status) || REVIEW_STATUSES[0];
-                  const stand = STANDINGS[r.standing];
                   return (
                     <tr key={r.paye_ref} style={{ borderTop: '1px solid #f1f5f9' }}>
                       <td style={td}>
@@ -269,9 +255,6 @@ export default function DebtView() {
                           >
                             {r.entity_name || r.hmrc_name}
                           </button>
-                          {r.standing !== 'client' && (
-                            <Pill colour={stand?.colour || '#94a3b8'} style={{ fontSize: 10 }}>{stand?.label || r.standing}</Pill>
-                          )}
                         </div>
                         {r.entity_name && r.hmrc_name && r.entity_name !== r.hmrc_name && (
                           <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>HMRC: {r.hmrc_name}</div>
