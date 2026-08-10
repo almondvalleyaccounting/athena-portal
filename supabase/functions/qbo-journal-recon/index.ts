@@ -265,12 +265,27 @@ function reconcile(tasks: any[], allJournals: any[]) {
     }
 
     if (expected == null) {
-      // The runner asserts a journal exists but recorded no figure to check it
-      // against. Existence is confirmed; agreement cannot be.
+      // Two very different cases, and calling both "unverified" reads as a
+      // defect in the runner when most of it is not one.
+      //
+      // Rows imported from the sheet's JnlLog stand in for postings made by
+      // the PREVIOUS automation, which nobody witnessed and which logged no
+      // figure (121 of 161 JnlLog rows carry no amount in any column). There
+      // is no expected figure to recover, so this is a known limit of
+      // imported history, not something anyone failed to record.
+      //
+      // A task THIS system posted without an amount WOULD be a real gap. That
+      // branch is currently empty and the runner says it cannot happen - which
+      // is why it stays: it proves the invariant every month rather than
+      // assuming it, and fires if anything ever regresses.
+      const legacy = /import|jnllog/i.test(String(t.evidence ?? ""));
       findings.push({
-        kind: "unverifiable_amount", severity: "low", task_id: t.id, period,
-        detail: `${inRange.length} BrightPay journal(s) in ${t.period_start}..${t.period_end} totalling ${sum.toFixed(2)}, but the task recorded no amount — existence confirmed, agreement not.`,
-        data: { total: sum, journals: inRange.map((j) => ({ id: j.id, date: j.txn_date, total: j.debit_total })) },
+        kind: legacy ? "legacy_no_expected_figure" : "unverifiable_amount",
+        severity: "low", task_id: t.id, period,
+        detail: legacy
+          ? `${inRange.length} BrightPay journal(s) in ${t.period_start}..${t.period_end} totalling ${sum.toFixed(2)}. Existence confirmed; no expected figure exists for this imported pre-system posting, so agreement cannot be tested.`
+          : `${inRange.length} BrightPay journal(s) in ${t.period_start}..${t.period_end} totalling ${sum.toFixed(2)}, but this system posted it without recording an amount - existence confirmed, agreement not.`,
+        data: { total: sum, legacy, journals: inRange.map((j) => ({ id: j.id, date: j.txn_date, total: j.debit_total })) },
       });
       continue;
     }
