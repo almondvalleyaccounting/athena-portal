@@ -450,33 +450,48 @@ export async function loadActions(staffId) {
   return data || [];
 }
 
+/*
+  Copying 1-2-1 actions onto the work planner is DELIBERATELY OFF.
+
+  The planner is a team-wide surface — everyone sees everyone's tasks — while
+  a 1-2-1 action can be a personal development matter ("consider next steps on
+  courses / career path"). Putting one on the planner publishes it to the whole
+  team, so the owner tag stays inside the CPD tracker for now.
+
+  (It never actually worked anyway: the insert set service 'PD' and source
+  'pd_tracker', both of which fail the CHECK constraints on quick_tasks, so
+  every attempt was silently rejected. The values below are the valid ones,
+  left in place for whenever this is switched on.)
+
+  To enable: flip this to true. The mirroring on edit/complete/delete below is
+  keyed off quick_task_id, so existing actions without one stay untouched and
+  only new actions start appearing on planners.
+*/
+const MIRROR_ACTIONS_TO_PLANNER = false;
+
 export async function createAction(row) {
-  // Also drop the action onto the work planner as a Quick Task so it
-  // surfaces in the owner's day-to-day list.
   const ownerId = row.owner_id || row.staff_id;
   let quickTaskId = null;
-  try {
-    // service and source are CHECK-constrained on quick_tasks — 'PD' and
-    // 'pd_tracker' aren't allowed values, so every insert here was silently
-    // rejected and no 1-2-1 action ever reached anyone's planner. The notes
-    // line carries the provenance instead.
-    const qt = {
-      title: row.action,
-      service: 'Admin',
-      assignee_id: ownerId,
-      due_date: row.due_date ? new Date(row.due_date).toISOString() : null,
-      duration: 15,
-      notes: 'From 1-2-1 action',
-      created_by: ownerId,
-      source: 'manual',
-    };
-    const { data: qtRow, error: qtErr } = await supabase
-      .from('quick_tasks')
-      .insert(qt)
-      .select()
-      .single();
-    if (!qtErr && qtRow) quickTaskId = qtRow.id;
-  } catch { /* fall through - don't block action creation if QT insert fails */ }
+  if (MIRROR_ACTIONS_TO_PLANNER) {
+    try {
+      const qt = {
+        title: row.action,
+        service: 'Admin',
+        assignee_id: ownerId,
+        due_date: row.due_date ? new Date(row.due_date).toISOString() : null,
+        duration: 15,
+        notes: 'From 1-2-1 action',
+        created_by: ownerId,
+        source: 'manual',
+      };
+      const { data: qtRow, error: qtErr } = await supabase
+        .from('quick_tasks')
+        .insert(qt)
+        .select()
+        .single();
+      if (!qtErr && qtRow) quickTaskId = qtRow.id;
+    } catch { /* fall through - don't block action creation if QT insert fails */ }
+  }
 
   const { data, error } = await supabase
     .from('pd_one_to_one_actions')
