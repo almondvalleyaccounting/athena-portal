@@ -41,6 +41,7 @@ export async function pushToQbo(billingId, initiatedBy, opts = {}) {
   if (opts.dryRun) body.dry_run = true;
   if (opts.linkCustomerId) body.link_customer_id = opts.linkCustomerId;
   if (opts.newCustomerOk) body.new_customer_ok = true;
+  if (opts.newCustomerName) body.new_customer_name = opts.newCustomerName;
 
   const { data, error } = await supabase.functions.invoke('qbo-push', { body });
   if (error) {

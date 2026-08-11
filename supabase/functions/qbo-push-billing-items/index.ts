@@ -859,7 +859,7 @@ async function loadAllCustomers(): Promise<QboCustomer[]> {
 const NAME_NOISE = new Set([
   // Legal form and filler
   "ltd", "limited", "llp", "plc", "llc", "inc", "co", "company", "the", "and", "of", "in", "at", "on", "by", "or",
-  "uk", "scotland", "trading", "t/a",
+  "uk", "scotland", "trading", "t/a", "it",
   // Structure
   "group", "holdings", "enterprises", "ventures", "partners", "partnership", "associates", "international", "global",
   // Sector / activity

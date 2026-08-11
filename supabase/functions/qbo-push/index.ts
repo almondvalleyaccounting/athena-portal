@@ -67,6 +67,10 @@ Deno.serve(async (req) => {
   // rather than silently getting a duplicate customer (see the push below).
   const linkCustomerId: string | null = body.link_customer_id ?? null;
   const newCustomerOk: boolean = Boolean(body.new_customer_ok);
+  // The DisplayName to create the customer under. Defaults to the Athena name,
+  // which for a BM-imported client is its title-casing — and this name shows on
+  // every invoice and the recurring template, so it has to be fixable first.
+  const newCustomerNameRaw: string = String(body.new_customer_name ?? "").trim();
 
   const sb = getServiceClient();
 
@@ -330,7 +334,14 @@ Deno.serve(async (req) => {
           qboCustomerId = exact.id;
           if (entity?.id) await sb.from("entities").update({ qbo_customer_id: exact.id, qbo_customer_name: exact.name || exact.companyName }).eq("id", entity.id);
         } else if (newCustomerOk) {
-          qboCustomerId = await ensureQboCustomer(sb, entity, entityName);
+          const wanted = newCustomerNameRaw || entityName;
+          // QBO enforces unique DisplayName and rejects a clash with a terse
+          // error, so name the customer that's already sitting there.
+          const clash = (await loadAllCustomers()).find((c) => c.name.toLowerCase() === wanted.toLowerCase());
+          if (clash) {
+            return jsonResponse({ success: false, error: `QuickBooks already has a customer called "${clash.name}" (#${clash.id}). Link this client to it instead of creating another.`, customer_name_clash: true }, 409);
+          }
+          qboCustomerId = await ensureQboCustomer(sb, entity, wanted);
         } else {
           const near = await nearMatchCustomers(entityName, 3);
           const hint = near.length
@@ -631,7 +642,7 @@ async function loadAllCustomers(): Promise<QboCustomer[]> {
 const NAME_NOISE = new Set([
   // Legal form and filler
   "ltd", "limited", "llp", "plc", "llc", "inc", "co", "company", "the", "and", "of", "in", "at", "on", "by", "or",
-  "uk", "scotland", "trading", "t/a",
+  "uk", "scotland", "trading", "t/a", "it",
   // Structure
   "group", "holdings", "enterprises", "ventures", "partners", "partnership", "associates", "international", "global",
   // Sector / activity

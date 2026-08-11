@@ -29,7 +29,9 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
   // decision where none could be resolved ('' = undecided, blocks the commit;
   // a customer id = link it; 'new' = create one).
   const [custPlans, setCustPlans] = useState({}); // quoteId -> plan.customer
-  const [custChoice, setCustChoice] = useState({}); // quoteId -> '' | id | 'new'
+  const [custChoice, setCustChoice] = useState({}); // quoteId -> picked customer id
+  const [custMode, setCustMode] = useState({});   // quoteId -> 'link' | 'new' | ''
+  const [custName, setCustName] = useState({});   // quoteId -> DisplayName to create under
 
   const contactOf = (id) => contacts[id] || BLANK;
   const setContact = (id, patch) =>
@@ -45,12 +47,14 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
       if (c.missing) return { mode: 'missing', name: null, id: c.qbo_customer_id };
       return { mode: 'existing', name: c.qbo_customer_name || '(unnamed customer)', id: c.qbo_customer_id, source: c.source, inactive: c.inactive };
     }
+    const mode = custMode[id] || '';
     const choice = custChoice[id] || '';
-    if (choice && choice !== 'new') {
+    if (mode === 'link' && choice) {
       const cand = (c.candidates || []).find((x) => String(x.id) === String(choice));
       return { mode: 'link', name: cand?.name || `Customer ${choice}`, id: choice, inactive: cand ? !cand.active : false };
     }
-    if (choice === 'new') return { mode: 'new', name: c.name, id: null };
+    const wanted = (custName[id] ?? c.name ?? '').trim();
+    if (mode === 'new' && wanted) return { mode: 'new', name: wanted, id: null };
     return { mode: 'undecided', name: null, id: null };
   };
   // Undecided (or a broken mapping) blocks that company. A plan that hasn't
@@ -136,8 +140,11 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           const cust = res?.plan?.customer;
           if (cust) {
             setCustPlans((prev) => ({ ...prev, [q.id]: cust }));
-            if (cust.action === 'create' && !(cust.candidates || []).length) {
-              setCustChoice((prev) => ({ ...prev, [q.id]: prev[q.id] || 'new' }));
+            if (cust.action === 'create') {
+              setCustName((prev) => ({ ...prev, [q.id]: prev[q.id] ?? (cust.name || '') }));
+              if (!(cust.candidates || []).length) {
+                setCustMode((prev) => ({ ...prev, [q.id]: prev[q.id] || 'new' }));
+              }
             }
           }
 
@@ -261,6 +268,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           // push refuses rather than creating a duplicate customer.
           linkCustomerId: ct?.mode === 'link' ? String(ct.id) : undefined,
           newCustomerOk: ct?.mode === 'new' || undefined,
+          newCustomerName: ct?.mode === 'new' ? ct.name : undefined,
         });
 
         if (!res?.success) {
@@ -392,26 +400,56 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
                       </>
                     ) : (
                       <>
-                        <p className="text-amber-800 mb-1">
+                        <p className="text-amber-800 mb-2">
                           Nothing mapped to <span className="font-medium">{cp.name}</span>.
                           {cands.length > 0
-                            ? ` ${cands.length} similar ${cands.length === 1 ? 'customer' : 'customers'} already exist — link the right one rather than creating a duplicate.`
+                            ? ` ${cands.length} ${cands.length === 1 ? 'customer looks' : 'customers look'} similar — link one only if it's genuinely the same client.`
                             : ' Nothing similar found in QuickBooks.'}
                         </p>
-                        <select
-                          value={custChoice[curId] || ''}
-                          onChange={(e) => setCustChoice((prev) => ({ ...prev, [curId]: e.target.value }))}
-                          disabled={running}
-                          className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
-                        >
-                          <option value="">Choose the QuickBooks customer…</option>
-                          {cands.map((x) => (
-                            <option key={x.id} value={x.id}>
-                              Link to: {x.name}{x.active ? '' : ' (inactive)'}{x.address_label ? ` — ${x.address_label}` : ''}
-                            </option>
-                          ))}
-                          <option value="new">Create a new customer called &quot;{cp.name}&quot;</option>
-                        </select>
+                        <div className="flex gap-1.5 mb-2">
+                          <button
+                            onClick={() => setCustMode((prev) => ({ ...prev, [curId]: 'link' }))}
+                            disabled={running || cands.length === 0}
+                            title={cands.length === 0 ? 'No similar customers found in QuickBooks' : 'Point this company at a customer that already exists'}
+                            className={`flex-1 text-xs font-semibold rounded-md border px-2 py-1.5 ${custMode[curId] === 'link' ? 'border-ocean-500 bg-ocean-50 text-gray-900 ring-1 ring-ocean-500' : 'border-gray-200 bg-white text-gray-600'} ${cands.length === 0 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          >Link an existing customer</button>
+                          <button
+                            onClick={() => setCustMode((prev) => ({ ...prev, [curId]: 'new' }))}
+                            disabled={running}
+                            title="Create this company as a brand-new QuickBooks customer"
+                            className={`flex-1 text-xs font-semibold rounded-md border px-2 py-1.5 ${custMode[curId] === 'new' ? 'border-ocean-500 bg-ocean-50 text-gray-900 ring-1 ring-ocean-500' : 'border-gray-200 bg-white text-gray-600'}`}
+                          >Create a new customer</button>
+                        </div>
+                        {custMode[curId] === 'link' && (
+                          <select
+                            value={custChoice[curId] || ''}
+                            onChange={(e) => setCustChoice((prev) => ({ ...prev, [curId]: e.target.value }))}
+                            disabled={running}
+                            className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                          >
+                            <option value="">Pick the existing customer…</option>
+                            {cands.map((x) => (
+                              <option key={x.id} value={x.id}>
+                                {x.name}{x.active ? '' : ' (inactive)'}{x.address_label ? ` — ${x.address_label}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {custMode[curId] === 'new' && (
+                          <div>
+                            <label className="text-gray-500 block mb-0.5">New customer name *</label>
+                            <input
+                              value={custName[curId] ?? (cp.name || '')}
+                              onChange={(e) => setCustName((prev) => ({ ...prev, [curId]: e.target.value }))}
+                              disabled={running}
+                              placeholder="Name as it should appear in QuickBooks"
+                              className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                            />
+                            <p className="text-amber-800 mt-1">
+                              Becomes the customer&apos;s name in QuickBooks — on every invoice and on the recurring template. Athena&apos;s name comes from BrightManager&apos;s import, so check the capitalisation.
+                            </p>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>

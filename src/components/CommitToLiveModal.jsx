@@ -36,6 +36,14 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   // the commit — the push refuses to invent a customer, and here that would
   // also mean a duplicate recurring template.
   const [custChoice, setCustChoice] = useState('');
+  // 'link' | 'new' | '' (undecided). Separate from the picked id so creating a
+  // customer is a visible route rather than the last entry in a dropdown of
+  // near-matches, which read as though linking to a guess was the only way on.
+  const [custMode, setCustMode] = useState('');
+  // DisplayName for a customer we're about to create. Prefilled from Athena —
+  // for a BM-imported client that's its title-casing, and this name shows on
+  // every invoice and the recurring template.
+  const [custName, setCustName] = useState('');
 
   const recurring = (lineItems || []).filter((l) => l.is_recurring);
   const clientName = quote?.relationship_group || 'Unnamed Client';
@@ -283,8 +291,10 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   // so the commit waits for the user to look at it.
   const seedCustChoice = (p) => {
     const c = p?.customer;
-    if (!c || c.action !== 'create') { setCustChoice(''); return; }
-    setCustChoice((c.candidates || []).length ? '' : 'new');
+    setCustChoice('');
+    if (!c || c.action !== 'create') { setCustMode(''); setCustName(''); return; }
+    setCustName(c.name || '');
+    setCustMode((c.candidates || []).length ? '' : 'new');
   };
 
   // Map the plan's QBO-shaped address (Line1/PostalCode…) back to our form.
@@ -310,11 +320,11 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
       if (c.missing) return { mode: 'missing', name: null, id: c.qbo_customer_id };
       return { mode: 'existing', name: c.qbo_customer_name || '(unnamed customer)', id: c.qbo_customer_id, source: c.source, inactive: c.inactive };
     }
-    if (custChoice && custChoice !== 'new') {
+    if (custMode === 'link' && custChoice) {
       const cand = (c.candidates || []).find((x) => String(x.id) === String(custChoice));
       return { mode: 'link', name: cand?.name || `Customer ${custChoice}`, id: custChoice, inactive: cand ? !cand.active : false };
     }
-    if (custChoice === 'new') return { mode: 'new', name: c.name, id: null };
+    if (custMode === 'new' && custName.trim()) return { mode: 'new', name: custName.trim(), id: null };
     return { mode: 'undecided', name: null, id: null };
   })();
   const customerReady = !!customerTarget && customerTarget.mode !== 'undecided' && customerTarget.mode !== 'missing';
@@ -362,6 +372,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         // create a customer without one of these.
         linkCustomerId: customerTarget?.mode === 'link' ? String(customerTarget.id) : undefined,
         newCustomerOk: customerTarget?.mode === 'new' || undefined,
+        newCustomerName: customerTarget?.mode === 'new' ? customerTarget.name : undefined,
       });
       if (result?.success) {
         setPushStatus('pushed');
@@ -475,26 +486,60 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
                     </>
                   ) : (
                     <>
-                      <p className="text-amber-800 mb-1.5">
+                      <p className="text-amber-800 mb-2">
                         No QuickBooks customer is mapped to <span className="font-medium">{c?.name}</span>.
                         {cands.length > 0
-                          ? ` ${cands.length} similar ${cands.length === 1 ? 'customer' : 'customers'} already exist — link the right one rather than creating a duplicate.`
+                          ? ` ${cands.length} ${cands.length === 1 ? 'customer looks' : 'customers look'} similar — link one only if it's genuinely the same client.`
                           : ' Nothing similar found in QuickBooks.'}
                       </p>
-                      <select
-                        value={custChoice}
-                        onChange={(e) => setCustChoice(e.target.value)}
-                        disabled={committing}
-                        className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
-                      >
-                        <option value="">Choose the QuickBooks customer…</option>
-                        {cands.map((x) => (
-                          <option key={x.id} value={x.id}>
-                            Link to: {x.name}{x.active ? '' : ' (inactive)'}{x.address_label ? ` — ${x.address_label}` : ''}
-                          </option>
-                        ))}
-                        <option value="new">Create a new customer called &quot;{c?.name}&quot;</option>
-                      </select>
+                      {/* Two explicit routes. Creating a customer is a
+                          first-class choice, not the bottom of a list of
+                          guesses. */}
+                      <div className="flex gap-1.5 mb-2">
+                        <button
+                          onClick={() => setCustMode('link')}
+                          disabled={committing || cands.length === 0}
+                          title={cands.length === 0 ? 'No similar customers found in QuickBooks' : 'Point this client at a customer that already exists'}
+                          className={`flex-1 text-xs font-semibold rounded-md border px-2 py-1.5 ${custMode === 'link' ? 'border-ocean-500 bg-ocean-50 text-gray-900 ring-1 ring-ocean-500' : 'border-gray-200 bg-white text-gray-600'} ${cands.length === 0 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >Link an existing customer</button>
+                        <button
+                          onClick={() => setCustMode('new')}
+                          disabled={committing}
+                          title="Create this client as a brand-new QuickBooks customer"
+                          className={`flex-1 text-xs font-semibold rounded-md border px-2 py-1.5 ${custMode === 'new' ? 'border-ocean-500 bg-ocean-50 text-gray-900 ring-1 ring-ocean-500' : 'border-gray-200 bg-white text-gray-600'}`}
+                        >Create a new customer</button>
+                      </div>
+                      {custMode === 'link' && (
+                        <select
+                          value={custChoice}
+                          onChange={(e) => setCustChoice(e.target.value)}
+                          disabled={committing}
+                          className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                        >
+                          <option value="">Pick the existing customer…</option>
+                          {cands.map((x) => (
+                            <option key={x.id} value={x.id}>
+                              {x.name}{x.active ? '' : ' (inactive)'}{x.address_label ? ` — ${x.address_label}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {custMode === 'new' && (
+                        <div>
+                          <label className="text-gray-400 block mb-0.5">New customer name *</label>
+                          <input
+                            value={custName}
+                            onChange={(e) => setCustName(e.target.value)}
+                            disabled={committing}
+                            placeholder="Name as it should appear in QuickBooks"
+                            className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                          />
+                          <p className="text-amber-800 mt-1">
+                            This becomes the customer&apos;s name in QuickBooks — on every invoice and on the recurring template. Athena&apos;s name comes from BrightManager&apos;s import, so check the capitalisation and use the trading name if that&apos;s what the client bills under.
+                          </p>
+                          {!custName.trim() && <p className="text-amber-700 mt-0.5">A name is required to create the customer.</p>}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
