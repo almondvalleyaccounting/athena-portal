@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 import BillingTabs from './BillingTabs';
 import SearchInput from '../../components/SearchInput';
 import EmptyState from '../../components/EmptyState';
@@ -39,7 +40,8 @@ export default function BillingAddNewPage() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: ents }, { data: allocs }, { data: items }] = await Promise.all([
+    // `allocs` comes back as a plain array (fetchAllRows), the rest as { data }.
+    const [{ data: ents }, allocs, { data: items }] = await Promise.all([
       supabase
         .from('entities')
         .select('id, name, type, bm_client_id')
@@ -47,9 +49,11 @@ export default function BillingAddNewPage() {
         .eq('source', 'brightmanager')
         .is('qbo_customer_id', null)
         .order('name', { ascending: true }),
-      supabase
+      // Paged: 909 rows, and the API silently stops at 1000.
+      fetchAllRows(() => supabase
         .from('v_inferred_allocations')
-        .select('entity_id, canonical_service_id'),
+        .select('entity_id, canonical_service_id')
+        .order('entity_id').order('canonical_service_id')),
       supabase
         .from('qbo_items')
         .select('qbo_item_id, name, description, type, unit_price, active')

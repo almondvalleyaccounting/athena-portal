@@ -24,6 +24,7 @@
 // alone" guard can be added once it matters in practice.
 
 import { supabase } from '../../../lib/supabase';
+import { fetchAllRows } from '../../../lib/fetchAllRows';
 
 // ── Date helpers (all in UTC to avoid DST headaches) ────────────
 
@@ -115,19 +116,24 @@ export async function runPlanner({ horizonMonths = 9 } = {}) {
       .eq('active', true)
       .order('match_priority', { ascending: false })
       .order('name', { ascending: true }),
-    supabase
+    // EVERY task, paged. This was a plain select: bm_task_schedule holds 2,256
+    // rows, the API caps a response at 1000 without reporting it, and there was no
+    // .order() — so the planner scheduled an arbitrary, non-repeatable 1,000 of
+    // them and reported `total: 1000` as though that were all the work. 616 of the
+    // 1,616 planned-state tasks could simply never be scheduled.
+    fetchAllRows(() => supabase
       .from('bm_task_schedule')
-      .select('id, bm_task_id, bm_task_name, entity_id, assignee_id, bm_deadline, status'),
+      .select('id, bm_task_id, bm_task_name, entity_id, assignee_id, bm_deadline, status')
+      .order('id')),
     supabase
       .from('client_task_overrides')
       .select('rule_id, entity_id, bm_deadline_offset_months, week_of_month, target_hours'),
   ]);
   if (rulesRes.error) throw rulesRes.error;
-  if (tasksRes.error) throw tasksRes.error;
   if (overridesRes.error) throw overridesRes.error;
 
   const rules = rulesRes.data || [];
-  const tasks = tasksRes.data || [];
+  const tasks = tasksRes || [];
   const overrides = overridesRes.data || [];
 
   // Index overrides by `${rule_id}:${entity_id}` for O(1) lookup.

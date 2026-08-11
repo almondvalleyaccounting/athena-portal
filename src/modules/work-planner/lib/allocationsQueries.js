@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabase';
+import { fetchAllRows } from '../../../lib/fetchAllRows';
 
 // The five canonical services driven by the Allocations matrix.
 // Order here = column order in the matrix.
@@ -73,11 +74,12 @@ export async function fetchClientGroups() {
 // ── BM-inferred allocations (read-only view) ──
 
 export async function fetchInferredAllocations() {
-  const { data, error } = await supabase
+  // 909 rows today. Paged because the API stops at 1000 without saying so, and a
+  // truncated allocation matrix silently drops clients' work.
+  return fetchAllRows(() => supabase
     .from('v_inferred_allocations')
-    .select('*');
-  if (error) throw error;
-  return data || [];
+    .select('*')
+    .order('entity_id').order('canonical_service_id'));
 }
 
 // ── People + entity_people (for the group detail panel) ──
@@ -93,12 +95,13 @@ export async function fetchPeople() {
 
 export async function fetchEntityPeople(entityIds) {
   if (!entityIds || !entityIds.length) return [];
-  const { data, error } = await supabase
+  // entity_people holds 1,785 rows, so asking for a few hundred entities at once
+  // can exceed the 1000-row cap even though it is filtered.
+  return fetchAllRows(() => supabase
     .from('entity_people')
     .select('entity_id, person_id, role, role_pct, ended_on, source')
-    .in('entity_id', entityIds);
-  if (error) throw error;
-  return data || [];
+    .in('entity_id', entityIds)
+    .order('entity_id').order('person_id'));
 }
 
 export async function mergePeople(sourceId, targetId) {
@@ -268,22 +271,22 @@ export async function deleteEffortOverride({ entity_id, canonical_service_id }) 
 }
 
 export async function fetchServiceCadence() {
-  const { data, error } = await supabase
+  // 904 rows today — one intake away from the 1000 cap.
+  return fetchAllRows(() => supabase
     .from('v_service_cadence')
-    .select('*');
-  if (error) throw error;
-  return data || [];
+    .select('*')
+    .order('entity_id').order('canonical_service_id'));
 }
 
 // ── Capacity load + shifts ──
 
 export async function fetchBmLoadClassified() {
-  const { data, error } = await supabase
+  // WAS TRUNCATED: 2,059 rows behind a .limit(50000) that the API ignores, so
+  // Capacity was reading 1,000 of them and under-stating the load.
+  return fetchAllRows(() => supabase
     .from('v_bm_load_classified')
     .select('*')
-    .limit(50000);
-  if (error) throw error;
-  return data || [];
+    .order('entity_id').order('canonical_service_id').order('month'));
 }
 
 export async function fetchCapacityShifts(status = null) {

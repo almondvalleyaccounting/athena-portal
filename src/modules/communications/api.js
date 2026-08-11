@@ -5,6 +5,7 @@
 // (token columns excluded). SMS/WhatsApp read sms_messages directly
 // (staff RLS) and send through the sms-send edge function.
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://neksyvneljgxvpchwgch.supabase.co';
 
@@ -208,12 +209,13 @@ export async function syncContacts(mailbox) {
 }
 
 export async function loadContacts() {
-  const { data, error } = await supabase
+  // 918 rows today, and it feeds the suffix→name matching below — a truncated
+  // contact book silently turns known senders into unknown numbers. The old
+  // .limit(8000) never raised the API's 1000-row cap.
+  return fetchAllRows(() => supabase
     .from('comms_contacts')
     .select('id, display_name, emails, phones, phone_suffixes, organisation')
-    .limit(8000);
-  if (error) throw error;
-  return data || [];
+    .order('id'));
 }
 
 // suffix (last 9 digits) → contact, for SMS/WhatsApp name matching.

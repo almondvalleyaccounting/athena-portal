@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Check, Zap } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import NewClientModal from '../../components/NewClientModal';
 import { insertEntity } from '../work-planner/lib/supabaseQueries';
@@ -41,8 +42,13 @@ export default function QboMappingPage() {
   const load = async () => {
     setLoading(true);
     setSelected(new Set());
-    const [{ data: maps }, { data: ents }] = await Promise.all([
-      supabase.from('qbo_customer_mappings').select('*').order('qbo_customer_name'),
+    // `maps` is a plain array (fetchAllRows); `ents` still arrives as { data }.
+    const [maps, { data: ents }] = await Promise.all([
+      // 838 rows and climbing with every QBO customer. Paged, because past 1000
+      // the API returns a prefix and an unmapped-looking gap on the very page you
+      // use to fix mappings.
+      fetchAllRows(() => supabase.from('qbo_customer_mappings').select('*')
+        .order('qbo_customer_name').order('qbo_customer_id')),
       supabase.from('entities').select('id, name').order('name'),
     ]);
     setRows(maps || []);

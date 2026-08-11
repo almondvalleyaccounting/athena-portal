@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabase';
+import { fetchAllRows } from '../../../lib/fetchAllRows';
 
 // ── Scenarios ─────────────────────────────────────────────
 
@@ -304,10 +305,12 @@ export async function loadStaffProfiles() {
 }
 
 export async function loadCachedPL() {
-  const { data, error } = await supabase
-    .from('plan_qbo_pl_cache').select('*').order('period_end', { ascending: false });
-  if (error) throw error;
-  return data || [];
+  // 955 rows and growing a month at a time. Paged, because past 1000 the API
+  // returns a prefix with no error and the Planning actuals would quietly lose
+  // their oldest months.
+  return fetchAllRows(() => supabase
+    .from('plan_qbo_pl_cache').select('*')
+    .order('period_end', { ascending: false }).order('id'));
 }
 
 export async function pullQboPL() {
@@ -405,12 +408,10 @@ export async function loadQuotePipeline() {
 // Returns one row per (month, account_name) from plan_qbo_pl_cache.
 // period_start is always the 1st of the month.
 export async function loadMonthlyActuals() {
-  const { data, error } = await supabase
+  return fetchAllRows(() => supabase
     .from('plan_qbo_pl_cache')
-    .select('period_start, period_end, account_name, account_type, amount')
-    .order('period_start', { ascending: true });
-  if (error) throw error;
-  return data || [];
+    .select('id, period_start, period_end, account_name, account_type, amount')
+    .order('period_start', { ascending: true }).order('id'));
 }
 
 // Triggers the monthly-granularity QBO pull (overwrites the month-by-month cache).

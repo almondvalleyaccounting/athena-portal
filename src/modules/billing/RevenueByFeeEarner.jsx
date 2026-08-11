@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 import { fmtGbp } from '../../lib/money';
 
 const font = "'Outfit', sans-serif";
@@ -26,11 +27,16 @@ export default function RevenueByFeeEarner() {
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: billing }, { data: allocations }, { data: maps }, { data: alloc }, { data: staff }] = await Promise.all([
+      // `alloc` comes back as a plain array (fetchAllRows), the rest as { data }.
+      const [{ data: billing }, { data: allocations }, { data: maps }, alloc, { data: staff }] = await Promise.all([
         supabase.from('live_billing').select('entity_id, services, entity:entities(id, name, entity_status)').eq('status', 'active'),
         supabase.from('client_service_allocations').select('entity_id, service_id, fee_earner_id'),
         supabase.from('billing_service_mappings').select('service_id, canonical_service_id, default_fee_earner_id'),
-        supabase.from('v_inferred_allocations').select('entity_id, canonical_service_id, assignee_id'),
+        // Paged: 909 rows against a 1000-row cap, and this drives revenue split
+        // by fee earner — a truncated read moves money to the wrong person.
+        fetchAllRows(() => supabase.from('v_inferred_allocations')
+          .select('entity_id, canonical_service_id, assignee_id')
+          .order('entity_id').order('canonical_service_id')),
         supabase.from('staff_profiles').select('id, name').order('name'),
       ]);
 
