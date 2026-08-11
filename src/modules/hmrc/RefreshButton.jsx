@@ -131,6 +131,9 @@ function Outcome({ rows }) {
   const already = by('already-queued');
   const missing = by('no-reference');
   const second = rows.filter((r) => r.state === 'second-scheme');
+  // The PAYE reference that WAS queued, for the two-scheme case below.
+  const asked = rows.find((r) => r.service === 'paye'
+    && ['queued', 'already-queued'].includes(r.state))?.reference;
 
   return (
     <div style={{ marginTop: 7, display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -151,9 +154,13 @@ function Outcome({ rows }) {
       )}
       {second.map((r) => (
         <div key={r.reference} style={{ fontSize: 11.5, color: '#c2410c' }}>
-          <Pill colour="#c2410c" bg="#fff7ed" style={{ fontSize: 9.5 }}>Second scheme</Pill>{' '}
-          PAYE {r.reference} is not included — the queue holds one scheme per client,
-          so this one refreshes on the monthly sweep.
+          <Pill colour="#c2410c" bg="#fff7ed" style={{ fontSize: 9.5 }}>Two PAYE schemes</Pill>{' '}
+          {/* Naming BOTH references matters: the tax cards on this page show one
+              scheme and the queue picked the other, so "second scheme" on its own
+              reads as though the wrong one was refreshed. */}
+          Asked for {asked || 'the scheme with the larger debt'}; {r.reference} is not
+          included — the queue holds one scheme per client, so it refreshes on the
+          monthly sweep.
         </div>
       ))}
     </div>
