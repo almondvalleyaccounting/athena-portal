@@ -31,6 +31,11 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   // Mandatory billing address — prefilled from the plan (entity billing_*),
   // editable here, persisted to the entity before the push.
   const [addr, setAddr] = useState({ line1: '', line2: '', city: '', postcode: '' });
+  // Which QBO customer to invoice when the plan couldn't map one: a customer
+  // id to link, or 'new' to create one. Blank means undecided, which blocks
+  // the commit — the push refuses to invent a customer, and here that would
+  // also mean a duplicate recurring template.
+  const [custChoice, setCustChoice] = useState('');
 
   const recurring = (lineItems || []).filter((l) => l.is_recurring);
   const clientName = quote?.relationship_group || 'Unnamed Client';
@@ -210,6 +215,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         if (planResult?.success) {
           setPlan(planResult.plan);
           setAddr(addrFromPlan(planResult.plan));
+          seedCustChoice(planResult.plan);
           setRecurringStart(planResult.plan?.recurring?.next_run_date || '');
           if (planResult.plan?.due_date_offset_days != null) setDueDays(planResult.plan.due_date_offset_days);
           // No email on file + part of a group → offer other group emails.
@@ -272,6 +278,15 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
     } catch { /* non-blocking */ }
   };
 
+  // A client with no QBO customer AND no near matches is unambiguous — default
+  // it to "create". Where QBO holds something similar the choice stays blank,
+  // so the commit waits for the user to look at it.
+  const seedCustChoice = (p) => {
+    const c = p?.customer;
+    if (!c || c.action !== 'create') { setCustChoice(''); return; }
+    setCustChoice((c.candidates || []).length ? '' : 'new');
+  };
+
   // Map the plan's QBO-shaped address (Line1/PostalCode…) back to our form.
   const addrFromPlan = (p) => {
     const a = p?.contact?.address || {};
@@ -286,7 +301,27 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
   // Mandatory client details are satisfied once we have an email and a
   // minimally-valid address (line 1 + postcode).
   const addrReady = !!(addr.line1.trim() && addr.postcode.trim());
+  // The QBO customer this commit will invoice, resolved from the plan plus any
+  // pick made here. 'undecided' blocks the commit.
+  const customerTarget = (() => {
+    const c = plan?.customer;
+    if (!c) return null;
+    if (c.action !== 'create') {
+      if (c.missing) return { mode: 'missing', name: null, id: c.qbo_customer_id };
+      return { mode: 'existing', name: c.qbo_customer_name || '(unnamed customer)', id: c.qbo_customer_id, source: c.source, inactive: c.inactive };
+    }
+    if (custChoice && custChoice !== 'new') {
+      const cand = (c.candidates || []).find((x) => String(x.id) === String(custChoice));
+      return { mode: 'link', name: cand?.name || `Customer ${custChoice}`, id: custChoice, inactive: cand ? !cand.active : false };
+    }
+    if (custChoice === 'new') return { mode: 'new', name: c.name, id: null };
+    return { mode: 'undecided', name: null, id: null };
+  })();
+  const customerReady = !!customerTarget && customerTarget.mode !== 'undecided' && customerTarget.mode !== 'missing';
+  // contactReady is about the email/address box specifically; the Commit
+  // button additionally needs the customer decided.
   const contactReady = !!resolvedEmail && addrReady;
+  const readyToCommit = contactReady && customerReady;
 
   // Save the verified contact details onto the entity. The push reads the
   // address/email off the entity, and we keep them on file for next time.
@@ -323,6 +358,10 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         recurringStartDate: recurringStart || undefined,
         billEmail: effectiveSetupEmail || undefined,
         dueDateOffsetDays: Number.isFinite(Number(dueDays)) ? Number(dueDays) : undefined,
+        // Customer mapping decision made on this screen. The push refuses to
+        // create a customer without one of these.
+        linkCustomerId: customerTarget?.mode === 'link' ? String(customerTarget.id) : undefined,
+        newCustomerOk: customerTarget?.mode === 'new' || undefined,
       });
       if (result?.success) {
         setPushStatus('pushed');
@@ -370,6 +409,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
       if (planResult?.success) {
         setPlan(planResult.plan);
         setAddr(addrFromPlan(planResult.plan));
+        seedCustChoice(planResult.plan);
         setRecurringStart(planResult.plan?.recurring?.next_run_date || recurringStart);
       } else {
         setError(planResult?.error || 'Could not refresh plan');
@@ -396,19 +436,70 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
           </div>
 
           <div className="p-4 space-y-3">
-            {/* Customer */}
-            <div className="bg-gray-50 rounded-lg p-3 text-xs">
-              <h3 className="font-semibold text-gray-500 uppercase mb-1">Customer</h3>
-              {c?.action === 'create' ? (
-                <p className="text-gray-700">
-                  <span className="text-green-700 font-medium">New customer</span> will be created: {c?.name}
-                </p>
-              ) : (
-                <p className="text-gray-700">
-                  Using <span className="font-medium">existing customer</span>: {c?.name}
-                </p>
-              )}
-            </div>
+            {/* QuickBooks customer. This used to say "existing customer:
+                {Athena name}", which was actively misleading — the QBO
+                customer usually carries the trading name. Name the real
+                customer, and where none is mapped make it a choice rather
+                than letting the push create a duplicate (which here would
+                take the recurring template with it). */}
+            {(() => {
+              const t = customerTarget;
+              const cands = c?.candidates || [];
+              const tone = t?.mode === 'missing' ? 'bg-red-50 border-red-200'
+                : (t?.mode === 'existing' || t?.mode === 'link') ? 'bg-sky-50 border-sky-200'
+                : 'bg-amber-50 border-amber-200';
+              return (
+                <div className={`rounded-lg p-3 text-xs border ${tone}`}>
+                  <h3 className="font-semibold text-gray-500 uppercase mb-1">QuickBooks customer</h3>
+                  {!t ? (
+                    <p className="text-gray-400">Checking QuickBooks…</p>
+                  ) : t.mode === 'missing' ? (
+                    <p className="text-red-700">
+                      This client is mapped to QuickBooks customer <span className="font-mono">#{t.id}</span>, which QuickBooks no longer returns — it may have been deleted or merged. Fix the mapping on the client record before committing.
+                    </p>
+                  ) : t.mode === 'existing' || t.mode === 'link' ? (
+                    <>
+                      <p className="text-gray-800 font-medium">
+                        {t.name}{t.id && <span className="font-normal text-gray-400"> · #{t.id}</span>}
+                      </p>
+                      <p className="text-gray-500 mt-0.5">
+                        {t.mode === 'link' ? 'Will be linked to this client on commit'
+                          : t.source === 'name_match' ? 'Matched on name'
+                          : 'Mapped on the client record'}
+                        {t.name && c?.name && t.name.toLowerCase() !== String(c.name).toLowerCase() && ` — the QuickBooks name differs from the Athena name (${c.name})`}
+                        {t.inactive && ' · inactive in QuickBooks'}
+                      </p>
+                      <p className="text-gray-500 mt-1">
+                        The email and address below are saved onto this customer in QuickBooks, and the recurring template is attached to it.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-amber-800 mb-1.5">
+                        No QuickBooks customer is mapped to <span className="font-medium">{c?.name}</span>.
+                        {cands.length > 0
+                          ? ` ${cands.length} similar ${cands.length === 1 ? 'customer' : 'customers'} already exist — link the right one rather than creating a duplicate.`
+                          : ' Nothing similar found in QuickBooks.'}
+                      </p>
+                      <select
+                        value={custChoice}
+                        onChange={(e) => setCustChoice(e.target.value)}
+                        disabled={committing}
+                        className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                      >
+                        <option value="">Choose the QuickBooks customer…</option>
+                        {cands.map((x) => (
+                          <option key={x.id} value={x.id}>
+                            Link to: {x.name}{x.active ? '' : ' (inactive)'}{x.address_label ? ` — ${x.address_label}` : ''}
+                          </option>
+                        ))}
+                        <option value="new">Create a new customer called &quot;{c?.name}&quot;</option>
+                      </select>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Client details — MANDATORY. Email + billing address are written
                 to the QBO customer and the recurring/setup documents. */}
@@ -576,6 +667,12 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
               </div>
             )}
 
+            {customerTarget?.mode === 'undecided' && (
+              <p className="text-xs text-amber-700">
+                Choose the QuickBooks customer above before committing — otherwise this would create a second customer for a client that may already have one.
+              </p>
+            )}
+
             {pushStatus === 'pushing' && <p className="text-xs text-ocean-600">Pushing to QBO...</p>}
             {pushStatus === 'pushed' && <p className="text-xs text-green-600">Successfully pushed to QBO</p>}
             {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2">{error}</div>}
@@ -589,7 +686,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
               <Btn onClick={handleCommitWithoutPush} variant="ghost" disabled={committing}>
                 Commit without QBO
               </Btn>
-              <Btn onClick={handleConfirmCommit} variant="primary" disabled={committing || missing.length > 0 || !contactReady}>
+              <Btn onClick={handleConfirmCommit} variant="primary" disabled={committing || missing.length > 0 || !readyToCommit}>
                 {committing ? 'Committing...' : 'Commit to Live'}
               </Btn>
             </div>

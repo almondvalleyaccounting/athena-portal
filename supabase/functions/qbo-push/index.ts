@@ -1,4 +1,12 @@
 // qbo-push — pushes Athena billing/quote data to QuickBooks Online.
+//
+// Customer mapping is never guessed. An entity with a stored qbo_customer_id
+// uses it; otherwise only an EXACT DisplayName match auto-links. Anything else
+// is a decision for the user: the dry-run returns near-match candidates and the
+// push refuses (409) without link_customer_id or new_customer_ok. Athena names
+// clients "Surname, Firstname" while QBO often carries the trading name
+// ("GJ Cummins Plumbing and Heating Services"), so an unguarded create splits a
+// client's billing — including its recurring template — across two customers.
 
 import {
   getServiceClient,
@@ -53,6 +61,12 @@ Deno.serve(async (req) => {
       ? Number(body.due_date_offset_days)
       : null;
   const dryRun: boolean = Boolean(body.dry_run);
+  // Customer-mapping decisions from the commit modal. link_customer_id maps
+  // this client to an existing QBO customer; new_customer_ok is the explicit
+  // go-ahead to create one. Without either, an unmapped client is refused
+  // rather than silently getting a duplicate customer (see the push below).
+  const linkCustomerId: string | null = body.link_customer_id ?? null;
+  const newCustomerOk: boolean = Boolean(body.new_customer_ok);
 
   const sb = getServiceClient();
 
@@ -147,12 +161,23 @@ Deno.serve(async (req) => {
     // invoice (send now vs draft), and recurring template new vs overwrite
     // with the next run date that will be set.
     if (dryRun) {
-      let customerExists = !!(entity?.qbo_customer_id);
-      let existingCustomerId = (entity?.qbo_customer_id as string) || null;
-      if (!customerExists) {
-        const found = await findCustomerByName(entityName);
-        if (found) { customerExists = true; existingCustomerId = found; }
+      // Which QBO customer this commit will invoice. A stored qbo_customer_id
+      // IS the mapping; failing that, only an exact name match links
+      // automatically. Anything else is the user's decision, so the plan
+      // carries near-match candidates instead of a bare "New customer".
+      const storedId = (entity?.qbo_customer_id as string) || null;
+      let existingCustomerId = storedId;
+      let customerSource: "stored" | "name_match" | null = storedId ? "stored" : null;
+      let matchedCustomer: QboCustomer | null = null;
+      if (existingCustomerId) {
+        const all = await loadAllCustomers();
+        matchedCustomer = all.find((c) => c.id === String(existingCustomerId)) || null;
+      } else {
+        matchedCustomer = await matchCustomerByName(entityName);
+        if (matchedCustomer) { existingCustomerId = matchedCustomer.id; customerSource = "name_match"; }
       }
+      const customerExists = !!existingCustomerId;
+      const customerCandidates = customerExists ? [] : await nearMatchCustomers(entityName);
 
       let recurringPlan: Record<string, unknown> | null = null;
       if (hasRecurring) {
@@ -221,7 +246,27 @@ Deno.serve(async (req) => {
         dry_run: true,
         plan: {
           mode,
-          customer: { action: customerExists ? "existing" : "create", name: entityName, qbo_customer_id: existingCustomerId },
+          customer: {
+            action: customerExists ? "existing" : "create",
+            name: entityName, // the Athena client name
+            qbo_customer_id: existingCustomerId,
+            // …and the QBO customer's OWN name, which is often the trading
+            // name. Showing only `name` above made an existing-customer commit
+            // look like it was going to a customer called "Cummins, Gerald".
+            qbo_customer_name: matchedCustomer ? (matchedCustomer.name || matchedCustomer.companyName || null) : null,
+            source: customerSource,
+            inactive: !!(matchedCustomer && !matchedCustomer.active),
+            // A stored mapping QBO no longer returns — the push will fail on
+            // it, so say so up front rather than at the error line.
+            missing: !!(existingCustomerId && !matchedCustomer),
+            candidates: customerCandidates.map((c) => ({
+              id: c.id,
+              name: c.name || c.companyName,
+              email: c.email,
+              address_label: c.address ? addrLabel(c.address) : null,
+              active: c.active,
+            })),
+          },
           contact: {
             email: prefillEmail,
             has_email: !!prefillEmail,
@@ -263,8 +308,43 @@ Deno.serve(async (req) => {
     // date. Non-fatal: if it can't be resolved we still set DueDate.
     const salesTermId = await ensureSalesTermId(dueDateOffsetDays);
 
+    // Resolve the QBO customer — never guessed, and never invented without
+    // being asked. Stored mapping > the user's explicit pick > exact name
+    // match > explicit consent to create. Anything else refuses the push,
+    // because the wrong branch here doesn't just misfile one invoice: this
+    // path also creates the RECURRING TEMPLATE, so a duplicate customer takes
+    // the client's whole monthly stream with it.
     let qboCustomerId = (entity?.qbo_customer_id as string) || null;
-    if (!qboCustomerId) qboCustomerId = await ensureQboCustomer(sb, entity, entityName);
+    if (!qboCustomerId) {
+      if (linkCustomerId) {
+        const all = await loadAllCustomers();
+        const chosen = all.find((c) => c.id === String(linkCustomerId));
+        if (!chosen) {
+          return jsonResponse({ success: false, error: `QuickBooks customer ${linkCustomerId} not found — re-open the commit and pick again.` }, 409);
+        }
+        qboCustomerId = chosen.id;
+        if (entity?.id) await sb.from("entities").update({ qbo_customer_id: chosen.id, qbo_customer_name: chosen.name || chosen.companyName }).eq("id", entity.id);
+      } else {
+        const exact = await matchCustomerByName(entityName);
+        if (exact) {
+          qboCustomerId = exact.id;
+          if (entity?.id) await sb.from("entities").update({ qbo_customer_id: exact.id, qbo_customer_name: exact.name || exact.companyName }).eq("id", entity.id);
+        } else if (newCustomerOk) {
+          qboCustomerId = await ensureQboCustomer(sb, entity, entityName);
+        } else {
+          const near = await nearMatchCustomers(entityName, 3);
+          const hint = near.length
+            ? ` Similar customers already in QuickBooks: ${near.map((c) => c.name || c.companyName).join("; ")}.`
+            : "";
+          return jsonResponse({
+            success: false,
+            error: `No QuickBooks customer mapped to "${entityName}".${hint} Link it to the right customer, or confirm creating a new one, before committing.`,
+            customer_unmapped: true,
+            customer_candidates: near.map((c) => ({ id: c.id, name: c.name || c.companyName })),
+          }, 409);
+        }
+      }
+    }
     // Make sure email + address are on the customer record itself, even when
     // the customer already existed in QBO. Sparse update — leaves other
     // fields untouched.
@@ -496,12 +576,100 @@ function nextRunDate(startDate: string): string {
   return next.toISOString().slice(0, 10);
 }
 
+// ── Customer matching ────────────────────────────────────────────────────
+// Mirrors qbo-push-billing-items. The whole QBO customer list, pulled once
+// and reused for every mapping decision (exact match, near matches,
+// validating the user's pick). Cached across invocations in the same isolate
+// for a minute — long enough to cover a dry-run and its commit, short enough
+// that a customer added in QBO mid-session shows up.
+type QboCustomer = { id: string; name: string; companyName: string; email: string | null; address: Record<string, unknown> | null; active: boolean };
+let customerCache: { at: number; rows: QboCustomer[] } | null = null;
+const CUSTOMER_CACHE_MS = 60_000;
+
+async function loadAllCustomers(): Promise<QboCustomer[]> {
+  if (customerCache && Date.now() - customerCache.at < CUSTOMER_CACHE_MS) return customerCache.rows;
+  const rows: QboCustomer[] = [];
+  const page = 1000;
+  let start = 1;
+  for (let guard = 0; guard < 50; guard++) {
+    // Active IN (true, false) is required — QBO hides inactive customers from
+    // a bare SELECT, and a client whose customer was made inactive must still
+    // resolve to it rather than looking like a brand-new one.
+    const result = (await qboQuery(`SELECT * FROM Customer WHERE Active IN (true, false) STARTPOSITION ${start} MAXRESULTS ${page}`)) as Record<string, unknown>;
+    const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+    const batch = (qr.Customer as Array<Record<string, unknown>>) || [];
+    for (const c of batch) {
+      rows.push({
+        id: String(c.Id),
+        name: String(c.DisplayName ?? "").trim(),
+        companyName: String(c.CompanyName ?? "").trim(),
+        email: String(((c.PrimaryEmailAddr as Record<string, unknown>)?.Address) ?? "").trim() || null,
+        address: mapQboBillAddr(c.BillAddr as Record<string, unknown>),
+        active: c.Active !== false,
+      });
+    }
+    if (batch.length < page) break;
+    start += page;
+  }
+  customerCache = { at: Date.now(), rows };
+  return rows;
+}
+
+// Words that carry no identifying weight, so "Cummins Ltd" and "Cummins"
+// still score as the same client.
+const NAME_NOISE = new Set(["ltd", "limited", "llp", "plc", "the", "and", "services", "service", "company", "co", "uk", "trading"]);
+
+// Strip everything that differs between "Cummins, Gerald" and "Gerald
+// Cummins" so the two compare equal as token sets.
+function nameTokens(name: string): string[] {
+  return String(name)
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter((t) => t.length >= 3 && !NAME_NOISE.has(t));
+}
+
+// The one customer this client maps to, or null. Only an exact DisplayName
+// match (case/whitespace-insensitive) counts — a near match is a suggestion
+// for the user, never an automatic link.
+async function matchCustomerByName(entityName: string): Promise<QboCustomer | null> {
+  const target = String(entityName).trim().toLowerCase();
+  if (!target) return null;
+  const rows = await loadAllCustomers();
+  return rows.find((c) => c.name.toLowerCase() === target)
+    || rows.find((c) => c.companyName && c.companyName.toLowerCase() === target)
+    || null;
+}
+
+// Customers that look like they could be this client, best first. Scored on
+// shared name tokens; a surname alone is enough, because a trading name
+// usually keeps the surname and drops the forename to initials
+// ("Cummins, Gerald" → "GJ Cummins Plumbing and Heating Services").
+// Advisory only: shown in the commit modal for the user to accept or reject.
+async function nearMatchCustomers(entityName: string, limit = 6): Promise<QboCustomer[]> {
+  const tokens = nameTokens(entityName);
+  if (tokens.length === 0) return [];
+  const rows = await loadAllCustomers();
+  const scored: Array<{ c: QboCustomer; score: number }> = [];
+  for (const c of rows) {
+    const candTokens = new Set([...nameTokens(c.name), ...nameTokens(c.companyName)]);
+    if (candTokens.size === 0) continue;
+    const score = tokens.filter((t) => candTokens.has(t)).length - (c.active ? 0 : 0.5);
+    if (score <= 0) continue;
+    scored.push({ c, score });
+  }
+  scored.sort((a, b) => b.score - a.score || a.c.name.localeCompare(b.c.name));
+  return scored.slice(0, limit).map((s) => s.c);
+}
+
+function addrLabel(a: Record<string, unknown>): string {
+  return [a.Line1, a.City, a.PostalCode].map((x) => String(x ?? "").trim()).filter(Boolean).join(", ");
+}
+
 async function findCustomerByName(entityName: string): Promise<string | null> {
-  const escaped = entityName.replace(/'/g, "\\'");
-  const result = (await qboQuery(`SELECT Id FROM Customer WHERE DisplayName = '${escaped}'`)) as Record<string, unknown>;
-  const qr = (result?.QueryResponse as Record<string, unknown>) || {};
-  const customers = (qr.Customer as Array<Record<string, unknown>>) || [];
-  return customers.length > 0 ? String(customers[0].Id) : null;
+  const match = await matchCustomerByName(entityName);
+  return match ? match.id : null;
 }
 
 // All recurring Invoice templates that belong to a given QBO customer.
@@ -581,6 +749,7 @@ async function ensureQboCustomer(sb: ReturnType<typeof getServiceClient>, entity
   if (!resp.ok) throw new Error(`Failed to create QBO customer: ${resp.status} ${await resp.text()}`);
   const created = await resp.json();
   const qboId = String(created.Customer.Id);
+  customerCache = null; // the cached list must not hide the customer just made
   if (entity?.id) await sb.from("entities").update({ qbo_customer_id: qboId, qbo_customer_name: created.Customer.DisplayName }).eq("id", entity.id);
   return qboId;
 }

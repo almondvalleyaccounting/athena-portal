@@ -25,10 +25,41 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
   const [done, setDone] = useState(false);
   const [results, setResults] = useState({}); // quoteId -> { status, action?, error? }
   const [error, setError] = useState('');
+  // The dry-run plan's customer block per company, and the user's mapping
+  // decision where none could be resolved ('' = undecided, blocks the commit;
+  // a customer id = link it; 'new' = create one).
+  const [custPlans, setCustPlans] = useState({}); // quoteId -> plan.customer
+  const [custChoice, setCustChoice] = useState({}); // quoteId -> '' | id | 'new'
 
   const contactOf = (id) => contacts[id] || BLANK;
   const setContact = (id, patch) =>
     setContacts((prev) => ({ ...prev, [id]: { ...(prev[id] || BLANK), ...patch } }));
+
+  // Which QBO customer a company will invoice, from its plan plus any pick.
+  // Named rather than "new vs existing" because the QBO customer usually
+  // carries the trading name, so the difference is the thing worth seeing.
+  const custTargetOf = (id) => {
+    const c = custPlans[id];
+    if (!c) return null;
+    if (c.action !== 'create') {
+      if (c.missing) return { mode: 'missing', name: null, id: c.qbo_customer_id };
+      return { mode: 'existing', name: c.qbo_customer_name || '(unnamed customer)', id: c.qbo_customer_id, source: c.source, inactive: c.inactive };
+    }
+    const choice = custChoice[id] || '';
+    if (choice && choice !== 'new') {
+      const cand = (c.candidates || []).find((x) => String(x.id) === String(choice));
+      return { mode: 'link', name: cand?.name || `Customer ${choice}`, id: choice, inactive: cand ? !cand.active : false };
+    }
+    if (choice === 'new') return { mode: 'new', name: c.name, id: null };
+    return { mode: 'undecided', name: null, id: null };
+  };
+  // Undecided (or a broken mapping) blocks that company. A plan that hasn't
+  // arrived yet doesn't block — readiness is judged once it lands.
+  const custReady = (id) => {
+    const t = custTargetOf(id);
+    if (!t) return true;
+    return t.mode !== 'undecided' && t.mode !== 'missing';
+  };
 
   const addrLabel = (a) => [a.line1, a.city, a.postcode].filter(Boolean).join(', ');
   const addrKey = (a) => `${(a.line1 || '').toLowerCase().trim()}|${(a.postcode || '').toLowerCase().trim()}`;
@@ -74,12 +105,15 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
       setEmailOptions([...emailSet]);
       setAddressOptions([...addrMap.values()]);
 
-      // Enrich anything still missing from the member's QBO customer record.
+      // One dry-run per company: enriches anything still missing from that
+      // member's QBO customer record, AND resolves which QBO customer it will
+      // invoice. The plan is fetched for every company now (not just those
+      // missing contact details) because the customer mapping has to be shown
+      // and confirmed for all of them.
       await Promise.all(members.map(async (q) => {
         const c = seeded[q.id];
         const needEmail = !c.email;
         const needAddr = !(c.line1 && c.postcode);
-        if (!needEmail && !needAddr) return;
         setLoadingIds((prev) => ({ ...prev, [q.id]: true }));
         try {
           const recurring = (q.line_items || []).filter((l) => l.is_recurring);
@@ -96,6 +130,17 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
             dryRun: true,
             services,
           });
+          // Customer mapping for this company. No near matches → nothing to
+          // confuse it with, so default to "create"; otherwise leave the
+          // choice blank so the commit waits for a look.
+          const cust = res?.plan?.customer;
+          if (cust) {
+            setCustPlans((prev) => ({ ...prev, [q.id]: cust }));
+            if (cust.action === 'create' && !(cust.candidates || []).length) {
+              setCustChoice((prev) => ({ ...prev, [q.id]: prev[q.id] || 'new' }));
+            }
+          }
+
           const a = res?.plan?.contact?.address;
           const qboEmail = res?.plan?.contact?.email;
           const patch = {};
@@ -121,12 +166,14 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const isReady = (id) => {
+  const contactReady = (id) => {
     const c = contactOf(id);
     return !!(c.email?.trim() && c.line1?.trim() && c.postcode?.trim());
   };
-  const notReady = members.filter((q) => !isReady(q.id));
-  const allReady = members.length > 0 && notReady.length === 0;
+  const isReady = (id) => contactReady(id) && custReady(id);
+  const notReady = members.filter((q) => !contactReady(q.id));
+  const custUndecided = members.filter((q) => !custReady(q.id));
+  const allReady = members.length > 0 && members.every((q) => isReady(q.id));
 
   const cur = members[Math.min(current, Math.max(0, members.length - 1))];
   const curId = cur?.id;
@@ -204,11 +251,16 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
 
         // 3. Push to QBO FIRST. The commit is contingent on this succeeding.
         const hasSetup = (q.line_items || []).some((l) => !l.is_recurring);
+        const ct = custTargetOf(q.id);
         const res = await pushToQbo(billingRow.id, profile.id, {
           mode: 'recurring_template',
           quoteId: q.id,
           alsoPushSetup: hasSetup,
           billEmail: cc.email.trim() || undefined,
+          // This company's customer-mapping decision. Without one of these the
+          // push refuses rather than creating a duplicate customer.
+          linkCustomerId: ct?.mode === 'link' ? String(ct.id) : undefined,
+          newCustomerOk: ct?.mode === 'new' || undefined,
         });
 
         if (!res?.success) {
@@ -221,6 +273,8 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
             reason = `Not committed — these services aren't mapped to QBO items: ${res.missing_mappings.join(', ')}`;
           } else if (Array.isArray(res?.missing_contact) && res.missing_contact.length) {
             reason = `Not committed — missing ${res.missing_contact.join(', ')}`;
+          } else if (res?.customer_unmapped) {
+            reason = `Not committed — no QuickBooks customer mapped. ${res.error || ''}`.trim();
           }
           fails.push({ name: label(q), reason });
           setResults((prev) => ({ ...prev, [q.id]: { status: 'error', error: reason } }));
@@ -304,6 +358,66 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
               </div>
               <p className="text-sm font-semibold text-ocean-700 mb-2 truncate">{cur.relationship_group || cur.quote_ref}</p>
 
+              {/* QuickBooks customer for this company. Named, because the QBO
+                  customer usually carries the trading name — and where none is
+                  mapped it's a choice, not a silent create (which would give
+                  this company a duplicate customer AND template). */}
+              {(() => {
+                const t = custTargetOf(curId);
+                const cp = custPlans[curId];
+                if (!cp) return null;
+                const cands = cp.candidates || [];
+                const tone = t.mode === 'missing' ? 'bg-red-50 border-red-200'
+                  : (t.mode === 'existing' || t.mode === 'link') ? 'bg-sky-50 border-sky-200'
+                  : 'bg-amber-50 border-amber-200';
+                return (
+                  <div className={`rounded-lg border p-2 mb-2 text-xs ${tone}`}>
+                    <div className="font-semibold text-gray-500 uppercase mb-0.5">QuickBooks customer</div>
+                    {t.mode === 'missing' ? (
+                      <p className="text-red-700">
+                        Mapped to QuickBooks customer <span className="font-mono">#{t.id}</span>, which QuickBooks no longer returns. Fix the mapping on the client record before committing.
+                      </p>
+                    ) : t.mode === 'existing' || t.mode === 'link' ? (
+                      <>
+                        <p className="text-gray-800 font-medium truncate" title={t.name}>
+                          {t.name}{t.id && <span className="font-normal text-gray-400"> · #{t.id}</span>}
+                        </p>
+                        <p className="text-gray-500">
+                          {t.mode === 'link' ? 'Will be linked on commit'
+                            : t.source === 'name_match' ? 'Matched on name'
+                            : 'Mapped on the client record'}
+                          {t.name && cp.name && t.name.toLowerCase() !== String(cp.name).toLowerCase() && ` — differs from the Athena name (${cp.name})`}
+                          {t.inactive && ' · inactive in QuickBooks'}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-amber-800 mb-1">
+                          Nothing mapped to <span className="font-medium">{cp.name}</span>.
+                          {cands.length > 0
+                            ? ` ${cands.length} similar ${cands.length === 1 ? 'customer' : 'customers'} already exist — link the right one rather than creating a duplicate.`
+                            : ' Nothing similar found in QuickBooks.'}
+                        </p>
+                        <select
+                          value={custChoice[curId] || ''}
+                          onChange={(e) => setCustChoice((prev) => ({ ...prev, [curId]: e.target.value }))}
+                          disabled={running}
+                          className="w-full text-xs border border-gray-200 rounded px-1.5 py-1"
+                        >
+                          <option value="">Choose the QuickBooks customer…</option>
+                          {cands.map((x) => (
+                            <option key={x.id} value={x.id}>
+                              Link to: {x.name}{x.active ? '' : ' (inactive)'}{x.address_label ? ` — ${x.address_label}` : ''}
+                            </option>
+                          ))}
+                          <option value="new">Create a new customer called &quot;{cp.name}&quot;</option>
+                        </select>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
               <label className="text-xs text-gray-500 block mb-0.5">Email</label>
               {emailOptions.length > 0 && (
                 <select
@@ -358,14 +472,15 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
                   Apply this address to all companies
                 </button>
               )}
-              {!isReady(curId) && <p className="text-xs text-amber-700 mt-1.5">This company needs an email and address (line 1 + postcode) before pushing.</p>}
+              {!contactReady(curId) && <p className="text-xs text-amber-700 mt-1.5">This company needs an email and address (line 1 + postcode) before pushing.</p>}
             </div>
           )}
 
           {/* Members — click to edit, with readiness + per-company results */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             {members.map((q, idx) => {
-              const ready = isReady(q.id);
+              const ready = contactReady(q.id);
+              const ct = custTargetOf(q.id);
               return (
                 <button
                   key={q.id}
@@ -373,11 +488,24 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
                   disabled={running}
                   className={`w-full flex items-center justify-between px-3 py-2 border-b border-gray-50 last:border-0 text-sm text-left ${idx === current ? 'bg-ocean-50' : 'hover:bg-gray-50'}`}
                 >
-                  <span className="text-gray-700 truncate flex items-center gap-1.5">
+                  <span className="text-gray-700 truncate flex items-center gap-1.5 min-w-0">
                     {idx === current && <span className="text-ocean-600">▸</span>}
-                    {q.relationship_group || q.quote_ref}
+                    <span className="truncate">
+                      {q.relationship_group || q.quote_ref}
+                      {/* The QBO customer, on its own line — the Athena name
+                          and the QBO name are often different and that has to
+                          be visible without opening each company. */}
+                      {ct && (ct.mode === 'existing' || ct.mode === 'link') && (
+                        <span className="block text-xs text-gray-400 truncate" title={`Invoices QuickBooks customer "${ct.name}"${ct.id ? ` (#${ct.id})` : ''}`}>→ {ct.name}</span>
+                      )}
+                      {ct && ct.mode === 'new' && (
+                        <span className="block text-xs text-amber-600 truncate">→ new customer</span>
+                      )}
+                    </span>
                   </span>
                   <div className="flex items-center gap-3 shrink-0">
+                    {ct && ct.mode === 'undecided' && !results[q.id] && <span className="text-xs text-amber-600" title="No QuickBooks customer mapped — pick one">⚠ customer</span>}
+                    {ct && ct.mode === 'missing' && !results[q.id] && <span className="text-xs text-red-600" title="Mapped to a QuickBooks customer that no longer exists">⚠ customer</span>}
                     {!ready && !results[q.id] && <span className="text-xs text-amber-600" title="Needs email + address">⚠ details</span>}
                     <span className="font-mono text-xs text-gray-500">{fmt(q.monthly_gross)}/mo</span>
                     {statusPill(results[q.id])}
@@ -388,9 +516,14 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
             {members.length === 0 && <div className="px-3 py-3 text-sm text-gray-400">No accepted companies awaiting commit.</div>}
           </div>
 
-          {!done && !allReady && notReady.length > 0 && (
+          {!done && notReady.length > 0 && (
             <p className="text-xs text-amber-700">
               {notReady.length} {notReady.length === 1 ? 'company' : 'companies'} still need an email + address before you can commit.
+            </p>
+          )}
+          {!done && custUndecided.length > 0 && (
+            <p className="text-xs text-amber-700">
+              {custUndecided.length} {custUndecided.length === 1 ? 'company needs' : 'companies need'} a QuickBooks customer chosen ({custUndecided.map((q) => q.relationship_group || q.quote_ref).join(', ')}) — committing without it would create a second customer for a client that may already have one.
             </p>
           )}
           {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2">{error}</div>}

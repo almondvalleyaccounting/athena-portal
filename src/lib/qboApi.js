@@ -20,6 +20,10 @@ export async function getQboStatus() {
  *   recurringStartDate: ISO date for the recurring schedule start
  *   sendSetupNow: email the one-off setup invoice immediately (else draft)
  *   dryRun: return a read-only plan (no QBO/DB writes) for confirmation
+ *   linkCustomerId: map this client to an existing QBO customer id
+ *   newCustomerOk: explicit go-ahead to create a new QBO customer. Without
+ *                  one of these two, a client with no mapped customer is
+ *                  refused (409) rather than risking a duplicate customer.
  */
 export async function pushToQbo(billingId, initiatedBy, opts = {}) {
   const body = { billing_id: billingId, initiated_by: initiatedBy };
@@ -35,6 +39,8 @@ export async function pushToQbo(billingId, initiatedBy, opts = {}) {
   if (opts.billEmail) body.bill_email = opts.billEmail;
   if (opts.dueDateOffsetDays != null) body.due_date_offset_days = opts.dueDateOffsetDays;
   if (opts.dryRun) body.dry_run = true;
+  if (opts.linkCustomerId) body.link_customer_id = opts.linkCustomerId;
+  if (opts.newCustomerOk) body.new_customer_ok = true;
 
   const { data, error } = await supabase.functions.invoke('qbo-push', { body });
   if (error) {
