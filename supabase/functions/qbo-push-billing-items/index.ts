@@ -845,7 +845,38 @@ async function loadAllCustomers(): Promise<QboCustomer[]> {
 
 // Words that carry no identifying weight, so "Cummins Ltd" and "Cummins"
 // still score as the same client.
-const NAME_NOISE = new Set(["ltd", "limited", "llp", "plc", "the", "and", "services", "service", "company", "co", "uk", "trading", "of", "in", "at", "on", "by", "or", "t/a"]);
+// Words that don't identify a client, so matching on them is worthless.
+//
+// Rarity alone can't decide this, which is worth recording because it looks
+// like it should: across AVA's QBO file "investments" appears in 5 customer
+// names and "cummins" in 3. The rare-token rule below therefore passed all
+// five Investments companies as suggestions for "Wmr Pensions And Investments
+// Ltd" while a threshold tight enough to exclude them would also have thrown
+// away the "GJ Cummins Plumbing" match that the whole feature exists for.
+// A company-name word is a company-name word regardless of how often it
+// happens to occur in one firm's client list — so it gets listed. The df rule
+// stays as a backstop for whatever isn't here yet.
+const NAME_NOISE = new Set([
+  // Legal form and filler
+  "ltd", "limited", "llp", "plc", "llc", "inc", "co", "company", "the", "and", "of", "in", "at", "on", "by", "or",
+  "uk", "scotland", "trading", "t/a",
+  // Structure
+  "group", "holdings", "enterprises", "ventures", "partners", "partnership", "associates", "international", "global",
+  // Sector / activity
+  "investments", "investment", "properties", "property", "estates", "lettings", "developments", "development",
+  "construction", "contractors", "contracting", "builders", "building", "services", "service", "solutions",
+  "systems", "consulting", "consultancy", "consultants", "management", "supplies", "supply", "retail", "wholesale",
+  "logistics", "transport", "haulage", "distribution", "engineering", "motors", "autos", "automotive", "garage",
+  "joinery", "plumbing", "heating", "electrical", "roofing", "plastering", "decorating", "landscaping", "cleaning",
+  "catering", "events", "hospitality", "care", "healthcare", "dental", "medical", "veterinary", "pharmacy",
+  "media", "design", "designs", "studio", "studios", "digital", "marketing", "communications", "photography",
+  "productions", "finance", "financial", "insurance", "mortgages", "pensions", "pension", "accounting",
+  "accountants", "accountancy", "bookkeeping", "legal", "solicitors", "farms", "agriculture", "salon", "barbers",
+  "beauty", "fitness", "security", "recruitment", "training", "education", "academy", "nursery", "childcare",
+  "travel", "tours", "hire", "rentals", "leasing", "storage", "works", "workshop", "industries", "manufacturing",
+  "products", "foods", "bakery", "butchers", "brewery", "restaurant", "kitchens", "interiors", "furniture",
+  "flooring", "windows", "glazing", "bathrooms", "carpets", "sports", "club", "trust", "foundation",
+]);
 
 // Strip everything that differs between "Cummins, Gerald" and "Gerald
 // Cummins" so the two compare equal as token sets. Two-character tokens are
