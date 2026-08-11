@@ -65,6 +65,11 @@ export default function BillingPage() {
   // couldn't map appear here — the mapping is a per-client decision, so it's
   // keyed by entity rather than by bill.
   const [custChoice, setCustChoice] = useState({});
+  // The DisplayName a newly-created QBO customer gets, keyed by entity_id.
+  // Defaults to the Athena name, which for BM-imported clients is title-cased
+  // ("Wmr Pensions And Investments Ltd"). That name lands on every invoice the
+  // customer ever gets, so it's editable before the customer exists.
+  const [custName, setCustName] = useState({});
 
   const [formClient, setFormClient] = useState('');
   // Multi-line bill editor. One client, N service lines → one QBO invoice.
@@ -324,10 +329,18 @@ export default function BillingPage() {
   const planOf = (itemId) => preview?.find((r) => r.billing_item_id === itemId) || null;
   const custChoiceOf = (entityId) => custChoice[entityId] || '';
   const setCustChoiceFor = (entityId, value) => setCustChoice((prev) => ({ ...prev, [entityId]: value }));
-  // Undecided only counts once the dry-run has actually come back.
+  // The name for a to-be-created customer: the user's edit, else the Athena
+  // name. `?? ` not `||` so clearing the box reads as empty (and blocks).
+  const custNameOf = (entityId) => custName[entityId] ?? (entityMap[entityId]?.name || '');
+  const setCustNameFor = (entityId, value) => setCustName((prev) => ({ ...prev, [entityId]: value }));
+  // Undecided only counts once the dry-run has actually come back. Choosing
+  // "create" with the name box emptied is also undecided.
   const needsCustomerChoice = (item) => {
     const p = planOf(item.id);
-    return !!p && p.customer_action === 'create' && !custChoiceOf(item.entity_id);
+    if (!p || p.customer_action !== 'create') return false;
+    const choice = custChoiceOf(item.entity_id);
+    if (!choice) return true;
+    return choice === 'new' && !custNameOf(item.entity_id).trim();
   };
   // What the row will do, resolved from the plan plus any pick made here.
   const customerTargetOf = (item) => {
@@ -343,7 +356,7 @@ export default function BillingPage() {
       const c = (p.customer_candidates || []).find((x) => String(x.id) === String(choice));
       return { mode: 'link', name: c?.name || `Customer ${choice}`, id: choice, source: 'picked', inactive: c ? !c.active : false };
     }
-    if (choice === 'new') return { mode: 'new', name: entityMap[item.entity_id]?.name || '—', id: null, source: null, inactive: false };
+    if (choice === 'new') return { mode: 'new', name: custNameOf(item.entity_id).trim() || (entityMap[item.entity_id]?.name || '—'), id: null, source: null, inactive: false };
     return { mode: 'undecided', name: null, id: null, source: null, inactive: false };
   };
   // Send/draft resolves per item: its own choice if it has one, else the bulk
@@ -479,11 +492,15 @@ export default function BillingPage() {
       // go-ahead to create one. The push rejects anything else.
       const linkCustomer = {};
       const newCustomerOk = {};
+      const newCustomerNames = {};
       for (const it of pushTargets) {
         const t = customerTargetOf(it);
         if (!t || !it.entity_id) continue;
         if (t.mode === 'link') linkCustomer[it.entity_id] = String(t.id);
-        else if (t.mode === 'new') newCustomerOk[it.entity_id] = true;
+        else if (t.mode === 'new') {
+          newCustomerOk[it.entity_id] = true;
+          newCustomerNames[it.entity_id] = custNameOf(it.entity_id).trim();
+        }
       }
 
       const result = await pushBillingItems(
@@ -493,7 +510,7 @@ export default function BillingPage() {
         false,
         Number(dueDays) >= 0 ? Number(dueDays) : 14,
         sendMap,
-        { linkCustomer, newCustomerOk },
+        { linkCustomer, newCustomerOk, newCustomerName: newCustomerNames },
       );
       setPushResults(result);
       await loadData();
@@ -1132,8 +1149,26 @@ export default function BillingPage() {
                                   Link to: {c.name}{c.active?'':' (inactive)'}{c.address_label?` — ${c.address_label}`:''}
                                 </option>
                               ))}
-                              <option value="new">Create a new customer called &quot;{name}&quot;</option>
+                              <option value="new">Create a new customer in QuickBooks</option>
                             </select>
+                            {custChoiceOf(curTarget.entity_id)==='new' && (
+                              <div style={{marginTop:6}}>
+                                <label style={{...formLabel,marginBottom:2}}>New customer name *</label>
+                                <input
+                                  value={custNameOf(curTarget.entity_id)}
+                                  onChange={(e)=>setCustNameFor(curTarget.entity_id,e.target.value)}
+                                  disabled={pushing}
+                                  placeholder="Name as it should appear in QuickBooks"
+                                  style={{...inputStyle,marginBottom:0}}
+                                />
+                                <p style={{fontSize:11,color:'#92400e',marginTop:4}}>
+                                  This becomes the customer&apos;s name in QuickBooks and shows on every invoice it ever gets. Athena&apos;s name comes from BrightManager&apos;s import, so check the capitalisation and use the trading name if that&apos;s what the client bills under.
+                                </p>
+                                {!custNameOf(curTarget.entity_id).trim() && (
+                                  <p style={{fontSize:11,color:'#b45309',marginTop:2}}>A name is required to create the customer.</p>
+                                )}
+                              </div>
+                            )}
                           </>
                         )}
                       </div>

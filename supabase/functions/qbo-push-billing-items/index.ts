@@ -28,6 +28,11 @@ import { getServiceClient, qboFetch, qboQuery, logSync, jsonResponse, corsHeader
 //                       existing QBO customer (stored on the entity)
 //   new_customer_ok  -> { [entity_id]: true } — explicit consent to create a
 //                       brand-new QBO customer for this client
+//   new_customer_name-> { [entity_id]: string } — the DisplayName to create it
+//                       under. Defaults to the Athena name, which is usually
+//                       BM's title-cased import ("Wmr Pensions And Investments
+//                       Ltd"); the customer name shows on every invoice, so it
+//                       has to be fixable before the customer exists.
 //   dry_run=true -> read-only plan (no QBO/DB writes).
 //
 // Customer mapping is never guessed. An entity with a stored qbo_customer_id
@@ -67,7 +72,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "POST required" }, 405);
   }
 
-  let body: { billing_item_ids?: string[]; send?: boolean; send_map?: Record<string, boolean>; dry_run?: boolean; refresh?: boolean; list_invoices?: boolean; check_settings?: boolean; assign_numbers?: boolean; entity_id?: string; due_days?: number; initiated_by?: string; link_customer?: Record<string, string>; new_customer_ok?: Record<string, boolean> };
+  let body: { billing_item_ids?: string[]; send?: boolean; send_map?: Record<string, boolean>; dry_run?: boolean; refresh?: boolean; list_invoices?: boolean; check_settings?: boolean; assign_numbers?: boolean; entity_id?: string; due_days?: number; initiated_by?: string; link_customer?: Record<string, string>; new_customer_ok?: Record<string, boolean>; new_customer_name?: Record<string, string> };
   try {
     body = await req.json();
   } catch {
@@ -86,6 +91,7 @@ Deno.serve(async (req) => {
   // Per-client customer decisions from the confirm modal, keyed by entity id.
   const linkCustomer = (body.link_customer && typeof body.link_customer === "object") ? body.link_customer : {};
   const newCustomerOk = (body.new_customer_ok && typeof body.new_customer_ok === "object") ? body.new_customer_ok : {};
+  const newCustomerName = (body.new_customer_name && typeof body.new_customer_name === "object") ? body.new_customer_name : {};
   const sb = getServiceClient();
 
   // ── Refresh mode ── re-confirm DocNumber + EmailStatus from QBO for
@@ -386,7 +392,19 @@ Deno.serve(async (req) => {
             qboCustomerId = exact.id;
             if (entityId) await sb.from("entities").update({ qbo_customer_id: exact.id, qbo_customer_name: exact.name || exact.companyName }).eq("id", entityId);
           } else if (entityId && newCustomerOk[entityId] === true) {
-            qboCustomerId = await ensureQboCustomer(sb, entity, entityName);
+            // The name to create under: the user's edit, else the Athena name.
+            const wanted = String(newCustomerName[entityId] ?? "").trim() || entityName;
+            // QBO enforces unique DisplayName and rejects a clash with a
+            // terse duplicate-name error. Catch it here so the message names
+            // the customer that's already sitting there.
+            const clash = (await loadAllCustomers()).find((c) => c.name.toLowerCase() === wanted.toLowerCase());
+            if (clash) {
+              results.push({ billing_item_id: item.id, entity: entityName, status: "error", reason: `QuickBooks already has a customer called "${clash.name}" (#${clash.id}). Link this client to it instead of creating another.` });
+              errored++;
+              await sb.from("billing_items").update({ qbo_sync_status: "error", qbo_sync_error: "customer name already exists" }).eq("id", item.id);
+              continue;
+            }
+            qboCustomerId = await ensureQboCustomer(sb, entity, wanted);
           } else {
             const near = await nearMatchCustomers(entityName, 3);
             const hint = near.length

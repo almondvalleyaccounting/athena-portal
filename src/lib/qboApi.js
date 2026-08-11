@@ -66,7 +66,9 @@ export async function pushToQbo(billingId, initiatedBy, opts = {}) {
  *  opts.linkCustomer ({ [entityId]: qboCustomerId }) maps a client to an
  *  existing QBO customer; opts.newCustomerOk ({ [entityId]: true }) is the
  *  explicit go-ahead to create one. Without either, the push refuses to
- *  create a customer for an unmapped client rather than risk a duplicate. */
+ *  create a customer for an unmapped client rather than risk a duplicate.
+ *  opts.newCustomerName ({ [entityId]: string }) is the DisplayName to create
+ *  it under — defaults server-side to the Athena name. */
 export async function pushBillingItems(billingItemIds, send, initiatedBy, dryRun = false, dueDays = 14, sendMap = null, opts = {}) {
   const { data, error } = await supabase.functions.invoke('qbo-push-billing-items', {
     body: {
@@ -74,6 +76,7 @@ export async function pushBillingItems(billingItemIds, send, initiatedBy, dryRun
       initiated_by: initiatedBy, dry_run: dryRun, due_days: dueDays,
       link_customer: opts.linkCustomer || undefined,
       new_customer_ok: opts.newCustomerOk || undefined,
+      new_customer_name: opts.newCustomerName || undefined,
     },
   });
   if (error) throw error;
