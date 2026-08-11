@@ -845,17 +845,33 @@ async function loadAllCustomers(): Promise<QboCustomer[]> {
 
 // Words that carry no identifying weight, so "Cummins Ltd" and "Cummins"
 // still score as the same client.
-const NAME_NOISE = new Set(["ltd", "limited", "llp", "plc", "the", "and", "services", "service", "company", "co", "uk", "trading"]);
+const NAME_NOISE = new Set(["ltd", "limited", "llp", "plc", "the", "and", "services", "service", "company", "co", "uk", "trading", "of", "in", "at", "on", "by", "or", "t/a"]);
 
 // Strip everything that differs between "Cummins, Gerald" and "Gerald
-// Cummins" so the two compare equal as token sets.
+// Cummins" so the two compare equal as token sets. Two-character tokens are
+// kept — "M3" and "GJ" are among the most identifying parts of a trading name.
 function nameTokens(name: string): string[] {
   return String(name)
     .toLowerCase()
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, " ")
     .split(" ")
-    .filter((t) => t.length >= 3 && !NAME_NOISE.has(t));
+    .filter((t) => t.length >= 2 && !NAME_NOISE.has(t));
+}
+
+// How many customers carry each token. "cummins" appears in a handful and so
+// identifies a client; "pensions" or "investments" appear across the whole
+// list and identify nothing. Without this, an unmapped client like "Wmr
+// Pensions And Investments Ltd" gets six confident-looking suggestions that
+// share only an industry word — worse than offering none.
+function tokenFrequency(rows: QboCustomer[]): Map<string, number> {
+  const df = new Map<string, number>();
+  for (const c of rows) {
+    for (const t of new Set([...nameTokens(c.name), ...nameTokens(c.companyName)])) {
+      df.set(t, (df.get(t) || 0) + 1);
+    }
+  }
+  return df;
 }
 
 // The one customer this client maps to, or null. Only an exact DisplayName
@@ -878,16 +894,27 @@ async function nearMatchCustomers(entityName: string, limit = 6): Promise<QboCus
   const tokens = nameTokens(entityName);
   if (tokens.length === 0) return [];
   const rows = await loadAllCustomers();
+  const df = tokenFrequency(rows);
+  // A token carried by more than ~1% of the customer list is a business word,
+  // not a name. Floor of 3 so a small customer list doesn't make everything
+  // "generic".
+  const genericDf = Math.max(3, Math.round(rows.length * 0.01));
   const scored: Array<{ c: QboCustomer; score: number }> = [];
   for (const c of rows) {
     const candTokens = new Set([...nameTokens(c.name), ...nameTokens(c.companyName)]);
     if (candTokens.size === 0) continue;
-    // A surname alone is enough to surface a candidate — a trading name
-    // usually keeps the surname and drops the forename to initials
-    // ("Cummins, Gerald" → "GJ Cummins Plumbing…"), so requiring two shared
-    // tokens would miss exactly the case this exists for.
-    const score = tokens.filter((t) => candTokens.has(t)).length - (c.active ? 0 : 0.5);
-    if (score <= 0) continue;
+    const shared = tokens.filter((t) => candTokens.has(t));
+    if (shared.length === 0) continue;
+    // At least one shared token has to actually identify the client. A single
+    // distinctive token is enough — a trading name usually keeps the surname
+    // and drops the forename to initials ("Cummins, Gerald" → "GJ Cummins
+    // Plumbing…"), so requiring two would miss the case this exists for. But
+    // sharing only generic words is not evidence of anything, and offering it
+    // as a suggestion invites a wrong link.
+    if (!shared.some((t) => (df.get(t) || 0) <= genericDf)) continue;
+    // Rarer shared tokens count for more.
+    let score = shared.reduce((s, t) => s + 1 / Math.max(1, df.get(t) || 1), 0);
+    if (!c.active) score *= 0.5;
     scored.push({ c, score });
   }
   scored.sort((a, b) => b.score - a.score || a.c.name.localeCompare(b.c.name));

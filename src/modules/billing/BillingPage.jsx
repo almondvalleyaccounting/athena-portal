@@ -65,6 +65,7 @@ export default function BillingPage() {
   // couldn't map appear here — the mapping is a per-client decision, so it's
   // keyed by entity rather than by bill.
   const [custChoice, setCustChoice] = useState({});
+  const [custMode, setCustMode] = useState({}); // entity_id -> 'link' | 'new' | ''
   // The DisplayName a newly-created QBO customer gets, keyed by entity_id.
   // Defaults to the Athena name, which for BM-imported clients is title-cased
   // ("Wmr Pensions And Investments Ltd"). That name lands on every invoice the
@@ -327,6 +328,12 @@ export default function BillingPage() {
   // Athena's "Surname, Firstname" rarely matches a trading name in QBO, so
   // an unguarded create makes a duplicate customer.
   const planOf = (itemId) => preview?.find((r) => r.billing_item_id === itemId) || null;
+  // 'link' | 'new' | '' (undecided). Kept separate from the picked id so that
+  // "create a new customer" is a visible choice rather than the last option in
+  // a dropdown of near-matches — which is where it was, and it read as though
+  // linking to one of the guesses was the only way forward.
+  const custModeOf = (entityId) => custMode[entityId] || '';
+  const setCustModeFor = (entityId, mode) => setCustMode((prev) => ({ ...prev, [entityId]: mode }));
   const custChoiceOf = (entityId) => custChoice[entityId] || '';
   const setCustChoiceFor = (entityId, value) => setCustChoice((prev) => ({ ...prev, [entityId]: value }));
   // The name for a to-be-created customer: the user's edit, else the Athena
@@ -338,9 +345,10 @@ export default function BillingPage() {
   const needsCustomerChoice = (item) => {
     const p = planOf(item.id);
     if (!p || p.customer_action !== 'create') return false;
-    const choice = custChoiceOf(item.entity_id);
-    if (!choice) return true;
-    return choice === 'new' && !custNameOf(item.entity_id).trim();
+    const mode = custModeOf(item.entity_id);
+    if (mode === 'new') return !custNameOf(item.entity_id).trim();
+    if (mode === 'link') return !custChoiceOf(item.entity_id);
+    return true; // undecided
   };
   // What the row will do, resolved from the plan plus any pick made here.
   const customerTargetOf = (item) => {
@@ -351,12 +359,15 @@ export default function BillingPage() {
       if (p.customer_missing) return { mode: 'missing', name: null, id: p.qbo_customer_id, source: p.customer_source, inactive: false };
       return { mode: 'existing', name: p.qbo_customer_name || '(unnamed customer)', id: p.qbo_customer_id, source: p.customer_source, inactive: p.customer_inactive };
     }
+    const mode = custModeOf(item.entity_id);
     const choice = custChoiceOf(item.entity_id);
-    if (choice && choice !== 'new') {
+    if (mode === 'link' && choice) {
       const c = (p.customer_candidates || []).find((x) => String(x.id) === String(choice));
       return { mode: 'link', name: c?.name || `Customer ${choice}`, id: choice, source: 'picked', inactive: c ? !c.active : false };
     }
-    if (choice === 'new') return { mode: 'new', name: custNameOf(item.entity_id).trim() || (entityMap[item.entity_id]?.name || '—'), id: null, source: null, inactive: false };
+    if (mode === 'new' && custNameOf(item.entity_id).trim()) {
+      return { mode: 'new', name: custNameOf(item.entity_id).trim(), id: null, source: null, inactive: false };
+    }
     return { mode: 'undecided', name: null, id: null, source: null, inactive: false };
   };
   // Send/draft resolves per item: its own choice if it has one, else the bulk
@@ -529,7 +540,7 @@ export default function BillingPage() {
   // draft) before committing. Doesn't depend on sendMode — the send/draft
   // line is derived client-side from the plan's has_email flag.
   useEffect(() => {
-    if (!showPushConfirm) { setPreview(null); setPreviewError(null); setContacts({}); setContactIndex(0); setSendModes({}); setCustChoice({}); return; }
+    if (!showPushConfirm) { setPreview(null); setPreviewError(null); setContacts({}); setContactIndex(0); setSendModes({}); setCustChoice({}); setCustMode({}); setCustName({}); return; }
     let cancelled = false;
     const ids = pushTargets.map((i) => i.id);
     if (ids.length === 0) return;
@@ -542,7 +553,7 @@ export default function BillingPage() {
         // A client with no QBO customer AND no near matches is unambiguous —
         // default it to "create". Where QBO does hold something similar the
         // choice stays blank, so the push waits for the user to look at it.
-        setCustChoice((prev) => {
+        setCustMode((prev) => {
           const next = { ...prev };
           for (const p of plan) {
             if (p.customer_action !== 'create' || !p.entity_id || next[p.entity_id]) continue;
@@ -1133,26 +1144,44 @@ export default function BillingPage() {
                           </>
                         ) : (
                           <>
-                            <div style={{fontSize:12,color:'#92400e',marginBottom:6}}>
+                            <div style={{fontSize:12,color:'#92400e',marginBottom:8}}>
                               No QuickBooks customer is mapped to <b>{name}</b>.
-                              {cands.length>0 ? ` ${cands.length} similar ${cands.length===1?'customer':'customers'} already exist — link the right one rather than creating a duplicate.` : ' Nothing similar found in QuickBooks.'}
+                              {cands.length>0 ? ` ${cands.length} ${cands.length===1?'customer looks':'customers look'} similar — link one only if it's genuinely the same client.` : ' Nothing similar found in QuickBooks.'}
                             </div>
-                            <select
-                              value={custChoiceOf(curTarget.entity_id)}
-                              onChange={(e)=>setCustChoiceFor(curTarget.entity_id,e.target.value)}
-                              disabled={pushing}
-                              style={{...inputStyle,marginBottom:0}}
-                            >
-                              <option value="">Choose the QuickBooks customer…</option>
-                              {cands.map((c)=>(
-                                <option key={c.id} value={c.id}>
-                                  Link to: {c.name}{c.active?'':' (inactive)'}{c.address_label?` — ${c.address_label}`:''}
-                                </option>
-                              ))}
-                              <option value="new">Create a new customer in QuickBooks</option>
-                            </select>
-                            {custChoiceOf(curTarget.entity_id)==='new' && (
-                              <div style={{marginTop:6}}>
+                            {/* Two explicit routes. Creating a new customer is
+                                a first-class choice, not the bottom of a list
+                                of guesses. */}
+                            <div style={{display:'flex',gap:6,marginBottom:8}}>
+                              <button
+                                onClick={()=>setCustModeFor(curTarget.entity_id,'link')}
+                                disabled={pushing||cands.length===0}
+                                title={cands.length===0?'No similar customers found in QuickBooks':'Point this client at a customer that already exists'}
+                                style={{...custModeBtn, ...(custModeOf(curTarget.entity_id)==='link'?custModeBtnActive:{}), opacity:cands.length===0?0.4:1, cursor:cands.length===0?'not-allowed':'pointer'}}
+                              >Link an existing customer</button>
+                              <button
+                                onClick={()=>setCustModeFor(curTarget.entity_id,'new')}
+                                disabled={pushing}
+                                title="Create this client as a brand-new QuickBooks customer"
+                                style={{...custModeBtn, ...(custModeOf(curTarget.entity_id)==='new'?custModeBtnActive:{})}}
+                              >Create a new customer</button>
+                            </div>
+                            {custModeOf(curTarget.entity_id)==='link' && (
+                              <select
+                                value={custChoiceOf(curTarget.entity_id)}
+                                onChange={(e)=>setCustChoiceFor(curTarget.entity_id,e.target.value)}
+                                disabled={pushing}
+                                style={{...inputStyle,marginBottom:0}}
+                              >
+                                <option value="">Pick the existing customer…</option>
+                                {cands.map((c)=>(
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}{c.active?'':' (inactive)'}{c.address_label?` — ${c.address_label}`:''}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            {custModeOf(curTarget.entity_id)==='new' && (
+                              <div>
                                 <label style={{...formLabel,marginBottom:2}}>New customer name *</label>
                                 <input
                                   value={custNameOf(curTarget.entity_id)}
@@ -1670,4 +1699,8 @@ function evalArithmetic(input) {
 }
 const ellip = { overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' };
 const modeBtnActive = {borderColor:'#059669',background:'#f0fdf4',boxShadow:'0 0 0 1px #059669'};
+// Link-existing / create-new, in the unmapped-customer panel. Sized down from
+// modeBtn — it sits inside the billing-contact card, not across the modal.
+const custModeBtn = {flex:1,textAlign:'center',padding:'6px 8px',fontSize:12,fontWeight:600,borderRadius:8,border:'1px solid #e5e7eb',background:'#fff',color:'#475569',cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
+const custModeBtnActive = {borderColor:'#0e7fe0',background:'#eff6ff',color:'#0f172a',boxShadow:'0 0 0 1px #0e7fe0'};
 const formLabel = {display:'block',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',marginBottom:4,fontFamily:"'Outfit', sans-serif"};
