@@ -1,0 +1,28 @@
+-- 222 — Aggregate the league tables in SQL, because the API caps rows.
+--
+-- ByTaxView fetched every detail row and rolled them up in the browser, asking for
+-- .limit(5000). PostgREST does not honour that beyond its own max-rows cap (~1000
+-- on this project) and it truncates SILENTLY — you get 1,000 rows and a 200.
+--
+-- It passed verification when Corporation Tax had 824 period rows. A later scrape
+-- took it to 1,876 and the tab began reporting £351,234 owed against a true
+-- £478,611: £127,377 of Corporation Tax debt missing from the screen used to
+-- decide who to chase. Self Assessment lost most of its payment history the same
+-- way — one client showed 6 of 33 movements, and repaid-out read £71,196 against
+-- £447,795. VAT at 708 rows was under the cap and correct, which is precisely what
+-- made this dangerous: it looks right until the data grows.
+--
+-- One row per client per tax, so the payload is ~230 rows rather than thousands and
+-- the cap can never bite again. Same arithmetic the browser was doing, over the
+-- same detail views — not a new definition of "total owed", just moved server-side
+-- where it cannot be truncated. Verified against the book: CT £478,611.38 ties to
+-- v_hmrc_client_tax_summary exactly, VAT £280,521.83, SA £11,477.24.
+--
+-- Rows with no entity_id are kept, grouped as themselves, so the table can still
+-- report what it had to exclude from a client ranking.
+--
+-- The applied DDL is in the migration hmrc_per_client_league_aggregates:
+-- v_hmrc_ct_by_client, v_hmrc_vat_by_client and v_hmrc_sa_by_client, each
+-- revoked from public/anon and granted to authenticated + service_role. The SA one
+-- joins v_hmrc_sa_position (the balance) to v_hmrc_sa_transactions (what actually
+-- moved: paid / repaid out / credit in from another tax / last payment date).

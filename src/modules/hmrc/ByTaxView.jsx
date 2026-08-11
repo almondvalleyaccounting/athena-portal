@@ -19,11 +19,10 @@ import { font, Pill, Stat, ErrorBar, shortDate, th, thNum, td, tdNum, card } fro
 // PAYE has its own tab because it carries triage — chase tier, status, notes —
 // which these three do not.
 //
-// Aggregated in the browser from the per-tax detail views rather than three more
-// SQL roll-ups. CT is 824 period rows and VAT 708 lines, so the whole thing is
-// one request per tax, there is no second definition of "total owed" to drift from
-// v_hmrc_client_tax_summary, and the per-client drill-down is a filter over rows
-// already in memory rather than another round trip.
+// The ranking reads one aggregated row per client (sql/222) and the drill-down
+// fetches that client's detail on demand. Both are bounded: an earlier version
+// pulled every detail row and rolled it up here, which the API silently truncated
+// once Corporation Tax passed ~1000 rows, under-reporting the book by £127,377.
 
 const n = (v) => Number(v || 0);
 
@@ -37,13 +36,14 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
   const navigate = useNavigate();
   const [openClient, setOpenClient] = useState(null);
 
-  const [ct, setCt] = useState([]);
-  const [vat, setVat] = useState([]);
-  const [sa, setSa] = useState([]);
-  // Self Assessment is the only head where the money moved and the balance owed
-  // are separate datasets: sa_position is the balance, sa_transaction is what was
-  // actually paid, repaid and transferred in.
-  const [saTxn, setSaTxn] = useState([]);
+  // One row per client, aggregated in SQL. It used to fetch every detail row and
+  // roll them up here with .limit(5000) — but PostgREST caps rows (~1000) and
+  // truncates SILENTLY. That passed review when Corporation Tax had 824 period
+  // rows; a later scrape took it to 1,876 and the table quietly reported £351,234
+  // owed against a true £478,611. Detail now loads per client on drill-down, so
+  // no screen depends on an unbounded fetch. See sql/222.
+  const [rows, setRows] = useState([]);
+  const [detail, setDetail] = useState({ id: null, rows: [], txns: [], loading: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -51,115 +51,49 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
   const [owingOnly, setOwingOnly] = useState(true);
   const [sort, setSort] = useState('total');
 
+  const VIEW = {
+    'corporation-tax': 'v_hmrc_ct_by_client',
+    'vat': 'v_hmrc_vat_by_client',
+    'self-assessment': 'v_hmrc_sa_by_client',
+  }[tax];
+
   useEffect(() => {
-    Promise.all([
-      supabase.from('v_hmrc_ct_periods').select('*').limit(5000),
-      supabase.from('v_hmrc_vat_owed').select('*').limit(5000),
-      supabase.from('v_hmrc_sa_position').select('*').limit(5000),
-      // 1,333 rows after run-scoping. Raw hmrc.sa_transaction holds 3,999 across
-      // three runs, which is why this reads the scoped view and not the table.
-      supabase.from('v_hmrc_sa_transactions').select('*')
-        .order('txn_date', { ascending: false, nullsFirst: false }).limit(5000),
-    ])
-      .then(([a, b, c, d]) => {
-        const bad = [a, b, c, d].find((r) => r.error);
-        if (bad) setError(bad.error.message);
-        setCt(a.data || []); setVat(b.data || []); setSa(c.data || []);
-        setSaTxn(d.data || []);
+    let cancelled = false;
+    setLoading(true);
+    setOpenClient(null);
+    setDetail({ id: null, rows: [], txns: [], loading: false });
+    supabase.from(VIEW).select('*').limit(2000)
+      .then(({ data, error: e }) => {
+        if (cancelled) return;
+        if (e) setError(e.message); else setError('');
+        setRows(data || []);
       })
-      .catch((e) => setError(e.message || 'Could not load'))
-      .finally(() => setLoading(false));
-  }, []);
+      .then(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [VIEW]);
 
-  // Roll the detail up to one row per client, per tax.
-  const rows = useMemo(() => {
-    const group = (src, keyOf, build) => {
-      const m = new Map();
-      for (const r of src) {
-        // No entity means no client to rank. All 222 CT clients resolve today,
-        // but HMRC truncates names and a future one could fall out — the excluded
-        // total is reported below the table so it can never hide. It was £13,667
-        // before the prefix fallback landed.
-        if (!r.entity_id) continue;
-        const k = keyOf(r);
-        if (!m.has(k)) m.set(k, []);
-        m.get(k).push(r);
-      }
-      return [...m.values()].map(build);
-    };
-
-    if (tax === 'corporation-tax') {
-      return group(ct, (r) => r.entity_id, (rs) => ({
-        entity_id: rs[0].entity_id,
-        name: rs[0].hmrc_name,
-        reference: rs[0].utr,
-        periods: rs.length,
-        unpaid_periods: rs.filter((r) => n(r.total) > 0).length,
-        oldest_unpaid: rs.filter((r) => n(r.total) > 0)
-          .map((r) => r.period_end).sort()[0] || null,
-        tax_amount: rs.reduce((s, r) => s + n(r.tax), 0),
-        interest: rs.reduce((s, r) => s + n(r.interest), 0),
-        penalties: rs.reduce((s, r) => s + n(r.penalties), 0),
-        paid: rs.reduce((s, r) => s + n(r.less_paid), 0),
-        moved: rs.reduce((s, r) => s + n(r.repayments_reallocations), 0),
-        total: rs.reduce((s, r) => s + n(r.total), 0),
-        unreadable: rs.some((r) => r.unreadable),
-      }));
-    }
-    if (tax === 'vat') {
-      return group(vat, (r) => r.entity_id, (rs) => ({
-        entity_id: rs[0].entity_id,
-        name: rs[0].hmrc_name,
-        reference: rs[0].vrn,
-        lines: rs.length,
-        overdue_lines: rs.filter((r) => r.overdue).length,
-        assessed_lines: rs.filter((r) => r.estimated).length,
-        oldest_unpaid: rs.filter((r) => n(r.amount) > 0)
-          .map((r) => r.period_to).filter(Boolean).sort()[0] || null,
-        assessed_value: rs.filter((r) => r.estimated).reduce((s, r) => s + n(r.amount), 0),
-        total: rs.reduce((s, r) => s + n(r.amount), 0),
-      }));
-    }
-    // SA carries the balance (sa_position) and the money movements
-    // (sa_transaction) as two datasets, so the row is the balance plus what has
-    // actually flowed either way.
-    const money = new Map();
-    for (const t of saTxn) {
-      if (!t.entity_id) continue;
-      const m = money.get(t.entity_id)
-        || { paid: 0, repaid: 0, credit_in: 0, last_paid: null, txns: 0 };
-      m.txns += 1;
-      if (t.movement === 'paid_by_client') {
-        m.paid += n(t.amount);
-        // Rows arrive newest first, so the first payment seen is the latest.
-        if (!m.last_paid) m.last_paid = t.txn_date;
-      } else if (t.movement === 'cash_to_client') m.repaid += n(t.amount);
-      else if (t.movement === 'from_another_tax') m.credit_in += n(t.amount);
-      money.set(t.entity_id, m);
-    }
-
-    return sa.filter((r) => r.entity_id).map((r) => {
-      const m = money.get(r.entity_id) || {};
-      return {
-        entity_id: r.entity_id,
-        name: r.hmrc_name,
-        reference: r.utr,
-        tax_amount: n(r.tax),
-        surcharges: n(r.surcharges),
-        interest: n(r.interest),
-        penalties: n(r.penalties),
-        credit: n(r.available_for_repayment),
-        as_at: r.as_at,
-        no_statement: r.statement_available === false,
-        total: n(r.amount_due),
-        paid: n(m.paid),
-        repaid: n(m.repaid),
-        credit_in: n(m.credit_in),
-        last_paid: m.last_paid || null,
-        txns: m.txns || 0,
-      };
-    });
-  }, [tax, ct, vat, sa, saTxn]);
+  // Detail for the client being opened, fetched on demand and filtered server
+  // side, so it stays small however much history a client has.
+  const open = (id) => {
+    if (openClient === id) { setOpenClient(null); return; }
+    setOpenClient(id);
+    if (!id) return;
+    setDetail({ id, rows: [], txns: [], loading: true });
+    const detailView = tax === 'corporation-tax' ? 'v_hmrc_ct_periods'
+      : tax === 'vat' ? 'v_hmrc_vat_owed' : 'v_hmrc_sa_position';
+    const order = tax === 'corporation-tax' ? 'period_end'
+      : tax === 'vat' ? 'period_to' : 'as_at';
+    Promise.all([
+      supabase.from(detailView).select('*').eq('entity_id', id)
+        .order(order, { ascending: false, nullsFirst: false }).limit(2000),
+      tax === 'self-assessment'
+        ? supabase.from('v_hmrc_sa_transactions').select('*').eq('entity_id', id)
+            .order('txn_date', { ascending: false, nullsFirst: false }).limit(2000)
+        : Promise.resolve({ data: [] }),
+    ]).then(([d, t]) => {
+      setDetail({ id, rows: d.data || [], txns: t.data || [], loading: false });
+    }).catch(() => setDetail({ id, rows: [], txns: [], loading: false }));
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -177,11 +111,6 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
 
   const sum = (k, set = filtered) => set.reduce((s, r) => s + n(r[k]), 0);
   const meta = TAXES.find((t) => t.key === tax);
-
-  // The drill-down reads the rows already fetched for the table, so opening a
-  // client costs nothing.
-  const detailFor = (id) => (tax === 'corporation-tax' ? ct : tax === 'vat' ? vat : sa)
-    .filter((d) => d.entity_id === id);
 
   // The headline totals what is SHOWN, which is right for a ranking but means the
   // default filter quietly drops clients in credit — and a credit is still part of
@@ -202,16 +131,13 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
 
   // Rows the scrape returned but that carry no Athena client, so cannot be ranked.
   const orphaned = useMemo(() => {
-    const src = tax === 'corporation-tax' ? ct : tax === 'vat' ? vat : sa;
-    const rowsOut = src.filter((r) => !r.entity_id);
-    const amountOf = (r) => (tax === 'vat' ? n(r.amount)
-      : tax === 'self-assessment' ? n(r.amount_due) : n(r.total));
+    const out = rows.filter((r) => !r.entity_id);
     return {
-      rows: rowsOut.length,
-      names: [...new Set(rowsOut.map((r) => r.hmrc_name).filter(Boolean))],
-      total: rowsOut.reduce((s, r) => s + amountOf(r), 0),
+      rows: out.length,
+      names: [...new Set(out.map((r) => r.name).filter(Boolean))],
+      total: out.reduce((s, r) => s + n(r.total), 0),
     };
-  }, [tax, ct, vat, sa]);
+  }, [rows]);
 
   const COLUMNS = {
     'corporation-tax': [
@@ -375,7 +301,7 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
                         )}
                         {/* Opens this client's detail for THIS tax in place. The
                             chevron is the way out to their whole position. */}
-                        <button onClick={() => setOpenClient(openClient === r.entity_id ? null : r.entity_id)}
+                        <button onClick={() => open(r.entity_id)}
                           title={`Show this client's ${meta.label} detail`}
                           style={{
                             background: 'none', border: 'none', padding: 0, cursor: 'pointer',
@@ -421,9 +347,10 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
                     <tr>
                       <td colSpan={COLUMNS.length + 4} style={{ padding: 0, background: '#f8fafc',
                                                                 borderTop: `2px solid ${meta.colour}` }}>
-                        <ClientDetail tax={tax} colour={meta.colour} rows={detailFor(r.entity_id)}
-                                      txns={tax === 'self-assessment'
-                                        ? saTxn.filter((t) => t.entity_id === r.entity_id) : []}
+                        <ClientDetail tax={tax} colour={meta.colour}
+                                      rows={detail.id === r.entity_id ? detail.rows : []}
+                                      txns={detail.id === r.entity_id ? detail.txns : []}
+                                      loading={detail.id === r.entity_id && detail.loading}
                                       name={r.name} onClose={() => setOpenClient(null)}
                                       onFullPosition={() => navigate(`/hmrc/client?entity=${r.entity_id}`)} />
                       </td>
@@ -472,7 +399,14 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
 // One client's own detail for the tax being viewed, opened in place under their
 // row. Deliberately the same figures as the Client tab shows for this head — the
 // difference is you get here without losing the ranking you were reading.
-function ClientDetail({ tax, colour, rows, txns = [], name, onClose, onFullPosition }) {
+function ClientDetail({ tax, colour, rows, txns = [], loading, name, onClose, onFullPosition }) {
+  if (loading) {
+    return (
+      <div style={{ padding: '12px 16px', fontSize: 12, color: '#94a3b8', fontFamily: font }}>
+        Loading {name}…
+      </div>
+    );
+  }
   // A client can have no statement but still have a payment history, so an empty
   // position must not hide the ledger.
   if (rows.length === 0 && txns.length === 0) {
