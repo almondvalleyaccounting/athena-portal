@@ -1,23 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Download, ChevronRight, TriangleAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fmtGbp, fmtGbpDetailed } from '../../lib/money';
 import { downloadCSV } from '../../lib/exportUtils';
 import SearchInput from '../../components/SearchInput';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
-import { font, Pill, Stat, Chip, ErrorBar, shortDate, th, thNum, td, tdNum, card } from './hmrcShared';
+import { font, Pill, Stat, ErrorBar, shortDate, th, thNum, td, tdNum, card } from './hmrcShared';
 
-// Practice-wide league table for one tax head at a time.
+// One tax head, on its own tab.
+//
+// The list ranks clients so you can see where the money is, but the point of this
+// module is a SPECIFIC CLIENT: click a row and their own detail for this tax opens
+// underneath — the CT periods, the VAT lines, the SA make-up — without leaving the
+// tax you are working in. The consolidated picture across all four heads lives on
+// the All taxes and Client tabs.
 //
 // PAYE has its own tab because it carries triage — chase tier, status, notes —
-// which the other heads do not. These three are read-only rankings: who owes the
-// most, and what it is made of.
+// which these three do not.
 //
 // Aggregated in the browser from the per-tax detail views rather than three more
 // SQL roll-ups. CT is 824 period rows and VAT 708 lines, so the whole thing is
-// one request per tax, and there is no second definition of "total owed" to drift
-// from v_hmrc_client_tax_summary.
+// one request per tax, there is no second definition of "total owed" to drift from
+// v_hmrc_client_tax_summary, and the per-client drill-down is a filter over rows
+// already in memory rather than another round trip.
 
 const n = (v) => Number(v || 0);
 
@@ -27,10 +33,9 @@ const TAXES = [
   { key: 'self-assessment', label: 'Self Assessment', colour: '#0369a1' },
 ];
 
-export default function ByTaxView() {
+export default function ByTaxView({ tax = 'corporation-tax' }) {
   const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
-  const tax = TAXES.some((t) => t.key === params.get('tax')) ? params.get('tax') : 'corporation-tax';
+  const [openClient, setOpenClient] = useState(null);
 
   const [ct, setCt] = useState([]);
   const [vat, setVat] = useState([]);
@@ -56,13 +61,6 @@ export default function ByTaxView() {
       .catch((e) => setError(e.message || 'Could not load'))
       .finally(() => setLoading(false));
   }, []);
-
-  const setTax = (key) => {
-    const next = new URLSearchParams(params);
-    next.set('tax', key);
-    setParams(next, { replace: true });
-    setSort('total');
-  };
 
   // Roll the detail up to one row per client, per tax.
   const rows = useMemo(() => {
@@ -145,6 +143,11 @@ export default function ByTaxView() {
   const sum = (k, set = filtered) => set.reduce((s, r) => s + n(r[k]), 0);
   const meta = TAXES.find((t) => t.key === tax);
 
+  // The drill-down reads the rows already fetched for the table, so opening a
+  // client costs nothing.
+  const detailFor = (id) => (tax === 'corporation-tax' ? ct : tax === 'vat' ? vat : sa)
+    .filter((d) => d.entity_id === id);
+
   // The headline totals what is SHOWN, which is right for a ranking but means the
   // default filter quietly drops clients in credit — and a credit is still part of
   // the book. On Corporation Tax that is 29 clients holding £31,578: the filtered
@@ -222,16 +225,9 @@ export default function ByTaxView() {
       <ErrorBar message={error} />
 
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 12, lineHeight: 1.55 }}>
-        One tax head at a time, ranked. PAYE has its own tab because it carries the chase status and notes;
-        these three are the rankings and what each balance is made of. Click a client for their full position
-        across everything.
+        {meta.label} for every client, ranked. <b>Click a client</b> to open their own {meta.label} detail
+        underneath — the arrow goes to their full position across all four taxes.
       </p>
-
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {TAXES.map((t) => (
-          <Chip key={t.key} value={t.key} label={t.label} active={tax} onClick={setTax} colour={t.colour} />
-        ))}
-      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14, maxWidth: 820 }}>
         <Stat label={`${meta.label} owed`} value={fmtGbp(sum('total'))} colour="#b91c1c" big
@@ -326,17 +322,22 @@ export default function ByTaxView() {
                   </td></tr>
                 )}
                 {filtered.map((r) => (
-                  <tr key={r.entity_id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <React.Fragment key={r.entity_id}>
+                  <tr style={{ borderTop: '1px solid #f1f5f9' }}>
                     <td style={td}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         {r.unreadable && (
                           <TriangleAlert size={12} style={{ color: '#b45309', flexShrink: 0 }}
                             title="At least one period could not be parsed — treat its figures as unknown, not zero" />
                         )}
-                        <button onClick={() => navigate(`/hmrc/client?entity=${r.entity_id}`)}
+                        {/* Opens this client's detail for THIS tax in place. The
+                            chevron is the way out to their whole position. */}
+                        <button onClick={() => setOpenClient(openClient === r.entity_id ? null : r.entity_id)}
+                          title={`Show this client's ${meta.label} detail`}
                           style={{
                             background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                            fontFamily: font, fontSize: 12.5, fontWeight: 500, color: '#0f172a', textAlign: 'left',
+                            fontFamily: font, fontSize: 12.5, fontWeight: openClient === r.entity_id ? 700 : 500,
+                            color: openClient === r.entity_id ? meta.colour : '#0f172a', textAlign: 'left',
                           }}>
                           {r.name}
                         </button>
@@ -373,6 +374,17 @@ export default function ByTaxView() {
                       </button>
                     </td>
                   </tr>
+                  {openClient === r.entity_id && (
+                    <tr>
+                      <td colSpan={COLUMNS.length + 4} style={{ padding: 0, background: '#f8fafc',
+                                                                borderTop: `2px solid ${meta.colour}` }}>
+                        <ClientDetail tax={tax} colour={meta.colour} rows={detailFor(r.entity_id)}
+                                      name={r.name} onClose={() => setOpenClient(null)}
+                                      onFullPosition={() => navigate(`/hmrc/client?entity=${r.entity_id}`)} />
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))}
               </tbody>
               {filtered.length > 0 && (
@@ -411,3 +423,98 @@ export default function ByTaxView() {
     </div>
   );
 }
+
+// One client's own detail for the tax being viewed, opened in place under their
+// row. Deliberately the same figures as the Client tab shows for this head — the
+// difference is you get here without losing the ranking you were reading.
+function ClientDetail({ tax, colour, rows, name, onClose, onFullPosition }) {
+  if (rows.length === 0) {
+    return (
+      <div style={{ padding: '12px 16px', fontSize: 12, color: '#94a3b8', fontFamily: font, whiteSpace: 'normal' }}>
+        Nothing scraped for {name} on this tax.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '11px 14px', fontFamily: font, whiteSpace: 'normal' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: colour }}>{name}</span>
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>
+          {rows.length} {tax === 'corporation-tax' ? 'period' : tax === 'vat' ? 'line' : 'row'}{rows.length === 1 ? '' : 's'}
+        </span>
+        <div style={{ flex: 1 }} />
+        <button onClick={onFullPosition}
+          style={{ fontSize: 11, fontWeight: 600, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: font }}>
+          All four taxes for this client →
+        </button>
+        <button onClick={onClose}
+          style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: font }}>
+          close
+        </button>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', fontSize: 11.5, borderCollapse: 'collapse', whiteSpace: 'nowrap', background: '#fff' }}>
+          <thead>
+            <tr style={{ background: '#f1f5f9', fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.4, color: '#64748b' }}>
+              {DETAIL_COLUMNS[tax].map(([label, , kind]) => (
+                <th key={label} style={kind === 'n' ? thNum : th}>{label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((d, i) => (
+              <tr key={i} style={{ borderTop: '1px solid #f8fafc' }}>
+                {DETAIL_COLUMNS[tax].map(([label, get, kind]) => {
+                  const v = get(d);
+                  return kind === 'n' ? (
+                    <td key={label} style={{ ...tdNum, color: n(v) ? '#0f172a' : '#e2e8f0' }}>
+                      {n(v) ? fmtGbpDetailed(v) : '—'}
+                    </td>
+                  ) : (
+                    <td key={label} style={{ ...td, fontSize: 11, color: '#475569' }}>{v ?? '—'}</td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// What each tax's detail rows are made of. 'n' is money and right-aligns.
+const DETAIL_COLUMNS = {
+  'corporation-tax': [
+    ['Period end', (d) => shortDate(d.period_end)],
+    ['Status', (d) => d.status],
+    ['Tax', (d) => d.tax, 'n'],
+    ['Interest', (d) => d.interest, 'n'],
+    ['Penalties', (d) => d.penalties, 'n'],
+    ['Paid', (d) => d.less_paid, 'n'],
+    ['Repaid / realloc', (d) => d.repayments_reallocations, 'n'],
+    ['Outstanding', (d) => d.total, 'n'],
+  ],
+  'vat': [
+    ['Description', (d) => d.description],
+    ['Kind', (d) => d.kind],
+    ['Period', (d) => (d.period_from || d.period_to
+      ? `${shortDate(d.period_from)} – ${shortDate(d.period_to)}` : null)],
+    // Two different problems: late payment, versus HMRC estimating because no
+    // return was filed. Worth seeing per line, not just in the header total.
+    ['Flags', (d) => [d.overdue ? 'overdue' : null, d.estimated ? 'assessed' : null]
+      .filter(Boolean).join(' · ') || null],
+    ['Amount', (d) => d.amount, 'n'],
+  ],
+  'self-assessment': [
+    ['As at', (d) => shortDate(d.as_at)],
+    ['Tax', (d) => d.tax, 'n'],
+    ['Surcharges', (d) => d.surcharges, 'n'],
+    ['Interest', (d) => d.interest, 'n'],
+    ['Penalties', (d) => d.penalties, 'n'],
+    ['Credit held', (d) => d.available_for_repayment, 'n'],
+    ['Due', (d) => d.amount_due, 'n'],
+  ],
+};

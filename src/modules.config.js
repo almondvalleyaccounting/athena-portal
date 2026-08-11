@@ -114,8 +114,10 @@ export const MODULES = [
         label: 'HMRC',
         // Lands on the consolidated all-taxes view, which is the front door now.
         route: '/hmrc/all',
-        matchPaths: ['/hmrc', '/hmrc/all', '/hmrc/client', '/hmrc/paye', '/hmrc/by-tax', '/hmrc/statement',
-                     '/hmrc/payments', '/hmrc/trend', '/hmrc/balance', '/hmrc/reconciliation', '/hmrc/authorisations'],
+        matchPaths: ['/hmrc', '/hmrc/all', '/hmrc/client', '/hmrc/paye',
+                     '/hmrc/corporation-tax', '/hmrc/vat', '/hmrc/self-assessment', '/hmrc/by-tax',
+                     '/hmrc/statement', '/hmrc/payments', '/hmrc/trend', '/hmrc/balance',
+                     '/hmrc/reconciliation', '/hmrc/authorisations'],
       },
       { id: 'cw-forecast', label: 'Client Forecast', route: '/forecast', permissions: ['can_manage_portal'] },
     ],

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, NavLink } from 'react-router-dom';
+import { Routes, Route, Navigate, NavLink, useSearchParams } from 'react-router-dom';
 import { Landmark } from 'lucide-react';
 import { fetchLatestRunPerService, fetchStaleClients } from './hmrcApi';
 import DebtView from './DebtView';
@@ -25,9 +25,10 @@ import { font, dateTime } from './hmrcShared';
 //   All taxes          practice-wide across all four heads — who is building debt
 //   Client             one client: every tax head plus the whole money ledger
 //   PAYE debt          who owes PAYE, and what have we done about it
-//   CT / VAT / SA      the same ranking for each of the other three heads. One
-//                      tab with a selector rather than three, to keep the bar
-//                      usable; PAYE stays separate because it carries triage
+//   Corporation Tax    \
+//   VAT                 |  one tab each: every client ranked for that head, and
+//   Self Assessment    /   clicking a client opens their own detail for it in
+//                      place. PAYE stays separate because it carries triage
 //   Client statement   one client's account: months down, opening → charges →
 //                      credits → payments → closing, any date range. This is
 //                      where a year-end PAYE creditor comes from.
@@ -41,11 +42,16 @@ import { font, dateTime } from './hmrcShared';
 // noise on an operational screen; "Not our clients" is where they belong.
 
 const TABS = [
-  // Practice-wide first, then the client, then the PAYE detail surfaces.
+  // Consolidated first, then the client, then one tab per tax head. Each tax tab
+  // ranks clients and opens a client's own detail for that head in place, so you
+  // can work inside one tax without losing your place; All taxes and Client are
+  // where the four heads come together.
   { to: '/hmrc/all',            label: 'All taxes' },
   { to: '/hmrc/client',         label: 'Client' },
   { to: '/hmrc/paye',           label: 'PAYE debt' },
-  { to: '/hmrc/by-tax',         label: 'CT · VAT · SA' },
+  { to: '/hmrc/corporation-tax', label: 'Corporation Tax' },
+  { to: '/hmrc/vat',            label: 'VAT' },
+  { to: '/hmrc/self-assessment', label: 'Self Assessment' },
   { to: '/hmrc/statement',      label: 'Client statement' },
   { to: '/hmrc/payments',       label: 'Payments' },
   { to: '/hmrc/balance',        label: 'Balance analysis' },
@@ -110,7 +116,11 @@ export default function HmrcModule() {
         <Route path="all" element={<AllTaxesView />} />
         <Route path="client" element={<ClientTaxView />} />
         <Route path="paye" element={<DebtView />} />
-        <Route path="by-tax" element={<ByTaxView />} />
+        <Route path="corporation-tax"  element={<ByTaxView tax="corporation-tax" />} />
+        <Route path="vat"              element={<ByTaxView tax="vat" />} />
+        <Route path="self-assessment"  element={<ByTaxView tax="self-assessment" />} />
+        {/* The three used to share one tab behind ?tax=. Keep old links working. */}
+        <Route path="by-tax" element={<ByTaxRedirect />} />
         <Route path="statement" element={<ClientStatementView />} />
         <Route path="payments" element={<PaymentsView />} />
         {/* The Trend tab became the per-client statement. Keep old links alive. */}
@@ -232,3 +242,12 @@ const banner = {
   border: '1px solid #e5e7eb', borderRadius: 10, padding: '9px 13px',
   minWidth: 210, fontFamily: font,
 };
+
+// /hmrc/by-tax?tax=vat was the single combined tab. Send those links to the tax's
+// own tab rather than 404ing them or silently landing on Corporation Tax.
+function ByTaxRedirect() {
+  const [params] = useSearchParams();
+  const asked = params.get('tax');
+  const known = ['corporation-tax', 'vat', 'self-assessment'];
+  return <Navigate to={`/hmrc/${known.includes(asked) ? asked : 'corporation-tax'}`} replace />;
+}
