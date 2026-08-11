@@ -4,6 +4,7 @@ import { fmtGbp, fmtGbpDetailed } from '../../lib/money';
 import { useAuth } from '../../shell/AppShell';
 import { fetchSchemesForEntity, saveReview } from './hmrcApi';
 import { font, TIERS, REVIEW_STATUSES, Pill, ageLabel, shortDate, dateTime, inputStyle } from './hmrcShared';
+import RefreshButton from './RefreshButton';
 
 // HMRC's view of this client, on the client page.
 //
@@ -39,7 +40,7 @@ export default function ClientHmrcPanel({ entityId }) {
   return (
     <div style={{ marginBottom: 20 }}>
       {schemes.map((s) => (
-        <SchemeCard key={s.paye_ref} scheme={s} profile={profile} onSaved={(patch) => {
+        <SchemeCard key={s.paye_ref} scheme={s} profile={profile} entityId={entityId} onSaved={(patch) => {
           setSchemes((prev) => prev.map((r) => (r.paye_ref === s.paye_ref ? { ...r, ...patch } : r)));
         }} />
       ))}
@@ -47,7 +48,7 @@ export default function ClientHmrcPanel({ entityId }) {
   );
 }
 
-function SchemeCard({ scheme, profile, onSaved }) {
+function SchemeCard({ scheme, profile, entityId, onSaved }) {
   const [saving, setSaving] = useState(false);
   const owing = Number(scheme.total_debt || 0) > 0;
   const tier = TIERS[scheme.chase_tier] || TIERS[4];
@@ -86,6 +87,9 @@ function SchemeCard({ scheme, profile, onSaved }) {
         </span>
         {scheme.claiming_ea && <Pill colour="#7c3aed" bg="#faf5ff" style={{ fontSize: 10 }}>Employment Allowance</Pill>}
         <div style={{ flex: 1 }} />
+        {/* "Clear" is the answer most likely to be doubted — it is the one people
+            want to re-check before telling a client they owe nothing. */}
+        <RefreshButton entityId={entityId} compact />
         <a href={link} style={linkStyle} title="Open the full HMRC position for this scheme">
           HMRC detail <ExternalLink size={11} />
         </a>
@@ -108,6 +112,7 @@ function SchemeCard({ scheme, profile, onSaved }) {
           PAYE {scheme.paye_ref} · scraped {dateTime(scheme.scraped_at)}
         </span>
         <div style={{ flex: 1 }} />
+        <RefreshButton entityId={entityId} compact />
         <a href={link} style={linkStyle} title="Open the full breakdown — overdue charges, monthly grid, payments">
           Full breakdown <ExternalLink size={11} />
         </a>

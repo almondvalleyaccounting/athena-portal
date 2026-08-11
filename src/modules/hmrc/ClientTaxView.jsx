@@ -7,6 +7,7 @@ import { downloadCSV } from '../../lib/exportUtils';
 import SearchInput from '../../components/SearchInput';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import { font, Pill, Chip, ErrorBar, shortDate, dateTime, th, thNum, td, tdNum, card, inputStyle } from './hmrcShared';
+import RefreshButton from './RefreshButton';
 
 // One client's whole HMRC position: every tax head, and every movement of money
 // either way in one chronological ledger.
@@ -148,6 +149,9 @@ export default function ClientTaxView() {
               </button>
             </span>
           )}
+          {/* Asks for all four taxes: the RPC knows which references exist and says
+              which it could not ask about, so there is no need to guess here. */}
+          {chosen && <RefreshButton entityId={entityId} />}
         </div>
         <AlphabetFilter items={clients} nameKey="entity_name" selected={letter} onChange={setLetter} />
         {!entityId && (

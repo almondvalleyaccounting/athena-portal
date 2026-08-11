@@ -127,6 +127,44 @@ export async function saveReview({ payeRef, status, notes, staffId }) {
   if (error) throw error;
 }
 
+// Per-client refresh. Athena cannot scrape HMRC — that needs a live Government
+// Gateway session, which needs a person and an access code from a second device.
+// So this ENQUEUES, and the scraper's `npm run refresh` drains the queue next
+// time a session is live. Nothing here should pretend the data is coming back in
+// a moment; the whole point is that the wait is visible.
+//
+// The RPC derives the references itself from HMRC's own records (sql/220) — the
+// caller does not get to name a PAYE reference or UTR to go and scrape.
+export async function requestRefresh(entityId, services, reason) {
+  const { data, error } = await supabase.rpc('hmrc_request_refresh', {
+    p_entity_id: entityId,
+    p_services: services,
+    p_reason: reason || null,
+  });
+  if (error) throw error;
+  return data || [];
+}
+
+// What is already waiting for this client, so a second click reads as "already
+// asked" rather than appearing to do nothing.
+export async function fetchRefreshQueue(entityId) {
+  let q = supabase
+    .from('v_hmrc_refresh_queue')
+    .select('*')
+    .in('status', ['pending', 'running'])
+    .order('requested_at', { ascending: true });
+  if (entityId) q = q.eq('entity_id', entityId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function cancelRefresh(id) {
+  const { data, error } = await supabase.rpc('hmrc_cancel_refresh', { p_id: id });
+  if (error) throw error;
+  return data === true;
+}
+
 export async function fetchExceptions() {
   const { data, error } = await supabase
     .from('v_hmrc_link_exceptions')
