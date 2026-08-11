@@ -192,9 +192,18 @@ export default function ClientTaxView() {
           {/* One card per tax head */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10, marginBottom: 8 }}>
             {Object.keys(TAX_META).map((taxKey) => {
-              const row = summary.find((r) => r.tax === taxKey);
+              // A tax can arrive as MORE THAN ONE row. v_hmrc_client_tax_summary's
+              // paye CTE is distinct on client_id — one row per SCHEME, not per
+              // client — and a company can hold several over its life: Tapee Ltd
+              // ran a scheme, closed it on going dormant, then opened another. This
+              // used to .find() the first and show it alone, so the card could
+              // disagree with the total underneath, which sums every row.
+              const rows = summary.filter((r) => r.tax === taxKey);
+              const row = rows[0];
               const meta = TAX_META[taxKey];
-              const bal = row ? n(row.balance) : null;
+              const bal = rows.length ? rows.reduce((s, r) => s + n(r.balance), 0) : null;
+              const creditAvailable = rows.reduce((s, r) => s + n(r.credit_available), 0);
+              const onAPlan = rows.some((r) => r.payment_plan);
               const detailCount = taxKey === 'corporation-tax' ? ctPeriods.length
                 : taxKey === 'vat' ? vatLines.length
                 : taxKey === 'self-assessment' ? saPos.length : 0;
@@ -219,13 +228,34 @@ export default function ClientTaxView() {
                                     color: bal > 0 ? '#b91c1c' : bal < 0 ? '#059669' : '#0f172a' }}>
                         {fmtGbpDetailed(bal)}
                       </div>
-                      <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 2 }}>
-                        {row.reference}
-                        {row.payment_plan && <span style={{ color: '#0369a1', fontWeight: 600 }}> · payment plan</span>}
-                      </div>
-                      {n(row.credit_available) > 0 && (
+                      {/* Every reference, with its own balance once there is more
+                          than one — a closed scheme and a live one are different
+                          things and one summed number hides which is which. HMRC
+                          keeps closed schemes on the agent list and the scrape holds
+                          no cessation flag, so neither can be labelled dead here. */}
+                      {rows.length === 1 ? (
+                        <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 2 }}>
+                          {row.reference}
+                          {onAPlan && <span style={{ color: '#0369a1', fontWeight: 600 }}> · payment plan</span>}
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 3 }}>
+                          <div style={{ fontSize: 10, color: '#c2410c', fontWeight: 700 }}>
+                            {rows.length} schemes
+                          </div>
+                          {rows.map((r) => (
+                            <div key={r.reference} style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 1 }}>
+                              {r.reference} · <span style={{ color: n(r.balance) > 0 ? '#b91c1c' : '#64748b' }}>
+                                {fmtGbpDetailed(r.balance)}
+                              </span>
+                              {r.payment_plan && <span style={{ color: '#0369a1', fontWeight: 600 }}> · plan</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {creditAvailable > 0 && (
                         <div style={{ fontSize: 10.5, color: '#0369a1', fontWeight: 600, marginTop: 2 }}>
-                          {fmtGbpDetailed(row.credit_available)} credit held
+                          {fmtGbpDetailed(creditAvailable)} credit held
                         </div>
                       )}
                       {detailCount > 0 && (
