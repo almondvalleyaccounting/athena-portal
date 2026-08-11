@@ -40,6 +40,10 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
   const [ct, setCt] = useState([]);
   const [vat, setVat] = useState([]);
   const [sa, setSa] = useState([]);
+  // Self Assessment is the only head where the money moved and the balance owed
+  // are separate datasets: sa_position is the balance, sa_transaction is what was
+  // actually paid, repaid and transferred in.
+  const [saTxn, setSaTxn] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -52,11 +56,16 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
       supabase.from('v_hmrc_ct_periods').select('*').limit(5000),
       supabase.from('v_hmrc_vat_owed').select('*').limit(5000),
       supabase.from('v_hmrc_sa_position').select('*').limit(5000),
+      // 1,333 rows after run-scoping. Raw hmrc.sa_transaction holds 3,999 across
+      // three runs, which is why this reads the scoped view and not the table.
+      supabase.from('v_hmrc_sa_transactions').select('*')
+        .order('txn_date', { ascending: false, nullsFirst: false }).limit(5000),
     ])
-      .then(([a, b, c]) => {
-        const bad = [a, b, c].find((r) => r.error);
+      .then(([a, b, c, d]) => {
+        const bad = [a, b, c, d].find((r) => r.error);
         if (bad) setError(bad.error.message);
         setCt(a.data || []); setVat(b.data || []); setSa(c.data || []);
+        setSaTxn(d.data || []);
       })
       .catch((e) => setError(e.message || 'Could not load'))
       .finally(() => setLoading(false));
@@ -111,20 +120,46 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
         total: rs.reduce((s, r) => s + n(r.amount), 0),
       }));
     }
-    return sa.filter((r) => r.entity_id).map((r) => ({
-      entity_id: r.entity_id,
-      name: r.hmrc_name,
-      reference: r.utr,
-      tax_amount: n(r.tax),
-      surcharges: n(r.surcharges),
-      interest: n(r.interest),
-      penalties: n(r.penalties),
-      credit: n(r.available_for_repayment),
-      as_at: r.as_at,
-      no_statement: r.statement_available === false,
-      total: n(r.amount_due),
-    }));
-  }, [tax, ct, vat, sa]);
+    // SA carries the balance (sa_position) and the money movements
+    // (sa_transaction) as two datasets, so the row is the balance plus what has
+    // actually flowed either way.
+    const money = new Map();
+    for (const t of saTxn) {
+      if (!t.entity_id) continue;
+      const m = money.get(t.entity_id)
+        || { paid: 0, repaid: 0, credit_in: 0, last_paid: null, txns: 0 };
+      m.txns += 1;
+      if (t.movement === 'paid_by_client') {
+        m.paid += n(t.amount);
+        // Rows arrive newest first, so the first payment seen is the latest.
+        if (!m.last_paid) m.last_paid = t.txn_date;
+      } else if (t.movement === 'cash_to_client') m.repaid += n(t.amount);
+      else if (t.movement === 'from_another_tax') m.credit_in += n(t.amount);
+      money.set(t.entity_id, m);
+    }
+
+    return sa.filter((r) => r.entity_id).map((r) => {
+      const m = money.get(r.entity_id) || {};
+      return {
+        entity_id: r.entity_id,
+        name: r.hmrc_name,
+        reference: r.utr,
+        tax_amount: n(r.tax),
+        surcharges: n(r.surcharges),
+        interest: n(r.interest),
+        penalties: n(r.penalties),
+        credit: n(r.available_for_repayment),
+        as_at: r.as_at,
+        no_statement: r.statement_available === false,
+        total: n(r.amount_due),
+        paid: n(m.paid),
+        repaid: n(m.repaid),
+        credit_in: n(m.credit_in),
+        last_paid: m.last_paid || null,
+        txns: m.txns || 0,
+      };
+    });
+  }, [tax, ct, vat, sa, saTxn]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -201,6 +236,11 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
       ['Interest',   (r) => r.interest, 'n'],
       ['Penalties',  (r) => r.penalties, 'n'],
       ['Credit held',(r) => r.credit, 'n'],
+      // What actually moved, as against what is owed.
+      ['Paid',       (r) => r.paid, 'n'],
+      ['Repaid out', (r) => r.repaid, 'n'],
+      ['Credit in',  (r) => r.credit_in, 'n'],
+      ['Last paid',  (r) => shortDate(r.last_paid), 'c'],
       ['As at',      (r) => shortDate(r.as_at), 'c'],
     ],
   }[tax];
@@ -251,7 +291,8 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
           <>
             <Stat label="Credit HMRC holds" value={fmtGbp(sum('credit'))} colour="#0369a1"
                   hint="Available for repayment or reallocation to another tax" />
-            <Stat label="Penalties" value={fmtGbp(sum('penalties'))} colour="#b91c1c" />
+            <Stat label="Repaid out" value={fmtGbp(sum('repaid'))} colour="#059669"
+                  hint="Cash HMRC has sent back to these clients — bank, card or cheque repayment" />
           </>
         )}
       </div>
@@ -282,7 +323,9 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
           {tax === 'corporation-tax' && <option value="moved">Sort: repaid / reallocated</option>}
           {tax === 'vat' && <option value="assessed_value">Sort: assessed value</option>}
           {tax === 'self-assessment' && <option value="credit">Sort: credit held</option>}
-          {tax === 'self-assessment' && <option value="penalties">Sort: penalties</option>}
+          {tax === 'self-assessment' && <option value="paid">Sort: paid to HMRC</option>}
+          {tax === 'self-assessment' && <option value="repaid">Sort: repaid out</option>}
+          {tax === 'self-assessment' && <option value="credit_in">Sort: credit in from another tax</option>}
           <option value="name">Sort: name</option>
         </select>
         <button onClick={exportCsv} disabled={filtered.length === 0}
@@ -379,6 +422,8 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
                       <td colSpan={COLUMNS.length + 4} style={{ padding: 0, background: '#f8fafc',
                                                                 borderTop: `2px solid ${meta.colour}` }}>
                         <ClientDetail tax={tax} colour={meta.colour} rows={detailFor(r.entity_id)}
+                                      txns={tax === 'self-assessment'
+                                        ? saTxn.filter((t) => t.entity_id === r.entity_id) : []}
                                       name={r.name} onClose={() => setOpenClient(null)}
                                       onFullPosition={() => navigate(`/hmrc/client?entity=${r.entity_id}`)} />
                       </td>
@@ -427,8 +472,10 @@ export default function ByTaxView({ tax = 'corporation-tax' }) {
 // One client's own detail for the tax being viewed, opened in place under their
 // row. Deliberately the same figures as the Client tab shows for this head — the
 // difference is you get here without losing the ranking you were reading.
-function ClientDetail({ tax, colour, rows, name, onClose, onFullPosition }) {
-  if (rows.length === 0) {
+function ClientDetail({ tax, colour, rows, txns = [], name, onClose, onFullPosition }) {
+  // A client can have no statement but still have a payment history, so an empty
+  // position must not hide the ledger.
+  if (rows.length === 0 && txns.length === 0) {
     return (
       <div style={{ padding: '12px 16px', fontSize: 12, color: '#94a3b8', fontFamily: font, whiteSpace: 'normal' }}>
         Nothing scraped for {name} on this tax.
@@ -454,6 +501,7 @@ function ClientDetail({ tax, colour, rows, name, onClose, onFullPosition }) {
         </button>
       </div>
 
+      {rows.length > 0 && (
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', fontSize: 11.5, borderCollapse: 'collapse', whiteSpace: 'nowrap', background: '#fff' }}>
           <thead>
@@ -481,9 +529,93 @@ function ClientDetail({ tax, colour, rows, name, onClose, onFullPosition }) {
           </tbody>
         </table>
       </div>
+      )}
+
+      {txns.length > 0 && <SaLedger txns={txns} />}
     </div>
   );
 }
+
+// Self Assessment payments and credits for one client.
+//
+// The point of separating cash from credit: HMRC's account shows a "Payment"
+// (money that left the client's bank) next to an "Overpayment from return" (a
+// credit that arose from the return itself) and a "Repayment supplement"
+// (interest HMRC adds). Adding them together would overstate what the client has
+// actually paid — which is exactly what the money ledger did until sql/221.
+//
+// "Credit in from another tax" is the row to look for on a CIS case: credit built
+// up on PAYE, moved across to settle Self Assessment.
+function SaLedger({ txns }) {
+  const total = (m) => txns.filter((t) => t.movement === m)
+    .reduce((s, t) => s + n(t.amount), 0);
+
+  const paid = total('paid_by_client');
+  const repaid = total('cash_to_client');
+  const creditIn = total('from_another_tax');
+  const credits = txns.filter((t) => t.movement === 'other')
+    .reduce((s, t) => s + n(t.amount), 0);
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 7, fontSize: 11.5 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          Payments &amp; credits
+        </span>
+        <span style={{ color: '#64748b' }}>{txns.length} movement{txns.length === 1 ? '' : 's'}</span>
+        <span>Paid <b style={{ color: '#0f172a' }}>{fmtGbpDetailed(paid)}</b></span>
+        {repaid > 0 && <span>Repaid out <b style={{ color: '#059669' }}>{fmtGbpDetailed(repaid)}</b></span>}
+        {creditIn > 0 && (
+          <span>Credit in from another tax <b style={{ color: '#7c3aed' }}>{fmtGbpDetailed(creditIn)}</b></span>
+        )}
+        {credits > 0 && <span style={{ color: '#64748b' }}>Non-cash credits {fmtGbpDetailed(credits)}</span>}
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', fontSize: 11.5, borderCollapse: 'collapse', whiteSpace: 'nowrap', background: '#fff' }}>
+          <thead>
+            <tr style={{ background: '#f1f5f9', fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.4, color: '#64748b' }}>
+              <th style={th}>Date</th>
+              <th style={th}>What</th>
+              <th style={th}>Year</th>
+              <th style={th}>HMRC description</th>
+              <th style={thNum}>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {txns.map((t, i) => {
+              const m = SA_MOVEMENT[t.movement] || SA_MOVEMENT.other;
+              return (
+                <tr key={i} style={{ borderTop: '1px solid #f8fafc' }}>
+                  <td style={{ ...td, fontSize: 11, color: '#475569' }}>{shortDate(t.txn_date)}</td>
+                  <td style={td}>
+                    <Pill colour={m.colour} bg={m.bg} style={{ fontSize: 9.5 }} title={m.hint}>{t.label}</Pill>
+                  </td>
+                  <td style={{ ...td, fontSize: 11, color: '#94a3b8' }}>{t.tax_year_ending || '—'}</td>
+                  <td style={{ ...td, fontSize: 11, color: '#64748b', whiteSpace: 'normal', maxWidth: 420 }}>
+                    {t.description}
+                  </td>
+                  <td style={{ ...tdNum, color: m.colour, fontWeight: 600 }}>
+                    {/* Signed so the direction reads at a glance: out to the client
+                        is money leaving HMRC's account. */}
+                    {t.movement === 'cash_to_client' ? '−' : ''}{fmtGbpDetailed(t.amount)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const SA_MOVEMENT = {
+  paid_by_client:   { colour: '#0f172a', bg: '#f8fafc', hint: 'Money the client actually paid HMRC' },
+  cash_to_client:   { colour: '#059669', bg: '#f0fdf4', hint: 'HMRC repaid this to the client' },
+  from_another_tax: { colour: '#7c3aed', bg: '#faf5ff', hint: 'Credit moved across from another tax — the CIS pattern' },
+  other:            { colour: '#64748b', bg: '#f8fafc', hint: 'A credit on the account rather than cash paid' },
+};
 
 // What each tax's detail rows are made of. 'n' is money and right-aligns.
 const DETAIL_COLUMNS = {
