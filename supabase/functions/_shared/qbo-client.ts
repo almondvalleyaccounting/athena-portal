@@ -90,6 +90,38 @@ export async function getValidToken(realmId?: string): Promise<{ accessToken: st
   return { accessToken: src.conn.access_token, realmId: src.conn.realm_id };
 }
 
+// As getValidToken, but hands back the refresh token too — for the one caller
+// that has to mirror the live pair somewhere else (the Apps Script report
+// runner keeps its own copy in a spreadsheet). Intuit rotates the refresh
+// token on every refresh, so any mirror has to be re-pushed each time or it
+// silently rots. Pass a wider marginMs when the token has to stay usable for
+// the length of a long job, not just the length of one API call.
+export async function getValidTokenPair(
+  realmId: string,
+  marginMs = 5 * 60 * 1000,
+): Promise<{ accessToken: string; refreshToken: string; realmId: string; expiresAt: string }> {
+  const sb = getServiceClient();
+  const src = await resolveTokenSource(sb, realmId);
+
+  const expiresAt = new Date(src.conn.token_expires_at);
+  if (expiresAt.getTime() - Date.now() < marginMs) {
+    const tokens = await refreshToken(sb, src);
+    return {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      realmId: src.conn.realm_id,
+      expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+    };
+  }
+
+  return {
+    accessToken: src.conn.access_token,
+    refreshToken: src.conn.refresh_token,
+    realmId: src.conn.realm_id,
+    expiresAt: src.conn.token_expires_at,
+  };
+}
+
 // Refresh the OAuth token, writing new tokens back to whichever table they came from.
 async function refreshToken(sb: SupaClient, src: TokenSource) {
   const { table, keyCol, conn } = src;

@@ -31,8 +31,6 @@ const REPORTS = [
   { name: 'ItemSales',            label: 'Sales by Product-Service',     dateMode: 'range',       defaultOn: true },
 ];
 
-const API_URL = '/api/run-qbo-reports';
-
 const DRIVE_FOLDER = 'https://drive.google.com/drive/folders/1rK_8c4RBysVsdGUSMgbcDD0z4Kr2DoW0';
 
 /* ─── Date helpers ─────────────────────────────────────────────── */
@@ -148,43 +146,53 @@ export default function ReportsPage() {
     setRunning(true);
     setLog(reportsToRun.map((r) => ({ label: r.label, status: 'pending' })));
 
-    // Build the payload for Apps Script doPost
-    // Send zero-based indices into the REPORTS array — unambiguous, no string matching
-    const reportIndices = reportsToRun.map((r) => REPORTS.indexOf(r));
+    const setRow = (i, patch) =>
+      setLog((prev) => prev.map((entry, j) => (j === i ? { ...entry, ...patch } : entry)));
 
-    const payload = {
-      clientName: selectedClient.company_name,
-      realmId: selectedClient.realm_id,
-      startDate: fromDate,
-      endDate: toDate,
-      reportDate: asAtDate,
-      accountingMethod: basis,
-      reportIndices,
-      outputFormat: 'excel',
-    };
+    // One call per report. A full 15-report run takes minutes, so a single
+    // request for the lot would sit at the mercy of the gateway timeout and
+    // every row would have to share one verdict. Per report, each row's status
+    // is its own — and the runner's token copy is refreshed on each call, so a
+    // long run can't outlive its access token.
+    let dispatched = 0;
 
-    // Single POST — Apps Script runs all selected reports
-    setLog((prev) => prev.map((entry) => ({ ...entry, status: 'sending' })));
+    for (let i = 0; i < reportsToRun.length; i++) {
+      const r = reportsToRun[i];
+      setRow(i, { status: 'sending' });
 
-    try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      try {
+        const { data, error } = await supabase.functions.invoke('reports-run', {
+          body: {
+            clientName: selectedClient.company_name,
+            realmId: selectedClient.realm_id,
+            reportIndex: REPORTS.indexOf(r),
+            reportName: r.name,
+            reportLabel: r.label,
+            startDate: fromDate,
+            endDate: toDate,
+            reportDate: asAtDate,
+            accountingMethod: basis,
+            outputFormat: 'excel',
+          },
+        });
 
-      const data = await res.json().catch(() => ({}));
+        if (error) throw error;
+        if (!data || data.success === false) throw new Error(data?.error || 'Report runner failed');
 
-      if (!res.ok || data.success === false) {
-        throw new Error(data.error || `HTTP ${res.status}`);
+        setRow(i, { status: 'done', message: undefined });
+        dispatched += 1;
+      } catch (e) {
+        setRow(i, { status: 'error', message: e.message });
+
+        // Nothing has got through yet, so this is the client or its connection,
+        // not this one report. Don't grind through fourteen more of the same.
+        if (dispatched === 0) {
+          setLog((prev) => prev.map((entry, j) =>
+            j > i ? { ...entry, status: 'error', message: 'Stopped after the first failure' } : entry
+          ));
+          break;
+        }
       }
-
-      // All done
-      setLog((prev) => prev.map((entry) => ({ ...entry, status: 'done' })));
-    } catch (e) {
-      setLog((prev) => prev.map((entry) =>
-        entry.status === 'sending' ? { ...entry, status: 'error', message: e.message } : entry
-      ));
     }
 
     setRunning(false);
