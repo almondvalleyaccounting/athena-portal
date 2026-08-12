@@ -336,12 +336,17 @@ export default function SchedulesPage() {
                           {job.gate_label
                             ? (
                               <>
-                                <code style={{
-                                  fontFamily: 'ui-monospace, monospace', fontSize: 12,
-                                  background: '#eef2f7', padding: '1px 5px', borderRadius: 4,
-                                }}>
-                                  {job.gate_label}
-                                </code>
+                                {/* A bare table.column reads as code; a sentence doesn't. */}
+                                {/\s/.test(job.gate_label.trim())
+                                  ? job.gate_label
+                                  : (
+                                    <code style={{
+                                      fontFamily: 'ui-monospace, monospace', fontSize: 12,
+                                      background: '#eef2f7', padding: '1px 5px', borderRadius: 4,
+                                    }}>
+                                      {job.gate_label}
+                                    </code>
+                                  )}
                                 {job.gate_enabled === false && (
                                   <span style={{ color: '#92400e', marginLeft: 8, fontWeight: 600 }}>
                                     currently off — the job fires but does nothing
