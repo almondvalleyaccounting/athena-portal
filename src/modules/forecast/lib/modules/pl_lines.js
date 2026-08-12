@@ -19,6 +19,8 @@
 // seeded amount for that CALENDAR month (so seasonality repeats in the
 // right months rather than being replayed from the forecast's month 0).
 
+import { formatMoney } from '../currency.js';
+
 export const CATEGORIES = [
   { key: 'income',        label: 'Income',         isCost: false },
   { key: 'cost_of_sales', label: 'Cost of sales',  isCost: true  },
@@ -141,6 +143,7 @@ export const plLinesModule = {
   validate(ctx) {
     const findings = [];
     const lines = (ctx.plLines || []).filter(l => l.is_active !== false);
+    const money = (p) => formatMoney(Math.round(p), ctx.forecast?.currency);
 
     if (lines.length === 0) {
       findings.push({
@@ -157,6 +160,31 @@ export const plLinesModule = {
         code: 'pl_lines.no_income',
         message: 'No income lines — the forecast will show costs only.',
       });
+    }
+
+    // A single exceptional month drags an average badly. Foursite's sales
+    // window held one £400k month against ~£8k everywhere else, which set the
+    // whole forecast to £43k/month — plausible-looking and wrong. Averages
+    // hide this; the projection should say so.
+    for (const line of lines) {
+      if (line.method !== 'average') continue;
+      const amounts = (line.actuals?.amounts_p || []).map(Number);
+      const months = line.actuals?.months || [];
+      if (amounts.length < 4) continue;
+      const total = amounts.reduce((s, v) => s + v, 0);
+      if (total <= 0) continue;
+      let maxIdx = 0;
+      for (let i = 1; i < amounts.length; i++) if (amounts[i] > amounts[maxIdx]) maxIdx = i;
+      const share = amounts[maxIdx] / total;
+      // One month of twelve is ~8%; a third of the window from a single month
+      // is an event, not a run rate.
+      if (share >= 0.33) {
+        findings.push({
+          severity: 'warn',
+          code: 'pl_lines.average_skewed',
+          message: `"${line.label}" — ${months[maxIdx] || `month ${maxIdx + 1}`} alone is ${Math.round(share * 100)}% of the seeded window, so the average basis (${money(total / amounts.length)}/month) is being pulled up by one exceptional month. Consider "last month" or "repeat monthly shape", or override that month.`,
+        });
+      }
     }
 
     // A line seeded from QBO but left on a zero basis is nearly always an

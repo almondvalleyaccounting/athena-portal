@@ -439,7 +439,7 @@ export default function ForecastModule() {
                 forecast={forecast} periods={periods} openingPeriod={forecast.opening_period}
                 scenarioId={scenario.id}
                 entities={entities} groups={groups} assignments={assignments}
-                filter={filter} onFilterChange={setFilter} />
+                filter={filter} onFilterChange={lens.locations ? setFilter : undefined} />
             )}
             {tab === 'cf' && !lens.ledgerStatements && (
               <StatementView title="Cashflow" variant="cf" lines={lens.statements.cf} outputs={outputs}
