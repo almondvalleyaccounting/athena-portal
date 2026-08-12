@@ -71,6 +71,31 @@ function isModuleClickable(mod) {
   return mod.status === 'live';
 }
 
+/* ─── Open-in-new-window helpers ───────────────────────────────────
+   Sidebar items are buttons, not <a>, so the browser's own "open in
+   new tab" menu never appears. We supply our own. BrowserRouter means
+   routes are real URLs and the Supabase session lives in localStorage,
+   so a second window lands logged in on the same page. */
+const absoluteUrl = (route) => new URL(route, window.location.origin).href;
+
+function openInNewWindow(route) {
+  // A features string is what makes the browser spawn a window rather
+  // than another tab. Size it to sit comfortably beside the main window.
+  const width = Math.min(1500, Math.round(window.screen.availWidth * 0.75));
+  const height = Math.min(950, Math.round(window.screen.availHeight * 0.85));
+  const left = Math.max(0, Math.round((window.screen.availWidth - width) / 2));
+  const top = Math.max(0, Math.round((window.screen.availHeight - height) / 2));
+  window.open(
+    absoluteUrl(route),
+    '_blank',
+    `popup=yes,noopener,noreferrer,width=${width},height=${height},left=${left},top=${top}`
+  );
+}
+
+function openInNewTab(route) {
+  window.open(absoluteUrl(route), '_blank', 'noopener,noreferrer');
+}
+
 /* ─── Sidebar component ───────────────────────────────────────── */
 export default function Sidebar() {
   const { profile, handleLogout } = useAuth();
@@ -148,6 +173,33 @@ export default function Sidebar() {
     : '?';
 
   const [expandedModules, setExpandedModules] = useState({});
+
+  // Right-click menu — { x, y, route, label } while open, null when closed.
+  const [ctxMenu, setCtxMenu] = useState(null);
+  const openCtxMenu = (e, route, label) => {
+    if (!route) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY, route, label });
+  };
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    // capture:true so the sidebar's own scroll container fires it too
+    window.addEventListener('mousedown', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [ctxMenu]);
+  // Close on route change too — the menu would otherwise hang over the new page.
+  useEffect(() => { setCtxMenu(null); }, [location.pathname]);
 
   const isActive = (route) => location.pathname.startsWith(route);
 
@@ -271,6 +323,7 @@ export default function Sidebar() {
           active={location.pathname === '/home'}
           collapsed={collapsed}
           onClick={() => navigate('/home')}
+          onContextMenu={(e) => openCtxMenu(e, '/home', 'Home')}
           clickable
         />
       </div>
@@ -328,6 +381,7 @@ export default function Sidebar() {
                     navigate(mod.route);
                   }
                 }}
+                onContextMenu={(e) => clickable && openCtxMenu(e, mod.route, mod.label)}
               />
               {/* Sub-items */}
               {isExpanded && kids.length > 0 && (
@@ -336,6 +390,7 @@ export default function Sidebar() {
                     <button
                       key={child.id}
                       onClick={() => navigate(child.route)}
+                      onContextMenu={(e) => openCtxMenu(e, child.route, child.label)}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -401,6 +456,7 @@ export default function Sidebar() {
               clickable={clickable}
               planned={mod.status === 'planned'}
               onClick={() => clickable && navigate(mod.route)}
+              onContextMenu={(e) => clickable && openCtxMenu(e, mod.route, mod.label)}
             />
           );
         })}
@@ -431,6 +487,7 @@ export default function Sidebar() {
                   setAdminExpanded((v) => !v);
                 }
               }}
+              onContextMenu={(e) => openCtxMenu(e, adminChildren[0]?.route, 'Settings')}
             />
             {adminExpanded && !collapsed && adminChildren.map((child) => {
               const active = location.pathname.startsWith(child.route);
@@ -438,6 +495,7 @@ export default function Sidebar() {
                 <button
                   key={child.id}
                   onClick={() => navigate(child.route)}
+                  onContextMenu={(e) => openCtxMenu(e, child.route, child.label)}
                   style={{
                     display: 'flex', alignItems: 'center', width: '100%',
                     padding: '6px 12px 6px 44px', borderRadius: 6, border: 'none',
@@ -565,12 +623,104 @@ export default function Sidebar() {
       >
         {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
       </button>
+
+      {/* ── Right-click menu ── */}
+      {ctxMenu && (
+        <ContextMenu
+          menu={ctxMenu}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Right-click menu ─────────────────────────────────────────────
+   position: fixed so it escapes the nav's overflow-y-auto clipping.
+   Flipped back inside the viewport when opened near an edge. */
+function ContextMenu({ menu, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const WIDTH = 190;
+  const HEIGHT = 116;
+  const left = Math.min(menu.x, window.innerWidth - WIDTH - 8);
+  const top = Math.min(menu.y, window.innerHeight - HEIGHT - 8);
+
+  const items = [
+    { label: 'Open in new window', run: () => openInNewWindow(menu.route) },
+    { label: 'Open in new tab', run: () => openInNewTab(menu.route) },
+    {
+      label: copied ? 'Link copied' : 'Copy link',
+      run: () => {
+        navigator.clipboard?.writeText(absoluteUrl(menu.route));
+        setCopied(true);
+      },
+      keepOpen: true,
+    },
+  ];
+
+  return (
+    <div
+      // Stop the window-level mousedown listener closing us before the click lands
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{
+        position: 'fixed',
+        left,
+        top,
+        width: WIDTH,
+        backgroundColor: '#ffffff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 8,
+        boxShadow: '0 8px 24px rgba(15, 23, 42, 0.12)',
+        padding: 4,
+        zIndex: 200,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: "'Outfit', sans-serif",
+          fontSize: 11,
+          color: '#94a3b8',
+          padding: '4px 10px 6px',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {menu.label}
+      </div>
+      {items.map((item) => (
+        <button
+          key={item.label}
+          onClick={() => {
+            item.run();
+            if (!item.keepOpen) onClose();
+          }}
+          style={{
+            display: 'block',
+            width: '100%',
+            textAlign: 'left',
+            padding: '7px 10px',
+            border: 'none',
+            background: 'transparent',
+            borderRadius: 6,
+            cursor: 'pointer',
+            fontFamily: "'Outfit', sans-serif",
+            fontSize: 13,
+            color: '#1e293b',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        >
+          {item.label}
+        </button>
+      ))}
     </div>
   );
 }
 
 /* ─── Nav item sub-component ───────────────────────────────────── */
-function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, beta, hasChevron, chevronOpen, onClick }) {
+function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, beta, hasChevron, chevronOpen, onClick, onContextMenu }) {
   const [hovered, setHovered] = useState(false);
 
   const baseStyle = {
@@ -609,6 +759,7 @@ function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, bet
   return (
     <button
       onClick={onClick}
+      onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={baseStyle}
