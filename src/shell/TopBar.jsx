@@ -25,6 +25,7 @@ const SUBPAGES = [
   { prefix: '/admin/staff', label: 'Staff & Permissions' },
   { prefix: '/admin/portal-clients', label: 'Portal Clients' },
   { prefix: '/admin/connections', label: 'Connections' },
+  { prefix: '/admin/schedules', label: 'Scheduled Jobs' },
   { prefix: '/settings/me', label: 'My Settings' },
   { prefix: '/settings/shortcuts', label: 'Keyboard shortcuts' },
 ];

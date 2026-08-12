@@ -151,6 +151,7 @@ export default function Sidebar() {
     isOwner && { id: 'admin-staff', label: 'Staff & Permissions', route: '/admin/staff' },
     isOwner && { id: 'admin-portal-clients', label: 'Portal Clients', route: '/admin/portal-clients' },
     isOwner && { id: 'admin-connections', label: 'Connections', route: '/admin/connections' },
+    isOwner && { id: 'admin-schedules', label: 'Scheduled Jobs', route: '/admin/schedules' },
     canImport && { id: 'admin-import', label: 'Data Import', route: '/admin/import' },
     // Workflow consolidated into the Work Planner module's Setup area
     // (/planner/setup). Admins reach it from inside Work Planner now.

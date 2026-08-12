@@ -15,6 +15,7 @@ import SecurityPage from './shell/SecurityPage';
 import UserSettingsPage from './shell/UserSettingsPage';
 import PortalClientsPage from './shell/PortalClientsPage';
 import ConnectionsPage from './shell/ConnectionsPage';
+import SchedulesPage from './shell/SchedulesPage';
 import ShortcutsPage from './shell/ShortcutsMap';
 import DataImportModule from './modules/data-import/DataImportModule';
 import SetupModule from './modules/work-planner/setup/SetupModule';
@@ -100,6 +101,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/admin/staff" element={<AdminPage />} />
           <Route path="/admin/portal-clients" element={<PortalClientsPage />} />
           <Route path="/admin/connections" element={<ConnectionsPage />} />
+          {/* What runs on a timer, and when it next fires (sql/223). */}
+          <Route path="/admin/schedules" element={<SchedulesPage />} />
           {/* Settings — personal pages, available to all staff */}
           <Route path="/settings" element={<Navigate to="/settings/me" replace />} />
           <Route path="/settings/me" element={<UserSettingsPage />} />
