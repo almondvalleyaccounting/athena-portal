@@ -150,7 +150,8 @@ export default function StatementView({
               );
             })}
             {variant === 'pnl' && (
-              <KpiFooter outputs={outputs} scopedMap={scopedMap} usingScoped={usingScoped} grouped={grouped} />
+              <KpiFooter outputs={outputs} scopedMap={scopedMap} usingScoped={usingScoped} grouped={grouped}
+                showPremisesKpis={!!onFilterChange} />
             )}
           </tbody>
         </table>
@@ -180,7 +181,7 @@ export default function StatementView({
 
 // ── P&L KPI footer ───────────────────────────────────────────────
 
-function KpiFooter({ outputs, scopedMap, usingScoped, grouped }) {
+function KpiFooter({ outputs, scopedMap, usingScoped, grouped, showPremisesKpis = true }) {
   const get = (nt, periods, aggregate = 'sum') =>
     sumPeriods({ outputs, scopedMap, usingScoped }, nt, periods, aggregate);
 
@@ -237,20 +238,24 @@ function KpiFooter({ outputs, scopedMap, usingScoped, grouped }) {
   const fmtN = (v) => v == null ? '—' : Math.round(v).toLocaleString('en-GB');
   const fmtPerSqft = (v) => v == null ? '—' : '£' + (v / 100).toLocaleString('en-GB', { maximumFractionDigits: 1 });
 
-  const KPI_ROWS = [
-    { key: 'headcount',     label: '# Staff',                      get: r => fmtN(r.headcount) },
-    { key: 'staffPct',      label: 'Staff costs / turnover',       get: r => fmtPctV(r.staffPct) },
+  // Headcount and per-square-foot ratios only mean something on a lens with
+  // staff establishments and premises — on a general cashflow they are all
+  // zero or "—", which reads as broken rather than not-applicable.
+  const ALL_KPI_ROWS = [
+    { key: 'headcount',     label: '# Staff',                      get: r => fmtN(r.headcount), premises: true },
+    { key: 'staffPct',      label: 'Staff costs / turnover',       get: r => fmtPctV(r.staffPct), premises: true },
     { key: 'ebitdaPct',     label: 'EBITDA %',                     get: r => fmtPctV(r.ebitdaPct) },
     { key: 'pbtPct',        label: 'PBT %',                        get: r => fmtPctV(r.pbtPct) },
     { key: 'patPct',        label: 'PAT (NPAT) %',                 get: r => fmtPctV(r.patPct) },
-    { key: 'sqft',          label: 'Total square feet',            get: r => fmtN(r.sqft) },
-    { key: 'sqftLeased',    label: 'Rented square feet',           get: r => fmtN(r.sqftLeased) },
-    { key: 'rentPSF',       label: 'Rent / sq ft (annualised)',    get: r => fmtPerSqft(r.rentPerSqftAnnual) },
-    { key: 'utilPSF',       label: 'Utilities / sq ft',            get: r => fmtPerSqft(r.utilitiesPerSqftAnnual) },
-    { key: 'maintPSF',      label: 'Maintenance / sq ft',          get: r => fmtPerSqft(r.maintenancePerSqftAnnual) },
-    { key: 'costExStaffPSF',label: 'Total non-staff costs / sq ft',get: r => fmtPerSqft(r.totalCostsExStaffPerSqftAnnual) },
-    { key: 'ebitdaPSF',     label: 'EBITDA / sq ft',               get: r => fmtPerSqft(r.ebitdaPerSqftAnnual) },
+    { key: 'sqft',          label: 'Total square feet',            get: r => fmtN(r.sqft), premises: true },
+    { key: 'sqftLeased',    label: 'Rented square feet',           get: r => fmtN(r.sqftLeased), premises: true },
+    { key: 'rentPSF',       label: 'Rent / sq ft (annualised)',    get: r => fmtPerSqft(r.rentPerSqftAnnual), premises: true },
+    { key: 'utilPSF',       label: 'Utilities / sq ft',            get: r => fmtPerSqft(r.utilitiesPerSqftAnnual), premises: true },
+    { key: 'maintPSF',      label: 'Maintenance / sq ft',          get: r => fmtPerSqft(r.maintenancePerSqftAnnual), premises: true },
+    { key: 'costExStaffPSF',label: 'Total non-staff costs / sq ft',get: r => fmtPerSqft(r.totalCostsExStaffPerSqftAnnual), premises: true },
+    { key: 'ebitdaPSF',     label: 'EBITDA / sq ft',               get: r => fmtPerSqft(r.ebitdaPerSqftAnnual), premises: true },
   ];
+  const KPI_ROWS = showPremisesKpis ? ALL_KPI_ROWS : ALL_KPI_ROWS.filter(r => !r.premises);
 
   return (
     <>

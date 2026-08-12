@@ -16,7 +16,7 @@ export const GENERAL_PNL_LINES = [
   { nominal_type: 'pnl.ebitda',         label: 'EBITDA', kind: 'header' },
   { nominal_type: 'pnl.interest_total', label: 'Interest' },
   { nominal_type: 'pnl.pbt',            label: 'Profit before tax', kind: 'header' },
-  { nominal_type: 'pnl.tax_total',      label: 'Corporation Tax' },
+  { nominal_type: 'pnl.tax_total',      label: 'Company tax' },
   { nominal_type: 'pnl.npat',           label: 'Profit after tax', kind: 'header' },
   { nominal_type: 'pnl.dividends',      label: 'Dividends / drawings' },
 ];
@@ -34,7 +34,7 @@ export const GENERAL_CF_LINES = [
   { nominal_type: 'cf.out.paye',           label: 'PAYE / NI / pension', indent: true },
   { nominal_type: 'cf.out.overheads',      label: 'Overheads', indent: true },
   { nominal_type: 'cf.out.vat',            label: 'VAT', indent: true },
-  { nominal_type: 'cf.out.corp_tax',       label: 'Corporation Tax', indent: true },
+  { nominal_type: 'cf.out.corp_tax',       label: 'Company tax', indent: true },
   { nominal_type: 'cf.out.capex',          label: 'Capital spend', indent: true },
   { nominal_type: 'cf.out.interest',       label: 'Loan interest', indent: true },
   { nominal_type: 'cf.out.debt_principal', label: 'Loan repayments', indent: true },
