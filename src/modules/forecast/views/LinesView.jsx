@@ -255,7 +255,8 @@ export default function LinesView({ forecast, scenario, onChanged }) {
       }
       await reload();
       onChanged?.();
-      setNote(`Opening position set from the balance sheet at ${formatDate(op.as_at)} — bank ${fmtP(op.cash_p)}, debtors ${fmtP(op.debtors_p)}, creditors ${fmtP(op.creditors_p)}.`);
+      const warn = (op.warnings || []).length ? ` ${op.warnings.join(' ')}` : '';
+      setNote(`Opening position set from the balance sheet at ${formatDate(op.as_at)} — bank ${fmtP(op.cash_p)}, debtors ${fmtP(op.debtors_p)}, creditors ${fmtP(op.creditors_p)}.${warn}`);
     } catch (e) { setErr(e.message); }
     setBusy(false);
   };
@@ -345,6 +346,9 @@ export default function LinesView({ forecast, scenario, onChanged }) {
                 Start from the actuals at {formatDate(lastPull.opening.as_at)} — bank {fmtP(lastPull.opening.cash_p)},
                 debtors {fmtP(lastPull.opening.debtors_p)}, creditors {fmtP(lastPull.opening.creditors_p)}
               </button>
+              {(lastPull.opening.warnings || []).map((w, i) => (
+                <div key={i} style={{ fontSize: 11, color: colors.amber, marginTop: 6, maxWidth: 720 }}>{w}</div>
+              ))}
             </div>
           )}
         </div>

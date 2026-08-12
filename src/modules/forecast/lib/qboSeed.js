@@ -226,14 +226,33 @@ const toP = (v) => (typeof v === 'number' && isFinite(v) ? Math.round(v * 100) :
  */
 export function openingPositionFrom(bs, asAt) {
   if (!bs) return null;
+  const warnings = [];
   const cash_p = toP(bs.cash);
-  const debtors_p = toP(bs.debtors);
-  const creditors_p = toP(bs.accounts_payable);
+  const rawDebtors = toP(bs.debtors) || 0;
+  const rawCreditors = toP(bs.accounts_payable) || 0;
   const fixed_p = (toP(bs.fixed_assets) || 0) + (toP(bs.other_assets) || 0);
+
+  // A NEGATIVE debtor balance is not a negative asset — it is money held on
+  // account (customers in credit, or income invoiced in advance). Carrying it
+  // as debtors would have the model "collect" it, i.e. pay cash out, in the
+  // first month or two. Park it in other liabilities instead, where it sits
+  // inert, and say so rather than quietly changing the client's figure.
+  const debtors_p = Math.max(0, rawDebtors);
+  const customerCredits = rawDebtors < 0 ? -rawDebtors : 0;
+  if (customerCredits) {
+    warnings.push(`Debtors came back negative (${formatP(rawDebtors)}) — customers in credit or income billed in advance. Treated as a liability, not as cash to collect. Worth checking the client's sales ledger.`);
+  }
+
+  const creditors_p = Math.max(0, rawCreditors);
+  const supplierCredits = rawCreditors < 0 ? -rawCreditors : 0;
+  if (supplierCredits) {
+    warnings.push(`Trade creditors came back negative (${formatP(rawCreditors)}) — treated as nil.`);
+  }
 
   const currentLiab = toP(bs.creditors_within_1yr) || 0;
   const longLiab = toP(bs.creditors_after_1yr) || 0;
-  const other_liabilities_p = Math.max(0, currentLiab + longLiab - (creditors_p || 0));
+  const other_liabilities_p =
+    Math.max(0, currentLiab + longLiab - creditors_p) + customerCredits;
 
   return {
     as_at: asAt,
@@ -243,5 +262,8 @@ export function openingPositionFrom(bs, asAt) {
     fixed_assets_p: fixed_p,
     other_liabilities_p,
     net_assets_p: toP(bs.net_assets ?? bs.equity),
+    warnings,
   };
 }
+
+const formatP = (p) => (p < 0 ? '-' : '') + '£' + Math.abs(p / 100).toLocaleString('en-GB', { maximumFractionDigits: 0 });
