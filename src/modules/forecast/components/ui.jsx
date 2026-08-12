@@ -1,6 +1,7 @@
 // Shared visual primitives — keep the look consistent across views.
 
 import React from 'react';
+import { formatMoney } from '../lib/currency';
 
 export const fontStack = "'Outfit', sans-serif";
 export const serifStack = "'Playfair Display', serif";
@@ -68,19 +69,14 @@ export function Section({ title, right, children }) {
   );
 }
 
-/** Format pence as £X,XXX or £X.XXm depending on size. */
+/**
+ * Format minor units as £X,XXX / $X,XXX / €X,XXX depending on the forecast's
+ * currency (set once by ForecastModule — see lib/currency.js), or X.XXm when
+ * compact. GBP forecasts render exactly as they always did.
+ */
 export function fmtP(p, opts = {}) {
   if (p == null) return '';
-  const gbp = p / 100;
-  if (opts.compact && Math.abs(gbp) >= 1_000_000) {
-    return `£${(gbp / 1_000_000).toFixed(2)}m`;
-  }
-  if (opts.compact && Math.abs(gbp) >= 1_000) {
-    return `£${(gbp / 1_000).toFixed(0)}k`;
-  }
-  const sign = gbp < 0 ? '-' : '';
-  const abs = Math.abs(gbp);
-  return sign + '£' + abs.toLocaleString('en-GB', { maximumFractionDigits: 0 });
+  return formatMoney(p, undefined, opts);
 }
 
 export function fmtPct(x, dp = 1) {

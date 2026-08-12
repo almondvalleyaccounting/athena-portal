@@ -18,6 +18,7 @@ import {
 import { seedLinesFromQbo, listQboConnections, qboConnectionForEntity } from '../lib/qboSeed';
 import { modulesFor } from '../lib/packs';
 import { CATEGORIES, amountForPeriod } from '../lib/modules/pl_lines';
+import { currencySymbol } from '../lib/currency';
 import {
   btnDark, btnGhost, btnOutline, colors, fmtP, inputStyle, selectStyle, Section, Pill,
 } from '../components/ui';
@@ -44,14 +45,14 @@ const ASSUMPTION_GROUPS = [
     keys: ['cash.opening_balance_p', 'wc.debtor_days', 'wc.creditor_days', 'payroll.paye_share_pct'],
   },
   {
-    title: 'VAT',
+    title: 'VAT / sales tax',
     keys: ['vat.registered', 'vat.rate_pct', 'vat.flat_rate_pct', 'vat.stagger',
            'vat.payment_lag_months', 'vat.opening_liability_p', 'vat.opening_due_month'],
   },
   {
-    title: 'Corporation Tax',
-    keys: ['tax.ct_rate_pct', 'tax.year_end_month', 'tax.ct_payment_lag_months',
-           'tax.ct_opening_liability_p', 'tax.ct_opening_due_month'],
+    title: 'Company tax',
+    keys: ['tax.ct_rate_pct', 'tax.year_end_month', 'tax.payment_pattern',
+           'tax.ct_payment_lag_months', 'tax.ct_opening_liability_p', 'tax.ct_opening_due_month'],
   },
   {
     title: 'Distributions',
@@ -236,6 +237,8 @@ export default function LinesView({ forecast, scenario, onChanged }) {
     return totals;
   }, [lines, horizon, forecast.opening_period]);
 
+  const sym = currencySymbol(forecast.currency);
+
   const categoryTotal = (cat) => lines
     .filter(l => l.category === cat && l.is_active !== false)
     .reduce((s, l) => s + (year1[l.id] || 0), 0);
@@ -352,9 +355,9 @@ export default function LinesView({ forecast, scenario, onChanged }) {
                       <Th style={{ minWidth: 200 }}>Line</Th>
                       <Th>Actuals</Th>
                       <Th>Basis</Th>
-                      <Th align="right">Monthly £</Th>
+                      <Th align="right">{`Monthly ${sym}`}</Th>
                       <Th align="right">Uplift %</Th>
-                      <Th align="right">± £/mo</Th>
+                      <Th align="right">{`± ${sym}/mo`}</Th>
                       <Th align="right">Growth %/yr</Th>
                       <Th>VAT</Th>
                       <Th align="right">Lag days</Th>

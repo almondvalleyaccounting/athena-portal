@@ -11,11 +11,12 @@ export async function listForecasts() {
   return data || [];
 }
 
-export async function createForecast({ name, client_name, group_client_name, client_entity_id, vertical_pack, horizon_months = 60, opening_period }) {
+export async function createForecast({ name, client_name, group_client_name, client_entity_id, vertical_pack, horizon_months = 60, opening_period, currency = 'GBP' }) {
   const { data: forecast, error } = await supabase
     .from('fc_forecast')
     .insert({
       name, vertical_pack, horizon_months, opening_period,
+      currency: currency || 'GBP',
       client_name: client_name || null,
       group_client_name: group_client_name || null,
       client_entity_id: client_entity_id || null,
@@ -57,6 +58,7 @@ export async function updateForecast(id, patch) {
   if (patch.client_entity_id !== undefined) next.client_entity_id = patch.client_entity_id || null;
   if (patch.horizon_months !== undefined) next.horizon_months = Number(patch.horizon_months);
   if (patch.opening_period !== undefined) next.opening_period = patch.opening_period;
+  if (patch.currency !== undefined) next.currency = patch.currency || 'GBP';
 
   if (next.horizon_months != null) {
     // Drop outputs / findings beyond the new horizon (period >= horizon).

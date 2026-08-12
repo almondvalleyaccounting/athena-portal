@@ -18,6 +18,8 @@
 // month of the invoice, not the month of payment — because that is what the
 // accrual P&L the lines are seeded from represents. Cash in and out is gross.
 
+import { formatMoney } from '../currency.js';
+
 const DAYS_PER_MONTH = 30.44;
 
 export const generalCoreModule = {
@@ -35,21 +37,22 @@ export const generalCoreModule = {
     // ─── Payroll ───
     { key: 'payroll.paye_share_pct', label: 'PAYE/NI/pension as % of payroll cost (paid a month in arrears)', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 30 },
 
-    // ─── VAT ───
-    { key: 'vat.registered',    label: 'VAT registered (1 = yes, 0 = no)', unit: 'flag', kind: 'scalar', scope: 'group', defaultValue: 1 },
-    { key: 'vat.rate_pct',      label: 'Standard VAT rate %', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 20 },
+    // ─── VAT / sales tax ───
+    { key: 'vat.registered',    label: 'Registered for VAT / sales tax (1 = yes, 0 = no)', unit: 'flag', kind: 'scalar', scope: 'group', defaultValue: 1 },
+    { key: 'vat.rate_pct',      label: 'Standard rate %', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 20 },
     { key: 'vat.flat_rate_pct', label: 'Flat Rate Scheme % (0 = standard scheme)', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 0 },
-    { key: 'vat.stagger',       label: 'VAT quarter stagger (1 = Jan/Apr/Jul/Oct, 2 = Feb/May/Aug/Nov, 3 = Mar/Jun/Sep/Dec)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 3 },
-    { key: 'vat.payment_lag_months', label: 'Months after quarter end that VAT is paid', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
-    { key: 'vat.opening_liability_p', label: 'VAT owed at the start', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
-    { key: 'vat.opening_due_month',   label: 'Month the opening VAT is paid', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 0 },
+    { key: 'vat.stagger',       label: 'Return quarter stagger (1 = Jan/Apr/Jul/Oct, 2 = Feb/May/Aug/Nov, 3 = Mar/Jun/Sep/Dec)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 3 },
+    { key: 'vat.payment_lag_months', label: 'Months after quarter end that it is paid', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
+    { key: 'vat.opening_liability_p', label: 'Owed at the start', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
+    { key: 'vat.opening_due_month',   label: 'Month that opening balance is paid', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 0 },
 
-    // ─── Corporation Tax ───
-    { key: 'tax.ct_rate_pct',           label: 'Corporation Tax rate %', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 25 },
+    // ─── Company income tax (UK Corporation Tax, US federal/state, …) ───
+    { key: 'tax.ct_rate_pct',           label: 'Company tax rate % (UK CT 25, US federal 21)', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 25 },
     { key: 'tax.year_end_month',        label: 'Accounting year-end month (1-12)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 3 },
-    { key: 'tax.ct_payment_lag_months', label: 'Months after year end that CT is paid', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 9 },
-    { key: 'tax.ct_opening_liability_p', label: 'CT owed at the start', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
-    { key: 'tax.ct_opening_due_month',   label: 'Month the opening CT is paid', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 0 },
+    { key: 'tax.payment_pattern',       label: 'Payment pattern (0 = one payment after year end, 1 = quarterly instalments)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 0 },
+    { key: 'tax.ct_payment_lag_months', label: 'Months after year end / quarter that tax is paid', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 9 },
+    { key: 'tax.ct_opening_liability_p', label: 'Tax owed at the start', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
+    { key: 'tax.ct_opening_due_month',   label: 'Month the opening tax is paid', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 0 },
 
     // ─── Distributions ───
     { key: 'div.monthly_p', label: 'Dividends / drawings per month', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
@@ -113,6 +116,7 @@ export const generalCoreModule = {
     const ctRate = r('tax.ct_rate_pct') / 100;
     const yearEndMonth = Math.min(12, Math.max(1, Math.round(r('tax.year_end_month')) || 3));
     const ctLag = Math.max(0, Math.round(r('tax.ct_payment_lag_months')));
+    const ctPattern = Math.round(r('tax.payment_pattern')) === 1 ? 1 : 0;
     const dividendsPm = r('div.monthly_p');
 
     // ── Calendar ────────────────────────────────────────────────────
@@ -239,16 +243,35 @@ export const generalCoreModule = {
       npat[t] = pbt[t] - ctCharge[t];
     }
 
-    // ── Corporation Tax payments ────────────────────────────────────
-    // Each accounting year's charge settles `ctLag` months after the year end.
+    // ── Company tax payments ────────────────────────────────────────
+    // Two patterns, because not every company pays like a UK small company:
+    //   0 — one payment `ctLag` months after the year end (UK CT)
+    //   1 — quarterly instalments: each quarter of the tax year settles
+    //       `ctLag` months after that quarter ends. This approximates US
+    //       estimated payments (due in months 4/6/9/12 of the tax year) and
+    //       UK quarterly instalments for large companies; it is deliberately
+    //       an approximation, not a filing-grade schedule.
     const ctPayment = zeros();
     let ctBucket = 0;
-    for (let t = 0; t < T; t++) {
-      ctBucket += ctCharge[t];
-      if (monthOf(t) === yearEndMonth) {
-        const payAt = t + ctLag;
-        if (payAt >= 0 && payAt < T) ctPayment[payAt] += ctBucket;
-        ctBucket = 0;
+    if (ctPattern === 1) {
+      for (let t = 0; t < T; t++) {
+        ctBucket += ctCharge[t];
+        // Months since the year end define the quarter boundaries.
+        const monthsIntoYear = ((monthOf(t) - yearEndMonth) % 12 + 12) % 12;   // 0 = year end month
+        if (monthsIntoYear % 3 === 0) {
+          const payAt = t + ctLag;
+          if (payAt >= 0 && payAt < T) ctPayment[payAt] += ctBucket;
+          ctBucket = 0;
+        }
+      }
+    } else {
+      for (let t = 0; t < T; t++) {
+        ctBucket += ctCharge[t];
+        if (monthOf(t) === yearEndMonth) {
+          const payAt = t + ctLag;
+          if (payAt >= 0 && payAt < T) ctPayment[payAt] += ctBucket;
+          ctBucket = 0;
+        }
       }
     }
     const openingCt = r('tax.ct_opening_liability_p');
@@ -337,7 +360,7 @@ export const generalCoreModule = {
         severity: 'error',
         code: 'cash.goes_negative',
         period: low[0].period,
-        message: `Bank balance goes negative in month ${low[0].period + 1} and bottoms out at £${(worst.amount_p / 100).toLocaleString('en-GB', { maximumFractionDigits: 0 })} in month ${worst.period + 1}.`,
+        message: `Bank balance goes negative in month ${low[0].period + 1} and bottoms out at ${formatMoney(worst.amount_p, ctx.forecast?.currency)} in month ${worst.period + 1}.`,
       });
     }
 

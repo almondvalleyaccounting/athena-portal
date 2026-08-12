@@ -11,6 +11,7 @@ import { PACKS } from './lib/packs';
 import { btnDark, btnOutline, colors, fontStack, inputStyle, KPI, Pill, selectStyle, serifStack } from './components/ui';
 
 import { lensFor } from './lenses';
+import { CURRENCIES, setActiveCurrency } from './lib/currency';
 import InputsView from './views/InputsView';
 import LinesView from './views/LinesView';
 import CashDashboardView from './views/CashDashboardView';
@@ -63,6 +64,11 @@ export default function ForecastModule() {
   // a childcare forecast and a general cashflow are the same engine wearing
   // different clothes.
   const lens = useMemo(() => lensFor(forecast?.vertical_pack), [forecast?.vertical_pack]);
+
+  // Every fmtP() in every view reads the active currency, so set it during
+  // render — before the children format anything — rather than in an effect,
+  // which would paint one frame of "£" over a dollar forecast.
+  useMemo(() => setActiveCurrency(forecast?.currency), [forecast?.currency]);
 
   // Switching to a forecast on a different lens can leave `tab` pointing at a
   // tab that lens does not have (e.g. Capacities on a cashflow forecast).
@@ -670,6 +676,7 @@ function CreateForecastModal({ onClose, onCreate, existingGroupClients, busy }) 
     vertical_pack: 'childcare_scotland',
     horizon_months: 84,
     start_month: ymThisMonth,           // YYYY-MM
+    currency: 'GBP',
   });
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const submit = () => {
@@ -725,6 +732,11 @@ function CreateForecastModal({ onClose, onCreate, existingGroupClients, busy }) 
               {Object.entries(PACKS).map(([k, p]) => (
                 <option key={k} value={k}>{p.label}</option>
               ))}
+            </select>
+          </Field>
+          <Field label="Currency">
+            <select value={form.currency} onChange={set('currency')} style={{ ...inputStyle, padding: '6px' }}>
+              {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
             </select>
           </Field>
           <Field label="Horizon (months)">
@@ -801,6 +813,7 @@ function EditForecastModal({ forecast, onClose, onSave, existingGroupClients, bu
     client_entity_id: forecast.client_entity_id || null,
     horizon_months: forecast.horizon_months || 60,
     start_month: startMonthFromForecast,
+    currency: forecast.currency || 'GBP',
   });
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const submit = () => {
@@ -816,6 +829,7 @@ function EditForecastModal({ forecast, onClose, onSave, existingGroupClients, bu
       client_entity_id: form.client_entity_id,
       horizon_months: Number(form.horizon_months),
       opening_period: `${form.start_month}-01`,
+      currency: form.currency,
     });
   };
   const horizonShrinking = Number(form.horizon_months) < forecast.horizon_months;
@@ -854,6 +868,11 @@ function EditForecastModal({ forecast, onClose, onSave, existingGroupClients, bu
           </Field>
           <Field label="Start month">
             <input type="month" value={form.start_month} onChange={set('start_month')} style={inputStyle} />
+          </Field>
+          <Field label="Currency">
+            <select value={form.currency} onChange={set('currency')} style={{ ...inputStyle, padding: '6px' }}>
+              {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+            </select>
           </Field>
           <Field label="Vertical pack">
             <input value={forecast.vertical_pack} disabled style={{ ...inputStyle, color: colors.muted }} />
