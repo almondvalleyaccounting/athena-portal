@@ -125,12 +125,12 @@ export default function LinesView({ forecast, scenario, onChanged }) {
         ]);
         if (cancelled) return;
         setConns(all);
-        // Prefer the connection linked to this forecast's client; otherwise
-        // fall back to a name match, which covers duplicate client records
-        // (e.g. "Foursite Inc" vs "Foursite Inc Ltd").
-        const byName = all.find(c =>
-          (c.company_name || '').toLowerCase().startsWith((forecast.client_name || '§').toLowerCase().slice(0, 10)));
-        setRealmId(own?.realm_id || byName?.realm_id || '');
+        // ONLY auto-select the file linked to this forecast's client. Never
+        // guess by name: companies in the same group have near-identical names
+        // ("Foursite Inc" and "Foursite Inc Ltd" are different businesses), and
+        // silently seeding from the wrong set of books is unrecoverable trust
+        // damage. No link ⇒ the user picks.
+        setRealmId(own?.realm_id || '');
       } catch (e) {
         if (!cancelled) setErr(e.message);
       }
@@ -262,6 +262,12 @@ export default function LinesView({ forecast, scenario, onChanged }) {
                   <option key={c.realm_id} value={c.realm_id}>{c.company_name}</option>
                 ))}
               </select>
+              {!realmId && (
+                <div style={{ fontSize: 11, color: colors.amber, marginTop: 4, maxWidth: 260 }}>
+                  {forecast.client_name || 'This client'} has no QuickBooks file linked — choose the right
+                  company yourself.
+                </div>
+              )}
             </Field>
             <Field label="From">
               <input type="date" value={seedStart} onChange={e => setSeedStart(e.target.value)}
