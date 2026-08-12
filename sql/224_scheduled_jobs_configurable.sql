@@ -450,6 +450,26 @@ $$;
 revoke all on function public.set_scheduled_job_claude_settings(text, jsonb) from public, anon;
 grant execute on function public.set_scheduled_job_claude_settings(text, jsonb) to authenticated;
 
+-- ── Who may read a brief / report a run ─────────────────────────────────
+-- An automation reaches Athena over a direct database connection, not
+-- PostgREST: auth.uid() and auth.role() are both null there. session_user
+-- distinguishes it from a browser request (which arrives as 'authenticator'),
+-- and a direct connection already implies full privileges anyway.
+create or replace function public.scheduled_job_caller_allowed()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.is_active_staff()
+      or coalesce(auth.role(), '') = 'service_role'
+      or session_user in ('postgres', 'supabase_admin');
+$$;
+
+revoke all on function public.scheduled_job_caller_allowed() from public, anon;
+grant execute on function public.scheduled_job_caller_allowed() to authenticated, service_role;
+
 -- ── The read side: what an automation asks Athena before it runs ────────
 create or replace function public.scheduled_job_brief(p_job_key text)
 returns jsonb
@@ -467,7 +487,7 @@ declare
   v_flat   jsonb := '{}'::jsonb;
   v_last   jsonb;
 begin
-  if not (public.is_active_staff() or auth.role() = 'service_role') then
+  if not public.scheduled_job_caller_allowed() then
     raise exception 'not authorised';
   end if;
 
@@ -533,7 +553,7 @@ set search_path = public
 as $$
 declare v_id bigint;
 begin
-  if not (public.can_manage_schedules() or auth.role() = 'service_role') then
+  if not (public.can_manage_schedules() or public.scheduled_job_caller_allowed()) then
     raise exception 'not authorised';
   end if;
 

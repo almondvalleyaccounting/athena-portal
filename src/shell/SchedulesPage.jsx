@@ -669,7 +669,7 @@ export default function SchedulesPage() {
                           <p style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.5 }}>
                             Nothing to configure — this job has no switch of its own, so it
                             does its work every time it fires.
-                            {job.gate_label ? ` Gate: ${job.gate_label}.` : ''}
+                            {job.gate_label ? ` Gate: ${job.gate_label.replace(/\.$/, '')}.` : ''}
                           </p>
                         ) : (
                           job.settingList.map((s) => (
