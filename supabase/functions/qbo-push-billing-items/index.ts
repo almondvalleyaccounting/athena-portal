@@ -252,7 +252,16 @@ Deno.serve(async (req) => {
   // its product through this, so an ad-hoc service like "Admin" points at a
   // real QBO item + income account instead of silently auto-creating a
   // catch-all. Loaded once; used by both the dry-run plan and the push.
-  const serviceMap = await loadServiceItemMap(sb);
+  const { map: serviceMap, names: itemNames } = await loadServiceItemMap(sb);
+
+  // Which of these clients are VAT registered. Only needed by the handful of
+  // services that exist as a VAT / non-VAT pair in QBO (see
+  // VAT_VARIANT_SERVICES) — a generic "Bookkeeping" line has to pick one.
+  const vatRegistered = await loadVatRegisteredEntities(
+    sb,
+    [...new Set((items || []).map((i) => (i.entity as Record<string, unknown> | null)?.id as string).filter(Boolean))],
+    itemNames,
+  );
 
   // Dry run: read-only plan for the confirmation summary. No QBO or DB
   // writes. Reports per item whether the customer/item already exist, and
@@ -276,10 +285,18 @@ Deno.serve(async (req) => {
 
       // Each distinct line service must resolve to a QBO item through the
       // map. Anything left over is UNMAPPED and will block the push, so
-      // surface it in the plan. Mirrors resolveQboItemId exactly — no name
-      // lookup, since a same-named item is not evidence of a mapping.
+      // surface it in the plan. Shares resolveItemId with the push, so the
+      // plan can't disagree with what the push will actually do.
+      const isVatReg = vatRegistered.has((entity?.id as string) || "");
       const lineServices = [...new Set(normalizeLines(item).map((l) => l.service))];
-      const unmapped = lineServices.filter((s) => !serviceMap.has(s.toLowerCase().trim()));
+      const unmapped = lineServices.filter((s) => !resolveItemId(s, serviceMap, isVatReg));
+      // Which QBO product each line will actually land on. For a VAT-variant
+      // service that is not the same as the service's own name, so the modal
+      // can show the leaf that was picked rather than the label chosen.
+      const products = lineServices.map((s) => {
+        const id = resolveItemId(s, serviceMap, isVatReg);
+        return { service: s, qbo_item_id: id, qbo_item_name: id ? (itemNames.get(id) || null) : null };
+      });
 
       plan.push({
         billing_item_id: item.id,
@@ -299,6 +316,8 @@ Deno.serve(async (req) => {
         entity_id: (entity?.id as string) || null,
         item_action: unmapped.length ? "unmapped" : "existing",
         unmapped,
+        products,
+        vat_registered: isVatReg,
         // Resolved contact + picker options (mirrors qbo-push contact block).
         has_email: contact.has_email,
         email: contact.email,
@@ -325,7 +344,10 @@ Deno.serve(async (req) => {
   // date. Non-fatal: if it can't be resolved we still set DueDate.
   const salesTermId = await ensureSalesTermId(dueDays);
 
-  const itemCache = new Map<string, string>(); // service name -> QBO item id
+  // service name -> QBO item id. Keyed with the client's VAT flag too: a
+  // VAT-variant service resolves to a different product per client, so a
+  // service-only key would leak the first client's leaf across the batch.
+  const itemCache = new Map<string, string>();
   const results: ItemResult[] = [];
   let sent = 0, created = 0, errored = 0;
 
@@ -429,12 +451,14 @@ Deno.serve(async (req) => {
       //    genuine split, so "10 x £100" invoices as that rather than a flat
       //    £1,000. Ensure a QBO item per distinct service.
       const lines = normalizeLines(item);
+      const isVatReg = vatRegistered.has((entity?.id as string) || "");
       const lineItems: Array<Record<string, unknown>> = [];
       for (const l of lines) {
-        let qboItemId = itemCache.get(l.service);
+        const cacheKey = `${isVatReg ? "vat" : "novat"}|${l.service}`;
+        let qboItemId = itemCache.get(cacheKey);
         if (!qboItemId) {
-          qboItemId = resolveQboItemId(l.service, serviceMap);
-          itemCache.set(l.service, qboItemId);
+          qboItemId = resolveQboItemId(l.service, serviceMap, isVatReg);
+          itemCache.set(cacheKey, qboItemId);
         }
         lineItems.push({
           DetailType: "SalesItemLineDetail",
@@ -1113,16 +1137,49 @@ async function ensureQboCustomer(
 // Load the service → QBO item map (qbo_service_items) once per push. Keyed
 // by BOTH service_id and qbo_item_name (lowercased) so a billing line's
 // service — whether a canonical slug or a product name — finds its item id.
-async function loadServiceItemMap(sb: ReturnType<typeof getServiceClient>): Promise<Map<string, string>> {
+// Also returns item id -> product name, so the dry-run plan can name the
+// product a line will land on (which, for a VAT-variant service, is not the
+// label the line carries).
+async function loadServiceItemMap(
+  sb: ReturnType<typeof getServiceClient>,
+): Promise<{ map: Map<string, string>; names: Map<string, string> }> {
   const map = new Map<string, string>();
+  const names = new Map<string, string>();
   const { data } = await sb.from("qbo_service_items").select("service_id, qbo_item_id, qbo_item_name");
   for (const r of (data as Array<Record<string, unknown>>) || []) {
     const id = r.qbo_item_id != null ? String(r.qbo_item_id) : "";
     if (!id) continue;
     if (r.service_id) map.set(String(r.service_id).toLowerCase().trim(), id);
-    if (r.qbo_item_name) map.set(String(r.qbo_item_name).toLowerCase().trim(), id);
+    if (r.qbo_item_name) {
+      map.set(String(r.qbo_item_name).toLowerCase().trim(), id);
+      names.set(id, String(r.qbo_item_name));
+    }
   }
-  return map;
+  return { map, names };
+}
+
+// Services that exist in QBO as a VAT-registered / non-VAT-registered PAIR,
+// where the generic label alone doesn't say which leaf the revenue belongs on.
+// Keyed by the ambiguous service; the value names the two service ids to pick
+// between. Only the generic label is steered — a line raised explicitly against
+// "Bookkeeping (non-VAT registered)" or "VAT Returns" is a deliberate choice
+// and resolves through the plain map untouched.
+const VAT_VARIANT_SERVICES = new Map<string, { vat: string; novat: string }>([
+  ["bookkeeping", { vat: "bookkeeping_vat", novat: "bookkeeping_novat" }],
+]);
+
+// Resolve a service to its QBO item id, or null if nothing is mapped. For a
+// VAT-variant service the client's VAT status picks the leaf; if that leaf
+// isn't mapped we fall through to the service's own mapping rather than
+// blocking the push.
+function resolveItemId(service: string, serviceMap: Map<string, string>, vatRegistered: boolean): string | null {
+  const key = service.toLowerCase().trim();
+  const variant = VAT_VARIANT_SERVICES.get(key);
+  if (variant) {
+    const leaf = serviceMap.get(vatRegistered ? variant.vat : variant.novat);
+    if (leaf) return leaf;
+  }
+  return serviceMap.get(key) || null;
 }
 
 // Resolve a billing line's service to a real QBO item id through the explicit
@@ -1132,8 +1189,45 @@ async function loadServiceItemMap(sb: ReturnType<typeof getServiceClient>): Prom
 // long after the auto-create was removed. A name collision is not a mapping.
 // The error names the service so the fix (map it at /manage/billing/products)
 // is obvious, and nothing reaches QuickBooks until it's mapped.
-function resolveQboItemId(service: string, serviceMap: Map<string, string>): string {
-  const mapped = serviceMap.get(service.toLowerCase().trim());
+function resolveQboItemId(service: string, serviceMap: Map<string, string>, vatRegistered: boolean): string {
+  const mapped = resolveItemId(service, serviceMap, vatRegistered);
   if (mapped) return mapped;
   throw new Error(`No QuickBooks product mapped for service "${service}". Map it at /manage/billing/products before billing — nothing was created in QuickBooks.`);
+}
+
+// Which of these clients are VAT registered, for the VAT-variant services
+// above. Two signals, either is enough:
+//   1. Athena holds a VAT number for them.
+//   2. They carry a live recurring fee on a "(VAT Registered)" product —
+//      the firm's own standing classification, which holds even when the
+//      VAT number itself never made it into Athena.
+// No evidence either way means not VAT registered: most clients aren't, and
+// the alternative is billing a non-VAT client on the VAT-registered product.
+async function loadVatRegisteredEntities(
+  sb: ReturnType<typeof getServiceClient>,
+  entityIds: string[],
+  itemNames: Map<string, string>,
+): Promise<Set<string>> {
+  const vat = new Set<string>();
+  if (!entityIds.length) return vat;
+
+  const { data: ents } = await sb.from("entities").select("id, vat_number").in("id", entityIds);
+  for (const e of (ents as Array<Record<string, unknown>>) || []) {
+    if (e.vat_number && String(e.vat_number).trim()) vat.add(String(e.id));
+  }
+
+  const remaining = entityIds.filter((id) => !vat.has(id));
+  if (!remaining.length) return vat;
+
+  const vatItemIds = new Set(
+    [...itemNames.entries()].filter(([, name]) => /\(VAT Registered\)/i.test(name)).map(([id]) => id),
+  );
+  if (!vatItemIds.size) return vat;
+
+  const { data: lb } = await sb.from("live_billing").select("entity_id, services").in("entity_id", remaining);
+  for (const row of (lb as Array<Record<string, unknown>>) || []) {
+    const svcs = Array.isArray(row.services) ? (row.services as Array<Record<string, unknown>>) : [];
+    if (svcs.some((s) => vatItemIds.has(String(s?.qbo_item_id || "")))) vat.add(String(row.entity_id));
+  }
+  return vat;
 }
