@@ -20,7 +20,8 @@ import { modulesFor } from '../lib/packs';
 import { CATEGORIES, amountForPeriod } from '../lib/modules/pl_lines';
 import { currencySymbol } from '../lib/currency';
 import {
-  btnDark, btnGhost, btnOutline, colors, fmtP, fontStack, inputStyle, selectStyle, Section, Pill,
+  btnDark, btnGhost, btnOutline, colors, fmtP, fontStack, inputStyle, periodLabel,
+  selectStyle, Section, Pill, serifStack,
 } from '../components/ui';
 
 const METHODS = [
@@ -90,6 +91,37 @@ const endOfLastMonthISO = () => {
 
 const WINDOW_PRESETS = [6, 12, 24];
 
+const CADENCES = [
+  { key: 'monthly',   label: 'Every month' },
+  { key: 'quarterly', label: 'Every 3 months' },
+  { key: 'annual',    label: 'Once a year' },
+];
+
+/** Has this line been moved off plain "settle on the default terms"? */
+function hasCustomTiming(line) {
+  return line.cash_lag_days != null
+    || (line.pay_cadence && line.pay_cadence !== 'monthly')
+    || line.collect_cap_p != null
+    || line.collect_pct != null
+    || line.arrears_settle_month != null;
+}
+
+/** Short human description of a line's cash timing, for the grid cell. */
+function timingSummary(line, openingPeriod, { long = false } = {}) {
+  if (line.category === 'payroll') return long ? 'Payroll follows the wages / PAYE split in Assumptions' : 'wages + PAYE';
+  const bits = [];
+  if (line.cash_lag_days != null) bits.push(`${line.cash_lag_days}d`);
+  if (line.pay_cadence === 'quarterly') bits.push('quarterly');
+  if (line.pay_cadence === 'annual') bits.push('yearly');
+  if (line.collect_cap_p != null) bits.push(`≤ ${fmtP(line.collect_cap_p)}/mo`);
+  else if (line.collect_pct != null) bits.push(`${line.collect_pct}% a month`);
+  if (line.arrears_settle_month != null) {
+    bits.push(`→ ${periodLabel(Number(line.arrears_settle_month), openingPeriod)}`);
+  }
+  if (bits.length === 0) return long ? 'Settles on the default terms' : 'default';
+  return bits.join(' · ');
+}
+
 export default function LinesView({ forecast, scenario, onChanged }) {
   const [lines, setLines] = useState([]);
   const [drivers, setDrivers] = useState([]);
@@ -99,6 +131,8 @@ export default function LinesView({ forecast, scenario, onChanged }) {
   const [note, setNote] = useState(null);
 
   // Seed controls
+  const [timingLine, setTimingLine] = useState(null);
+
   const [conns, setConns] = useState([]);
   const [realmId, setRealmId] = useState('');
   const [seedStart, setSeedStart] = useState(monthsAgoISO(12));
@@ -293,6 +327,15 @@ export default function LinesView({ forecast, scenario, onChanged }) {
 
   return (
     <div>
+      {timingLine && (
+        <TimingModal
+          line={timingLine}
+          forecast={forecast}
+          busy={busy}
+          onClose={() => setTimingLine(null)}
+          onSave={async (patch) => { await saveLine(timingLine, patch); setTimingLine(null); }}
+        />
+      )}
       {err && (
         <div style={{ padding: 12, background: '#fef2f2', border: `1px solid ${colors.red}`,
           borderRadius: 8, color: colors.red, fontSize: 13, marginBottom: 16 }}>{err}</div>
@@ -423,7 +466,7 @@ export default function LinesView({ forecast, scenario, onChanged }) {
                       <Th align="right">{`± ${sym}/mo`}</Th>
                       <Th align="right">Growth %/yr</Th>
                       <Th>VAT</Th>
-                      <Th align="right">Lag days</Th>
+                      <Th>Cash timing</Th>
                       <Th align="right">Year 1</Th>
                       <Th />
                     </tr>
@@ -431,7 +474,9 @@ export default function LinesView({ forecast, scenario, onChanged }) {
                   <tbody>
                     {rows.map(line => (
                       <LineRow key={line.id} line={line} year1={year1[line.id] || 0}
+                        openingPeriod={forecast.opening_period}
                         onSave={(patch) => saveLine(line, patch)}
+                        onEditTiming={() => setTimingLine(line)}
                         onDelete={() => removeLine(line)} disabled={busy} />
                     ))}
                   </tbody>
@@ -441,6 +486,146 @@ export default function LinesView({ forecast, scenario, onChanged }) {
           </Section>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Cash timing for one line: when the money moves, how often, and how much of
+ * it. Kept in a dialog rather than four more grid columns — most lines never
+ * need it, and the ones that do deserve the room to explain themselves.
+ */
+function TimingModal({ line, forecast, onClose, onSave, busy }) {
+  const horizon = forecast.horizon_months || 24;
+  const [form, setForm] = useState({
+    cash_lag_days: line.cash_lag_days == null ? '' : String(line.cash_lag_days),
+    pay_cadence: line.pay_cadence || 'monthly',
+    cadence_offset: String(line.cadence_offset ?? 0),
+    collect_cap_p: line.collect_cap_p == null ? '' : String(Number(line.collect_cap_p) / 100),
+    collect_pct: line.collect_pct == null ? '' : String(line.collect_pct),
+    arrears_settle_month: line.arrears_settle_month == null ? '' : String(line.arrears_settle_month),
+  });
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const capSet = form.collect_cap_p !== '' && Number(form.collect_cap_p) > 0;
+  const months = Array.from({ length: horizon }, (_, t) => t);
+  const cycle = form.pay_cadence === 'annual' ? 12 : 3;
+
+  const submit = () => {
+    const num = (v) => (v === '' ? null : Number(v));
+    onSave({
+      cash_lag_days: num(form.cash_lag_days),
+      pay_cadence: form.pay_cadence,
+      cadence_offset: Number(form.cadence_offset) || 0,
+      collect_cap_p: form.collect_cap_p === '' ? null : Math.round(Number(form.collect_cap_p) * 100),
+      // A cap wins, so don't store a percentage that could never apply.
+      collect_pct: capSet ? null : num(form.collect_pct),
+      arrears_settle_month: num(form.arrears_settle_month),
+    });
+  };
+
+  const isIncome = line.category === 'income';
+  const party = isIncome ? 'customer' : 'supplier';
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 60,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: '#fff', borderRadius: 14, padding: 22, width: 520, maxWidth: '100%',
+        maxHeight: '90vh', overflowY: 'auto', fontFamily: fontStack,
+      }}>
+        <h2 style={{ fontFamily: serifStack, fontSize: 20, fontWeight: 500, color: colors.ink, margin: '0 0 4px' }}>
+          Cash timing
+        </h2>
+        <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 18px' }}>
+          {line.label} — when the cash moves. The P&amp;L is unaffected: this changes
+          payment, not the invoice.
+        </p>
+
+        {line.category === 'payroll' ? (
+          <p style={{ fontSize: 13, color: colors.inkSoft, background: colors.bgSoft, padding: 12, borderRadius: 8 }}>
+            Payroll cash follows the wages / PAYE split set in Assumptions — net pay in the
+            month, PAYE and NI a month behind. Nothing to set per line.
+          </p>
+        ) : (
+          <>
+            <Labelled label="Payment terms"
+              hint={`Days before the ${party} settles. Blank uses the ${isIncome ? 'debtor' : 'creditor'} days in Assumptions.`}>
+              <input value={form.cash_lag_days} onChange={set('cash_lag_days')} placeholder="default"
+                inputMode="decimal" style={{ ...inputStyle, width: 120 }} />
+            </Labelled>
+
+            <Labelled label="Pays" hint={`How often the money actually moves. The cost or sale still lands every month.`}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select value={form.pay_cadence} onChange={set('pay_cadence')} style={{ ...selectStyle, minWidth: 150 }}>
+                  {CADENCES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                </select>
+                {form.pay_cadence !== 'monthly' && (
+                  <>
+                    <span style={{ fontSize: 12, color: colors.muted }}>first in</span>
+                    <select value={form.cadence_offset} onChange={set('cadence_offset')} style={{ ...selectStyle, minWidth: 120 }}>
+                      {Array.from({ length: cycle }, (_, i) => (
+                        <option key={i} value={i}>{periodLabel(i, forecast.opening_period)}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+              </div>
+            </Labelled>
+
+            <div style={{ borderTop: `1px solid ${colors.border}`, margin: '18px 0 14px' }} />
+            <div style={{ fontSize: 12, fontWeight: 700, color: colors.inkSoft, marginBottom: 10,
+              textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              Part payment
+            </div>
+
+            <Labelled label="Most per month"
+              hint={`The ${party} settles at most this much a month; the rest builds up.`}>
+              <input value={form.collect_cap_p} onChange={set('collect_cap_p')} placeholder="no limit"
+                inputMode="decimal" style={{ ...inputStyle, width: 140 }} />
+            </Labelled>
+
+            <Labelled label="or share per month"
+              hint={capSet ? 'Ignored while a monthly limit is set.' : 'Share of each invoice settled on time, e.g. 70.'}>
+              <input value={form.collect_pct} onChange={set('collect_pct')} placeholder="100"
+                disabled={capSet} inputMode="decimal"
+                style={{ ...inputStyle, width: 100, background: capSet ? colors.bgSoft : '#fff' }} />
+            </Labelled>
+
+            <Labelled label="Balance settles"
+              hint="Everything outstanding arrives in this month, and the line settles in full from then on.">
+              <select value={form.arrears_settle_month} onChange={set('arrears_settle_month')}
+                style={{ ...selectStyle, minWidth: 190 }}>
+                <option value="">keep building</option>
+                {months.map(t => (
+                  <option key={t} value={t}>{periodLabel(t, forecast.opening_period)}</option>
+                ))}
+              </select>
+            </Labelled>
+          </>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+          <button onClick={onClose} style={{ ...btnOutline, flex: 1, justifyContent: 'center' }}>Cancel</button>
+          {line.category !== 'payroll' && (
+            <button onClick={submit} disabled={busy} style={{ ...btnDark, flex: 1, justifyContent: 'center' }}>
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Labelled({ label, hint, children }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: colors.ink, marginBottom: 4 }}>{label}</div>
+      {children}
+      {hint && <div style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>{hint}</div>}
     </div>
   );
 }
@@ -507,7 +692,7 @@ function DriverRow({ driver, value, onSave, disabled }) {
   );
 }
 
-function LineRow({ line, year1, onSave, onDelete, disabled }) {
+function LineRow({ line, year1, openingPeriod, onSave, onEditTiming, onDelete, disabled }) {
   const actuals = line.actuals?.amounts_p || [];
   const seedMonths = line.actuals?.months || [];
   const inactive = line.is_active === false;
@@ -554,10 +739,17 @@ function LineRow({ line, year1, onSave, onDelete, disabled }) {
           {VAT_TREATMENTS.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
         </select>
       </Td>
-      <Td align="right">
-        <NumCell value={line.cash_lag_days == null ? '' : Number(line.cash_lag_days)}
-          onSave={v => onSave({ cash_lag_days: v === '' ? null : v })}
-          placeholder="default" disabled={disabled} width={70} allowBlank />
+      <Td>
+        <button onClick={onEditTiming} disabled={disabled}
+          title={timingSummary(line, openingPeriod, { long: true })}
+          style={{
+            ...btnGhost, padding: '3px 8px', fontSize: 11, maxWidth: 190,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            color: hasCustomTiming(line) ? colors.accent : colors.muted,
+            borderColor: hasCustomTiming(line) ? colors.accent : colors.border,
+          }}>
+          {timingSummary(line, openingPeriod)}
+        </button>
       </Td>
       <Td align="right" style={{ fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap' }}>
         {fmtP(year1)}

@@ -22,6 +22,65 @@ import { formatMoney } from '../currency.js';
 
 const DAYS_PER_MONTH = 30.44;
 
+/**
+ * Bunch a monthly stream into a quarterly or annual payment.
+ *
+ * Amounts accumulate and are released at `offset`, then every cycle after it —
+ * so a developer invoicing monthly but paid quarterly costs the P&L every
+ * month while the cash leaves in one lump every third. Anything still in the
+ * bucket at the horizon stays unpaid, which is correct: it is a creditor the
+ * forecast has not yet reached.
+ */
+export function applyCadence(due, { cadence, offset }, T) {
+  if (!cadence || cadence === 'monthly') return due;
+  const cycle = cadence === 'annual' ? 12 : 3;
+  const off = ((Number(offset) || 0) % cycle + cycle) % cycle;
+  const out = new Array(T).fill(0);
+  let bucket = 0;
+  for (let t = 0; t < T; t++) {
+    bucket += due[t];
+    if (t >= off && (t - off) % cycle === 0) { out[t] = bucket; bucket = 0; }
+  }
+  return out;
+}
+
+/**
+ * Part-payment: settle up to a cap (or a share) each month, let the rest build
+ * as arrears, and clear the lot from the settlement month onwards.
+ *
+ * The cap applies to what is available — this month's due PLUS anything
+ * already outstanding — so a light month naturally catches up on arrears
+ * rather than leaving them stranded. A percentage applies to the month's own
+ * due only, which is what "they pay 70% of each invoice" means.
+ */
+export function applyArrears(due, { capP, pct, settleMonth }, T) {
+  const hasCap = capP != null && Number(capP) > 0;
+  const hasPct = !hasCap && pct != null && Number(pct) < 100;
+  if (!hasCap && !hasPct) return due;
+
+  const cap = Number(capP), share = Number(pct) / 100;
+  const settle = settleMonth == null ? null : Number(settleMonth);
+  const paid = new Array(T).fill(0);
+  let arrears = 0;
+
+  for (let t = 0; t < T; t++) {
+    const available = due[t] + arrears;
+    let p;
+    if (settle != null && t >= settle) {
+      // The plan is over: clear everything outstanding and settle in full.
+      p = available;
+    } else if (hasCap) {
+      p = Math.min(available, cap);
+    } else {
+      p = due[t] * share;
+    }
+    p = Math.max(0, Math.min(p, available));
+    paid[t] = p;
+    arrears = available - p;
+  }
+  return paid;
+}
+
 export const generalCoreModule = {
   key: 'general_core',
   pack: ['general_cashflow'],
@@ -159,14 +218,28 @@ export const generalCoreModule = {
     const outputVat = zeros(), inputVat = zeros();
 
     // Per-LINE cash, so the cashflow statement can show the same lines the
-    // user edits on the Lines tab rather than four opaque totals.
-    // Map: line_id -> { label, category, series }
+    // user edits on the Lines tab rather than four opaque totals — and so each
+    // line's own cash timing (cadence, cap, arrears) can be applied to it
+    // before anything is added up.
+    // Map: line_id -> { label, category, due[], timing }
     const byLine = new Map();
     const lineSeries = (row) => {
       const id = row.tags?.line_id || row.line_label;
       let entry = byLine.get(id);
       if (!entry) {
-        entry = { id, label: row.line_label, category: row.tags?.category || 'overheads', cash: zeros() };
+        entry = {
+          id, label: row.line_label,
+          category: row.tags?.category || 'overheads',
+          due: zeros(),           // gross cash owed, after the lag
+          cash: zeros(),          // signed cash actually moving, after timing
+          timing: {
+            cadence: row.tags?.cadence || 'monthly',
+            offset: Number(row.tags?.cadence_offset) || 0,
+            capP: row.tags?.cap_p ?? null,
+            pct: row.tags?.collect_pct ?? null,
+            settleMonth: row.tags?.settle_month ?? null,
+          },
+        };
         byLine.set(id, entry);
       }
       return entry;
@@ -196,9 +269,7 @@ export const generalCoreModule = {
         revenue[t] += amt;
         const vat = vatable ? amt * vatRate : 0;
         outputVat[t] += vat;
-        const lag = lineLag == null ? debtorDays : lineLag;
-        spread(receipts, t, amt + vat, lag);
-        spread(entry.cash, t, amt + vat, lag);
+        spread(entry.due, t, amt + vat, lineLag == null ? debtorDays : lineLag);
       } else if (cat === 'payroll') {
         // No VAT on wages, and the cash split is the PAYE timing below.
         payroll[t] += amt;
@@ -211,10 +282,33 @@ export const generalCoreModule = {
         // capital-goods exception above £2,000 is not modelled).
         if (!onFrs) inputVat[t] += vat;
         const lag = lineLag == null ? creditorDays : lineLag;
-        if (cat === 'cost_of_sales') { cos[t] += amt; spread(payCos, t, amt + vat, lag); }
-        else if (cat === 'capex')    { capex[t] += amt; spread(payCapex, t, amt + vat, lag); }
-        else                         { overheads[t] += amt; spread(payOverheads, t, amt + vat, lag); }
-        spread(entry.cash, t, -(amt + vat), lag);
+        if (cat === 'cost_of_sales') cos[t] += amt;
+        else if (cat === 'capex') capex[t] += amt;
+        else overheads[t] += amt;
+        spread(entry.due, t, amt + vat, lag);
+      }
+    }
+
+    // ── Per-line cash timing ────────────────────────────────────────
+    // What is owed after the lag is not always what moves. Two transforms,
+    // applied in this order because bunching happens before any cap bites:
+    //   cadence — a quarterly-paid supplier: accumulate, release on cycle
+    //   arrears — part-payment: pay up to a cap (or a share), the rest builds
+    //             until the settlement month clears it
+    // Payroll is excluded from both: wages and PAYE have their own statutory
+    // timing, already handled above.
+    for (const entry of byLine.values()) {
+      if (entry.category === 'payroll') continue;
+      const afterCadence = applyCadence(entry.due, entry.timing, T);
+      const paid = applyArrears(afterCadence, entry.timing, T);
+      const sign = entry.category === 'income' ? 1 : -1;
+      const target = entry.category === 'income' ? receipts
+        : entry.category === 'cost_of_sales' ? payCos
+        : entry.category === 'capex' ? payCapex
+        : payOverheads;
+      for (let t = 0; t < T; t++) {
+        target[t] += paid[t];
+        entry.cash[t] += sign * paid[t];
       }
     }
 

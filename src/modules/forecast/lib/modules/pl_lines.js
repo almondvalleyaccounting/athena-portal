@@ -118,9 +118,16 @@ export const plLinesModule = {
         line_id: line.id,
         category: line.category,
         vat: line.vat_treatment || 'standard',
-        // null lag means "use the category default" — resolved in cashflow_core,
+        // null lag means "use the category default" — resolved in general_core,
         // which is the only place that knows the driver values.
         lag_days: line.cash_lag_days == null ? null : Number(line.cash_lag_days),
+        // Cash timing beyond the lag: how often the money actually moves, and
+        // how much of it moves when it does.
+        cadence: line.pay_cadence || 'monthly',
+        cadence_offset: Number(line.cadence_offset) || 0,
+        cap_p: line.collect_cap_p == null ? null : Number(line.collect_cap_p),
+        collect_pct: line.collect_pct == null ? null : Number(line.collect_pct),
+        settle_month: line.arrears_settle_month == null ? null : Number(line.arrears_settle_month),
       };
 
       for (const t of ctx.periods) {
