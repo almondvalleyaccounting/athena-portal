@@ -20,7 +20,7 @@ import { modulesFor } from '../lib/packs';
 import { CATEGORIES, amountForPeriod } from '../lib/modules/pl_lines';
 import { currencySymbol } from '../lib/currency';
 import {
-  btnDark, btnGhost, btnOutline, colors, fmtP, inputStyle, selectStyle, Section, Pill,
+  btnDark, btnGhost, btnOutline, colors, fmtP, fontStack, inputStyle, selectStyle, Section, Pill,
 } from '../components/ui';
 
 const METHODS = [
@@ -71,16 +71,24 @@ const formatDate = (iso) => {
   return isNaN(d) ? iso : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+// Local date → YYYY-MM-DD. NOT toISOString(): that converts local midnight to
+// UTC, so through BST "1 Feb" came back as "31 Jan" and every seed window
+// started a day early.
+const isoDate = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 const monthsAgoISO = (n) => {
   const d = new Date();
   d.setMonth(d.getMonth() - n, 1);
-  return d.toISOString().slice(0, 10);
+  return isoDate(d);
 };
 const endOfLastMonthISO = () => {
   const d = new Date();
-  d.setDate(0);
-  return d.toISOString().slice(0, 10);
+  d.setDate(0);            // day 0 of this month = last day of the previous one
+  return isoDate(d);
 };
+
+const WINDOW_PRESETS = [6, 12, 24];
 
 export default function LinesView({ forecast, scenario, onChanged }) {
   const [lines, setLines] = useState([]);
@@ -312,6 +320,23 @@ export default function LinesView({ forecast, scenario, onChanged }) {
                 </div>
               )}
             </Field>
+            <Field label="Window">
+              <div style={{ display: 'flex', gap: 4 }}>
+                {WINDOW_PRESETS.map(n => {
+                  const active = seedStart === monthsAgoISO(n) && seedEnd === endOfLastMonthISO();
+                  return (
+                    <button key={n} disabled={busy}
+                      onClick={() => { setSeedStart(monthsAgoISO(n)); setSeedEnd(endOfLastMonthISO()); }}
+                      style={{
+                        padding: '7px 12px', fontSize: 12, fontFamily: fontStack, cursor: 'pointer',
+                        borderRadius: 6, border: `1px solid ${active ? colors.ink : colors.border}`,
+                        background: active ? colors.ink : '#fff',
+                        color: active ? '#fff' : colors.inkSoft, fontWeight: active ? 600 : 400,
+                      }}>{n}m</button>
+                  );
+                })}
+              </div>
+            </Field>
             <Field label="From">
               <input type="date" value={seedStart} onChange={e => setSeedStart(e.target.value)}
                 style={{ ...inputStyle, width: 150 }} />
@@ -329,12 +354,6 @@ export default function LinesView({ forecast, scenario, onChanged }) {
             <button onClick={runSeed} disabled={busy} style={btnDark}>
               {busy ? 'Pulling…' : 'Pull from QuickBooks'}
             </button>
-            {[6, 12, 24].map(n => (
-              <button key={n} style={btnGhost} disabled={busy}
-                onClick={() => { setSeedStart(monthsAgoISO(n)); setSeedEnd(endOfLastMonthISO()); }}>
-                Last {n}m
-              </button>
-            ))}
           </div>
           <p style={{ fontSize: 12, color: colors.muted, margin: '10px 0 0' }}>
             Every nominal account with activity becomes a line. Re-seeding refreshes the actuals and the
