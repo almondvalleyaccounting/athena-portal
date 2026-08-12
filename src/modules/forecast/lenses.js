@@ -45,6 +45,7 @@ const FULL_LENS = {
 const GENERAL_CASHFLOW_LENS = {
   tabs: [
     { key: 'lines',     label: 'Lines & assumptions' },
+    { key: 'lending',   label: 'Lending' },
     { key: 'cash',      label: 'Cash dashboard' },
     { key: 'cf',        label: 'Cashflow' },
     { key: 'pnl',       label: 'P&L' },

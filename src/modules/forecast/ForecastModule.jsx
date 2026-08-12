@@ -15,6 +15,7 @@ import { CURRENCIES, setActiveCurrency } from './lib/currency';
 import InputsView from './views/InputsView';
 import LinesView from './views/LinesView';
 import LedgerView from './views/LedgerView';
+import LoansPanel from './views/LoansPanel';
 import CashDashboardView from './views/CashDashboardView';
 import OverviewView from './views/OverviewView';
 import PnlByBandView from './views/PnlByBandView';
@@ -406,6 +407,16 @@ export default function ForecastModule() {
             )}
             {tab === 'cash' && (
               <CashDashboardView outputs={outputs} forecast={forecast} periods={periods} />
+            )}
+            {tab === 'lending' && (
+              <div>
+                <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 14px', maxWidth: 720 }}>
+                  Loans and director's money. Drawdown lands as cash in on the start month;
+                  interest hits the P&amp;L and repayments the cashflow, and the outstanding
+                  balance carries on the balance sheet.
+                </p>
+                <LoansPanel scenarioId={scenario.id} onChanged={onRecompute} />
+              </div>
             )}
             {tab === 'inputs' && (
               <InputsView forecast={forecast} scenario={scenario}

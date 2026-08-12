@@ -113,6 +113,12 @@ export default function LedgerView({
   const sumRow = (nominal, t) => summary[nominal]?.[t] ?? 0;
 
   // ── Editing ─────────────────────────────────────────────────────
+  // Only the P&L is editable. An override sets what was INVOICED that month;
+  // cash is that invoice put through the line's payment terms, so letting a
+  // cashflow cell write one would silently rewrite revenue — a receipt
+  // includes VAT and can carry months of arrears with it.
+  const editable = isPnl;
+
   const saveOverride = async (line, period, valuePounds) => {
     setBusy(true); setErr(null);
     try {
@@ -125,7 +131,10 @@ export default function LedgerView({
       onChanged?.();
     } catch (e) { setErr(e.message); }
     setBusy(false);
-    setEditing(null);
+    // Close only the cell we just saved. Clicking straight into another cell
+    // opens it BEFORE this save finishes; clearing unconditionally slammed
+    // that one shut again, so the next thing typed went nowhere.
+    setEditing(cur => (cur && cur.lineId === line.id && cur.period === period) ? null : cur);
   };
 
   const categories = CATEGORY_ORDER
@@ -217,12 +226,11 @@ export default function LedgerView({
                     actualValues={actualByLine.get(line.id) || {}}
                     periods={periods}
                     values={forecastByLine.get(line.id) || {}}
-                    isPnl={isPnl}
+                    editable={editable}
                     editing={editing && editing.lineId === line.id ? editing.period : null}
                     onStartEdit={(t) => setEditing({ lineId: line.id, period: t })}
                     onCancel={() => setEditing(null)}
                     onSave={(t, v) => saveOverride(line, t, v)}
-                    busy={busy}
                   />
                 ))}
                 <SubtotalRow
@@ -268,7 +276,7 @@ export default function LedgerView({
       <p style={{ fontSize: 11, color: colors.muted, marginTop: 8 }}>
         {isPnl
           ? 'Overridden months show a dot; click the dot to put the month back on its projection.'
-          : 'Each line is the cash effect of the matching P&L line after its payment lag — receipts include VAT, and payroll splits into net pay and PAYE.'}
+          : 'Each line is the cash effect of the matching P&L line after its payment terms — receipts include VAT, payroll splits into net pay and PAYE, and a line on a quarterly cadence or a payment cap moves when its terms say. These figures are not edited directly: change the invoice on the P&L tab, or the terms under Cash timing on Lines & assumptions.'}
       </p>
     </div>
   );
@@ -276,7 +284,7 @@ export default function LedgerView({
 
 /* ── Rows ───────────────────────────────────────────────────────── */
 
-function LineRow({ line, actuals, actualValues, periods, values, isPnl, editing, onStartEdit, onCancel, onSave, busy }) {
+function LineRow({ line, actuals, actualValues, periods, values, editable, editing, onStartEdit, onCancel, onSave }) {
   const overrides = line.overrides || {};
   const inactive = line.is_active === false;
   const total = periods.reduce((s, t) => s + (values[t] || 0), 0);
@@ -288,7 +296,8 @@ function LineRow({ line, actuals, actualValues, periods, values, isPnl, editing,
         {inactive && <span style={{ color: colors.amber, marginLeft: 6, fontSize: 10 }}>excluded</span>}
       </td>
       {actuals.map(m => (
-        <td key={m} style={{ ...tdBase, ...numTd, background: '#f8fafc', color: colors.inkSoft }}>
+        <td key={m} title="Actual, from QuickBooks — not editable"
+          style={{ ...tdBase, ...numTd, background: '#f8fafc', color: colors.inkSoft, cursor: 'default' }}>
           {actualValues[m] != null ? fmtP(actualValues[m]) : ''}
         </td>
       ))}
@@ -306,18 +315,23 @@ function LineRow({ line, actuals, actualValues, periods, values, isPnl, editing,
             </td>
           );
         }
+        const canEdit = editable && !inactive;
         return (
           <td key={t}
-            onClick={() => !busy && !inactive && onStartEdit(t)}
-            title={inactive ? 'This line is excluded' : 'Click to set this month'}
+            onClick={() => canEdit && onStartEdit(t)}
+            title={
+              inactive ? 'This line is excluded'
+                : editable ? 'Click to set what is invoiced this month'
+                  : 'Cash follows the invoice and this line’s payment terms — edit the amount on the P&L tab, or the timing on Lines & assumptions'
+            }
             style={{
-              ...tdBase, ...numTd, cursor: inactive ? 'default' : 'text',
+              ...tdBase, ...numTd, cursor: canEdit ? 'text' : 'default',
               borderLeft: t === 0 && actuals.length ? `2px solid ${colors.accent}` : undefined,
               background: overridden ? '#eff6ff' : undefined,
               fontWeight: overridden ? 600 : 400,
             }}>
             {fmtP(value)}
-            {overridden && (
+            {overridden && editable && (
               <span
                 onClick={(e) => { e.stopPropagation(); onSave(t, null); }}
                 title="Put this month back on its projection"
