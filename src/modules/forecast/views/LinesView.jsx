@@ -104,11 +104,19 @@ export default function LinesView({ forecast, scenario, onChanged }) {
       setErr(null);
       try {
         let dv = await loadScenarioDrivers(scenario.id);
-        // First visit: create the assumption drivers from the module spec.
-        if (!dv.drivers.some(d => d.module_key === 'general_core')) {
+        // Seed the assumption drivers on first visit — and again whenever the
+        // module spec has gained one. Driver rows carry their own label, so a
+        // scenario created before a driver existed would never see it, and
+        // relabelled drivers would keep the old wording forever. seedPackDefaults
+        // upserts the rows and only fills values that are missing, so existing
+        // answers are safe.
+        const mods = modulesFor(forecast.vertical_pack);
+        const specKeys = mods.flatMap(m => (m.drivers || []).map(d => d.key));
+        const haveKeys = new Set(dv.drivers.map(d => d.driver_key));
+        if (specKeys.some(k => !haveKeys.has(k))) {
           await seedPackDefaults({
             scenario_id: scenario.id,
-            modules: modulesFor(forecast.vertical_pack),
+            modules: mods,
             entities: [],
             vertical_pack: forecast.vertical_pack,
           });
