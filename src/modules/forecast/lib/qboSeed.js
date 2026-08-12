@@ -15,6 +15,31 @@ import { supabase } from '../../../lib/supabase';
 /** Accounts whose name says "this is people cost" rather than a general overhead. */
 const PAYROLL_RE = /(wage|salar|payroll|p\.?a\.?y\.?e|national insurance|employer'?s? ni|pension|staff cost|remunerat|subcontractor|sub-contractor)/i;
 
+/**
+ * Accounts the MODEL already produces, or that are not operating costs at all.
+ * Seeding these as overheads would be doubly wrong: dividends are an
+ * appropriation of profit rather than a cost, and corporation tax and loan
+ * interest are computed by general_core and the loans module respectively —
+ * carrying them as cost lines too would double-count them.
+ *
+ * They are still seeded (so nothing silently disappears) but switched OFF,
+ * with a note saying why. Turning one back on is one click.
+ */
+const BELOW_THE_LINE = [
+  { re: /(corporation tax|income tax provision|tax provision|deferred tax)/i,
+    why: 'Excluded — the model calculates company tax from the forecast profit.' },
+  { re: /(dividend|drawings)/i,
+    why: 'Excluded — dividends are set in the Distributions assumption, not as a cost.' },
+  { re: /(interest payable|loan interest|bank interest paid|finance charge)/i,
+    why: 'Excluded — loan interest comes from the loans you set up.' },
+  { re: /(depreciation|amortisation|amortization)/i,
+    why: 'Excluded — a non-cash charge; capital spend is modelled directly.' },
+];
+
+function belowTheLine(name) {
+  return BELOW_THE_LINE.find(b => b.re.test(name || '')) || null;
+}
+
 /** QBO report section → our generic category. */
 function categoryFor(group, accountName) {
   switch (group) {
@@ -140,6 +165,7 @@ export async function seedLinesFromQbo({ realmId, start, end, defaultMethod = 'a
     const avg = months.length ? total / months.length : 0;
     const last = a.amounts_p[a.amounts_p.length - 1] || 0;
     const category = categoryFor(a.qbo_group, a.qbo_account_name);
+    const excluded = belowTheLine(a.qbo_account_name);
     return {
       category,
       label: a.qbo_account_name,
@@ -154,9 +180,10 @@ export async function seedLinesFromQbo({ realmId, start, end, defaultMethod = 'a
       growth_pct_pa: 0,
       // Wages are outside the scope of VAT; everything else starts standard-rated
       // and can be changed per line (insurance, bank charges, rent…).
-      vat_treatment: category === 'payroll' ? 'outside' : 'standard',
+      vat_treatment: category === 'payroll' || excluded ? 'outside' : 'standard',
       sort_order: (i + 1) * 10,
-      is_active: true,
+      is_active: !excluded,
+      notes: excluded ? excluded.why : null,
     };
   });
 

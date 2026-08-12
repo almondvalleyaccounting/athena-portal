@@ -461,6 +461,9 @@ function LineRow({ line, year1, onSave, onDelete, disabled }) {
     <tr style={{ opacity: inactive ? 0.45 : 1 }}>
       <Td>
         <TextCell value={line.label} onSave={v => onSave({ label: v })} disabled={disabled} />
+        {line.notes && (
+          <div style={{ fontSize: 10, color: colors.amber, marginTop: 2 }}>{line.notes}</div>
+        )}
       </Td>
       <Td>
         {actuals.length > 0 ? (
