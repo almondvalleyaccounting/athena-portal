@@ -172,7 +172,17 @@ Deno.serve(async (req) => {
     // Expected population is every employer set to post journals — NOT only
     // those with a task on file. A month that was never posted has no task, so
     // keying off tasks would hide exactly what this report is looking for.
-    const expected = (employers || []).filter((e: any) => e.post_journals);
+    //
+    // Explicit non-QuickBooks destinations are excluded, or Xero and FreeAgent
+    // clients show up as unreachable gaps every month forever. The test is
+    // deliberately one-sided: it trusts 'xero'/'freeagent' but never treats
+    // 'quickbooks' as meaningful, because that is the value the runner's seed
+    // falls back to when it cannot tell — so a real QBO client and an
+    // unknown-destination client look identical. Excluding on a positive
+    // non-QBO value is safe; including on 'quickbooks' would be a guess.
+    const NON_QBO = new Set(["xero", "freeagent", "sage"]);
+    const expected = (employers || []).filter((e: any) =>
+      e.post_journals && !NON_QBO.has(String(e.destination || "").toLowerCase()));
 
     const { data: conns } = await sb.from("qbo_report_connections")
       .select("realm_id, company_name, is_practice").eq("is_practice", false);
