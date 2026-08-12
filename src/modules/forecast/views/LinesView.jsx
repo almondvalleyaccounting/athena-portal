@@ -41,8 +41,13 @@ const VAT_TREATMENTS = [
 // Assumption drivers, grouped for display. Keys match general_core.
 const ASSUMPTION_GROUPS = [
   {
-    title: 'Cash & working capital',
-    keys: ['cash.opening_balance_p', 'wc.debtor_days', 'wc.creditor_days', 'payroll.paye_share_pct'],
+    title: 'Opening position',
+    keys: ['cash.opening_balance_p', 'bs.opening_debtors_p', 'bs.opening_creditors_p',
+           'bs.opening_fixed_assets_p', 'bs.opening_other_liabilities_p'],
+  },
+  {
+    title: 'Working capital',
+    keys: ['wc.debtor_days', 'wc.creditor_days', 'payroll.paye_share_pct'],
   },
   {
     title: 'VAT / sales tax',
@@ -60,7 +65,12 @@ const ASSUMPTION_GROUPS = [
   },
 ];
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const formatDate = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 const monthsAgoISO = (n) => {
   const d = new Date();
   d.setMonth(d.getMonth() - n, 1);
@@ -213,6 +223,7 @@ export default function LinesView({ forecast, scenario, onChanged }) {
     try {
       const res = await seedLinesFromQbo({
         realmId, start: seedStart, end: seedEnd, defaultMethod: seedMethod,
+        openingPeriod: forecast.opening_period,
       });
       const applied = await applyQboSeed(scenario.id, res.lines);
       setLastPull(res);
@@ -223,10 +234,30 @@ export default function LinesView({ forecast, scenario, onChanged }) {
     setBusy(false);
   };
 
-  const useClosingCash = async () => {
-    if (lastPull?.closingCashP == null) return;
-    await saveDriver('cash.opening_balance_p', lastPull.closingCashP);
-    setNote(`Opening bank set to ${fmtP(lastPull.closingCashP)}.`);
+  // The forecast should start where the real accounts finished: month 0's
+  // opening balances come from the balance sheet at the end of the last
+  // ACTUAL month, not from an arbitrary date.
+  const useOpeningPosition = async () => {
+    const op = lastPull?.opening;
+    if (!op) return;
+    setBusy(true); setErr(null);
+    try {
+      const pairs = [
+        ['cash.opening_balance_p', op.cash_p],
+        ['bs.opening_debtors_p', op.debtors_p],
+        ['bs.opening_creditors_p', op.creditors_p],
+        ['bs.opening_fixed_assets_p', op.fixed_assets_p],
+        ['bs.opening_other_liabilities_p', op.other_liabilities_p],
+      ].filter(([, v]) => v != null);
+      for (const [key, value] of pairs) {
+        const d = driverByKey.get(key);
+        if (d) await setDriverValue(d.id, -1, value);
+      }
+      await reload();
+      onChanged?.();
+      setNote(`Opening position set from the balance sheet at ${formatDate(op.as_at)} — bank ${fmtP(op.cash_p)}, debtors ${fmtP(op.debtors_p)}, creditors ${fmtP(op.creditors_p)}.`);
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
   };
 
   // ── Projection preview ──────────────────────────────────────────
@@ -308,10 +339,11 @@ export default function LinesView({ forecast, scenario, onChanged }) {
             Every nominal account with activity becomes a line. Re-seeding refreshes the actuals and the
             basis but keeps your renames, categories and adjustments; hand-added lines are never touched.
           </p>
-          {lastPull?.closingCashP != null && (
+          {lastPull?.opening && (
             <div style={{ marginTop: 10 }}>
-              <button style={btnOutline} onClick={useClosingCash} disabled={busy}>
-                Use closing bank {fmtP(lastPull.closingCashP)} as the opening balance
+              <button style={btnOutline} onClick={useOpeningPosition} disabled={busy}>
+                Start from the actuals at {formatDate(lastPull.opening.as_at)} — bank {fmtP(lastPull.opening.cash_p)},
+                debtors {fmtP(lastPull.opening.debtors_p)}, creditors {fmtP(lastPull.opening.creditors_p)}
               </button>
             </div>
           )}

@@ -21,6 +21,28 @@ export const GENERAL_PNL_LINES = [
   { nominal_type: 'pnl.dividends',      label: 'Dividends / drawings' },
 ];
 
+// Balance sheet. Every figure is a month-end position, so all lines aggregate
+// with 'last' rather than summing. Liabilities are stored negative by the
+// engine (the statement convention), so they read as deductions.
+export const GENERAL_BS_LINES = [
+  { nominal_type: 'bs.fixed_assets',      label: 'Fixed assets', aggregate: 'last', indent: true },
+  { nominal_type: 'bs.debtors',           label: 'Debtors', aggregate: 'last', indent: true },
+  { nominal_type: 'bs.cash',              label: 'Cash at bank', aggregate: 'last', indent: true },
+  { nominal_type: 'bs.total_assets',      label: 'Total assets', kind: 'header', aggregate: 'last' },
+
+  { nominal_type: 'bs.creditors',         label: 'Trade creditors', aggregate: 'last', indent: true },
+  { nominal_type: 'bs.payroll_creditor',  label: 'Payroll taxes owed', aggregate: 'last', indent: true },
+  { nominal_type: 'bs.vat_liability',     label: 'VAT owed', aggregate: 'last', indent: true },
+  { nominal_type: 'bs.tax_liability',     label: 'Company tax owed', aggregate: 'last', indent: true },
+  { nominal_type: 'bs.loans',             label: 'Loans outstanding', aggregate: 'last', indent: true },
+  { nominal_type: 'bs.other_liabilities', label: 'Other liabilities', aggregate: 'last', indent: true },
+  { nominal_type: 'bs.total_liabilities', label: 'Total liabilities', kind: 'header', aggregate: 'last' },
+
+  { nominal_type: 'bs.net_assets',        label: 'NET ASSETS', kind: 'header', aggregate: 'last' },
+  { nominal_type: 'bs.equity',            label: 'Equity (opening + retained profit − dividends)', aggregate: 'last' },
+  { nominal_type: 'bs.check',             label: 'Balance check (should be nil)', aggregate: 'last', kind: 'subtle' },
+];
+
 export const GENERAL_CF_LINES = [
   { nominal_type: 'cf.opening_cash',       label: 'Opening bank', aggregate: 'first', kind: 'header' },
 

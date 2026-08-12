@@ -14,6 +14,7 @@ import { lensFor } from './lenses';
 import { CURRENCIES, setActiveCurrency } from './lib/currency';
 import InputsView from './views/InputsView';
 import LinesView from './views/LinesView';
+import LedgerView from './views/LedgerView';
 import CashDashboardView from './views/CashDashboardView';
 import OverviewView from './views/OverviewView';
 import PnlByBandView from './views/PnlByBandView';
@@ -418,7 +419,15 @@ export default function ForecastModule() {
                 entities={entities} groups={groups} assignments={assignments}
                 filter={filter} onFilterChange={setFilter} />
             )}
-            {tab === 'pnl' && (
+            {tab === 'pnl' && lens.ledgerStatements && (
+              <LedgerView forecast={forecast} scenario={scenario} outputs={outputs}
+                periods={periods} variant="pnl" onChanged={onRecompute} />
+            )}
+            {tab === 'cf' && lens.ledgerStatements && (
+              <LedgerView forecast={forecast} scenario={scenario} outputs={outputs}
+                periods={periods} variant="cf" onChanged={onRecompute} />
+            )}
+            {tab === 'pnl' && !lens.ledgerStatements && (
               <StatementView title="Profit & Loss" variant="pnl" lines={lens.statements.pnl} outputs={outputs}
                 forecast={forecast} periods={periods} openingPeriod={forecast.opening_period}
                 scenarioId={scenario.id}
@@ -432,7 +441,7 @@ export default function ForecastModule() {
                 entities={entities} groups={groups} assignments={assignments}
                 filter={filter} onFilterChange={setFilter} />
             )}
-            {tab === 'cf' && (
+            {tab === 'cf' && !lens.ledgerStatements && (
               <StatementView title="Cashflow" variant="cf" lines={lens.statements.cf} outputs={outputs}
                 forecast={forecast} periods={periods} openingPeriod={forecast.opening_period}
                 scenarioId={scenario.id}

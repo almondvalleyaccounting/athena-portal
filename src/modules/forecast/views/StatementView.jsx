@@ -293,7 +293,9 @@ function BsRatiosPanel({ outputs, scopedMap, usingScoped, grouped }) {
     const ca = get('bs.current_assets', g.periods);
     const cl = get('bs.current_liabilities', g.periods);
     const cash = get('bs.cash', g.periods);
-    const debtors = get('bs.debtors_private', g.periods) + get('bs.debtors_la', g.periods);
+    // Childcare splits debtors private/LA; the general lens has one figure.
+    const debtors = get('bs.debtors_private', g.periods) + get('bs.debtors_la', g.periods)
+      + get('bs.debtors', g.periods);
     const ta = get('bs.total_assets', g.periods);
     const debt = get('bs.debt', g.periods);
     const eq = get('bs.equity', g.periods);

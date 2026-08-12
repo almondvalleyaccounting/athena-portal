@@ -9,7 +9,7 @@
 // complete tab set, which is what every existing forecast expects.
 
 import { PNL_LINES, BS_LINES, CF_LINES } from './views/statementLines';
-import { GENERAL_PNL_LINES, GENERAL_CF_LINES } from './views/statementLinesGeneral';
+import { GENERAL_PNL_LINES, GENERAL_CF_LINES, GENERAL_BS_LINES } from './views/statementLinesGeneral';
 
 const FULL_TABS = [
   { key: 'inputs',    label: 'Inputs' },
@@ -35,6 +35,7 @@ const FULL_LENS = {
   tabs: FULL_TABS,
   inputs: 'modules',                                    // the driver-grid InputsView
   statements: { pnl: PNL_LINES, bs: BS_LINES, cf: CF_LINES },
+  ledgerStatements: false,
   locations: true,                                      // multi-site concepts apply
   exportPack: true,                                     // the childcare PDF/Excel pack
 };
@@ -47,10 +48,14 @@ const GENERAL_CASHFLOW_LENS = {
     { key: 'cash',      label: 'Cash dashboard' },
     { key: 'cf',        label: 'Cashflow' },
     { key: 'pnl',       label: 'P&L' },
+    { key: 'bs',        label: 'Balance sheet' },
     { key: 'findings',  label: 'Findings' },
   ],
   inputs: 'lines',
-  statements: { pnl: GENERAL_PNL_LINES, cf: GENERAL_CF_LINES },
+  statements: { pnl: GENERAL_PNL_LINES, cf: GENERAL_CF_LINES, bs: GENERAL_BS_LINES },
+  // P&L and Cashflow render line by line, with editable forecast cells and
+  // the actuals boundary marked; the balance sheet is a summary statement.
+  ledgerStatements: true,
   locations: false,
   exportPack: false,
 };

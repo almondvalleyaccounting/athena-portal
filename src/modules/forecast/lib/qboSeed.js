@@ -129,15 +129,25 @@ export function parseMonthlyPl(report) {
   return { months, accounts };
 }
 
+/** Last day of the month BEFORE a forecast's opening period, as YYYY-MM-DD. */
+export function lastActualMonthEnd(openingPeriod) {
+  const d = openingPeriod ? new Date(openingPeriod) : new Date();
+  // Day 0 of the opening month = last day of the month before it.
+  const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0));
+  return end.toISOString().slice(0, 10);
+}
+
 /**
  * Pull the client's monthly P&L for [start,end] and shape it into rows ready
  * for fc_pl_line. `defaultMethod` decides the basis: 'average' over the window,
  * 'last' month, or 'shape' (repeat the calendar-month pattern).
  *
- * Also returns the closing bank balance at the window end, which the Lines
- * view offers as the forecast's opening cash.
+ * Also returns the OPENING POSITION: the balance sheet as at the end of the
+ * last actual month before the forecast starts, so month 0 begins exactly
+ * where the real accounts finished rather than at an arbitrary date.
  */
-export async function seedLinesFromQbo({ realmId, start, end, defaultMethod = 'average' }) {
+export async function seedLinesFromQbo({ realmId, start, end, defaultMethod = 'average', openingPeriod = null }) {
+  const asAt = openingPeriod ? lastActualMonthEnd(openingPeriod) : end;
   const { data: payload, error } = await supabase.functions.invoke('dashboard-qbo-pull', {
     body: {
       realmId,
@@ -148,6 +158,8 @@ export async function seedLinesFromQbo({ realmId, start, end, defaultMethod = 'a
           priorStart: start, priorEnd: end,      // unused here; the function requires the pair
           chartStart: start, chartEnd: end,
         },
+        // Balance sheet + aged debt as at the last actual month end.
+        asat: { date: asAt },
       },
     },
   });
@@ -187,26 +199,49 @@ export async function seedLinesFromQbo({ realmId, start, end, defaultMethod = 'a
     };
   });
 
-  // Bank/cash at the window end, for the opening balance.
-  const bs = payload?.metrics?.bs_period;
-  const closingCashP = pickCash(bs);
+  // The opening position, from the balance sheet as at the last actual month.
+  const bs = payload?.metrics?.bs_asat || payload?.metrics?.bs_period;
+  const opening = openingPositionFrom(bs, asAt);
 
-  return { lines, months, closingCashP, currency: payload?.metrics?.pl_range?.currency || null };
+  return {
+    lines, months, opening,
+    closingCashP: opening?.cash_p ?? null,     // kept for the older caller shape
+    currency: payload?.metrics?.pl_range?.currency || null,
+  };
 }
 
-/** Best-effort read of cash at bank from the balance-sheet payload. */
-function pickCash(bs) {
+/** Pence, from a QBO balance-sheet figure in pounds. */
+const toP = (v) => (typeof v === 'number' && isFinite(v) ? Math.round(v * 100) : null);
+
+/**
+ * Opening balances for the forecast, read from the as-at balance sheet.
+ *
+ * "Other liabilities" is current + long-term liabilities LESS trade creditors,
+ * which the model tracks itself. Caution: it therefore still includes any VAT,
+ * payroll-tax, tax and loan balances sitting in the client's books — so if you
+ * also enter an existing loan on the Lending side, or an opening VAT/tax
+ * liability, reduce this figure by the same amount or it counts twice.
+ * Floored at zero: a negative would mean the QBO groups overlap unexpectedly,
+ * and a silent negative liability is worse than none.
+ */
+export function openingPositionFrom(bs, asAt) {
   if (!bs) return null;
-  const candidates = [bs.cash, bs.cash_p, bs.bank, bs.cash_at_bank];
-  for (const c of candidates) {
-    if (typeof c === 'number' && isFinite(c)) return Math.round(c * 100);
-  }
-  // Named-line map fallback: { lines: { 'Cash at bank and in hand': 1234.56 } }
-  const lines = bs.lines || bs.groups;
-  if (lines && typeof lines === 'object') {
-    for (const [k, v] of Object.entries(lines)) {
-      if (/cash|bank/i.test(k) && typeof v === 'number') return Math.round(v * 100);
-    }
-  }
-  return null;
+  const cash_p = toP(bs.cash);
+  const debtors_p = toP(bs.debtors);
+  const creditors_p = toP(bs.accounts_payable);
+  const fixed_p = (toP(bs.fixed_assets) || 0) + (toP(bs.other_assets) || 0);
+
+  const currentLiab = toP(bs.creditors_within_1yr) || 0;
+  const longLiab = toP(bs.creditors_after_1yr) || 0;
+  const other_liabilities_p = Math.max(0, currentLiab + longLiab - (creditors_p || 0));
+
+  return {
+    as_at: asAt,
+    cash_p,
+    debtors_p,
+    creditors_p,
+    fixed_assets_p: fixed_p,
+    other_liabilities_p,
+    net_assets_p: toP(bs.net_assets ?? bs.equity),
+  };
 }

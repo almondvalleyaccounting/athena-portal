@@ -63,8 +63,21 @@ export default function CashDashboardView({ outputs, forecast, periods }) {
 
   const negative = data.low && data.low.closing < 0;
 
+  const openingLabel = forecast.opening_period
+    ? new Date(forecast.opening_period).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    : null;
+
   return (
     <div>
+      {openingLabel && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 14,
+          padding: '6px 12px', borderRadius: 999, background: '#eff6ff',
+          border: `1px solid #bfdbfe`, fontSize: 12, color: colors.accent, fontWeight: 600,
+        }}>
+          Forecast from {openingLabel} — every figure below is projected, opening from the last actual balance sheet
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
         <KPI label="Closing bank" value={fmtP(data.last.closing)}
           hint={periodLabel(data.last.t, forecast.opening_period)}

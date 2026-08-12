@@ -28,7 +28,13 @@ export const generalCoreModule = {
   dependsOn: ['pl_lines', 'loans'],
   drivers: [
     // ─── Opening position ───
-    { key: 'cash.opening_balance_p', label: 'Opening bank balance', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
+    // Seeded from the client's balance sheet as at the last actual month, so
+    // month 0 of the forecast starts where the real accounts finished.
+    { key: 'cash.opening_balance_p',        label: 'Opening bank balance', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
+    { key: 'bs.opening_debtors_p',          label: 'Opening debtors (owed to us)', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
+    { key: 'bs.opening_creditors_p',        label: 'Opening creditors (we owe)', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
+    { key: 'bs.opening_fixed_assets_p',     label: 'Opening fixed assets', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
+    { key: 'bs.opening_other_liabilities_p', label: 'Other opening liabilities', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
 
     // ─── Working capital ───
     { key: 'wc.debtor_days',   label: 'Debtor days (customers pay in)', unit: 'days', kind: 'scalar', scope: 'group', defaultValue: 30 },
@@ -90,7 +96,28 @@ export const generalCoreModule = {
     { nominal_type: 'cf.net_movement',     label: 'Net cash movement', by_entity: false },
     { nominal_type: 'cf.closing_cash',     label: 'Closing bank', by_entity: false },
 
+    { nominal_type: 'pnl.vat_frs_benefit',  label: 'VAT flat-rate benefit', by_entity: false },
+    { nominal_type: 'cf.line',              label: 'Cash movement by line', by_entity: false },
+
+    { nominal_type: 'bs.fixed_assets',      label: 'Fixed assets', by_entity: false },
     { nominal_type: 'bs.cash',              label: 'Cash', by_entity: false },
+    { nominal_type: 'bs.debtors',           label: 'Debtors', by_entity: false },
+    { nominal_type: 'bs.current_assets',    label: 'Total current assets', by_entity: false },
+    { nominal_type: 'bs.total_assets',      label: 'Total assets', by_entity: false },
+    { nominal_type: 'bs.creditors',         label: 'Trade creditors', by_entity: false },
+    { nominal_type: 'bs.payroll_creditor',  label: 'Payroll taxes owed', by_entity: false },
+    { nominal_type: 'bs.vat_liability',     label: 'VAT owed', by_entity: false },
+    { nominal_type: 'bs.tax_liability',     label: 'Company tax owed', by_entity: false },
+    { nominal_type: 'bs.loans',             label: 'Loans outstanding', by_entity: false },
+    { nominal_type: 'bs.other_liabilities', label: 'Other liabilities', by_entity: false },
+    { nominal_type: 'bs.total_liabilities', label: 'Total liabilities', by_entity: false },
+    { nominal_type: 'bs.current_liabilities', label: 'Total current liabilities', by_entity: false },
+    { nominal_type: 'bs.non_current_liabilities', label: 'Total non-current liabilities', by_entity: false },
+    { nominal_type: 'bs.debt',              label: 'Total debt', by_entity: false },
+    { nominal_type: 'bs.net_assets',        label: 'Net assets', by_entity: false },
+    { nominal_type: 'bs.equity',            label: 'Equity', by_entity: false },
+    { nominal_type: 'bs.check',             label: 'Balance check', by_entity: false },
+
     { nominal_type: 'metric.vat_liability', label: 'VAT owed', by_entity: false },
     { nominal_type: 'metric.ct_liability',  label: 'CT owed', by_entity: false },
     { nominal_type: 'metric.debtors',       label: 'Money owed to us', by_entity: false },
@@ -131,6 +158,20 @@ export const generalCoreModule = {
     // VAT accruals, on the invoice basis (month of the P&L line).
     const outputVat = zeros(), inputVat = zeros();
 
+    // Per-LINE cash, so the cashflow statement can show the same lines the
+    // user edits on the Lines tab rather than four opaque totals.
+    // Map: line_id -> { label, category, series }
+    const byLine = new Map();
+    const lineSeries = (row) => {
+      const id = row.tags?.line_id || row.line_label;
+      let entry = byLine.get(id);
+      if (!entry) {
+        entry = { id, label: row.line_label, category: row.tags?.category || 'overheads', cash: zeros() };
+        byLine.set(id, entry);
+      }
+      return entry;
+    };
+
     /** Add `amount` to `series`, delayed by `days`, splitting across the two months it straddles. */
     const spread = (series, t, amount, days) => {
       const lagMonths = (Number(days) || 0) / DAYS_PER_MONTH;
@@ -149,14 +190,21 @@ export const generalCoreModule = {
       const vatable = vatRegistered && (row.tags?.vat || 'standard') === 'standard';
       const lineLag = row.tags?.lag_days;
 
+      const entry = lineSeries(row);
+
       if (cat === 'income') {
         revenue[t] += amt;
         const vat = vatable ? amt * vatRate : 0;
         outputVat[t] += vat;
-        spread(receipts, t, amt + vat, lineLag == null ? debtorDays : lineLag);
+        const lag = lineLag == null ? debtorDays : lineLag;
+        spread(receipts, t, amt + vat, lag);
+        spread(entry.cash, t, amt + vat, lag);
       } else if (cat === 'payroll') {
         // No VAT on wages, and the cash split is the PAYE timing below.
         payroll[t] += amt;
+        // Net pay this month, the PAYE share next — same split as the totals.
+        entry.cash[t] -= amt * (1 - payeShare);
+        if (t + 1 < T) entry.cash[t + 1] -= amt * payeShare;
       } else {
         const vat = vatable ? amt * vatRate : 0;
         // Under the Flat Rate Scheme input VAT is not reclaimable (the
@@ -166,8 +214,20 @@ export const generalCoreModule = {
         if (cat === 'cost_of_sales') { cos[t] += amt; spread(payCos, t, amt + vat, lag); }
         else if (cat === 'capex')    { capex[t] += amt; spread(payCapex, t, amt + vat, lag); }
         else                         { overheads[t] += amt; spread(payOverheads, t, amt + vat, lag); }
+        spread(entry.cash, t, -(amt + vat), lag);
       }
     }
+
+    // ── Opening working capital ─────────────────────────────────────
+    // What the client was owed and owed on day one settles over the same lag
+    // as new business, so month 1 isn't artificially cash-rich.
+    const openingDebtors = r('bs.opening_debtors_p');
+    const openingCreditors = r('bs.opening_creditors_p');
+    const openingFixed = r('bs.opening_fixed_assets_p');
+    const openingOtherLiab = r('bs.opening_other_liabilities_p');
+    const openingDebtorReceipts = zeros(), openingCreditorPayments = zeros();
+    if (openingDebtors) spread(openingDebtorReceipts, 0, openingDebtors, debtorDays);
+    if (openingCreditors) spread(openingCreditorPayments, 0, openingCreditors, creditorDays);
 
     // Payroll cash: net pay in the month, PAYE/NI/pension a month in arrears.
     const netWages = zeros(), payeCash = zeros();
@@ -222,13 +282,23 @@ export const generalCoreModule = {
     if (openingVat && openingVatMonth < T) vatPayment[openingVatMonth] += openingVat;
 
     // ── P&L ─────────────────────────────────────────────────────────
+    // Under the Flat Rate Scheme the company keeps the difference between the
+    // VAT it charges and the flat percentage it hands over, and bears its own
+    // input VAT. That net is real profit (and taxable), so it appears as its
+    // own line rather than vanishing — which is also what keeps the balance
+    // sheet balancing under FRS.
+    const frsBenefit = zeros();
+    if (onFrs) {
+      for (let t = 0; t < T; t++) frsBenefit[t] = outputVat[t] - inputVat[t] - vatAccrual[t];
+    }
+
     const grossProfit = zeros(), costTotal = zeros(), ebitda = zeros(), pbt = zeros();
     const ctCharge = zeros(), npat = zeros();
     let lossCarryforward = 0;
     for (let t = 0; t < T; t++) {
       grossProfit[t] = revenue[t] - cos[t];
       costTotal[t] = cos[t] + payroll[t] + overheads[t];
-      ebitda[t] = revenue[t] - costTotal[t];
+      ebitda[t] = revenue[t] - costTotal[t] + frsBenefit[t];
       pbt[t] = ebitda[t] - interest[t];
       // Monthly CT accrual with losses carried forward — the same simple
       // basis tax_simple uses for the childcare pack.
@@ -284,7 +354,16 @@ export const generalCoreModule = {
 
     let cash = openingCash;
     let vatOwed = openingVat, ctOwed = openingCt;
-    let debtors = 0, creditors = 0;
+    let debtors = openingDebtors, creditors = openingCreditors;
+    let payrollCreditor = 0, fixedAssets = openingFixed;
+
+    // Opening equity is DERIVED, exactly as the childcare pack derives it from
+    // opening cash: whatever makes the opening balance sheet balance. That way
+    // month 0 ties by construction and every later month ties because each
+    // movement touches both sides.
+    const openingEquity = (openingCash + openingDebtors + openingFixed)
+      - (openingCreditors + openingVat + openingCt + openingOtherLiab);
+    let equity = openingEquity;
 
     const emit = (t, nominal_type, line_label, amount_p, tags) => {
       out.push({ module_key: 'general_core', period: t, nominal_type, line_label,
@@ -292,8 +371,8 @@ export const generalCoreModule = {
     };
 
     for (let t = 0; t < T; t++) {
-      const cashIn = receipts[t] + vatRefund[t] + drawdown[t];
-      const cashOut = payCos[t] + netWages[t] + payeCash[t] + payOverheads[t]
+      const cashIn = receipts[t] + openingDebtorReceipts[t] + vatRefund[t] + drawdown[t];
+      const cashOut = payCos[t] + openingCreditorPayments[t] + netWages[t] + payeCash[t] + payOverheads[t]
         + vatPayment[t] + ctPayment[t] + payCapex[t] + interest[t] + principal[t] + dividends[t];
       const opening = cash;
       cash = opening + cashIn - cashOut;
@@ -301,10 +380,18 @@ export const generalCoreModule = {
       // Running balances — what is owed to and by the company at month end.
       const grossSales = revenue[t] + outputVat[t];
       const grossCosts = cos[t] + overheads[t] + capex[t] + (onFrs ? 0 : inputVat[t]);
-      debtors += grossSales - receipts[t];
-      creditors += grossCosts - (payCos[t] + payOverheads[t] + payCapex[t]);
+      debtors += grossSales - receipts[t] - openingDebtorReceipts[t];
+      creditors += grossCosts - (payCos[t] + payOverheads[t] + payCapex[t]) - openingCreditorPayments[t];
+      payrollCreditor += payroll[t] * payeShare - payeCash[t];
       vatOwed += vatAccrual[t] - vatPayment[t] + vatRefund[t];
       ctOwed += ctCharge[t] - ctPayment[t];
+      fixedAssets += capex[t];
+      equity += npat[t] - dividends[t];
+
+      const totalAssets = fixedAssets + cash + debtors;
+      const totalLiabilities = creditors + payrollCreditor + vatOwed + ctOwed
+        + debtBalance[t] + openingOtherLiab;
+      const netAssets = totalAssets - totalLiabilities;
 
       // P&L
       emit(t, 'pnl.revenue_total',  'Sales', revenue[t]);
@@ -313,6 +400,7 @@ export const generalCoreModule = {
       emit(t, 'pnl.cost_payroll',   'Payroll', -payroll[t]);
       emit(t, 'pnl.cost_overheads', 'Overheads', -overheads[t]);
       emit(t, 'pnl.cost_total',     'Total costs', -costTotal[t]);
+      emit(t, 'pnl.vat_frs_benefit','VAT flat-rate benefit', frsBenefit[t]);
       emit(t, 'pnl.ebitda',         'EBITDA', ebitda[t]);
       emit(t, 'pnl.interest_total', 'Interest', -interest[t]);
       emit(t, 'pnl.pbt',            'Profit before tax', pbt[t]);
@@ -322,11 +410,11 @@ export const generalCoreModule = {
 
       // Cash
       emit(t, 'cf.opening_cash',      'Opening bank', opening);
-      emit(t, 'cf.in.receipts',       'Receipts from customers', receipts[t]);
+      emit(t, 'cf.in.receipts',       'Receipts from customers', receipts[t] + openingDebtorReceipts[t]);
       emit(t, 'cf.in.vat_refund',     'VAT refund', vatRefund[t]);
       emit(t, 'cf.in.debt_drawdown',  'Loan drawdown', drawdown[t]);
       emit(t, 'cf.in_total',          'Total cash in', cashIn);
-      emit(t, 'cf.out.cost_of_sales', 'Payments to suppliers', -payCos[t]);
+      emit(t, 'cf.out.cost_of_sales', 'Payments to suppliers', -(payCos[t] + openingCreditorPayments[t]));
       emit(t, 'cf.out.payroll',       'Net wages', -netWages[t]);
       emit(t, 'cf.out.paye',          'PAYE / NI / pension', -payeCash[t]);
       emit(t, 'cf.out.overheads',     'Overheads paid', -payOverheads[t]);
@@ -340,11 +428,48 @@ export const generalCoreModule = {
       emit(t, 'cf.net_movement',      'Net cash movement', cashIn - cashOut);
       emit(t, 'cf.closing_cash',      'Closing bank', cash);
 
+      // Balance sheet. Liabilities are POSITIVE magnitudes here, matching the
+      // childcare pack's convention (financial_core) so shared components —
+      // the ratios panel, drill-downs — read both packs identically.
+      emit(t, 'bs.fixed_assets',      'Fixed assets', fixedAssets);
       emit(t, 'bs.cash',              'Cash', cash);
+      emit(t, 'bs.debtors',           'Debtors', debtors);
+      emit(t, 'bs.current_assets',    'Total current assets', cash + debtors);
+      emit(t, 'bs.total_assets',      'Total assets', totalAssets);
+      emit(t, 'bs.creditors',         'Trade creditors', creditors);
+      emit(t, 'bs.payroll_creditor',  'Payroll taxes owed', payrollCreditor);
+      emit(t, 'bs.vat_liability',     'VAT owed', vatOwed);
+      emit(t, 'bs.tax_liability',     'Company tax owed', ctOwed);
+      emit(t, 'bs.loans',             'Loans outstanding', debtBalance[t]);
+      emit(t, 'bs.other_liabilities', 'Other liabilities', openingOtherLiab);
+      emit(t, 'bs.total_liabilities', 'Total liabilities', totalLiabilities);
+      // Aliases the shared balance-sheet ratios panel reads. Loans sit in
+      // non-current; everything else settles within the year.
+      emit(t, 'bs.current_liabilities', 'Total current liabilities',
+        creditors + payrollCreditor + vatOwed + ctOwed + openingOtherLiab);
+      emit(t, 'bs.non_current_liabilities', 'Total non-current liabilities', debtBalance[t]);
+      emit(t, 'bs.debt',              'Total debt', debtBalance[t]);
+      emit(t, 'bs.net_assets',        'Net assets', netAssets);
+      emit(t, 'bs.equity',            'Equity', equity);
+      // Zero unless something has gone wrong — surfaced as a finding, and on
+      // the statement itself, because a balance sheet that silently doesn't
+      // balance is worse than no balance sheet.
+      emit(t, 'bs.check',             'Balance check (should be nil)', netAssets - equity);
+
       emit(t, 'metric.vat_liability', 'VAT owed', vatOwed);
       emit(t, 'metric.ct_liability',  'CT owed', ctOwed);
       emit(t, 'metric.debtors',       'Money owed to us', debtors);
       emit(t, 'metric.creditors',     'Money we owe', creditors);
+    }
+
+    // Per-line cash movements, tagged so the cashflow statement can show the
+    // same lines the user edits rather than four opaque totals.
+    for (const entry of byLine.values()) {
+      for (let t = 0; t < T; t++) {
+        if (!entry.cash[t]) continue;
+        emit(t, 'cf.line', entry.label, entry.cash[t],
+          { line_id: entry.id, category: entry.category });
+      }
     }
 
     return out;
@@ -361,6 +486,19 @@ export const generalCoreModule = {
         code: 'cash.goes_negative',
         period: low[0].period,
         message: `Bank balance goes negative in month ${low[0].period + 1} and bottoms out at ${formatMoney(worst.amount_p, ctx.forecast?.currency)} in month ${worst.period + 1}.`,
+      });
+    }
+
+    // The balance sheet is built so that it ties by construction; if it ever
+    // doesn't, that is a modelling bug and must be loud, not silent.
+    const checks = ctx.upstreamOutputs.filter(o => o.nominal_type === 'bs.check');
+    const worstCheck = checks.reduce((a, b) => (Math.abs(b.amount_p) > Math.abs(a?.amount_p ?? 0) ? b : a), null);
+    if (worstCheck && Math.abs(worstCheck.amount_p) > 100) {     // > £1, i.e. beyond rounding
+      findings.push({
+        severity: 'error',
+        code: 'bs.does_not_balance',
+        period: worstCheck.period,
+        message: `Balance sheet is out by ${formatMoney(worstCheck.amount_p, ctx.forecast?.currency)} in month ${worstCheck.period + 1} — assets less liabilities do not equal equity.`,
       });
     }
 
