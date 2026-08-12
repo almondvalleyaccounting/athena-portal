@@ -10,11 +10,13 @@ import { recomputeScenario } from './lib/recompute';
 import { PACKS } from './lib/packs';
 import { btnDark, btnOutline, colors, fontStack, inputStyle, KPI, Pill, selectStyle, serifStack } from './components/ui';
 
+import { lensFor } from './lenses';
 import InputsView from './views/InputsView';
+import LinesView from './views/LinesView';
+import CashDashboardView from './views/CashDashboardView';
 import OverviewView from './views/OverviewView';
 import PnlByBandView from './views/PnlByBandView';
 import StatementView from './views/StatementView';
-import { PNL_LINES, BS_LINES, CF_LINES } from './views/statementLines';
 import DealView from './views/DealView';
 import DashboardView from './views/DashboardView';
 import InsightsView from './views/InsightsView';
@@ -27,26 +29,6 @@ import CapacitiesView from './views/CapacitiesView';
 import IncomeView from './views/IncomeView';
 import CompareView from './views/CompareView';
 import ExportModal from './views/ExportModal';
-
-const TABS = [
-  { key: 'inputs',    label: 'Inputs' },
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'overview',  label: 'Overview' },
-  { key: 'pnl',       label: 'P&L' },
-  { key: 'pnl_band',  label: 'P&L by age band' },
-  { key: 'bs',        label: 'Balance sheet' },
-  { key: 'cf',        label: 'Cashflow' },
-  { key: 'income',    label: 'Income' },
-  { key: 'staff',     label: 'Staff detail' },
-  { key: 'premises',  label: 'Premises & overheads' },
-  { key: 'capacities',label: 'Capacities' },
-  { key: 'trends',    label: 'KPI trends' },
-  { key: 'compare',   label: 'Compare' },
-  { key: 'deal',      label: 'Deal view' },
-  { key: 'insights',  label: 'AI insights' },
-  { key: 'findings',  label: 'Findings' },
-  { key: 'la',        label: 'LA settings' },
-];
 
 export default function ForecastModule() {
   const [forecasts, setForecasts] = useState([]);
@@ -76,6 +58,17 @@ export default function ForecastModule() {
     const n = forecast?.horizon_months || 60;
     return Array.from({ length: n }, (_, i) => i);
   }, [forecast?.horizon_months]);
+
+  // The lens decides which tabs exist and which statement lines they render —
+  // a childcare forecast and a general cashflow are the same engine wearing
+  // different clothes.
+  const lens = useMemo(() => lensFor(forecast?.vertical_pack), [forecast?.vertical_pack]);
+
+  // Switching to a forecast on a different lens can leave `tab` pointing at a
+  // tab that lens does not have (e.g. Capacities on a cashflow forecast).
+  useEffect(() => {
+    if (!lens.tabs.some(t => t.key === tab)) setTab(lens.tabs[0].key);
+  }, [lens, tab]);
 
   // Registered places are overridable per VERSION, but fc_entity is
   // forecast-level and shared by all of them. Overlay the selected version's
@@ -326,7 +319,7 @@ export default function ForecastModule() {
 
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto', padding: '24px 24px 60px', fontFamily: fontStack }}>
-      <Header onExport={forecast ? () => setShowExport(true) : null}
+      <Header onExport={forecast && lens.exportPack ? () => setShowExport(true) : null}
         forecast={forecast} forecasts={forecasts}
         forecastId={forecastId} onSelect={setForecastId}
         versions={versions} version={version}
@@ -382,7 +375,7 @@ export default function ForecastModule() {
 
       {forecast && version && scenario && (
         <>
-          <Tabs tab={tab} setTab={setTab} />
+          <Tabs tab={tab} setTab={setTab} tabs={lens.tabs} />
 
           <div style={{ marginTop: 18 }}>
             {tab === 'dashboard' && (
@@ -401,6 +394,12 @@ export default function ForecastModule() {
             {tab === 'la' && (
               <LaSettingsView />
             )}
+            {tab === 'lines' && (
+              <LinesView forecast={forecast} scenario={scenario} onChanged={onRecompute} />
+            )}
+            {tab === 'cash' && (
+              <CashDashboardView outputs={outputs} forecast={forecast} periods={periods} />
+            )}
             {tab === 'inputs' && (
               <InputsView forecast={forecast} scenario={scenario}
                 entities={entities} groups={groups} assignments={assignments}
@@ -414,25 +413,25 @@ export default function ForecastModule() {
                 filter={filter} onFilterChange={setFilter} />
             )}
             {tab === 'pnl' && (
-              <StatementView title="Profit & Loss" variant="pnl" lines={PNL_LINES} outputs={outputs}
+              <StatementView title="Profit & Loss" variant="pnl" lines={lens.statements.pnl} outputs={outputs}
                 forecast={forecast} periods={periods} openingPeriod={forecast.opening_period}
                 scenarioId={scenario.id}
                 entities={entities} groups={groups} assignments={assignments}
-                filter={filter} onFilterChange={setFilter} />
+                filter={filter} onFilterChange={lens.locations ? setFilter : undefined} />
             )}
             {tab === 'bs' && (
-              <StatementView title="Balance sheet" variant="bs" lines={BS_LINES} outputs={outputs}
+              <StatementView title="Balance sheet" variant="bs" lines={lens.statements.bs} outputs={outputs}
                 forecast={forecast} periods={periods} openingPeriod={forecast.opening_period}
                 scenarioId={scenario.id}
                 entities={entities} groups={groups} assignments={assignments}
                 filter={filter} onFilterChange={setFilter} />
             )}
             {tab === 'cf' && (
-              <StatementView title="Cashflow" variant="cf" lines={CF_LINES} outputs={outputs}
+              <StatementView title="Cashflow" variant="cf" lines={lens.statements.cf} outputs={outputs}
                 forecast={forecast} periods={periods} openingPeriod={forecast.opening_period}
                 scenarioId={scenario.id}
                 entities={entities} groups={groups} assignments={assignments}
-                filter={filter} onFilterChange={setFilter} />
+                filter={filter} onFilterChange={lens.locations ? setFilter : undefined} />
             )}
             {tab === 'staff' && (
               <StaffCostsView outputs={outputs} forecast={forecast} periods={periods}
@@ -885,10 +884,10 @@ function EditForecastModal({ forecast, onClose, onSave, existingGroupClients, bu
   );
 }
 
-function Tabs({ tab, setTab }) {
+function Tabs({ tab, setTab, tabs }) {
   return (
-    <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${colors.border}` }}>
-      {TABS.map(t => (
+    <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${colors.border}`, flexWrap: 'wrap' }}>
+      {tabs.map(t => (
         <button
           key={t.key}
           onClick={() => setTab(t.key)}

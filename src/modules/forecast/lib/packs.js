@@ -13,6 +13,8 @@ import { workingCapitalModule } from './modules/working_capital.js';
 import { taxSimpleModule } from './modules/tax_simple.js';
 import { financialCoreModule } from './modules/financial_core.js';
 import { exitValuationModule } from './modules/exit_valuation.js';
+import { plLinesModule } from './modules/pl_lines.js';
+import { generalCoreModule } from './modules/general_core.js';
 
 const CHILDCARE_SCOTLAND_MODULES = [
   locationsModule,
@@ -39,6 +41,14 @@ export const PACKS = {
     key: 'childcare_scotland',
     label: 'Childcare — Scotland',
     modules: CHILDCARE_SCOTLAND_MODULES,
+  },
+  // High-level lens for ordinary trading companies: a list of P&L lines
+  // (usually seeded from the client's QuickBooks) projected forward, turned
+  // into a cashflow with debtor/creditor lag, VAT, PAYE and CT timing.
+  general_cashflow: {
+    key: 'general_cashflow',
+    label: 'General business — cashflow',
+    modules: [plLinesModule, loansModule, generalCoreModule],
   },
   accountancy: {
     key: 'accountancy',

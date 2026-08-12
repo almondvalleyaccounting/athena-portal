@@ -15,7 +15,7 @@
 
 export const loansModule = {
   key: 'loans',
-  pack: ['childcare_scotland', 'accountancy'],
+  pack: ['childcare_scotland', 'accountancy', 'general_cashflow'],
   dependsOn: [],
   drivers: [],   // loans are first-class records, not driver values
   outputs: [

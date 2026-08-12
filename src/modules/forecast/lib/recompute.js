@@ -3,17 +3,18 @@
 import {
   getForecast, listEntities, listScenarios, listVersions,
   loadDriversWithFallback, persistOutputs, persistFindings,
-  listLoans,
+  listLoans, listPlLines,
 } from './queries.js';
 import { modulesFor } from './packs.js';
 import { runForecast } from './engine.js';
 
 export async function recomputeScenario({ forecast_id, version_id, scenario_id }) {
-  const [forecast, entities, scenarios, loans] = await Promise.all([
+  const [forecast, entities, scenarios, loans, plLines] = await Promise.all([
     getForecast(forecast_id),
     listEntities(forecast_id),
     listScenarios(version_id),
     listLoans(scenario_id),
+    listPlLines(scenario_id),
   ]);
 
   const base = scenarios.find(s => s.kind === 'base');
@@ -36,6 +37,7 @@ export async function recomputeScenario({ forecast_id, version_id, scenario_id }
     drivers,
     driverValues: values,
     loans,
+    plLines,
   });
 
   // Materialise

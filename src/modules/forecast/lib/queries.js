@@ -218,6 +218,19 @@ export async function createVersionFrom({ forecast_id, source_version_id, name }
     if (error) throw error;
   }
 
+  // P&L lines (general cashflow lens) — per-scenario like loans
+  const { data: srcLines, error: ePl } = await supabase
+    .from('fc_pl_line').select('*').in('scenario_id', oldScenarioIds);
+  if (ePl) throw ePl;
+  if ((srcLines || []).length > 0) {
+    const rows = srcLines.map(l => {
+      const { id, created_at, updated_at, ...rest } = l;
+      return { ...rest, scenario_id: scenarioIdMap.get(l.scenario_id) };
+    });
+    const { error } = await supabase.from('fc_pl_line').insert(rows);
+    if (error) throw error;
+  }
+
   return newVersion;
 }
 
@@ -568,6 +581,80 @@ export async function deleteLoan(id) {
   if (error) throw error;
 }
 
+// ── P&L lines (general cashflow lens) ───────────────────────────
+
+export async function listPlLines(scenario_id) {
+  if (!scenario_id) return [];
+  const { data, error } = await supabase
+    .from('fc_pl_line').select('*').eq('scenario_id', scenario_id)
+    .order('category').order('sort_order').order('label');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertPlLine(row) {
+  const { id, created_at, updated_at, ...rest } = row;
+  const op = id
+    ? supabase.from('fc_pl_line').update(rest).eq('id', id).select().single()
+    : supabase.from('fc_pl_line').insert(rest).select().single();
+  const { data, error } = await op;
+  if (error) throw error;
+  return data;
+}
+
+export async function deletePlLine(id) {
+  const { error } = await supabase.from('fc_pl_line').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Replace this scenario's seeded lines with a fresh set from QuickBooks.
+ *
+ * Lines the user added by hand (no qbo_account_id) are KEPT — a re-seed
+ * refreshes the actuals, it doesn't throw away manual work. Existing seeded
+ * lines are matched on qbo_account_id so their adjustments survive too:
+ * only the actuals and the recomputed basis are overwritten.
+ */
+export async function applyQboSeed(scenario_id, seededLines) {
+  const existing = await listPlLines(scenario_id);
+  const byAccount = new Map(
+    existing.filter(l => l.qbo_account_id).map(l => [String(l.qbo_account_id), l]));
+
+  const toInsert = [];
+  for (const line of seededLines) {
+    const prior = byAccount.get(String(line.qbo_account_id));
+    if (prior) {
+      const { error } = await supabase.from('fc_pl_line').update({
+        label: prior.label,                    // keep any rename
+        category: prior.category,              // keep any recategorisation
+        qbo_account_name: line.qbo_account_name,
+        qbo_group: line.qbo_group,
+        actuals: line.actuals,
+        base_amount_p: line.base_amount_p,     // refreshed basis
+      }).eq('id', prior.id);
+      if (error) throw error;
+      byAccount.delete(String(line.qbo_account_id));
+      continue;
+    }
+    toInsert.push({ ...line, scenario_id });
+  }
+
+  // Seeded lines that no longer appear in the window had no activity in it —
+  // zero them rather than deleting, so any manual adjustment is not lost.
+  for (const stale of byAccount.values()) {
+    const { error } = await supabase.from('fc_pl_line')
+      .update({ actuals: null, base_amount_p: 0 }).eq('id', stale.id);
+    if (error) throw error;
+  }
+
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from('fc_pl_line').insert(toInsert);
+    if (error) throw error;
+  }
+
+  return { inserted: toInsert.length, updated: seededLines.length - toInsert.length, zeroed: byAccount.size };
+}
+
 // ── Groups (using the generic dimension/dimension_value system) ─────
 
 const GROUP_DIM_KEY = 'group';
@@ -878,6 +965,19 @@ export async function copyForecast(source_forecast_id, { name_suffix = ' (copy)'
         });
         const { error: e11 } = await supabase.from('fc_loan').insert(rows);
         if (e11) throw e11;
+      }
+
+      // 7b. P&L lines (general cashflow lens)
+      const { data: srcPlLines, error: e11a } = await supabase
+        .from('fc_pl_line').select('*').in('scenario_id', oldScenarioIds);
+      if (e11a) throw e11a;
+      if ((srcPlLines || []).length > 0) {
+        const rows = srcPlLines.map(l => {
+          const { id, created_at, updated_at, ...rest } = l;
+          return { ...rest, scenario_id: scenarioIdMap.get(l.scenario_id) };
+        });
+        const { error: e11b } = await supabase.from('fc_pl_line').insert(rows);
+        if (e11b) throw e11b;
       }
     }
 

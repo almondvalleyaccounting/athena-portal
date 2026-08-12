@@ -163,7 +163,7 @@ function buildResolver({ index, drivers, computedCache, valuesByDriverId, horizo
  * @param {Array} args.driverValues - fc_driver_value rows
  * @returns {{ outputs: OutputRow[], findings: Finding[] }}
  */
-export function runForecast({ forecast, modules, entities, drivers, driverValues, loans }) {
+export function runForecast({ forecast, modules, entities, drivers, driverValues, loans, plLines }) {
   const ordered = topoSort(modules);
   const modulesByKey = new Map(ordered.map(m => [m.key, m]));
 
@@ -189,6 +189,7 @@ export function runForecast({ forecast, modules, entities, drivers, driverValues
     drivers,                    // full merged driver list (so modules can discover custom drivers)
     driverValuesById: valuesByDriverId,    // direct value lookup for modules iterating drivers
     loans: loans || [],
+    plLines: plLines || [],      // fc_pl_line rows — the general cashflow lens
     horizonMonths: forecast.horizon_months,
     periods: range(0, forecast.horizon_months),
     resolve,
