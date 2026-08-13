@@ -176,6 +176,15 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     const preOpenStaffBase = sumScoped(r => r.nominal_type === 'staff_cost' && r.module_key === 'pre_opening');
 
     const premisesBase = sumScoped(r => r.nominal_type === 'overhead' && isPremises(r.line_label || ''));
+    // Premises sub-lines — mirrors financial_core's split so the cashflow's
+    // rent / service charge / maintenance / other rows survive a location
+    // filter. These sum to premisesBase; never add them to a total.
+    const premisesLine = (label) => sumScoped(r =>
+      r.nominal_type === 'overhead' && (r.line_label || '') === label);
+    const premisesRentBase    = premisesLine('Rent');
+    const premisesSvcBase     = premisesLine('Service charge');
+    const premisesMaintBase   = premisesLine('Maintenance');
+    const premisesOtherBase   = premisesBase - premisesRentBase - premisesSvcBase - premisesMaintBase;
     const utilitiesBase = sumScoped(r => r.nominal_type === 'overhead' && isUtilities(r.line_label || ''));
     const preOpenOverheadBase = sumScoped(r => r.nominal_type === 'overhead' && isPreOpening(r.module_key, r.line_label || ''));
     // Pre-opening line-item split (overhead is the registration period catch-all,
@@ -368,6 +377,10 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     // Recurring section
     set('cf.out.staff', t, -cashOut_staff);
     set('cf.out.premises', t, -cashOut_premises);
+    set('cf.out.premises_rent',           t, -(premisesRentBase  * fCost));
+    set('cf.out.premises_service_charge', t, -(premisesSvcBase   * fCost));
+    set('cf.out.premises_maintenance',    t, -(premisesMaintBase * fCost));
+    set('cf.out.premises_other',          t, -(premisesOtherBase * fCost));
     set('cf.out.utilities', t, -cashOut_utilities);
     set('cf.out.other_overhead', t, -cashOut_otherOH);
     set('cf.out.recurring_total', t, -(cashOut_staff + cashOut_premises + cashOut_utilities + cashOut_otherOH));

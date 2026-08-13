@@ -129,6 +129,10 @@ export const financialCoreModule = {
     { nominal_type: 'cf.in_total', label: 'Total cash in', by_entity: false },
     { nominal_type: 'cf.out.staff', label: 'Cash out — staff', by_entity: false },
     { nominal_type: 'cf.out.premises', label: 'Cash out — premises', by_entity: false },
+    { nominal_type: 'cf.out.premises_rent', label: 'Cash out — rent', by_entity: false },
+    { nominal_type: 'cf.out.premises_service_charge', label: 'Cash out — service charge', by_entity: false },
+    { nominal_type: 'cf.out.premises_maintenance', label: 'Cash out — maintenance', by_entity: false },
+    { nominal_type: 'cf.out.premises_other', label: 'Cash out — other premises', by_entity: false },
     { nominal_type: 'cf.out.utilities', label: 'Cash out — utilities', by_entity: false },
     { nominal_type: 'cf.out.other_overhead', label: 'Cash out — other overheads', by_entity: false },
     { nominal_type: 'cf.out.pre_opening', label: 'Cash out — pre-opening (all)', by_entity: false },
@@ -217,6 +221,12 @@ export const financialCoreModule = {
       // ─── Overhead ───
       cost_staff_overhead_base: 0,  // exec / senior manager / admin (group-level staff)
       cost_premises_base: 0,        // rent / NDR / maintenance / service charge
+      // Premises split into its constituent lines so the cashflow can show
+      // them separately. These sum to cost_premises_base.
+      cost_premises_rent_base: 0,
+      cost_premises_service_charge_base: 0,
+      cost_premises_maintenance_base: 0,
+      cost_premises_other_base: 0,  // NDR + any other premises-tagged cost
       cost_utilities_base: 0,       // utilities
       cost_admin_base: 0,           // central admin overhead line
       cost_other_overhead_base: 0,  // insurance / software / marketing / professional fees
@@ -281,6 +291,10 @@ export const financialCoreModule = {
             }
           } else if (lbl === 'Rent' || lbl === 'Service charge' || lbl === 'NDR' || lbl === 'Maintenance') {
             p.cost_premises_base += r.amount_p;
+            if (lbl === 'Rent') p.cost_premises_rent_base += r.amount_p;
+            else if (lbl === 'Service charge') p.cost_premises_service_charge_base += r.amount_p;
+            else if (lbl === 'Maintenance') p.cost_premises_maintenance_base += r.amount_p;
+            else p.cost_premises_other_base += r.amount_p;   // NDR
           } else if (/utilit/i.test(lbl)) {
             p.cost_utilities_base += r.amount_p;
           } else if (/consumable|food/i.test(lbl)) {
@@ -376,6 +390,12 @@ export const financialCoreModule = {
       const cashOut = {
         staff:           (p.cost_staff_direct_base + p.cost_staff_overhead_base) * fCost,
         premises:        p.cost_premises_base * fCost,
+        // Premises sub-lines — these sum to `premises`, so they are for
+        // presentation only and must NOT be added into any total.
+        premises_rent:           p.cost_premises_rent_base           * fCost,
+        premises_service_charge: p.cost_premises_service_charge_base * fCost,
+        premises_maintenance:    p.cost_premises_maintenance_base    * fCost,
+        premises_other:          p.cost_premises_other_base          * fCost,
         utilities:       p.cost_utilities_base * fCost,
         other_overhead:  (p.cost_other_overhead_base + p.cost_admin_base + p.cost_direct_costs_base) * fCost,
         // Pre-opening split into its three line items so the cashflow
@@ -572,6 +592,10 @@ export const financialCoreModule = {
         // ── Recurring operating cash out ───────────────────────────
         ['cf.out.staff',         'Staff costs',                              -cashOut.staff],
         ['cf.out.premises',      'Premises (rent / NDR / maintenance)',      -cashOut.premises],
+        ['cf.out.premises_rent',           'Rent',                          -cashOut.premises_rent],
+        ['cf.out.premises_service_charge', 'Service charge',                -cashOut.premises_service_charge],
+        ['cf.out.premises_maintenance',    'Maintenance',                   -cashOut.premises_maintenance],
+        ['cf.out.premises_other',          'Other premises costs',          -cashOut.premises_other],
         ['cf.out.utilities',     'Utilities',                                -cashOut.utilities],
         ['cf.out.other_overhead','Other overheads',                          -cashOut.other_overhead],
         ['cf.out.recurring_total','Total recurring',                          -totalRecurring],

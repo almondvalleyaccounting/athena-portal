@@ -4,13 +4,18 @@
 
 import { buildOccupancyIndex, occKey, curveForBand, occupancyOnCurve } from '../occupancy.js';
 
+// Fixed three-letter months rather than toLocaleString: en-GB renders
+// September as "Sept", which makes the column headers ragged.
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 export function groupPeriods(periods, granularity, openingPeriod) {
   const out = [];
   const opening = openingPeriod ? new Date(openingPeriod) : null;
   const labelFor = (p) => {
     if (!opening) return `M${p}`;
     const d = new Date(opening.getFullYear(), opening.getMonth() + p, 1);
-    return d.toLocaleString('en-GB', { month: 'short', year: '2-digit' });
+    return `${MONTH_ABBR[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
   };
 
   if (granularity === 'monthly') {

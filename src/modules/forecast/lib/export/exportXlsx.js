@@ -1,13 +1,19 @@
 // Excel export — produces a multi-sheet workbook with the forecast pack.
+//
+// `xlsx-js-style` rather than `xlsx`: the community SheetJS build silently
+// drops cell styles on write (`.s` is accepted and ignored), so bold totals
+// and section rules never reached the file. Same API, styles survive.
 
-import * as XLSX from 'xlsx';
-import { PNL_LINES, BS_LINES, CF_LINES } from '../../views/statementLines';
+// Default import, not `* as`: the package is CommonJS, and a namespace
+// import leaves `utils` undefined outside the Vite bundle.
+import XLSX from 'xlsx-js-style';
+import { PNL_LINES, BS_LINES, CF_LINES } from '../../views/statementLines.js';
 import {
   groupPeriods, sumLine, buildStatementMatrix,
   buildStaffMatrix, STAFF_ROWS,
   buildPremisesMatrix,
   pToGbp,
-} from './aggregations';
+} from './aggregations.js';
 
 const SHEETS = {
   pnl:      { label: 'P&L',              lines: PNL_LINES },
@@ -16,6 +22,37 @@ const SHEETS = {
   staff:    { label: 'Staff detail',     custom: true },
   premises: { label: 'Premises detail',  custom: true },
 };
+
+// ── Shared styling ─────────────────────────────────────────────────
+// Negatives red and bracketed, zero as an en-dash — the convention the
+// statement views already use on screen.
+const NUM_FMT = '#,##0;[Red](#,##0);"–"';
+const RULE = { style: 'thin', color: { rgb: 'FF000000' } };
+
+const S = {
+  title:      { font: { bold: true, sz: 11 } },
+  colHeader:  { font: { bold: true, sz: 11 }, alignment: { horizontal: 'right' },
+                border: { bottom: RULE } },
+  label:      { font: { sz: 11 } },
+  labelBold:  { font: { bold: true, sz: 11 } },
+  num:        { font: { sz: 11 }, alignment: { horizontal: 'right' } },
+  numBold:    { font: { bold: true, sz: 11 }, alignment: { horizontal: 'right' } },
+  // A "total" row carries a rule along its top edge, mimicking the ruled
+  // subtotals in a hand-built cashflow.
+  labelTotal: { font: { bold: true, sz: 11 }, border: { top: RULE } },
+  numTotal:   { font: { bold: true, sz: 11 }, alignment: { horizontal: 'right' },
+                border: { top: RULE } },
+};
+
+/** Apply a style + number format to every cell of an already-written row. */
+function styleRow(ws, r, nCols, { labelStyle, numStyle, fmt = NUM_FMT }) {
+  for (let c = 0; c <= nCols; c++) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    if (!ws[addr]) continue;
+    ws[addr].s = c === 0 ? labelStyle : numStyle;
+    if (c > 0) ws[addr].z = fmt;
+  }
+}
 
 export function buildExcelPack({
   forecast, scenario, periods, openingPeriod,
@@ -53,24 +90,35 @@ export function buildExcelPack({
     if (!selectedSheets.includes(key)) continue;
     const def = SHEETS[key];
     const matrix = buildStatementMatrix(outputs, def.lines, grouped, scopedOutputs);
+    const nCols = grouped.length;
 
-    const aoa = [];
-    aoa.push([def.label, ...periodHeaders]);
+    // Build the grid first, recording which sheet row each line landed on so
+    // styling can be applied afterwards — blank spacer rows shift the offsets.
+    const aoa = [[def.label, ...periodHeaders]];
+    const placed = [];
     for (const { line, values } of matrix) {
+      if (line.spacerBefore) aoa.push([]);
+      placed.push({ line, r: aoa.length });
       const indent = line.indent ? '   ' : '';
-      const row = [indent + line.label, ...values.map(pToGbp)];
-      aoa.push(row);
+      aoa.push([indent + line.label, ...values.map(pToGbp)]);
     }
+
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 38 }, ...grouped.map(() => ({ wch: 14 }))];
     ws['!freeze'] = { xSplit: 1, ySplit: 1 };
-    // Currency format for numeric columns
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    for (let R = 1; R <= range.e.r; R++) {
-      for (let C = 1; C <= range.e.c; C++) {
-        const addr = XLSX.utils.encode_cell({ r: R, c: C });
-        if (ws[addr]) ws[addr].z = '#,##0;[Red](#,##0);"–"';
-      }
+
+    // Header row
+    for (let c = 0; c <= nCols; c++) {
+      const addr = XLSX.utils.encode_cell({ r: 0, c });
+      if (ws[addr]) ws[addr].s = c === 0 ? { ...S.title, border: { bottom: RULE } } : S.colHeader;
+    }
+    // Body rows — bold headers/totals, rule above totals
+    for (const { line, r } of placed) {
+      const bold = line.kind === 'header' || line.total;
+      styleRow(ws, r, nCols, {
+        labelStyle: line.total ? S.labelTotal : (bold ? S.labelBold : S.label),
+        numStyle:   line.total ? S.numTotal   : (bold ? S.numBold   : S.num),
+      });
     }
     XLSX.utils.book_append_sheet(wb, ws, def.label.slice(0, 31));
   }
@@ -122,11 +170,16 @@ export function buildExcelPack({
     ws['!cols'] = [{ wch: 38 }, ...grouped.map(() => ({ wch: 14 }))];
     ws['!freeze'] = { xSplit: 1, ySplit: 1 };
     const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let C = 0; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: 0, c: C });
+      if (ws[addr]) ws[addr].s = C === 0 ? { ...S.title, border: { bottom: RULE } } : S.colHeader;
+    }
     for (let R = 1; R <= range.e.r; R++) {
-      for (let C = 1; C <= range.e.c; C++) {
-        const addr = XLSX.utils.encode_cell({ r: R, c: C });
-        if (ws[addr]) ws[addr].z = '#,##0;[Red](#,##0);"–"';
-      }
+      const isTotal = R === range.e.r;
+      styleRow(ws, R, range.e.c, {
+        labelStyle: isTotal ? S.labelTotal : S.label,
+        numStyle:   isTotal ? S.numTotal   : S.num,
+      });
     }
     XLSX.utils.book_append_sheet(wb, ws, 'Premises detail');
   }
