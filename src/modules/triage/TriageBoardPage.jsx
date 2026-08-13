@@ -32,7 +32,7 @@ const CATEGORIES = [
   {
     key: 'on_hold', label: 'On hold', icon: PauseCircle,
     tone: { fg: '#b45309', bg: '#fffbeb', border: '#fde68a' },
-    hint: 'Do not carry out any work for these clients while the case is open.',
+    hint: 'Do not carry out any work for these clients while the case is open. Tick a tile to take a client off hold.',
   },
   {
     key: 'general', label: 'General', icon: ClipboardList,
@@ -49,6 +49,11 @@ function fmtNoteTime(iso) {
 function daysOpen(iso) {
   const ms = Date.now() - new Date(iso).getTime();
   return Math.max(0, Math.floor(ms / 86400000));
+}
+// Closing a case is "resolve" everywhere, but on the on-hold lane what people
+// are actually doing is releasing the client back to work — say that instead.
+function resolveLabel(category) {
+  return category === 'on_hold' ? 'Take off hold' : 'Resolve case';
 }
 
 export default function TriageBoardPage() {
@@ -135,7 +140,10 @@ export default function TriageBoardPage() {
   }
 
   async function resolveCase(c) {
-    if (!window.confirm(`Resolve the ${c.category === 'on_hold' ? 'on-hold' : 'triage'} case for "${c.entity?.name}"?`)) return;
+    const prompt = c.category === 'on_hold'
+      ? `Take "${c.entity?.name}" off hold? Work can resume for this client.`
+      : `Resolve the triage case for "${c.entity?.name}"?`;
+    if (!window.confirm(prompt)) return;
     await patchCase(c.id, {
       status: 'resolved', resolved_at: new Date().toISOString(), resolved_by: profile?.id || null,
     });
@@ -257,6 +265,16 @@ export default function TriageBoardPage() {
                           </span>
                           {c.status === 'resolved' && <CheckCircle2 size={13} color="#16a34a" />}
                           <span style={{ fontSize: 10.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>{daysOpen(c.created_at)}d</span>
+                          {c.status === 'open' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); resolveCase(c); }}
+                              title={resolveLabel(c.category)}
+                              style={{
+                                ...iconBtn, padding: '2px 4px', borderColor: '#e2e8f0', color: '#94a3b8',
+                              }}>
+                              <CheckCircle2 size={12} />
+                            </button>
+                          )}
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', marginTop: 3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                           {c.description}
@@ -489,8 +507,12 @@ function CaseDrawer({ c, notes, actions, staffMap, staffList, templates, onClose
 
         <div style={{ padding: '12px 20px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           {c.status === 'open'
-            ? <button onClick={onResolve} style={{ ...btn('ghost'), color: '#166534', borderColor: '#bbf7d0' }}><CheckCircle2 size={13} /> Resolve case</button>
-            : <button onClick={onReopen} style={btn('ghost')}>Reopen case</button>}
+            ? (
+              <button onClick={onResolve} style={{ ...btn('ghost'), color: '#166534', borderColor: '#bbf7d0' }}>
+                <CheckCircle2 size={13} /> {resolveLabel(c.category)}
+              </button>
+            )
+            : <button onClick={onReopen} style={btn('ghost')}>{c.category === 'on_hold' ? 'Put back on hold' : 'Reopen case'}</button>}
         </div>
       </div>
     </div>
