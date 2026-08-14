@@ -49,8 +49,14 @@ const MODULE_SECTIONS = {
     { label: 'Counted in statutory ratios?', match: (d) => d.driver_key.startsWith('ratio_inclusion.') },
   ],
   premises: [
-    { label: 'Lease (rent / service charge)', match: (d) => ['premises.rent_monthly_p', 'premises.service_charge_monthly_p'].includes(d.driver_key) },
-    { label: 'Buy (purchase / mortgage / NDR) & upkeep', match: () => true },
+    // Split three ways, because grouping the tenure-neutral costs under "Buy"
+    // read as though rates and maintenance only applied to a purchase.
+    { label: 'If leasing — rent & service charge', match: (d) => ['premises.rent_monthly_p', 'premises.service_charge_monthly_p'].includes(d.driver_key) },
+    { label: 'If buying — purchase & mortgage', match: (d) => [
+      'premises.purchase_price_p', 'premises.deposit_pct', 'premises.mortgage_term_years',
+      'premises.mortgage_interest_pct', 'premises.legal_fees_p',
+    ].includes(d.driver_key) },
+    { label: 'Either way — costs of occupying the building (from occupancy)', match: () => true },
   ],
   pre_opening: [
     { label: 'Overhead & registration', match: (d) => d.driver_key.includes('monthly_overhead') || d.driver_key.includes('registration_lead') },

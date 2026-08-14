@@ -11,16 +11,14 @@
 //
 // All scalar -> applied each month. Override per-period via timeseries kind.
 
-import { openingMonth, occupancyMonth, isPremisesCost } from '../timeline.js';
+import { openingMonth } from '../timeline.js';
 
+// Everything here is a cost of TRADING and starts at the opening month.
+// Costs of holding the building — rent, service charge, rates, maintenance,
+// utilities, buildings insurance — live in the premises module, because they
+// start at occupancy. The module boundary is the trigger.
 const OVERHEAD_LINES = [
-  { key: 'utilities_p',         label: 'Utilities',         scope: 'entity', defaultValue: 80000 },
-  // Insurance splits along the timeline. Buildings / contents cover attaches
-  // when you take the keys; liability and the rest attach when you trade.
-  // "Premises insurance" also puts it in the premises bucket — see
-  // isPremisesCost, which matches any label starting "Premises".
-  { key: 'premises_insurance_p', label: 'Premises insurance', scope: 'entity', defaultValue: 10000 },
-  { key: 'general_insurance_p',  label: 'General insurance',  scope: 'entity', defaultValue: 15000 },
+  { key: 'general_insurance_p', label: 'General insurance', scope: 'entity', defaultValue: 15000 },
   { key: 'software_p',          label: 'Software / IT',     scope: 'entity', defaultValue: 15000 },
   { key: 'consumables_p',       label: 'Consumables / food',scope: 'entity', defaultValue: 60000 },
   { key: 'marketing_p',         label: 'Marketing',         scope: 'entity', defaultValue: 10000 },
@@ -102,15 +100,12 @@ export const overheadsModule = {
           amount_p: Math.round(v),
         });
       }
-      // Entity-scope lines. Premises costs start when the building is taken;
-      // everything else is a cost of trading and waits for opening.
+      // Entity-scope lines — costs of trading, so they wait for opening.
+      // Anything that starts at occupancy belongs in the premises module.
       for (const e of ctx.entities) {
-        const opening = openingMonth(e.config);
-        const occupancy = occupancyMonth(e.config);
+        if (t < openingMonth(e.config)) continue;
         for (const d of entityDrivers) {
           if (d.entity_id !== e.id) continue;
-          const startsAt = isPremisesCost(labelFor(d)) ? occupancy : opening;
-          if (t < startsAt) continue;
           const v = valueOf(d, t);
           if (!v) continue;
           out.push({

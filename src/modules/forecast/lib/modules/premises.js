@@ -9,8 +9,10 @@
 //            depreciation on property + fit-out
 //
 // Drivers (entity-scoped):
-//   BOTH TENURES:
+//   BOTH TENURES (costs of occupying the building, whoever owns it):
 //     premises.maintenance_annual_p
+//     premises.utilities_p              — heat, light, water
+//     premises.insurance_p              — buildings / contents cover
 //     premises.ndr_rateable_value_p     — set when known
 //     premises.ndr_poundage
 //     premises.ndr_relief_pct           — Small Business Bonus etc.
@@ -54,6 +56,11 @@ export const premisesModule = {
     { key: 'premises.fit_out_capex_p', label: 'Fit-out capex', unit: 'gbp_p', kind: 'scalar', scope: 'entity', defaultValue: 15000000 },
     { key: 'premises.depreciation_years', label: 'Depreciation horizon (years)', unit: 'count', kind: 'scalar', scope: 'entity', defaultValue: 25 },
     { key: 'premises.maintenance_annual_p', label: 'Maintenance (annual)', unit: 'gbp_p', kind: 'scalar', scope: 'entity', defaultValue: 800000 },
+    // Costs of occupying the building, whichever way you hold it. They live
+    // here rather than in overheads because the module boundary IS the
+    // trigger: premises starts at occupancy, overheads at opening.
+    { key: 'premises.utilities_p', label: 'Utilities (monthly)', unit: 'gbp_p', kind: 'scalar', scope: 'entity', defaultValue: 80000 },
+    { key: 'premises.insurance_p', label: 'Premises insurance (monthly)', unit: 'gbp_p', kind: 'scalar', scope: 'entity', defaultValue: 10000 },
     { key: 'premises.ndr_rateable_value_p', label: 'NDR rateable value', unit: 'gbp_p', kind: 'scalar', scope: 'entity', defaultValue: 4500000 },
     { key: 'premises.ndr_poundage', label: 'NDR poundage', unit: 'pct', kind: 'scalar', scope: 'entity', defaultValue: 49.8 },
     { key: 'premises.ndr_relief_pct', label: 'NDR relief %', unit: 'pct', kind: 'scalar', scope: 'entity', defaultValue: 0 },
@@ -92,6 +99,8 @@ export const premisesModule = {
       const ndrRelief = ctx.resolve('premises.ndr_relief_pct', { entity: e.key }) / 100;
       const ndrMonthly = (rv * poundage * (1 - ndrRelief)) / 12;
       const maintMonthly = maintAnnual / 12;
+      const utilitiesMonthly = ctx.resolve('premises.utilities_p', { entity: e.key });
+      const insuranceMonthly = ctx.resolve('premises.insurance_p', { entity: e.key });
 
       // Written off over the same horizon whichever the tenure, so read once
       // here rather than in each branch. `|| 25` on purpose — monthlyDep
@@ -114,6 +123,22 @@ export const premisesModule = {
             module_key: 'premises', entity_id: e.id, period: t,
             nominal_type: 'overhead', line_label: 'Maintenance',
             amount_p: Math.round(maintMonthly),
+            tags: { premises_kind: mode },
+          });
+        }
+        if (utilitiesMonthly > 0) {
+          out.push({
+            module_key: 'premises', entity_id: e.id, period: t,
+            nominal_type: 'overhead', line_label: 'Utilities',
+            amount_p: Math.round(utilitiesMonthly),
+            tags: { premises_kind: mode },
+          });
+        }
+        if (insuranceMonthly > 0) {
+          out.push({
+            module_key: 'premises', entity_id: e.id, period: t,
+            nominal_type: 'overhead', line_label: 'Premises insurance',
+            amount_p: Math.round(insuranceMonthly),
             tags: { premises_kind: mode },
           });
         }
