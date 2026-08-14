@@ -190,8 +190,12 @@ export const financialCoreModule = {
         });
       }
     }
-    // A lag of 0 is a real answer — "we pay the CT in the month it accrues" —
-    // so it has to survive the fallback. resolveOr, not `|| 9`.
+    // Months from the ACCOUNTING YEAR END to the CT payment. 9 is the UK
+    // small-company date (strictly 9 months and a day, i.e. the first of month
+    // 10 — we keep it at the end of month 9, which is a month early and so the
+    // safer side to plan cash on). A lag of 0 is a real answer — "we pay it in
+    // the month it accrues" — so it has to survive the fallback: resolveOr,
+    // not `|| 9`.
     const taxLagMonths = resolveOr(ctx, 'tax.payment_lag_months', 9);
     const incomeInflation = (ctx.resolve('inflation.income_pct', {}) || 0) / 100;
     const costInflation  = (ctx.resolve('inflation.cost_pct', {}) || 0) / 100;
@@ -343,6 +347,39 @@ export const financialCoreModule = {
       p.costs   = p.costs_base   + p.cost_uplift;
     }
 
+    // ── Corporation tax: provision monthly, pay in one bill ──────────
+    // CT accrues to the P&L every month (tax_simple) but it does not LEAVE
+    // the bank every month — it builds as a provision and is settled once,
+    // `taxLagMonths` after the accounting year end. Paying a twelfth of it
+    // monthly, as this did before, understates the liability carried through
+    // the year and hides the single largest payment in the cash cycle.
+    //
+    // Year ends come from forecast.year_end_date; only the month matters to a
+    // monthly model. With no date recorded we fall back to the month before
+    // the forecast opens, so year one still closes at t=11.
+    const monthIdxOf = (iso, fallback) => {
+      const d = iso ? new Date(iso) : null;
+      return d && !isNaN(d.getTime()) ? d.getUTCMonth() : fallback;
+    };
+    const openingMonthIdx = monthIdxOf(ctx.forecast?.opening_period, 0);
+    const yearEndMonthIdx = monthIdxOf(ctx.forecast?.year_end_date, (openingMonthIdx + 11) % 12);
+    // NB: the year-end DIVIDEND below still triggers on the forecast year
+    // (t % 12 === 11), which is a different date unless the year end happens
+    // to fall there. Deliberately left alone — moving it would move cash.
+    const isAccountingYearEnd = (t) => ((openingMonthIdx + t) % 12) === yearEndMonthIdx;
+
+    const taxPaidAt = periods.map(() => 0);
+    let taxAccruedThisYear = 0;
+    for (const t of periods) {
+      taxAccruedThisYear += pnl[t].tax;
+      if (!isAccountingYearEnd(t)) continue;
+      const payAt = t + taxLagMonths;
+      // A bill falling past the horizon is not dropped — it stays in
+      // bs.tax_payable, which is where an unpaid liability belongs.
+      if (payAt < periods.length) taxPaidAt[payAt] += taxAccruedThisYear;
+      taxAccruedThisYear = 0;
+    }
+
     // Running BS state
     let cash = openingCash;
     let fixedAssetsGross = 0;
@@ -359,8 +396,9 @@ export const financialCoreModule = {
       const pbt = ebit - p.interest;
       const npat = pbt - p.tax;
 
-      // Cashflow: direct method
-      const taxPaidThisPeriod = (t - taxLagMonths >= 0) ? pnl[t - taxLagMonths].tax : 0;
+      // Cashflow: direct method. Tax leaves the bank on the schedule built
+      // above — one bill per accounting year, not a slice every month.
+      const taxPaidThisPeriod = taxPaidAt[t];
 
       // Net financing = delta(debt_balance). Split into drawdown (+ve) and
       // principal repayment (-ve) for the user-facing direct CF.

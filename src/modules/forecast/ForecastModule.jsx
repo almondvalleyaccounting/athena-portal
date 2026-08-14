@@ -258,6 +258,7 @@ export default function ForecastModule() {
         client_entity_id: form.client_entity_id || null,
         vertical_pack: form.vertical_pack, horizon_months: form.horizon_months || 84,
         opening_period: opening,
+        year_end_date: form.year_end_date || null,
       });
       const list = await listForecasts();
       setForecasts(list);
@@ -696,6 +697,7 @@ function CreateForecastModal({ onClose, onCreate, existingGroupClients, busy }) 
     vertical_pack: 'childcare_scotland',
     horizon_months: 84,
     start_month: ymThisMonth,           // YYYY-MM
+    year_end_date: '',
     currency: 'GBP',
   });
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -711,6 +713,7 @@ function CreateForecastModal({ onClose, onCreate, existingGroupClients, busy }) 
       client_name: (form.client_name || '').trim(),
       horizon_months: Number(form.horizon_months),
       opening_period: `${form.start_month}-01`,    // first of month
+      year_end_date: form.year_end_date || null,
     });
   };
   return (
@@ -769,6 +772,17 @@ function CreateForecastModal({ onClose, onCreate, existingGroupClients, busy }) 
               onChange={set('start_month')}
               style={inputStyle}
             />
+          </Field>
+          <Field label="Accounting year end">
+            <input
+              type="date"
+              value={form.year_end_date}
+              onChange={set('year_end_date')}
+              style={inputStyle}
+            />
+            <span style={{ fontSize: 10, color: colors.muted }}>
+              Optional — drives when the CT bill is paid (year end + 9 months).
+            </span>
           </Field>
         </div>
         <p style={{ fontSize: 11, color: colors.muted, margin: '12px 0 0' }}>
@@ -833,6 +847,7 @@ function EditForecastModal({ forecast, onClose, onSave, existingGroupClients, bu
     client_entity_id: forecast.client_entity_id || null,
     horizon_months: forecast.horizon_months || 60,
     start_month: startMonthFromForecast,
+    year_end_date: forecast.year_end_date || '',
     currency: forecast.currency || 'GBP',
   });
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -849,10 +864,12 @@ function EditForecastModal({ forecast, onClose, onSave, existingGroupClients, bu
       client_entity_id: form.client_entity_id,
       horizon_months: Number(form.horizon_months),
       opening_period: `${form.start_month}-01`,
+      year_end_date: form.year_end_date || null,
       currency: form.currency,
     });
   };
   const horizonShrinking = Number(form.horizon_months) < forecast.horizon_months;
+  const yearEndChanging = (form.year_end_date || '') !== (forecast.year_end_date || '');
   const startMonthChanging = form.start_month !== startMonthFromForecast;
   return (
     <div onClick={onClose} style={modalBackdrop}>
@@ -889,6 +906,13 @@ function EditForecastModal({ forecast, onClose, onSave, existingGroupClients, bu
           <Field label="Start month">
             <input type="month" value={form.start_month} onChange={set('start_month')} style={inputStyle} />
           </Field>
+          <Field label="Accounting year end">
+            <input type="date" value={form.year_end_date} onChange={set('year_end_date')} style={inputStyle} />
+            <span style={{ fontSize: 10, color: colors.muted }}>
+              Sets when the CT bill falls due — year end + the CT payment lag (9 months).
+              Blank = twelve months from the start month.
+            </span>
+          </Field>
           <Field label="Currency">
             <select value={form.currency} onChange={set('currency')} style={{ ...inputStyle, padding: '6px' }}>
               {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
@@ -901,6 +925,11 @@ function EditForecastModal({ forecast, onClose, onSave, existingGroupClients, bu
         {horizonShrinking && (
           <p style={{ fontSize: 11, color: colors.amber, margin: '12px 0 0', background: '#fef3c7', padding: 8, borderRadius: 6 }}>
             Shrinking horizon will drop output rows beyond month {form.horizon_months - 1}. Recompute after saving to refresh.
+          </p>
+        )}
+        {yearEndChanging && (
+          <p style={{ fontSize: 11, color: colors.amber, margin: '8px 0 0', background: '#fef3c7', padding: 8, borderRadius: 6 }}>
+            Moving the year end moves the corporation tax payment with it. Recompute after saving.
           </p>
         )}
         {startMonthChanging && (

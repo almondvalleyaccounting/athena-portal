@@ -19,6 +19,7 @@
 // accrual P&L the lines are seeded from represents. Cash in and out is gross.
 
 import { formatMoney } from '../currency.js';
+import { resolveOr } from '../drivers.js';
 
 const DAYS_PER_MONTH = 30.44;
 
@@ -113,7 +114,8 @@ export const generalCoreModule = {
 
     // ─── Company income tax (UK Corporation Tax, US federal/state, …) ───
     { key: 'tax.ct_rate_pct',           label: 'Company tax rate % (UK CT 25, US federal 21)', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 25 },
-    { key: 'tax.year_end_month',        label: 'Accounting year-end month (1-12)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 3 },
+    // Legacy: the forecast's own Year end field wins when it is set.
+    { key: 'tax.year_end_month',        label: 'Accounting year-end month (1-12) — only used if the forecast has no year end set', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 3 },
     { key: 'tax.payment_pattern',       label: 'Payment pattern (0 = one payment after year end, 1 = quarterly instalments)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 0 },
     { key: 'tax.ct_payment_lag_months', label: 'Months after year end / quarter that tax is paid', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 9 },
     { key: 'tax.ct_opening_liability_p', label: 'Tax owed at the start', unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 0 },
@@ -198,16 +200,28 @@ export const generalCoreModule = {
     const frsRate = r('vat.flat_rate_pct') / 100;
     const onFrs = vatRegistered && frsRate > 0;
     const stagger = Math.min(3, Math.max(1, Math.round(r('vat.stagger')) || 3));
-    const vatLag = Math.max(0, Math.round(r('vat.payment_lag_months')));
+    // `r` collapses a missing driver to 0, which for a payment lag is a real
+    // number of months rather than "unset" — an absent VAT lag meant the
+    // return was paid in the quarter-end month itself. resolveOr keeps the
+    // declared defaults: VAT falls due one month after the quarter ends, CT
+    // nine months after the year end. A deliberate 0 still stands.
+    const vatLag = Math.max(0, Math.round(resolveOr(ctx, 'vat.payment_lag_months', 1)));
     const ctRate = r('tax.ct_rate_pct') / 100;
-    const yearEndMonth = Math.min(12, Math.max(1, Math.round(r('tax.year_end_month')) || 3));
-    const ctLag = Math.max(0, Math.round(r('tax.ct_payment_lag_months')));
+    const ctLag = Math.max(0, Math.round(resolveOr(ctx, 'tax.ct_payment_lag_months', 9)));
     const ctPattern = Math.round(r('tax.payment_pattern')) === 1 ? 1 : 0;
     const dividendsPm = r('div.monthly_p');
 
     // ── Calendar ────────────────────────────────────────────────────
     const openingDate = ctx.forecast?.opening_period ? new Date(ctx.forecast.opening_period) : new Date();
     const monthOf = (t) => ((openingDate.getUTCMonth() + t) % 12) + 1;   // 1-12
+
+    // The year end is a fact about the company, so forecast.year_end_date is
+    // the source of truth. `tax.year_end_month` predates that column and is
+    // kept as a per-scenario override for forecasts that have no date set.
+    const yearEndDate = ctx.forecast?.year_end_date ? new Date(ctx.forecast.year_end_date) : null;
+    const yearEndMonth = yearEndDate && !isNaN(yearEndDate.getTime())
+      ? yearEndDate.getUTCMonth() + 1
+      : Math.min(12, Math.max(1, Math.round(r('tax.year_end_month')) || 3));
 
     // ── Bucket the raw line rows ────────────────────────────────────
     const rows = ctx.upstreamOutputs.filter(o => o.module_key === 'pl_lines');

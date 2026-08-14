@@ -12,9 +12,11 @@
 // (Monthly granularity, no group relief, capital allowances = book
 // depreciation. v1 simplifications.)
 //
-// Cash timing: cash payment lags 9 months from period end (UK CT
-// 9mo+1day); financial_core applies tax to P&L when accrued and to cash
-// `tax.payment_lag_months` later.
+// Cash timing: this module only ACCRUES. financial_core provisions the
+// monthly charge and settles the whole year in one payment,
+// `tax.payment_lag_months` after the accounting year end (forecast.
+// year_end_date) — the UK small-company date, 9 months and a day, held at
+// the end of month 9 so the cash plan is a month early rather than late.
 
 export const taxSimpleModule = {
   key: 'tax_simple',
@@ -23,7 +25,7 @@ export const taxSimpleModule = {
 
   drivers: [
     { key: 'tax.ct_rate_pct', label: 'Corporation tax %', unit: 'pct', kind: 'scalar', scope: 'group', defaultValue: 25 },
-    { key: 'tax.payment_lag_months', label: 'CT payment lag (months)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 9 },
+    { key: 'tax.payment_lag_months', label: 'CT payment lag (months after year end)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 9 },
   ],
 
   outputs: [
