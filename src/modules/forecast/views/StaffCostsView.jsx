@@ -224,7 +224,11 @@ function RateAnalysisBox({ staffDrivers, outputs = [], entityIds = null, periods
     return v ? Number(v.value) : null;
   };
 
-  const hoursPerYear = lookup('standard_hours_per_year') || 1820;
+  // Rates are salary ÷ CONTRACTED hours — that is what the salary buys.
+  // Dividing by productive hours (net of leave) overstates the rate by
+  // whatever the absence allowance is, and flattered every wage-floor
+  // comparison in this box.
+  const hoursPerYear = (lookup('contracted_hours_per_week') || 40) * 52;
   const niPct        = (lookup('employer_ni_pct') || 0) / 100;
   const penPct       = (lookup('employer_pension_pct') || 0) / 100;
   const rlw          = lookup('real_living_wage_hourly_p') || 0;

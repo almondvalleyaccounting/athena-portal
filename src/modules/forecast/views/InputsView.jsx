@@ -44,7 +44,8 @@ const MODULE_SECTIONS = {
     { label: 'Headcount', match: (d) => d.driver_key.startsWith('headcount.') },
     { label: 'Direct staff mix & age-band split', match: (d) => d.driver_key.startsWith('direct_mix.') || d.driver_key.startsWith('nmw_mix.') },
     { label: 'On-costs (NI / pension)', match: (d) => ['employer_ni_pct', 'employer_pension_pct', 'employment_allowance_p'].includes(d.driver_key) },
-    { label: 'Workforce & cover', match: (d) => ['vacancy_rate_pct', 'agency_premium_pct', 'standard_hours_per_year'].includes(d.driver_key) },
+    { label: 'The contract (productive hours are derived from these)', match: (d) => ['contracted_hours_per_week', 'holiday_weeks_per_year', 'absence_days_per_year', 'training_days_per_year'].includes(d.driver_key) },
+    { label: 'Workforce & cover', match: (d) => ['vacancy_rate_pct', 'agency_premium_pct', 'overstaff_pct', 'enforce_real_living_wage'].includes(d.driver_key) },
     { label: 'Counted in statutory ratios?', match: (d) => d.driver_key.startsWith('ratio_inclusion.') },
   ],
   premises: [
@@ -75,6 +76,10 @@ const RETIRED_KEYS = new Set([
   'cohort.moveup_babies_pct', 'cohort.moveup_twos_pct',
   'base_salary_p.practitioner', 'base_salary_p.lead_practitioner',
   'base_salary_p.manager', 'manager_per_n_practitioners',
+  // Productive hours are now DERIVED from the contract (contracted hours
+  // less leave / sickness / training) rather than typed in alongside it —
+  // entering both let each be read generously and independently.
+  'standard_hours_per_year',
 ]);
 
 export default function InputsView({

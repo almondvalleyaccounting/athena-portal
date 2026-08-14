@@ -15,6 +15,7 @@
 //   surfaces in the rate analysis box on the staff detail page.
 
 import { AGE_BANDS_LIST, bandLabel } from './locations.js';
+import { resolveOr } from '../drivers.js';
 
 const DEFAULT_RATIOS = {
   babies: 3,
@@ -126,12 +127,29 @@ export const staffModule = {
     { key: 'nmw_18to20_hourly_p',     label: 'NMW — 18-20 £/hr',                 unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 1000 },
     { key: 'nmw_under18_hourly_p',    label: 'NMW — under 18 £/hr',              unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 755 },
     { key: 'nmw_apprentice_hourly_p', label: 'NMW — apprentice £/hr',            unit: 'gbp_p', kind: 'scalar', scope: 'group', defaultValue: 755 },
-    // Productive hours ONE employee actually delivers on the floor in a
-    // year, NET of holiday, sickness and training. This is what funds
-    // absence cover: 1,820 on a 40-hour contract implies 6.5 weeks a year
-    // off, so the model holds enough contracts to keep the room covered
-    // while people are away. Raise it if absence is not backfilled.
-    { key: 'standard_hours_per_year', label: 'Productive hours per employee / year (net of holiday & sickness)', unit: 'hours', kind: 'scalar', scope: 'group', defaultValue: 1820 },
+    // ── The contract ────────────────────────────────────────────
+    // One FTE is `contracted_hours_per_week`; part-time contracts are
+    // fractions of it, which is why headcount is carried fractionally.
+    // Everything else about an employee derives from this: the salary
+    // buys these hours (so it sets the hourly rate for wage-floor
+    // purposes), and the hours left after absence are what actually
+    // cover the floor.
+    //
+    // Productive hours are DERIVED, never entered:
+    //   productive = contracted_hrs_pw × (52 − holiday_wks − absence/5 − training/5)
+    // Entering the two independently let the model take the generous
+    // reading of each — a salary divided by productive hours looks like a
+    // higher rate than it is, while coverage computed on contracted hours
+    // understates how many contracts a 51-week rota needs.
+    { key: 'contracted_hours_per_week', label: 'Full-time contract (hours/week)', unit: 'hours', kind: 'scalar', scope: 'group', defaultValue: 40 },
+    { key: 'holiday_weeks_per_year',    label: 'Annual leave (weeks, incl. public holidays)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 5.6 },
+    { key: 'absence_days_per_year',     label: 'Sickness / absence (days per employee)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 9 },
+    { key: 'training_days_per_year',    label: 'Training & CPD off the floor (days per employee)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 5 },
+    // Funded-ELC partners are generally required to pay the Real Living
+    // Wage to staff delivering funded hours. With this on, any role priced
+    // below it is lifted to the floor and the lift is reported. Apprentices
+    // are floored at their own statutory rate, not the RLW.
+    { key: 'enforce_real_living_wage',  label: 'Enforce Real Living Wage floor (1 = yes)', unit: 'count', kind: 'scalar', scope: 'group', defaultValue: 1 },
 
     // ── Floor-time factors (share of a head's time that stands in the
     //    statutory ratio). 1 = fully counted, 0 = never counted, 0.5 =
@@ -178,28 +196,81 @@ export const staffModule = {
     // Over-staffing buffer above the statutory ratio
     const overstaffPct = (ctx.resolve('overstaff_pct', {}) || 0) / 100;
 
+    // ── The contract, and everything derived from it ──────────────
+    // resolveOr, not `|| default` — resolve returns 0 both for "driver
+    // absent" and "deliberately 0", and 0 sick days is a real answer.
+    // contractedHpw keeps a `|| 40` on top: it is a divisor, and a zero-hour
+    // full-time contract is an unset box rather than an intention.
+    const contractedHpw = resolveOr(ctx, 'contracted_hours_per_week', 40) || 40;
+    const contractedHoursYear = contractedHpw * 52;
+    const holidayWeeks = resolveOr(ctx, 'holiday_weeks_per_year', 5.6);
+    const absenceDays = resolveOr(ctx, 'absence_days_per_year', 9);
+    const trainingDays = resolveOr(ctx, 'training_days_per_year', 5);
+    const workingWeeks = 52 - holidayWeeks - (absenceDays + trainingDays) / 5;
+    // Floor the working year at one week so a nonsense set of inputs can't
+    // divide by zero and conjure an infinite establishment.
+    const productiveHoursYear = contractedHpw * Math.max(1, workingWeeks);
+
+    // ── Wage floor ────────────────────────────────────────────────
+    // A salary buys CONTRACTED hours, so that is the denominator for any
+    // minimum-wage test. Roles priced below the applicable floor are
+    // lifted to it — a forecast that pays under the statutory minimum
+    // isn't a forecast, it's a plan to be prosecuted.
+    const rlwHourly = ctx.resolve('real_living_wage_hourly_p', {}) || 0;
+    const enforceRlw = resolveOr(ctx, 'enforce_real_living_wage', 1) > 0;
+    const nmwRate = {
+      under19:   ctx.resolve('nmw_18to20_hourly_p', {}) || 0,
+      under21:   ctx.resolve('nmw_18to20_hourly_p', {}) || 0,
+      p21:       ctx.resolve('nmw_21plus_hourly_p', {}) || 0,
+      apprentice: ctx.resolve('nmw_apprentice_hourly_p', {}) || 0,
+    };
+    const wageLifts = [];
+    /** Lowest lawful annual salary for a tier, at the contracted hours. */
+    const floorSalary = (tier, isApprentice) => {
+      const statutory = isApprentice && tier === 'under19'
+        ? nmwRate.apprentice
+        : (tier === 'p21' ? nmwRate.p21 : nmwRate.under21);
+      // The RLW commitment attaches to funded childcare work; apprentices
+      // sit outside it and keep their own statutory rate.
+      const hourly = (enforceRlw && !isApprentice) ? Math.max(statutory, rlwHourly) : statutory;
+      return hourly * contractedHoursYear;
+    };
+    const applyFloor = (raw, label, tier, isApprentice) => {
+      const floor = floorSalary(tier, isApprentice);
+      if (raw > 0 && raw < floor) {
+        wageLifts.push({ label, from: raw, to: floor });
+        return floor;
+      }
+      return raw;
+    };
+
     // Blended NMW-banded salaries
     const blend = (key) => {
-      const u19 = ctx.resolve(`base_salary_p.${key}_under19`, {}) || 0;
-      const u21 = ctx.resolve(`base_salary_p.${key}_under21`, {}) || 0;
-      const p21 = ctx.resolve(`base_salary_p.${key}_21plus`, {}) || 0;
+      const isApp = key === 'apprentice';
+      const u19 = applyFloor(ctx.resolve(`base_salary_p.${key}_under19`, {}) || 0, `${key} under 19`, 'under19', isApp);
+      const u21 = applyFloor(ctx.resolve(`base_salary_p.${key}_under21`, {}) || 0, `${key} under 21`, 'under21', isApp);
+      const p21 = applyFloor(ctx.resolve(`base_salary_p.${key}_21plus`, {}) || 0, `${key} 21+`, 'p21', isApp);
       const m19 = (ctx.resolve(`nmw_mix.${key}.under19_pct`, {}) || 0) / 100;
       const m21 = (ctx.resolve(`nmw_mix.${key}.under21_pct`, {}) || 0) / 100;
       const mp  = (ctx.resolve(`nmw_mix.${key}.21plus_pct`, {})  || 0) / 100;
       return u19 * m19 + u21 * m21 + p21 * mp;
     };
+    const single = (key, label) =>
+      applyFloor(ctx.resolve(`base_salary_p.${key}`, {}), label, 'p21', false);
 
     const sal = {
-      executive:        ctx.resolve('base_salary_p.executive', {}),
-      senior_manager:   ctx.resolve('base_salary_p.senior_manager', {}),
-      setting_manager:  ctx.resolve('base_salary_p.setting_manager', {}),
-      assistant_manager:ctx.resolve('base_salary_p.assistant_manager', {}),
-      admin:            ctx.resolve('base_salary_p.admin', {}),
-      cook:             ctx.resolve('base_salary_p.cook', {}),
-      senior_qualified: ctx.resolve('base_salary_p.senior_qualified', {}),
+      executive:        single('executive', 'Executive'),
+      senior_manager:   single('senior_manager', 'Senior manager'),
+      setting_manager:  single('setting_manager', 'Setting manager'),
+      assistant_manager:single('assistant_manager', 'Assistant manager'),
+      admin:            single('admin', 'Admin'),
+      cook:             single('cook', 'Cook'),
+      senior_qualified: single('senior_qualified', 'Senior qualified'),
       qualified:        blend('qualified'),
       apprentice:       blend('apprentice'),
     };
+    ctx.staffWageLifts = wageLifts;
+    ctx.staffHours = { contractedHpw, contractedHoursYear, productiveHoursYear, workingWeeks };
 
     // Group-level headcounts
     const hcExec   = ctx.resolve('headcount.executives', {}) || 0;
@@ -228,14 +299,17 @@ export const staffModule = {
     // hours:
     //   adult-hours/yr = (children / ratio) × open_hrs_per_week × weeks
     //   employees      = adult-hours/yr ÷ productive_hrs_per_employee
-    // A room open 50 hrs/week staffed on 1,820-hour contracts therefore
-    // needs ~1.4 employees per floor position, not 1. Treating a floor
-    // position as one employee silently under-staffs long opening hours.
-    // Both keep their `|| default`: they are the two sides of the coverage
-    // division, and zero open weeks or zero productive hours per employee
-    // are unset boxes rather than staffing plans.
+    // A room open 50 hrs/week staffed by people who each deliver ~1,744
+    // productive hours therefore needs ~1.43 employees per floor position,
+    // not 1. Treating a floor position as one employee silently
+    // under-staffs long opening hours — and using CONTRACTED hours here
+    // would staff the rota with people who are on holiday.
+    //
+    // weeksPerYear keeps its `|| default`: zero open weeks is an unset box
+    // rather than a staffing plan. productiveHoursYear is derived above and
+    // already floored at a one-week working year.
     const weeksPerYear = ctx.resolve('weeks_per_year', {}) || 51;
-    const hoursPerEmployee = ctx.resolve('standard_hours_per_year', {}) || 1820;
+    const hoursPerEmployee = productiveHoursYear;
     const coverageByEntity = {};
     for (const e of (ctx.entities || [])) {
       const perBand = {};
@@ -513,20 +587,39 @@ export const staffModule = {
           `Fix: in Inputs → Drivers → Staff, raise the per-site setting / assistant manager headcount, raise a role's floor-time factor toward 1, rebalance the direct mix % toward senior/qualified, or add an over-staffing %.`,
       });
     }
-    // RLW info
-    const rlwHourly = ctx.resolve('real_living_wage_hourly_p', {});
-    const hoursYear = ctx.resolve('standard_hours_per_year', {}) || 1820;   // divisor — same guard as above
-    const apprenticeAvg = (
-      (ctx.resolve('base_salary_p.apprentice_under19', {}) || 0) * (ctx.resolve('nmw_mix.apprentice.under19_pct', {}) || 0) +
-      (ctx.resolve('base_salary_p.apprentice_under21', {}) || 0) * (ctx.resolve('nmw_mix.apprentice.under21_pct', {}) || 0) +
-      (ctx.resolve('base_salary_p.apprentice_21plus',  {}) || 0) * (ctx.resolve('nmw_mix.apprentice.21plus_pct',  {}) || 0)
-    ) / 100;
-    const impliedHourly = apprenticeAvg / hoursYear;
-    if (impliedHourly < rlwHourly) {
+    // ── The contract, and the wage floor ──────────────────────────
+    // Reported every run: these two numbers drive both the establishment
+    // and every hourly-rate test, and they used to be silently at odds.
+    const chpw = resolveOr(ctx, 'contracted_hours_per_week', 40) || 40;
+    const holidayWeeks = resolveOr(ctx, 'holiday_weeks_per_year', 5.6);
+    const absenceDays = resolveOr(ctx, 'absence_days_per_year', 9);
+    const trainingDays = resolveOr(ctx, 'training_days_per_year', 5);
+    const workingWeeks = Math.max(1, 52 - holidayWeeks - (absenceDays + trainingDays) / 5);
+    const productive = chpw * workingWeeks;
+    findings.push({
+      severity: 'info',
+      code: 'staff.hours_basis',
+      message:
+        `Full-time contract ${chpw} hrs/week = ${(chpw * 52).toLocaleString()} contracted hrs/yr. ` +
+        `After ${holidayWeeks} weeks' leave, ${absenceDays} sickness days and ${trainingDays} training days, ` +
+        `each employee delivers ${Math.round(productive).toLocaleString()} productive hrs/yr (${workingWeeks.toFixed(1)} working weeks). ` +
+        `Establishment is sized on productive hours; hourly rates are tested against contracted hours.`,
+    });
+
+    // Wage lifts applied in compute() — surfaced here so a salary that had
+    // to be raised to reach the floor is never silently absorbed.
+    const lifts = ctx.staffWageLifts || [];
+    if (lifts.length > 0) {
+      const rlwOn = resolveOr(ctx, 'enforce_real_living_wage', 1) > 0;
       findings.push({
-        severity: 'info',
-        code: 'staff.apprentice_below_rlw',
-        message: `Blended apprentice salary implies £${(impliedHourly / 100).toFixed(2)}/hr — below Real Living Wage (£${(rlwHourly / 100).toFixed(2)}/hr). Funded-partner status can require RLW for all staff.`,
+        severity: 'warn',
+        code: 'staff.wage_floor_applied',
+        message:
+          `${lifts.length} role${lifts.length !== 1 ? 's were' : ' was'} priced below the ` +
+          `${rlwOn ? 'Real Living Wage / statutory' : 'statutory'} floor and ${lifts.length !== 1 ? 'have' : 'has'} been lifted to it: ` +
+          lifts.map(l => `${l.label} £${Math.round(l.from / 100).toLocaleString()}→£${Math.round(l.to / 100).toLocaleString()}`).join('; ') +
+          `. Rates are salary ÷ ${(chpw * 52).toLocaleString()} contracted hrs. ` +
+          `Fix the underlying salaries in Inputs → Drivers → Staff so the plan reflects what you intend to pay.`,
       });
     }
     return findings;
