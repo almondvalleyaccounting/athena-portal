@@ -138,4 +138,70 @@ export const preOpeningModule = {
     }
     return out;
   },
+
+  validate(ctx) {
+    const findings = [];
+    const DECLARED_KEYS = new Set([
+      'pre_open.registration_lead_months', 'pre_open.monthly_overhead_p',
+      'pre_open.staffing_months', 'pre_open.staffing_monthly_p',
+      'pre_open.marketing_spike_p',
+    ]);
+
+    for (const e of (ctx.entities || [])) {
+      const cfg = e.config || {};
+      const opening = cfg.opening_month_offset ?? 0;
+      const acq = cfg.acquisition_type || 'greenfield';
+      if (acq === 'acquired_going_concern') continue;
+
+      const staffMo = ctx.resolve('pre_open.staffing_months', { entity: e.key }) || 0;
+      const entered =
+        (ctx.resolve('pre_open.monthly_overhead_p', { entity: e.key }) || 0)
+        + (ctx.resolve('pre_open.staffing_monthly_p', { entity: e.key }) || 0) * staffMo
+        + (ctx.resolve('pre_open.marketing_spike_p', { entity: e.key }) || 0)
+        + (ctx.drivers || [])
+            .filter(d => d.module_key === 'pre_opening' && !DECLARED_KEYS.has(d.driver_key)
+              && (!d.entity_id || d.entity_id === e.id))
+            .reduce((s, d) => s + (ctx.resolve(d.driver_key, { entity: e.key }) || 0), 0);
+
+      // Nothing entered — nothing to warn about.
+      if (entered <= 0) continue;
+
+      // The costs exist but there is no window to spend them in: compute()
+      // bails at `opening <= 0`, so every penny is silently dropped.
+      if (opening <= 0) {
+        findings.push({
+          severity: 'warn',
+          code: 'pre_opening.no_window',
+          entity_id: e.id,
+          message:
+            `${e.label}: about £${Math.round(entered / 100).toLocaleString()} of pre-opening cost is entered, but the site opens in month 0 ` +
+            `so there is no pre-trading period and NONE of it is in the forecast. ` +
+            `Set the location's opening month offset to the number of months between the forecast start and opening ` +
+            `(Inputs → Locations → edit the location).`,
+        });
+        continue;
+      }
+
+      // A window exists, but the registration lead is what actually gates
+      // the recurring overhead and any custom cost lines.
+      const regLead = ctx.resolve('pre_open.registration_lead_months', { entity: e.key }) || 0;
+      const recurring = (ctx.resolve('pre_open.monthly_overhead_p', { entity: e.key }) || 0)
+        + (ctx.drivers || [])
+            .filter(d => d.module_key === 'pre_opening' && !DECLARED_KEYS.has(d.driver_key)
+              && (!d.entity_id || d.entity_id === e.id))
+            .reduce((s, d) => s + (ctx.resolve(d.driver_key, { entity: e.key }) || 0), 0);
+      if (regLead <= 0 && recurring > 0) {
+        findings.push({
+          severity: 'warn',
+          code: 'pre_opening.no_registration_lead',
+          entity_id: e.id,
+          message:
+            `${e.label}: pre-opening overhead and custom cost lines run over the registration-lead window, ` +
+            `but the lead is 0 months — so £${Math.round(recurring / 100).toLocaleString()}/month of entered cost is not in the forecast. ` +
+            `Set "Registration lead time (months)". Note these lines are charged MONTHLY across that window, not as one-offs.`,
+        });
+      }
+    }
+    return findings;
+  },
 };
