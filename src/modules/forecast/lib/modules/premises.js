@@ -1,12 +1,21 @@
 // Premises — lease vs buy switch per location.
 //
 // Entity config supplies `lease_or_buy: 'lease' | 'buy'`. Drivers vary
-// by mode. v1 emits:
-//   - lease: overhead (rent + service charge), no BS impact
+// by mode:
+//   - both:  overhead (NDR, maintenance) — costs of occupation, not of
+//            ownership; capex + depreciation on fit-out
+//   - lease: overhead (rent + service charge), no property on the BS
 //   - buy:   capex (purchase + LBTT + fees), debt_principal/interest,
-//            depreciation (straight-line), overhead (NDR, maintenance)
+//            depreciation on property + fit-out
 //
 // Drivers (entity-scoped):
+//   BOTH TENURES:
+//     premises.maintenance_annual_p
+//     premises.ndr_rateable_value_p     — set when known
+//     premises.ndr_poundage
+//     premises.ndr_relief_pct           — Small Business Bonus etc.
+//     premises.fit_out_capex_p
+//     premises.depreciation_years
 //   LEASE:
 //     premises.rent_monthly_p
 //     premises.service_charge_monthly_p
@@ -16,11 +25,6 @@
 //     premises.mortgage_term_years
 //     premises.mortgage_interest_pct
 //     premises.legal_fees_p
-//     premises.fit_out_capex_p
-//     premises.depreciation_years
-//     premises.maintenance_annual_p
-//     premises.ndr_rateable_value_p     — set when known
-//     premises.ndr_relief_pct           — Small Business Bonus etc.
 //
 // LBTT (Land & Buildings Transaction Tax) — Scotland's SDLT-equivalent.
 // Non-residential bands (2026 simplified):
@@ -71,6 +75,39 @@ export const premisesModule = {
       const opening = cfg.opening_month_offset ?? 0;
       const mode = cfg.lease_or_buy || 'lease';
 
+      // ─── Occupancy costs — borne either way ───
+      // NDR is billed to whoever is in rateable occupation, and repairs fall
+      // on the tenant under a full repairing lease, so neither of these is a
+      // consequence of owning. Emitted for lease and buy alike; previously
+      // they were read only in buy mode, so a leasehold site silently
+      // discarded whatever was entered against them.
+      const maintAnnual = ctx.resolve('premises.maintenance_annual_p', { entity: e.key });
+      const rv = ctx.resolve('premises.ndr_rateable_value_p', { entity: e.key });
+      const poundage = ctx.resolve('premises.ndr_poundage', { entity: e.key }) / 100;
+      const ndrRelief = ctx.resolve('premises.ndr_relief_pct', { entity: e.key }) / 100;
+      const ndrMonthly = (rv * poundage * (1 - ndrRelief)) / 12;
+      const maintMonthly = maintAnnual / 12;
+
+      for (const t of ctx.periods) {
+        if (t < opening) continue;
+        if (ndrMonthly > 0) {
+          out.push({
+            module_key: 'premises', entity_id: e.id, period: t,
+            nominal_type: 'overhead', line_label: 'NDR',
+            amount_p: Math.round(ndrMonthly),
+            tags: { premises_kind: mode },
+          });
+        }
+        if (maintMonthly > 0) {
+          out.push({
+            module_key: 'premises', entity_id: e.id, period: t,
+            nominal_type: 'overhead', line_label: 'Maintenance',
+            amount_p: Math.round(maintMonthly),
+            tags: { premises_kind: mode },
+          });
+        }
+      }
+
       if (mode === 'lease') {
         const rent = ctx.resolve('premises.rent_monthly_p', { entity: e.key });
         const svc = ctx.resolve('premises.service_charge_monthly_p', { entity: e.key });
@@ -101,6 +138,29 @@ export const premisesModule = {
             });
           }
         }
+
+        // Leasehold improvements. A tenant fits out a setting just as an
+        // owner does, so the fit-out drivers apply here too — spent the
+        // month before opening, then written off over the same horizon.
+        const fitOut = ctx.resolve('premises.fit_out_capex_p', { entity: e.key });
+        if (fitOut > 0) {
+          out.push({
+            module_key: 'premises', entity_id: e.id, period: Math.max(0, opening - 1),
+            nominal_type: 'capex', line_label: 'Fit-out',
+            amount_p: Math.round(fitOut),
+            tags: { premises_kind: 'lease' },
+          });
+          const depYears = ctx.resolve('premises.depreciation_years', { entity: e.key }) || 25;
+          const monthlyDep = fitOut / (depYears * 12);
+          for (const t of ctx.periods) {
+            if (t < opening) continue;
+            out.push({
+              module_key: 'premises', entity_id: e.id, period: t,
+              nominal_type: 'depreciation', line_label: 'Fit-out',
+              amount_p: Math.round(monthlyDep),
+            });
+          }
+        }
       } else {
         // BUY mode
         const price = ctx.resolve('premises.purchase_price_p', { entity: e.key });
@@ -110,10 +170,7 @@ export const premisesModule = {
         const legalFees = ctx.resolve('premises.legal_fees_p', { entity: e.key });
         const fitOut = ctx.resolve('premises.fit_out_capex_p', { entity: e.key });
         const depYears = ctx.resolve('premises.depreciation_years', { entity: e.key }) || 25;
-        const maintAnnual = ctx.resolve('premises.maintenance_annual_p', { entity: e.key });
-        const rv = ctx.resolve('premises.ndr_rateable_value_p', { entity: e.key });
-        const poundage = ctx.resolve('premises.ndr_poundage', { entity: e.key }) / 100;
-        const ndrRelief = ctx.resolve('premises.ndr_relief_pct', { entity: e.key }) / 100;
+        // NDR and maintenance are emitted above, for both tenures.
 
         const lbtt = computeLBTT(price);
 
@@ -155,12 +212,6 @@ export const premisesModule = {
         const depBase = price + fitOut;
         const monthlyDep = depBase / (depYears * 12);
 
-        // NDR (annual) divided by 12 each month, after relief
-        const ndrAnnual = rv * poundage * (1 - ndrRelief);
-        const ndrMonthly = ndrAnnual / 12;
-
-        const maintMonthly = maintAnnual / 12;
-
         for (const t of ctx.periods) {
           const sch = schedule[t] || { interest: 0, principal: 0, outstanding: 0 };
           if (sch.interest > 0) {
@@ -190,21 +241,6 @@ export const premisesModule = {
               nominal_type: 'depreciation', line_label: 'Property + fit-out',
               amount_p: Math.round(monthlyDep),
             });
-            if (ndrMonthly > 0) {
-              out.push({
-                module_key: 'premises', entity_id: e.id, period: t,
-                nominal_type: 'overhead', line_label: 'NDR',
-                amount_p: Math.round(ndrMonthly),
-                tags: { premises_kind: 'buy' },
-              });
-            }
-            if (maintMonthly > 0) {
-              out.push({
-                module_key: 'premises', entity_id: e.id, period: t,
-                nominal_type: 'overhead', line_label: 'Maintenance',
-                amount_p: Math.round(maintMonthly),
-              });
-            }
           }
         }
       }
