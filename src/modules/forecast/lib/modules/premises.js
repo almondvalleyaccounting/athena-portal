@@ -34,6 +34,8 @@
 //
 // Mortgage: simple monthly amortisation. Rate is annual %; convert.
 
+import { openingMonth, occupancyMonth } from '../timeline.js';
+
 export const premisesModule = {
   key: 'premises',
   pack: ['childcare_scotland'],
@@ -72,13 +74,11 @@ export const premisesModule = {
 
     for (const e of ctx.entities) {
       const cfg = e.config || {};
-      const opening = cfg.opening_month_offset ?? 0;
+      const opening = openingMonth(cfg);
       const mode = cfg.lease_or_buy || 'lease';
       // You start paying for a building when you TAKE it, not when you open
       // it — the fit-out months are on your rent, rates and service charge.
-      // Defaults to the opening month so an entity that never sets it keeps
-      // its old behaviour; set it to model a lease that starts earlier.
-      const occupancy = Math.min(cfg.occupancy_month_offset ?? opening, opening);
+      const occupancy = occupancyMonth(cfg);
 
       // ─── Occupancy costs — borne either way ───
       // NDR is billed to whoever is in rateable occupation, and repairs fall

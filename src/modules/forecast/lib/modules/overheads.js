@@ -11,9 +11,16 @@
 //
 // All scalar -> applied each month. Override per-period via timeseries kind.
 
+import { openingMonth, occupancyMonth, isPremisesCost } from '../timeline.js';
+
 const OVERHEAD_LINES = [
   { key: 'utilities_p',         label: 'Utilities',         scope: 'entity', defaultValue: 80000 },
-  { key: 'insurance_p',         label: 'Insurance',         scope: 'entity', defaultValue: 25000 },
+  // Insurance splits along the timeline. Buildings / contents cover attaches
+  // when you take the keys; liability and the rest attach when you trade.
+  // "Premises insurance" also puts it in the premises bucket — see
+  // isPremisesCost, which matches any label starting "Premises".
+  { key: 'premises_insurance_p', label: 'Premises insurance', scope: 'entity', defaultValue: 10000 },
+  { key: 'general_insurance_p',  label: 'General insurance',  scope: 'entity', defaultValue: 15000 },
   { key: 'software_p',          label: 'Software / IT',     scope: 'entity', defaultValue: 15000 },
   { key: 'consumables_p',       label: 'Consumables / food',scope: 'entity', defaultValue: 60000 },
   { key: 'marketing_p',         label: 'Marketing',         scope: 'entity', defaultValue: 10000 },
@@ -95,12 +102,15 @@ export const overheadsModule = {
           amount_p: Math.round(v),
         });
       }
-      // Entity-scope lines — only after the entity has opened.
+      // Entity-scope lines. Premises costs start when the building is taken;
+      // everything else is a cost of trading and waits for opening.
       for (const e of ctx.entities) {
-        const opening = e.config?.opening_month_offset ?? 0;
-        if (t < opening) continue;
+        const opening = openingMonth(e.config);
+        const occupancy = occupancyMonth(e.config);
         for (const d of entityDrivers) {
           if (d.entity_id !== e.id) continue;
+          const startsAt = isPremisesCost(labelFor(d)) ? occupancy : opening;
+          if (t < startsAt) continue;
           const v = valueOf(d, t);
           if (!v) continue;
           out.push({

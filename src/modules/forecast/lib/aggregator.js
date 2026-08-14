@@ -53,6 +53,8 @@
 // read financial_core's pre-aggregated rows directly. This gives the
 // same numbers but is faster and includes inflation+dividends.
 
+import { isPremisesCost } from './timeline.js';
+
 const REVENUE_NTS = ['revenue'];
 const COST_NTS = ['staff_cost', 'overhead', 'cost_of_sales'];
 const DEP_NTS = ['depreciation'];
@@ -96,7 +98,7 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
   }
 
   // Cost categorisation matching financial_core
-  const isPremises  = (lbl) => lbl === 'Rent' || lbl === 'Service charge' || lbl === 'NDR' || lbl === 'Maintenance';
+  const isPremises  = isPremisesCost;   // shared with financial_core's bucketing
   const isUtilities = (lbl) => /utilit/i.test(lbl);
   const isPreOpening = (mod, lbl) => mod === 'pre_opening' || /^Pre-opening/i.test(lbl);
 

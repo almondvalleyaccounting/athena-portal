@@ -32,6 +32,7 @@
 // derive their own starting cash from the outputs alone.
 
 import { resolveOr } from '../drivers.js';
+import { isPremisesCost } from '../timeline.js';
 
 export const financialCoreModule = {
   key: 'financial_core',
@@ -297,12 +298,12 @@ export const financialCoreModule = {
               // "Pre-opening overhead" (registration / monthly overhead) — fallback
               p.cost_pre_opening_overhead_base += r.amount_p;
             }
-          } else if (lbl === 'Rent' || lbl === 'Service charge' || lbl === 'NDR' || lbl === 'Maintenance') {
+          } else if (isPremisesCost(lbl)) {
             p.cost_premises_base += r.amount_p;
             if (lbl === 'Rent') p.cost_premises_rent_base += r.amount_p;
             else if (lbl === 'Service charge') p.cost_premises_service_charge_base += r.amount_p;
             else if (lbl === 'Maintenance') p.cost_premises_maintenance_base += r.amount_p;
-            else p.cost_premises_other_base += r.amount_p;   // NDR
+            else p.cost_premises_other_base += r.amount_p;   // NDR, premises insurance
           } else if (/utilit/i.test(lbl)) {
             p.cost_utilities_base += r.amount_p;
           } else if (/consumable|food/i.test(lbl)) {
