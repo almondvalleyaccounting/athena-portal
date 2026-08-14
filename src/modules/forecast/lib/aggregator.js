@@ -327,7 +327,11 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     set('pnl.cost_direct_costs',   t, -(directCostsBase   * fCost));
     set('pnl.cost_staff_overhead', t, -(staffOverheadBase * fCost));
     set('pnl.cost_premises',       t, -(premisesBase      * fCost));
-    set('pnl.cost_premises_utilities', t, -(premisesUtilBase * fCost));
+    set('pnl.cost_premises_rent',           t, -(premisesRentBase  * fCost));
+    set('pnl.cost_premises_service_charge', t, -(premisesSvcBase   * fCost));
+    set('pnl.cost_premises_maintenance',    t, -(premisesMaintBase * fCost));
+    set('pnl.cost_premises_utilities',      t, -(premisesUtilBase  * fCost));
+    set('pnl.cost_premises_other',          t, -(premisesOtherBase * fCost));
     set('pnl.cost_utilities',      t, -(utilitiesBase     * fCost));
     set('pnl.cost_other_overhead', t, -(otherOverheadBase * fCost));
     set('pnl.cost_admin',          t, -(adminBase         * fCost));

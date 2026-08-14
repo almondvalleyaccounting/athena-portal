@@ -68,7 +68,14 @@ export const financialCoreModule = {
     { nominal_type: 'pnl.cost_direct_costs', label: 'Direct costs (consumables/food)', by_entity: false },
     { nominal_type: 'pnl.cost_staff_overhead', label: 'Overhead staff', by_entity: false },
     { nominal_type: 'pnl.cost_premises', label: 'Premises', by_entity: false },
+    // Premises sub-lines on the P&L, mirroring the cashflow's split. These
+    // sum to pnl.cost_premises — for display and per-sq-ft ratios only,
+    // never to be added alongside it.
+    { nominal_type: 'pnl.cost_premises_rent', label: 'Rent (within premises)', by_entity: false },
+    { nominal_type: 'pnl.cost_premises_service_charge', label: 'Service charge (within premises)', by_entity: false },
+    { nominal_type: 'pnl.cost_premises_maintenance', label: 'Maintenance (within premises)', by_entity: false },
     { nominal_type: 'pnl.cost_premises_utilities', label: 'Utilities (within premises)', by_entity: false },
+    { nominal_type: 'pnl.cost_premises_other', label: 'Other premises (within premises)', by_entity: false },
     { nominal_type: 'pnl.cost_utilities', label: 'Utilities (retired)', by_entity: false },
     { nominal_type: 'pnl.cost_other_overhead', label: 'Other overheads', by_entity: false },
     { nominal_type: 'pnl.cost_admin', label: 'Admin (central)', by_entity: false },
@@ -534,9 +541,13 @@ export const financialCoreModule = {
         // Overheads
         ['pnl.cost_staff_overhead',   'Overhead staff (executive / senior mgr / admin)', -costStaffOverhead],
         ['pnl.cost_premises',         'Premises (rent / rates / utilities / maintenance)', -costPremises],
-        // Utilities sit inside cost_premises. Emitted separately so the
-        // per-sq-ft KPI and cost stack can still show them — never add both.
-        ['pnl.cost_premises_utilities', 'Utilities', -(p.cost_premises_utilities_base * fCost)],
+        // Sub-lines sit inside cost_premises. Emitted separately so the
+        // per-sq-ft KPIs and cost stack can show them — never add both.
+        ['pnl.cost_premises_rent',           'Rent',                  -(p.cost_premises_rent_base           * fCost)],
+        ['pnl.cost_premises_service_charge', 'Service charge',        -(p.cost_premises_service_charge_base * fCost)],
+        ['pnl.cost_premises_maintenance',    'Maintenance',           -(p.cost_premises_maintenance_base    * fCost)],
+        ['pnl.cost_premises_utilities',      'Utilities',             -(p.cost_premises_utilities_base      * fCost)],
+        ['pnl.cost_premises_other',          'Other premises costs',  -(p.cost_premises_other_base          * fCost)],
         ['pnl.cost_utilities',        'Utilities (retired — see premises)', -costUtilities],
         ['pnl.cost_other_overhead',   'Other overheads', -costOtherOH],
         ['pnl.cost_admin',            'Admin (central overhead)', -costAdmin],

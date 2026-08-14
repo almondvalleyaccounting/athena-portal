@@ -195,7 +195,10 @@ function KpiFooter({ outputs, scopedMap, usingScoped, grouped, showPremisesKpis 
     const npat    = get('pnl.npat', g.periods);
     // sign: negative cost row -> staff cost positive
     const staff   = -get('pnl.cost_staff_direct', g.periods) + -get('pnl.cost_staff_overhead', g.periods);
-    const utilities = -get('pnl.cost_premises_utilities', g.periods);   // inside premises
+    // Premises sub-lines — all inside `premises`, never added to it.
+    const rent      = -get('pnl.cost_premises_rent', g.periods);
+    const svcCharge = -get('pnl.cost_premises_service_charge', g.periods);
+    const utilities = -get('pnl.cost_premises_utilities', g.periods);
     const premises  = -get('pnl.cost_premises', g.periods);
     const otherOh   = -get('pnl.cost_other_overhead', g.periods);
     const admin     = -get('pnl.cost_admin', g.periods);
@@ -207,14 +210,10 @@ function KpiFooter({ outputs, scopedMap, usingScoped, grouped, showPremisesKpis 
     const months = g.periods.length;
     const monthsActive = months > 0 ? months : 1;
 
-    // Maintenance is in cost_premises but not separated out — derive from upstream "Maintenance" rows
-    let maintenance = 0;
-    for (const r of outputs) {
-      if (r.nominal_type !== 'overhead') continue;
-      if ((r.line_label || '') !== 'Maintenance') continue;
-      if (!g.periods.includes(r.period)) continue;
-      maintenance += r.amount_p;
-    }
+    // Maintenance now has its own emitted sub-line. It used to be summed off
+    // the raw "Maintenance" overhead rows, which are PRE-inflation — so it
+    // read low against rent and utilities, which came from inflated pnl rows.
+    const maintenance = -get('pnl.cost_premises_maintenance', g.periods);
 
     const pct = (num, denom) => denom !== 0 ? (num / denom) * 100 : null;
     const perSqft = (val) => (sqft > 0 ? val / sqft : null);
@@ -226,7 +225,11 @@ function KpiFooter({ outputs, scopedMap, usingScoped, grouped, showPremisesKpis 
       pbtPct: pct(pbt, revenue),
       patPct: pct(npat, revenue),
       sqft, sqftLeased,
-      rentPerSqftAnnual: sqftLeased > 0 ? perSqft(premises) * (12 / monthsActive) : null,
+      // Rent means RENT. This divided the whole premises block by sq ft, so
+      // during a rent-free period it reported service charge and rates as rent.
+      rentPerSqftAnnual: sqftLeased > 0 ? perSqft(rent) * (12 / monthsActive) : null,
+      serviceChargePerSqftAnnual: perSqft(svcCharge) != null ? perSqft(svcCharge) * (12 / monthsActive) : null,
+      premisesPerSqftAnnual: perSqft(premises) != null ? perSqft(premises) * (12 / monthsActive) : null,
       utilitiesPerSqftAnnual: perSqft(utilities) != null ? perSqft(utilities) * (12 / monthsActive) : null,
       maintenancePerSqftAnnual: perSqft(maintenance) != null ? perSqft(maintenance) * (12 / monthsActive) : null,
       totalCostsExStaffPerSqftAnnual: perSqft(totalCostsExStaff) != null ? perSqft(totalCostsExStaff) * (12 / monthsActive) : null,
@@ -250,8 +253,10 @@ function KpiFooter({ outputs, scopedMap, usingScoped, grouped, showPremisesKpis 
     { key: 'sqft',          label: 'Total square feet',            get: r => fmtN(r.sqft), premises: true },
     { key: 'sqftLeased',    label: 'Rented square feet',           get: r => fmtN(r.sqftLeased), premises: true },
     { key: 'rentPSF',       label: 'Rent / sq ft (annualised)',    get: r => fmtPerSqft(r.rentPerSqftAnnual), premises: true },
+    { key: 'svcPSF',        label: 'Service charge / sq ft',       get: r => fmtPerSqft(r.serviceChargePerSqftAnnual), premises: true },
     { key: 'utilPSF',       label: 'Utilities / sq ft',            get: r => fmtPerSqft(r.utilitiesPerSqftAnnual), premises: true },
     { key: 'maintPSF',      label: 'Maintenance / sq ft',          get: r => fmtPerSqft(r.maintenancePerSqftAnnual), premises: true },
+    { key: 'premPSF',       label: 'Total premises / sq ft',       get: r => fmtPerSqft(r.premisesPerSqftAnnual), premises: true },
     { key: 'costExStaffPSF',label: 'Total non-staff costs / sq ft',get: r => fmtPerSqft(r.totalCostsExStaffPerSqftAnnual), premises: true },
     { key: 'ebitdaPSF',     label: 'EBITDA / sq ft',               get: r => fmtPerSqft(r.ebitdaPerSqftAnnual), premises: true },
   ];
