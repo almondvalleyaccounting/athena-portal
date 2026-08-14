@@ -1245,6 +1245,8 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
     la_council_id: pick('la_council_id', councils[0]?.id || ''),
     sq_ft: pick('sq_ft', 4000),
     opening_month_offset: pick('opening_month_offset', 6),
+    // Blank = same as opening. Set it when the lease starts before you trade.
+    occupancy_month_offset: cfg.occupancy_month_offset ?? tplCfg.occupancy_month_offset ?? '',
     acquisition_type: pick('acquisition_type', 'greenfield'),
     lease_or_buy: pick('lease_or_buy', 'lease'),
     ramp_to_target_months: pick('ramp_to_target_months', 6),
@@ -1285,6 +1287,11 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
           ? (entity.config?.capacity_by_age_band || places)
           : places,
         opening_month_offset: Number(form.opening_month_offset) || 0,
+        // Blank means "same as opening" — store nothing so premises.js falls
+        // back rather than pinning it to a 0 that would backdate the rent.
+        ...(String(form.occupancy_month_offset).trim() === ''
+          ? {}
+          : { occupancy_month_offset: Number(form.occupancy_month_offset) || 0 }),
         acquisition_type: form.acquisition_type,
         lease_or_buy: form.lease_or_buy,
         ramp_to_target_months: Number(form.ramp_to_target_months) || 0,
@@ -1370,6 +1377,7 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
             </select>
           </Field>
           <Field label="Opens (months from start)"><input type="number" value={form.opening_month_offset} onChange={setNum('opening_month_offset')} style={inputStyle} /></Field>
+          <Field label="Takes occupancy (months from start — blank = same as opening)"><input type="number" placeholder="same as opening" value={form.occupancy_month_offset} onChange={setNum('occupancy_month_offset')} style={inputStyle} /></Field>
           <Field label="Ramp to target (months) — default for all versions"><input type="number" value={form.ramp_to_target_months} onChange={setNum('ramp_to_target_months')} style={inputStyle} /></Field>
           <Field label="Target occupancy %"><input type="number" value={form.target_occupancy_pct} onChange={setNum('target_occupancy_pct')} style={inputStyle} /></Field>
           <Field label="Launch occupancy % (day-1 marketing influx)"><input type="number" value={form.starting_occupancy_pct} onChange={setNum('starting_occupancy_pct')} style={inputStyle} /></Field>

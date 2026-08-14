@@ -74,6 +74,11 @@ export const premisesModule = {
       const cfg = e.config || {};
       const opening = cfg.opening_month_offset ?? 0;
       const mode = cfg.lease_or_buy || 'lease';
+      // You start paying for a building when you TAKE it, not when you open
+      // it — the fit-out months are on your rent, rates and service charge.
+      // Defaults to the opening month so an entity that never sets it keeps
+      // its old behaviour; set it to model a lease that starts earlier.
+      const occupancy = Math.min(cfg.occupancy_month_offset ?? opening, opening);
 
       // ─── Occupancy costs — borne either way ───
       // NDR is billed to whoever is in rateable occupation, and repairs fall
@@ -95,7 +100,7 @@ export const premisesModule = {
       const depYears = ctx.resolve('premises.depreciation_years', { entity: e.key }) || 25;
 
       for (const t of ctx.periods) {
-        if (t < opening) continue;
+        if (t < occupancy) continue;
         if (ndrMonthly > 0) {
           out.push({
             module_key: 'premises', entity_id: e.id, period: t,
@@ -123,10 +128,14 @@ export const premisesModule = {
         // from the opening month.
         const rentStages = cfg.premises_concession_stages || [];
         const svcStages = cfg.premises_svc_concession_stages || [];
+        // Concessions are clocked from OCCUPANCY, not opening: a rent-free
+        // period is negotiated from the date the lease starts, and it is
+        // usually what pays for the fit-out months. Clocking it from opening
+        // handed back a second rent-free period the landlord never gave.
         for (const t of ctx.periods) {
-          if (t < opening) continue;
-          const rentFactor = concessionFactorAt(t - opening, rentStages);
-          const svcFactor = concessionFactorAt(t - opening, svcStages);
+          if (t < occupancy) continue;
+          const rentFactor = concessionFactorAt(t - occupancy, rentStages);
+          const svcFactor = concessionFactorAt(t - occupancy, svcStages);
           if (rent > 0) {
             out.push({
               module_key: 'premises', entity_id: e.id, period: t,

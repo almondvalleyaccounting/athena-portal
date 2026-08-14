@@ -120,16 +120,32 @@ export const preOpeningModule = {
         });
       }
 
-      // Custom pre-opening cost lines — emit each as a monthly recurring
-      // cost during the registration-lead window. Group-scope drivers
-      // apply to every entity; entity-scope drivers only to their own.
+      // Custom pre-opening cost lines. A scalar is a ONE-OFF total spent in
+      // the month before opening, alongside the marketing spike — "Pre-opening
+      // decorating £2,500" means £2,500, not £2,500 every month of the
+      // registration window, which is how this used to read it and how £3,750
+      // of Puddleduck's one-off spend quietly became £15,000.
+      //
+      // For a genuinely recurring pre-opening cost use the dedicated
+      // `pre_open.monthly_overhead_p` driver, or make the custom driver a
+      // timeseries and give it a value per month.
       for (const d of customDrivers) {
         if (d.entity_id && d.entity_id !== e.id) continue;
-        for (let t = ohStart; t < opening; t++) {
-          const v = valueOf(d, t);
+        if (d.kind === 'timeseries') {
+          for (let t = ohStart; t < opening; t++) {
+            const v = valueOf(d, t);
+            if (!v) continue;
+            out.push({
+              module_key: 'pre_opening', entity_id: e.id, period: t,
+              nominal_type: 'overhead', line_label: labelFor(d),
+              amount_p: Math.round(v),
+            });
+          }
+        } else {
+          const v = valueOf(d, opening - 1);
           if (!v) continue;
           out.push({
-            module_key: 'pre_opening', entity_id: e.id, period: t,
+            module_key: 'pre_opening', entity_id: e.id, period: opening - 1,
             nominal_type: 'overhead', line_label: labelFor(d),
             amount_p: Math.round(v),
           });
@@ -182,23 +198,23 @@ export const preOpeningModule = {
         continue;
       }
 
-      // A window exists, but the registration lead is what actually gates
-      // the recurring overhead and any custom cost lines.
+      // A window exists, but the registration lead is what gates the
+      // recurring overhead. Custom scalar lines are one-offs at opening-1 and
+      // no longer depend on the lead; a custom TIMESERIES line still does.
       const regLead = ctx.resolve('pre_open.registration_lead_months', { entity: e.key }) || 0;
-      const recurring = (ctx.resolve('pre_open.monthly_overhead_p', { entity: e.key }) || 0)
-        + (ctx.drivers || [])
-            .filter(d => d.module_key === 'pre_opening' && !DECLARED_KEYS.has(d.driver_key)
-              && (!d.entity_id || d.entity_id === e.id))
-            .reduce((s, d) => s + (ctx.resolve(d.driver_key, { entity: e.key }) || 0), 0);
-      if (regLead <= 0 && recurring > 0) {
+      const monthlyOh = ctx.resolve('pre_open.monthly_overhead_p', { entity: e.key }) || 0;
+      const seriesLines = (ctx.drivers || []).filter(d =>
+        d.module_key === 'pre_opening' && !DECLARED_KEYS.has(d.driver_key)
+        && d.kind === 'timeseries' && (!d.entity_id || d.entity_id === e.id));
+      if (regLead <= 0 && (monthlyOh > 0 || seriesLines.length > 0)) {
         findings.push({
           severity: 'warn',
           code: 'pre_opening.no_registration_lead',
           entity_id: e.id,
           message:
-            `${e.label}: pre-opening overhead and custom cost lines run over the registration-lead window, ` +
-            `but the lead is 0 months — so £${Math.round(recurring / 100).toLocaleString()}/month of entered cost is not in the forecast. ` +
-            `Set "Registration lead time (months)". Note these lines are charged MONTHLY across that window, not as one-offs.`,
+            `${e.label}: recurring pre-opening overhead runs over the registration-lead window, but the lead is 0 months — ` +
+            `£${Math.round(monthlyOh / 100).toLocaleString()}/month is not in the forecast. Set "Registration lead time (months)". ` +
+            `(One-off custom lines are unaffected: they land in the month before opening.)`,
         });
       }
     }
