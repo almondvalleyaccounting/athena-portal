@@ -17,8 +17,7 @@ export const PNL_LINES = [
 
   // ─── Overheads ───
   { nominal_type: 'pnl.cost_staff_overhead',   label: 'Overhead staff (executive / senior mgr / admin)', indent: true },
-  { nominal_type: 'pnl.cost_premises',         label: 'Premises (rent / NDR / maintenance)', indent: true },
-  { nominal_type: 'pnl.cost_utilities',        label: 'Utilities', indent: true },
+  { nominal_type: 'pnl.cost_premises',         label: 'Premises (rent / rates / utilities / maintenance)', indent: true },
   { nominal_type: 'pnl.cost_other_overhead',   label: 'Other overheads', indent: true },
   { nominal_type: 'pnl.cost_admin',            label: 'Admin (central overhead)', indent: true },
 
@@ -97,9 +96,9 @@ export const CF_LINES = [
   { nominal_type: 'cf.out.staff',          label: 'Staff costs', indent: true, spacerBefore: true },
   { nominal_type: 'cf.out.premises_rent',           label: 'Rent', indent: true },
   { nominal_type: 'cf.out.premises_service_charge', label: 'Service charge', indent: true },
+  { nominal_type: 'cf.out.premises_utilities',      label: 'Utilities', indent: true },
   { nominal_type: 'cf.out.premises_maintenance',    label: 'Maintenance', indent: true },
   { nominal_type: 'cf.out.premises_other',          label: 'Other premises costs', indent: true },
-  { nominal_type: 'cf.out.utilities',      label: 'Utilities', indent: true },
   { nominal_type: 'cf.out.other_overhead', label: 'Other overheads', indent: true },
   { nominal_type: 'cf.out.recurring_total',label: 'Total recurring', kind: 'header', total: true },
 

@@ -33,5 +33,6 @@ export function occupancyMonth(cfg) {
 export function isPremisesCost(label) {
   const l = String(label || '');
   return l === 'Rent' || l === 'Service charge' || l === 'NDR' || l === 'Maintenance'
+    || /utilit/i.test(l)          // heat, light and water are costs of the building
     || /^premises\b/i.test(l);
 }

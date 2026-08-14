@@ -104,7 +104,7 @@ export default function OverviewView({ outputs = [], forecast, periods = [], ent
     const staffOh     = neg(line('pnl.cost_staff_overhead'));
     const directCosts = neg(line('pnl.cost_direct_costs'));
     const premises    = neg(line('pnl.cost_premises'));
-    const utilities   = neg(line('pnl.cost_utilities'));
+    const utilities   = neg(line('pnl.cost_premises_utilities'));   // inside premises
     const otherOh     = YB.map((g) => -(sumLine(outputs, 'pnl.cost_other_overhead', g.periods) + sumLine(outputs, 'pnl.cost_admin', g.periods)));
     const preOpening  = neg(line('pnl.cost_pre_opening'));
     const costTotal   = neg(line('pnl.cost_total'));
@@ -139,7 +139,7 @@ export default function OverviewView({ outputs = [], forecast, periods = [], ent
         revTotal: tot('pnl.revenue_total'),
         staffDirect: -tot('pnl.cost_staff_direct'), staffOh: -tot('pnl.cost_staff_overhead'),
         directCosts: -tot('pnl.cost_direct_costs'),
-        premises: -tot('pnl.cost_premises'), utilities: -tot('pnl.cost_utilities'),
+        premises: -tot('pnl.cost_premises'), utilities: -tot('pnl.cost_premises_utilities'),
         otherOh: -(tot('pnl.cost_other_overhead') + tot('pnl.cost_admin')),
         preOpening: -tot('pnl.cost_pre_opening'), costTotal: -tot('pnl.cost_total'),
         ebitda: tot('pnl.ebitda'), pbt: tot('pnl.pbt'),
@@ -218,8 +218,10 @@ export default function OverviewView({ outputs = [], forecast, periods = [], ent
     }),
     total: totals.revTotal > 0 ? fmtPct((totals.staffDirect + totals.staffOh) / totals.revTotal * 100) : '—',
   });
-  rows.push(moneyRow('Premises (rent / SC / NDR / maintenance)', model.premises, totals.premises));
-  rows.push(moneyRow('Utilities', model.utilities, totals.utilities));
+  rows.push(moneyRow('Premises (rent / SC / rates / utilities / maintenance)', model.premises, totals.premises));
+  // Memo, not an addend — utilities are inside the premises row above, so
+  // this must never read as another line of the stack.
+  rows.push(moneyRow('    of which: utilities', model.utilities, totals.utilities));
   rows.push(moneyRow('Direct costs (consumables / food)', model.directCosts, totals.directCosts));
   rows.push(moneyRow('Other overheads & central admin', model.otherOh, totals.otherOh));
   if (model.preOpening.some(v => v !== 0)) rows.push(moneyRow('Pre-opening costs', model.preOpening, totals.preOpening));

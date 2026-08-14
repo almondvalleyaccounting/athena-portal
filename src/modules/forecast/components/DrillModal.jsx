@@ -90,6 +90,7 @@ export const DRILL_MAP = {
   'cf.out.staff':        { kind: 'upstream', upstream_nts: ['staff_cost'], filter: r => r.module_key !== 'pre_opening' },
   'cf.out.premises':     { kind: 'upstream', upstream_nts: ['overhead'], filter: r => ['Rent','Service charge','NDR','Maintenance'].includes(r.line_label || '') },
   'cf.out.utilities':    { kind: 'upstream', upstream_nts: ['overhead'], filter: r => /utilit/i.test(r.line_label || '') },
+  'cf.out.premises_utilities': { kind: 'upstream', upstream_nts: ['overhead'], filter: r => /utilit/i.test(r.line_label || '') },
   'cf.out.other_overhead': { kind: 'upstream', upstream_nts: ['overhead', 'cost_of_sales'], filter: r =>
     !['Rent','Service charge','NDR','Maintenance'].includes(r.line_label || '')
     && !/utilit/i.test(r.line_label || '')
@@ -111,7 +112,7 @@ export const DRILL_MAP = {
     r.module_key === 'pre_opening'
   },
   'cf.out.one_off_total':   { kind: 'formula', formula: 'Capex + Pre-opening (overhead + marketing + staffing)', components: ['cf.out.capex', 'cf.out.pre_opening_overhead', 'cf.out.pre_opening_marketing', 'cf.out.pre_opening_staffing'] },
-  'cf.out.recurring_total': { kind: 'formula', formula: 'Staff + Premises + Utilities + Other overheads', components: ['cf.out.staff', 'cf.out.premises', 'cf.out.utilities', 'cf.out.other_overhead'] },
+  'cf.out.recurring_total': { kind: 'formula', formula: 'Staff + Premises (incl. utilities) + Other overheads', components: ['cf.out.staff', 'cf.out.premises', 'cf.out.other_overhead'] },
   'cf.out.fin_tax_total':   { kind: 'formula', formula: 'Interest + Principal + Tax + Dividends', components: ['cf.out.interest', 'cf.out.principal', 'cf.out.tax', 'cf.out.dividends'] },
   'cf.out.capex':        { kind: 'upstream', upstream_nts: ['capex'] },
   'cf.out.interest':     { kind: 'upstream', upstream_nts: ['debt_interest'] },

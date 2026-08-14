@@ -68,7 +68,8 @@ export const financialCoreModule = {
     { nominal_type: 'pnl.cost_direct_costs', label: 'Direct costs (consumables/food)', by_entity: false },
     { nominal_type: 'pnl.cost_staff_overhead', label: 'Overhead staff', by_entity: false },
     { nominal_type: 'pnl.cost_premises', label: 'Premises', by_entity: false },
-    { nominal_type: 'pnl.cost_utilities', label: 'Utilities', by_entity: false },
+    { nominal_type: 'pnl.cost_premises_utilities', label: 'Utilities (within premises)', by_entity: false },
+    { nominal_type: 'pnl.cost_utilities', label: 'Utilities (retired)', by_entity: false },
     { nominal_type: 'pnl.cost_other_overhead', label: 'Other overheads', by_entity: false },
     { nominal_type: 'pnl.cost_admin', label: 'Admin (central)', by_entity: false },
     { nominal_type: 'pnl.cost_pre_opening', label: 'Pre-opening costs', by_entity: false },
@@ -135,6 +136,7 @@ export const financialCoreModule = {
     { nominal_type: 'cf.out.premises_rent', label: 'Cash out — rent', by_entity: false },
     { nominal_type: 'cf.out.premises_service_charge', label: 'Cash out — service charge', by_entity: false },
     { nominal_type: 'cf.out.premises_maintenance', label: 'Cash out — maintenance', by_entity: false },
+    { nominal_type: 'cf.out.premises_utilities', label: 'Cash out — utilities', by_entity: false },
     { nominal_type: 'cf.out.premises_other', label: 'Cash out — other premises', by_entity: false },
     { nominal_type: 'cf.out.utilities', label: 'Cash out — utilities', by_entity: false },
     { nominal_type: 'cf.out.other_overhead', label: 'Cash out — other overheads', by_entity: false },
@@ -235,8 +237,13 @@ export const financialCoreModule = {
       cost_premises_rent_base: 0,
       cost_premises_service_charge_base: 0,
       cost_premises_maintenance_base: 0,
+      cost_premises_utilities_base: 0,
       cost_premises_other_base: 0,  // NDR + any other premises-tagged cost
-      cost_utilities_base: 0,       // utilities
+      // Utilities are a premises cost and live in the bucket above. This
+      // stays declared so `pnl.cost_utilities` / `cf.out.utilities` keep
+      // emitting (at zero) for anything still reading them; it is never
+      // filled, and must never be added to a total alongside premises.
+      cost_utilities_base: 0,
       cost_admin_base: 0,           // central admin overhead line
       cost_other_overhead_base: 0,  // insurance / software / marketing / professional fees
       cost_pre_opening_base: 0,     // ALL pre-opening (staff + overhead) — kept for P&L line
@@ -303,9 +310,8 @@ export const financialCoreModule = {
             if (lbl === 'Rent') p.cost_premises_rent_base += r.amount_p;
             else if (lbl === 'Service charge') p.cost_premises_service_charge_base += r.amount_p;
             else if (lbl === 'Maintenance') p.cost_premises_maintenance_base += r.amount_p;
+            else if (/utilit/i.test(lbl)) p.cost_premises_utilities_base += r.amount_p;
             else p.cost_premises_other_base += r.amount_p;   // NDR, premises insurance
-          } else if (/utilit/i.test(lbl)) {
-            p.cost_utilities_base += r.amount_p;
           } else if (/consumable|food/i.test(lbl)) {
             p.cost_direct_costs_base += r.amount_p;
           } else if (lbl === 'Central admin') {
@@ -438,6 +444,7 @@ export const financialCoreModule = {
         premises_rent:           p.cost_premises_rent_base           * fCost,
         premises_service_charge: p.cost_premises_service_charge_base * fCost,
         premises_maintenance:    p.cost_premises_maintenance_base    * fCost,
+        premises_utilities:      p.cost_premises_utilities_base      * fCost,
         premises_other:          p.cost_premises_other_base          * fCost,
         utilities:       p.cost_utilities_base * fCost,
         other_overhead:  (p.cost_other_overhead_base + p.cost_admin_base + p.cost_direct_costs_base) * fCost,
@@ -526,8 +533,11 @@ export const financialCoreModule = {
         ['pnl.cost_direct_costs',     'Direct costs (consumables / food)', -costDirectCosts],
         // Overheads
         ['pnl.cost_staff_overhead',   'Overhead staff (executive / senior mgr / admin)', -costStaffOverhead],
-        ['pnl.cost_premises',         'Premises (rent / NDR / maintenance)', -costPremises],
-        ['pnl.cost_utilities',        'Utilities', -costUtilities],
+        ['pnl.cost_premises',         'Premises (rent / rates / utilities / maintenance)', -costPremises],
+        // Utilities sit inside cost_premises. Emitted separately so the
+        // per-sq-ft KPI and cost stack can still show them — never add both.
+        ['pnl.cost_premises_utilities', 'Utilities', -(p.cost_premises_utilities_base * fCost)],
+        ['pnl.cost_utilities',        'Utilities (retired — see premises)', -costUtilities],
         ['pnl.cost_other_overhead',   'Other overheads', -costOtherOH],
         ['pnl.cost_admin',            'Admin (central overhead)', -costAdmin],
         ['pnl.cost_pre_opening',      'Pre-opening costs', -costPreOpening],
@@ -638,6 +648,7 @@ export const financialCoreModule = {
         ['cf.out.premises_rent',           'Rent',                          -cashOut.premises_rent],
         ['cf.out.premises_service_charge', 'Service charge',                -cashOut.premises_service_charge],
         ['cf.out.premises_maintenance',    'Maintenance',                   -cashOut.premises_maintenance],
+        ['cf.out.premises_utilities',      'Utilities',                     -cashOut.premises_utilities],
         ['cf.out.premises_other',          'Other premises costs',          -cashOut.premises_other],
         ['cf.out.utilities',     'Utilities',                                -cashOut.utilities],
         ['cf.out.other_overhead','Other overheads',                          -cashOut.other_overhead],

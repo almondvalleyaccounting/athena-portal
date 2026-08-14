@@ -206,7 +206,7 @@ function buildSeries(outputs, grouped, entityIds) {
   const npat    = grouped.map(g => sumOf(r => r.nominal_type === 'pnl.npat',          g.periods));
   const staff   = grouped.map(g => -(sumOf(r => r.nominal_type === 'pnl.cost_staff_direct', g.periods) + sumOf(r => r.nominal_type === 'pnl.cost_management', g.periods)));
   const premises= grouped.map(g => -sumOf(r => r.nominal_type === 'pnl.cost_premises', g.periods));
-  const oh      = grouped.map(g => -(sumOf(r => r.nominal_type === 'pnl.cost_utilities', g.periods) + sumOf(r => r.nominal_type === 'pnl.cost_other_overhead', g.periods) + sumOf(r => r.nominal_type === 'pnl.cost_admin', g.periods)));
+  const oh      = grouped.map(g => -(sumOf(r => r.nominal_type === 'pnl.cost_other_overhead', g.periods) + sumOf(r => r.nominal_type === 'pnl.cost_admin', g.periods)));
 
   const pct = (num, denom) => denom > 0 ? (num / denom) * 100 : null;
   const ebitdaPct = grouped.map((g, i) => pct(ebitda[i], revenue[i]));

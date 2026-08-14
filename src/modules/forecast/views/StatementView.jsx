@@ -195,11 +195,11 @@ function KpiFooter({ outputs, scopedMap, usingScoped, grouped, showPremisesKpis 
     const npat    = get('pnl.npat', g.periods);
     // sign: negative cost row -> staff cost positive
     const staff   = -get('pnl.cost_staff_direct', g.periods) + -get('pnl.cost_staff_overhead', g.periods);
-    const utilities = -get('pnl.cost_utilities', g.periods);
+    const utilities = -get('pnl.cost_premises_utilities', g.periods);   // inside premises
     const premises  = -get('pnl.cost_premises', g.periods);
     const otherOh   = -get('pnl.cost_other_overhead', g.periods);
     const admin     = -get('pnl.cost_admin', g.periods);
-    const totalCostsExStaff = utilities + premises + otherOh + admin;
+    const totalCostsExStaff = premises + otherOh + admin;   // premises already carries utilities
     const headcount = get('metric.headcount_total', g.periods, 'last');
     const sqft      = get('metric.sqft_total', g.periods, 'last');
     const sqftLeased= get('metric.sqft_leased', g.periods, 'last');

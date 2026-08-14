@@ -186,8 +186,12 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     const premisesRentBase    = premisesLine('Rent');
     const premisesSvcBase     = premisesLine('Service charge');
     const premisesMaintBase   = premisesLine('Maintenance');
-    const premisesOtherBase   = premisesBase - premisesRentBase - premisesSvcBase - premisesMaintBase;
-    const utilitiesBase = sumScoped(r => r.nominal_type === 'overhead' && isUtilities(r.line_label || ''));
+    const premisesUtilBase    = sumScoped(r => r.nominal_type === 'overhead' && isUtilities(r.line_label || ''));
+    const premisesOtherBase   = premisesBase - premisesRentBase - premisesSvcBase - premisesMaintBase - premisesUtilBase;
+    // Utilities are inside premisesBase now. Kept as a name so the zeroed
+    // `cf.out.utilities` / `pnl.cost_utilities` rows still emit, but it must
+    // NOT go into costsBase or any cash total — premisesBase already has it.
+    const utilitiesBase = 0;
     const preOpenOverheadBase = sumScoped(r => r.nominal_type === 'overhead' && isPreOpening(r.module_key, r.line_label || ''));
     // Pre-opening line-item split (overhead is the registration period catch-all,
     // marketing is the spike, staffing is the staff_cost rows)
@@ -323,6 +327,7 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     set('pnl.cost_direct_costs',   t, -(directCostsBase   * fCost));
     set('pnl.cost_staff_overhead', t, -(staffOverheadBase * fCost));
     set('pnl.cost_premises',       t, -(premisesBase      * fCost));
+    set('pnl.cost_premises_utilities', t, -(premisesUtilBase * fCost));
     set('pnl.cost_utilities',      t, -(utilitiesBase     * fCost));
     set('pnl.cost_other_overhead', t, -(otherOverheadBase * fCost));
     set('pnl.cost_admin',          t, -(adminBase         * fCost));
@@ -382,6 +387,7 @@ export function scopedAggregate({ outputs, periods, entityIds, inflationPct, ope
     set('cf.out.premises_rent',           t, -(premisesRentBase  * fCost));
     set('cf.out.premises_service_charge', t, -(premisesSvcBase   * fCost));
     set('cf.out.premises_maintenance',    t, -(premisesMaintBase * fCost));
+    set('cf.out.premises_utilities',      t, -(premisesUtilBase  * fCost));
     set('cf.out.premises_other',          t, -(premisesOtherBase * fCost));
     set('cf.out.utilities', t, -cashOut_utilities);
     set('cf.out.other_overhead', t, -cashOut_otherOH);

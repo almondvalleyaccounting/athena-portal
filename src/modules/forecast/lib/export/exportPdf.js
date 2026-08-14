@@ -1297,9 +1297,11 @@ function drawRoadToMarket(doc, { outputs, scopedOutputs, periods, openingPeriod,
     const opIncome  = valAt('cf.in.private', t) + valAt('cf.in.la_funded', t);
     // Recurring operating costs ONLY — exclude interest/tax/divs which
     // sit in the financing & tax block below.
+    // cf.out.premises already carries utilities — adding cf.out.utilities
+    // here would double-count it.
     const opCosts   = -(
       valAt('cf.out.staff', t) + valAt('cf.out.premises', t) +
-      valAt('cf.out.utilities', t) + valAt('cf.out.other_overhead', t)
+      valAt('cf.out.other_overhead', t)
     );
     const drawdown  = valAt('cf.in.debt_drawdown', t);
     const interest  = -valAt('cf.out.interest', t);
