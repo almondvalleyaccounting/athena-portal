@@ -23,6 +23,7 @@
 // We persist net WC and emit the period-over-period change.
 
 import { AGE_BANDS_LIST } from './locations.js';
+import { resolveOr } from '../drivers.js';
 
 export const workingCapitalModule = {
   key: 'working_capital',
@@ -49,20 +50,16 @@ export const workingCapitalModule = {
 
   compute(ctx) {
     const out = [];
-    // ctx.resolve returns 0 both when a driver is absent AND when it is
-    // deliberately set to 0, so `resolve(...) || default` silently discards
-    // a user's explicit zero — e.g. "we take no deposits" came back as the
-    // 4-week default and booked a WC benefit that doesn't exist. Fall back
-    // to the default only when the driver genuinely isn't there.
-    const resolveOr = (key, fallback) =>
-      ctx.findDriver(key) ? ctx.resolve(key, {}) : fallback;
-
-    const dsoPriv = resolveOr('wc.dso_private_days', 0);
-    const dsoLa = resolveOr('wc.dso_la_days', 90);
-    const dpoGen = resolveOr('wc.dpo_general_days', 0);
-    const weeks = resolveOr('weeks_per_year', 51) || 51;   // 0 weeks would divide by zero below
-    const depositWeeks = resolveOr('deposit_weeks', 4);
-    const advanceWeeks = resolveOr('advance_billing_weeks', 4);
+    // resolveOr, not `resolve(...) || default`: the resolver returns 0 for an
+    // absent driver and for one deliberately set to 0, and "we take no
+    // deposits" came back as the 4-week default — booking a WC benefit that
+    // doesn't exist. See lib/drivers.js.
+    const dsoPriv = resolveOr(ctx, 'wc.dso_private_days', 0);
+    const dsoLa = resolveOr(ctx, 'wc.dso_la_days', 90);
+    const dpoGen = resolveOr(ctx, 'wc.dpo_general_days', 0);
+    const weeks = resolveOr(ctx, 'weeks_per_year', 51) || 51;   // 0 weeks would divide by zero below
+    const depositWeeks = resolveOr(ctx, 'deposit_weeks', 4);
+    const advanceWeeks = resolveOr(ctx, 'advance_billing_weeks', 4);
 
     // Build per-period totals from upstream outputs
     const upstream = ctx.upstreamOutputs;

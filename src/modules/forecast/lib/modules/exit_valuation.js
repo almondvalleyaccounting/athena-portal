@@ -19,6 +19,7 @@
 //   deal.football_field      — flat row per (multiple_step, ebitda_step) in tags
 
 import { irr } from '../numerics.js';
+import { resolveOr } from '../drivers.js';
 
 export const exitValuationModule = {
   key: 'exit_valuation',
@@ -51,8 +52,13 @@ export const exitValuationModule = {
 
   compute(ctx) {
     const out = [];
+    // exit.year keeps the plain `|| 7`: year 0 is not an exit plan, it is an
+    // empty box, and it would put exitMonth at -1 and emit the whole deal at
+    // a period that doesn't exist.
     const exitYear = ctx.resolve('exit.year', {}) || 7;
-    const multiple = ctx.resolve('exit.multiple', {}) || 7;
+    // A 0× multiple is a real (if bleak) input — the buyer pays nothing for
+    // the earnings and you clear the debt out of the proceeds — so honour it.
+    const multiple = resolveOr(ctx, 'exit.multiple', 7);
     const ebitdaBasis = Math.round(ctx.resolve('exit.ebitda_basis', {}) || 0);
     const txnPct = (ctx.resolve('exit.transaction_cost_pct', {}) || 0) / 100;
     const exitTaxPct = (ctx.resolve('exit.tax_rate_pct', {}) || 0) / 100;
@@ -127,8 +133,12 @@ export const exitValuationModule = {
     push('deal.moic_x10000', 'MOIC ×10000', moic * 10000);
 
     // Football field: configurable column count between min and max multiples.
-    const ffMin = ctx.resolve('exit.football_min_multiple', {}) || 1;
-    const ffMax = ctx.resolve('exit.football_max_multiple', {}) || 6;
+    // Either end of the range may legitimately be 0× — a football field that
+    // starts at nothing is a fine way to show the downside. The column count
+    // may not: it divides the range, and 0 columns is an unset box, not a
+    // chart with no columns.
+    const ffMin = resolveOr(ctx, 'exit.football_min_multiple', 1);
+    const ffMax = resolveOr(ctx, 'exit.football_max_multiple', 6);
     const ffCols = Math.max(2, Math.round(ctx.resolve('exit.football_columns', {}) || 8));
     const step = ffCols > 1 ? (ffMax - ffMin) / (ffCols - 1) : 0;
     const multiples = [];

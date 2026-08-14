@@ -26,6 +26,7 @@
 //   between funded portion and private portion based on a fixed split.
 
 import { AGE_BANDS_LIST, bandLabel } from './locations.js';
+import { resolveOr } from '../drivers.js';
 
 const FUNDED_BANDS = ['twos', 'three_to_five'];   // Scotland 1140 applies primarily here
 const FUNDED_HOURS_PER_YEAR = 1140;
@@ -78,6 +79,8 @@ export const servicesChildcareModule = {
     // where hourly_rate = weekly_rate / max_hours_per_week.
 
     const out = [];
+    // `|| 51` on purpose — weeks divides the funded-hours entitlement below,
+    // and a nursery open zero weeks a year isn't a forecast.
     const weeks = ctx.resolve('weeks_per_year', {}) || 51;
 
     for (const e of ctx.entities) {
@@ -92,7 +95,12 @@ export const servicesChildcareModule = {
         if (capacity === 0) continue;
 
         const weeklyRate     = ctx.resolve(`weekly_rate_p.${band}`, { entity: e.key });
-        const hpw            = ctx.resolve(`operating_hours_per_week.${band}`, { entity: e.key }) || 50;
+        // 0 hours means the band isn't offered — staff.js already reads it
+        // that way — so keep the zero and let the guards below zero out the
+        // band's revenue. Absent falls back to the band's own declared
+        // default, not a flat 50 (after-school is a 15-hour week).
+        const hpw            = resolveOr(ctx, `operating_hours_per_week.${band}`,
+          defaultHoursPerWeek(band), { entity: e.key });
         const eligiblePct    = ctx.resolve(`eligible_for_funded_pct.${band}`, { entity: e.key });
         const takeupPct      = ctx.resolve(`funded_hours_take_up_pct.${band}`, { entity: e.key });
         const fundedOnlyPct  = ctx.resolve(`funded_only_pct.${band}`, { entity: e.key });

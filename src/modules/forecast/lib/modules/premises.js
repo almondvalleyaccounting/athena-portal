@@ -88,6 +88,12 @@ export const premisesModule = {
       const ndrMonthly = (rv * poundage * (1 - ndrRelief)) / 12;
       const maintMonthly = maintAnnual / 12;
 
+      // Written off over the same horizon whichever the tenure, so read once
+      // here rather than in each branch. `|| 25` on purpose — monthlyDep
+      // divides by this, and a zero-year horizon has no meaning to honour
+      // (unlike the drivers now going through resolveOr; see lib/drivers.js).
+      const depYears = ctx.resolve('premises.depreciation_years', { entity: e.key }) || 25;
+
       for (const t of ctx.periods) {
         if (t < opening) continue;
         if (ndrMonthly > 0) {
@@ -150,7 +156,6 @@ export const premisesModule = {
             amount_p: Math.round(fitOut),
             tags: { premises_kind: 'lease' },
           });
-          const depYears = ctx.resolve('premises.depreciation_years', { entity: e.key }) || 25;
           const monthlyDep = fitOut / (depYears * 12);
           for (const t of ctx.periods) {
             if (t < opening) continue;
@@ -169,8 +174,8 @@ export const premisesModule = {
         const ratePct = ctx.resolve('premises.mortgage_interest_pct', { entity: e.key }) / 100;
         const legalFees = ctx.resolve('premises.legal_fees_p', { entity: e.key });
         const fitOut = ctx.resolve('premises.fit_out_capex_p', { entity: e.key });
-        const depYears = ctx.resolve('premises.depreciation_years', { entity: e.key }) || 25;
-        // NDR and maintenance are emitted above, for both tenures.
+        // NDR, maintenance and the depreciation horizon are read above, for
+        // both tenures.
 
         const lbtt = computeLBTT(price);
 

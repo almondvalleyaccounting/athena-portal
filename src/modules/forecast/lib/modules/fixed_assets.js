@@ -29,6 +29,9 @@ export const fixedAssetsModule = {
 
   compute(ctx) {
     const out = [];
+    // Deliberate `|| 5` rather than resolveOr: a life of 0 years divides the
+    // charge by zero, and there is no reading of "depreciate this equipment
+    // over no years" worth honouring.
     const depYears = Math.max(1, ctx.resolve('fa.depreciation_years', {}) || 5);
     const depMonths = depYears * 12;
 

@@ -231,6 +231,9 @@ export const staffModule = {
     // A room open 50 hrs/week staffed on 1,820-hour contracts therefore
     // needs ~1.4 employees per floor position, not 1. Treating a floor
     // position as one employee silently under-staffs long opening hours.
+    // Both keep their `|| default`: they are the two sides of the coverage
+    // division, and zero open weeks or zero productive hours per employee
+    // are unset boxes rather than staffing plans.
     const weeksPerYear = ctx.resolve('weeks_per_year', {}) || 51;
     const hoursPerEmployee = ctx.resolve('standard_hours_per_year', {}) || 1820;
     const coverageByEntity = {};
@@ -512,7 +515,7 @@ export const staffModule = {
     }
     // RLW info
     const rlwHourly = ctx.resolve('real_living_wage_hourly_p', {});
-    const hoursYear = ctx.resolve('standard_hours_per_year', {}) || 1820;
+    const hoursYear = ctx.resolve('standard_hours_per_year', {}) || 1820;   // divisor — same guard as above
     const apprenticeAvg = (
       (ctx.resolve('base_salary_p.apprentice_under19', {}) || 0) * (ctx.resolve('nmw_mix.apprentice.under19_pct', {}) || 0) +
       (ctx.resolve('base_salary_p.apprentice_under21', {}) || 0) * (ctx.resolve('nmw_mix.apprentice.under21_pct', {}) || 0) +

@@ -31,6 +31,8 @@
 // `bs.opening_cash_alloc` row per source at t=0 so scoped views can
 // derive their own starting cash from the outputs alone.
 
+import { resolveOr } from '../drivers.js';
+
 export const financialCoreModule = {
   key: 'financial_core',
   pack: ['childcare_scotland', 'accountancy'],
@@ -188,7 +190,9 @@ export const financialCoreModule = {
         });
       }
     }
-    const taxLagMonths = ctx.resolve('tax.payment_lag_months', {}) || 9;
+    // A lag of 0 is a real answer — "we pay the CT in the month it accrues" —
+    // so it has to survive the fallback. resolveOr, not `|| 9`.
+    const taxLagMonths = resolveOr(ctx, 'tax.payment_lag_months', 9);
     const incomeInflation = (ctx.resolve('inflation.income_pct', {}) || 0) / 100;
     const costInflation  = (ctx.resolve('inflation.cost_pct', {}) || 0) / 100;
     const payoutRatio    = (ctx.resolve('dividends.payout_ratio_pct', {}) || 0) / 100;

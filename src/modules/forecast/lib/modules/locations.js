@@ -18,6 +18,7 @@
 
 import { curveForBand, occupancyOnCurve } from '../occupancy.js';
 import { placesForBand } from '../capacity.js';
+import { resolveOr } from '../drivers.js';
 
 export const AGE_BANDS = ['babies', 'twos', 'three_to_five', 'after_school'];
 
@@ -105,7 +106,11 @@ export const locationsModule = {
     const opening = new Date(ctx.forecast.opening_period);
     const startMonthIdx = isNaN(opening.getTime()) ? 0 : opening.getMonth();
 
-    const refillMonths = Math.max(1, Math.round(ctx.resolve('cohort.refill_months', {}) || 6));
+    // 0 means "the place refills immediately". The refill curve divides by
+    // this window, so the floor of 1 is the fastest it can express — a dip
+    // that is gone by the following month. resolveOr keeps that zero from
+    // being read as "unset" and silently stretched to six months.
+    const refillMonths = Math.max(1, Math.round(resolveOr(ctx, 'cohort.refill_months', 6)));
     const moveup = {
       three_to_five: (ctx.resolve('cohort.school_leaver_three_to_five_pct', {}) || 0) / 100,
       after_school:  (ctx.resolve('cohort.as_leaver_pct', {})     || 0) / 100,
