@@ -45,6 +45,10 @@ node scripts/security-gate.cjs pass 0
 The recorded pass is bound to a hash of the exact staged diff. Restage anything and
 it is void. `pass` refuses any argument other than `0`.
 
+Record the pass in its own shell call. The hook evaluates the whole command before
+any of it runs, so chaining `pass 0` onto the commit still blocks — the pass has not
+been written at the moment the gate reads it.
+
 ### What the audit cannot see
 
 Static checks catch shapes, not semantics. If a diff adds a view or a definer RPC,
