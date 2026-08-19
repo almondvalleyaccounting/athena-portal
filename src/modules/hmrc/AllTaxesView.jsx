@@ -1,49 +1,39 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, ChevronRight, TriangleAlert } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { fmtGbp, fmtGbpDetailed } from '../../lib/money';
+import { Download, TriangleAlert } from 'lucide-react';
+import { fmtGbpDetailed } from '../../lib/money';
 import { downloadCSV } from '../../lib/exportUtils';
 import SearchInput from '../../components/SearchInput';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
-import { font, Stat, Chip, ErrorBar, th, thNum, td, tdNum, card } from './hmrcShared';
+import { font, Chip, ErrorBar, th, thNum, td, tdNum, card, TAX_META, TAX_ORDER } from './hmrcShared';
 
-// The practice-wide view across every tax head: who is building debt with HMRC,
-// counting all of it.
+// Level 0: every client, one figure per tax head. The gateway to the module.
 //
 // This is the number the PAYE-only dashboard could not give. WMR Contractors
 // shows £0 on PAYE and owes £61,388 once Corporation Tax and VAT are counted;
 // Gsw Maintenance shows £2,658 on PAYE against £68,252 across three heads. A
 // client owing on more than one tax is a different conversation from one behind
-// on a single bill, so that count is a headline rather than a footnote.
-
-const TAXES = [
-  ['paye',            'PAYE'],
-  ['corporation_tax', 'Corp Tax'],
-  ['vat',             'VAT'],
-  ['self_assessment', 'Self Assmt'],
-];
+// on a single bill, so that count is a filter of its own.
+//
+// EVERY FIGURE IS A DOOR. Click a client's VAT and you land on the VAT tab with
+// that client selected, showing what the VAT number is made of. There is no
+// other way down and no other route in, which is what keeps the module one
+// thing rather than nine tabs that each start from scratch.
+//
+// The five headline tiles that used to sit above this are gone. They totalled
+// the same columns the table already totals, so they were a second, less
+// precise copy of the footer — and they pushed the actual work below the fold.
 
 const n = (v) => Number(v || 0);
 
-export default function AllTaxesView() {
+export default function AllTaxesView({ clients = [], loading = false, error = '' }) {
   const navigate = useNavigate();
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [letter, setLetter] = useState(null);
   const [view, setView] = useState('owing');   // 'owing' | 'multi' | 'credit' | 'all'
   const [sort, setSort] = useState('total');
 
-  useEffect(() => {
-    supabase.from('v_hmrc_client_totals').select('*')
-      .order('total', { ascending: false })
-      .then(({ data, error: e }) => {
-        if (e) setError(e.message); else setRows(data || []);
-        setLoading(false);
-      });
-  }, []);
+  const rows = clients;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -84,7 +74,12 @@ export default function AllTaxesView() {
     );
   };
 
-  const openClient = (r) => navigate(`/hmrc/client?entity=${r.entity_id}`);
+  const openTax = (taxKey, r) => navigate(`/hmrc/${taxKey}?entity=${r.entity_id}`);
+
+  // Where a client's problem actually is. Clicking the name should not need you
+  // to have already read the row.
+  const biggestTax = (r) => TAX_ORDER
+    .reduce((best, k) => (n(r[TAX_META[k].totalsKey]) > n(r[TAX_META[best].totalsKey]) ? k : best), 'paye');
 
   return (
     <div>
@@ -92,21 +87,8 @@ export default function AllTaxesView() {
 
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
         Everything HMRC says our clients owe, across PAYE, Corporation Tax, VAT and Self Assessment.
-        Click a client for their full position and every movement of money either way.
+        <b> Click any figure</b> to open that tax for that client and see what it is made of.
       </p>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 16 }}>
-        <Stat label="Owed to HMRC" value={fmtGbp(sum('total'))} colour="#b91c1c" big
-              hint={`${owing.length} clients with a balance on at least one tax`} />
-        <Stat label="On 2+ taxes" value={multi.length} colour="#c2410c"
-              hint="Behind on more than one tax head — a different problem from one late bill" />
-        <Stat label="Credit HMRC holds" value={fmtGbp(sum('credit_available'))} colour="#0369a1"
-              hint={`${withCredit.length} clients with credit that could be repaid or reallocated`} />
-        <Stat label="Repaid to clients" value={fmtGbp(sum('repaid_to_client'))} colour="#059669"
-              hint="Money HMRC has sent back, all taxes" />
-        <Stat label="Credit moved between taxes" value={fmtGbp(sum('credit_in'))} colour="#7c3aed"
-              hint="Credit reallocated in from another tax head" />
-      </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <SearchInput value={search} onChange={setSearch} placeholder="Client name…" style={{ minWidth: 240 }} />
@@ -148,17 +130,16 @@ export default function AllTaxesView() {
               <thead>
                 <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, color: '#64748b' }}>
                   <th style={th}>Client</th>
-                  {TAXES.map(([, label]) => <th key={label} style={thNum}>{label}</th>)}
+                  {TAX_ORDER.map((k) => <th key={k} style={thNum}>{TAX_META[k].short}</th>)}
                   <th style={{ ...thNum, borderLeft: '1px solid #e5e7eb' }}>Total owed</th>
                   <th style={thNum}>Credit held</th>
                   <th style={thNum}>Repaid</th>
                   <th style={{ ...th, textAlign: 'center' }}>Taxes</th>
-                  <th style={th} />
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={10} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
+                  <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
                     No clients match.
                   </td></tr>
                 )}
@@ -170,7 +151,8 @@ export default function AllTaxesView() {
                           <TriangleAlert size={12} style={{ color: '#c2410c', flexShrink: 0 }}
                             title={`Owing on ${r.taxes_owing} tax heads`} />
                         )}
-                        <button onClick={() => openClient(r)}
+                        <button onClick={() => openTax(biggestTax(r), r)}
+                          title={`Open ${r.entity_name} on ${TAX_META[biggestTax(r)].label} — where their largest balance is`}
                           style={{
                             background: 'none', border: 'none', padding: 0, cursor: 'pointer',
                             fontFamily: font, fontSize: 12.5, fontWeight: 500, color: '#0f172a', textAlign: 'left',
@@ -179,11 +161,28 @@ export default function AllTaxesView() {
                         </button>
                       </div>
                     </td>
-                    {TAXES.map(([k]) => (
-                      <td key={k} style={{ ...tdNum, color: n(r[k]) > 0 ? '#b91c1c' : n(r[k]) < 0 ? '#059669' : '#e2e8f0' }}>
-                        {n(r[k]) !== 0 ? fmtGbpDetailed(r[k]) : '—'}
-                      </td>
-                    ))}
+                    {TAX_ORDER.map((k) => {
+                      const v = n(r[TAX_META[k].totalsKey]);
+                      return (
+                        <td key={k} style={tdNum}>
+                          {/* Zero is still a door. A client with nothing owing on
+                              VAT may still be the one you want to look at. */}
+                          <button
+                            onClick={() => openTax(k, r)}
+                            title={`${r.entity_name} · ${TAX_META[k].label} — what makes this up`}
+                            style={{
+                              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                              fontFamily: font, fontSize: 12.5, fontVariantNumeric: 'tabular-nums',
+                              color: v > 0 ? '#b91c1c' : v < 0 ? '#059669' : '#cbd5e1',
+                              textDecoration: v !== 0 ? 'underline' : 'none',
+                              textDecorationStyle: 'dotted', textDecorationColor: '#cbd5e1',
+                            }}
+                          >
+                            {v !== 0 ? fmtGbpDetailed(v) : '—'}
+                          </button>
+                        </td>
+                      );
+                    })}
                     <td style={{ ...tdNum, fontWeight: 700, borderLeft: '1px solid #f1f5f9',
                                  color: n(r.total) > 0 ? '#b91c1c' : '#0f172a' }}>
                       {fmtGbpDetailed(r.total)}
@@ -197,12 +196,6 @@ export default function AllTaxesView() {
                     <td style={{ ...td, textAlign: 'center', fontSize: 11.5, color: '#64748b' }}>
                       {r.taxes_owing || 0}<span style={{ color: '#cbd5e1' }}>/{r.taxes_known || 0}</span>
                     </td>
-                    <td style={td}>
-                      <button onClick={() => openClient(r)} title="Open this client's full HMRC position"
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', padding: 0, lineHeight: 0 }}>
-                        <ChevronRight size={14} />
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -210,13 +203,15 @@ export default function AllTaxesView() {
                 <tfoot>
                   <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f8fafc', fontWeight: 700 }}>
                     <td style={td}>{filtered.length} clients shown</td>
-                    {TAXES.map(([k]) => <td key={k} style={tdNum}>{fmtGbpDetailed(sum(k, filtered))}</td>)}
+                    {TAX_ORDER.map((k) => (
+                      <td key={k} style={tdNum}>{fmtGbpDetailed(sum(TAX_META[k].totalsKey, filtered))}</td>
+                    ))}
                     <td style={{ ...tdNum, borderLeft: '1px solid #e5e7eb', color: '#b91c1c' }}>
                       {fmtGbpDetailed(sum('total', filtered))}
                     </td>
                     <td style={{ ...tdNum, color: '#0369a1' }}>{fmtGbpDetailed(sum('credit_available', filtered))}</td>
                     <td style={{ ...tdNum, color: '#059669' }}>{fmtGbpDetailed(sum('repaid_to_client', filtered))}</td>
-                    <td colSpan={2} />
+                    <td />
                   </tr>
                 </tfoot>
               )}

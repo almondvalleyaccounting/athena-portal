@@ -18,7 +18,7 @@ const MONTH_NAMES = ['', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov',
 const n = (v) => Number(v || 0);
 const iso = (d) => d.toISOString().slice(0, 10);
 
-export default function PaymentsView() {
+export default function PaymentsView({ payeRef = '', entityName = '' }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -28,16 +28,22 @@ export default function PaymentsView() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
 
+  // Scoped to one scheme when the module has a client selected. Filtering server
+  // side rather than in the browser matters here: the practice-wide ledger runs
+  // to thousands of rows and PostgREST truncates a large fetch silently, so a
+  // client-side filter would be reading a list that had already lost rows.
   useEffect(() => {
-    supabase
+    setLoading(true);
+    let q = supabase
       .from('v_hmrc_paye_payment_detail')
       .select('*')
-      .order('received_on', { ascending: false, nullsFirst: false })
-      .then(({ data, error: e }) => {
-        if (e) setError(e.message); else setRows(data || []);
-        setLoading(false);
-      });
-  }, []);
+      .order('received_on', { ascending: false, nullsFirst: false });
+    if (payeRef) q = q.eq('paye_ref', payeRef);
+    q.then(({ data, error: e }) => {
+      if (e) setError(e.message); else setRows(data || []);
+      setLoading(false);
+    });
+  }, [payeRef]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -75,8 +81,11 @@ export default function PaymentsView() {
       <ErrorBar message={error} />
 
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
-        Every payment HMRC has recorded against a client's PAYE scheme, when it arrived and which tax month it
-        was set against. A payment HMRC has not allocated is money sitting on the scheme reducing nothing.
+        {payeRef
+          ? <>Every payment HMRC has recorded against {entityName || 'this client'}&rsquo;s scheme {payeRef}, when it
+              arrived and which tax month it was set against.</>
+          : <>Every payment HMRC has recorded against a client&rsquo;s PAYE scheme, when it arrived and which tax month
+              it was set against.</>} A payment HMRC has not allocated is money sitting on the scheme reducing nothing.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16, maxWidth: 800 }}>
@@ -88,7 +97,9 @@ export default function PaymentsView() {
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-        <SearchInput value={search} onChange={setSearch} placeholder="Client, PAYE ref or allocation…" style={{ minWidth: 280 }} />
+        <SearchInput value={search} onChange={setSearch}
+                     placeholder={payeRef ? 'Search the allocations…' : 'Client, PAYE ref or allocation…'}
+                     style={{ minWidth: 280 }} />
         <Chip value="all" label="All payments" count={rows.length} active={view} onClick={setView} />
         <Chip value="unallocated" label="Unallocated only" count={unallocated.length} active={view} onClick={setView} colour="#c2410c" />
         <label style={lbl}>From
@@ -112,7 +123,9 @@ export default function PaymentsView() {
         </button>
       </div>
 
-      <AlphabetFilter items={rows} nameKey="entity_name" selected={letter} onChange={setLetter} />
+      {/* Only useful when the list spans the practice. With a client chosen it
+          is a row of dead letters. */}
+      {!payeRef && <AlphabetFilter items={rows} nameKey="entity_name" selected={letter} onChange={setLetter} />}
 
       {loading ? (
         <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading payments…</div>

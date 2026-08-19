@@ -114,9 +114,12 @@ export const MODULES = [
         label: 'HMRC',
         // Lands on the consolidated all-taxes view, which is the front door now.
         route: '/hmrc/all',
-        matchPaths: ['/hmrc', '/hmrc/all', '/hmrc/client', '/hmrc/paye',
+        // The tabs that were folded into PAYE — statement, payments, balance —
+        // are kept here so a bookmark still highlights the module on its way
+        // through the redirect.
+        matchPaths: ['/hmrc', '/hmrc/all', '/hmrc/breakdown', '/hmrc/paye',
                      '/hmrc/corporation-tax', '/hmrc/vat', '/hmrc/self-assessment', '/hmrc/by-tax',
-                     '/hmrc/statement', '/hmrc/payments', '/hmrc/trend', '/hmrc/balance',
+                     '/hmrc/client', '/hmrc/statement', '/hmrc/payments', '/hmrc/trend', '/hmrc/balance',
                      '/hmrc/reconciliation', '/hmrc/authorisations'],
       },
       { id: 'cw-forecast', label: 'Client Forecast', route: '/forecast', permissions: ['can_manage_portal'] },

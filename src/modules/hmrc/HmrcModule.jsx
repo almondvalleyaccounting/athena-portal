@@ -1,78 +1,112 @@
-import React, { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, NavLink, useSearchParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Routes, Route, Navigate, NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import { Landmark } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { fetchLatestRunPerService, fetchStaleClients } from './hmrcApi';
-import DebtView from './DebtView';
 import ReconcileView from './ReconcileView';
 import AuthorisationsView from './AuthorisationsView';
-import BalanceView from './BalanceView';
-import ClientStatementView from './ClientStatementView';
-import PaymentsView from './PaymentsView';
 import AllTaxesView from './AllTaxesView';
-import ClientTaxView from './ClientTaxView';
+import BreakdownView from './BreakdownView';
+import PayeTab from './PayeTab';
 import ByTaxView from './ByTaxView';
-import { font, dateTime } from './hmrcShared';
+import ClientSelector from './ClientSelector';
+import { font, dateTime, TAX_META } from './hmrcShared';
 
 // HMRC — what the taxman's own records say about our clients.
 //
 // A scraper walks the HMRC agent services list and writes into a private
 // `hmrc` schema; this module is the practice-facing side of it (sql/197 for the
-// read surface). All four heads are scraped now — PAYE, Corporation Tax, VAT and
+// read surface). All four heads are scraped — PAYE, Corporation Tax, VAT and
 // Self Assessment — each on its own run cadence, which is why the banner shows
 // one line per service rather than a single "last scrape".
 //
-// Each tab answers a different question:
-//   All taxes          practice-wide across all four heads — who is building debt
-//   Client             one client: every tax head plus the whole money ledger
-//   PAYE debt          who owes PAYE, and what have we done about it
-//   Corporation Tax    \
-//   VAT                 |  one tab each: every client ranked for that head, and
-//   Self Assessment    /   clicking a client opens their own detail for it in
-//                      place. PAYE stays separate because it carries triage
-//   Client statement   one client's account: months down, opening → charges →
-//                      credits → payments → closing, any date range. This is
-//                      where a year-end PAYE creditor comes from.
-//   Payments           the payment ledger, and what HMRC set each one against
-//   Balance analysis   per-scheme, per-tax-year version of the same walk
-//   Reconciliation     where the agent list and Athena disagree
-//   Not our clients    schemes HMRC still lets us act on with no active client
-//                      behind them — authorisation to hand back, or a record to fix
+// THE SHAPE OF IT. There are three levels and one way through them:
+//
+//   level 0   All taxes — every client, one figure per tax head. The gateway.
+//   level 1   click a figure and you land on that tax's tab for that client,
+//             showing what the figure is made of: PAYE months, CT accounting
+//             periods, VAT lines, SA years.
+//   level 2   click a figure there and the transactions behind it open beneath.
+//
+// A single client selector sits above the tabs and drives all four tax tabs, so
+// moving from a client's VAT to their PAYE keeps the client. Clear it and a tax
+// tab falls back to ranking every client on that head.
+//
+// Breakdown is the same book as All taxes cut the other way: grouped by tax
+// type rather than by client, to answer "what IS this balance made of" without
+// going near a transaction.
+//
+// The other two tabs are housekeeping rather than money:
+//   Reconciliation   where the agent list and Athena disagree
+//   Not our clients  schemes HMRC still lets us act on with no active client
+//                    behind them — authorisation to hand back, or a record to fix
 //
 // Every list is ACTIVE CLIENTS ONLY (sql/207). Former and archived clients are
 // noise on an operational screen; "Not our clients" is where they belong.
 
 const TABS = [
-  // Consolidated first, then the client, then one tab per tax head. Each tax tab
-  // ranks clients and opens a client's own detail for that head in place, so you
-  // can work inside one tax without losing your place; All taxes and Client are
-  // where the four heads come together.
-  { to: '/hmrc/all',            label: 'All taxes' },
-  { to: '/hmrc/client',         label: 'Client' },
-  { to: '/hmrc/paye',           label: 'PAYE debt' },
-  { to: '/hmrc/corporation-tax', label: 'Corporation Tax' },
-  { to: '/hmrc/vat',            label: 'VAT' },
-  { to: '/hmrc/self-assessment', label: 'Self Assessment' },
-  { to: '/hmrc/statement',      label: 'Client statement' },
-  { to: '/hmrc/payments',       label: 'Payments' },
-  { to: '/hmrc/balance',        label: 'Balance analysis' },
-  { to: '/hmrc/reconciliation', label: 'Reconciliation' },
-  // Renamed from "Authorisations", which said nothing about what it is for.
-  // These are schemes HMRC still lets us act on that have no active client —
-  // authorisation to hand back, or a client record to correct.
-  { to: '/hmrc/authorisations', label: 'Not our clients' },
+  { to: 'all',             label: 'All taxes' },
+  { to: 'breakdown',       label: 'Breakdown' },
+  { to: 'paye',            label: 'PAYE',             tax: true },
+  { to: 'corporation-tax', label: 'Corporation Tax',  tax: true },
+  { to: 'vat',             label: 'VAT',              tax: true },
+  { to: 'self-assessment', label: 'Self Assessment',  tax: true },
+  { to: 'reconciliation',  label: 'Reconciliation' },
+  { to: 'authorisations',  label: 'Not our clients' },
 ];
 
 export default function HmrcModule() {
   const [runs, setRuns] = useState([]);
   const [stale, setStale] = useState([]);
   const [runError, setRunError] = useState(false);
+  const [clients, setClients] = useState([]);
+  const [clientsLoading, setClientsLoading] = useState(true);
+  const [clientsError, setClientsError] = useState('');
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+
+  const entityId = params.get('entity') || '';
 
   useEffect(() => {
     fetchLatestRunPerService().then(setRuns).catch(() => setRunError(true));
     // Silent on failure: the staleness line is a health note, not the reason
     // anyone opened this page.
     fetchStaleClients().then(setStale).catch(() => {});
+    // One client list for the whole module, so the selector is instant and every
+    // tab agrees on who exists and what they owe.
+    // 323 rows today. The explicit limit is the module rule rather than a
+    // guess: PostgREST caps a fetch at around a thousand and truncates SILENTLY,
+    // so every list here says out loud how much it expects.
+    supabase.from('v_hmrc_client_totals').select('*').limit(2000)
+      .then(({ data, error: e }) => {
+        if (e) setClientsError(e.message); else setClients(data || []);
+      })
+      .then(() => setClientsLoading(false));
   }, []);
+
+  // Which tax tab we are on, if any — the selector needs it to show the right
+  // balance beside each name.
+  const segment = location.pathname.split('/')[2] || 'all';
+  const onTaxTab = Boolean(TAX_META[segment]);
+
+  const pick = (id) => {
+    const next = new URLSearchParams(params);
+    if (id) next.set('entity', id); else next.delete('entity');
+    // Selecting a client is a navigation, not a filter tweak — it should be
+    // possible to go back to the list you came from.
+    setParams(next, { replace: false });
+  };
+
+  // The entity travels with you between tabs. Without this, clicking "VAT" from
+  // a client's PAYE page would silently drop them and show the whole practice.
+  const keep = useMemo(() => {
+    const q = new URLSearchParams();
+    if (entityId) q.set('entity', entityId);
+    const s = q.toString();
+    return s ? `?${s}` : '';
+  }, [entityId]);
+
+  const chosen = clients.find((c) => c.entity_id === entityId);
 
   return (
     <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1420 }}>
@@ -83,8 +117,8 @@ export default function HmrcModule() {
           </h1>
           <p style={{ fontSize: 13, color: '#64748b', maxWidth: 780, marginBottom: 14, lineHeight: 1.55 }}>
             What HMRC's own records show for our clients, pulled from the agent services list —
-            PAYE, Corporation Tax, VAT and Self Assessment. Balances, how each one was arrived at,
-            repayments out, and credit moved between tax heads.
+            PAYE, Corporation Tax, VAT and Self Assessment. Start on All taxes, click a balance to
+            see what makes it up, click again for the transactions underneath.
           </p>
         </div>
 
@@ -93,11 +127,11 @@ export default function HmrcModule() {
         <RunBanner runs={runs} stale={stale} failed={runError} />
       </div>
 
-      <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb', marginBottom: 18 }}>
+      <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb', marginBottom: 12, flexWrap: 'wrap' }}>
         {TABS.map((t) => (
           <NavLink
             key={t.to}
-            to={t.to}
+            to={`/hmrc/${t.to}${t.tax || t.to === 'all' ? keep : ''}`}
             style={({ isActive }) => ({
               padding: '8px 15px', fontSize: 13, textDecoration: 'none',
               fontWeight: isActive ? 600 : 400,
@@ -111,23 +145,43 @@ export default function HmrcModule() {
         ))}
       </div>
 
+      {/* One selector, four tabs. Only shown where it does something. */}
+      {onTaxTab && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <ClientSelector clients={clients} entityId={entityId} onPick={pick} taxKey={segment} />
+          {chosen ? (
+            <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+              Showing {chosen.entity_name} across every tax tab until you clear them.
+            </span>
+          ) : (
+            <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+              No client picked — this tab is ranking every client on {TAX_META[segment]?.label}.
+            </span>
+          )}
+        </div>
+      )}
+
       <Routes>
         <Route index element={<Navigate to="/hmrc/all" replace />} />
-        <Route path="all" element={<AllTaxesView />} />
-        <Route path="client" element={<ClientTaxView />} />
-        <Route path="paye" element={<DebtView />} />
-        <Route path="corporation-tax"  element={<ByTaxView tax="corporation-tax" />} />
-        <Route path="vat"              element={<ByTaxView tax="vat" />} />
-        <Route path="self-assessment"  element={<ByTaxView tax="self-assessment" />} />
-        {/* The three used to share one tab behind ?tax=. Keep old links working. */}
-        <Route path="by-tax" element={<ByTaxRedirect />} />
-        <Route path="statement" element={<ClientStatementView />} />
-        <Route path="payments" element={<PaymentsView />} />
-        {/* The Trend tab became the per-client statement. Keep old links alive. */}
-        <Route path="trend" element={<Navigate to="/hmrc/statement" replace />} />
-        <Route path="balance" element={<BalanceView />} />
+        <Route path="all" element={<AllTaxesView clients={clients} loading={clientsLoading} error={clientsError} />} />
+        <Route path="breakdown" element={<BreakdownView />} />
+        <Route path="paye/*" element={<PayeTab clients={clients} />} />
+        <Route path="corporation-tax"  element={<ByTaxView tax="corporation-tax" clients={clients} />} />
+        <Route path="vat"              element={<ByTaxView tax="vat" clients={clients} />} />
+        <Route path="self-assessment"  element={<ByTaxView tax="self-assessment" clients={clients} />} />
         <Route path="reconciliation" element={<ReconcileView />} />
         <Route path="authorisations" element={<AuthorisationsView />} />
+        {/* Tabs that were folded into others. Old links, and anything bookmarked,
+            still land somewhere sensible rather than on a 404 or silently on
+            All taxes. */}
+        <Route path="by-tax" element={<ByTaxRedirect />} />
+        <Route path="client" element={<KeepQuery to="/hmrc/paye" fallback="/hmrc/breakdown" />} />
+        <Route path="statement" element={<KeepQuery to="/hmrc/paye" />} />
+        <Route path="payments" element={<KeepQuery to="/hmrc/paye/payments" />} />
+        <Route path="trend" element={<Navigate to="/hmrc/paye" replace />} />
+        {/* Balance analysis said the same thing as the PAYE statement, one tax
+            year at a time. Removed rather than kept in parallel. */}
+        <Route path="balance" element={<KeepQuery to="/hmrc/paye" />} />
         <Route path="*" element={<Navigate to="/hmrc/all" replace />} />
       </Routes>
     </div>
@@ -167,13 +221,13 @@ function RunBanner({ runs, stale = [], failed }) {
       </div>
       {runs.map((r) => {
         const d = staleDays(r);
-        const stale = (d ?? 0) > 31;
+        const isStale = (d ?? 0) > 31;
         return (
           <div key={r.service} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 11.5, lineHeight: 1.7 }}>
             <span style={{ minWidth: 96, fontWeight: 600, color: '#0f172a' }}>
               {(r.service || '').replace('-', ' ')}
             </span>
-            <span style={{ color: stale ? '#c2410c' : '#64748b' }}>
+            <span style={{ color: isStale ? '#c2410c' : '#64748b' }}>
               {dateTime(r.finished_at || r.started_at)}
             </span>
             <span style={{ color: '#94a3b8' }}>
@@ -250,4 +304,14 @@ function ByTaxRedirect() {
   const asked = params.get('tax');
   const known = ['corporation-tax', 'vat', 'self-assessment'];
   return <Navigate to={`/hmrc/${known.includes(asked) ? asked : 'corporation-tax'}`} replace />;
+}
+
+// Redirect that carries the query string with it. A bookmarked
+// /hmrc/statement?scheme=120/RB57081 has to arrive on the PAYE tab still
+// pointing at that scheme, or the redirect is just a polite 404.
+function KeepQuery({ to, fallback }) {
+  const [params] = useSearchParams();
+  const q = params.toString();
+  if (!q && fallback) return <Navigate to={fallback} replace />;
+  return <Navigate to={q ? `${to}?${q}` : to} replace />;
 }

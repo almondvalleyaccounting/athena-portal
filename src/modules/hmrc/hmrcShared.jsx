@@ -186,3 +186,84 @@ export const inputStyle = {
 export const card = {
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden',
 };
+
+// ── the four tax heads, in one place ───────────────────────────────
+// Slug, label and colour were repeated in four files and had already drifted
+// ("Self Assmt" here, "Self Assessment" there). The slug is also the route
+// segment and the key v_hmrc_client_tax_summary uses, so the map is the single
+// definition of what a tax head IS in this module.
+export const TAX_META = {
+  'paye':            { label: 'PAYE',             short: 'PAYE',       colour: '#0e7fe0', totalsKey: 'paye' },
+  'corporation-tax': { label: 'Corporation Tax',  short: 'Corp Tax',   colour: '#7c3aed', totalsKey: 'corporation_tax' },
+  'vat':             { label: 'VAT',              short: 'VAT',        colour: '#c2410c', totalsKey: 'vat' },
+  'self-assessment': { label: 'Self Assessment',  short: 'Self Assmt', colour: '#0369a1', totalsKey: 'self_assessment' },
+};
+
+export const TAX_ORDER = ['paye', 'corporation-tax', 'vat', 'self-assessment'];
+
+// What each level of the module means, so the same words are used on every tab.
+//
+//   0  All taxes — every client, one number per tax head
+//   1  one client, one tax — how that number is made up
+//   2  the transactions under a single figure at level 1
+//
+// Level 0 links into level 1; a figure at level 1 opens level 2 beneath it.
+export const LEVELS = {
+  0: { label: 'Level 0', hint: 'Every client, one figure per tax' },
+  1: { label: 'Level 1', hint: 'One client, one tax — what the figure is made of' },
+  2: { label: 'Level 2', hint: 'The individual transactions behind a figure' },
+};
+
+// The trail back up. Rendered on every tax tab so it is always obvious which of
+// the three levels you are reading and how to get back to the one above.
+export function LevelTrail({ level, taxKey, clientName, onLevel0, onLevel1, onClearClient }) {
+  const meta = TAX_META[taxKey];
+  const crumb = (label, onClick, active) => (
+    <button
+      onClick={onClick}
+      disabled={!onClick || active}
+      style={{
+        background: 'none', border: 'none', padding: 0, fontFamily: font, fontSize: 11.5,
+        color: active ? '#0f172a' : (onClick ? '#0e7fe0' : '#94a3b8'),
+        fontWeight: active ? 600 : 500,
+        cursor: onClick && !active ? 'pointer' : 'default',
+      }}
+    >
+      {label}
+    </button>
+  );
+  const sep = <span style={{ color: '#cbd5e1', fontSize: 11 }}>›</span>;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 10 }}>
+      {crumb('All taxes', onLevel0, level === 0)}
+      {sep}
+      {crumb(
+        clientName ? `${meta?.label || taxKey} · ${clientName}` : meta?.label || taxKey,
+        level > 1 ? onLevel1 : null,
+        level === 1,
+      )}
+      {level >= 2 && <>{sep}{crumb('Transactions', null, true)}</>}
+      <span
+        title={LEVELS[level]?.hint}
+        style={{
+          fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
+          color: '#94a3b8', background: '#f1f5f9', border: '1px solid #e5e7eb',
+          borderRadius: 999, padding: '1px 7px', marginLeft: 2,
+        }}
+      >
+        {LEVELS[level]?.label}
+      </span>
+      {clientName && onClearClient && (
+        <button
+          onClick={onClearClient}
+          style={{
+            marginLeft: 'auto', background: 'none', border: 'none', padding: 0,
+            fontFamily: font, fontSize: 11, color: '#b91c1c', cursor: 'pointer',
+          }}
+        >
+          every client on this tax
+        </button>
+      )}
+    </div>
+  );
+}

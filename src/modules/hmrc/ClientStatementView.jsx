@@ -1,11 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Download, ChevronRight, TriangleAlert } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Download, TriangleAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fmtGbpDetailed } from '../../lib/money';
 import { downloadCSV } from '../../lib/exportUtils';
-import SearchInput from '../../components/SearchInput';
-import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import { font, ErrorBar, th, thNum, td, tdNum, card, inputStyle } from './hmrcShared';
 
 // One client's PAYE account, as a statement.
@@ -67,16 +64,12 @@ const prettyDate = (isoDate) => (isoDate
   ? new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
   : '—');
 
-export default function ClientStatementView() {
-  const [params, setParams] = useSearchParams();
-  const [clients, setClients] = useState([]);
+export default function ClientStatementView({ payeRef = '', scheme = null }) {
   const [rows, setRows] = useState([]);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const [letter, setLetter] = useState(null);
-  const [search, setSearch] = useState('');
   const [showDetail, setShowDetail] = useState(true);
   // Which number is drilled into: { key: '2026-27-3', kind, category }. The
   // statement is a summary, so every figure on it opens the rows behind it.
@@ -87,19 +80,6 @@ export default function ClientStatementView() {
   const [to, setTo] = useState(iso(new Date()));
   const [yearEnd, setYearEnd] = useState(null);
   const [proof, setProof] = useState(null);
-
-  const payeRef = params.get('scheme') || '';
-
-  useEffect(() => {
-    supabase
-      .from('v_hmrc_paye_clients')
-      .select('paye_ref, entity_name, hmrc_name, total_debt')
-      .order('entity_name', { ascending: true, nullsFirst: false })
-      .then(({ data, error: e }) => {
-        if (e) setError(e.message);
-        else setClients(data || []);
-      });
-  }, []);
 
   // The company accounting year, for the preset. Parsed from BrightManager task
   // names because Athena holds no year-end column (sql/210).
@@ -114,14 +94,15 @@ export default function ClientStatementView() {
     setDrill(null);
     setLoading(true);
     Promise.all([
-      // Filtered on period_END, the same rule the balance proof uses. Selecting
-      // by period_start disagreed with it at a boundary: at a 31 May cut-off the
-      // table showed tax month 2 (6 May to 5 Jun) and a payment received 17 June
-      // against it, while the proof excluded the month and said nothing had been
-      // paid since. A period that has not ended is not yet a liability.
+      // Filtered on period_START, which is the rule the balance proof uses too
+      // (sql/239). A tax month belongs to the accounting period containing the
+      // day it STARTS: the payroll a company runs in January is paid inside tax
+      // month 6 Jan to 5 Feb, so a 31 January year end accrues that month. The
+      // old period_END rule dropped the last month of every company year — for
+      // Antonine it showed 12 months ending 5 January instead of 5 February.
       supabase.from('v_hmrc_paye_client_statement').select('*')
         .eq('paye_ref', payeRef)
-        .gte('period_end', from).lte('period_end', to)
+        .gte('period_start', from).lte('period_start', to)
         .order('period_start', { ascending: true }),
       supabase.from('v_hmrc_paye_payment_detail').select('*')
         .eq('paye_ref', payeRef)
@@ -148,24 +129,9 @@ export default function ClientStatementView() {
       .finally(() => setLoading(false));
   }, [payeRef, from, to]);
 
-  const selectClient = (ref) => {
-    const next = new URLSearchParams(params);
-    if (ref) next.set('scheme', ref); else next.delete('scheme');
-    setParams(next, { replace: false });
-    setOpenMonth(null);
-  };
-
-  const visibleClients = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return clients.filter((c) => {
-      const name = c.entity_name || c.hmrc_name || '';
-      if (letter && letter !== 'All' && firstCharBucket(name) !== letter) return false;
-      if (!q) return true;
-      return `${name} ${c.hmrc_name || ''} ${c.paye_ref}`.toLowerCase().includes(q);
-    });
-  }, [clients, search, letter]);
-
-  const selected = clients.find((c) => c.paye_ref === payeRef);
+  // The client is chosen by the selector above the tabs now, not here. This view
+  // is handed the scheme and gets on with the statement.
+  const selected = scheme;
 
   // Only show a detail column if it carries a figure in the range shown —
   // otherwise the statement is twenty columns of zeros.
@@ -211,61 +177,11 @@ export default function ClientStatementView() {
       <ErrorBar message={error} />
 
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 12, lineHeight: 1.55 }}>
-        One client's PAYE account. Months down the side; what HMRC charged, what relieved it, what was paid and
-        what was left across the top. Set any date range — it crosses tax years, so a September or December year
-        end works as well as 5 April.
+        {selected ? <><b>{selected.entity_name || selected.hmrc_name}</b> · {selected.paye_ref} — </> : null}
+        the PAYE account, months down the side: what HMRC charged, what relieved it, what was paid and what
+        was left. Any date range, crossing tax years, so a September or December year end works as well as
+        5 April. <b>Click any figure</b> for the lines behind it.
       </p>
-
-      {/* Client picker */}
-      <div style={{ ...card, padding: '10px 12px', marginBottom: 14 }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search client, HMRC name or PAYE ref…"
-            style={{ minWidth: 300 }}
-          />
-          {selected && (
-            <span style={{ fontSize: 12.5, color: '#0f172a' }}>
-              <b>{selected.entity_name || selected.hmrc_name}</b>
-              <span style={{ color: '#94a3b8', marginLeft: 6 }}>{selected.paye_ref}</span>
-              <button
-                onClick={() => selectClient('')}
-                style={{ marginLeft: 8, fontSize: 11, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', fontFamily: font }}
-              >
-                change
-              </button>
-            </span>
-          )}
-        </div>
-        <AlphabetFilter items={clients} nameKey="entity_name" selected={letter} onChange={setLetter} />
-        {!payeRef && (
-          <div style={{ maxHeight: 230, overflowY: 'auto', marginTop: 6, borderTop: '1px solid #f1f5f9' }}>
-            {visibleClients.length === 0 && (
-              <div style={{ fontSize: 12, color: '#94a3b8', padding: '10px 2px' }}>No clients match.</div>
-            )}
-            {visibleClients.map((c) => (
-              <button
-                key={c.paye_ref}
-                onClick={() => selectClient(c.paye_ref)}
-                style={{
-                  display: 'flex', width: '100%', alignItems: 'center', gap: 8, textAlign: 'left',
-                  padding: '6px 4px', background: 'none', border: 'none',
-                  borderBottom: '1px solid #f8fafc', cursor: 'pointer', fontFamily: font, fontSize: 12.5,
-                }}
-              >
-                <ChevronRight size={12} style={{ color: '#cbd5e1', flexShrink: 0 }} />
-                <span style={{ fontWeight: 500, color: '#0f172a' }}>{c.entity_name || c.hmrc_name}</span>
-                <span style={{ color: '#94a3b8', fontSize: 11 }}>{c.paye_ref}</span>
-                <span style={{ flex: 1 }} />
-                {n(c.total_debt) > 0 && (
-                  <span style={{ color: '#b91c1c', fontWeight: 600, fontSize: 12 }}>{fmtGbpDetailed(c.total_debt)}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* Period + options */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
@@ -333,13 +249,13 @@ export default function ClientStatementView() {
 
       {!payeRef ? (
         <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-          Pick a client above to see their PAYE account.
+          This client has no PAYE scheme on HMRC's agent list.
         </div>
       ) : loading ? (
         <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading statement…</div>
       ) : rows.length === 0 ? (
         <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-          Nothing scraped for this client between {from} and {to}.
+          Nothing scraped for this scheme between {prettyDate(from)} and {prettyDate(to)}.
         </div>
       ) : (
         <div style={card}>
@@ -467,7 +383,7 @@ export default function ClientStatementView() {
               the creditor at the year end was £8,310.55 — 33x the figure the
               closing column shows. Stating closing as "the PAYE creditor" was
               wrong, so this replaces it with the worked proof. */}
-          <BalanceProof proof={proof} to={to} unallocated={unallocated} />
+          <BalanceProof proof={proof} to={to} />
 
           {unallocated.length > 0 && (
             <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12, color: '#78350f', background: '#fffbeb', whiteSpace: 'normal', lineHeight: 1.5 }}>
@@ -745,14 +661,29 @@ function DrillContent({ row, rows, idx, drill, lines, payments, onClose }) {
 }
 
 // The balance owed AT a date, shown as a working paper rather than a number.
-// Every line is evidenced: net charges from HMRC's monthly figures, payments
-// from its payment history with dates. The identity is
-//   balance at date = still unpaid today + paid after the date
-// which is what makes it arguable with a client or a reviewer.
-function BalanceProof({ proof, to, unallocated }) {
+//
+// Every line is evidenced. Two things make a charge outstanding on a date:
+//
+//   we can see it was paid later      a dated payment received after the date
+//   it was not yet payable            its 22nd falls after the date, so nothing
+//                                     can have been paid against it beforehand
+//
+// The second is what makes a year end work at all. HMRC only returns dated
+// payments for the current tax year, so at a 31 December year end we hold no
+// payment dates whatsoever — but the tax month 6 Dec to 5 Jan is not due until
+// 22 January, and that is proof enough on its own. Village Estates: £437.50,
+// paid in January, outstanding at the year end, and previously reported as nil.
+//
+// TWO NUMBERS. The balance includes charges not yet payable at the date, because
+// that is what a creditor in a set of accounts is. HMRC's own debt figure counts
+// only what is overdue. Both are shown, and which is which is stated.
+function BalanceProof({ proof, to }) {
   if (!proof) return null;
   const isMinimum = proof.basis === 'minimum';
   const paidAfter = n(proof.paid_after);
+  const notDue = n(proof.paid_after_not_due);
+  const dated = Math.round((paidAfter - notDue) * 100) / 100;
+  const notYetDue = n(proof.not_yet_due_at);
 
   return (
     <div style={{ borderTop: '1px solid #e5e7eb', padding: '12px 14px', background: '#f8fafc' }}>
@@ -769,9 +700,15 @@ function BalanceProof({ proof, to, unallocated }) {
         }}>
           {isMinimum ? 'Minimum' : 'Proven'}
         </span>
+        {proof.last_period_end && (
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            {proof.periods_counted} tax months to the one ending {prettyDate(proof.last_period_end)}, due{' '}
+            {prettyDate(proof.last_period_due)}
+          </span>
+        )}
       </div>
 
-      <table style={{ fontSize: 12.5, borderCollapse: 'collapse', minWidth: 420 }}>
+      <table style={{ fontSize: 12.5, borderCollapse: 'collapse', minWidth: 460 }}>
         <tbody>
           {/* The derived opening balance — the plug that makes the walk tie to
               HMRC's own overdue figure. Zero for most clients, which is itself
@@ -788,11 +725,22 @@ function BalanceProof({ proof, to, unallocated }) {
           <ProofRow label="Net charged" value={proof.net_charged} rule />
           <ProofRow label="Less paid against those months (to date)" value={-n(proof.payments_ever_allocated)} green />
           <ProofRow label="Still unpaid today" value={proof.still_unpaid_today} rule />
-          <ProofRow
-            label={`Add back paid AFTER ${prettyDate(to)}${proof.paid_after_count ? ` — ${proof.paid_after_count} payment${proof.paid_after_count === 1 ? '' : 's'}` : ''}`}
-            value={paidAfter}
-            hint="Money that makes today's position look settled but was still outstanding on the date"
-          />
+          {/* The two ways money can turn out to have been outstanding on the
+              date, kept apart because one is evidence and one is inference. */}
+          {notDue !== 0 && (
+            <ProofRow
+              label={`Add back paid for months not due until after ${prettyDate(to)}`}
+              value={notDue}
+              hint="These months were not payable on the date, so nothing against them can have been paid before it — no payment date needed"
+            />
+          )}
+          {dated !== 0 && (
+            <ProofRow
+              label={`Add back paid AFTER ${prettyDate(to)}${proof.paid_after_count ? ` — ${proof.paid_after_count} dated payment${proof.paid_after_count === 1 ? '' : 's'}` : ''}`}
+              value={dated}
+              hint="Money that makes today's position look settled but was still outstanding on the date"
+            />
+          )}
           {/* Kept off the opening balance deliberately: HMRC writing a debt down
               under time-to-pay is a later adjustment, not pre-history. */}
           {n(proof.restatement) !== 0 && (
@@ -813,40 +761,60 @@ function BalanceProof({ proof, to, unallocated }) {
               {fmtGbpDetailed(proof.balance_at)}
             </td>
           </tr>
+          {/* Same money, split the way HMRC splits it — so the figure can be
+              argued with a client AND reconciled to HMRC's own screen. */}
+          {notYetDue !== 0 && (
+            <React.Fragment>
+              <ProofRow
+                label={`of which not payable until after ${prettyDate(to)}`}
+                value={notYetDue}
+                hint="Charged by the date but with a later 22nd — a creditor in the accounts, not a debt on HMRC's screen"
+              />
+              <ProofRow
+                label="of which already overdue on the date"
+                value={proof.overdue_at}
+                hint="This is the part comparable with HMRC's own debt figure"
+              />
+            </React.Fragment>
+          )}
         </tbody>
       </table>
 
-      {/* Charged but not payable yet is never debt — HMRC's own figure counts
-          only what is overdue. Practice-wide this was £100,623 sitting inside
-          closing balances as though it were owed. */}
-      {n(proof.not_yet_due) !== 0 && (
-        <div style={{ fontSize: 11.5, color: '#0369a1', marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
-          A further <b>{fmtGbpDetailed(proof.not_yet_due)}</b> has been charged but is not yet due, so it is
-          not part of this balance and HMRC does not count it as debt either.
-        </div>
-      )}
-
-      {n(proof.balance_at) === n(proof.stated_debt_today) && (
-        <div style={{ fontSize: 11.5, color: '#166534', marginTop: 6, maxWidth: 720, lineHeight: 1.5 }}>
-          Ties to HMRC's own stated debt of {fmtGbpDetailed(proof.stated_debt_today)}.
+      {n(proof.overdue_at) === n(proof.stated_debt_today) && (
+        <div style={{ fontSize: 11.5, color: '#166534', marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
+          The overdue element ties to HMRC's own stated debt of {fmtGbpDetailed(proof.stated_debt_today)}.
         </div>
       )}
 
       <div style={{ fontSize: 11.5, color: isMinimum ? '#78350f' : '#64748b', marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
         {isMinimum ? (
           <>
-            <b>At least</b> this much was outstanding. HMRC only returns payment dates for the current tax
-            year, so we hold none before {prettyDate(proof.earliest_payment_held)} — a payment made between{' '}
-            {prettyDate(to)} and then is invisible to us, which can only make the real figure higher. Treat it
-            as a floor, not a proven balance.
+            <b>At least</b> this much was outstanding.{' '}
+            {notDue !== 0 && (
+              <>The {fmtGbpDetailed(notDue)} for months not yet due on the date is certain — it could not have
+                been paid before it was payable. </>
+            )}
+            Beyond that, HMRC only gives us dated payments back to{' '}
+            {proof.earliest_payment_held ? prettyDate(proof.earliest_payment_held) : 'the current tax year'}, so a
+            payment made between {prettyDate(to)} and then is invisible to us, which can only make the real
+            figure higher.
           </>
-        ) : paidAfter > 0 ? (
-          <>Proven from dated payment records. {fmtGbpDetailed(paidAfter)} of what looks settled today was
+        ) : dated > 0 ? (
+          <>Proven from dated payment records. {fmtGbpDetailed(dated)} of what looks settled today was
             actually paid after {prettyDate(to)}, so it belongs in the creditor at that date.</>
         ) : (
-          <>Proven from dated payment records. Nothing has been paid since {prettyDate(to)} against those
-            months, so today's position and the position then are the same.</>
+          <>Proven from dated payment records. Nothing has been paid since {prettyDate(to)} against months that
+            were already due, so today's position and the position then are the same.</>
         )}
+      </div>
+
+      {/* The rule that decides which months are in, said plainly. It is the one
+          thing about this figure people get wrong. */}
+      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, maxWidth: 720, lineHeight: 1.5 }}>
+        A tax month belongs to the period containing the day it starts, so {prettyDate(to)} includes the month
+        running to {prettyDate(proof.last_period_end)} — the payroll run in that month. HMRC gives us no finer
+        grain than the month, so a payroll paid between {prettyDate(to)} and {prettyDate(proof.last_period_end)}
+        is inside this figure too.
       </div>
     </div>
   );

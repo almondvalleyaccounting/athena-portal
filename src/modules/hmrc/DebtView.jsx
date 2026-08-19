@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Download, ExternalLink, Search } from 'lucide-react';
 import { fmtGbp, fmtGbpDetailed } from '../../lib/money';
 import { downloadCSV } from '../../lib/exportUtils';
@@ -17,9 +17,10 @@ import {
 // Default view is deliberately narrow — active clients, in arrears, not yet
 // triaged. That is the day's work. Everything else is a filter away.
 
-export default function DebtView() {
+export default function DebtView({ entityId = '' }) {
   const { profile } = useAuth();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +30,10 @@ export default function DebtView() {
   const [statusFilter, setStatusFilter] = useState('open'); // 'open' | <status> | 'all'
   const [search, setSearch] = useState('');
 
-  const selectedRef = params.get('scheme');
+  // Its own parameter. ?scheme= is how the PAYE tab picks which of a client's
+  // schemes the statement is about, and reusing it here would mean opening this
+  // panel silently re-pointed the statement underneath.
+  const selectedRef = params.get('detail');
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
@@ -66,7 +70,11 @@ export default function DebtView() {
   // v_hmrc_paye_clients is active clients only (sql/207) — former and archived
   // schemes never reach this list. They are dealt with on the "Not our clients"
   // tab, which exists for exactly that. No standing selector needed.
-  const byStanding = rows;
+  //
+  // With a client chosen in the selector above the tabs, this narrows to them.
+  // The triage still works — same rows — but the page stops claiming to be
+  // practice-wide while showing one name.
+  const byStanding = entityId ? rows.filter((r) => r.entity_id === entityId) : rows;
 
   const matchesTier = (r) => {
     if (tierFilter === 'all') return true;
@@ -116,14 +124,22 @@ export default function DebtView() {
 
   const selected = selectedRef ? rows.find((r) => r.paye_ref === selectedRef) : null;
 
+  // The name is the way down a level: select the client and open their
+  // statement, which is what anyone clicking a name on a debt list wants next.
+  const openStatement = (r) => {
+    const q = new URLSearchParams();
+    if (r.entity_id) q.set('entity', r.entity_id);
+    q.set('scheme', r.paye_ref);
+    navigate(`/hmrc/paye?${q.toString()}`);
+  };
   const openScheme = (ref) => {
     const next = new URLSearchParams(params);
-    next.set('scheme', ref);
+    next.set('detail', ref);
     setParams(next, { replace: false });
   };
   const closeScheme = () => {
     const next = new URLSearchParams(params);
-    next.delete('scheme');
+    next.delete('detail');
     setParams(next, { replace: true });
   };
 
@@ -246,12 +262,12 @@ export default function DebtView() {
                             <AlertTriangle size={12} style={{ color: tier.colour, flexShrink: 0 }} />
                           )}
                           <button
-                            onClick={() => openScheme(r.paye_ref)}
+                            onClick={() => openStatement(r)}
                             style={{
                               background: 'none', border: 'none', padding: 0, cursor: 'pointer',
                               fontFamily: font, fontSize: 13, fontWeight: 500, color: '#0f172a', textAlign: 'left',
                             }}
-                            title="Open the full HMRC position for this scheme"
+                            title="Open this scheme's statement — month by month, with the balance at any date"
                           >
                             {r.entity_name || r.hmrc_name}
                           </button>
@@ -307,6 +323,18 @@ export default function DebtView() {
                         />
                       </td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                        {/* HMRC's raw overdue items and credits for the scheme —
+                            the one thing the statement does not restate. */}
+                        <button
+                          onClick={() => openScheme(r.paye_ref)}
+                          title="HMRC's own overdue items, monthly position and credits for this scheme"
+                          style={{
+                            background: 'none', border: 'none', padding: 0, marginRight: 10, cursor: 'pointer',
+                            fontFamily: font, fontSize: 12, color: '#64748b',
+                          }}
+                        >
+                          HMRC detail
+                        </button>
                         {r.entity_id && (
                           <a
                             href={`/clients/${r.entity_id}`}
