@@ -225,6 +225,10 @@ export default function ProjectionTab({
   }), [timeline.buckets, act.cf, fc.cf, cutoff]);
 
   const forecastFrom = pl.status.findIndex((s) => s !== 'actual');
+  // Hoisted out of the chart's map — these walk every row, and rebuilding them
+  // once per bucket turns a 60-column year view into needless work.
+  const plIncome = useMemo(() => totalRow(pl.rows, 'Total income', (r) => r.kind === 'income'), [pl.rows]);
+  const plNet = useMemo(() => netRow(pl.rows), [pl.rows]);
 
   /* ── Mutations ── */
   const saveLink = async (patch) => {
@@ -386,11 +390,11 @@ export default function ProjectionTab({
               cutoff={cutoff}
             />
             <BucketChart
-              points={timeline.buckets.map((b, i) => {
-                const inc = totalRow(pl.rows, 'i', (r) => r.kind === 'income')?.values[i] ?? null;
-                const net = netRow(pl.rows).values[i] ?? null;
-                return { label: b.label, income: inc, net };
-              })}
+              points={timeline.buckets.map((b, i) => ({
+                label: b.label,
+                income: plIncome?.values[i] ?? null,
+                net: plNet.values[i] ?? null,
+              }))}
               currency={currency}
               forecastFrom={forecastFrom < 0 ? null : forecastFrom}
             />
@@ -402,7 +406,7 @@ export default function ProjectionTab({
               { label: 'Income', rows: pl.rows.filter((r) => r.kind === 'income'), total: 'Total income' },
               { label: 'Costs', rows: pl.rows.filter((r) => r.kind === 'cost'), total: 'Total costs' },
             ]}
-            grandRow={netRow(pl.rows)}
+            grandRow={plNet}
           />
         </>
       )}
@@ -509,10 +513,38 @@ function CreateCard({ clientName, onStart }) {
 }
 
 /* ─── Scenario picker ──────────────────────────────────────────── */
+/*
+  Two ways in: link a scenario that already exists, or start a new one.
+
+  "New" creates the forecast, its first version and its base scenario, and links
+  them here — but it does NOT invent any figures. A fresh scenario has no output
+  until somebody opens it in Client Forecast and builds it, and the tab says so
+  rather than showing a flat line and letting it be mistaken for a projection.
+  The alternative — generating a forecast off the actuals automatically — would
+  put numbers in front of a client that nobody had decided were right.
+*/
+const PACK_OPTIONS = [
+  { key: 'general_cashflow', label: 'General business — cashflow', hint: 'P&L lines projected forward into a cashflow. The usual choice.' },
+  { key: 'childcare_scotland', label: 'Childcare — Scotland', hint: 'Places, occupancy, funded rates, ratios.' },
+  { key: 'simple', label: 'Simple (no modules)', hint: 'A blank sheet to build by hand.' },
+];
+
 function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPick, busy }) {
+  const { profile } = useAuth();
+  const [mode, setMode] = useState('link');
   const [rows, setRows] = useState(null);
   const [all, setAll] = useState(false);
   const [err, setErr] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState(() => {
+    const d = new Date();
+    return {
+      name: `${clientName || 'Client'} — projection`,
+      pack: 'general_cashflow',
+      opening: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      horizon: 24,
+    };
+  });
 
   useEffect(() => {
     (async () => {
@@ -525,6 +557,37 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
       } catch (e) { setErr(e.message); setRows([]); }
     })();
   }, [entityId, all]);
+
+  const createScenario = async () => {
+    setCreating(true);
+    setErr(null);
+    try {
+      const { data: forecast, error: fErr } = await supabase.from('fc_forecast').insert({
+        name: draft.name.trim() || `${clientName || 'Client'} — projection`,
+        vertical_pack: draft.pack,
+        horizon_months: Number(draft.horizon) || 24,
+        opening_period: `${draft.opening}-01`,
+        client_name: clientName || null,
+        client_entity_id: entityId || null,
+        currency: 'GBP',
+        created_by: profile?.id || null,
+      }).select().single();
+      if (fErr) throw fErr;
+
+      const { data: version, error: vErr } = await supabase.from('fc_version')
+        .insert({ forecast_id: forecast.id, name: 'v1', kind: 'working' }).select().single();
+      if (vErr) throw vErr;
+
+      const { data: scenario, error: sErr } = await supabase.from('fc_scenario')
+        .insert({ version_id: version.id, name: 'Base', kind: 'base' }).select().single();
+      if (sErr) throw sErr;
+
+      onPick({ forecast_id: forecast.id, version_id: version.id, scenario_id: scenario.id });
+    } catch (e) {
+      setErr(e.message);
+      setCreating(false);
+    }
+  };
 
   return (
     <div
@@ -544,14 +607,84 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 22px', borderBottom: '1px solid #e5e7eb' }}>
           <Link2 size={17} style={{ color: '#38bdf8' }} />
           <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>
-            Link a forecast scenario
+            Choose a forecast scenario
           </span>
           <button onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
             <X size={18} style={{ color: '#94a3b8' }} />
           </button>
         </div>
 
-        <div style={{ padding: '14px 22px', overflowY: 'auto', flex: 1 }}>
+        <div style={{ padding: '14px 22px 0' }}>
+          <Segmented
+            size="sm" value={mode} onChange={setMode}
+            options={[
+              { key: 'link', label: 'Link an existing one' },
+              { key: 'new', label: 'Start a new one' },
+            ]}
+          />
+        </div>
+
+        {mode === 'new' && (
+          <div style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {err && <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#b91c1c' }}>{err}</div>}
+            <label style={pickLabel}>
+              Name
+              <input
+                value={draft.name}
+                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                style={{ ...inputStyle, width: '100%' }}
+              />
+            </label>
+            <label style={pickLabel}>
+              Model
+              <select
+                value={draft.pack}
+                onChange={(e) => setDraft((d) => ({ ...d, pack: e.target.value }))}
+                style={{ ...inputStyle, width: '100%' }}
+              >
+                {PACK_OPTIONS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+              </select>
+              <span style={pickHint}>{PACK_OPTIONS.find((p) => p.key === draft.pack)?.hint}</span>
+            </label>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <label style={{ ...pickLabel, flex: 1 }}>
+                Starts
+                <input
+                  type="month" value={draft.opening}
+                  onChange={(e) => setDraft((d) => ({ ...d, opening: e.target.value }))}
+                  style={{ ...inputStyle, width: '100%' }}
+                />
+              </label>
+              <label style={{ ...pickLabel, flex: 1 }}>
+                Months
+                <input
+                  type="number" min="6" max="120" value={draft.horizon}
+                  onChange={(e) => setDraft((d) => ({ ...d, horizon: e.target.value }))}
+                  style={{ ...inputStyle, width: '100%' }}
+                />
+              </label>
+            </div>
+            <p style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', margin: 0, lineHeight: 1.6 }}>
+              This creates an empty scenario and links it here. It has no figures until you build it in
+              Client Forecast — nothing is guessed from the actuals, because a projection a client can
+              see should be one somebody decided on.
+            </p>
+            <button
+              onClick={createScenario}
+              disabled={creating || busy || !draft.opening}
+              style={{
+                alignSelf: 'flex-start', padding: '10px 20px', border: 'none', borderRadius: '10px',
+                backgroundColor: creating ? '#cbd5e1' : '#0f172a', color: '#fff',
+                fontFamily: OUTFIT, fontSize: '13.5px', fontWeight: 700,
+                cursor: creating ? 'wait' : 'pointer',
+              }}
+            >
+              {creating ? 'Creating…' : 'Create and link'}
+            </button>
+          </div>
+        )}
+
+        <div style={{ padding: '14px 22px', overflowY: 'auto', flex: 1, display: mode === 'link' ? 'block' : 'none' }}>
           {err && <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#b91c1c', marginBottom: '10px' }}>{err}</div>}
           {rows === null && <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8' }}>Loading scenarios…</div>}
 
@@ -836,3 +969,8 @@ const linkBtn = {
   border: 'none', background: 'none', padding: 0, cursor: 'pointer',
   fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: '#0369a1', textDecoration: 'underline',
 };
+const pickLabel = {
+  display: 'flex', flexDirection: 'column', gap: '4px',
+  fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: '#475569',
+};
+const pickHint = { fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 400, color: '#94a3b8', lineHeight: 1.5 };
