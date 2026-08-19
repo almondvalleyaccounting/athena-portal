@@ -382,9 +382,3 @@ export const inputStyle = {
   outline: 'none',
   boxSizing: 'border-box',
 };
-
-export const HEALTH_COLORS = {
-  green: { dot: '#22c55e', bg: '#f0fdf4', border: '#bbf7d0', text: '#166534', label: 'Clean' },
-  amber: { dot: '#f59e0b', bg: '#fffbeb', border: '#fde68a', text: '#92400e', label: 'Needs a look' },
-  red:   { dot: '#ef4444', bg: '#fef2f2', border: '#fecaca', text: '#991b1b', label: 'Attention' },
-};

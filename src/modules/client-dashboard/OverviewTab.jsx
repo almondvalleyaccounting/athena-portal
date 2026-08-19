@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
 import { Info } from 'lucide-react';
 import {
-  money, shortDate, formatRatio, OUTFIT, cardStyle,
+  money, shortDate, formatRatio, OUTFIT, cardStyle, inputStyle,
 } from './dashboardData';
 import {
   GRAINS, BASES, VIEWS, aggregate, seriesFor,
-  rolling12Months, windowLabel, yearEndMonthIndex,
+  rolling12Months, windowLabel, yearEndMonthIndex, MONTH_NAMES,
 } from './overviewGrain';
 import { BucketChart } from './DashboardCharts';
 import { LoadingCard, EmptyState, Delta, MetricTile, Segmented } from './DashboardUI';
@@ -40,13 +40,11 @@ import { LoadingCard, EmptyState, Delta, MetricTile, Segmented } from './Dashboa
   than grain/basis costs no refetch at all.
 */
 
-const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'];
 
 export default function OverviewTab({
   detail, bs, buckets, prior, currency, loading, empty, goTab,
   grain, setGrain, basis, setBasis, view, setView,
-  fyIdx, config,
+  fyIdx, config, fiscalYear, onFiscalYearEndChange,
 }) {
   const isU = view === 'underlying';
 
@@ -143,7 +141,7 @@ export default function OverviewTab({
     },
   ];
 
-  const yearEndName = MONTHS_LONG[yearEndMonthIndex('fiscal', fyIdx)];
+  const yearEndName = MONTH_NAMES[yearEndMonthIndex('fiscal', fyIdx)];
   const chartPoints = chartRows.map((r) => {
     const s = seriesFor(r, view);
     return { label: r.label, income: s.income, net: s.net_income };
@@ -180,6 +178,43 @@ export default function OverviewTab({
               : 'Years to December, quarters to Mar / Jun / Sep / Dec',
           }))}
         />
+
+        {/* The year end itself. Only shown on the fiscal basis, because that is
+            the only place it changes a number — and shown at all because
+            QuickBooks often has no year end recorded, in which case every
+            fiscal quarter on this page would otherwise be the practice's own,
+            silently. */}
+        {basis === 'fiscal' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontFamily: OUTFIT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#94a3b8' }}>
+              Ends
+            </span>
+            <select
+              value={fiscalYear?.endMonth != null ? fiscalYear.endMonth + 1 : ''}
+              onChange={(e) => onFiscalYearEndChange?.(e.target.value)}
+              disabled={!onFiscalYearEndChange}
+              title={
+                fiscalYear?.source === 'override' ? 'Set here for this client'
+                  : fiscalYear?.source === 'quickbooks' ? "From the client's QuickBooks settings"
+                    : "QuickBooks has no year end recorded for this client — this is a fallback, not their actual year end"
+              }
+              style={{
+                ...inputStyle, padding: '6px 9px', fontSize: '12.5px',
+                borderColor: fiscalYear?.source === 'fallback' ? '#fde68a' : '#e5e7eb',
+                backgroundColor: fiscalYear?.source === 'fallback' ? '#fffbeb' : '#ffffff',
+              }}
+            >
+              {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </select>
+            {fiscalYear?.source === 'fallback' && (
+              <span title="QuickBooks has no year end for this client. Pick the right month — until you do, these are not their quarters."
+                style={{ fontFamily: OUTFIT, fontSize: '11px', fontWeight: 600, color: '#b45309' }}>
+                not confirmed
+              </span>
+            )}
+          </label>
+        )}
+
         <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginLeft: 'auto' }}>
           {windowLabel(grain, basis, chartRows)}
         </span>

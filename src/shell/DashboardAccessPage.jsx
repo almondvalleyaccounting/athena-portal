@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Plus, X, RotateCcw, Info } from 'lucide-react';
+import { BarChart3, Plus, X, RotateCcw, Info, Eye, Loader } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AppShell';
+import ClientViewPreview from '../modules/client-dashboard/ClientViewPreview';
 
 const font = "'Outfit', sans-serif";
 
@@ -56,6 +57,9 @@ export default function DashboardAccessPage() {
   const [msg, setMsg] = useState(null);
   const [adding, setAdding] = useState(false);
   const [showRevoked, setShowRevoked] = useState(false);
+  // Held as an id, not the row: the preview panel lets you flip sections while
+  // it is open, and it has to re-read the row that the toggle just changed.
+  const [previewId, setPreviewId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,6 +80,7 @@ export default function DashboardAccessPage() {
   useEffect(() => { if (canManage) load(); }, [canManage, load]);
 
   const live = useMemo(() => rows.filter((r) => !r.revoked_at), [rows]);
+  const previewRow = useMemo(() => rows.find((r) => r.id === previewId) || null, [rows, previewId]);
   const revoked = useMemo(() => rows.filter((r) => r.revoked_at), [rows]);
 
   const toggle = async (row, key) => {
@@ -206,9 +211,15 @@ export default function DashboardAccessPage() {
         <AccessTable
           rows={live} busy={busy} onToggle={toggle}
           action={(r) => (
-            <button onClick={() => revoke(r)} disabled={busy === r.id} style={dangerBtn}>
-              <X size={13} /> Remove
-            </button>
+            <span style={{ display: 'inline-flex', gap: 6 }}>
+              <button onClick={() => setPreviewId(r.id)} disabled={!r.realm_id} style={linkishBtn}
+                title={r.realm_id ? `See exactly what ${r.email} sees` : 'No live QuickBooks connection to preview'}>
+                <Eye size={13} /> Preview
+              </button>
+              <button onClick={() => revoke(r)} disabled={busy === r.id} style={dangerBtn}>
+                <X size={13} /> Remove
+              </button>
+            </span>
           )}
         />
       )}
@@ -232,6 +243,10 @@ export default function DashboardAccessPage() {
             />
           )}
         </div>
+      )}
+
+      {previewRow && (
+        <ClientViewPreview row={previewRow} onToggle={toggle} busy={busy} onClose={() => setPreviewId(null)} />
       )}
 
       {adding && (

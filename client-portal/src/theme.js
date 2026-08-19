@@ -1,20 +1,7 @@
 // Client-facing palette: Scottish Coast navy + blue-teal accent.
-export const theme = {
-  navy: '#1E4560',
-  navyDark: '#16354b',
-  teal: '#0e7490',
-  tealSoft: '#e0f2fe',
-  tealText: '#155e75',
-  gold: '#F5C518',
-  text: '#1e293b',
-  muted: '#64748b',
-  faint: '#94a3b8',
-  border: '#e2e8f0',
-  bg: '#f6f8f9',
-  card: '#ffffff',
-  success: '#059669',
-  successSoft: '#dcfce7',
-  successText: '#166534',
-  amberSoft: '#fef3c7',
-  amberText: '#92400e',
-};
+//
+// The values live in @dash/portalTheme.js because Athena renders the same
+// client dashboard in its "Preview as client" panel, and two palettes would
+// mean the preview slowly stopped looking like the page it previews. This
+// re-export keeps every existing `import { theme } from './theme'` working.
+export { portalTheme as theme } from '@dash/portalTheme.js';

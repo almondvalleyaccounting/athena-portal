@@ -25,6 +25,14 @@
 // Practice books are refused outright, twice: here by is_practice, and again in
 // dashboard-qbo-pull, where a service caller has no staff profile and so never
 // clears the practice-financials guard.
+//
+// One extra caller: staff holding can_manage_portal may pass `previewEmail` to
+// resolve somebody ELSE'S grant and get back the payload that person would get.
+// That is how /admin/dashboard-access shows what a client will see before the
+// access is issued. It runs the same path with the same redactions, so the
+// preview cannot drift from the real page; it grants no data that flag did not
+// already imply; and it does not stamp last_viewed_at, because that field has
+// to mean the client looked.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -146,20 +154,46 @@ Deno.serve(async (req) => {
     const entityId = String(body.entityId || "");
     if (!entityId) return jr({ success: false, error: "entityId required" }, 400);
 
+    /*
+      PREVIEW. Staff who administer portal access need to see exactly what they
+      are about to give somebody, before they give it. `previewEmail` resolves
+      THAT person's grant instead of the caller's and returns the identical
+      payload — same filtering, same section flags, same redactions — so the
+      preview cannot drift from the real thing the way a mock would.
+
+      It grants no new data: can_manage_portal already implies full sight of the
+      client. The check is deliberately strict (active staff AND the flag), the
+      resolved grant is still the CLIENT'S, and the response is marked so the UI
+      can never present a preview as though it were the staff's own view.
+    */
+    const previewEmail = typeof body.previewEmail === "string" ? body.previewEmail.trim() : "";
+    let grantEmail = user.email;
+    if (previewEmail) {
+      const { data: staff } = await sb
+        .from("staff_profiles")
+        .select("is_active, can_manage_portal")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (!staff?.is_active || !staff?.can_manage_portal) {
+        return jr({ success: false, error: "Not authorised" }, 403);
+      }
+      grantEmail = previewEmail;
+    }
+
     // 2. WHAT. The grant is the whole authority — an entity_memberships row (the
     //    onboarding portal's link) grants nothing here.
     const { data: grant } = await sb
       .from("client_dashboard_access")
       .select("*")
       .eq("entity_id", entityId)
-      .ilike("email", user.email)
+      .ilike("email", grantEmail)
       .is("revoked_at", null)
       .maybeSingle();
     if (!grant) return jr({ success: false, error: "Not authorised" }, 403);
 
     const { data: conn } = await sb
       .from("qbo_report_connections")
-      .select("realm_id, company_name, is_practice, status")
+      .select("realm_id, company_name, is_practice, status, fiscal_year_end_month")
       .eq("entity_id", entityId)
       .eq("status", "active")
       .maybeSingle();
@@ -173,14 +207,20 @@ Deno.serve(async (req) => {
     const basis = body.basis === "calendar" ? "calendar" : "fiscal";
     const anchorKey = clampAnchor(body.anchor);
 
-    // The fiscal year end comes from the client's own QuickBooks settings, via
-    // the cached `company` metric — never from the caller.
+    // The fiscal year end — never from the caller. Staff override first, then
+    // QuickBooks' own setting, then the flagged fallback. Same order as the
+    // staff dashboard's resolveFiscalYear, because a client and their
+    // accountant reading "Q3" have to mean the same three months.
     const { data: companyRow } = await sb
       .from("qbo_dashboard_cache")
       .select("data")
       .eq("realm_id", realmId).eq("metric_key", "company")
       .order("pulled_at", { ascending: false }).limit(1).maybeSingle();
-    const fyIdx = fyStartMonthIndex(companyRow?.data?.fiscal_year_start_month);
+
+    const overrideEnd = Number(conn.fiscal_year_end_month);
+    const fyIdx = (overrideEnd >= 1 && overrideEnd <= 12)
+      ? overrideEnd % 12                       // year ends month N ⇒ starts N+1
+      : fyStartMonthIndex(companyRow?.data?.fiscal_year_start_month);
 
     const win = buildWindow(grain, basis, fyIdx, anchorKey);
 
@@ -373,13 +413,19 @@ Deno.serve(async (req) => {
     }
 
     // Best effort — a failed stamp must never cost the client their figures.
-    sb.from("client_dashboard_access")
-      .update({ last_viewed_at: new Date().toISOString() })
-      .eq("id", grant.id)
-      .then(() => {}, () => {});
+    // A staff preview does NOT stamp it: "last viewed" has to mean the client
+    // looked, or it is worse than not recording it at all.
+    if (!previewEmail) {
+      sb.from("client_dashboard_access")
+        .update({ last_viewed_at: new Date().toISOString() })
+        .eq("id", grant.id)
+        .then(() => {}, () => {});
+    }
 
     return jr({
       success: true,
+      preview: !!previewEmail,
+      preview_email: previewEmail || undefined,
       entity_id: entityId,
       company_name: conn.company_name,
       grain, basis,

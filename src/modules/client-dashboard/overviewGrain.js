@@ -70,6 +70,49 @@ const lastDay = (key) => {
 // the month before it; a 31 July year end reports fyIdx = 7 (August).
 export const fyEndMonthIndex = (fyIdx) => ((Number(fyIdx) || 0) + 11) % 12;
 
+/*
+  resolveFiscalYear({ overrideEndMonth, qboStartMonth })
+
+  Where the client's year end actually comes from, and — just as important —
+  whether we actually know it.
+
+  QuickBooks' FiscalYearStartMonth is often simply unset (Puddleduck returns
+  null). Falling back silently to the practice's own October start would draw
+  quarters ending Dec/Mar/Jun/Sep and label them the CLIENT'S fiscal quarters,
+  with nothing on screen looking wrong. So the fallback is flagged, and the UI
+  says so rather than asserting a year end nobody supplied.
+
+  Returns { fyIdx, endMonth, source } where source is
+  'override' | 'quickbooks' | 'fallback'.
+*/
+export function resolveFiscalYear({ overrideEndMonth, qboStartMonth } = {}) {
+  const ov = Number(overrideEndMonth);
+  if (ov >= 1 && ov <= 12) {
+    const endMonth = ov - 1;              // 0-based
+    return { fyIdx: (endMonth + 1) % 12, endMonth, source: 'override' };
+  }
+  if (qboStartMonth != null && qboStartMonth !== '') {
+    const fyIdx = fyStartMonthIndexLocal(qboStartMonth);
+    if (fyIdx != null) return { fyIdx, endMonth: fyEndMonthIndex(fyIdx), source: 'quickbooks' };
+  }
+  return { fyIdx: 9, endMonth: 8, source: 'fallback' };   // Oct start / Sep end
+}
+
+const MONTH_NAMES_LC = ['january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december'];
+
+// Local copy of the QBO month parse — returns null when it cannot tell, so
+// resolveFiscalYear can distinguish "QBO said October" from "QBO said nothing".
+function fyStartMonthIndexLocal(v) {
+  const n = parseInt(v, 10);
+  if (!isNaN(n) && n >= 1 && n <= 12) return n - 1;
+  const i = MONTH_NAMES_LC.indexOf(String(v).trim().toLowerCase());
+  return i >= 0 ? i : null;
+}
+
+export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
 // The 0-based month a year ends in, for the chosen basis.
 export const yearEndMonthIndex = (basis, fyIdx) =>
   (basis === 'calendar' ? 11 : fyEndMonthIndex(fyIdx));

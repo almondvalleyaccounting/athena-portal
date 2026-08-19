@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  RefreshCw, AlertCircle, CheckCircle, Loader, ShieldCheck,
-  ShieldAlert, Link2Off, Plus, X, Star, ChevronDown, ChevronRight,
+  RefreshCw, AlertCircle, CheckCircle, Loader,
+  Link2Off, Plus, X, Star, ChevronDown, ChevronRight, Eye,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getReportsAuthUrl } from '../../lib/qboApi';
@@ -10,15 +10,16 @@ import { useAuth } from '../../shell/AppShell';
 import {
   money, moneyCompact, timeAgo, shortDate, shortMonth,
   latestByMetric, parseReportTree,
-  PERIOD_PRESETS, ASAT_PRESETS, computePeriod, computeAsAt, fyStartMonthIndex,
-  OUTFIT, PLAYFAIR, cardStyle, inputStyle, HEALTH_COLORS,
+  PERIOD_PRESETS, ASAT_PRESETS, computePeriod, computeAsAt,
+  OUTFIT, PLAYFAIR, cardStyle, inputStyle,
 } from './dashboardData';
 import { LoadingCard, EmptyState, MetricTile } from './DashboardUI';
-import { buildBuckets, monthKeyOfDate } from './overviewGrain';
+import { buildBuckets, monthKeyOfDate, resolveFiscalYear } from './overviewGrain';
 import { useUnderlyingConfig } from './useUnderlyingConfig';
 import OverviewTab from './OverviewTab';
 import UnderlyingPerformanceTab from './UnderlyingPerformanceTab';
 import ProjectionTab from './ProjectionTab';
+import ClientViewPreview from './ClientViewPreview';
 
 /*
   Client Dashboard v2 — multi-tab reporting tool over the client's QuickBooks.
@@ -39,8 +40,13 @@ import ProjectionTab from './ProjectionTab';
 
   Filtered figures come from dashboard-qbo-pull's windowed mode (live pull;
   presets cached by date range, custom ranges never stored). The default full
-  pull (load) still runs to keep company/file-health, the reconnect banner and
+  pull (load) still runs to keep the company record, the reconnect banner and
   the Portfolio/Home shared cache fresh.
+
+  Bookkeeping health used to be a tab here. It lives in the Work module now,
+  built out far beyond what this page showed, and it is an internal judgement
+  about the file rather than a report on the business — which also makes it the
+  wrong thing to have sitting next to a view a client can be given.
 */
 
 const TABS = [
@@ -51,7 +57,6 @@ const TABS = [
   { id: 'debtors', label: 'Debtors' },
   { id: 'creditors', label: 'Creditors' },
   { id: 'projection', label: 'Projection' },
-  { id: 'health', label: 'Bookkeeping Health' },
 ];
 const PERIOD_TABS = new Set(['overview', 'pnl', 'underlying']);
 const ASAT_TABS = new Set(['balance', 'debtors', 'creditors']);
@@ -78,10 +83,6 @@ export default function ClientDashboardPage() {
   const [flash, setFlash] = useState(null);
   const [tab, setTab] = useState('overview');
   const [favourites, setFavourites] = useState(new Set());
-  // Latest drift snapshot for the selected realm — how current the file is, as
-  // opposed to how messy it is. Read from the nightly sweep, not pulled live:
-  // the frontier measurement is far too heavy to run on a page load.
-  const [drift, setDrift] = useState(null);
 
   // Date-filter state.
   const today = useMemo(() => new Date(), []);
@@ -110,11 +111,25 @@ export default function ClientDashboardPage() {
   // and Underlying tabs both read it and must not diverge.
   const underlyingConfig = useUnderlyingConfig(realmId);
 
+  // Live dashboard grants, so the rail can offer "see this as the client does".
+  // The RPC is gated on can_manage_portal; anyone else gets nothing back and
+  // simply never sees the button.
+  const [grants, setGrants] = useState([]);
+  const [previewGrantId, setPreviewGrantId] = useState(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase.rpc('list_dashboard_access');
+        setGrants((data || []).filter((g) => !g.revoked_at));
+      } catch { setGrants([]); }
+    })();
+  }, []);
+
   const loadClients = async () => {
     try {
       const { data, error } = await supabase
         .from('qbo_report_connections')
-        .select('realm_id, company_name, entity_id')
+        .select('realm_id, company_name, entity_id, fiscal_year_end_month')
         .eq('status', 'active')
         .order('company_name');
       if (!error && data) setClients(data);
@@ -176,8 +191,9 @@ export default function ClientDashboardPage() {
     }
   };
 
-  // Default full pull — company + file-health for this page, and the shared
-  // cache the Portfolio/Home read. Best effort: dead tokens fail per-metric and
+  // Default full pull — the company record for this page, and the shared cache
+  // the Portfolio/Home read (which still includes file_health for the portfolio
+  // cards, even though this page no longer renders it). Best effort: dead tokens fail per-metric and
   // we still render from cache.
   const load = async (realm, refresh = false) => {
     if (!realm) return;
@@ -198,36 +214,12 @@ export default function ClientDashboardPage() {
         .from('qbo_dashboard_cache')
         .select('metric_key, period_start, period_end, data, pulled_at')
         .eq('realm_id', realm)
-        .in('metric_key', ['company', 'file_health', 'pl_fytd', 'pl_summary', 'balances', 'pnl_monthly', 'aged_receivables'])
+        .in('metric_key', ['company', 'pl_fytd', 'pl_summary', 'balances', 'pnl_monthly', 'aged_receivables'])
         .order('pulled_at', { ascending: false })
         .limit(200);
       setCacheRows(rows || []);
     } catch {
       setCacheRows([]);
-    }
-    try {
-      const { data: snap } = await supabase
-        .from('bk_drift_snapshots')
-        .select('*')
-        .eq('realm_id', realm)
-        .order('snapshot_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (snap?.entity_id) {
-        // Scored fields (tolerance, status) live on the board view; the raw
-        // snapshot carries the frontiers. Merge so the strip has both, and
-        // fall back to the snapshot alone for a client not under watch.
-        const { data: scored } = await supabase
-          .from('v_bk_drift_board')
-          .select('drift_status, days_over_tolerance, recon_age_days, posted_age_days, tolerance_days, volume_ratio_90d')
-          .eq('entity_id', snap.entity_id)
-          .maybeSingle();
-        setDrift({ ...snap, ...(scored || {}) });
-      } else {
-        setDrift(snap || null);
-      }
-    } catch {
-      setDrift(null);
     }
     setLoading(false);
   };
@@ -235,7 +227,6 @@ export default function ClientDashboardPage() {
   const onSelect = (realm) => {
     setRealmId(realm);
     setCacheRows([]);
-    setDrift(null);
     setPeriodData(null);
     setAsAtData(null);
     asAtLoadedRef.current = null;
@@ -249,6 +240,14 @@ export default function ClientDashboardPage() {
   const selectedName = selected?.company_name || '';
   const entityId = selected?.entity_id || null;
   const isFavourite = realmId ? favourites.has(realmId) : false;
+  const clientGrants = useMemo(
+    () => (entityId ? grants.filter((g) => g.entity_id === entityId) : []),
+    [grants, entityId],
+  );
+  const previewGrant = useMemo(
+    () => clientGrants.find((g) => g.id === previewGrantId) || null,
+    [clientGrants, previewGrantId],
+  );
 
   const toggleFavourite = async () => {
     if (!realmId || !profile?.id) return;
@@ -271,8 +270,29 @@ export default function ClientDashboardPage() {
   /* Derived: company / health from the default cache; fiscal year for presets */
   const latest = useMemo(() => latestByMetric(cacheRows), [cacheRows]);
   const company = latest.company?.data || null;
-  const fileHealth = latest.file_health?.data || null;
-  const fyIdx = useMemo(() => fyStartMonthIndex(company?.fiscal_year_start_month), [company]);
+  // Staff override first, then QuickBooks, then a flagged fallback — see
+  // resolveFiscalYear. QBO leaves FiscalYearStartMonth unset often enough that
+  // trusting it alone would label the practice's own quarters as the client's.
+  const fiscalYear = useMemo(
+    () => resolveFiscalYear({
+      overrideEndMonth: selected?.fiscal_year_end_month,
+      qboStartMonth: company?.fiscal_year_start_month,
+    }),
+    [selected?.fiscal_year_end_month, company],
+  );
+  const fyIdx = fiscalYear.fyIdx;
+
+  // Saving the year end re-buckets everything, so it writes through to the
+  // client list the page is already reading from.
+  const setFiscalYearEnd = async (month) => {
+    if (!realmId) return;
+    const v = month ? Number(month) : null;
+    setClients((prev) => prev.map((c) => (c.realm_id === realmId ? { ...c, fiscal_year_end_month: v } : c)));
+    try {
+      await supabase.from('qbo_report_connections')
+        .update({ fiscal_year_end_month: v }).eq('realm_id', realmId);
+    } catch { loadClients(); }
+  };
 
   const period = useMemo(
     () => computePeriod(periodKey, today, fyIdx, customPeriod),
@@ -432,6 +452,32 @@ export default function ClientDashboardPage() {
             </button>
           </div>
 
+          {/* Client view — the same figures as this page, as the client sees
+              them. Sitting here rather than only on the admin screen is the
+              point: you can read our version and theirs without losing your
+              place. Only appears when somebody actually holds a grant. */}
+          {clientGrants.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              {clientGrants.map((g) => (
+                <button
+                  key={g.id}
+                  onClick={() => setPreviewGrantId(g.id)}
+                  title={`See exactly what ${g.email} sees`}
+                  style={{
+                    ...btnBase, padding: '9px 10px', cursor: 'pointer',
+                    justifyContent: 'flex-start', color: '#0369a1',
+                    backgroundColor: '#f0f9ff', borderColor: '#bae6fd',
+                  }}
+                >
+                  <Eye size={14} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    Client view · {g.email}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {realmId && (
             <FilterRail
               tab={tab}
@@ -539,6 +585,8 @@ export default function ClientDashboardPage() {
                   basis={basis} setBasis={setBasis}
                   view={view} setView={setView}
                   fyIdx={fyIdx}
+                  fiscalYear={fiscalYear}
+                  onFiscalYearEndChange={setFiscalYearEnd}
                   config={underlyingConfig}
                 />
               )}
@@ -572,13 +620,6 @@ export default function ClientDashboardPage() {
                 <AgedTab data={asAtData?.ap_asat} title="Aged creditors (payables)" sameLabel="Same suppliers"
                   label="aged creditors" currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
               )}
-              {tab === 'health' && (
-                <>
-                  <CurrencyStrip drift={drift} />
-                  <HealthTab health={fileHealth} currency={periodCurrency} empty={emptyProps} />
-                </>
-              )}
-
               {/* Per-metric errors (partial pull) */}
               {partialErrors && (
                 <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#b45309', marginTop: '14px' }}>
@@ -589,6 +630,10 @@ export default function ClientDashboardPage() {
           )}
         </div>
       </div>
+
+      {previewGrant && (
+        <ClientViewPreview row={previewGrant} onClose={() => setPreviewGrantId(null)} />
+      )}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
@@ -1006,178 +1051,3 @@ function AgedTab({ data, title, sameLabel, label, currency, loading, empty }) {
   );
 }
 
-/* ─── File currency strip ───────────────────────────────────────── */
-// How far forward the books actually reach, from the nightly drift sweep
-// (sql/198–202). The health flags below say whether the file is MESSY; this
-// says whether it is CURRENT, which is the question that was missing — a
-// spotless file reconciled to March is not a healthy file.
-const DRIFT_TONE = {
-  ok:       { bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d', label: 'On track' },
-  watch:    { bg: '#fefce8', border: '#fef08a', text: '#a16207', label: 'Watch' },
-  breach:   { bg: '#fff7ed', border: '#fed7aa', text: '#c2410c', label: 'Past tolerance' },
-  critical: { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c', label: 'Critical' },
-  paused:   { bg: '#f8fafc', border: '#e2e8f0', text: '#64748b', label: 'Paused' },
-  unknown:  { bg: '#f5f3ff', border: '#ddd6fe', text: '#6d28d9', label: 'Unknown' },
-};
-
-function Chip({ label, value, sub, muted }) {
-  return (
-    <div style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '10px 12px', minWidth: '140px', flex: '1 1 140px' }}>
-      <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
-      <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: muted ? '#94a3b8' : '#0f172a' }}>{value}</div>
-      {sub && <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#64748b', marginTop: '1px' }}>{sub}</div>}
-    </div>
-  );
-}
-
-function CurrencyStrip({ drift }) {
-  if (!drift) return null;
-  const d = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—');
-  const tone = DRIFT_TONE[drift.drift_status] || DRIFT_TONE.unknown;
-  const accounts = Array.isArray(drift.bank_accounts) ? drift.bank_accounts.filter((a) => a.live) : [];
-
-  return (
-    <div style={{ ...cardStyle, marginBottom: '16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-          How current is this file?
-        </span>
-        <span style={{
-          marginLeft: 'auto', fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: tone.text,
-          backgroundColor: tone.bg, border: `1px solid ${tone.border}`, borderRadius: '999px', padding: '3px 10px',
-        }}>
-          {tone.label}
-          {drift.days_over_tolerance > 0 ? ` · ${drift.days_over_tolerance} days over` : ''}
-        </span>
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-        <Chip label="Reconciled to" value={drift.reconciled_to ? d(drift.reconciled_to) : 'Never'}
-          muted={!drift.reconciled_to}
-          sub={drift.reconciled_to ? `${drift.recon_age_days} days ago` : 'nothing in the last 6 months'} />
-        <Chip label="Posted to" value={d(drift.posted_to)} muted={!drift.posted_to}
-          sub={drift.posted_to ? `${drift.posted_age_days} days ago` : 'nothing in 120 days'} />
-        <Chip label="Last touched" value={drift.touched_at ? d(drift.touched_at) : 'Over 30 days'}
-          muted={!drift.touched_at} sub={drift.touched_at ? 'file was edited' : 'nobody has opened it'} />
-        {/* Trailing quarter — for a client written up quarterly the month in
-            progress is empty by design and says nothing. */}
-        <Chip label="Volume vs normal"
-          value={drift.volume_ratio_90d != null ? `${Math.round(drift.volume_ratio_90d * 100)}%` : '—'}
-          muted={drift.volume_ratio_90d == null}
-          sub={drift.baseline_monthly ? `last 90 days vs ~${Math.round(drift.baseline_monthly)}/mth` : 'no baseline yet'} />
-      </div>
-
-      {Array.isArray(drift.notes) && drift.notes.length > 0 && (
-        <ul style={{ margin: '12px 0 0', paddingLeft: '18px' }}>
-          {drift.notes.map((n, i) => (
-            <li key={i} style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#475569', marginBottom: '3px' }}>{n}</li>
-          ))}
-        </ul>
-      )}
-
-      {accounts.length > 0 && (
-        <div style={{ overflowX: 'auto', marginTop: '12px' }}>
-          <table style={{ borderCollapse: 'collapse', minWidth: '420px' }}>
-            <thead>
-              <tr>
-                {['Account', 'Last transaction', 'Last reconciled'].map((h, i) => (
-                  <th key={h} style={{
-                    fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', fontWeight: 600,
-                    textAlign: i === 0 ? 'left' : 'right', padding: '5px 10px', whiteSpace: 'nowrap',
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((a) => (
-                <tr key={a.id}>
-                  <td style={{ fontFamily: OUTFIT, fontSize: '12.5px', padding: '5px 10px', color: '#0f172a' }}>
-                    {a.name}{!a.active && <span style={{ color: '#94a3b8', fontSize: '11px' }}> · dormant</span>}
-                  </td>
-                  <td style={{
-                    fontFamily: OUTFIT, fontSize: '12.5px', padding: '5px 10px', textAlign: 'right',
-                    color: a.days_since_txn > 45 ? '#c2410c' : '#475569', fontVariantNumeric: 'tabular-nums',
-                  }}>{d(a.last_txn)}</td>
-                  <td style={{
-                    fontFamily: OUTFIT, fontSize: '12.5px', padding: '5px 10px', textAlign: 'right',
-                    color: a.last_reconciled ? '#475569' : '#b91c1c', fontVariantNumeric: 'tabular-nums',
-                  }}>{a.last_reconciled ? d(a.last_reconciled) : 'never'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Bookkeeping Health tab ────────────────────────────────────── */
-function HealthTab({ health, currency, empty }) {
-  if (!health) return <EmptyState label="bookkeeping health" {...empty} />;
-  const c = HEALTH_COLORS[health.score] || HEALTH_COLORS.amber;
-  const rows = [
-    ['Uncategorised', health.uncategorised_total],
-    ['Undeposited funds', health.undeposited_funds],
-    ['Opening balance equity', health.opening_balance_equity],
-    ['Ask My Accountant', health.ask_my_accountant],
-    ['Reconciliation discrepancies', health.reconciliation_discrepancies],
-  ];
-  return (
-    <div style={cardStyle}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-        {health.score === 'green'
-          ? <ShieldCheck size={20} style={{ color: c.dot, flexShrink: 0 }} />
-          : <ShieldAlert size={20} style={{ color: c.dot, flexShrink: 0 }} />}
-        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-          Bookkeeping health
-        </span>
-        <span style={{
-          marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px',
-          fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: c.text,
-          backgroundColor: c.bg, border: `1px solid ${c.border}`, borderRadius: '999px', padding: '3px 10px',
-        }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: c.dot }} />
-          {c.label}
-        </span>
-      </div>
-
-      {health.flags?.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
-          {health.flags.map((f) => (
-            <span key={f} style={{
-              fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: '#475569',
-              backgroundColor: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '3px 10px',
-            }}>{f}</span>
-          ))}
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
-        {typeof health.unreconciled_count === 'number' && (
-          <div style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '10px 12px' }}>
-            <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>Unreconciled bank items</div>
-            <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: health.unreconciled_count > 0 ? c.text : '#0f172a' }}>
-              {health.unreconciled_count}
-              {health.unreconciled_count > 0 && (
-                <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}> · {money(health.unreconciled_total, currency)}</span>
-              )}
-            </div>
-          </div>
-        )}
-        {rows.map(([label, val]) => (
-          <div key={label} style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '10px 12px' }}>
-            <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
-            <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: Math.abs(val || 0) > 0.005 ? c.text : '#0f172a' }}>
-              {money(val, currency)}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <p style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginTop: '12px', marginBottom: 0 }}>
-        Note: transactions still sitting in QuickBooks' bank-feed “For Review” queue aren't counted — QuickBooks doesn't expose that queue to the API. This reflects what's posted to the books.
-      </p>
-    </div>
-  );
-}

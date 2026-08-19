@@ -176,6 +176,47 @@ export function actualsByMonth({ pl, bs, cf } = {}, accountsById = {}, overrides
     cfKeys.forEach((m, i) => { if (m) cfSeries[group][m] = Number(arr[i]) || 0; });
   }
 
+  // Opening and closing cash from the BALANCE SHEET, not the cashflow report.
+  //
+  // QBO's CashFlow report does not reliably publish beginning/ending cash as
+  // named groups — a real file checked here returned OperatingActivities,
+  // InvestingActivities, FinancingActivities and CashIncrease and nothing else,
+  // which would have left the cash line blank on the actuals side while the
+  // forecast side drew a line, and that reads as "the cash ran out".
+  //
+  // The month-end bank balance is the same number and we already have it, so
+  // closing is simply that month's cash. Opening is closing MINUS that month's
+  // movement, not the previous month's balance: the previous month is missing
+  // for the first column of any window, and taking it there would silently
+  // publish a quarter whose opening + movement ≠ closing. Deriving it from the
+  // movement makes the column tie by construction, including the first one.
+  // These are a FALLBACK — a file that does publish the groups keeps using them
+  // (see the QBO_CF_GROUPS ordering).
+  if (bs?.lines?.cash && bsKeys.length) {
+    const movement = QBO_CF_GROUPS.movement
+      .map((k) => cf?.series?.[k])
+      .find((a) => Array.isArray(a)) || null;
+    const cfPos = {};
+    cfKeys.forEach((m, i) => { if (m) cfPos[m] = i; });
+
+    const closing = {};
+    const opening = {};
+    bsKeys.forEach((m, i) => {
+      if (!m) return;
+      const v = bs.lines.cash[i];
+      if (v == null) return;
+      closing[m] = Number(v);
+      const mi = cfPos[m];
+      if (movement && mi !== undefined) {
+        opening[m] = Number(v) - (Number(movement[mi]) || 0);
+      } else if (i > 0 && bs.lines.cash[i - 1] != null) {
+        opening[m] = Number(bs.lines.cash[i - 1]);
+      }
+    });
+    if (Object.keys(closing).length) cfSeries.__bs_closing_cash = closing;
+    if (Object.keys(opening).length) cfSeries.__bs_opening_cash = opening;
+  }
+
   const lines = Object.entries(lineTotals)
     .map(([id, v]) => ({
       source: 'actual',
@@ -285,13 +326,16 @@ export function netRow(rows, label = 'Net profit') {
   components would disagree with both. Each line names the forecast key it
   wants and the QBO group titles it will accept.
 */
+// Candidate group titles per line, most-preferred first. The __bs_* entries are
+// the balance-sheet fallbacks built in actualsByMonth, and come last so a file
+// that does publish real cashflow groups keeps using them.
 const QBO_CF_GROUPS = {
-  opening: ['BeginningCash', 'CashAtBeginningOfPeriod', 'BeginningCashBalance'],
+  opening: ['BeginningCash', 'CashAtBeginningOfPeriod', 'BeginningCashBalance', '__bs_opening_cash'],
   operating: ['OperatingActivities', 'TotalOperatingActivities', 'NetCashProvidedByOperatingActivities'],
   investing: ['InvestingActivities', 'TotalInvestingActivities', 'NetCashProvidedByInvestingActivities'],
   financing: ['FinancingActivities', 'TotalFinancingActivities', 'NetCashProvidedByFinancingActivities'],
-  movement: ['CashIncreaseDecrease', 'NetCashIncreaseForPeriod', 'NetCashIncrease'],
-  closing: ['EndingCash', 'CashAtEndOfPeriod', 'EndingCashBalance'],
+  movement: ['CashIncreaseDecrease', 'NetCashIncreaseForPeriod', 'NetCashIncrease', 'CashIncrease'],
+  closing: ['EndingCash', 'CashAtEndOfPeriod', 'EndingCashBalance', '__bs_closing_cash'],
 };
 
 export function buildCashflow({ buckets = [], actualCf = {}, forecastCf = {}, cutoff }) {
