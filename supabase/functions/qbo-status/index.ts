@@ -1,9 +1,15 @@
 import { getServiceClient, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
+import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
+
+  // Returns realm ids, company names and token health — reconnaissance for the
+  // other QBO endpoints. Its only caller is the staff app.
+  try { await requireStaffOrService(req); }
+  catch (err) { return authErrorResponse(err, corsHeaders()); }
 
   try {
     const sb = getServiceClient();

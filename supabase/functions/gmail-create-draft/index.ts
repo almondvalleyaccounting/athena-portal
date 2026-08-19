@@ -16,6 +16,7 @@
 import {
   getServiceClient, getValidGmailToken, base64UrlEncode, jsonResponse, corsHeaders, formatSender,
 } from "../_shared/gmail-client.ts";
+import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 
 // Build a multipart/alternative MIME message: text first (fallback)
 // then HTML. Gmail picks the best part per recipient client.
@@ -59,6 +60,10 @@ function encodeSubject(s: string): string {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "POST required" }, 405);
+
+  // Creates a draft on the practice-default mailbox from caller-supplied recipient and HTML.
+  try { await requireStaffOrService(req); }
+  catch (err) { return authErrorResponse(err, corsHeaders); }
 
   let body: { billing_id?: string; to?: string; subject?: string; body_text?: string; body_html?: string; initiated_by?: string };
   try { body = await req.json(); } catch { return jsonResponse({ success: false, error: "Invalid JSON" }, 400); }

@@ -1,4 +1,5 @@
 import { getServiceClient, qboFetch, qboQuery, logSync, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
+import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 
 // Push one-off Billing module items (billing_items) to QBO as real
 // invoices. For each approved item we ensure the QBO customer exists, map
@@ -71,6 +72,12 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return jsonResponse({ success: false, error: "POST required" }, 405);
   }
+
+
+  // list_invoices returns 24 months of any entity's invoices, and send_map creates
+  // and emails real ones.
+  try { await requireStaffOrService(req); }
+  catch (err) { return authErrorResponse(err, corsHeaders()); }
 
   let body: { billing_item_ids?: string[]; send?: boolean; send_map?: Record<string, boolean>; dry_run?: boolean; refresh?: boolean; list_invoices?: boolean; check_settings?: boolean; assign_numbers?: boolean; entity_id?: string; due_days?: number; initiated_by?: string; link_customer?: Record<string, string>; new_customer_ok?: Record<string, boolean>; new_customer_name?: Record<string, string> };
   try {

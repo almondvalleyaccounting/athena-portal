@@ -16,6 +16,7 @@ import {
   jsonResponse,
   corsHeaders,
 } from "../_shared/qbo-client.ts";
+import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 
 type PushMode = "flat_invoice" | "recurring_template" | "setup_invoice_only";
 
@@ -46,6 +47,11 @@ type RecurringTpl = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "POST required" }, 405);
+
+  // Creates real QBO invoices and can have Intuit email them, from caller-supplied
+  // ids.
+  try { await requireStaffOrService(req); }
+  catch (err) { return authErrorResponse(err, corsHeaders()); }
 
   const body = await req.json().catch(() => ({}));
   const initiatedBy: string | null = body.initiated_by ?? null;

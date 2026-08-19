@@ -13,6 +13,7 @@
 //
 // On success: updates live_billing.uplift_email_sent_at / _by / _to.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -52,7 +53,14 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== "POST")     return json({ success: false, error: "POST required" }, 405);
 
-  let body: { billing_id?: string; to?: string; subject?: string; body_text?: string; body_html?: string; initiated_by?: string };
+  // This function sends mail from info@almondvalleyaccounting.co.uk to a
+  // caller-supplied address with caller-supplied HTML. Without a check it is an open
+  // relay on our own sending domain, reachable with the public anon key.
+  let caller;
+  try { caller = await requireStaffOrService(req); }
+  catch (err) { return authErrorResponse(err, corsHeaders); }
+
+  let body: { billing_id?: string; to?: string; subject?: string; body_text?: string; body_html?: string };
   try { body = await req.json(); } catch { return json({ success: false, error: "Invalid JSON" }, 400); }
 
   if (!body.billing_id || !body.to || !body.subject || !body.body_text) {
@@ -98,13 +106,13 @@ Deno.serve(async (req) => {
 
   await sb.from("live_billing").update({
     uplift_email_sent_at: new Date().toISOString(),
-    uplift_email_sent_by: body.initiated_by || null,
+    uplift_email_sent_by: caller.userId,
     uplift_email_to: body.to,
   }).eq("id", body.billing_id);
 
   // Audit log row alongside the existing entity audit history.
   await sb.from("audit_log").insert({
-    user_id: body.initiated_by || null,
+    user_id: caller.userId,
     action: "uplift_email_sent",
     entity_type: "live_billing",
     entity_id: body.billing_id,

@@ -1,4 +1,5 @@
 import { getServiceClient, qboFetch, qboQuery, logSync, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
+import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 
 // Apply the agreed product-catalogue rebuild to QBO: income accounts, the
 // grouping items, renames, re-parents, income-account fixes, the new leaves
@@ -164,6 +165,10 @@ const PLAN: Step[] = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...PHASE5, ...
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "POST required" }, 405);
+
+  // Rebuilds the live QBO product catalogue. Destructive admin operation.
+  try { await requireStaffOrService(req, "can_manage_portal"); }
+  catch (err) { return authErrorResponse(err, corsHeaders()); }
 
   const body = await req.json().catch(() => ({}));
   const phases: number[] | null = Array.isArray(body.phases) ? body.phases.map(Number) : null;

@@ -1,4 +1,5 @@
 import { qboFetch, qboQuery, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
+import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 
 // Give the income side of the chart of accounts a shape.
 //
@@ -77,8 +78,15 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "POST required" }, 405);
 
+  // Re-parents and retires accounts in the live chart of accounts. Destructive
+  // admin operation, and it had no caller check at all.
+  try { await requireStaffOrService(req, "can_manage_portal"); }
+  catch (err) { return authErrorResponse(err, corsHeaders()); }
+
   const body = await req.json().catch(() => ({})) as { dryRun?: boolean; phases?: number[] };
-  const dryRun = body.dryRun === true;
+  // Default to a dry run. `body.dryRun === true` meant a bare POST {} applied all
+  // six phases for real; the safe reading of silence is "show me, do not do it".
+  const dryRun = body.dryRun !== false;
   const wanted = new Set<number>(body.phases && body.phases.length ? body.phases : [1, 2, 3, 4, 5, 6]);
 
   const steps: Array<Record<string, unknown>> = [];

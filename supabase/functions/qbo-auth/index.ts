@@ -1,8 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 
-// Self-contained (inlines getServiceClient/jsonResponse/corsHeaders) so it
-// deploys as a single file — no _shared bundling. verify_jwt is FALSE: this is
-// an OAuth redirect endpoint hit by the browser and Intuit without a JWT.
+// Inlines getServiceClient/jsonResponse/corsHeaders, but now also imports
+// _shared/require-staff.ts, so it must be deployed WITH that file.
+//
+// verify_jwt is FALSE by necessity: ?action=authorize is a browser navigation and
+// ?action=callback is hit by Intuit, neither carrying a JWT. ?action=disconnect is
+// invoked from the app with a session token and is gated in handleDisconnect.
+// TODO: authorize/callback still accept unsigned `state` — sign it, and bind
+// realmId to the exchanged code, before treating this endpoint as sound.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -266,8 +272,14 @@ function redirect(location: string) {
 }
 
 async function handleDisconnect(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  if (!authHeader) return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+  // Was `if (!authHeader) return 401` — the header was never parsed, so any
+  // non-empty Authorization value severed every active QBO connection. This
+  // function is verify_jwt=false, so that needed no credential at all.
+  // allowService:false — this function must stay verify_jwt=false for the OAuth
+  // round-trip, so the gateway has not verified any signature and a service_role
+  // claim would be forgeable. No machine caller needs to disconnect QBO anyway.
+  try { await requireStaffOrService(req, { flag: "can_manage_portal", allowService: false }); }
+  catch (err) { return authErrorResponse(err, corsHeaders()); }
 
   const sb = getServiceClient();
   const { error } = await sb.from("qbo_connections").update({

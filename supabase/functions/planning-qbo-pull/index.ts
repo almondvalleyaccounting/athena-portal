@@ -13,6 +13,7 @@
 // and the caller was told success. Diff against the deployment before
 // any future edit + deploy.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -117,6 +118,12 @@ function findSection(rows, groupName) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (req.method !== "POST") return jr({ success: false, error: "POST required" }, 405);
+
+  // Default granularity returns the practice's entire P&L, so this carries the same
+  // flag dashboard-qbo-pull already requires for practice books. The service role
+  // passes, for the planning-qbo-nightly-pull cron.
+  try { await requireStaffOrService(req, "can_view_practice_financials"); }
+  catch (err) { return authErrorResponse(err, cors); }
 
   const body = await req.json().catch(() => ({}));
   const granularity = body.granularity || "ltm";

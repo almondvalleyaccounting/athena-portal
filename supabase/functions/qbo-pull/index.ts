@@ -1,4 +1,5 @@
 import { getServiceClient, qboFetch, qboQuery, logSync, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
+import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -8,6 +9,11 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return jsonResponse({ success: false, error: "POST required" }, 405);
   }
+
+  // Writes up to 50k QBO records. Also invoked by the qbo-pull-nightly cron, which
+  // is why service-role callers pass — sql/235 moves that cron off the anon key.
+  try { await requireStaffOrService(req); }
+  catch (err) { return authErrorResponse(err, corsHeaders()); }
 
   try {
     const body = await req.json().catch(() => ({}));
