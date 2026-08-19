@@ -34,8 +34,13 @@ and **this document is the rule**. Re-add the hook when setting up a new machine
 select * from public.security_posture_audit();
 ```
 
-Defined in [sql/234_security_posture_audit.sql](sql/234_security_posture_audit.sql).
-Six checks, every one of which caught something real on 2026-08-18. Run it as
+Defined in [sql/234_security_posture_audit.sql](sql/234_security_posture_audit.sql),
+reworked in [sql/239_security_audit_v2.sql](sql/239_security_audit_v2.sql). Eleven
+checks: RLS off, matview reachable by an API role (RLS is impossible on those), definer
+view readable by `anon`, definer view with no predicate over a base table, definer
+function executable by `anon`, definer function callable by `authenticated` with no
+check (reads as well as writes), `EXECUTE` held by `PUBLIC`, public Storage bucket,
+`storage.objects` RLS, unsafe realtime publication, and a stale exemption. Run it as
 `postgres` (Supabase SQL editor or MCP) or as `service_role`. Then:
 
 ```bash
@@ -48,6 +53,23 @@ it is void. `pass` refuses any argument other than `0`.
 Record the pass in its own shell call. The hook evaluates the whole command before
 any of it runs, so chaining `pass 0` onto the commit still blocks — the pass has not
 been written at the moment the gate reads it.
+
+**A finding you have reviewed and accepted goes in `security_audit_exemptions`, with a
+reason.** The exemption is bound to a hash of the function definition, so editing an
+exempted function re-flags it rather than silently inheriting the old judgement. Do not
+loosen the gate regex to make a finding disappear — that is how `raise exception` and a
+bare `auth.uid()` came to count as authorisation, which left the audit unable to
+re-find its own founding finding.
+
+### The gate is not the only line
+
+The gate guards `git`, but this project changes the database through the MCP and the
+SQL editor, which produce no diff to hash. So
+[sql/240_security_posture_continuous.sql](sql/240_security_posture_continuous.sql) runs
+the same audit every 15 minutes via `pg_cron`, records anything it finds in
+`security_posture_findings`, and notifies everyone with `can_manage_portal`. It shows
+in `/admin/schedules` as "Security posture audit". Detection you cannot bypass beats
+prevention you can — but it is detection, so a finding means prod is already exposed.
 
 ### What the audit cannot see
 
