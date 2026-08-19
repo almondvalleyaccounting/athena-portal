@@ -8,6 +8,7 @@ import {
   GOOGLE_TOKEN_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_REDIRECT_URI, GMAIL_SCOPE,
   getServiceClient, corsHeaders,
 } from "../_shared/gmail-client.ts";
+import { consumeSignedState, safeReturnTo } from "../_shared/oauth-state.ts";
 
 const PORTAL_BASE = Deno.env.get("PORTAL_BASE_URL") || "https://portal.almondvalleyaccounting.co.uk";
 
@@ -16,7 +17,7 @@ function htmlResponse(body: string, status = 200) {
 }
 
 function errPage(message: string, status = 400) {
-  return htmlResponse(`<!DOCTYPE html><html><body style="font-family:system-ui;padding:32px;color:#0f172a"><h1 style="font-weight:500">Gmail connection failed</h1><p>${message.replace(/</g, "&lt;")}</p><p><a href="${PORTAL_BASE}/comms/email">Back to Communications</a></p></body></html>`, status);
+  return htmlResponse(`<!DOCTYPE html><html><body style="font-family:system-ui;padding:32px;color:#0f172a"><h1 style="font-weight:500">Gmail connection failed</h1><p>${message.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p><p><a href="${PORTAL_BASE}/comms/email">Back to Communications</a></p></body></html>`, status);
 }
 
 Deno.serve(async (req) => {
@@ -30,23 +31,32 @@ Deno.serve(async (req) => {
   if (error) return errPage(`Google returned: ${error}`);
   if (!code) return errPage("Missing authorisation code on callback.");
 
-  // Decode state (best-effort — failures don't block the connection).
-  let staffId: string | null = null;
-  let returnTo = "/manage/billing/uplifts";
+  // Verify the state before doing anything else.
+  //
+  // This was "best-effort — failures don't block the connection", with setDefault
+  // defaulting to TRUE when the state carried no flags. Together with an init endpoint
+  // that would mint a state for anyone, that meant a stranger could consent with their
+  // own Google account and become the practice-default mailbox — the one
+  // reminders-send and chase-reply-scan send client mail from. There is no tolerant
+  // branch any more: an unsigned, altered, expired or replayed state is refused.
+  let staffId: string;
+  let returnTo: string;
   let kind: "personal" | "shared" | null = null;
   let displayName: string | null = null;
-  let setDefault = true; // legacy states carry no flags → default-mailbox connect
-  if (stateRaw) {
-    try {
-      // base64url → base64
-      const padded = stateRaw.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((stateRaw.length + 3) % 4);
-      const decoded = JSON.parse(atob(padded));
-      if (decoded.staff_id) staffId = decoded.staff_id;
-      if (decoded.return_to) returnTo = decoded.return_to;
-      if (decoded.kind === "personal" || decoded.kind === "shared") kind = decoded.kind;
-      if (decoded.display_name) displayName = String(decoded.display_name).slice(0, 80);
-      if (typeof decoded.set_default === "boolean") setDefault = decoded.set_default;
-    } catch { /* tolerate malformed state */ }
+  let setDefault: boolean;
+  try {
+    const verified = await consumeSignedState(stateRaw, "gmail");
+    staffId = verified.userId;
+    returnTo = safeReturnTo(verified.returnTo) ?? "/manage/billing/uplifts";
+    const k = verified.extra.kind;
+    if (k === "personal" || k === "shared") kind = k;
+    if (typeof verified.extra.display_name === "string") {
+      displayName = verified.extra.display_name.slice(0, 80);
+    }
+    setDefault = verified.extra.set_default === true;
+  } catch (err) {
+    console.error("gmail-auth-callback rejected:", (err as Error).message);
+    return errPage("This connection request could not be verified. Please start again from Athena.", 403);
   }
 
   // Exchange code for tokens.

@@ -107,8 +107,12 @@ export default function ReportsPage() {
     }
   }, []);
 
-  const handleConnect = () => {
-    window.location.href = getReportsAuthUrl(profile?.id || '');
+  const handleConnect = async () => {
+    try {
+      window.location.href = await getReportsAuthUrl();
+    } catch (err) {
+      alert(err.message || 'Could not start the QuickBooks connection.');
+    }
   };
 
   const handleDisconnect = async (realmId) => {

@@ -718,9 +718,20 @@ export async function getDriveConnection() {
 }
 
 // Kicks off the Google consent flow; the callback lands back on returnTo.
-export function driveConnectUrl(staffId, returnTo = '/onboarding') {
-  const base = import.meta.env.VITE_SUPABASE_URL;
-  return `${base}/functions/v1/drive-auth-init?staff_id=${staffId || ''}&return_to=${encodeURIComponent(returnTo)}`;
+//
+// drive-auth-init used to be an unauthenticated 302 that took staff_id from the query
+// string into an unsigned OAuth state, and drive-auth-callback revoked the live
+// connection and installed whatever account consented â€” so a stranger could point
+// client onboarding documents at their own Drive. It now requires a staff session and
+// signs a single-use state, so the consent URL is fetched rather than built. Navigates
+// on success; throws if the caller is not staff.
+export async function startDriveConnect(returnTo = '/onboarding') {
+  const { data, error } = await supabase.functions.invoke('drive-auth-init', {
+    body: { return_to: returnTo },
+  });
+  if (error) throw error;
+  if (!data?.url) throw new Error(data?.error || 'Could not start the Google Drive connection');
+  window.location.href = data.url;
 }
 
 export async function saveDocumentsToDrive(onboardingId) {

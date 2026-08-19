@@ -52,7 +52,15 @@ export default function QboConnectionPanel({ profile, onSyncComplete }) {
     return () => clearInterval(interval);
   }, [fetchStatus, fetchMapStats]);
 
-  const handleConnect = () => { window.location.href = getQboAuthUrl(profile.id); };
+  const handleConnect = async () => {
+    // getQboAuthUrl now round-trips through qbo-auth, which signs the OAuth state
+    // against this session, so it can fail (not staff, or the function is down).
+    try {
+      window.location.href = await getQboAuthUrl();
+    } catch (err) {
+      alert(err.message || 'Could not start the QuickBooks connection.');
+    }
+  };
 
   const handleDisconnect = async () => {
     if (!confirm('Disconnect from QuickBooks Online? You can reconnect at any time.')) return;

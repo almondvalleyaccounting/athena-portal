@@ -1,14 +1,21 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
+import { createSignedState, consumeSignedState, safeReturnTo } from "../_shared/oauth-state.ts";
 
-// Inlines getServiceClient/jsonResponse/corsHeaders, but now also imports
-// _shared/require-staff.ts, so it must be deployed WITH that file.
+// Inlines getServiceClient/jsonResponse/corsHeaders, but imports _shared/require-staff.ts
+// and _shared/oauth-state.ts, so it must be deployed WITH those files.
 //
-// verify_jwt is FALSE by necessity: ?action=authorize is a browser navigation and
-// ?action=callback is hit by Intuit, neither carrying a JWT. ?action=disconnect is
-// invoked from the app with a session token and is gated in handleDisconnect.
-// TODO: authorize/callback still accept unsigned `state` — sign it, and bind
-// realmId to the exchanged code, before treating this endpoint as sound.
+// verify_jwt stays FALSE because ?action=callback is hit by Intuit with no JWT. That is
+// not a weakness here: every action decides for itself.
+//   authorize  — POST, active staff only, returns the consent URL for the app to
+//                navigate to. Was an unauthenticated 302 that trusted `user_id` from
+//                the query string and put it, unsigned, into `state`.
+//   callback   — no credential (Intuit), but requires a signed, single-use state
+//                (sql/236). An attacker cannot obtain one, so they cannot present a
+//                code+realmId of their own and have us store it as the practice's.
+//   disconnect — POST, can_manage_portal, allowService:false (see handleDisconnect).
+// Because verify_jwt is false the gateway verifies nothing; the staff checks here call
+// getUser(), which does verify, and refuse a forgeable service_role claim.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -38,22 +45,24 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
-// Only allow same-app relative return paths (defends against open redirect).
-function safeReturnTo(rt: string | null | undefined): string | null {
-  if (rt && rt.startsWith("/") && !rt.startsWith("//")) return rt;
-  return null;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
   const url = new URL(req.url);
-  const action = url.searchParams.get("action");
+  // Intuit arrives with ?action=callback in the query. The app calls us through
+  // functions.invoke(), which sends a POST body and no query string — which is why
+  // `disconnect` never worked: the body said disconnect, this only read the query.
+  let action = url.searchParams.get("action");
+  let body: Record<string, unknown> = {};
+  if (req.method === "POST") {
+    body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    if (!action && typeof body.action === "string") action = body.action;
+  }
 
   try {
-    if (action === "authorize") return handleAuthorize(url);
+    if (action === "authorize") return await handleAuthorize(req, body);
     if (action === "callback") return await handleCallback(url);
     if (action === "disconnect") return await handleDisconnect(req);
     return jsonResponse({ success: false, error: "Invalid action. Use: authorize, callback, or disconnect" }, 400);
@@ -63,13 +72,35 @@ Deno.serve(async (req) => {
   }
 });
 
-function handleAuthorize(url: URL) {
-  const userId = url.searchParams.get("user_id") || "";
-  const purpose = url.searchParams.get("purpose") || "billing";
-  const returnTo = url.searchParams.get("return_to") || "";
+/**
+ * Start a connect flow. Returns the Intuit consent URL for the app to navigate to.
+ *
+ * This used to be an unauthenticated 302 that took `user_id` from the query string
+ * and put it, unsigned, into `state`. That is what made the callback forgeable: mint
+ * a state for anyone, consent with your own Intuit account, and the callback stores
+ * your tokens as ours. Now the caller must be active staff, the staff id comes from
+ * their verified JWT rather than the query, and the state is signed and single-use.
+ */
+async function handleAuthorize(req: Request, body: Record<string, unknown>) {
+  let caller;
+  try {
+    caller = await requireStaffOrService(req, { allowService: false });
+  } catch (err) {
+    return authErrorResponse(err, corsHeaders());
+  }
+  if (caller.kind !== "staff" || !caller.userId) {
+    return jsonResponse({ success: false, error: "Not authorised" }, 403);
+  }
 
-  // Carry user ID, purpose and return path through the OAuth round-trip.
-  const state = btoa(JSON.stringify({ user_id: userId, purpose, return_to: returnTo, ts: Date.now() }));
+  const purpose = body.purpose === "reports" ? "reports" : "billing";
+  const returnTo = safeReturnTo(body.return_to) ?? "";
+
+  const state = await createSignedState({
+    purpose: "qbo",
+    userId: caller.userId,
+    returnTo,
+    extra: { mode: purpose },
+  });
 
   const params = new URLSearchParams({
     client_id: QBO_CLIENT_ID,
@@ -79,7 +110,7 @@ function handleAuthorize(url: URL) {
     state,
   });
 
-  return new Response(null, { status: 302, headers: { Location: `${QBO_AUTH_URL}?${params.toString()}` } });
+  return jsonResponse({ success: true, url: `${QBO_AUTH_URL}?${params.toString()}` });
 }
 
 async function handleCallback(url: URL) {
@@ -88,21 +119,25 @@ async function handleCallback(url: URL) {
   const state = url.searchParams.get("state");
   const error = url.searchParams.get("error");
 
-  // Parse state FIRST — the redirect base depends on it (avoids a TDZ error on
-  // the early denial/missing-code paths).
-  let userId: string | null = null;
-  let purpose = "billing";
-  let returnTo = "";
-  if (state) {
-    try {
-      const parsed = JSON.parse(atob(state));
-      userId = parsed.user_id || null;
-      purpose = parsed.purpose || "billing";
-      returnTo = parsed.return_to || "";
-    } catch { /* ignore */ }
+  // Verify state FIRST — the redirect base depends on it, and everything downstream
+  // (whose tokens we store, and against which realm) is only trustworthy because this
+  // succeeded. A bad, expired, replayed or absent state means refuse: there is no
+  // "carry on with defaults" branch any more, which is what the old best-effort
+  // `try { JSON.parse(atob(state)) } catch {}` amounted to.
+  let userId: string;
+  let returnTo: string;
+  let isReports: boolean;
+  try {
+    const verified = await consumeSignedState(state, "qbo");
+    userId = verified.userId;
+    returnTo = verified.returnTo;
+    isReports = verified.extra.mode === "reports";
+  } catch (err) {
+    console.error("qbo-auth callback rejected:", (err as Error).message);
+    return redirect(
+      `${PORTAL_URL}/manage/billing?qbo=error&message=${encodeURIComponent("Connection request could not be verified — please start again")}`,
+    );
   }
-
-  const isReports = purpose === "reports";
   // A dashboard-initiated connect passes return_to=/client-dashboard so we land
   // back where we started; otherwise fall back to the purpose default.
   const base = safeReturnTo(returnTo) || (isReports ? "/reports" : "/manage/billing");

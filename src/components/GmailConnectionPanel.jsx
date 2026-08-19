@@ -14,7 +14,7 @@ const font = "'Outfit', sans-serif";
 // connected from the Communications module. Reads go through
 // v_gmail_connections — the base table (with OAuth tokens) is no longer
 // staff-readable.
-export default function GmailConnectionPanel({ staffId }) {
+export default function GmailConnectionPanel() {
   const [conn, setConn] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -42,14 +42,23 @@ export default function GmailConnectionPanel({ staffId }) {
     }
   }, [refresh]);
 
-  const connectUrl = (() => {
-    const base = `${import.meta.env.VITE_SUPABASE_URL || 'https://neksyvneljgxvpchwgch.supabase.co'}/functions/v1/gmail-auth-init`;
-    const params = new URLSearchParams({
-      staff_id: staffId || '',
-      return_to: window.location.pathname,
-    });
-    return `${base}?${params.toString()}`;
-  })();
+  // gmail-auth-init used to be an unauthenticated 302 that took staff_id from the
+  // query string and signed nothing, so anyone could have their own Google account
+  // installed as the practice default. It now requires a staff session and signs the
+  // OAuth state, so the consent URL has to be fetched. set_default is explicit here:
+  // this panel exists to (re)connect the PRACTICE DEFAULT mailbox.
+  const handleConnect = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('gmail-auth-init', {
+        body: { return_to: window.location.pathname, set_default: true },
+      });
+      if (error) throw error;
+      if (!data?.url) throw new Error(data?.error || 'Could not start the Gmail connection');
+      window.location.href = data.url;
+    } catch (err) {
+      alert(err.message || 'Could not start the Gmail connection.');
+    }
+  };
 
   const disconnect = async () => {
     if (!conn) return;
@@ -103,16 +112,17 @@ export default function GmailConnectionPanel({ staffId }) {
           Sign in once to connect the shared mailbox. Athena uses the connection to send client reminder emails, read replies, create draft emails, and archive processed messages. Changing what the connection is allowed to do means disconnecting and reconnecting.
         </div>
       </div>
-      <a
-        href={connectUrl}
+      <button
+        type="button"
+        onClick={handleConnect}
         style={{
           padding: '8px 16px', fontSize: 13, fontWeight: 600,
           background: '#0f172a', color: '#fff', borderRadius: 8,
-          textDecoration: 'none', fontFamily: font,
+          border: 'none', cursor: 'pointer', fontFamily: font,
         }}
       >
         Connect Gmail
-      </a>
+      </button>
     </div>
   );
 }

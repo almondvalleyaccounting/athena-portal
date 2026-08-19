@@ -8,7 +8,7 @@ import {
 import { useAuth } from '../../../shell/AppShell';
 import { chipStyle, tones } from '../../../lib/tokens';
 import {
-  buildTagSuggester, connectMailboxUrl, downloadAttachment, effectiveSignature, gmail, listMailboxes,
+  buildTagSuggester, startMailboxConnect, downloadAttachment, effectiveSignature, gmail, listMailboxes,
   loadContacts, loadSignatures, loadTagRules, mailboxNeedsReconnect, parseAddress, recordTagRule,
   saveSignature, syncContacts,
 } from '../api';
@@ -1033,11 +1033,13 @@ export default function EmailView() {
 
   // ── Connect CTAs ──
   const myPersonal = (mailboxes || []).find((m) => m.kind === 'personal' && m.owner_staff_id === profile?.id);
-  const connectPersonalUrl = connectMailboxUrl({
-    staffId: profile?.id, kind: 'personal',
+  // gmail-auth-init now needs the session (it signs the OAuth state), so these are
+  // actions rather than hrefs.
+  const connectPersonal = () => startMailboxConnect({
+    kind: 'personal',
     displayName: profile?.name ? profile.name.split(' ')[0] : undefined,
-  });
-  const connectSharedUrl = connectMailboxUrl({ staffId: profile?.id, kind: 'shared' });
+  }).catch((e) => setError(e.message));
+  const connectShared = () => startMailboxConnect({ kind: 'shared' }).catch((e) => setError(e.message));
 
   if (mailboxes === null) {
     return <div style={{ padding: 30, color: '#64748b', fontSize: 13 }}>Loading mailboxes…</div>;
@@ -1053,17 +1055,19 @@ export default function EmailView() {
           {isAdmin ? ' As an admin you can also connect shared mailboxes like info@ or accounts@ — sign into that Google account when prompted.' : ''}
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-          <a href={connectPersonalUrl} style={{ padding: '9px 18px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', borderRadius: 8, textDecoration: 'none' }}>Connect my inbox</a>
-          {isAdmin && <a href={connectSharedUrl} style={{ padding: '9px 18px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 8, textDecoration: 'none' }}>Add a shared mailbox</a>}
+          <a href="#" onClick={(e) => { e.preventDefault(); connectPersonal(); }} style={{ padding: '9px 18px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', borderRadius: 8, textDecoration: 'none' }}>Connect my inbox</a>
+          {isAdmin && <a href="#" onClick={(e) => { e.preventDefault(); connectShared(); }} style={{ padding: '9px 18px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 8, textDecoration: 'none' }}>Add a shared mailbox</a>}
         </div>
       </div>
     );
   }
 
   const needsReconnect = mailboxNeedsReconnect(mailboxObj);
-  const reconnectUrl = mailboxObj ? connectMailboxUrl({
-    staffId: profile?.id, kind: mailboxObj.kind, displayName: mailboxObj.display_name,
-  }) : '#';
+  const reconnect = () => {
+    if (!mailboxObj) return;
+    startMailboxConnect({ kind: mailboxObj.kind, displayName: mailboxObj.display_name })
+      .catch((e) => setError(e.message));
+  };
 
   const selectLabel = (id) => { setQ(''); setQDraft(''); setSearchAll(false); setLabelId(id); };
 
@@ -1220,7 +1224,7 @@ export default function EmailView() {
           )}
           {!isAll && (
             <a
-              href={reconnectUrl}
+              href="#" onClick={(e) => { e.preventDefault(); reconnect(); }}
               onClick={(e) => { if (!window.confirm(`Reconnect ${mailboxObj?.account_email}? You'll be sent to Google to re-approve — sign in as that account. This refreshes the mailbox's permissions.`)) e.preventDefault(); }}
               style={{ ...railBtn, textDecoration: 'none', ...(needsReconnect ? { border: `1px solid ${tones.info.border}`, background: tones.info.bg, color: tones.info.fg } : {}) }}
             >
@@ -1241,13 +1245,13 @@ export default function EmailView() {
         {addOpen && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, border: '1px solid #e2e8f0', borderRadius: 8, background: '#f8fafc' }}>
             {!myPersonal && (
-              <a href={connectPersonalUrl} style={addOptionStyle}>
+              <a href="#" onClick={(e) => { e.preventDefault(); connectPersonal(); }} style={addOptionStyle}>
                 <Mail size={13} /> Connect my inbox
               </a>
             )}
             {isAdmin && (
               <a
-                href={connectSharedUrl}
+                href="#" onClick={(e) => { e.preventDefault(); connectShared(); }}
                 onClick={(e) => { if (!window.confirm('You’ll be sent to Google — sign in as the SHARED mailbox you want to add (e.g. accounts@ or payroll@), not your own account. Continue?')) e.preventDefault(); }}
                 style={addOptionStyle}
               >
@@ -1564,7 +1568,7 @@ export default function EmailView() {
             {mailboxObj?.status !== 'active'
               ? <span>This mailbox&apos;s connection is broken ({mailboxObj?.error_message || mailboxObj?.status}).</span>
               : <span>This mailbox was connected with an older permission set — a quick reconnect unlocks everything.</span>}
-            <a href={reconnectUrl} style={{ marginLeft: 'auto', fontWeight: 700, color: tones.info.fg }}>Reconnect</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); reconnect(); }} style={{ marginLeft: 'auto', fontWeight: 700, color: tones.info.fg }}>Reconnect</a>
           </div>
         )}
         {error && (

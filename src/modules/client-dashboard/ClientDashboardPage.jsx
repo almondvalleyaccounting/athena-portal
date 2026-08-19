@@ -166,8 +166,14 @@ export default function ClientDashboardPage() {
     }
   }, [clientsLoading]);
 
-  const handleConnect = () => {
-    window.location.href = getReportsAuthUrl(profile?.id || '', '/client-dashboard');
+  const handleConnect = async () => {
+    // getReportsAuthUrl now round-trips through qbo-auth so the OAuth state is signed
+    // against this session, which means it can fail.
+    try {
+      window.location.href = await getReportsAuthUrl('/client-dashboard');
+    } catch (err) {
+      alert(err.message || 'Could not start the QuickBooks connection.');
+    }
   };
 
   // Default full pull — company + file-health for this page, and the shared

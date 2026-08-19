@@ -1,7 +1,5 @@
 import { supabase } from './supabase';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-
 /** Get QBO connection status */
 export async function getQboStatus() {
   const { data, error } = await supabase.functions.invoke('qbo-status');
@@ -142,15 +140,34 @@ export async function disconnectQbo() {
   return data;
 }
 
-/** Get the QBO OAuth authorization URL (billing connection) */
-export function getQboAuthUrl(userId) {
-  return `${SUPABASE_URL}/functions/v1/qbo-auth?action=authorize&user_id=${encodeURIComponent(userId)}`;
+/**
+ * Ask qbo-auth to start a connect flow, and return the Intuit consent URL.
+ *
+ * These used to build the URL client-side and navigate straight to
+ * ?action=authorize&user_id=…, which was an unauthenticated endpoint that signed
+ * nothing: anyone could mint an OAuth state for any staff id, consent with their own
+ * Intuit account, and have the callback store their tokens as ours. Now the staff id
+ * comes from the session server-side and is signed into a single-use state, so the
+ * request has to go through the function — which means these are async, and callers
+ * must await them.
+ */
+async function startQboAuth(purpose, returnTo) {
+  const { data, error } = await supabase.functions.invoke('qbo-auth', {
+    body: { action: 'authorize', purpose, ...(returnTo ? { return_to: returnTo } : {}) },
+  });
+  if (error) throw error;
+  if (!data?.url) throw new Error(data?.error || 'Could not start the QuickBooks connection');
+  return data.url;
 }
 
-/** Get the QBO OAuth authorization URL for reports/dashboard (separate
- *  connection). Pass returnTo (a relative app path, e.g. '/client-dashboard')
- *  to land back there after the OAuth round-trip instead of the default /reports. */
-export function getReportsAuthUrl(userId, returnTo) {
-  const rt = returnTo ? `&return_to=${encodeURIComponent(returnTo)}` : '';
-  return `${SUPABASE_URL}/functions/v1/qbo-auth?action=authorize&user_id=${encodeURIComponent(userId)}&purpose=reports${rt}`;
+/** Intuit consent URL for the billing connection. */
+export function getQboAuthUrl() {
+  return startQboAuth('billing');
+}
+
+/** Intuit consent URL for the reports/dashboard connection (a separate connection).
+ *  Pass returnTo (a relative app path, e.g. '/client-dashboard') to land back there
+ *  after the OAuth round-trip instead of the default /reports. */
+export function getReportsAuthUrl(returnTo) {
+  return startQboAuth('reports', returnTo);
 }

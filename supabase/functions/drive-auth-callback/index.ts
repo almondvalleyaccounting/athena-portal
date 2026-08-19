@@ -4,6 +4,7 @@
 // gdrive_connections row. Mirrors gmail-auth-callback.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { consumeSignedState, safeReturnTo } from "../_shared/oauth-state.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -21,7 +22,7 @@ const corsHeaders = {
 
 function errPage(message: string, status = 400) {
   return new Response(
-    `<!DOCTYPE html><html><body style="font-family:system-ui;padding:32px;color:#0f172a"><h1 style="font-weight:500">Google Drive connection failed</h1><p>${message.replace(/</g, "&lt;")}</p><p><a href="${PORTAL_BASE}/onboarding">Back to Onboarding</a></p></body></html>`,
+    `<!DOCTYPE html><html><body style="font-family:system-ui;padding:32px;color:#0f172a"><h1 style="font-weight:500">Google Drive connection failed</h1><p>${message.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p><p><a href="${PORTAL_BASE}/onboarding">Back to Onboarding</a></p></body></html>`,
     { status, headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders } },
   );
 }
@@ -37,15 +38,19 @@ Deno.serve(async (req) => {
   if (error) return errPage(`Google returned: ${error}`);
   if (!code) return errPage("Missing authorisation code on callback.");
 
-  let staffId: string | null = null;
-  let returnTo = "/onboarding";
-  if (stateRaw) {
-    try {
-      const padded = stateRaw.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((stateRaw.length + 3) % 4);
-      const decoded = JSON.parse(atob(padded));
-      if (decoded.staff_id) staffId = decoded.staff_id;
-      if (decoded.return_to) returnTo = decoded.return_to;
-    } catch { /* tolerate malformed state */ }
+  // Verify before doing anything: below this point the live gdrive_connections row is
+  // revoked and replaced with whatever account just consented. Previously the state was
+  // decoded best-effort and a malformed one was tolerated, so any stranger who reached
+  // this endpoint could redirect client onboarding documents to their own Drive.
+  let staffId: string;
+  let returnTo: string;
+  try {
+    const verified = await consumeSignedState(stateRaw, "drive");
+    staffId = verified.userId;
+    returnTo = safeReturnTo(verified.returnTo) ?? "/onboarding";
+  } catch (err) {
+    console.error("drive-auth-callback rejected:", (err as Error).message);
+    return errPage("This connection request could not be verified. Please start again from Athena.", 403);
   }
 
   const tokenResp = await fetch("https://oauth2.googleapis.com/token", {

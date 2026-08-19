@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { FileText, HardDriveUpload, ExternalLink, FolderOpen, Sparkles, AlertTriangle, Upload } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
-import { getDriveConnection, driveConnectUrl, saveDocumentsToDrive, getDocumentUrl, extractDocument, uploadStaffDocument } from '../api';
+import { getDriveConnection, startDriveConnect, saveDocumentsToDrive, getDocumentUrl, extractDocument, uploadStaffDocument } from '../api';
 
 const font = "'Outfit', sans-serif";
 
@@ -175,12 +175,14 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
       {msg && <div style={{ fontSize: 12, color: tones[msg.tone].fg, marginBottom: 8 }}>{msg.text}</div>}
 
       {drive === null && (
-        <a
-          href={driveConnectUrl(profile?.id, `/onboarding/${onboarding.id}`)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, fontFamily: font, background: tones.info.bg, color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 8, padding: '7px 14px', textDecoration: 'none' }}
+        <button
+          type="button"
+          onClick={() => startDriveConnect(`/onboarding/${onboarding.id}`)
+            .catch((err) => setMsg({ tone: 'danger', text: err.message || 'Could not start the Google Drive connection.' }))}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, fontFamily: font, background: tones.info.bg, color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 8, padding: '7px 14px', cursor: 'pointer' }}
         >
           <HardDriveUpload size={13} /> Connect Google Drive
-        </a>
+        </button>
       )}
       {drive && pending.length > 0 && (
         <button

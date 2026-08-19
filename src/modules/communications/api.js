@@ -7,7 +7,6 @@
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://neksyvneljgxvpchwgch.supabase.co';
 
 // ── Mailboxes ─────────────────────────────────────────────────────────
 
@@ -26,14 +25,33 @@ export async function listMailboxes(profile) {
   );
 }
 
-export function connectMailboxUrl({ staffId, kind, displayName, returnTo }) {
-  const params = new URLSearchParams({
-    staff_id: staffId || '',
-    kind,
-    return_to: returnTo || '/comms/email',
+/**
+ * Start a mailbox connect flow and navigate to Google's consent screen.
+ *
+ * This replaces connectMailboxUrl(), which built the gmail-auth-init URL client-side
+ * with staff_id in the query string. That endpoint 302'd anyone who asked and signed
+ * nothing, so a stranger could consent with their own Google account and have the
+ * callback install it as the practice-default mailbox — the one the reminder and chaser
+ * senders use. gmail-auth-init now requires an active staff session and signs the staff
+ * id into a single-use OAuth state, so the URL has to be fetched rather than built.
+ *
+ * Throws if the caller is not staff or the function is unreachable — callers should
+ * surface the message rather than silently doing nothing.
+ */
+export async function startMailboxConnect({ kind, displayName, returnTo } = {}) {
+  const { data, error } = await supabase.functions.invoke('gmail-auth-init', {
+    body: {
+      ...(kind ? { kind } : {}),
+      ...(displayName ? { display_name: displayName } : {}),
+      return_to: returnTo || '/comms/email',
+      // Adding a mailbox from Communications must never silently take over the
+      // practice default; only the legacy reconnect panel does that.
+      set_default: false,
+    },
   });
-  if (displayName) params.set('display_name', displayName);
-  return `${SUPABASE_URL}/functions/v1/gmail-auth-init?${params.toString()}`;
+  if (error) throw error;
+  if (!data?.url) throw new Error(data?.error || 'Could not start the mailbox connection');
+  window.location.href = data.url;
 }
 
 export function mailboxNeedsReconnect(mailbox) {
