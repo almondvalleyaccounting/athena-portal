@@ -77,7 +77,8 @@ export default function AllTaxesView({ clients = [], loading = false, error = ''
   const openTax = (taxKey, r) => navigate(`/hmrc/${taxKey}?entity=${r.entity_id}`);
 
   // Where a client's problem actually is. Clicking the name should not need you
-  // to have already read the row.
+  // to have already read the row — and like every figure here, it selects the
+  // client, so the tab you land on and every tab after it is about them.
   const biggestTax = (r) => TAX_ORDER
     .reduce((best, k) => (n(r[TAX_META[k].totalsKey]) > n(r[TAX_META[best].totalsKey]) ? k : best), 'paye');
 
@@ -87,7 +88,8 @@ export default function AllTaxesView({ clients = [], loading = false, error = ''
 
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
         Everything HMRC says our clients owe, across PAYE, Corporation Tax, VAT and Self Assessment.
-        <b> Click any figure</b> to open that tax for that client and see what it is made of.
+        <b> Click any figure</b> to open that tax for that client and see what it is made of — the client
+        stays selected on every other tab. The <b>Total</b> goes to Breakdown: all four heads at once.
       </p>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -183,9 +185,24 @@ export default function AllTaxesView({ clients = [], loading = false, error = ''
                         </td>
                       );
                     })}
-                    <td style={{ ...tdNum, fontWeight: 700, borderLeft: '1px solid #f1f5f9',
-                                 color: n(r.total) > 0 ? '#b91c1c' : '#0f172a' }}>
-                      {fmtGbpDetailed(r.total)}
+                    {/* The total is the one figure that is not about a single
+                        head, so it goes to Breakdown — the client's whole
+                        position, all four heads grouped by tax type. */}
+                    <td style={{ ...tdNum, borderLeft: '1px solid #f1f5f9' }}>
+                      <button
+                        onClick={() => navigate(`/hmrc/breakdown?entity=${r.entity_id}`)}
+                        title={`${r.entity_name} — every tax head, and what each balance is made of`}
+                        style={{
+                          background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                          fontFamily: font, fontSize: 12.5, fontWeight: 700,
+                          fontVariantNumeric: 'tabular-nums',
+                          color: n(r.total) > 0 ? '#b91c1c' : '#0f172a',
+                          textDecoration: 'underline', textDecorationStyle: 'dotted',
+                          textDecorationColor: '#cbd5e1',
+                        }}
+                      >
+                        {fmtGbpDetailed(r.total)}
+                      </button>
                     </td>
                     <td style={{ ...tdNum, color: n(r.credit_available) > 0 ? '#0369a1' : '#e2e8f0' }}>
                       {n(r.credit_available) > 0 ? fmtGbpDetailed(r.credit_available) : '—'}

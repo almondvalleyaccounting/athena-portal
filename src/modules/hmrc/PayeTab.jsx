@@ -5,6 +5,7 @@ import { fetchSchemes } from './hmrcApi';
 import ClientStatementView from './ClientStatementView';
 import PaymentsView from './PaymentsView';
 import DebtView from './DebtView';
+import ReconcileView from './ReconcileView';
 import { font, ErrorBar, LevelTrail, TIERS, Pill } from './hmrcShared';
 
 // PAYE, all of it, on one tab.
@@ -17,10 +18,19 @@ import { font, ErrorBar, LevelTrail, TIERS, Pill } from './hmrcShared';
 //   Statement   the account itself, months down the side. Level 1.
 //   Payments    the cash ledger and what HMRC set each payment against.
 //   Chasing     every scheme ranked, with the triage that only PAYE carries.
+//   64-8 Check  whether HMRC's agent list and Athena's PAYE references agree.
+//               It was a top-level "Reconciliation" tab, which said nothing about
+//               what it is for: every row is an authorisation we hold and cannot
+//               place, or a reference we hold that HMRC will not honour. It
+//               belongs here because PAYE references are the only thing it
+//               checks, and it keeps the debt figures honest — a scheme Athena
+//               has never heard of is debt missing from every total on the
+//               module.
 //
-// Chasing is the one that works without a client, because it IS the list you
-// pick from. The other two need somebody chosen; the selector above the tabs is
-// where that happens, and it survives a move to the VAT tab and back.
+// Chasing and the 64-8 check work without a client — one is the list you pick
+// from, the other is about schemes that have no client at all. Statement and
+// Payments need somebody chosen; the selector above the tabs is where that
+// happens, and it survives a move to the VAT tab and back.
 //
 // ONE CLIENT, MORE THAN ONE SCHEME. A company can hold several PAYE references
 // over its life — Tapee ran a scheme, closed it on going dormant, then opened
@@ -32,6 +42,7 @@ const SUBS = [
   { to: '',         label: 'Statement', needsClient: true },
   { to: 'payments', label: 'Payments',  needsClient: true },
   { to: 'chasing',  label: 'Chasing' },
+  { to: '64-8',     label: '64-8 Check' },
 ];
 
 const n = (v) => Number(v || 0);
@@ -196,6 +207,10 @@ export default function PayeTab({ clients = [] }) {
           <Route index element={<ClientStatementView payeRef={payeRef} scheme={scheme} />} />
           <Route path="payments" element={<PaymentsView payeRef={payeRef} entityName={chosen?.entity_name} />} />
           <Route path="chasing" element={<DebtView entityId={entityId} />} />
+          {/* Deliberately NOT filtered to the selected client. The rows worth
+              looking at are the ones with no Athena client behind them, and a
+              client filter would drop exactly those. */}
+          <Route path="64-8" element={<ReconcileView />} />
           <Route path="*" element={<Navigate to="/hmrc/paye" replace />} />
         </Routes>
       )}

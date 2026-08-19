@@ -30,7 +30,9 @@ export default function ClientSelector({ clients, entityId, onPick, taxKey }) {
   }, [open]);
 
   const chosen = clients.find((c) => c.entity_id === entityId);
-  const key = TAX_META[taxKey]?.totalsKey;
+  // On Breakdown there is no single head, so rank on the whole position.
+  const key = TAX_META[taxKey]?.totalsKey || 'total';
+  const keyLabel = TAX_META[taxKey]?.label || 'every tax head added together';
 
   // Whoever owes the most on this tax first — the list is for finding work, and
   // alphabetical order buries it. A search jumps straight to a name anyway.
@@ -126,8 +128,8 @@ export default function ClientSelector({ clients, entityId, onPick, taxKey }) {
             })}
           </div>
           <div style={{ padding: '6px 12px', fontSize: 10.5, color: '#94a3b8', background: '#f8fafc', lineHeight: 1.5 }}>
-            Balances shown are {TAX_META[taxKey]?.label || 'this tax'}. The client stays selected as you move
-            between {TAX_ORDER.length} tax tabs.
+            Balances shown are {keyLabel}. The client stays selected as you move between the
+            {' '}{TAX_ORDER.length} tax tabs and Breakdown.
           </div>
         </div>
       )}

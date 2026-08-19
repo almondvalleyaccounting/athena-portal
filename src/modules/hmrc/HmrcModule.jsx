@@ -3,7 +3,6 @@ import { Routes, Route, Navigate, NavLink, useLocation, useSearchParams } from '
 import { Landmark } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fetchLatestRunPerService, fetchStaleClients } from './hmrcApi';
-import ReconcileView from './ReconcileView';
 import AuthorisationsView from './AuthorisationsView';
 import AllTaxesView from './AllTaxesView';
 import BreakdownView from './BreakdownView';
@@ -29,30 +28,31 @@ import { font, dateTime, TAX_META } from './hmrcShared';
 //             periods, VAT lines, SA years.
 //   level 2   click a figure there and the transactions behind it open beneath.
 //
-// A single client selector sits above the tabs and drives all four tax tabs, so
-// moving from a client's VAT to their PAYE keeps the client. Clear it and a tax
-// tab falls back to ranking every client on that head.
+// Clicking any figure on All taxes also SELECTS that client, and the selection
+// then drives every other tab. One client selector sits above the tabs to change
+// it; clear it and a tax tab falls back to ranking every client on that head.
 //
-// Breakdown is the same book as All taxes cut the other way: grouped by tax
-// type rather than by client, to answer "what IS this balance made of" without
-// going near a transaction.
+// Breakdown is the client's whole position: all four heads at once, grouped by
+// tax type, answering "what IS this balance made of" without going near a
+// transaction. The Total column on All taxes is the link into it, because the
+// total is the one figure that is not about a single head.
 //
-// The other two tabs are housekeeping rather than money:
-//   Reconciliation   where the agent list and Athena disagree
+// One tab is housekeeping rather than money:
 //   Not our clients  schemes HMRC still lets us act on with no active client
 //                    behind them — authorisation to hand back, or a record to fix
+// and the 64-8 check — whether HMRC's agent list and Athena's PAYE references
+// agree — sits under PAYE, since PAYE references are all it checks.
 //
 // Every list is ACTIVE CLIENTS ONLY (sql/207). Former and archived clients are
 // noise on an operational screen; "Not our clients" is where they belong.
 
 const TABS = [
   { to: 'all',             label: 'All taxes' },
-  { to: 'breakdown',       label: 'Breakdown' },
+  { to: 'breakdown',       label: 'Breakdown',        client: true },
   { to: 'paye',            label: 'PAYE',             tax: true },
   { to: 'corporation-tax', label: 'Corporation Tax',  tax: true },
   { to: 'vat',             label: 'VAT',              tax: true },
   { to: 'self-assessment', label: 'Self Assessment',  tax: true },
-  { to: 'reconciliation',  label: 'Reconciliation' },
   { to: 'authorisations',  label: 'Not our clients' },
 ];
 
@@ -88,7 +88,9 @@ export default function HmrcModule() {
   // Which tax tab we are on, if any — the selector needs it to show the right
   // balance beside each name.
   const segment = location.pathname.split('/')[2] || 'all';
-  const onTaxTab = Boolean(TAX_META[segment]);
+  // Breakdown is one client across four heads; the tax tabs are one client on
+  // one head. Both are driven by the same selection, so both carry the picker.
+  const onClientTab = Boolean(TAX_META[segment]) || segment === 'breakdown';
 
   const pick = (id) => {
     const next = new URLSearchParams(params);
@@ -132,7 +134,7 @@ export default function HmrcModule() {
         {TABS.map((t) => (
           <NavLink
             key={t.to}
-            to={`/hmrc/${t.to}${t.tax || t.to === 'all' ? keep : ''}`}
+            to={`/hmrc/${t.to}${t.tax || t.client || t.to === 'all' ? keep : ''}`}
             style={({ isActive }) => ({
               padding: '8px 15px', fontSize: 13, textDecoration: 'none',
               fontWeight: isActive ? 600 : 400,
@@ -147,7 +149,7 @@ export default function HmrcModule() {
       </div>
 
       {/* One selector, four tabs. Only shown where it does something. */}
-      {onTaxTab && (
+      {onClientTab && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <ClientSelector clients={clients} entityId={entityId} onPick={pick} taxKey={segment} />
           {/* Asks for all four taxes at once: the RPC knows which references
@@ -160,7 +162,9 @@ export default function HmrcModule() {
             </span>
           ) : (
             <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
-              No client picked — this tab is ranking every client on {TAX_META[segment]?.label}.
+              {segment === 'breakdown'
+                ? 'No client picked — Breakdown is one client across all four heads.'
+                : `No client picked — this tab is ranking every client on ${TAX_META[segment]?.label}.`}
             </span>
           )}
         </div>
@@ -169,12 +173,11 @@ export default function HmrcModule() {
       <Routes>
         <Route index element={<Navigate to="/hmrc/all" replace />} />
         <Route path="all" element={<AllTaxesView clients={clients} loading={clientsLoading} error={clientsError} />} />
-        <Route path="breakdown" element={<BreakdownView />} />
+        <Route path="breakdown" element={<BreakdownView clients={clients} />} />
         <Route path="paye/*" element={<PayeTab clients={clients} />} />
         <Route path="corporation-tax"  element={<ByTaxView tax="corporation-tax" clients={clients} />} />
         <Route path="vat"              element={<ByTaxView tax="vat" clients={clients} />} />
         <Route path="self-assessment"  element={<ByTaxView tax="self-assessment" clients={clients} />} />
-        <Route path="reconciliation" element={<ReconcileView />} />
         <Route path="authorisations" element={<AuthorisationsView />} />
         {/* Tabs that were folded into others. Old links, and anything bookmarked,
             still land somewhere sensible rather than on a 404 or silently on
@@ -187,6 +190,11 @@ export default function HmrcModule() {
         {/* Balance analysis said the same thing as the PAYE statement, one tax
             year at a time. Removed rather than kept in parallel. */}
         <Route path="balance" element={<KeepQuery to="/hmrc/paye" />} />
+        {/* Reconciliation was never about money — it is whether our 64-8
+            authorisation and Athena's PAYE references agree with HMRC's own
+            agent list. Renamed for what it is, and moved under PAYE, which is
+            the only head whose references it checks. */}
+        <Route path="reconciliation" element={<Navigate to="/hmrc/paye/64-8" replace />} />
         <Route path="*" element={<Navigate to="/hmrc/all" replace />} />
       </Routes>
     </div>
