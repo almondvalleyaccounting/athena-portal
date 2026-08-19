@@ -1,6 +1,10 @@
 // Shared Resend sender for Athena edge functions. Keeps the API key, sender
 // identity, and error shape in one place. Mirrors the inline calls in
-// send-quote-email / send-uplift-email so behaviour is consistent.
+// send-quote-email so behaviour is consistent.
+//
+// (send-uplift-email was listed here too. Deleted 2026-08-19: it had no caller in
+// src or the built bundle, and an unreferenced endpoint that can send mail as the
+// practice is worth removing rather than guarding. Source is in git if ever needed.)
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const RESEND_FROM_EMAIL =

@@ -71,12 +71,41 @@ function collectFiles(slug) {
   return files;
 }
 
+/**
+ * Remove a function from the platform entirely. For a dead endpoint, deletion beats a
+ * guard: there is no code left to be reached. The source stays in git history, so a
+ * redeploy restores it. Requires --yes, because this cannot be undone from here.
+ */
+async function deleteFunction(slug) {
+  const url = `https://api.supabase.com/v1/projects/${PROJECT_REF}/functions/${encodeURIComponent(slug)}`;
+  const resp = await fetch(url, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken()}` },
+  });
+  if (!resp.ok) {
+    console.error(`FAILED ${resp.status}: ${(await resp.text()).slice(0, 400)}`);
+    process.exit(1);
+  }
+  console.log(`deleted ${slug} from project ${PROJECT_REF}`);
+}
+
 async function main() {
   const [slug, ...rest] = process.argv.slice(2);
   if (!slug) {
     console.error('Usage: node scripts/deploy-edge-function.cjs <slug> [--verify-jwt=true|false] [--dry-run]');
+    console.error('       node scripts/deploy-edge-function.cjs <slug> --delete --yes');
     process.exit(1);
   }
+
+  if (rest.includes('--delete')) {
+    if (!rest.includes('--yes')) {
+      console.error(`Refusing to delete ${slug} without --yes. Check for callers first.`);
+      process.exit(1);
+    }
+    await deleteFunction(slug);
+    return;
+  }
+
   const dryRun = rest.includes('--dry-run');
   const jwtArg = rest.find((a) => a.startsWith('--verify-jwt='));
   const verifyJwt = jwtArg ? jwtArg.split('=')[1] !== 'false' : true;
