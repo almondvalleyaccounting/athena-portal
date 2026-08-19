@@ -14,6 +14,7 @@ import AdminPage from './shell/AdminPage';
 import SecurityPage from './shell/SecurityPage';
 import UserSettingsPage from './shell/UserSettingsPage';
 import PortalClientsPage from './shell/PortalClientsPage';
+import DashboardAccessPage from './shell/DashboardAccessPage';
 import ConnectionsPage from './shell/ConnectionsPage';
 import SchedulesPage from './shell/SchedulesPage';
 import ShortcutsPage from './shell/ShortcutsMap';
@@ -100,6 +101,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/admin" element={<Navigate to="/admin/staff" replace />} />
           <Route path="/admin/staff" element={<AdminPage />} />
           <Route path="/admin/portal-clients" element={<PortalClientsPage />} />
+          <Route path="/admin/dashboard-access" element={<DashboardAccessPage />} />
           <Route path="/admin/connections" element={<ConnectionsPage />} />
           {/* What runs on a timer, and when it next fires (sql/223). */}
           <Route path="/admin/schedules" element={<SchedulesPage />} />

@@ -3,18 +3,31 @@
 // caches each metric in qbo_dashboard_cache, and returns them. Cached + refresh
 // model: returns cache if fresh unless { refresh:true }.
 //
-// Self-contained (inlines token logic) — mirrors the deployed planning-qbo-pull,
-// which is the divergence-proof pattern for MCP deploys in this project.
+// Inlines its own token logic — mirrors the deployed planning-qbo-pull. (The
+// only shared import is the authorisation helper, which scripts/deploy-edge-
+// function.cjs follows off disk, so what deploys is what is in the repo.)
 //
-// Auth: verify_jwt=true at the gateway AND an in-function staff check
-// (can_view_reports) — because portal clients share auth.users, so a valid JWT
-// alone is NOT sufficient to read a client's financials.
+// Auth: verify_jwt=true at the gateway AND an in-function check — because portal
+// clients share auth.users, so a valid JWT alone is NOT sufficient to read a
+// client's financials. requireStaffOrService admits exactly two kinds of caller:
+// active staff holding can_view_reports, and a service-role caller.
+//
+// The service-role branch is what lets portal-dashboard exist. A client-portal
+// user never reaches this function; portal-dashboard authenticates them, checks
+// their client_dashboard_access grant, resolves the realm ITSELF, and then calls
+// here server-side with the service key. That keeps every QuickBooks call and
+// every report parser in one place, so a client can never be shown a figure
+// derived differently from the one staff see.
+//
+// Note that a service caller has no staff profile, so the practice-books guard
+// below refuses AVA's own realm on that path. That is deliberate: fail closed.
 //
 // Token resolution per realm: prefer qbo_report_tokens (per-client, populated on
 // reconnect); fall back to an active qbo_connections row on the same realm (lets
 // AVA's own books work before any client reconnect).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireStaffOrService, authErrorResponse, type Caller } from "../_shared/require-staff.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -1014,16 +1027,17 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return jr({ success: false, error: "POST required" }, 405);
 
   try {
-    // 1. Auth — valid JWT + active staff with can_view_reports
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return jr({ success: false, error: "Missing authorization" }, 401);
-    const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
-    const { data: { user }, error: authErr } = await anon.auth.getUser();
-    if (authErr || !user) return jr({ success: false, error: "Invalid token" }, 401);
+    // 1. Auth — active staff with can_view_reports, or a service-role caller.
+    let caller: Caller;
+    try { caller = await requireStaffOrService(req, "can_view_reports"); }
+    catch (e) { return authErrorResponse(e, cors); }
 
     const sb = svc();
-    const { data: profile } = await sb.from("staff_profiles").select("can_view_reports, can_view_practice_financials").eq("id", user.id).single();
-    if (!profile?.can_view_reports) return jr({ success: false, error: "Not authorised" }, 403);
+    // Only a staff caller can hold the practice-financials flag; a service
+    // caller has no profile and therefore never clears the guard below.
+    const { data: profile } = caller.kind === "staff"
+      ? await sb.from("staff_profiles").select("can_view_practice_financials").eq("id", caller.userId).single()
+      : { data: null };
 
     // 2. Body
     const body = await req.json().catch(() => ({}));

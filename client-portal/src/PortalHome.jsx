@@ -6,6 +6,7 @@ import StepCard from './StepCard';
 import QuoteCard from './QuoteCard';
 import GroupsSection from './GroupsSection';
 import ServicesSection from './ServicesSection';
+import DashboardSection from './DashboardSection';
 
 /*
   Onboarding portal home. All data comes from SECURITY DEFINER RPCs that
@@ -66,6 +67,10 @@ export default function PortalHome({ session }) {
   const [error, setError] = useState(null);
   const [showDone, setShowDone] = useState({});
   const claimed = useRef(false);
+  // A client may hold a dashboard grant with no onboarding at all — the
+  // "nothing here yet" card must not greet someone whose figures are right below
+  // it. DashboardSection tells us whether it has anything to show.
+  const [hasDashboards, setHasDashboards] = useState(false);
   const [showIntro, setShowIntro] = useState(() => {
     try { return !localStorage.getItem('ava_seen_intro'); } catch { return false; }
   });
@@ -196,7 +201,9 @@ export default function PortalHome({ session }) {
         )}
         {!data && !error && <div style={{ color: t.faint, fontSize: 14 }}>Loading…</div>}
 
-        {data && onboardings.length === 0 && (
+        <DashboardSection onHasDashboards={setHasDashboards} />
+
+        {data && onboardings.length === 0 && !hasDashboards && (
           <div className="fade-up" style={{ background: '#fff', border: `1px solid ${t.border}`, borderRadius: 16, padding: '36px 24px', textAlign: 'center' }}>
             <div style={{ fontSize: 16, fontWeight: 600, color: t.navy, marginBottom: 6 }}>Nothing here just yet</div>
             <p style={{ fontSize: 13.5, color: t.muted, lineHeight: 1.6, margin: 0 }}>

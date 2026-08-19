@@ -24,6 +24,7 @@ const SUBPAGES = [
   { prefix: '/planner/tasks', label: 'Admin Task List' },
   { prefix: '/admin/staff', label: 'Staff & Permissions' },
   { prefix: '/admin/portal-clients', label: 'Portal Clients' },
+  { prefix: '/admin/dashboard-access', label: 'Client Dashboard Access' },
   { prefix: '/admin/connections', label: 'Connections' },
   { prefix: '/admin/schedules', label: 'Scheduled Jobs' },
   { prefix: '/settings/me', label: 'My Settings' },
