@@ -798,6 +798,200 @@ async function plAccountDetail(sb: any, realmId: string, start: string, end: str
   };
 }
 
+// P&L account-level detail BY MONTH over [start,end] — the single source the
+// Overview tab aggregates into months / quarters / years, reported or
+// underlying. One QBO report (summarize_column_by=Month) gives both the group
+// summaries (income, net income, …) and every leaf account's monthly amounts,
+// so owner-cost add-backs can be applied per bucket rather than only over one
+// flat range.
+//
+// Month keys come from the column MetaData (StartDate/EndDate) when QBO sends
+// it, and are otherwise derived by walking calendar months from `start` — QBO
+// always returns one column per calendar month in the range, so the fallback
+// lines up. `month_keys` are YYYY-MM and drive fiscal/calendar bucketing on the
+// client; `months` are the QBO column titles, kept for labels.
+async function plMonthlyDetail(sb: any, realmId: string, start: string, end: string) {
+  const resp = await qboFetch(sb, realmId, `reports/ProfitAndLoss?start_date=${start}&end_date=${end}&summarize_column_by=Month&accounting_method=Accrual&minorversion=75`);
+  if (!resp.ok) throw new Error(`P&L monthly detail ${start}..${end} ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const report = await resp.json();
+
+  const allCols: any[] = report?.Columns?.Column || [];
+  // Value columns after the account-name column, excluding a trailing Total.
+  const monthCols: { idx: number; title: string; key: string | null }[] = [];
+  allCols.forEach((c, i) => {
+    if (i === 0) return;
+    const title = c?.ColTitle ?? "";
+    if (/^total$/i.test(title)) return;
+    const meta = Array.isArray(c?.MetaData) ? c.MetaData : [];
+    const sd = meta.find((m: any) => m?.Name === "StartDate")?.Value || null;
+    monthCols.push({ idx: i, title, key: sd ? String(sd).slice(0, 7) : null });
+  });
+
+  // Fill any missing keys by walking calendar months from the range start.
+  const base = new Date(`${start}T00:00:00`);
+  monthCols.forEach((c, n) => {
+    if (c.key) return;
+    const d = new Date(base.getFullYear(), base.getMonth() + n, 1);
+    c.key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+
+  const cellsFrom = (cd: any[]) => monthCols.map((c) => {
+    const v = parseFloat(cd?.[c.idx]?.value ?? "");
+    return isNaN(v) ? 0 : v;
+  });
+
+  const groupSeries: Record<string, number[]> = {};
+  const rowsOut: any[] = [];
+  const walk = (rs: any[], group: string | null) => {
+    for (const r of rs || []) {
+      const g = r.group || group;
+      if (r.group && r.Summary?.ColData) groupSeries[r.group] = cellsFrom(r.Summary.ColData);
+      if (r.ColData && Array.isArray(r.ColData) && r.type !== "Section") {
+        const c0 = r.ColData[0] || {};
+        const name = c0.value || "";
+        const id = c0.id ? String(c0.id) : null;
+        if (name) rowsOut.push({ id, name, group: g, amounts: cellsFrom(r.ColData) });
+      }
+      if (r.Rows?.Row) walk(r.Rows.Row, g);
+    }
+  };
+  walk(report?.Rows?.Row || [], null);
+
+  const s = (k: string) => groupSeries[k] || null;
+  return {
+    period: { start, end },
+    currency: report?.Header?.Currency || null,
+    months: monthCols.map((c) => c.title),
+    month_keys: monthCols.map((c) => c.key),
+    series: {
+      income: s("Income"),
+      cogs: s("COGS"),
+      gross_profit: s("GrossProfit"),
+      expenses: s("Expenses"),
+      net_operating_income: s("NetOperatingIncome"),
+      other_income: s("OtherIncome"),
+      other_expenses: s("OtherExpenses"),
+      net_income: s("NetIncome"),
+    },
+    rows: rowsOut,
+  };
+}
+
+/* ── Monthly actuals for the Projection tab ───────────────────────── */
+// Balance sheet BY MONTH over [start,end] — one column per month end, each run
+// through bsLines so the actual columns arrive already shaped like the
+// dashboard's own balance-sheet categories. balanceSheetAsAt does a fixed
+// 13-month comparative for its own tiles; this takes an arbitrary range,
+// because a projection's actuals run can be any length.
+async function bsMonthlySeries(sb: any, realmId: string, start: string, end: string) {
+  const resp = await qboFetch(sb, realmId, `reports/BalanceSheet?start_date=${start}&end_date=${end}&summarize_column_by=Month&accounting_method=Accrual&minorversion=75`);
+  if (!resp.ok) throw new Error(`BalanceSheet monthly ${start}..${end} ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const report = await resp.json();
+
+  const allCols: any[] = report?.Columns?.Column || [];
+  const cols: { idx: number; title: string; key: string }[] = [];
+  const base = new Date(`${start}T00:00:00`);
+  allCols.forEach((c, i) => {
+    if (i === 0) return;
+    const title = c?.ColTitle ?? "";
+    if (/^total$/i.test(title)) return;
+    const meta = Array.isArray(c?.MetaData) ? c.MetaData : [];
+    const ed = meta.find((m: any) => m?.Name === "EndDate")?.Value
+      || meta.find((m: any) => m?.Name === "StartDate")?.Value || null;
+    const n = cols.length;
+    const d = new Date(base.getFullYear(), base.getMonth() + n, 1);
+    cols.push({
+      idx: i, title,
+      key: ed ? String(ed).slice(0, 7) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+    });
+  });
+
+  const series: Record<string, (number | null)[]> = {};
+  const walk = (rs: any[]) => {
+    for (const r of rs || []) {
+      const cd = r.Summary?.ColData;
+      if (r.group && cd) {
+        series[r.group] = cols.map((c) => {
+          const v = parseFloat(cd[c.idx]?.value ?? "");
+          return isNaN(v) ? null : v;
+        });
+      }
+      if (r.Rows?.Row) walk(r.Rows.Row);
+    }
+  };
+  walk(report?.Rows?.Row || []);
+
+  const groupsAt = (n: number) => {
+    const g: Record<string, number> = {};
+    for (const k in series) { const v = series[k][n]; if (v != null) g[k] = v; }
+    return g;
+  };
+  const perMonth = cols.map((_, n) => bsLines(groupsAt(n)));
+  const lineKeys = ["fixed_assets", "other_assets", "current_assets", "cash", "debtors",
+    "accounts_payable", "creditors_within_1yr", "creditors_after_1yr",
+    "total_assets", "total_liabilities", "net_assets", "equity", "current_liabilities"] as const;
+  const lines: Record<string, (number | null)[]> = {};
+  for (const k of lineKeys) lines[k] = perMonth.map((m: any) => m[k] ?? null);
+
+  return {
+    period: { start, end },
+    currency: report?.Header?.Currency || null,
+    months: cols.map((c) => c.title),
+    month_keys: cols.map((c) => c.key),
+    lines,
+  };
+}
+
+// Cash flow statement BY MONTH. QBO's group keys vary a little by locale and
+// report version, so the raw group series come back untouched and the client
+// picks the line it wants with a fallback list (see projectionMapping.CF_LINES)
+// rather than this function guessing once, server-side, for everyone.
+async function cashFlowMonthly(sb: any, realmId: string, start: string, end: string) {
+  const resp = await qboFetch(sb, realmId, `reports/CashFlow?start_date=${start}&end_date=${end}&summarize_column_by=Month&minorversion=75`);
+  if (!resp.ok) throw new Error(`CashFlow ${start}..${end} ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const report = await resp.json();
+
+  const allCols: any[] = report?.Columns?.Column || [];
+  const cols: { idx: number; title: string; key: string }[] = [];
+  const base = new Date(`${start}T00:00:00`);
+  allCols.forEach((c, i) => {
+    if (i === 0) return;
+    const title = c?.ColTitle ?? "";
+    if (/^total$/i.test(title)) return;
+    const meta = Array.isArray(c?.MetaData) ? c.MetaData : [];
+    const sd = meta.find((m: any) => m?.Name === "StartDate")?.Value || null;
+    const n = cols.length;
+    const d = new Date(base.getFullYear(), base.getMonth() + n, 1);
+    cols.push({
+      idx: i, title,
+      key: sd ? String(sd).slice(0, 7) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+    });
+  });
+
+  const series: Record<string, number[]> = {};
+  const walk = (rs: any[]) => {
+    for (const r of rs || []) {
+      const cd = r.Summary?.ColData;
+      if (r.group && cd) {
+        series[r.group] = cols.map((c) => {
+          const v = parseFloat(cd[c.idx]?.value ?? "");
+          return isNaN(v) ? 0 : v;
+        });
+      }
+      if (r.Rows?.Row) walk(r.Rows.Row);
+    }
+  };
+  walk(report?.Rows?.Row || []);
+
+  return {
+    period: { start, end },
+    currency: report?.Header?.Currency || null,
+    months: cols.map((c) => c.title),
+    month_keys: cols.map((c) => c.key),
+    series,
+  };
+}
+
 const METRICS: Record<string, (sb: any, realmId: string) => Promise<any>> = {
   company: pullCompany,
   pl_summary: pullPlSummary,
@@ -906,18 +1100,30 @@ Deno.serve(async (req) => {
           () => plReport(sb, realmId, p.plStart, p.plEnd, true));
         await windowMetric(`pl_prior#${p.priorStart}_${p.priorEnd}`, p.priorStart, p.priorEnd, "pl_range_prior",
           () => plReport(sb, realmId, p.priorStart, p.priorEnd, false));
-        // Chart = 12 months ending at the period end month. When that window is
-        // identical to the selected range (the 12-month presets), reuse it.
-        if (p.chartStart === p.plStart && p.chartEnd === p.plEnd && out.pl_range) {
+        // Chart window. `chartDetail` (the Overview's grain / basis / underlying
+        // controls) needs per-account monthly amounts, not just group series, so
+        // it takes the account-level monthly report INSTEAD of the plain one —
+        // same single QBO call, strictly more data. Callers that don't ask for
+        // detail keep the old behaviour: 12 months ending at the period-end
+        // month, reusing pl_range when the windows coincide.
+        if (p.chartDetail) {
+          await windowMetric(`pnl_chart_detail#${p.chartStart}_${p.chartEnd}`, p.chartStart, p.chartEnd, "pnl_chart_detail",
+            () => plMonthlyDetail(sb, realmId, p.chartStart, p.chartEnd));
+        } else if (p.chartStart === p.plStart && p.chartEnd === p.plEnd && out.pl_range) {
           out.pnl_chart = out.pl_range;
         } else {
           await windowMetric(`pnl_chart#${p.chartStart}_${p.chartEnd}`, p.chartStart, p.chartEnd, "pnl_chart",
             () => plReport(sb, realmId, p.chartStart, p.chartEnd, true));
         }
-        // Balance figures for the Overview tiles, as at the period end. Shares a
-        // cache key with the Balance-Sheet-tab as-at pull (same date ⇒ one row).
-        await windowMetric(`bs_asat#${p.plEnd}`, null, p.plEnd, "bs_period",
-          () => balanceSheetAsAt(sb, realmId, p.plEnd, true));
+        // Balance figures for the Overview tiles. `bsAsAt` is the end of the
+        // Overview's latest complete bucket, which is NOT always the period end
+        // — a quarter grain snaps back to the last closed quarter — and the
+        // tiles have to describe the same moment as the P&L beside them.
+        // Shares a cache key with the Balance-Sheet-tab as-at pull (same date ⇒
+        // one row).
+        const bsDate = String(p.bsAsAt || p.plEnd);
+        await windowMetric(`bs_asat#${bsDate}`, null, bsDate, "bs_period",
+          () => balanceSheetAsAt(sb, realmId, bsDate, true));
         // Account-level P&L detail for the Underlying Performance tab (owner-cost
         // add-backs matched by account id over the selected range) — current and
         // prior period, so the underlying tiles can show a vs-prior delta.
@@ -925,6 +1131,22 @@ Deno.serve(async (req) => {
           () => plAccountDetail(sb, realmId, p.plStart, p.plEnd));
         await windowMetric(`pl_detail#${p.priorStart}_${p.priorEnd}`, p.priorStart, p.priorEnd, "pl_detail_prior",
           () => plAccountDetail(sb, realmId, p.priorStart, p.priorEnd));
+      }
+
+      // Projection actuals — the three statements by month over the actuals
+      // run, so the Projection tab can put actual and forecast columns on the
+      // same rows. Separate from `period` because the projection's timeline is
+      // the scenario's, not the rail's date filter.
+      if (win.projection) {
+        const pr = win.projection;
+        const ps = String(pr.start);
+        const pe = String(pr.end);
+        await windowMetric(`pnl_chart_detail#${ps}_${pe}`, ps, pe, "proj_pl",
+          () => plMonthlyDetail(sb, realmId, ps, pe));
+        await windowMetric(`bs_monthly#${ps}_${pe}`, ps, pe, "proj_bs",
+          () => bsMonthlySeries(sb, realmId, ps, pe));
+        await windowMetric(`cf_monthly#${ps}_${pe}`, ps, pe, "proj_cf",
+          () => cashFlowMonthly(sb, realmId, ps, pe));
       }
 
       if (win.asat) {

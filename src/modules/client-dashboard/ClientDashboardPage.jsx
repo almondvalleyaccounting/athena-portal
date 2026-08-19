@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import {
   RefreshCw, AlertCircle, CheckCircle, Loader, ShieldCheck,
   ShieldAlert, Link2Off, Plus, X, Star, ChevronDown, ChevronRight,
-  CloudOff, ArrowDownRight, ArrowUpRight,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getReportsAuthUrl } from '../../lib/qboApi';
@@ -11,12 +10,15 @@ import { useAuth } from '../../shell/AppShell';
 import {
   money, moneyCompact, timeAgo, shortDate, shortMonth,
   latestByMetric, parseReportTree,
-  RATIOS, formatRatio,
   PERIOD_PRESETS, ASAT_PRESETS, computePeriod, computeAsAt, fyStartMonthIndex,
   OUTFIT, PLAYFAIR, cardStyle, inputStyle, HEALTH_COLORS,
 } from './dashboardData';
-import { TrendChart } from './DashboardCharts';
+import { LoadingCard, EmptyState, MetricTile } from './DashboardUI';
+import { buildBuckets, monthKeyOfDate } from './overviewGrain';
+import { useUnderlyingConfig } from './useUnderlyingConfig';
+import OverviewTab from './OverviewTab';
 import UnderlyingPerformanceTab from './UnderlyingPerformanceTab';
+import ProjectionTab from './ProjectionTab';
 
 /*
   Client Dashboard v2 — multi-tab reporting tool over the client's QuickBooks.
@@ -24,10 +26,16 @@ import UnderlyingPerformanceTab from './UnderlyingPerformanceTab';
   Two independent date filters live in the left rail, contextual to the active
   tab (see FilterRail):
     • PERIOD  → Overview + P&L. A date range (default: last full 12 months).
-      Overview tiles, ratios and the 12-month trend chart all follow it; the
-      chart is always the 12 months ending in the selected period-end month.
+      The P&L tab reports the range itself. The OVERVIEW treats it as an end
+      point only: its own grain / basis / view toggles (see OverviewTab and
+      overviewGrain.js) decide how wide a bucket is and where the boundaries
+      fall, and the buckets are counted back from the last one that closes on
+      or before this date.
     • AS-AT   → Balance Sheet + Debtors & Creditors. A single point in time
       (default: last month end).
+
+  The Projection tab sets its own timeline from a linked Client Forecast
+  scenario and an actuals cut-off, so neither rail filter applies to it.
 
   Filtered figures come from dashboard-qbo-pull's windowed mode (live pull;
   presets cached by date range, custom ranges never stored). The default full
@@ -42,10 +50,19 @@ const TABS = [
   { id: 'balance', label: 'Balance Sheet' },
   { id: 'debtors', label: 'Debtors' },
   { id: 'creditors', label: 'Creditors' },
+  { id: 'projection', label: 'Projection' },
   { id: 'health', label: 'Bookkeeping Health' },
 ];
 const PERIOD_TABS = new Set(['overview', 'pnl', 'underlying']);
 const ASAT_TABS = new Set(['balance', 'debtors', 'creditors']);
+
+// The Overview toggles are a working preference, not client data — remembering
+// them means someone who thinks in fiscal quarters isn't re-picking them on
+// every client they open.
+const PREF_KEY = 'ava_dash_overview_prefs';
+const loadPrefs = () => {
+  try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}') || {}; } catch { return {}; }
+};
 
 /* ─── Page ─────────────────────────────────────────────────────── */
 export default function ClientDashboardPage() {
@@ -73,12 +90,25 @@ export default function ClientDashboardPage() {
   const [customPeriod, setCustomPeriod] = useState({ start: '', end: '' });
   const [customAsAt, setCustomAsAt] = useState({ date: '' });
 
+  // Overview grain / basis / view. These drive the whole Overview tab: the
+  // period picker above only sets where the buckets END.
+  const [grain, setGrain] = useState(() => loadPrefs().grain || 'month');
+  const [basis, setBasis] = useState(() => loadPrefs().basis || 'fiscal');
+  const [view, setView] = useState(() => loadPrefs().view || 'reported');
+  useEffect(() => {
+    try { localStorage.setItem(PREF_KEY, JSON.stringify({ grain, basis, view })); } catch { /* private mode */ }
+  }, [grain, basis, view]);
+
   // Windowed (filtered) data.
-  const [periodData, setPeriodData] = useState(null); // { pl_range, pl_range_prior, pnl_chart, bs_period }
+  const [periodData, setPeriodData] = useState(null); // { pl_range, pl_range_prior, pnl_chart_detail, bs_period }
   const [asAtData, setAsAtData] = useState(null);      // { bs_asat, ar_asat, ap_asat }
   const [periodLoading, setPeriodLoading] = useState(false);
   const [asAtLoading, setAsAtLoading] = useState(false);
   const asAtLoadedRef = useRef(null);
+
+  // Owner-cost / one-off config, held once for the whole page — the Overview
+  // and Underlying tabs both read it and must not diverge.
+  const underlyingConfig = useUnderlyingConfig(realmId);
 
   const loadClients = async () => {
     try {
@@ -247,6 +277,20 @@ export default function ClientDashboardPage() {
     [asAtKey, today, fyIdx, customAsAt],
   );
 
+  /* Overview buckets — months / quarters / years, fiscal or calendar, counted
+     back from the last one that CLOSES on or before the selected period end.
+     The QBO chart window covers them all plus one prior bucket for the tile
+     deltas, and the Overview's balance-sheet figures are pulled as at the
+     LATEST bucket end rather than the raw period end, so the P&L and balance
+     sheet on that tab always describe the same moment. */
+  const overview = useMemo(
+    () => buildBuckets({ grain, basis, anchorKey: (period.plEnd || '').slice(0, 7) || monthKeyOfDate(today), fyIdx }),
+    [grain, basis, period.plEnd, fyIdx, today],
+  );
+  const chartStart = overview.window.start;
+  const chartEnd = overview.window.end;
+  const bsAsAt = overview.buckets[overview.buckets.length - 1]?.end || period.plEnd;
+
   /* Windowed pulls ------------------------------------------------ */
   const fetchPeriod = useCallback(async (refresh = false) => {
     if (!realmId) return;
@@ -260,7 +304,8 @@ export default function ClientDashboardPage() {
             period: {
               plStart: period.plStart, plEnd: period.plEnd,
               priorStart: period.priorStart, priorEnd: period.priorEnd,
-              chartStart: period.chartStart, chartEnd: period.chartEnd,
+              chartStart, chartEnd, chartDetail: true,
+              bsAsAt,
             },
           },
         },
@@ -268,7 +313,7 @@ export default function ClientDashboardPage() {
       if (!fnErr) setPeriodData(payload?.metrics || null);
     } catch { /* the reconnect banner is driven by the default pull */ }
     setPeriodLoading(false);
-  }, [realmId, periodKey, period.plStart, period.plEnd, period.priorStart, period.priorEnd, period.chartStart, period.chartEnd]);
+  }, [realmId, periodKey, period.plStart, period.plEnd, period.priorStart, period.priorEnd, chartStart, chartEnd, bsAsAt]);
 
   const fetchAsAt = useCallback(async (refresh = false) => {
     if (!realmId) return;
@@ -478,8 +523,17 @@ export default function ClientDashboardPage() {
               {/* Tab body */}
               {tab === 'overview' && (
                 <OverviewTab
-                  data={periodData} meta={period} currency={periodCurrency}
+                  detail={periodData?.pnl_chart_detail}
+                  bs={periodData?.bs_period}
+                  buckets={overview.buckets}
+                  prior={overview.prior}
+                  currency={periodCurrency}
                   loading={periodLoading} empty={emptyProps} goTab={setTab}
+                  grain={grain} setGrain={setGrain}
+                  basis={basis} setBasis={setBasis}
+                  view={view} setView={setView}
+                  fyIdx={fyIdx}
+                  config={underlyingConfig}
                 />
               )}
               {tab === 'pnl' && (
@@ -487,8 +541,18 @@ export default function ClientDashboardPage() {
               )}
               {tab === 'underlying' && (
                 <UnderlyingPerformanceTab
-                  realmId={realmId} data={periodData} meta={period}
+                  data={periodData} meta={period}
                   currency={periodCurrency} loading={periodLoading} empty={emptyProps}
+                  config={underlyingConfig}
+                />
+              )}
+              {tab === 'projection' && (
+                <ProjectionTab
+                  realmId={realmId} entityId={entityId} clientName={selectedName}
+                  currency={periodCurrency} fyIdx={fyIdx}
+                  grain={grain} setGrain={setGrain}
+                  basis={basis} setBasis={setBasis}
+                  config={underlyingConfig}
                 />
               )}
               {tab === 'balance' && (
@@ -545,7 +609,9 @@ function FilterRail({
     return (
       <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
         <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
-          Bookkeeping health reflects the current state of the file.
+          {tab === 'projection'
+            ? 'The projection sets its own timeline — the linked scenario and the actuals cut-off.'
+            : 'Bookkeeping health reflects the current state of the file.'}
         </div>
         {freshness}
       </div>
@@ -617,185 +683,10 @@ function FilterRail({
       <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#64748b', marginTop: '10px', lineHeight: 1.5 }}>
         {isAsAt
           ? `Figures as at ${shortDate(asAt.date)}.`
-          : `${shortDate(period.plStart)} → ${shortDate(period.plEnd)}. Chart ends ${shortDate(period.chartEnd)}.`}
+          : `${shortDate(period.plStart)} → ${shortDate(period.plEnd)}.`}
+        {!isAsAt && tab === 'overview' && ' Overview counts its buckets back from this end date.'}
       </div>
       {freshness}
-    </div>
-  );
-}
-
-/* ─── Shared bits ──────────────────────────────────────────────── */
-
-function LoadingCard({ label }) {
-  return (
-    <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
-      <Loader size={22} style={{ color: '#7dd3fc', marginBottom: '10px', animation: 'spin 1s linear infinite' }} />
-      <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#64748b' }}>Loading {label}…</div>
-    </div>
-  );
-}
-
-function EmptyState({ label, needsReconnect, selectedName, onPull, loading }) {
-  return (
-    <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
-      <CloudOff size={26} style={{ color: '#cbd5e1', marginBottom: '10px' }} />
-      <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
-        No {label} for this client yet
-      </div>
-      <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#64748b', maxWidth: '460px', margin: '0 auto 16px' }}>
-        {needsReconnect
-          ? `${selectedName || 'This client'}'s QuickBooks connection has no usable access tokens, so nothing can be pulled. Reconnect them from Reports → Connect, then pull again.`
-          : 'Pull from QuickBooks to fetch this report. If the pull fails, the client’s QuickBooks needs (re)connecting from the Reports module.'}
-      </div>
-      <button
-        onClick={onPull}
-        disabled={loading}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px',
-          border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
-          cursor: loading ? 'not-allowed' : 'pointer', fontFamily: OUTFIT, fontSize: '13px',
-          fontWeight: 600, color: '#38bdf8',
-        }}
-      >
-        <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} />
-        Pull from QuickBooks
-      </button>
-    </div>
-  );
-}
-
-// "vs …" change indicator. upIsGood flips the colouring for figures where an
-// increase is unwelcome (creditors, aged debt).
-function Delta({ now, prev, currency, upIsGood = true, label = 'vs last month' }) {
-  if (now === null || now === undefined || prev === null || prev === undefined) return null;
-  const diff = now - prev;
-  if (Math.abs(diff) < 0.005) {
-    return <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>unchanged {label}</span>;
-  }
-  const up = diff > 0;
-  const good = up === upIsGood;
-  const color = good ? '#166534' : '#991b1b';
-  const Icon = up ? ArrowUpRight : ArrowDownRight;
-  return (
-    <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 600, color, display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-      <Icon size={12} /> {money(Math.abs(diff), currency)} {label}
-    </span>
-  );
-}
-
-function MetricTile({ label, value, currency, sub, delta, onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      title={onClick ? 'Open the full report' : undefined}
-      style={{
-        backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '14px 16px',
-        cursor: onClick ? 'pointer' : 'default', transition: 'all 0.15s ease',
-      }}
-      onMouseEnter={(e) => { if (onClick) { e.currentTarget.style.borderColor = '#7dd3fc'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(56,189,248,0.08)'; } }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = 'none'; }}
-    >
-      <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>{label}</div>
-      <div style={{ fontFamily: OUTFIT, fontSize: '22px', fontWeight: 700, color: (value ?? 0) < 0 ? '#991b1b' : '#0f172a' }}>
-        {money(value, currency)}
-      </div>
-      <div style={{ minHeight: '16px', marginTop: '2px', display: 'flex', gap: '8px', alignItems: 'baseline', flexWrap: 'wrap' }}>
-        {delta}
-        {sub && <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>{sub}</span>}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Overview tab ─────────────────────────────────────────────── */
-function OverviewTab({ data, meta, currency, loading, empty, goTab }) {
-  const plRange = data?.pl_range;
-  const plPrior = data?.pl_range_prior;
-  const pnlChart = data?.pnl_chart;
-  const bs = data?.bs_period;
-  const hasAnything = plRange || bs || pnlChart;
-  if (!hasAnything) return loading ? <LoadingCard label="overview figures" /> : <EmptyState label="overview figures" {...empty} />;
-
-  const deltaLabel = meta?.deltaLabel || 'vs prior period';
-  const asAtLabel = bs?.period?.end ? `as at ${shortDate(bs.period.end)}` : null;
-  const creditors = bs?.accounts_payable ?? bs?.creditors_within_1yr;
-  const creditorsPrev = bs?.prev?.accounts_payable ?? bs?.prev?.creditors_within_1yr;
-
-  const ratioVals = RATIOS.map((r) => ({ ...r, value: r.compute({ plRange, pnlChart, bs }) }));
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* Headline tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-        <MetricTile
-          label={`Revenue — ${meta?.label || 'period'}`} value={plRange?.income} currency={currency}
-          delta={<Delta now={plRange?.income} prev={plPrior?.income} currency={currency} label={deltaLabel} />}
-          onClick={goTab ? () => goTab('pnl') : undefined}
-        />
-        <MetricTile
-          label={`Net profit — ${meta?.label || 'period'}`} value={plRange?.net_income} currency={currency}
-          delta={<Delta now={plRange?.net_income} prev={plPrior?.net_income} currency={currency} label={deltaLabel} />}
-          onClick={goTab ? () => goTab('pnl') : undefined}
-        />
-        <MetricTile
-          label="Cash at bank" value={bs?.cash} currency={currency} sub={asAtLabel}
-          delta={<Delta now={bs?.cash} prev={bs?.prev?.cash} currency={currency} />}
-          onClick={goTab ? () => goTab('balance') : undefined}
-        />
-        <MetricTile
-          label="Debtors" value={bs?.debtors} currency={currency} sub={asAtLabel}
-          delta={<Delta now={bs?.debtors} prev={bs?.prev?.debtors} currency={currency} upIsGood={false} />}
-          onClick={goTab ? () => goTab('aged') : undefined}
-        />
-        <MetricTile
-          label="Creditors" value={creditors} currency={currency} sub={asAtLabel}
-          delta={<Delta now={creditors} prev={creditorsPrev} currency={currency} upIsGood={false} />}
-          onClick={goTab ? () => goTab('aged') : undefined}
-        />
-      </div>
-
-      {/* 12-month trend (always ends at the selected period-end month) */}
-      {pnlChart?.months?.length > 0 && (
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '10px' }}>
-            <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-              Revenue &amp; net profit — 12 months to {shortMonth(pnlChart.months[pnlChart.months.length - 1])}
-            </span>
-            <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginLeft: 'auto' }}>
-              <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: '#bae6fd', borderRadius: '2px', marginRight: '4px', verticalAlign: '-1px' }} />
-              revenue
-              <span style={{ display: 'inline-block', width: '10px', height: '2px', backgroundColor: '#0f172a', margin: '0 4px 0 12px', verticalAlign: '3px' }} />
-              net profit
-            </span>
-          </div>
-          <TrendChart
-            months={pnlChart.months}
-            income={pnlChart.series?.income || []}
-            net={pnlChart.series?.net_income || []}
-            currency={currency}
-          />
-        </div>
-      )}
-
-      {/* Ratios */}
-      <div style={cardStyle}>
-        <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '12px' }}>
-          Key ratios
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
-          {ratioVals.map((r) => (
-            <div key={r.key} title={r.hint} style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '12px 14px' }}>
-              <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginBottom: '3px' }}>{r.label}</div>
-              <div style={{ fontFamily: OUTFIT, fontSize: '19px', fontWeight: 700, color: r.value === null ? '#cbd5e1' : '#0f172a' }}>
-                {formatRatio(r.value, r.format)}
-              </div>
-            </div>
-          ))}
-        </div>
-        <p style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginTop: '10px', marginBottom: 0 }}>
-          Margins use the selected period; debtor/creditor days annualise over the rolling 12 months; current ratio uses the balance sheet at the period end. Hover a tile for the formula.
-        </p>
-      </div>
     </div>
   );
 }

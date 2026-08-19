@@ -1,7 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Loader, Plus, X, TrendingUp, Info, ChevronDown, ArrowUpRight, ArrowDownRight, Sparkles, Check } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../shell/AppShell';
 import { money, shortDate, OUTFIT, cardStyle, inputStyle } from './dashboardData';
 import { suggestOwnerCosts } from './ownerCostSuggestions';
 
@@ -19,8 +17,11 @@ import { suggestOwnerCosts } from './ownerCostSuggestions';
 
   Config lives in dashboard_adjustment_accounts (group_key 'owner_costs') and
   dashboard_oneoff_items, keyed on realm_id (RLS: any active staff; AVA's own
-  books gated to can_view_practice_financials). Account amounts come from the
-  windowed `pl_detail` metric (leaf rows carry the QBO account id).
+  books gated to can_view_practice_financials). It arrives as the `config` prop
+  from useUnderlyingConfig, held once by the page — the Overview tab's
+  underlying view strips the same codes, and two copies would drift apart the
+  moment a code was tagged here. Account amounts come from the windowed
+  `pl_detail` metric (leaf rows carry the QBO account id).
 
   Owner-cost codes can also be SUGGESTED from the nominal hierarchy (dividends,
   director's pay, home office — see ownerCostSuggestions.js). Suggestions never
@@ -32,69 +33,26 @@ import { suggestOwnerCosts } from './ownerCostSuggestions';
   KPIs can be layered on later without a rebuild.
 */
 
-const GROUP = 'owner_costs';
 
 const acctLabel = (acct_num, name) => `${acct_num ? `${acct_num} · ` : ''}${name || ''}`.trim();
 const isIncomeGroup = (g) => /income/i.test(g || '');
 
-export default function UnderlyingPerformanceTab({ realmId, data, meta, currency, loading, empty }) {
-  const { profile } = useAuth();
+export default function UnderlyingPerformanceTab({ data, meta, currency, loading, empty, config }) {
   const plDetail = data?.pl_detail || null;
   const plRange = data?.pl_range || null;
   const plDetailPrior = data?.pl_detail_prior || null;
   const plRangePrior = data?.pl_range_prior || null;
 
-  const [accounts, setAccounts] = useState([]);
-  const [accountsLoading, setAccountsLoading] = useState(false);
-  const [adjRows, setAdjRows] = useState([]);        // dashboard_adjustment_accounts (both statuses)
-  const [oneoffs, setOneoffs] = useState([]);        // dashboard_oneoff_items
-  const [cfgLoading, setCfgLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  /* Config + chart-of-accounts loads ------------------------------- */
-  const loadConfig = useCallback(async () => {
-    if (!realmId) return;
-    setCfgLoading(true);
-    try {
-      const [{ data: oa }, { data: oo }] = await Promise.all([
-        supabase.from('dashboard_adjustment_accounts').select('*')
-          .eq('realm_id', realmId).eq('group_key', GROUP),
-        supabase.from('dashboard_oneoff_items').select('*')
-          .eq('realm_id', realmId).order('entry_date', { ascending: false }),
-      ]);
-      setAdjRows(oa || []);
-      setOneoffs(oo || []);
-    } catch { /* silent */ }
-    setCfgLoading(false);
-  }, [realmId]);
-
-  const loadAccounts = useCallback(async () => {
-    if (!realmId) return;
-    setAccountsLoading(true);
-    try {
-      const { data: payload } = await supabase.functions.invoke('dashboard-qbo-pull', {
-        body: { realmId, metrics: ['accounts'] },
-      });
-      setAccounts(payload?.metrics?.accounts?.accounts || []);
-    } catch { /* silent */ }
-    setAccountsLoading(false);
-  }, [realmId]);
-
-  useEffect(() => { setAccounts([]); setAdjRows([]); setOneoffs([]); }, [realmId]);
-  useEffect(() => { loadConfig(); }, [loadConfig]);
-  useEffect(() => { loadAccounts(); }, [loadAccounts]);
-
-  const accountsById = useMemo(() => {
-    const m = {};
-    for (const a of accounts) m[a.id] = a;
-    return m;
-  }, [accounts]);
-
-  // Confirmed owner costs drive the maths; dismissed rows only mute suggestions.
-  // `status` may be absent on rows written before sql/174, so default to active.
-  const statusOf = (r) => r.status || 'active';
-  const ownerRows = useMemo(() => adjRows.filter((r) => statusOf(r) === 'active'), [adjRows]);
-  const dismissedRows = useMemo(() => adjRows.filter((r) => statusOf(r) === 'dismissed'), [adjRows]);
+  // The owner-cost / one-off configuration is owned by the page (see
+  // useUnderlyingConfig) because the Overview tab's underlying view strips the
+  // same codes and must not read a second, drifting copy.
+  const {
+    accounts, accountsById, accountsLoading,
+    ownerRows, dismissedRows, oneoffs, cfgLoading, busy,
+    addOwnerAccount, removeOwnerAccount,
+    confirmSuggestions, dismissSuggestions, restoreDismissed,
+    addOneoff, removeOneoff,
+  } = config;
 
   /* Adjustment maths ---------------------------------------------- */
   const calc = useMemo(() => {
@@ -186,73 +144,6 @@ export default function UnderlyingPerformanceTab({ realmId, data, meta, currency
       };
     },
   }), [accounts, ownerRows, dismissedRows, calc.rowsById, accountsById]);
-
-  /* Mutations ------------------------------------------------------ */
-  // One writer for both statuses. Upsert (not insert) because a code may already
-  // have a dismissed row from an earlier suggestion round — confirming it later
-  // has to flip that row, not collide with it.
-  const writeAdj = async (entries, status) => {
-    if (!realmId || !entries.length) return;
-    setBusy(true);
-    try {
-      await supabase.from('dashboard_adjustment_accounts').upsert(
-        entries.map((e) => {
-          const a = accountsById[e.account_id];
-          return {
-            realm_id: realmId, group_key: GROUP, account_id: e.account_id,
-            acct_num: a?.acct_num || e.acct_num || null,
-            account_name: a?.name || e.account_name || null,
-            status, suggested_rule: e.rule_key || null,
-            created_by: profile?.id || null,
-          };
-        }),
-        { onConflict: 'realm_id,group_key,account_id' },
-      );
-      await loadConfig();
-    } catch { /* silent */ }
-    setBusy(false);
-  };
-
-  const addOwnerAccount = (accountId) => writeAdj([{ account_id: accountId }], 'active');
-  const confirmSuggestions = (picked) => writeAdj(picked, 'active');
-  const dismissSuggestions = (picked) => writeAdj(picked, 'dismissed');
-  const restoreDismissed = async () => {
-    if (!dismissedRows.length) return;
-    setBusy(true);
-    try {
-      await supabase.from('dashboard_adjustment_accounts').delete()
-        .in('id', dismissedRows.map((r) => r.id));
-      await loadConfig();
-    } catch { /* silent */ }
-    setBusy(false);
-  };
-  const removeOwnerAccount = async (id) => {
-    setBusy(true);
-    try { await supabase.from('dashboard_adjustment_accounts').delete().eq('id', id); await loadConfig(); }
-    catch { /* silent */ }
-    setBusy(false);
-  };
-  const addOneoff = async (entry) => {
-    if (!realmId) return;
-    setBusy(true);
-    try {
-      const a = entry.account_id ? accountsById[entry.account_id] : null;
-      await supabase.from('dashboard_oneoff_items').insert({
-        realm_id: realmId, kind: entry.kind, entry_date: entry.entry_date,
-        amount: Number(entry.amount), account_id: entry.account_id || null,
-        acct_num: a?.acct_num || null, account_name: a?.name || null,
-        note: entry.note || null, created_by: profile?.id || null,
-      });
-      await loadConfig();
-    } catch { /* silent */ }
-    setBusy(false);
-  };
-  const removeOneoff = async (id) => {
-    setBusy(true);
-    try { await supabase.from('dashboard_oneoff_items').delete().eq('id', id); await loadConfig(); }
-    catch { /* silent */ }
-    setBusy(false);
-  };
 
   if (!plDetail && !plRange) {
     return loading
