@@ -10,6 +10,7 @@ import BreakdownView from './BreakdownView';
 import PayeTab from './PayeTab';
 import ByTaxView from './ByTaxView';
 import ClientSelector from './ClientSelector';
+import RefreshButton from './RefreshButton';
 import { font, dateTime, TAX_META } from './hmrcShared';
 
 // HMRC — what the taxman's own records say about our clients.
@@ -149,6 +150,10 @@ export default function HmrcModule() {
       {onTaxTab && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <ClientSelector clients={clients} entityId={entityId} onPick={pick} taxKey={segment} />
+          {/* Asks for all four taxes at once: the RPC knows which references
+              exist and says which it could not ask about, so there is nothing to
+              choose here. It used to live on the Client tab, which is gone. */}
+          {entityId && <RefreshButton entityId={entityId} />}
           {chosen ? (
             <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
               Showing {chosen.entity_name} across every tax tab until you clear them.
