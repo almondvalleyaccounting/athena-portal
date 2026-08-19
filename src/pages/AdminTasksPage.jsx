@@ -814,14 +814,12 @@ export default function AdminTasksPage() {
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
               {newBillable && !newClient && <span style={{ fontSize: 11.5, color: '#b45309' }}>Billable needs a client</span>}
               <button onClick={() => setAdding(false)} style={btn('ghost')}>Cancel</button>
-              {canPipeline && (
-                <button
-                  onClick={() => addManual(true)}
-                  disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !billAmountOk(newBillAmount)))}
-                  title="Save as a draft — held off the live list until you release it"
-                  style={{ ...btn('ghost'), opacity: (savingTask || !newTitle.trim()) ? 0.6 : 1 }}
-                >Save as draft</button>
-              )}
+              <button
+                onClick={() => addManual(true)}
+                disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !billAmountOk(newBillAmount)))}
+                title="Save as a draft — held off the live list until you publish it"
+                style={{ ...btn('ghost'), opacity: (savingTask || !newTitle.trim()) ? 0.6 : 1 }}
+              >Save as draft</button>
               <button
                 onClick={() => addManual(false)}
                 disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !billAmountOk(newBillAmount)))}
@@ -907,13 +905,11 @@ export default function AdminTasksPage() {
         <GroupHeader>Manually generated</GroupHeader>
         {/* Pipeline: Draft → Bill & Hold → Billed → To Do. Managers change a
             task's step with the row dropdown; uploaded tasks land on To Do. */}
-        {canPipeline && (
-          <Section title="Draft — not on the live list" count={draftOpen.length}
-            collapsed={!expandedSet.has('draft')} onToggle={() => toggleCollapse('draft')}>
-            {draftOpen.length === 0 && <Empty>No drafts.</Empty>}
-            {draftOpen.map((t) => taskRow(t, { stageSelect: true, onAddBill: !t.billing_item_id ? () => addBillToTask(t) : null, onRelease: () => publishDraft(t), releaseLabel: 'Publish' }))}
-          </Section>
-        )}
+        <Section title="Draft — not on the live list" count={draftOpen.length}
+          collapsed={!expandedSet.has('draft')} onToggle={() => toggleCollapse('draft')}>
+          {draftOpen.length === 0 && <Empty>No drafts.</Empty>}
+          {draftOpen.map((t) => taskRow(t, { stageSelect: canPipeline, onAddBill: !t.billing_item_id ? () => addBillToTask(t) : null, onRelease: () => publishDraft(t), releaseLabel: 'Publish' }))}
+        </Section>
         <Section title="Bill & Hold" count={billHoldOpen.length}
           collapsed={!expandedSet.has('bill_hold')} onToggle={() => toggleCollapse('bill_hold')}>
           {billHoldOpen.length === 0 && <Empty>Nothing waiting on a bill to be raised.</Empty>}
