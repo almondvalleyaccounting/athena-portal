@@ -8,6 +8,7 @@ import IdeasPage from './modules/ideas/IdeasPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import ClientDashboardPage from './modules/client-dashboard/ClientDashboardPage';
 import HmrcModule from './modules/hmrc/HmrcModule';
+import WorkingPapersModule from './modules/working-papers/WorkingPapersModule';
 import PortfolioDashboardPage from './modules/client-dashboard/PortfolioDashboardPage';
 import TriageBoardPage from './modules/triage/TriageBoardPage';
 import AdminPage from './shell/AdminPage';
@@ -94,6 +95,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/portfolio" element={<PortfolioDashboardPage />} />
           {/* HMRC — what the agent-services scrape says about our clients (sql/197). */}
           <Route path="/hmrc/*" element={<HmrcModule />} />
+          <Route path="/working-papers/*" element={<WorkingPapersModule />} />
           <Route path="/triage" element={<TriageBoardPage />} />
           {/* Client Reminders moved under Communications (/comms/reminders).
               Keep old links, digest emails and bookmarks working. */}
@@ -144,6 +146,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           {/* Admin Task List — must precede the /planner/* wildcard. */}
           <Route path="/planner/tasks" element={<AdminTasksPage />} />
           <Route path="/planner/tasks/:id" element={<AdminTaskDetailPage />} />
+          {/* Drifting became the Bookkeeping Health sub-module — keep the old
+              path working for anyone who bookmarked it. */}
+          <Route path="/planner/drift" element={<Navigate to="/planner/bookkeeping-health" replace />} />
           <Route path="/planner/*" element={<WorkPlannerModule />} />
           <Route path="/review" element={<Navigate to="/planner/review" replace />} />
           <Route path="/review/*" element={<Navigate to="/planner/review" replace />} />

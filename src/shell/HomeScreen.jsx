@@ -861,7 +861,7 @@ function buildAttentionItems(data, navigate) {
         isPriority ? ' · never-drift client' : ''}${
         r.assignee_name ? ` · ${r.assignee_name.split(' ')[0]}` : ' · unassigned'}${
         r.case_state === 'acknowledged' ? ' · acknowledged' : ''}`,
-      onClick: () => navigate('/planner/drift'),
+      onClick: () => navigate('/planner/bookkeeping-health'),
     });
   });
   if (driftAction.length > 6) {
@@ -872,7 +872,7 @@ function buildAttentionItems(data, navigate) {
       icon: AlertTriangle,
       title: `${plural(driftAction.length - 6, 'more client')} with bookkeeping past tolerance`,
       subtitle: 'Open the drifting board for the full list',
-      onClick: () => navigate('/planner/drift'),
+      onClick: () => navigate('/planner/bookkeeping-health'),
     });
   }
   // A file the sweep couldn't read is not a healthy file. It gets its own row
@@ -885,7 +885,7 @@ function buildAttentionItems(data, navigate) {
       icon: AlertTriangle,
       title: `${plural(drift.unknown.length, 'QuickBooks file')} couldn't be read last night`,
       subtitle: 'Drift is unknown for these — usually a connection that needs re-authorising',
-      onClick: () => navigate('/planner/drift'),
+      onClick: () => navigate('/planner/bookkeeping-health'),
     });
   }
 

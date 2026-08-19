@@ -44,9 +44,15 @@ const WorkPlannerContext = createContext(null);
 export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 
 // ── Tab config ──
+//
+// Three sub-modules share this shell, because they share its data load, its
+// filter bar and its realtime subscription. The sidebar names them; the tab
+// strip below only appears where a sub-module actually has more than one tab.
+//
+// Ready Now and Bookkeeping Health were tabs inside Planner. They are each a
+// destination in their own right — a queue you work for an hour, not a view you
+// glance at — so they are now sub-modules of Work with their own sidebar entry.
 const TASK_PLANNER_TABS = [
-  { id: 'ready',    label: 'Ready Now',   path: '/planner/ready' },
-  { id: 'drift',    label: 'Drifting',    path: '/planner/drift' },
   { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting' },
   { id: 'mytasks',  label: 'My Tasks',    path: '/planner' },
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
@@ -60,7 +66,20 @@ const CAPACITY_PLANNER_TABS = [
   { id: 'estimates', label: 'Estimates',  path: '/planner/estimates' },
   { id: 'capacity',  label: 'Capacity',    path: '/planner/capacity' },
 ];
-const TABS = [...TASK_PLANNER_TABS, ...CAPACITY_PLANNER_TABS];
+const READY_TABS = [
+  { id: 'ready', label: 'Ready Now', path: '/planner/ready' },
+];
+// Renamed from "Drifting". The board was never only about lateness — it scores
+// hygiene too — and "Bookkeeping Health" is what it actually answers.
+const BOOKKEEPING_HEALTH_TABS = [
+  { id: 'drift', label: 'Bookkeeping Health', path: '/planner/bookkeeping-health' },
+];
+const TABS = [
+  ...TASK_PLANNER_TABS, ...CAPACITY_PLANNER_TABS,
+  ...READY_TABS, ...BOOKKEEPING_HEALTH_TABS,
+  // The old drift path stays matchable so a bookmark still lands on the board.
+  { id: 'drift', label: 'Bookkeeping Health', path: '/planner/drift' },
+];
 
 export default function WorkPlannerModule() {
   const { profile } = useAuth();
@@ -113,9 +132,18 @@ export default function WorkPlannerModule() {
   // ── Determine active sub-module from active tab ──
   const activeSubModule = useMemo(() => {
     if (CAPACITY_PLANNER_TABS.some((t) => t.id === activeTab)) return 'capacity';
+    if (activeTab === 'ready') return 'ready';
+    if (activeTab === 'drift') return 'bookkeeping-health';
     return 'task';
   }, [activeTab]);
-  const visibleTabs = activeSubModule === 'capacity' ? CAPACITY_PLANNER_TABS : TASK_PLANNER_TABS;
+  const visibleTabs =
+    activeSubModule === 'capacity' ? CAPACITY_PLANNER_TABS
+    : activeSubModule === 'ready' ? READY_TABS
+    : activeSubModule === 'bookkeeping-health' ? BOOKKEEPING_HEALTH_TABS
+    : TASK_PLANNER_TABS;
+  // A one-tab sub-module gets a title, not a tab strip — a lone tab looks
+  // clickable and goes nowhere.
+  const soleTab = visibleTabs.length === 1 ? visibleTabs[0] : null;
 
   // ── Derived: overridesMap and completedKeys ──
   const overridesMap = useMemo(() => {
@@ -766,7 +794,14 @@ export default function WorkPlannerModule() {
           display: 'flex', background: '#fff', borderBottom: '1px solid #e5e7eb',
           padding: '0 20px', alignItems: 'center',
         }}>
-          {visibleTabs.map((tab) => (
+          {soleTab ? (
+            <div style={{
+              padding: '10px 18px 10px 0', fontSize: 14, fontWeight: 600,
+              color: '#0f172a', fontFamily: "'Outfit', sans-serif",
+            }}>
+              {soleTab.label}
+            </div>
+          ) : visibleTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => navigate(tab.path)}

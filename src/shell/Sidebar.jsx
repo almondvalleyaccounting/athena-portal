@@ -18,6 +18,7 @@ import {
   Briefcase,
   Inbox,
   UserCheck,
+  FileSpreadsheet,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -46,6 +47,7 @@ const ICON_MAP = {
   briefcase: Briefcase,
   inbox: Inbox,
   'user-check': UserCheck,
+  'file-spreadsheet': FileSpreadsheet,
 };
 
 /* ─── Visibility rules ─────────────────────────────────────────── */

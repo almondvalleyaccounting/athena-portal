@@ -8,7 +8,7 @@ import { useAuth } from '../../../shell/AppShell';
 import ClientTypeAhead from '../components/ClientTypeAhead';
 
 /*
- * Work → Drifting.
+ * Work → Bookkeeping Health (was "Drifting").
  *
  * What's behind on the books, split by who is supposed to be keeping them.
  * "Ours" is a work queue — every row is somebody's job. "Theirs" is
@@ -598,7 +598,7 @@ export default function DriftView() {
       setSettings(cfg.data || null);
       setNudges(nudgeRows.data || []);
     } catch (e) {
-      setError(e.message || 'Could not load the drift board');
+      setError(e.message || 'Could not load the bookkeeping health board');
     }
     setLoading(false);
   };
@@ -668,7 +668,7 @@ export default function DriftView() {
   };
 
   if (loading) {
-    return <div style={{ padding: '30px', fontFamily: FONT, color: '#94a3b8' }}>Loading the drift board…</div>;
+    return <div style={{ padding: '30px', fontFamily: FONT, color: '#94a3b8' }}>Loading the bookkeeping health board…</div>;
   }
 
   return (

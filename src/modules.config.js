@@ -72,8 +72,21 @@ export const MODULES = [
       {
         id: 'wp-task',
         label: 'Planner',
+        route: '/planner',
+        matchPaths: ['/planner', '/planner/waiting', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed'],
+      },
+      {
+        id: 'wp-ready',
+        label: 'Ready Now',
         route: '/planner/ready',
-        matchPaths: ['/planner', '/planner/ready', '/planner/drift', '/planner/waiting', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed'],
+        matchPaths: ['/planner/ready'],
+      },
+      {
+        id: 'wp-bk-health',
+        label: 'Bookkeeping Health',
+        route: '/planner/bookkeeping-health',
+        // The old /planner/drift path still resolves, so keep it matchable.
+        matchPaths: ['/planner/bookkeeping-health', '/planner/drift'],
       },
       {
         id: 'wp-capacity',
@@ -123,6 +136,23 @@ export const MODULES = [
                      '/hmrc/reconciliation', '/hmrc/authorisations'],
       },
       { id: 'cw-forecast', label: 'Client Forecast', route: '/forecast', permissions: ['can_manage_portal'] },
+    ],
+  },
+  {
+    id: 'working-papers',
+    label: 'Working Papers',
+    route: '/working-papers',
+    icon: 'file-spreadsheet',
+    // Same gate as the HMRC module and Client Reports: these papers put HMRC's
+    // account, a client's ledger and their payroll on one page.
+    permissions: ['can_view_reports'],
+    status: 'live',
+    group: 'data',
+    children: [
+      { id: 'wp-paye', label: 'PAYE', route: '/working-papers/paye', matchPaths: ['/working-papers', '/working-papers/paye'] },
+      { id: 'wp-mapping', label: 'Nominal mapping', route: '/working-papers/mapping', matchPaths: ['/working-papers/mapping'] },
+      { id: 'wp-ct', label: 'Corporation Tax', route: '/working-papers/corporation-tax', matchPaths: ['/working-papers/corporation-tax'] },
+      { id: 'wp-net-wages', label: 'Net wages', route: '/working-papers/net-wages', matchPaths: ['/working-papers/net-wages'] },
     ],
   },
   {
