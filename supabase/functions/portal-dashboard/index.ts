@@ -207,19 +207,26 @@ Deno.serve(async (req) => {
     const basis = body.basis === "calendar" ? "calendar" : "fiscal";
     const anchorKey = clampAnchor(body.anchor);
 
-    // The fiscal year end — never from the caller. Staff override first, then
-    // QuickBooks' own setting, then the flagged fallback. Same order as the
-    // staff dashboard's resolveFiscalYear, because a client and their
-    // accountant reading "Q3" have to mean the same three months.
+    // The fiscal year end — never from the caller. Staff override, then
+    // BrightManager's own year end, then QuickBooks' setting, then the flagged
+    // fallback. Same order as the staff dashboard's resolveFiscalYear, because
+    // a client and their accountant reading "Q3" have to mean the same three
+    // months. v_client_year_end (sql/247) resolves the first two.
     const { data: companyRow } = await sb
       .from("qbo_dashboard_cache")
       .select("data")
       .eq("realm_id", realmId).eq("metric_key", "company")
       .order("pulled_at", { ascending: false }).limit(1).maybeSingle();
 
-    const overrideEnd = Number(conn.fiscal_year_end_month);
-    const fyIdx = (overrideEnd >= 1 && overrideEnd <= 12)
-      ? overrideEnd % 12                       // year ends month N ⇒ starts N+1
+    const { data: yearEnd } = await sb
+      .from("v_client_year_end")
+      .select("month")
+      .eq("realm_id", realmId)
+      .maybeSingle();
+
+    const resolvedEnd = Number(yearEnd?.month ?? conn.fiscal_year_end_month);
+    const fyIdx = (resolvedEnd >= 1 && resolvedEnd <= 12)
+      ? resolvedEnd % 12                       // year ends month N ⇒ starts N+1
       : fyStartMonthIndex(companyRow?.data?.fiscal_year_start_month);
 
     const win = buildWindow(grain, basis, fyIdx, anchorKey);

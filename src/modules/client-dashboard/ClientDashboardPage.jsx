@@ -138,12 +138,26 @@ export default function ClientDashboardPage() {
 
   const loadClients = async () => {
     try {
-      const { data, error } = await supabase
-        .from('qbo_report_connections')
-        .select('realm_id, company_name, entity_id, fiscal_year_end_month')
-        .eq('status', 'active')
-        .order('company_name');
-      if (!error && data) setClients(data);
+      // v_client_year_end resolves the override and BrightManager's own year end
+      // (sql/247). Merged in here so the Overview does not have to ask per
+      // client, and so both come from the one place that knows the rule.
+      const [{ data, error }, { data: yearEnds }] = await Promise.all([
+        supabase
+          .from('qbo_report_connections')
+          .select('realm_id, company_name, entity_id, fiscal_year_end_month')
+          .eq('status', 'active')
+          .order('company_name'),
+        supabase.from('v_client_year_end').select('realm_id, month, source'),
+      ]);
+      if (!error && data) {
+        const ye = {};
+        for (const y of yearEnds || []) ye[y.realm_id] = y;
+        setClients(data.map((c) => ({
+          ...c,
+          derived_year_end_month: ye[c.realm_id]?.month ?? null,
+          derived_year_end_source: ye[c.realm_id]?.source ?? null,
+        })));
+      }
     } catch { /* silent */ }
     setClientsLoading(false);
   };
@@ -294,9 +308,11 @@ export default function ClientDashboardPage() {
   const fiscalYear = useMemo(
     () => resolveFiscalYear({
       overrideEndMonth: selected?.fiscal_year_end_month,
+      bmEndMonth: selected?.derived_year_end_month,
+      bmSource: selected?.derived_year_end_source,
       qboStartMonth: company?.fiscal_year_start_month,
     }),
-    [selected?.fiscal_year_end_month, company],
+    [selected?.fiscal_year_end_month, selected?.derived_year_end_month, selected?.derived_year_end_source, company],
   );
   const fyIdx = fiscalYear.fyIdx;
 

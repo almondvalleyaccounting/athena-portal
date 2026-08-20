@@ -42,6 +42,30 @@ import { formatKpi } from './kpiEngine';
 */
 
 
+/*
+  Where the year end came from, and how loudly to say so. Only the two that are
+  guesses carry a badge: the point is to distinguish a year end somebody knows
+  from one we have assumed, not to annotate every client.
+*/
+const YEAR_END_SOURCE = {
+  override: { hint: 'Set here for this client' },
+  brightmanager: {
+    hint: "From this client's Annual Accounts tasks in BrightManager",
+    badge: 'from BrightManager',
+  },
+  tax_year: {
+    hint: 'Assumed: sole traders and partnerships report to the tax year. Set it here if this client differs.',
+    badge: 'assumed — tax year',
+    warn: true,
+  },
+  quickbooks: { hint: "From the client's QuickBooks settings" },
+  fallback: {
+    hint: 'Nothing in BrightManager or QuickBooks says when this client\'s year ends. Until you pick the right month, these are not their quarters.',
+    badge: 'not confirmed',
+    warn: true,
+  },
+};
+
 export default function OverviewTab({
   detail, bs, buckets, prior, currency, loading, empty, goTab,
   grain, setGrain, basis, setBasis, view, setView,
@@ -195,23 +219,24 @@ export default function OverviewTab({
               value={fiscalYear?.endMonth != null ? fiscalYear.endMonth + 1 : ''}
               onChange={(e) => onFiscalYearEndChange?.(e.target.value)}
               disabled={!onFiscalYearEndChange}
-              title={
-                fiscalYear?.source === 'override' ? 'Set here for this client'
-                  : fiscalYear?.source === 'quickbooks' ? "From the client's QuickBooks settings"
-                    : "QuickBooks has no year end recorded for this client — this is a fallback, not their actual year end"
-              }
+              title={YEAR_END_SOURCE[fiscalYear?.source]?.hint || YEAR_END_SOURCE.fallback.hint}
               style={{
                 ...inputStyle, padding: '6px 9px', fontSize: '12.5px',
-                borderColor: fiscalYear?.source === 'fallback' ? '#fde68a' : '#e5e7eb',
-                backgroundColor: fiscalYear?.source === 'fallback' ? '#fffbeb' : '#ffffff',
+                borderColor: YEAR_END_SOURCE[fiscalYear?.source]?.warn ? '#fde68a' : '#e5e7eb',
+                backgroundColor: YEAR_END_SOURCE[fiscalYear?.source]?.warn ? '#fffbeb' : '#ffffff',
               }}
             >
               {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
             </select>
-            {fiscalYear?.source === 'fallback' && (
-              <span title="QuickBooks has no year end for this client. Pick the right month — until you do, these are not their quarters."
-                style={{ fontFamily: OUTFIT, fontSize: '11px', fontWeight: 600, color: '#b45309' }}>
-                not confirmed
+            {YEAR_END_SOURCE[fiscalYear?.source]?.badge && (
+              <span
+                title={YEAR_END_SOURCE[fiscalYear?.source]?.hint}
+                style={{
+                  fontFamily: OUTFIT, fontSize: '11px', fontWeight: 600,
+                  color: YEAR_END_SOURCE[fiscalYear?.source]?.warn ? '#b45309' : '#94a3b8',
+                }}
+              >
+                {YEAR_END_SOURCE[fiscalYear?.source]?.badge}
               </span>
             )}
           </label>

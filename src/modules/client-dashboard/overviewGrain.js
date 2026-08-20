@@ -71,26 +71,39 @@ const lastDay = (key) => {
 export const fyEndMonthIndex = (fyIdx) => ((Number(fyIdx) || 0) + 11) % 12;
 
 /*
-  resolveFiscalYear({ overrideEndMonth, qboStartMonth })
+  resolveFiscalYear({ overrideEndMonth, bmEndMonth, qboStartMonth })
 
   Where the client's year end actually comes from, and — just as important —
   whether we actually know it.
 
-  QuickBooks' FiscalYearStartMonth is often simply unset (Puddleduck returns
-  null). Falling back silently to the practice's own October start would draw
-  quarters ending Dec/Mar/Jun/Sep and label them the CLIENT'S fiscal quarters,
-  with nothing on screen looking wrong. So the fallback is flagged, and the UI
-  says so rather than asserting a year end nobody supplied.
+  Four steps, most authoritative first:
+    override      a human decided, on the Overview
+    brightmanager the year end named in the client's Annual Accounts tasks
+                  ("Accounts Preparation Year End 31/07/2026"), read live
+                  through v_client_year_end — Athena has this for most clients
+    tax_year      sole traders and partnerships, who have no such task: since
+                  basis-period reform they report to the tax year, so March.
+                  An assumption, and labelled as one
+    quickbooks    QBO's own FiscalYearStartMonth, which is often simply unset
+    fallback      September, and the UI says so
 
-  Returns { fyIdx, endMonth, source } where source is
-  'override' | 'quickbooks' | 'fallback'.
+  The fallback is flagged rather than asserted because it is the practice's own
+  year end. Left silent it would draw quarters ending Dec/Mar/Jun/Sep and label
+  them the CLIENT'S, with nothing on screen looking wrong.
+
+  Returns { fyIdx, endMonth, source }.
 */
-export function resolveFiscalYear({ overrideEndMonth, qboStartMonth } = {}) {
+export function resolveFiscalYear({ overrideEndMonth, bmEndMonth, bmSource, qboStartMonth } = {}) {
+  const fromEndMonth = (m, source) => {
+    const endMonth = Number(m) - 1;                     // 0-based
+    return { fyIdx: (endMonth + 1) % 12, endMonth, source };
+  };
   const ov = Number(overrideEndMonth);
-  if (ov >= 1 && ov <= 12) {
-    const endMonth = ov - 1;              // 0-based
-    return { fyIdx: (endMonth + 1) % 12, endMonth, source: 'override' };
-  }
+  if (ov >= 1 && ov <= 12) return fromEndMonth(ov, 'override');
+
+  const bm = Number(bmEndMonth);
+  if (bm >= 1 && bm <= 12) return fromEndMonth(bm, bmSource || 'brightmanager');
+
   if (qboStartMonth != null && qboStartMonth !== '') {
     const fyIdx = fyStartMonthIndexLocal(qboStartMonth);
     if (fyIdx != null) return { fyIdx, endMonth: fyEndMonthIndex(fyIdx), source: 'quickbooks' };
