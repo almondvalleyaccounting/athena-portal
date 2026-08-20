@@ -391,6 +391,11 @@ export default function CrossCheckView() {
                         billed VAT, not VAT registered
                       </span>
                     )}
+                    {r.billed_ct_not_a_company && (
+                      <span style={chipStyle('accent')} title="Billed a Corporation Tax product but not a limited company — either the client type is wrong or the wrong product was sold">
+                        billed CT, not a company
+                      </span>
+                    )}
                     {r.company_no_ch_auth_code && <span style={chipStyle('neutral')}>no CH auth code</span>}
                     {r.not_billed && <span style={{ ...chipStyle('neutral'), opacity: 0.8 }}>not in the fee engine</span>}
                   </div>

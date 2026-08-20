@@ -998,7 +998,7 @@ export const CROSSCHECK_VERDICTS = [
   },
   {
     value: 'check_billing', label: 'Check the billing', tone: 'accent',
-    blurb: 'Billed a VAT product while not VAT registered at all — a fee to correct, not an authorisation to chase.',
+    blurb: 'Billed a VAT product while not VAT registered, or a Corporation Tax product while not a company — a fee to correct, not an authorisation to chase.',
   },
   {
     value: 'loose_end', label: 'Loose end', tone: 'neutral',
