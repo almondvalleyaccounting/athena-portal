@@ -77,7 +77,15 @@ function EvidenceStrip({ coverage }) {
         <div style={{ fontSize: 12.5, color: tones.warning.fg, marginTop: 10, lineHeight: 1.5 }}>
           {partial.map((c) => TAX_LABELS[c.tax] || c.tax).join(' and ')}: the scrape reached too few of the clients we
           act for to treat absence as missing authorisation. Those clients read <strong>unverified</strong> rather than
-          counting against them — confirm the scrape covers the whole agent list, then they will resolve either way.
+          counting against them.
+          {partial.some((c) => c.tax === 'sa') && (
+            <>
+              {' '}The cause is known: the Self Assessment run keeps only clients HMRC flags as having a statement
+              available, so the other rows never reach Athena even though being on HMRC&apos;s client list is itself the
+              authorisation. Publishing the whole client list — not just the accounts it fetched statements for — would
+              close this without scraping anything more.
+            </>
+          )}
         </div>
       )}
       <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 8, lineHeight: 1.5 }}>
