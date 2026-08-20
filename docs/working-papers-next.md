@@ -19,6 +19,19 @@ off as a three-way, and Net wages (section E) cannot start at all.
 All of A1–A2 is in the **separate repo**, `C:\Users\bobby\BrightPay Payments and
 Journals` (branch `main`), which shares Athena's Supabase.
 
+> **Updated 20 August 2026 — the Analysis reports are now imported.** `npm run
+> analysis` in the BrightPay repo pulls the HMRC Payments report and a saved
+> payroll report per employer and stores employer-level figures in
+> `payroll.analysis_fact`, keyed on the tax month BrightPay itself states.
+> Proven live: 5 tax months of each, both reconciling, idempotent on re-run.
+>
+> This **answers F2 and F3 below** and changes the cost of A2 and A3
+> considerably — the figures are already in the database, so A2 is now a copy
+> between two tables rather than a scraping job. A1 is unaffected: CIS is not in
+> the Analysis reports at all (see A4).
+>
+> It also leaves three things needing a decision, in A4–A6.
+
 ### A1. Read the three missing figures from the HMRC Payments screen
 
 `src/driver/brightpay.js` → `readTaxMonth()` → the `textLabels` array in the
@@ -63,6 +76,107 @@ one before", because a paper for an older year end is being prepared from paper
 files anyway.
 
 **Done when:** the decision is recorded here with the reason, not just executed.
+
+Now much cheaper than when this was written. The HMRC Payments report's Periods
+setting offers **"Report over multiple tax years"** as well as "current tax year
+only", so prior years can be asked for directly rather than re-walking a screen
+per month. The importer currently sets neither — it takes the current tax year —
+so this is a flag, not a project.
+
+### A4. CIS has to come from somewhere else — decide where
+
+**Neither Analysis report carries CIS.** The HMRC Payments report has eight
+columns (tax period ending, net tax, net NICs, shortfall from previous periods,
+amount due, amount paid, balance, payment date) and the payroll report has 232,
+and not one of them mentions CIS, construction, subcontractors or deductions
+suffered. Checked by grep against the live column list on 20 August 2026, not by
+eye.
+
+So the CIS panel cannot be fed from the route that now feeds everything else, and
+A1 stands as originally written — the `/revenue/month-N` screen, read label by
+label. This matters more than it looks: it means the PAYE paper's CIS lines have
+a *different and less robust* source than its PAYE lines, and the difference
+should be visible on the paper rather than implied.
+
+Worth checking before committing to A1: BrightPay's Analysis section has a
+**"New"** menu with other report types beside HMRC Payments and Payroll. If one
+of them covers CIS300 / monthly returns, CIS gets the same file-ingest treatment
+and A1 disappears. `npm run probe-analysis` lists what is on that menu.
+
+**Done when:** either a report type is found that carries CIS, or it is recorded
+here that there is none and A1 proceeds by screen-reading — with a note on the
+paper itself that the CIS figures are read differently from the PAYE ones.
+
+### A5. Roll the saved payroll report out to the employers that lack it
+
+`Claude_Audit_Report` exists on many employers but not all, and a new client will
+never have it. The importer reports a missing one as `template_missing` in a work
+list and carries on — it does not and will not create one.
+
+That is deliberate. The route is **Analysis → Manage → "Import Report Templates
+From Another Employer..."**, which writes a report definition into the employer.
+An unattended monthly import doing that across 100+ clients is the shape of the
+accident this whole repo was built after; `Save As Template`, `Edit` and `Manage`
+are all in the reader's `NEVER_CLICK` list for that reason.
+
+Two decisions attached, and the first should come first:
+
+1. **Is `Claude_Audit_Report` the report we actually want rolled out?** It was
+   built exploratively and carries all 232 columns, including passport number,
+   bank sort code and account number, NI number, date of birth, address, email
+   and phone. The import never receives those — it sets `Show = Department
+   totals` so the employee rows do not arrive — but the *template* still selects
+   them, so anyone opening it by hand gets the lot. A purpose-built replacement
+   carrying only the numeric columns would be safer to have sitting in 100
+   clients' files, and the importer needs no change to use it (`--payroll-report
+   "Name"`, and it is column-agnostic by design).
+2. **Then** roll that one out, once, by hand.
+
+**Done when:** the report to standardise on is decided and named here, and every
+active employer either has it or is listed here as deliberately excluded.
+
+### A6. Feed `wp_brightpay_period` from `payroll.analysis_fact`
+
+This is A2, now that the data exists — and it is worth stating separately because
+the mapping is *not* one-to-one and the gaps are the interesting part.
+
+`public.wp_brightpay_period` (sql/241) has a column per figure on the HMRC
+Payments *screen*. The HMRC Payments *report* is narrower. What maps:
+
+| `wp_brightpay_period` | from the report |
+|---|---|
+| `net_tax` | `Net tax` |
+| `net_nic` | `Net NICs` |
+| `amount_due` | `Amount due` |
+| `amount_paid` | `Amount paid` |
+| `shortfall` | `Shortfall from previous periods` |
+
+What the report does **not** give, and so must still come from A1's screen-read
+or be left honestly null: `employee_nic` and `employer_nic` separately (the
+report nets them), `ea_claim`, `student_loan`, `pg_loan`, `stat_recovered`,
+`stat_nic_comp`, `cis_suffered`, `cis_withheld`, `net_adjustment`.
+
+Note `ea_claim` in particular — `payroll.task.ea_amount` already holds it per
+period from the journal run, so it can be joined rather than re-read.
+
+Two things not to get wrong:
+
+- **`period_kind`.** `wp_brightpay_period` distinguishes `'month'` from
+  `'quarter'`. The importer asks for `Schedule = Tax months`, so every row it
+  holds is a month. A quarterly payer's figures are therefore *absent*, not
+  wrong — and must not be written as monthly. Either ask that employer for tax
+  quarters (`payment_schedule` on `payroll.employer` already records which they
+  are, learned from the screen) or leave them to A1.
+- **Do not write a zero for a period we did not read.** The whole reason
+  `wp_brightpay_period` was left empty on migration is that 0.00 reads as
+  agreement with a nil return. `payroll.analysis_fact` stores nothing for a blank
+  field and `analysis_run.columns_seen` records which columns existed, so an
+  absent measure is provably "was blank" rather than "was never read" — carry
+  that distinction across rather than flattening it to zero.
+
+**Done when:** `v_wp_paye_readiness.blocker` moves off `no_brightpay_periods` for
+at least one client, the PAYE paper's BrightPay column shows figures, and the
+columns the report cannot supply are visibly null on the paper rather than zero.
 
 ---
 
@@ -211,7 +325,12 @@ joined to the PAYE credits — see the credits-and-refunds notes.
 
 ## E. The net wages paper
 
-Blocked on A1–A2 and on F2. A two-way check: net pay per the payroll against the
+~~Blocked on A1–A2 and on F2.~~ **F2 is answered and the payroll side is imported**
+— net pay is in `payroll.analysis_fact` per employer per tax month. What remains is
+the QuickBooks side: the `net_wages` and `wages_control` roles mapped. See F2 for
+the one live question this raises (net pay or take-home pay?).
+
+A two-way check: net pay per the payroll against the
 wages creditor in the ledger, with the bank payments in between. The QuickBooks
 side is ready as soon as the `net_wages` and `wages_control` roles are mapped.
 
@@ -230,23 +349,65 @@ licence open can answer, and two of them gate real work.
 
 ### F1. Does CIS *withheld* appear on the HMRC Payments / P32 screen?
 
-Gates A1. The screen is confirmed right for PAYE, and CIS *suffered* is confirmed
-enterable there. CIS withheld may only exist on the CIS300 / Monthly Return screen,
-which would mean a second screen to read rather than one more label.
+**Still open, but narrowed.** Gates A1. The screen is confirmed right for PAYE, and
+CIS *suffered* is confirmed enterable there. CIS withheld may only exist on the
+CIS300 / Monthly Return screen, which would mean a second screen to read rather
+than one more label.
 
-### F2. Where does net pay live?
+What is now settled is the negative: **the Analysis reports are not the answer.**
+Neither carries any CIS column, so this cannot be sidestepped by asking for a
+report instead of reading a screen. See A4 — the one thing still worth trying is
+the other report types on the Analysis "New" menu.
 
-Gates E. Not on the HMRC Payments screen. Needs a gross-to-net or payroll summary
-report — and whether that is readable from the same web UI or needs the Analysis
-report builder changes the work substantially.
+### F2. ~~Where does net pay live?~~ ANSWERED — 20 August 2026
 
-### F3. Is there a machine-readable export?
+In the payroll Analysis report, at employer level, per tax month. `Net pay`,
+`Take-home pay`, `Cost to employer` and their `to date` counterparts are all
+present and all already being imported into `payroll.analysis_fact`.
 
-The docs say P30/P32 export as PDF, and the Analysis section has a generic
-"Exporting Reports" with no formats named. Whether a CSV/Excel export exists decides
-whether the BrightPay leg is scraped from the screen (as now) or ingested from a
-file. **That is an architecture decision, not a detail** — a file ingest would be
-more robust than screen-reading and would make A3's backfill much cheaper.
+So **section E is no longer blocked on BrightPay.** It still needs the
+`net_wages` and `wages_control` nominals mapped on the QuickBooks side, but the
+payroll side of the two-way is available now.
+
+Worth noting the design point E makes is satisfied rather than dodged: these are
+figures from the *payroll*, not from the journal the payroll produced. And the
+report distinguishes `Net pay` from `Take-home pay` (they differ by after-tax
+deductions — £12,953.46 against £12,705.16 on one real month), so the paper should
+say which of the two it is agreeing to the wages creditor.
+
+### F3. ~~Is there a machine-readable export?~~ ANSWERED — 20 August 2026
+
+**Yes, and better than hoped.** `Export or Share → "Export CSV for Selected
+Report..."` renders the CSV *into a dialog on screen*, with Copy To Clipboard and
+Download buttons. So the report can be read as text without intercepting a
+download, without a temp file, and — the part that matters — without the
+employee-level rows ever touching a disk.
+
+The architecture decision this gates is therefore made: **the BrightPay leg is a
+file ingest, not a screen-read.** Implemented and pushed; see the note at the top
+of section A. Consequences already banked:
+
+- A3's backfill is cheap (the report takes a period range, and offers "report over
+  multiple tax years")
+- the parser is column-agnostic, so improving the report in BrightPay needs no
+  code change on our side
+- it is robust to restyling in a way `readTaxMonth()`'s label-anchored resolver
+  is not
+
+Two things that were not obvious and cost real time, recorded so nobody rediscovers
+them:
+
+- **`Schedule = Tax months` is mandatory.** The aggregate rows carry no `Pay date`
+  and no `Tax month number` — those columns are populated on employee rows and
+  blank on department and TOTAL rows. Left on the employer's own pay schedule, the
+  only period marker is a pay-period end date, and the tax month cannot be derived
+  from it: a weekly payroll paid on 2 September belongs to tax month 5 while its
+  period ends in a different calendar month.
+- **Never ask the HMRC report for a tax month that has not happened.** It offers
+  all twelve regardless of whether a payroll has run, and the unrun ones do not
+  come back empty — `Shortfall from previous periods` carries the unpaid balance
+  forward, so one unpaid August liability reads as "amount due 4,292.14" in
+  October, November and every month to April.
 
 ---
 
