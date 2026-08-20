@@ -6,7 +6,7 @@ import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import ChasersPanel from '../components/ChasersPanel';
 import ViewTabs from '../components/ViewTabs';
-import { listOnboardings, isOverdue, daysSince, ONBOARDING_STATUSES, setOnboardingStatus, setOnboardingArchived } from '../api';
+import { listOnboardings, isOverdue, daysSince, ONBOARDING_STATUSES, setOnboardingStatus, setOnboardingArchived, outstandingSteps, autoCompletedSteps } from '../api';
 
 const font = "'Outfit', sans-serif";
 
@@ -54,6 +54,8 @@ export default function PipelineView() {
     return () => { cancelled = true; };
   }, []);
 
+  const reload = () => listOnboardings().then(setRows).catch((e) => setError(e.message));
+
   const filtered = useMemo(() => {
     if (!rows) return [];
     return rows.filter((r) => {
@@ -70,12 +72,39 @@ export default function PipelineView() {
 
   async function runAction(r, action, e) {
     e.stopPropagation();
+
+    // Complete closes out the rest of the checklist and Reopen puts it back,
+    // so both say what they are about to move before they move it.
+    const open = outstandingSteps(r.steps);
+    const auto = autoCompletedSteps(r.steps);
+    if (action === 'complete' && open.length) {
+      const ok = window.confirm(
+        `Mark ${r.entity?.name || 'this onboarding'} complete?\n\n`
+        + `${open.length} step${open.length === 1 ? '' : 's'} still open will be ticked off. `
+        + `Reopen puts them back exactly as they are now.`,
+      );
+      if (!ok) return;
+    }
+    if (action === 'reopen' && auto.length) {
+      const ok = window.confirm(
+        `Reopen ${r.entity?.name || 'this onboarding'}?\n\n`
+        + `${auto.length} step${auto.length === 1 ? '' : 's'} ticked off when it was completed will go back to what they were.`,
+      );
+      if (!ok) return;
+    }
+
     setBusyId(r.id);
     try {
       let patch;
       if (action === 'complete') {
         await setOnboardingStatus(r.id, 'complete', { actorId: profile?.id, prevStatus: r.status });
-        patch = { status: 'complete', completed_at: new Date().toISOString() };
+        const now = new Date().toISOString();
+        patch = {
+          status: 'complete',
+          completed_at: now,
+          steps: (r.steps || []).map((st) => (open.some((o) => o.id === st.id)
+            ? { ...st, status: 'complete', auto_completed_at: now } : st)),
+        };
       } else if (action === 'reopen') {
         await setOnboardingStatus(r.id, 'active', { actorId: profile?.id, prevStatus: r.status });
         patch = { status: 'active', completed_at: null };
@@ -87,6 +116,9 @@ export default function PipelineView() {
         patch = { archived_at: null };
       }
       setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, ...patch } : x)));
+      // Reopen restores each step to the status it held before completion,
+      // which only the server knows — read the row back rather than guess.
+      if (action === 'reopen' && auto.length) await reload();
     } catch (err) {
       setError(err.message);
     }

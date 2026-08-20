@@ -14,7 +14,8 @@ import CheckinPanel from '../components/CheckinPanel';
 import DateField from '../components/DateField';
 import {
   getOnboarding, listStaff, updateOnboarding, updateStep, addNote, addDirectorSa,
-  isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES,
+  isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES, setOnboardingStatus,
+  outstandingSteps, autoCompletedSteps,
 } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -27,6 +28,8 @@ const selectStyle = {
 function stepStatusMeta(value) {
   return STEP_STATUSES.find((s) => s.value === value) || STEP_STATUSES[0];
 }
+
+const NEWLINE = '\n';
 
 const KIND_LABEL = {
   note: 'Note', status_change: 'Update', system: 'System', email_out: 'Email sent', client_reply: 'Client reply',
@@ -104,15 +107,32 @@ export default function OnboardingDetailView() {
     patchStep(step, patch, `${step.name}: ${stepStatusMeta(step.status).label} → ${meta.label}`);
   }
 
+  // Completing closes out whatever is still open on the checklist; moving off
+  // Complete reinstates exactly those steps (setOnboardingStatus owns both
+  // halves, so the list quick-action and this dropdown behave identically).
   async function handleObStatus(status) {
     const prev = ob.status;
-    const patch = { status, completed_at: status === 'complete' ? new Date().toISOString() : null };
-    setOb((o) => ({ ...o, ...patch }));
+    const open = outstandingSteps(ob.steps);
+    const auto = autoCompletedSteps(ob.steps);
+    if (status === 'complete' && prev !== 'complete' && open.length) {
+      const ok = window.confirm(
+        `Mark this onboarding complete?${NEWLINE}${NEWLINE}`
+        + `${open.length} step${open.length === 1 ? '' : 's'} still open will be ticked off. `
+        + `Setting the status back puts them exactly as they are now.`,
+      );
+      if (!ok) return;
+    }
+    if (status !== 'complete' && prev === 'complete' && auto.length) {
+      const ok = window.confirm(
+        `Move this onboarding out of Complete?${NEWLINE}${NEWLINE}`
+        + `${auto.length} step${auto.length === 1 ? '' : 's'} ticked off on completion will go back to what they were.`,
+      );
+      if (!ok) return;
+    }
+
+    setOb((o) => ({ ...o, status, completed_at: status === 'complete' ? new Date().toISOString() : null }));
     try {
-      await updateOnboarding(ob.id, patch, {
-        actorId: profile?.id,
-        logBody: `Onboarding status: ${prev} → ${status}`,
-      });
+      await setOnboardingStatus(ob.id, status, { actorId: profile?.id, prevStatus: prev });
       load();
     } catch (e) { setError(e.message); load(); }
   }
@@ -273,6 +293,14 @@ export default function OnboardingDetailView() {
                         }}>
                           {step.name}
                         </span>
+                        {step.auto_completed_at && (
+                          <span
+                            style={chipStyle('neutral')}
+                            title={`Ticked off automatically when the onboarding was marked complete — reopening puts it back to "${stepStatusMeta(step.status_before_auto).label}"`}
+                          >
+                            closed out
+                          </span>
+                        )}
                         {step.owner_type === 'client' && <span style={chipStyle('warning')}>client</span>}
                         {step.owner_type === 'system' && (
                           <span style={{ ...chipStyle('info'), display: 'inline-flex', alignItems: 'center', gap: 3 }}><Zap size={9} /> auto</span>

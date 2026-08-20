@@ -14,7 +14,10 @@ import { supabase } from '../../lib/supabase';
 export const SERVICE_CONDITION_MAP = {
   sa: ['directors_tax_return'],
   ct: ['accounts_ct'],
-  vat: ['bookkeeping_vat', 'vat_returns'],
+  // Bookkeeping and VAT are independent services. The fee engine's combined
+  // 'bookkeeping_vat' product implies both; 'vat_returns' is VAT only.
+  bookkeeping: ['bookkeeping_vat'],
+  vat: ['vat_returns', 'bookkeeping_vat'],
   paye: ['payroll', 'auto_enrolment'],
   // No fee-engine service maps to CIS yet — CIS steps default to N/A and are toggled on manually
   cis: [],
@@ -45,7 +48,8 @@ export const ONBOARDING_STATUSES = [
 // onboarding_template_steps.service_condition.
 export const SERVICE_OPTIONS = [
   { key: 'ct', label: 'Accounts & Corporation Tax' },
-  { key: 'vat', label: 'Bookkeeping & VAT' },
+  { key: 'bookkeeping', label: 'Bookkeeping' },
+  { key: 'vat', label: 'VAT returns' },
   { key: 'paye', label: 'Payroll (PAYE)' },
   { key: 'sa', label: 'Self-Assessment' },
   { key: 'cis', label: 'CIS' },
@@ -182,7 +186,7 @@ export async function listOnboardings() {
       template:onboarding_templates(id, code, name),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name),
       lead:staff_profiles!onboardings_lead_id_fkey(id, name),
-      steps:onboarding_steps(id, status, owner_type, requested_at, expected_days, chase_after_days, name, group_name, milestone),
+      steps:onboarding_steps(id, status, owner_type, requested_at, expected_days, chase_after_days, name, group_name, milestone, auto_completed_at),
       handovers:onboarding_handovers(area, due, done_at)
     `)
     .order('created_at', { ascending: false });
@@ -410,6 +414,7 @@ export async function hasLiveBilling(entityId) {
 
 // QBO billing service display names → onboarding condition keys (keyword match)
 const BILLING_CONDITION_RULES = [
+  [/bookkeep/i, 'bookkeeping'],
   [/vat/i, 'vat'],
   [/payroll/i, 'paye'],
   [/self assessment|sole trader/i, 'sa'],
@@ -549,15 +554,116 @@ export async function updateOnboarding(id, patch, { actorId, logBody } = {}) {
   }
 }
 
-// Set the onboarding-level status (Complete / Reopen quick actions on the
-// list). Mirrors OnboardingDetailView.handleObStatus: 'complete' stamps
-// completed_at, anything else clears it.
+// The step statuses that "still open" means — anything not complete and not
+// N/A. Complete closes these out; Reopen puts them back.
+const OPEN_STEP_STATUSES = ['pending', 'waiting_client', 'waiting_external', 'blocked', 'received'];
+
+// How many steps a Complete would tick right now (drives the confirmation
+// wording, so the count the user is shown is the count that gets changed).
+export function outstandingSteps(steps = []) {
+  return steps.filter((s) => OPEN_STEP_STATUSES.includes(s.status));
+}
+
+// Steps a previous Complete ticked on the team's behalf, which a Reopen undoes.
+export function autoCompletedSteps(steps = []) {
+  return steps.filter((s) => s.auto_completed_at);
+}
+
+// Close out the checklist as part of marking the onboarding Complete.
+// Every step still open is ticked, and each one remembers the status it held
+// (status_before_auto) plus the fact that Athena — not a person — ticked it
+// (auto_completed_at). That pair is what makes reopenOnboardingSteps exact.
+// Steps a human already completed, and N/A steps, are left alone.
+// Grouped by previous status so one update covers each group (PostgREST can't
+// copy a column into another column in a single statement).
+async function autoCompleteOpenSteps(id, { actorId } = {}) {
+  const { data: open, error } = await supabase
+    .from('onboarding_steps')
+    .select('id, status')
+    .eq('onboarding_id', id)
+    .in('status', OPEN_STEP_STATUSES);
+  if (error) throw error;
+  if (!open?.length) return 0;
+
+  const now = new Date().toISOString();
+  for (const was of OPEN_STEP_STATUSES) {
+    const ids = open.filter((s) => s.status === was).map((s) => s.id);
+    if (!ids.length) continue;
+    const { error: e } = await supabase.from('onboarding_steps').update({
+      status: 'complete',
+      completed_at: now,
+      completed_by: actorId || null,
+      auto_completed_at: now,
+      status_before_auto: was,
+      updated_at: now,
+    }).in('id', ids);
+    if (e) throw e;
+  }
+  return open.length;
+}
+
+// The undo half: put back every step a Complete ticked, at the status it held
+// before. Clears the auto-complete marks so a later Complete starts clean.
+async function reopenOnboardingSteps(id) {
+  const { data: auto, error } = await supabase
+    .from('onboarding_steps')
+    .select('id, status_before_auto')
+    .eq('onboarding_id', id)
+    .not('auto_completed_at', 'is', null);
+  if (error) throw error;
+  if (!auto?.length) return 0;
+
+  const now = new Date().toISOString();
+  const groups = new Map();
+  auto.forEach((s) => {
+    // A null status_before_auto shouldn't happen, but 'pending' is the safe
+    // landing spot: visible and actionable rather than silently complete.
+    const was = OPEN_STEP_STATUSES.includes(s.status_before_auto) ? s.status_before_auto : 'pending';
+    if (!groups.has(was)) groups.set(was, []);
+    groups.get(was).push(s.id);
+  });
+  for (const [was, ids] of groups) {
+    const { error: e } = await supabase.from('onboarding_steps').update({
+      status: was,
+      completed_at: null,
+      completed_by: null,
+      auto_completed_at: null,
+      status_before_auto: null,
+      updated_at: now,
+    }).in('id', ids);
+    if (e) throw e;
+  }
+  return auto.length;
+}
+
+// Set the onboarding-level status (Complete / Reopen quick actions on the list
+// and the status dropdown on the detail screen).
+//
+// 'complete' stamps completed_at and closes out the remaining checklist steps;
+// moving off 'complete' clears completed_at and reinstates exactly the steps
+// that close-out ticked, so a client comes back needing the same work as
+// before. Returns { autoCompleted, reinstated } so callers can say what moved.
 export async function setOnboardingStatus(id, status, { actorId, prevStatus } = {}) {
+  const wasComplete = prevStatus === 'complete';
+  let autoCompleted = 0;
+  let reinstated = 0;
+
+  // Steps first: if closing them out fails, the onboarding stays open rather
+  // than reading Complete over a half-ticked list.
+  if (status === 'complete' && !wasComplete) autoCompleted = await autoCompleteOpenSteps(id, { actorId });
+  if (status !== 'complete' && wasComplete) reinstated = await reopenOnboardingSteps(id);
+
   const patch = { status, completed_at: status === 'complete' ? new Date().toISOString() : null };
+  const detail = autoCompleted
+    ? ` — closed out ${autoCompleted} outstanding step${autoCompleted === 1 ? '' : 's'}`
+    : reinstated
+      ? ` — reinstated ${reinstated} step${reinstated === 1 ? '' : 's'} closed out on completion`
+      : '';
   await updateOnboarding(id, patch, {
     actorId,
-    logBody: `Onboarding status: ${prevStatus || '?'} → ${status}`,
+    logBody: `Onboarding status: ${prevStatus || '?'} → ${status}${detail}`,
   });
+  return { autoCompleted, reinstated };
 }
 
 // Archive / restore — filed away from the working List and Board without
@@ -721,7 +827,7 @@ export async function getDriveConnection() {
 //
 // drive-auth-init used to be an unauthenticated 302 that took staff_id from the query
 // string into an unsigned OAuth state, and drive-auth-callback revoked the live
-// connection and installed whatever account consented â€” so a stranger could point
+// connection and installed whatever account consented — so a stranger could point
 // client onboarding documents at their own Drive. It now requires a staff session and
 // signs a single-use state, so the consent URL is fetched rather than built. Navigates
 // on success; throws if the caller is not staff.
