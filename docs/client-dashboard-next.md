@@ -5,18 +5,15 @@ access build. Ordered by what blocks what.
 
 ## Before Marc Kelly is told his dashboard exists
 
-**1. Confirm Puddleduck's financial year end.**
-QuickBooks returns null for `FiscalYearStartMonth` on that file, so the Overview's
-Fiscal basis falls back to a September year end — Almond Valley's, not theirs. The
-picker on the Overview shows amber and says "not confirmed" until somebody sets it.
-The Puddleduck Expansion forecast carries `year_end_date = 2027-07-31`, which
-implies **31 July**, but that is Bobby's own entry in another module and has not
-been checked against Companies House. Set it on the Overview (Fiscal → Ends), or
-directly: `qbo_report_connections.fiscal_year_end_month`.
-
-Worth a sweep afterwards: how many of the ~120 connected realms return null for
-the QBO setting? Every one of them is currently being shown the practice's
-quarters. A one-line query answers it, and the fix is per-client data entry.
+**1. ~~Confirm Puddleduck's financial year end.~~ Done, and generalised.**
+Set to July, and then superseded: BrightManager already names every client's year
+end in its Annual Accounts task titles ("Accounts Preparation Year End
+31/07/2026"). The view `v_client_year_end` (sql/247) reads it live. Coverage
+across the 134 connected clients is 117 from BrightManager, 16 assumed from the
+tax year (all sole traders and partnerships, which have no such task), and 1
+override. None are on the practice's own year end any more. sql/247's header
+explains why it reads through rather than backfilling — year ends move, and two
+clients already show a genuine period change.
 
 **2. Sign in as a real client and look at the page.**
 The only part of this build nobody has actually seen. The server gates are verified
