@@ -32,6 +32,9 @@ const PERMISSION_COLS = [
   { key: 'can_view_practice_financials', label: 'Practice financials' },
   // See Draft admin tasks + release Billed → To Do in the admin-task pipeline.
   { key: 'can_manage_task_pipeline', label: 'Task pipeline' },
+  // Edit sector KPI packs. Separate from entering one client's figures because
+  // a pack edit reaches every client in the sector at once.
+  { key: 'can_manage_kpi_packs', label: 'KPI packs' },
 ];
 
 // Use select('*') to avoid failing on missing columns — the admin page

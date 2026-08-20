@@ -16,6 +16,8 @@ import SecurityPage from './shell/SecurityPage';
 import UserSettingsPage from './shell/UserSettingsPage';
 import PortalClientsPage from './shell/PortalClientsPage';
 import DashboardAccessPage from './shell/DashboardAccessPage';
+import KpiPacksPage from './modules/client-dashboard/KpiPacksPage';
+import KpiOutstandingPage from './modules/client-dashboard/KpiOutstandingPage';
 import ConnectionsPage from './shell/ConnectionsPage';
 import SchedulesPage from './shell/SchedulesPage';
 import ShortcutsPage from './shell/ShortcutsMap';
@@ -104,6 +106,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/admin/staff" element={<AdminPage />} />
           <Route path="/admin/portal-clients" element={<PortalClientsPage />} />
           <Route path="/admin/dashboard-access" element={<DashboardAccessPage />} />
+          <Route path="/admin/kpi-packs" element={<KpiPacksPage />} />
+          <Route path="/kpis/outstanding" element={<KpiOutstandingPage />} />
           <Route path="/admin/connections" element={<ConnectionsPage />} />
           {/* What runs on a timer, and when it next fires (sql/223). */}
           <Route path="/admin/schedules" element={<SchedulesPage />} />

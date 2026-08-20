@@ -25,6 +25,8 @@ const SUBPAGES = [
   { prefix: '/admin/staff', label: 'Staff & Permissions' },
   { prefix: '/admin/portal-clients', label: 'Portal Clients' },
   { prefix: '/admin/dashboard-access', label: 'Client Dashboard Access' },
+  { prefix: '/admin/kpi-packs', label: 'KPI Packs' },
+  { prefix: '/kpis/outstanding', label: 'KPI entry outstanding' },
   { prefix: '/admin/connections', label: 'Connections' },
   { prefix: '/admin/schedules', label: 'Scheduled Jobs' },
   { prefix: '/settings/me', label: 'My Settings' },

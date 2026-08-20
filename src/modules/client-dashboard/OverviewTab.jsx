@@ -9,6 +9,7 @@ import {
 } from './overviewGrain';
 import { BucketChart } from './DashboardCharts';
 import { LoadingCard, EmptyState, Delta, MetricTile, Segmented } from './DashboardUI';
+import { formatKpi } from './kpiEngine';
 
 /*
   Overview tab.
@@ -45,6 +46,7 @@ export default function OverviewTab({
   detail, bs, buckets, prior, currency, loading, empty, goTab,
   grain, setGrain, basis, setBasis, view, setView,
   fyIdx, config, fiscalYear, onFiscalYearEndChange,
+  kpiTiles = [], goKpis,
 }) {
   const isU = view === 'underlying';
 
@@ -268,6 +270,47 @@ export default function OverviewTab({
           onClick={goTab ? () => goTab('creditors') : undefined}
         />
       </div>
+
+      {/* ── KPI tiles ──
+          Occupancy sitting next to revenue is the point of having KPIs at all:
+          the financial answer and the operational one belong in the same
+          glance, not on separate tabs. */}
+      {kpiTiles.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+          {kpiTiles.map((r) => {
+            const d = r.definition;
+            const last = r.total[r.total.length - 1];
+            const prev = r.total.length > 1 ? r.total[r.total.length - 2] : null;
+            const diff = (last != null && prev != null) ? last - prev : null;
+            return (
+              <div
+                key={d.id}
+                onClick={goKpis}
+                title={d.hint || 'Open the KPI tab'}
+                style={{
+                  backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px',
+                  padding: '14px 16px', cursor: goKpis ? 'pointer' : 'default',
+                }}
+              >
+                <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#0369a1', marginBottom: '4px' }}>
+                  {d.label}
+                </div>
+                <div style={{ fontFamily: OUTFIT, fontSize: '22px', fontWeight: 700, color: '#0f172a' }}>
+                  {formatKpi(last, d.unit, d.decimals, currency)}
+                </div>
+                <div style={{ minHeight: '16px', marginTop: '2px', fontFamily: OUTFIT, fontSize: '11.5px', color: '#64748b' }}>
+                  {diff != null && Math.abs(diff) > 0.0005 && (
+                    <span style={{ fontWeight: 600, color: diff > 0 ? '#166534' : '#991b1b' }}>
+                      {diff > 0 ? '▲' : '▼'} {formatKpi(Math.abs(diff), d.unit, d.decimals, currency)}{' '}
+                    </span>
+                  )}
+                  {bucketLabel}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Trend ── */}
       {chartPoints.length > 0 && (

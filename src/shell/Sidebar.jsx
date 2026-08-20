@@ -153,6 +153,7 @@ export default function Sidebar() {
     isOwner && { id: 'admin-staff', label: 'Staff & Permissions', route: '/admin/staff' },
     isOwner && { id: 'admin-portal-clients', label: 'Portal Clients', route: '/admin/portal-clients' },
     isOwner && { id: 'admin-dashboard-access', label: 'Client Dashboard Access', route: '/admin/dashboard-access' },
+    isOwner && { id: 'admin-kpi-packs', label: 'KPI Packs', route: '/admin/kpi-packs' },
     isOwner && { id: 'admin-connections', label: 'Connections', route: '/admin/connections' },
     isOwner && { id: 'admin-schedules', label: 'Scheduled Jobs', route: '/admin/schedules' },
     canImport && { id: 'admin-import', label: 'Data Import', route: '/admin/import' },

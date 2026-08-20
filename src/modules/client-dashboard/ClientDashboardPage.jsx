@@ -14,12 +14,16 @@ import {
   OUTFIT, PLAYFAIR, cardStyle, inputStyle,
 } from './dashboardData';
 import { LoadingCard, EmptyState, MetricTile } from './DashboardUI';
-import { buildBuckets, monthKeyOfDate, resolveFiscalYear } from './overviewGrain';
+import { buildBuckets, monthKeyOfDate, resolveFiscalYear, aggregate, seriesFor } from './overviewGrain';
 import { useUnderlyingConfig } from './useUnderlyingConfig';
 import OverviewTab from './OverviewTab';
 import UnderlyingPerformanceTab from './UnderlyingPerformanceTab';
 import ProjectionTab from './ProjectionTab';
 import ClientViewPreview from './ClientViewPreview';
+import KpiTab from './KpiTab';
+import ReportsTab from './ReportsTab';
+import { useKpiData } from './useKpiData';
+import { buildKpiModel } from './kpiEngine';
 
 /*
   Client Dashboard v2 — multi-tab reporting tool over the client's QuickBooks.
@@ -57,8 +61,10 @@ const TABS = [
   { id: 'debtors', label: 'Debtors' },
   { id: 'creditors', label: 'Creditors' },
   { id: 'projection', label: 'Projection' },
+  { id: 'kpis', label: 'KPIs' },
+  { id: 'reports', label: 'Reports' },
 ];
-const PERIOD_TABS = new Set(['overview', 'pnl', 'underlying']);
+const PERIOD_TABS = new Set(['overview', 'pnl', 'underlying', 'kpis', 'reports']);
 const ASAT_TABS = new Set(['balance', 'debtors', 'creditors']);
 
 // The Overview toggles are a working preference, not client data — remembering
@@ -110,6 +116,11 @@ export default function ClientDashboardPage() {
   // Owner-cost / one-off config, held once for the whole page — the Overview
   // and Underlying tabs both read it and must not diverge.
   const underlyingConfig = useUnderlyingConfig(realmId);
+
+  // KPI configuration and figures, likewise held once: the Overview tiles, the
+  // KPI tab and any report all read this one copy.
+  const selectedEntityId = clients.find((c) => c.realm_id === realmId)?.entity_id || null;
+  const kpi = useKpiData(selectedEntityId);
 
   // Live dashboard grants, so the rail can offer "see this as the client does".
   // The RPC is gated on can_manage_portal; anyone else gets nothing back and
@@ -167,16 +178,23 @@ export default function ClientDashboardPage() {
     }
   }, []);
 
-  // ?realm=…&tab=… deep link (portfolio cards + the home-screen Practice Pulse).
+  // Deep links. ?realm= from the portfolio cards and the home-screen Practice
+  // Pulse; ?entity= from the KPI outstanding list, which thinks in clients
+  // rather than QuickBooks realms.
   useEffect(() => {
     if (clientsLoading) return;
     const r = searchParams.get('realm');
+    const e = searchParams.get('entity');
     const t = searchParams.get('tab');
-    if (r && clients.some((c) => c.realm_id === r)) {
+    const target = r && clients.some((c) => c.realm_id === r)
+      ? r
+      : (e ? clients.find((c) => c.entity_id === e)?.realm_id : null);
+    if (target) {
       searchParams.delete('realm');
+      searchParams.delete('entity');
       searchParams.delete('tab');
       setSearchParams(searchParams, { replace: true });
-      onSelect(r);
+      onSelect(target);
       if (t && TABS.some((x) => x.id === t)) setTab(t);
     }
   }, [clientsLoading]);
@@ -316,6 +334,48 @@ export default function ClientDashboardPage() {
   const chartStart = overview.window.start;
   const chartEnd = overview.window.end;
   const bsAsAt = overview.buckets[overview.buckets.length - 1]?.end || period.plEnd;
+
+  /* The financial figures a KPI formula may name (`income / children`), on
+     exactly the buckets the Overview is showing. Computed here rather than
+     inside each consumer so the tiles, the KPI tab and a report cannot end up
+     dividing by three different notions of income. */
+  const overviewRows = useMemo(() => {
+    if (!periodData?.pnl_chart_detail || !overview.buckets.length) return [];
+    return aggregate(periodData.pnl_chart_detail, [overview.prior, ...overview.buckets], {
+      ownerAccountIds: underlyingConfig?.ownerAccountIds,
+      accountsById: underlyingConfig?.accountsById,
+      oneoffs: underlyingConfig?.oneoffs,
+    }).slice(1);
+  }, [periodData?.pnl_chart_detail, overview.buckets, overview.prior,
+    underlyingConfig?.ownerAccountIds, underlyingConfig?.accountsById, underlyingConfig?.oneoffs]);
+
+  const kpiFinancials = useCallback((bi, key) => {
+    const bsp = periodData?.bs_period;
+    // Balance-sheet figures are a position, not a flow, so they read the same
+    // whichever bucket asks — the one as at the latest bucket end.
+    if (key === 'cash') return bsp?.cash ?? null;
+    if (key === 'debtors') return bsp?.debtors ?? null;
+    if (key === 'creditors') return bsp?.accounts_payable ?? bsp?.creditors_within_1yr ?? null;
+    const r = overviewRows[bi];
+    if (!r) return null;
+    const s = seriesFor(r, view);
+    if (key === 'income') return s.income;
+    if (key === 'net_income') return s.net_income;
+    return r[key] ?? null;
+  }, [overviewRows, periodData?.bs_period, view]);
+
+  // KPIs flagged for the Overview, rendered as tiles beside revenue and profit.
+  const kpiTiles = useMemo(() => {
+    if (!kpi.definitions.length || !overview.buckets.length) return [];
+    const m = buildKpiModel({
+      definitions: kpi.definitions,
+      dimensionValues: kpi.dimensionValues,
+      values: kpi.values,
+      buckets: overview.buckets,
+      financials: kpiFinancials,
+    });
+    return m.rows.filter((r) => r.definition.show_on_overview);
+  }, [kpi.definitions, kpi.dimensionValues, kpi.values, overview.buckets, kpiFinancials]);
 
   /* Windowed pulls ------------------------------------------------ */
   const fetchPeriod = useCallback(async (refresh = false) => {
@@ -588,6 +648,8 @@ export default function ClientDashboardPage() {
                   fiscalYear={fiscalYear}
                   onFiscalYearEndChange={setFiscalYearEnd}
                   config={underlyingConfig}
+                  kpiTiles={kpiTiles}
+                  goKpis={() => setTab('kpis')}
                 />
               )}
               {tab === 'pnl' && (
@@ -598,6 +660,25 @@ export default function ClientDashboardPage() {
                   data={periodData} meta={period}
                   currency={periodCurrency} loading={periodLoading} empty={emptyProps}
                   config={underlyingConfig}
+                />
+              )}
+              {tab === 'kpis' && (
+                <KpiTab
+                  entityId={entityId} clientName={selectedName} kpi={kpi}
+                  buckets={overview.buckets} financials={kpiFinancials}
+                  currency={periodCurrency}
+                  grain={grain} setGrain={setGrain}
+                  basis={basis} setBasis={setBasis}
+                  canManagePacks={profile?.can_manage_kpi_packs === true}
+                />
+              )}
+              {tab === 'reports' && (
+                <ReportsTab
+                  entityId={entityId} clientName={selectedName}
+                  detail={periodData?.pnl_chart_detail} bs={periodData?.bs_period}
+                  config={underlyingConfig} kpi={kpi} fyIdx={fyIdx}
+                  currency={periodCurrency} sectorId={kpi.sectorId}
+                  canManagePacks={profile?.can_manage_kpi_packs === true}
                 />
               )}
               {tab === 'projection' && (
