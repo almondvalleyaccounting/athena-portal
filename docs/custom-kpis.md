@@ -93,21 +93,42 @@ is. `is_override` marks a figure a human typed over an automated one, so an
 importer can leave corrections alone instead of quietly undoing them. See the
 BrightPay scoping task.
 
-## Still to build
+## Built
 
-1. **Entry grid** on a new KPI tab — months across, KPIs × rooms down.
-2. **Outstanding list**, practice-wide, over `kpi_outstanding()`.
-3. **Tiles on the Overview** for definitions flagged `show_on_overview`, and the
-   trend/breakdown on the KPI tab.
-4. **Pack editor** — sectors, definitions, formulas, gated on
-   `can_manage_kpi_packs`. Needs the flag adding to `PERMISSION_COLS` in
-   `shell/AdminPage.jsx`.
-5. **Sector allocation** on the client record.
-6. **Custom reports** — a saved arrangement of rows (financial categories and
-   KPIs) × grain × basis × chart. Thinner than it sounds once KPIs exist: it is a
-   saved view.
-7. **Portal exposure** — deliberately deferred. Staff get the numbers right and
-   trusted first; then a `show_kpis` flag alongside the other grant flags.
+| Piece | Where |
+| --- | --- |
+| KPI tab — figures, entry grid, setup | Client Dashboard → KPIs |
+| Overview tiles | anything flagged `show_on_overview` |
+| Pack editor | `/admin/kpi-packs`, behind `can_manage_kpi_packs` |
+| Outstanding list | `/kpis/outstanding` |
+| Sector allocation | KPI tab → Setup |
+| Custom reports | Client Dashboard → Reports (`sql/246`) |
+
+Entry is always **monthly**, whatever grain the Figures tab is showing — you do
+not enter a quarter's headcount, you enter three months and the reader
+aggregates them the way the KPI says.
+
+## Still to do
+
+**Portal exposure** — deliberately deferred. Staff get the numbers right and
+trusted first; then a `show_kpis` flag alongside the other grant flags in
+`client_dashboard_access`, and the KPI rows added to `PortalDashboardView`.
+
+**BrightPay headcount** — the `staff_headcount` KPI in the Childcare pack is
+typed in for now. When the scraper lands it writes `kpi_value` rows with
+`source = 'brightpay'`; nothing in the KPI module needs to change. See the
+BrightPay scoping task.
+
+**Reordering report rows by drag** — the editor has up/down buttons. Fine for
+five rows, tedious for twenty.
+
+## A modelling note, not a bug
+
+`revenue_per_child` is `income / children`. At a yearly grain that is the year's
+whole turnover divided by the average number of children — about £7,900 on
+Puddleduck's seeded figures — not a monthly rate. Arithmetically right, and it
+is what the formula says, but it surprises people. The hint field on each KPI
+exists for exactly this; use it, or define the KPI as a monthly rate instead.
 
 ## Seeded already
 
