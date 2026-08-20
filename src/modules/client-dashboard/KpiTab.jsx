@@ -32,7 +32,7 @@ const MONTH_LABEL = (key) => {
 
 export default function KpiTab({
   entityId, clientName, kpi, buckets, financials, currency,
-  grain, setGrain, basis, setBasis, canManagePacks,
+  canManagePacks, bar,
 }) {
   const [sub, setSub] = useState('figures');
 
@@ -65,6 +65,10 @@ export default function KpiTab({
         </div>
       )}
 
+      {/* Only the Figures view is bucketed — entry is always monthly and setup
+          has no periods at all, so the bar would be inert on those. */}
+      {sub === 'figures' && bar}
+
       <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
         <Segmented
           value={sub} onChange={setSub}
@@ -74,12 +78,6 @@ export default function KpiTab({
             { key: 'setup', label: 'Setup' },
           ]}
         />
-        {sub === 'figures' && (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <Segmented label="By" value={grain} onChange={setGrain} options={GRAINS} size="sm" />
-            <Segmented label="Year" value={basis} onChange={setBasis} options={BASES} size="sm" />
-          </div>
-        )}
       </div>
 
       {nothing && (

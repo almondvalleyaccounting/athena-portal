@@ -135,6 +135,87 @@ export function parseReportTree(report) {
   return { columns, rows: walkRows(report?.Rows?.Row) };
 }
 
+/*
+  Month key (YYYY-MM) per VALUE column of a QBO report — the same derivation the
+  edge function uses for pnl_chart_detail: the column MetaData when QBO sends
+  it, otherwise walking calendar months from the report start. Lets a parsed
+  report tree be bucketed by the grain/basis toggles without re-fetching it,
+  which is what puts an expandable P&L and balance sheet on the same footing as
+  the Overview.
+
+  Returns nulls for a report with no monthly columns; callers treat that as
+  "not bucketable".
+*/
+export function reportMonthKeys(report) {
+  const cols = report?.Columns?.Column || [];
+  const start = report?.Header?.StartPeriod || null;
+  const out = [];
+  let n = 0;
+  cols.forEach((c, i) => {
+    if (i === 0) return;
+    const title = c?.ColTitle ?? '';
+    if (/^total$/i.test(title)) return;
+    const meta = Array.isArray(c?.MetaData) ? c.MetaData : [];
+    const sd = meta.find((m) => m?.Name === 'StartDate')?.Value
+      || meta.find((m) => m?.Name === 'EndDate')?.Value || null;
+    if (sd) {
+      out.push(String(sd).slice(0, 7));
+    } else if (start) {
+      const d = new Date(`${String(start).slice(0, 10)}T00:00:00`);
+      const dd = new Date(d.getFullYear(), d.getMonth() + n, 1);
+      out.push(`${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}`);
+    } else {
+      out.push(null);
+    }
+    n += 1;
+  });
+  return out;
+}
+
+/*
+  Roll a parsed report tree's monthly columns into buckets.
+
+  `how` is 'sum' for flows (a P&L) and 'last' for stocks (a balance sheet) — a
+  quarter's cash is the position at the quarter end, not three months of cash
+  added together, which is the same trap the KPI engine guards.
+
+  Returns a tree of the same shape with `values` / `totals` re-aligned to the
+  buckets, so the existing expandable table renders it unchanged.
+*/
+export function bucketReportTree(rows, monthKeys, buckets, how = 'sum') {
+  const pos = {};
+  monthKeys.forEach((k, i) => { if (k) pos[k] = i; });
+
+  const roll = (values) => {
+    if (!Array.isArray(values)) return values;
+    return buckets.map((b) => {
+      let sum = 0;
+      let last = null;
+      let seen = false;
+      for (const m of b.months) {
+        const i = pos[m];
+        if (i === undefined) continue;
+        const v = values[i];
+        if (v === null || v === undefined) continue;
+        sum += Number(v) || 0;
+        last = Number(v) || 0;
+        seen = true;
+      }
+      if (!seen) return null;
+      return how === 'last' ? last : sum;
+    });
+  };
+
+  const walk = (list) => (list || []).map((n) => ({
+    ...n,
+    values: n.values ? roll(n.values) : n.values,
+    totals: n.totals ? roll(n.totals) : n.totals,
+    children: n.children ? walk(n.children) : n.children,
+  }));
+
+  return walk(rows);
+}
+
 /* ─── Ratios ───────────────────────────────────────────────────── */
 // Defined as a config array so new ratios are one entry each. compute(ctx)
 // returns a number or null (→ rendered as "—"). ctx keys (all follow the
@@ -222,6 +303,7 @@ export function formatRatio(value, format) {
 
 export const PERIOD_PRESETS = [
   { key: 'last12full', label: 'Last 12 months' },
+  { key: 'last5years', label: 'Last 5 years' },
   { key: 'last365', label: 'Last 365 days' },
   { key: 'mtd', label: 'This month to date' },
   { key: 'lastMonth', label: 'Last month' },
@@ -319,6 +401,15 @@ export function computePeriod(key, today = new Date(), fyIdx = 9, custom = null)
         priorStart = new Date(priorEnd); priorStart.setDate(priorStart.getDate() - (lenDays - 1));
       }
       label = `${shortDate(iso(plStart))} – ${shortDate(iso(plEnd))}`; deltaLabel = 'vs prior period';
+      break;
+    // Sixty whole months to the last full month. The P&L table shows the lot;
+    // the Overview reads only the end point and counts its own buckets back,
+    // so this is what makes five fiscal years fit on that tab.
+    case 'last5years':
+      plEnd = new Date(y, m, 0);
+      plStart = new Date(plEnd.getFullYear(), plEnd.getMonth() - 59, 1);
+      setMonthPrior(60);
+      label = 'last 5 years'; deltaLabel = 'vs prior 5 years';
       break;
     case 'last12full':
     default:

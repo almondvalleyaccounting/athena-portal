@@ -14,12 +14,15 @@ import {
   OUTFIT, PLAYFAIR, cardStyle, inputStyle,
 } from './dashboardData';
 import { LoadingCard, EmptyState, MetricTile } from './DashboardUI';
-import { buildBuckets, monthKeyOfDate, resolveFiscalYear, aggregate, seriesFor } from './overviewGrain';
+import {
+  buildBuckets, monthKeyOfDate, resolveFiscalYear, aggregate, seriesFor, windowLabel,
+} from './overviewGrain';
 import { useUnderlyingConfig } from './useUnderlyingConfig';
 import OverviewTab from './OverviewTab';
 import UnderlyingPerformanceTab from './UnderlyingPerformanceTab';
 import ProjectionTab from './ProjectionTab';
 import ClientViewPreview from './ClientViewPreview';
+import ViewBar from './ViewBar';
 import KpiTab from './KpiTab';
 import ReportsTab from './ReportsTab';
 import { useKpiData } from './useKpiData';
@@ -351,6 +354,33 @@ export default function ClientDashboardPage() {
   const chartEnd = overview.window.end;
   const bsAsAt = overview.buckets[overview.buckets.length - 1]?.end || period.plEnd;
 
+  /* The Balance Sheet is an as-at tab, so its comparative columns are counted
+     back from the as-at date rather than the period end — but with the same
+     grain and basis, so a fiscal quarter means the same thing on every tab. */
+  const bsGrid = useMemo(
+    () => buildBuckets({ grain, basis, anchorKey: (asAt.date || '').slice(0, 7) || monthKeyOfDate(today), fyIdx }),
+    [grain, basis, asAt.date, fyIdx, today],
+  );
+  const bsGridStart = bsGrid.window.start;
+  const windowNote = windowLabel(grain, basis, overview.buckets);
+
+  /* One bar, rendered by whichever tab is open. Every tab that reports over
+     time gets the same controls in the same place, and they keep their setting
+     when you move between tabs — picking fiscal quarters on the Overview and
+     finding the P&L back in calendar months is how a screen loses trust.
+     Controls that would not change anything on a given tab are hidden rather
+     than shown dead. */
+  const viewBar = useCallback((opts = {}) => (
+    <ViewBar
+      grain={grain} setGrain={setGrain}
+      basis={basis} setBasis={setBasis}
+      view={view} setView={setView}
+      fiscalYear={fiscalYear}
+      onFiscalYearEndChange={setFiscalYearEnd}
+      {...opts}
+    />
+  ), [grain, basis, view, fiscalYear, setFiscalYearEnd]);
+
   /* The financial figures a KPI formula may name (`income / children`), on
      exactly the buckets the Overview is showing. Computed here rather than
      inside each consumer so the tiles, the KPI tab and a report cannot end up
@@ -424,21 +454,27 @@ export default function ClientDashboardPage() {
       const { data: payload, error: fnErr } = await supabase.functions.invoke('dashboard-qbo-pull', {
         body: {
           realmId, refresh,
-          window: { kind: asAtKey === 'custom' ? 'custom' : 'preset', asat: { date: asAt.date } },
+          window: {
+            kind: asAtKey === 'custom' ? 'custom' : 'preset',
+            asat: { date: asAt.date, gridStart: bsGridStart },
+          },
         },
       });
-      if (!fnErr) { setAsAtData(payload?.metrics || null); asAtLoadedRef.current = asAt.date; }
+      if (!fnErr) { setAsAtData(payload?.metrics || null); asAtLoadedRef.current = `${asAt.date}|${bsGridStart}`; }
     } catch { /* reconnect banner via the default pull */ }
     setAsAtLoading(false);
-  }, [realmId, asAtKey, asAt.date]);
+  }, [realmId, asAtKey, asAt.date, bsGridStart]);
 
   // Period data: fetch on select and whenever the period window changes.
   useEffect(() => { if (realmId) fetchPeriod(false); }, [fetchPeriod]);
   // As-at data: fetch lazily on first visit to a balance/aged tab, and when the
   // as-at window changes while one of those tabs is open.
   useEffect(() => {
-    if (realmId && ASAT_TABS.has(tab) && asAtLoadedRef.current !== asAt.date) fetchAsAt(false);
-  }, [realmId, tab, asAt.date, fetchAsAt]);
+    // Keyed on the grid window as well as the date: changing grain or basis
+    // moves the comparative columns, which needs a different pull.
+    const key = `${asAt.date}|${bsGridStart}`;
+    if (realmId && ASAT_TABS.has(tab) && asAtLoadedRef.current !== key) fetchAsAt(false);
+  }, [realmId, tab, asAt.date, bsGridStart, fetchAsAt]);
 
   const lastPulled = cacheRows.length ? cacheRows[0].pulled_at : null;
   const winBusy = periodLoading || asAtLoading;
@@ -666,16 +702,24 @@ export default function ClientDashboardPage() {
                   config={underlyingConfig}
                   kpiTiles={kpiTiles}
                   goKpis={() => setTab('kpis')}
+                  bar={viewBar({ note: windowNote })}
                 />
               )}
               {tab === 'pnl' && (
-                <PnlTab pnlMonthly={periodData?.pl_range} currency={periodCurrency} loading={periodLoading} empty={emptyProps} />
+                <PnlTab
+                  pnlMonthly={periodData?.pl_range} buckets={overview.buckets}
+                  currency={periodCurrency} loading={periodLoading} empty={emptyProps}
+                  bar={viewBar({ showView: false, note: 'Underlying is on its own tab, where the bridge from reported is shown.' })}
+                />
               )}
               {tab === 'underlying' && (
                 <UnderlyingPerformanceTab
                   data={periodData} meta={period}
                   currency={periodCurrency} loading={periodLoading} empty={emptyProps}
                   config={underlyingConfig}
+                  buckets={overview.buckets} prior={overview.prior}
+                  detail={periodData?.pnl_chart_detail}
+                  bar={viewBar({ showView: false, note: 'This tab is the underlying view — the toggle above would say the same thing twice.' })}
                 />
               )}
               {tab === 'kpis' && (
@@ -683,9 +727,8 @@ export default function ClientDashboardPage() {
                   entityId={entityId} clientName={selectedName} kpi={kpi}
                   buckets={overview.buckets} financials={kpiFinancials}
                   currency={periodCurrency}
-                  grain={grain} setGrain={setGrain}
-                  basis={basis} setBasis={setBasis}
                   canManagePacks={profile?.can_manage_kpi_packs === true}
+                  bar={viewBar({ showView: false })}
                 />
               )}
               {tab === 'reports' && (
@@ -704,10 +747,16 @@ export default function ClientDashboardPage() {
                   grain={grain} setGrain={setGrain}
                   basis={basis} setBasis={setBasis}
                   config={underlyingConfig}
+                  bar={viewBar({ showView: false })}
                 />
               )}
               {tab === 'balance' && (
-                <BalanceSheetTab balanceSheet={asAtData?.bs_asat} currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
+                <BalanceSheetTab
+                  balanceSheet={asAtData?.bs_asat} grid={asAtData?.bs_grid}
+                  buckets={bsGrid.buckets}
+                  currency={asAtCurrency} loading={asAtLoading} empty={emptyProps}
+                  bar={viewBar({ showView: false, note: 'Each column is the position at that period end.' })}
+                />
               )}
               {tab === 'debtors' && (
                 <AgedTab data={asAtData?.ar_asat} title="Aged debtors (receivables)" sameLabel="Same debtors"
@@ -935,115 +984,161 @@ function ReportTable({ columns, rows, monthLabels = true }) {
 }
 
 /* ─── P&L tab ──────────────────────────────────────────────────── */
-function PnlTab({ pnlMonthly, currency, loading, empty }) {
+/*
+  P&L by period. The columns follow the grain and basis toggles rather than
+  QuickBooks' raw month columns, so fiscal quarters here mean the same three
+  months they mean on the Overview.
+
+  No View toggle: this tab is the reported statement. Taking owner costs out of
+  a statement without showing the bridge would be a figure nobody could tie
+  back, so that lives on the Underlying Performance tab, which shows the
+  reconciliation line by line.
+*/
+function PnlTab({ pnlMonthly, buckets, currency, loading, empty, bar }) {
   const parsed = useMemo(
     () => (pnlMonthly?.report ? parseReportTree(pnlMonthly.report) : null),
     [pnlMonthly],
   );
-  if (!parsed) return loading ? <LoadingCard label="monthly P&L" /> : <EmptyState label="monthly P&L" {...empty} />;
+  const monthKeys = useMemo(
+    () => (pnlMonthly?.report ? reportMonthKeys(pnlMonthly.report) : []),
+    [pnlMonthly],
+  );
+  const bucketed = useMemo(() => {
+    if (!parsed || !buckets?.length || !monthKeys.some(Boolean)) return null;
+    return bucketReportTree(parsed.rows, monthKeys, buckets, 'sum');
+  }, [parsed, monthKeys, buckets]);
+
+  if (!parsed) {
+    return (
+      <>
+        {bar}
+        {loading ? <LoadingCard label="P&L" /> : <EmptyState label="P&L" {...empty} />}
+      </>
+    );
+  }
+
+  // Fall back to QuickBooks' own columns if the report has no month grain to
+  // bucket (a single-period pull), rather than showing nothing.
+  const columns = bucketed ? buckets.map((b) => b.label) : parsed.columns;
+  const rows = bucketed || parsed.rows;
+
   return (
-    <div style={cardStyle}>
-      <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: '12px' }}>
-        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-          Profit &amp; Loss by month
-        </span>
-        {pnlMonthly.period && (
-          <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
-            {shortDate(pnlMonthly.period.start)} → {shortDate(pnlMonthly.period.end)} · {currency}
+    <>
+      {bar}
+      <div style={cardStyle}>
+        <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: '12px' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+            Profit &amp; Loss
           </span>
-        )}
+          {pnlMonthly.period && (
+            <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
+              {shortDate(pnlMonthly.period.start)} → {shortDate(pnlMonthly.period.end)} · {currency}
+            </span>
+          )}
+        </div>
+        <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: 0, marginBottom: '10px' }}>
+          Click a summary line (Income, Cost of Sales, Expenses…) to expand it to account level.
+          {bucketed && ' Columns follow the grain and year basis above.'}
+        </p>
+        <ReportTable columns={columns} rows={rows} monthLabels={!bucketed} />
       </div>
-      <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: 0, marginBottom: '10px' }}>
-        Click a summary line (Income, Cost of Sales, Expenses…) to expand it to account level.
-      </p>
-      <ReportTable columns={parsed.columns} rows={parsed.rows} />
-    </div>
+    </>
   );
 }
 
 /* ─── Balance Sheet tab ────────────────────────────────────────── */
-function BalanceSheetTab({ balanceSheet, currency, loading, empty }) {
+/*
+  One table, not two.
+
+  This used to show a fixed summary of eight lines across four hard-coded dates,
+  and then the same story again underneath as a single-column expandable tree —
+  the same information twice, and neither half was the whole thing: you could
+  have the comparison or the detail, never both.
+
+  Now the comparative columns and the expandable account tree are the same
+  table. Columns follow the grain and basis toggles, so you can read the balance
+  sheet by month, by fiscal quarter or by year, and open any section down to
+  account level in whichever of those you are looking at.
+
+  Balances are STOCKS, so a bucket takes the position at its END — a quarter's
+  cash is the closing balance, never three months added together.
+*/
+function BalanceSheetTab({ balanceSheet, grid, buckets, currency, loading, empty, bar }) {
   const parsed = useMemo(
-    () => (balanceSheet?.report ? parseReportTree(balanceSheet.report) : null),
-    [balanceSheet],
+    () => (grid?.report ? parseReportTree(grid.report) : null),
+    [grid],
   );
-  if (!balanceSheet) return loading ? <LoadingCard label="balance sheet" /> : <EmptyState label="balance sheet" {...empty} />;
+  const monthKeys = useMemo(() => grid?.month_keys || [], [grid]);
+  const bucketed = useMemo(() => {
+    if (!parsed || !buckets?.length || !monthKeys.some(Boolean)) return null;
+    return bucketReportTree(parsed.rows, monthKeys, buckets, 'last');
+  }, [parsed, monthKeys, buckets]);
+
+  // Falls back to the single-column as-at report while the grid is still
+  // loading, or for a client whose monthly pull failed — better a narrower
+  // table than an empty tab.
+  const fallback = useMemo(
+    () => (!bucketed && balanceSheet?.report ? parseReportTree(balanceSheet.report) : null),
+    [bucketed, balanceSheet],
+  );
+
+  if (!balanceSheet) {
+    return (
+      <>
+        {bar}
+        {loading ? <LoadingCard label="balance sheet" /> : <EmptyState label="balance sheet" {...empty} />}
+      </>
+    );
+  }
+
   const bs = balanceSheet;
   const within = bs.creditors_within_1yr;
   const after = bs.creditors_after_1yr;
   const liabSub = (within != null || after != null)
     ? `${money(within || 0, currency)} < 1yr · ${money(after || 0, currency)} > 1yr`
     : null;
-  const comp = bs.comparatives;
+
+  const columns = bucketed ? buckets.map((b) => b.label) : (fallback?.columns || []);
+  const rows = bucketed || fallback?.rows || [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-        <MetricTile label="Total assets" value={bs.total_assets} currency={currency}
-          sub={bs.period?.end ? `as at ${shortDate(bs.period.end)}` : null} />
-        <MetricTile label="Total liabilities" value={bs.total_liabilities} currency={currency}
-          sub={liabSub} />
-        <MetricTile label="Net assets" value={bs.net_assets ?? bs.equity} currency={currency} />
-      </div>
-
-      {/* Comparatives — this month vs last month / 3 months / 12 months ago */}
-      {comp?.columns?.length > 0 && (
-        <div style={cardStyle}>
-          <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
-            Comparatives
-          </div>
-          <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: 0, marginBottom: '12px' }}>
-            Month-end balances. Total liabilities = creditors falling due within one year plus after more than one year.
-          </p>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: `${200 + comp.columns.length * 96}px` }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                  <th style={{ ...compTh, textAlign: 'left' }} />
-                  {comp.columns.map((c) => (
-                    <th key={c.key} style={compTh}>
-                      <div style={{ color: '#334155', fontWeight: 700 }}>{c.label}</div>
-                      <div style={{ color: '#94a3b8', fontWeight: 500, fontSize: '10.5px' }}>{shortMonth(c.date)}</div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {comp.rows.map((r) => {
-                  const bold = /total liabilities|net assets/i.test(r.label);
-                  return (
-                    <tr key={r.label} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ ...compTd, textAlign: 'left', color: '#0f172a', fontWeight: bold ? 700 : 500 }}>{r.label}</td>
-                      {r.values.map((v, i) => (
-                        <td key={i} style={{ ...compTd, fontWeight: bold ? 700 : 400, color: v != null && v < 0 ? '#991b1b' : '#475569' }}>
-                          {v === null || v === undefined ? '—' : moneyCompact(v, currency)}
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+    <>
+      {bar}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+          <MetricTile label="Total assets" value={bs.total_assets} currency={currency}
+            sub={bs.period?.end ? `as at ${shortDate(bs.period.end)}` : null} />
+          <MetricTile label="Total liabilities" value={bs.total_liabilities} currency={currency}
+            sub={liabSub} />
+          <MetricTile label="Net assets" value={bs.net_assets ?? bs.equity} currency={currency} />
         </div>
-      )}
 
-      {parsed && (
         <div style={cardStyle}>
-          <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '10px' }}>
-            Balance sheet detail
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+              Balance sheet
+            </span>
+            <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
+              as at {shortDate(bs.period?.end)} · {currency}
+            </span>
           </div>
           <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: 0, marginBottom: '10px' }}>
-            Click a section to expand it to account level. As at {shortDate(bs.period?.end)}.
+            {bucketed
+              ? 'Each column is the position at that period end. Click a section to expand it to account level.'
+              : 'Click a section to expand it to account level.'}
+            {' '}Total liabilities is creditors falling due within one year plus after more than one year.
           </p>
-          <ReportTable columns={parsed.columns} rows={parsed.rows} monthLabels={false} />
+          {rows.length > 0
+            ? <ReportTable columns={columns} rows={rows} monthLabels={!bucketed} />
+            : <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+                Loading the comparative columns…
+              </p>}
         </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }
-const compTh = { fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', fontWeight: 600, textAlign: 'right', padding: '6px 12px', whiteSpace: 'nowrap' };
-const compTd = { fontFamily: OUTFIT, fontSize: '13px', textAlign: 'right', padding: '8px 12px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' };
+
 
 /* ─── Debtors & Creditors tab ──────────────────────────────────── */
 const BUCKET_DEFS = [

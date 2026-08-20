@@ -952,6 +952,11 @@ async function bsMonthlySeries(sb: any, realmId: string, start: string, end: str
     months: cols.map((c) => c.title),
     month_keys: cols.map((c) => c.key),
     lines,
+    // The raw report as well, so the Balance Sheet tab can render ONE table:
+    // the comparative columns and the expandable account tree together. It used
+    // to show a summary table and then a second, single-column expandable table
+    // underneath — the same figures twice, neither of them the whole picture.
+    report,
   };
 }
 
@@ -1167,6 +1172,14 @@ Deno.serve(async (req) => {
         const d = String(win.asat.date);
         await windowMetric(`bs_asat#${d}`, null, d, "bs_asat",
           () => balanceSheetAsAt(sb, realmId, d, true));
+        // Comparative grid for the Balance Sheet tab: a monthly balance sheet
+        // across whatever window the grain/basis toggles ask for, carrying its
+        // report tree so the columns and the expandable detail are one table.
+        if (win.asat.gridStart) {
+          const gs = String(win.asat.gridStart);
+          await windowMetric(`bs_monthly#${gs}_${d}`, gs, d, "bs_grid",
+            () => bsMonthlySeries(sb, realmId, gs, d));
+        }
         await windowMetric(`ar_asat#${d}`, null, d, "ar_asat",
           () => agedAsAt(sb, realmId, "AgedReceivables", d));
         await windowMetric(`ap_asat#${d}`, null, d, "ap_asat",

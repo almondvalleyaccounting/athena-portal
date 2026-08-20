@@ -1,14 +1,9 @@
 import React, { useMemo } from 'react';
 import { Info } from 'lucide-react';
-import {
-  money, shortDate, formatRatio, OUTFIT, cardStyle, inputStyle,
-} from './dashboardData';
-import {
-  GRAINS, BASES, VIEWS, aggregate, seriesFor,
-  rolling12Months, windowLabel, yearEndMonthIndex, MONTH_NAMES,
-} from './overviewGrain';
+import { money, shortDate, formatRatio, OUTFIT, cardStyle } from './dashboardData';
+import { aggregate, seriesFor, rolling12Months, windowLabel } from './overviewGrain';
 import { BucketChart } from './DashboardCharts';
-import { LoadingCard, EmptyState, Delta, MetricTile, Segmented } from './DashboardUI';
+import { LoadingCard, EmptyState, Delta, MetricTile } from './DashboardUI';
 import { formatKpi } from './kpiEngine';
 
 /*
@@ -42,34 +37,10 @@ import { formatKpi } from './kpiEngine';
 */
 
 
-/*
-  Where the year end came from, and how loudly to say so. Only the two that are
-  guesses carry a badge: the point is to distinguish a year end somebody knows
-  from one we have assumed, not to annotate every client.
-*/
-const YEAR_END_SOURCE = {
-  override: { hint: 'Set here for this client' },
-  brightmanager: {
-    hint: "From this client's Annual Accounts tasks in BrightManager",
-    badge: 'from BrightManager',
-  },
-  tax_year: {
-    hint: 'Assumed: sole traders and partnerships report to the tax year. Set it here if this client differs.',
-    badge: 'assumed — tax year',
-    warn: true,
-  },
-  quickbooks: { hint: "From the client's QuickBooks settings" },
-  fallback: {
-    hint: 'Nothing in BrightManager or QuickBooks says when this client\'s year ends. Until you pick the right month, these are not their quarters.',
-    badge: 'not confirmed',
-    warn: true,
-  },
-};
-
 export default function OverviewTab({
   detail, bs, buckets, prior, currency, loading, empty, goTab,
   grain, setGrain, basis, setBasis, view, setView,
-  fyIdx, config, fiscalYear, onFiscalYearEndChange,
+  fyIdx, config, bar,
   kpiTiles = [], goKpis,
 }) {
   const isU = view === 'underlying';
@@ -167,7 +138,6 @@ export default function OverviewTab({
     },
   ];
 
-  const yearEndName = MONTH_NAMES[yearEndMonthIndex('fiscal', fyIdx)];
   const chartPoints = chartRows.map((r) => {
     const s = seriesFor(r, view);
     return { label: r.label, income: s.income, net: s.net_income };
@@ -180,72 +150,8 @@ export default function OverviewTab({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* ── Toggles ── */}
-      <div style={{
-        display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap',
-        padding: '12px 16px', backgroundColor: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '12px',
-      }}>
-        <Segmented
-          label="View" value={view} onChange={setView}
-          options={VIEWS.map((v) => ({
-            ...v,
-            hint: v.key === 'underlying'
-              ? 'Owner costs and one-off items removed — the same codes tagged on the Underlying Performance tab'
-              : 'Straight from QuickBooks, nothing removed',
-          }))}
-        />
-        <Segmented label="By" value={grain} onChange={setGrain} options={GRAINS} />
-        <Segmented
-          label="Year" value={basis} onChange={setBasis}
-          options={BASES.map((b) => ({
-            ...b,
-            hint: b.key === 'fiscal'
-              ? `Aligned to this client's year end (${yearEndName})`
-              : 'Years to December, quarters to Mar / Jun / Sep / Dec',
-          }))}
-        />
+      {bar}
 
-        {/* The year end itself. Only shown on the fiscal basis, because that is
-            the only place it changes a number — and shown at all because
-            QuickBooks often has no year end recorded, in which case every
-            fiscal quarter on this page would otherwise be the practice's own,
-            silently. */}
-        {basis === 'fiscal' && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontFamily: OUTFIT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#94a3b8' }}>
-              Ends
-            </span>
-            <select
-              value={fiscalYear?.endMonth != null ? fiscalYear.endMonth + 1 : ''}
-              onChange={(e) => onFiscalYearEndChange?.(e.target.value)}
-              disabled={!onFiscalYearEndChange}
-              title={YEAR_END_SOURCE[fiscalYear?.source]?.hint || YEAR_END_SOURCE.fallback.hint}
-              style={{
-                ...inputStyle, padding: '6px 9px', fontSize: '12.5px',
-                borderColor: YEAR_END_SOURCE[fiscalYear?.source]?.warn ? '#fde68a' : '#e5e7eb',
-                backgroundColor: YEAR_END_SOURCE[fiscalYear?.source]?.warn ? '#fffbeb' : '#ffffff',
-              }}
-            >
-              {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-            </select>
-            {YEAR_END_SOURCE[fiscalYear?.source]?.badge && (
-              <span
-                title={YEAR_END_SOURCE[fiscalYear?.source]?.hint}
-                style={{
-                  fontFamily: OUTFIT, fontSize: '11px', fontWeight: 600,
-                  color: YEAR_END_SOURCE[fiscalYear?.source]?.warn ? '#b45309' : '#94a3b8',
-                }}
-              >
-                {YEAR_END_SOURCE[fiscalYear?.source]?.badge}
-              </span>
-            )}
-          </label>
-        )}
-
-        <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginLeft: 'auto' }}>
-          {windowLabel(grain, basis, chartRows)}
-        </span>
-      </div>
 
       {isU && nothingTagged && (
         <div style={{

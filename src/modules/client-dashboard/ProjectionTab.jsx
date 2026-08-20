@@ -58,7 +58,7 @@ const monthEnd = (key) => {
 
 export default function ProjectionTab({
   realmId, entityId, clientName, currency, fyIdx,
-  grain, setGrain, basis, setBasis, config,
+  grain, setGrain, basis, setBasis, config, bar,
 }) {
   const { profile } = useAuth();
   const [link, setLink] = useState(null);
@@ -371,13 +371,11 @@ export default function ProjectionTab({
         </div>
       )}
 
-      {/* ── Grain / basis + sub-tabs ── */}
+      {/* ── View bar + sub-tabs ── */}
+      {sub !== 'map' && bar}
+
       <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
         <Segmented options={SUBS} value={sub} onChange={setSub} />
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <Segmented label="By" value={grain} onChange={setGrain} options={GRAINS} size="sm" />
-          <Segmented label="Year" value={basis} onChange={setBasis} options={BASES} size="sm" />
-        </div>
       </div>
 
       {loading && !timeline.buckets.length && <LoadingCard label="the projection" />}

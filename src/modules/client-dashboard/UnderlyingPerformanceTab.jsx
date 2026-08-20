@@ -1,11 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import { Loader, Plus, X, TrendingUp, Info, ChevronDown, ArrowUpRight, ArrowDownRight, Sparkles, Check } from 'lucide-react';
 import { money, shortDate, OUTFIT, cardStyle, inputStyle } from './dashboardData';
+import { aggregate } from './overviewGrain';
 import { suggestOwnerCosts } from './ownerCostSuggestions';
 
 /*
   Underlying Performance tab — custom analysis that normalises reported profit
-  to what the business earns for the owner. Follows the PERIOD filter.
+  to what the business earns for the owner.
+
+  Reports on the LATEST BUCKET from the view bar, against the one before it, so
+  switching to fiscal quarters here means the same three months it means on the
+  Overview. It reads the same pnl_chart_detail metric through the same
+  aggregate() call the Overview uses: the headline here and the Overview's
+  "underlying profit" tile are one number, not two that happen to agree.
 
   Reported net profit
     + Owner costs removed   (a per-client group of tagged QBO nominal codes —
@@ -20,8 +27,8 @@ import { suggestOwnerCosts } from './ownerCostSuggestions';
   books gated to can_view_practice_financials). It arrives as the `config` prop
   from useUnderlyingConfig, held once by the page — the Overview tab's
   underlying view strips the same codes, and two copies would drift apart the
-  moment a code was tagged here. Account amounts come from the windowed
-  `pl_detail` metric (leaf rows carry the QBO account id).
+  moment a code was tagged here. Per-account amounts are summed out of
+  pnl_chart_detail over the bucket (leaf rows carry the QBO account id).
 
   Owner-cost codes can also be SUGGESTED from the nominal hierarchy (dividends,
   director's pay, home office — see ownerCostSuggestions.js). Suggestions never
@@ -37,98 +44,100 @@ import { suggestOwnerCosts } from './ownerCostSuggestions';
 const acctLabel = (acct_num, name) => `${acct_num ? `${acct_num} · ` : ''}${name || ''}`.trim();
 const isIncomeGroup = (g) => /income/i.test(g || '');
 
-export default function UnderlyingPerformanceTab({ data, meta, currency, loading, empty, config }) {
-  const plDetail = data?.pl_detail || null;
-  const plRange = data?.pl_range || null;
-  const plDetailPrior = data?.pl_detail_prior || null;
-  const plRangePrior = data?.pl_range_prior || null;
-
+export default function UnderlyingPerformanceTab({
+  detail, buckets, prior, currency, loading, empty, config, bar,
+}) {
   // The owner-cost / one-off configuration is owned by the page (see
   // useUnderlyingConfig) because the Overview tab's underlying view strips the
   // same codes and must not read a second, drifting copy.
   const {
     accounts, accountsById, accountsLoading,
-    ownerRows, dismissedRows, oneoffs, cfgLoading, busy,
+    ownerRows, dismissedRows, oneoffs, cfgLoading, busy, ownerAccountIds,
     addOwnerAccount, removeOwnerAccount,
     confirmSuggestions, dismissSuggestions, restoreDismissed,
     addOneoff, removeOneoff,
   } = config;
+  /*
+    Adjustment maths — over the LATEST BUCKET from the view bar, with the bucket
+    before it as the comparator.
 
-  /* Adjustment maths ---------------------------------------------- */
+    This runs the very same aggregate() the Overview runs, on the same
+    pnl_chart_detail metric. That is deliberate: the two tabs used to reach the
+    same conclusion by separate routes (this one over a flat pl_detail range,
+    the Overview bucket by bucket), which is a standing invitation for them to
+    disagree. Now the Overview's "underlying profit" tile and this tab's
+    headline are literally the same number out of the same call.
+  */
   const calc = useMemo(() => {
-    const byId = (rows) => {
-      const m = {};
-      for (const r of rows || []) if (r.id) m[r.id] = r;
-      return m;
+    const empty = {
+      owner: [], ownerAddBack: 0, oo: [], oneoffCost: 0, oneoffIncome: 0, rowsById: {},
+      reportedNet: null, reportedMargin: null, underlyingNet: null, underlyingMargin: null,
+      prior: {}, bucket: null,
     };
-    const rowsById = byId(plDetail?.rows);
-    const priorById = byId(plDetailPrior?.rows);
+    if (!detail || !buckets?.length) return empty;
+
+    const bucket = buckets[buckets.length - 1];
+    const [priorAgg, curAgg] = aggregate(detail, [prior, bucket], {
+      ownerAccountIds, accountsById, oneoffs,
+    });
+
+    // Per-account amounts over the bucket, for the config list and for the
+    // suggestion tiles ("what would accepting this move?").
+    const rowsById = {};
+    const pos = {};
+    (detail.month_keys || []).forEach((k, i) => { if (k) pos[k] = i; });
+    for (const r of detail.rows || []) {
+      if (!r.id) continue;
+      let amount = 0;
+      for (const m of bucket.months) {
+        const i = pos[m];
+        if (i !== undefined) amount += Number(r.amounts?.[i]) || 0;
+      }
+      rowsById[String(r.id)] = { ...r, amount };
+    }
 
     const owner = ownerRows.map((o) => {
-      const row = rowsById[o.account_id];
+      const row = rowsById[String(o.account_id)];
       const acct = accountsById[o.account_id];
-      const amount = row?.amount ?? 0;
-      const income = acct ? acct.classification === 'Revenue' : isIncomeGroup(row?.group);
       return {
-        id: o.id, account_id: o.account_id,
+        id: o.id,
+        account_id: o.account_id,
         label: acctLabel(o.acct_num || acct?.acct_num, o.account_name || acct?.name),
-        amount, income,
+        amount: row?.amount ?? 0,
+        income: acct ? acct.classification === 'Revenue' : isIncomeGroup(row?.group),
       };
     });
-    // Owner add-back = costs added back, less any tagged income removed. Same
-    // rule applied to a supplied per-account map (current or prior period).
-    const addBackFrom = (map) => ownerRows.reduce((s, o) => {
-      const amt = map[o.account_id]?.amount ?? 0;
-      const acct = accountsById[o.account_id];
-      const income = acct ? acct.classification === 'Revenue' : isIncomeGroup(map[o.account_id]?.group);
-      return s + (income ? -amt : amt);
-    }, 0);
-    const ownerAddBack = addBackFrom(rowsById);
-    const priorOwnerAddBack = addBackFrom(priorById);
-    const ownerIncomeTaggedFrom = (map) => ownerRows.reduce((s, o) => {
-      const acct = accountsById[o.account_id];
-      const income = acct ? acct.classification === 'Revenue' : isIncomeGroup(map[o.account_id]?.group);
-      return s + (income ? (map[o.account_id]?.amount ?? 0) : 0);
-    }, 0);
 
-    // One-offs falling inside a [start,end] window.
     const inRange = (d, s, e) => (!s || d >= s) && (!e || d <= e);
-    const oo = oneoffs.map((e) => ({ ...e, in_period: inRange(e.entry_date, meta?.plStart, meta?.plEnd) }));
-    const sumOO = (s, e, kind) => oneoffs
-      .filter((x) => x.kind === kind && inRange(x.entry_date, s, e))
-      .reduce((a, x) => a + Number(x.amount || 0), 0);
-    const oneoffCost = sumOO(meta?.plStart, meta?.plEnd, 'cost');
-    const oneoffIncome = sumOO(meta?.plStart, meta?.plEnd, 'income');
-    const priorOneoffCost = sumOO(meta?.priorStart, meta?.priorEnd, 'cost');
-    const priorOneoffIncome = sumOO(meta?.priorStart, meta?.priorEnd, 'income');
+    const oo = oneoffs.map((e) => ({
+      ...e, in_period: inRange(e.entry_date, bucket.start, bucket.end),
+    }));
 
-    // Current + prior underlying, from reported net + adjustments.
-    const build = (reportedNet, reportedRevenue, addBack, incomeTagged, ooCost, ooInc) => {
-      if (reportedNet == null) return { reportedNet: null, reportedMargin: null, underlyingNet: null, underlyingMargin: null };
-      const underlyingNet = reportedNet + addBack + ooCost - ooInc;
-      const reportedMargin = reportedRevenue ? (reportedNet / reportedRevenue) * 100 : null;
-      const underlyingRevenue = reportedRevenue == null ? null : reportedRevenue - incomeTagged - ooInc;
-      const underlyingMargin = underlyingRevenue ? (underlyingNet / underlyingRevenue) * 100 : null;
-      return { reportedNet, reportedMargin, underlyingNet, underlyingMargin };
+    const marginsFor = (agg) => {
+      if (!agg || agg.net_income == null) {
+        return { reportedNet: null, reportedMargin: null, underlyingNet: null, underlyingMargin: null };
+      }
+      return {
+        reportedNet: agg.net_income,
+        reportedMargin: agg.income ? (agg.net_income / agg.income) * 100 : null,
+        underlyingNet: agg.u_net_income,
+        underlyingMargin: agg.u_income ? (agg.u_net_income / agg.u_income) * 100 : null,
+      };
     };
-
-    const reportedNet = plDetail?.net_income ?? plRange?.net_income ?? null;
-    const reportedRevenue = plRange?.income
-      ?? (plDetail?.rows || []).filter((r) => isIncomeGroup(r.group)).reduce((s, r) => s + (r.amount || 0), 0);
-    const cur = build(reportedNet, reportedRevenue, ownerAddBack, ownerIncomeTaggedFrom(rowsById), oneoffCost, oneoffIncome);
-
-    // Prior only when we actually have the prior-period P&L (else no delta).
-    const havePrior = !!(plDetailPrior || plRangePrior);
-    const priorReportedNet = havePrior ? (plDetailPrior?.net_income ?? plRangePrior?.net_income ?? null) : null;
-    const priorReportedRevenue = plRangePrior?.income ?? null;
-    const prior = build(priorReportedNet, priorReportedRevenue, priorOwnerAddBack, ownerIncomeTaggedFrom(priorById), priorOneoffCost, priorOneoffIncome);
 
     return {
-      owner, ownerAddBack, oo, oneoffCost, oneoffIncome, rowsById,
-      ...cur, prior,
+      owner,
+      ownerAddBack: curAgg?.owner_add_back ?? 0,
+      oo,
+      oneoffCost: curAgg?.oneoff_cost ?? 0,
+      oneoffIncome: curAgg?.oneoff_income ?? 0,
+      rowsById,
+      bucket,
+      priorLabel: priorAgg?.label || null,
+      ...marginsFor(curAgg),
+      prior: marginsFor(priorAgg),
     };
-  }, [plDetail, plRange, plDetailPrior, plRangePrior, ownerRows, oneoffs, accountsById, meta]);
-
+  }, [detail, buckets, prior, ownerRows, ownerAccountIds, oneoffs, accountsById]);
   /* Suggested owner costs — nominal codes that look like director personal items
      but haven't been confirmed or rejected yet. Amounts come from the same
      period P&L the maths uses, so the tile shows what accepting would move. */
@@ -145,30 +154,42 @@ export default function UnderlyingPerformanceTab({ data, meta, currency, loading
     },
   }), [accounts, ownerRows, dismissedRows, calc.rowsById, accountsById]);
 
-  if (!plDetail && !plRange) {
-    return loading
-      ? <div style={{ ...cardStyle, textAlign: 'center', padding: '48px' }}>
-          <Loader size={22} style={{ color: '#7dd3fc', animation: 'spin 1s linear infinite' }} />
-        </div>
-      : <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px', fontFamily: OUTFIT, fontSize: '13px', color: '#64748b' }}>
-          {empty?.needsReconnect ? `${empty.selectedName || 'This client'} needs to reconnect QuickBooks.` : 'Pull from QuickBooks to build the underlying view.'}
-        </div>;
+  if (!detail) {
+    return (
+      <>
+        {bar}
+        {loading
+          ? <div style={{ ...cardStyle, textAlign: 'center', padding: '48px' }}>
+              <Loader size={22} style={{ color: '#7dd3fc', animation: 'spin 1s linear infinite' }} />
+            </div>
+          : <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px', fontFamily: OUTFIT, fontSize: '13px', color: '#64748b' }}>
+              {empty?.needsReconnect
+                ? `${empty.selectedName || 'This client'} needs to reconnect QuickBooks.`
+                : 'Pull from QuickBooks to build the underlying view.'}
+            </div>}
+      </>
+    );
   }
 
   const ownerIdSet = new Set(ownerRows.map((o) => o.account_id));
 
+  const periodLabel = calc.bucket?.label || 'period';
+  const deltaLabel = calc.priorLabel ? `vs ${calc.priorLabel}` : 'vs prior period';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {bar}
+
       {/* Headline tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
-        <Tile label={`Reported net profit — ${meta?.label || 'period'}`} value={calc.reportedNet} currency={currency}
-          delta={<MoneyDelta now={calc.reportedNet} prev={calc.prior?.reportedNet} currency={currency} label={meta?.deltaLabel} />} />
+        <Tile label={`Reported net profit — ${periodLabel}`} value={calc.reportedNet} currency={currency}
+          delta={<MoneyDelta now={calc.reportedNet} prev={calc.prior?.reportedNet} currency={currency} label={deltaLabel} />} />
         <Tile label="Reported margin" text={calc.reportedMargin == null ? '—' : `${calc.reportedMargin.toFixed(1)}%`}
-          delta={<PpDelta now={calc.reportedMargin} prev={calc.prior?.reportedMargin} label={meta?.deltaLabel} />} />
+          delta={<PpDelta now={calc.reportedMargin} prev={calc.prior?.reportedMargin} label={deltaLabel} />} />
         <Tile label="Underlying profit for the owner" value={calc.underlyingNet} currency={currency} accent
-          delta={<MoneyDelta now={calc.underlyingNet} prev={calc.prior?.underlyingNet} currency={currency} label={meta?.deltaLabel} />} />
+          delta={<MoneyDelta now={calc.underlyingNet} prev={calc.prior?.underlyingNet} currency={currency} label={deltaLabel} />} />
         <Tile label="Underlying margin" text={calc.underlyingMargin == null ? '—' : `${calc.underlyingMargin.toFixed(1)}%`} accent
-          delta={<PpDelta now={calc.underlyingMargin} prev={calc.prior?.underlyingMargin} label={meta?.deltaLabel} />} />
+          delta={<PpDelta now={calc.underlyingMargin} prev={calc.prior?.underlyingMargin} label={deltaLabel} />} />
       </div>
 
       {/* Waterfall */}
@@ -179,7 +200,7 @@ export default function UnderlyingPerformanceTab({ data, meta, currency, loading
             From reported to underlying profit
           </span>
           <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
-            {meta?.plStart && `${shortDate(meta.plStart)} → ${shortDate(meta.plEnd)}`}
+            {calc.bucket && `${shortDate(calc.bucket.start)} → ${shortDate(calc.bucket.end)}`}
           </span>
         </div>
         <WaterfallRow label="Reported net profit" value={calc.reportedNet} currency={currency} kind="base" />
