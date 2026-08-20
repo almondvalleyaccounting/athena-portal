@@ -84,6 +84,12 @@ function EvidenceStrip({ coverage }) {
         <span style={{ ...chipStyle('neutral'), margin: '0 4px' }}>no data</span>
         rather than passing or failing. Everything else is live.
       </div>
+      <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>
+        Self Assessment has a second blind spot on top of the scrape: 93 companies pay us for their
+        directors' returns, where the fee sits on the company and the authorisation sits on a person.
+        Athena holds no UTR for a director, so there is no key from one to the other and none of those
+        authorisations can be checked here — they are marked, not counted as passing.
+      </div>
     </div>
   );
 }
@@ -394,6 +400,21 @@ export default function CrossCheckView() {
                     {r.billed_ct_not_a_company && (
                       <span style={chipStyle('accent')} title="Billed a Corporation Tax product but not a limited company — either the client type is wrong or the wrong product was sold">
                         billed CT, not a company
+                      </span>
+                    )}
+                    {r.payroll_unbilled && (
+                      <span style={chipStyle('accent')} title="We hold the PAYE authorisation and BrightPay holds the payroll, but nothing bills or schedules it — we are running this payroll for free">
+                        payroll run, not billed
+                      </span>
+                    )}
+                    {r.paye_authorisation_dormant && (
+                      <span style={chipStyle('info')} title="We are the PAYE agent but there is no payroll anywhere — a dormant scheme to disengage from">
+                        PAYE authorisation, no payroll
+                      </span>
+                    )}
+                    {r.directors_sa_unverifiable && (
+                      <span style={{ ...chipStyle('neutral'), opacity: 0.8 }} title="This company pays for its directors' Self Assessment. The fee sits on the company and the authorisation sits on a person, and Athena holds no UTR for directors — so that authorisation cannot be checked here.">
+                        directors' SA unverifiable
                       </span>
                     )}
                     {r.company_no_ch_auth_code && <span style={chipStyle('neutral')}>no CH auth code</span>}
