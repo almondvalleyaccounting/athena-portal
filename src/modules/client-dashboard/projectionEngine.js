@@ -52,6 +52,7 @@ export function forecastByMonth(rows, openingPeriod, overrides = {}) {
   const categories = {};
   const cf = {};                 // raw cf.* series, for the Cashflow sub-tab
   const lineTotals = {};
+  const byLine = {};             // nominal_type → month → amount, for the total fallbacks
   const monthSet = new Set();
 
   for (const r of rows || []) {
@@ -61,6 +62,8 @@ export function forecastByMonth(rows, openingPeriod, overrides = {}) {
     const amount = Number(r.amount_p || 0) / P_TO_POUNDS;
 
     lineTotals[nt] = (lineTotals[nt] || 0) + amount;
+    byLine[nt] = byLine[nt] || {};
+    byLine[nt][m] = (byLine[nt][m] || 0) + amount;
 
     if (nt.startsWith('cf.')) {
       // Cashflow lines are read directly rather than mapped; a scenario may
@@ -79,19 +82,96 @@ export function forecastByMonth(rows, openingPeriod, overrides = {}) {
     categories[cat][m] = (categories[cat][m] || 0) + amount;
   }
 
+  /*
+    TOTAL-ONLY PACKS.
+
+    Component lines are preferred and the engine's own totals are ignored,
+    because mapping both counts everything twice. But not every pack publishes
+    components: the general cashflow pack has no pnl.revenue_* lines at all,
+    only pnl.revenue_total, so income came out completely empty while costs —
+    which DO have components there — came through. A projection showing a
+    client zero turnover and a full cost base is worse than no projection.
+
+    So a total is used only when the thing it totals produced nothing. What
+    counts as "nothing" differs per total, and getting that wrong is how the
+    double counting sneaks back:
+
+      pnl.revenue_total totals the revenue lines, which all land on `income`.
+      So the test is that ONE category — not the income kind, because
+      pnl.vat_frs_benefit lands on `other_income` and would otherwise make an
+      empty turnover row look populated.
+
+      pnl.cost_total totals costs across several categories, so it may only be
+      used when NONE of them has anything. Testing a single category there
+      would double-count a pack that has cost_of_sales but no overheads.
+  */
+  const anyIn = (cats) => cats.some((c) => categories[c] && Object.keys(categories[c]).length);
+  const costCategories = CATEGORIES.filter((c) => c.kind === 'cost').map((c) => c.key);
+  const TOTAL_FALLBACKS = [
+    { total: 'pnl.revenue_total', into: 'income', occupied: () => anyIn(['income']) },
+    { total: 'pnl.cost_total', into: 'overheads', occupied: () => anyIn(costCategories) },
+  ];
+  for (const fb of TOTAL_FALLBACKS) {
+    if (!byLine[fb.total] || fb.occupied()) continue;
+    categories[fb.into] = categories[fb.into] || {};
+    for (const m in byLine[fb.total]) {
+      categories[fb.into][m] = (categories[fb.into][m] || 0) + byLine[fb.total][m];
+    }
+  }
+
+  /*
+    SIGN CONVENTION.
+
+    The forecast engine stores P&L cost lines NEGATIVE — pnl.cost_of_sales
+    comes back as −18,959 for a month that spent 18,959. QuickBooks stores its
+    Expenses group POSITIVE. Both are internally consistent; they are just
+    opposite, and the projection puts them in the same row.
+
+    Left alone that is not a cosmetic problem: net = income − costs would have
+    ADDED the forecast costs back, showing this client roughly eight times the
+    profit its own forecast projects. So costs are normalised to positive here,
+    matching QuickBooks and matching how the statement reads.
+
+    Detected rather than hardcoded. A pack that changes its mind, or one I have
+    not seen, should not need a code change to be right — and a whole scenario
+    whose total costs are genuinely negative does not exist, so the test is
+    safe. Liabilities get the same guard against the mirror image of this bug.
+    Assets and capital do NOT: an overdrawn account and accumulated losses are
+    both legitimately negative, and "correcting" them would be the actual bug.
+  */
+  const normaliseKind = (kind) => {
+    const keys = Object.keys(categories).filter((c) => CATEGORY[c]?.kind === kind);
+    let total = 0;
+    for (const c of keys) for (const m in categories[c]) total += categories[c][m];
+    if (total >= 0) return false;
+    for (const c of keys) for (const m in categories[c]) categories[c][m] = -categories[c][m];
+    return true;
+  };
+  const flipped = {
+    cost: normaliseKind('cost'),
+    liability: normaliseKind('liability'),
+  };
+
   const lines = Object.entries(lineTotals)
-    .map(([nominal_type, total]) => ({
-      source: 'forecast',
-      key: nominal_type,
-      label: nominal_type,
-      total,
-      category: nominal_type.startsWith('cf.') ? 'ignore' : resolveCategory('forecast', nominal_type, overrides),
-      isDefault: !overrides?.forecast?.[nominal_type],
-      defaultCategory: defaultForecastCategory(nominal_type),
-    }))
+    .map(([nominal_type, total]) => {
+      const category = nominal_type.startsWith('cf.')
+        ? 'ignore'
+        : resolveCategory('forecast', nominal_type, overrides);
+      const kind = CATEGORY[category]?.kind;
+      return {
+        source: 'forecast',
+        key: nominal_type,
+        label: nominal_type,
+        // Show the line total the same way up as the statement shows it.
+        total: flipped[kind] ? -total : total,
+        category,
+        isDefault: !overrides?.forecast?.[nominal_type],
+        defaultCategory: defaultForecastCategory(nominal_type),
+      };
+    })
     .sort((a, b) => a.key.localeCompare(b.key));
 
-  return { months: [...monthSet].sort(), categories, cf, lines };
+  return { months: [...monthSet].sort(), categories, cf, lines, flipped };
 }
 
 /* ─── Actuals side ─────────────────────────────────────────────── */
@@ -331,6 +411,11 @@ export function netRow(rows, label = 'Net profit') {
 // that does publish real cashflow groups keeps using them.
 const QBO_CF_GROUPS = {
   opening: ['BeginningCash', 'CashAtBeginningOfPeriod', 'BeginningCashBalance', '__bs_opening_cash'],
+  // QuickBooks publishes the activity split, not totals in and out, so the
+  // money_in / money_out rows are forecast-only and simply stay empty on the
+  // actuals side — which is why empty rows are dropped rather than dashed.
+  money_in: [],
+  money_out: [],
   operating: ['OperatingActivities', 'TotalOperatingActivities', 'NetCashProvidedByOperatingActivities'],
   investing: ['InvestingActivities', 'TotalInvestingActivities', 'NetCashProvidedByInvestingActivities'],
   financing: ['FinancingActivities', 'TotalFinancingActivities', 'NetCashProvidedByFinancingActivities'],
@@ -370,6 +455,26 @@ export function buildCashflow({ buckets = [], actualCf = {}, forecastCf = {}, cu
       if (isBalance) return line.key === 'opening' ? first : last;
       return sum;
     });
+
+    /*
+      Money out arrives signed negative from both sides — the forecast engine's
+      cf.out_total and QBO's cashflow report agree on that — which is what makes
+      "in + out = movement" work. But the P&L above now shows costs as positive
+      magnitudes, and one statement contradicting the other in the same tab is
+      the exact confusion this pass is meant to end. Shown positive it also
+      reads the way a person expects: in − out = movement.
+
+      Detected from the whole series, never abs(), so a month with a genuine
+      net inflow on that line still shows as one.
+    */
+    if (line.outflow) {
+      const total = values.reduce((t, v) => t + (v || 0), 0);
+      if (total < 0) {
+        for (let i = 0; i < values.length; i += 1) {
+          if (values[i] != null) values[i] = -values[i];
+        }
+      }
+    }
 
     return { category: line.key, label: line.label, kind: isBalance ? 'balance' : 'flow', values };
   }).filter((r) => r.values.some((v) => v != null));

@@ -152,11 +152,25 @@ const FORECAST_EXACT = {
   'bs.equity': 'capital',
 };
 
-// Cashflow lines the Cashflow sub-tab reads straight off, in preference order.
+/*
+  Cashflow lines the Cashflow sub-tab reads straight off.
+
+  Packs differ in how much they break the middle down. The childcare pack
+  publishes the activity split (cf.operating / cf.investing / cf.financing); the
+  general cashflow pack publishes only totals in and out. Both sets are declared
+  and rows with nothing in them are dropped, so each pack shows what it actually
+  knows rather than a page of dashes.
+
+  Money in and money out are signed as they affect cash — out is negative — so
+  they add to the net movement rather than needing a reader to know which way
+  round the sign goes.
+*/
 export const CF_LINES = [
   { key: 'opening', label: 'Opening cash', sources: ['cf.opening_cash'], kind: 'balance' },
-  { key: 'operating', label: 'Operating', sources: ['cf.operating'], fallbackIn: ['cf.in.'], fallbackOut: ['cf.out.'], kind: 'flow' },
-  { key: 'investing', label: 'Investing', sources: ['cf.investing'], fallbackOut: ['cf.out.capex'], kind: 'flow' },
+  { key: 'money_in', label: 'Money in', sources: ['cf.in_total'], kind: 'flow' },
+  { key: 'money_out', label: 'Money out', sources: ['cf.out_total'], kind: 'flow', outflow: true },
+  { key: 'operating', label: 'Operating', sources: ['cf.operating'], kind: 'flow' },
+  { key: 'investing', label: 'Investing', sources: ['cf.investing'], kind: 'flow' },
   { key: 'financing', label: 'Financing', sources: ['cf.financing'], kind: 'flow' },
   { key: 'movement', label: 'Net movement', sources: ['cf.net_movement'], kind: 'flow' },
   { key: 'closing', label: 'Closing cash', sources: ['cf.closing_cash'], kind: 'balance' },
