@@ -44,7 +44,7 @@ export const MODULES = [
     status: 'live',
     group: 'billing',
     children: [
-      { id: 'onboarding-list', label: 'List', route: '/onboarding' },
+      { id: 'onboarding-list', label: 'List', route: '/onboarding/list' },
       { id: 'onboarding-board', label: 'Board', route: '/onboarding/board' },
       { id: 'onboarding-crosscheck', label: 'Cross-check', route: '/onboarding/cross-check' },
       { id: 'onboarding-ch-codes', label: 'CH Codes', route: '/onboarding/ch-codes' },

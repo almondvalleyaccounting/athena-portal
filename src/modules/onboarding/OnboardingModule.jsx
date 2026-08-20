@@ -26,6 +26,9 @@ export default function OnboardingModule() {
       <div style={{ flex: 1 }}>
         <Routes>
           <Route index element={<PipelineView />} />
+          {/* Same view as the index — a distinct path so the sidebar can
+              highlight List without matching every /onboarding/* route. */}
+          <Route path="list" element={<PipelineView />} />
           <Route path="new" element={<NewOnboardingView />} />
           <Route path="updates" element={<UpdatesView />} />
           <Route path="board" element={<BoardView />} />

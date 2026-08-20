@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { pillStyle } from '../../../lib/tokens';
 
 const TABS = [
-  { path: '/onboarding', label: 'List' },
+  { path: '/onboarding/list', label: 'List' },
   { path: '/onboarding/board', label: 'Board' },
   { path: '/onboarding/cross-check', label: 'Cross-check' },
   { path: '/onboarding/ch-codes', label: 'CH Codes' },
