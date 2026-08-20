@@ -43,6 +43,12 @@ export const MODULES = [
     permissions: ['can_view_onboarding'],
     status: 'live',
     group: 'billing',
+    children: [
+      { id: 'onboarding-list', label: 'List', route: '/onboarding' },
+      { id: 'onboarding-board', label: 'Board', route: '/onboarding/board' },
+      { id: 'onboarding-crosscheck', label: 'Cross-check', route: '/onboarding/cross-check' },
+      { id: 'onboarding-ch-codes', label: 'CH Codes', route: '/onboarding/ch-codes' },
+    ],
   },
   {
     id: 'communications',

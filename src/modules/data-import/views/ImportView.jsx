@@ -117,6 +117,8 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   const [stage, setStage] = useState('upload'); // upload | validated | running | done
   const [validation, setValidation] = useState(null);
   const [parsedRows, setParsedRows] = useState(null);
+  // Which agent-authorisation columns this BM export turned out to carry.
+  const [agentColumns, setAgentColumns] = useState([]);
   const [matches, setMatches] = useState({});          // bm_client_id/bm_task_id -> match info
   const [decisions, setDecisions] = useState({});      // bm_client_id -> confirmed prospect_id (or 'reject')
   const [archiveSelection, setArchiveSelection] = useState({}); // bm_clients: bm_client_id -> bool (archive on approve?)
@@ -270,6 +272,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
         }
         const matchMap = await classifyBmProspects(parsed.rows);
         setParsedRows(parsed.rows);
+        setAgentColumns(parsed.agentColumns || []);
         setMatches(matchMap);
         // Pre-confirm tier 1/2 matches; tier 3 requires explicit action
         const preDecisions = {};
@@ -533,6 +536,9 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
               excluded={excludedPrefixes}
               onToggle={toggleExclusion}
             />
+          )}
+          {source.key === 'bm_clients' && parsedRows && (
+            <AgentColumnsPanel columns={agentColumns} />
           )}
           {source.key === 'bm_clients' && validation.archiveCandidates?.length > 0 && (
             <ArchiveCandidatesPanel
@@ -1727,6 +1733,50 @@ function IssueTable({ issues, kind }) {
    when the count looks like a partial/filtered export rather than a
    genuine handful of departures, so nobody mass-archives by accident.
    ─────────────────────────────────────────────────────────── */
+// Which agent-authorisation columns this export carried. Reported either way:
+// finding none is the more useful answer, because it explains why Onboarding →
+// Cross-check still shows "no data" in the BrightManager column.
+function AgentColumnsPanel({ columns }) {
+  const TAX_NAMES = { sa: 'Self Assessment', ct: 'Corporation Tax', vat: 'VAT', paye: 'PAYE', cis: 'CIS' };
+  const found = columns && columns.length > 0;
+  return (
+    <div style={{
+      background: '#fff', border: `1px solid ${found ? '#86efac' : '#fcd34d'}`,
+      borderRadius: 12, padding: '14px 18px', marginTop: 14,
+    }}>
+      <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
+        Agent authorisation columns — {found ? `${columns.length} found` : 'none found'}
+      </div>
+      {found ? (
+        <>
+          <div style={{ fontSize: 12.5, color: '#475569', marginBottom: 10, lineHeight: 1.5 }}>
+            These will be read into each client&apos;s record and drive the BrightManager column on
+            Onboarding → Cross-check. A tax not listed here keeps whatever it already had, rather than
+            being set to &quot;not authorised&quot;.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {columns.map((c) => (
+              <span key={c.tax} style={{
+                fontSize: 12.5, padding: '5px 10px', borderRadius: 8,
+                border: '1px solid #e5e7eb', background: '#f8fafc', color: '#334155',
+              }}>
+                <strong>{TAX_NAMES[c.tax] || c.tax}</strong> ← &ldquo;{c.header}&rdquo;
+              </span>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 12.5, color: '#92400e', lineHeight: 1.5 }}>
+          No column in this file names both an authorisation and a tax, so nothing about &quot;are we the
+          agent&quot; will be imported and Onboarding → Cross-check will keep reading &quot;no data&quot;
+          for BrightManager. If BM does export those fields, re-export with them included — the columns
+          are matched on wording, so no code change is needed.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ArchiveCandidatesPanel({ candidates, presentCount, selection, setSelection }) {
   const selectedCount = candidates.filter((c) => selection[c.bm_client_id]).length;
 

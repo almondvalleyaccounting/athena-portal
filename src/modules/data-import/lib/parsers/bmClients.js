@@ -41,6 +41,54 @@ function normNI(v) {
   return t || null;
 }
 
+// ── Agent-authorisation columns ──────────────────────────────────────────
+// BrightManager records, per tax, whether we are the authorised agent. The
+// exact header wording isn't known here — it varies by BM version and by which
+// columns the exporter ticked — so rather than guess one spelling, a header
+// qualifies when it names an authorisation AND names a tax. Whatever matched is
+// reported back so the dry-run preview shows exactly which columns were read
+// (and, more usefully, that none were).
+//
+// Feeds entities.bm_agent_* via import_bm_agent_flags, which drives the BM leg
+// of Onboarding → Cross-check. A tax whose column is absent stays null, meaning
+// "BM never told us", never "not authorised".
+const AGENT_WORD = /(agent|authoris|authoriz|64-?8|\bauth\b)/i;
+const AGENT_TAXES = [
+  { key: 'cis', re: /\bcis\b|construction industry/i },
+  { key: 'vat', re: /\bvat\b|value added/i },
+  { key: 'paye', re: /\bpaye\b|employer|payroll/i },
+  { key: 'ct', re: /corporation tax|\bct\b|company tax/i },
+  { key: 'sa', re: /self.?assessment|\bsa\b|personal tax|income tax/i },
+];
+
+// Yes / No / Y / 1 / "Authorised" / a date (authorised on…) → boolean.
+// Anything unrecognised stays null rather than guessing a direction.
+function parseAgentFlag(raw) {
+  const v = raw == null ? '' : String(raw).trim();
+  if (!v) return null;
+  if (/^(y|yes|true|1|authorised|authorized|active|agent|approved)/i.test(v)) return true;
+  if (/^(n|no|false|0|not|none|unauthorised|unauthorized|pending|awaiting)/i.test(v)) return false;
+  // BM sometimes stores the date authorisation came through instead of a flag.
+  const asDate = new Date(v);
+  if (!Number.isNaN(asDate.getTime()) && /\d{4}|\d{1,2}[/-]\d{1,2}/.test(v)) return true;
+  return null;
+}
+
+// Find the agent columns in a header row. Returns [{ tax, header, index }].
+function detectAgentColumns(header) {
+  const found = [];
+  header.forEach((h, i) => {
+    if (!h || !AGENT_WORD.test(h)) return;
+    const tax = AGENT_TAXES.find((t) => t.re.test(h));
+    // First column wins per tax — BM exports occasionally carry both a flag
+    // and a date column for the same tax, and the flag is listed first.
+    if (tax && !found.some((f) => f.tax === tax.key)) {
+      found.push({ tax: tax.key, header: h, index: i });
+    }
+  });
+  return found;
+}
+
 // Parse raw CSV text → structured per-row objects. No DB calls.
 // Returns { rows, warnings, skipped, headerOk }
 export function parseBmClientsCsv(text) {
@@ -75,6 +123,9 @@ export function parseBmClientsCsv(text) {
     'CH Identity Code', 'Identity Verification Code', 'ID Verification Code',
   ].map((h) => h.toLowerCase());
   const codeIdx = header.findIndex((h) => CODE_HEADERS.includes(h.toLowerCase()));
+
+  // Agent-authorisation columns, if this export carries them.
+  const agentCols = detectAgentColumns(header);
 
   const rows = [];
   const warnings = [];
@@ -154,6 +205,10 @@ export function parseBmClientsCsv(text) {
       _primary_phone: normText(get(row, 'Mobile Number')),
       _primary_ni: normNI(get(row, 'NI Number')),
       _primary_ch_personal_code: codeIdx >= 0 ? normText(row[codeIdx]) : null,
+      // Only taxes whose column exists get a key — see import_bm_agent_flags.
+      _agent_flags: agentCols.length
+        ? Object.fromEntries(agentCols.map((c) => [`bm_agent_${c.tax}`, parseAgentFlag(row[c.index])]))
+        : null,
     });
   }
 
@@ -185,5 +240,8 @@ export function parseBmClientsCsv(text) {
 
   return {
     rows, warnings, skipped, headerOk: true,
+    // Shown in the dry-run preview: which agent columns were found, so an
+    // export without them is visibly a no-op rather than a silent one.
+    agentColumns: agentCols.map((c) => ({ tax: c.tax, header: c.header })),
   };
 }

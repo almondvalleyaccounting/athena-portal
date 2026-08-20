@@ -5,6 +5,7 @@ import NewOnboardingView from './views/NewOnboardingView';
 import OnboardingDetailView from './views/OnboardingDetailView';
 import UpdatesView from './views/UpdatesView';
 import BoardView from './views/BoardView';
+import CrossCheckView from './views/CrossCheckView';
 import ChPipelineView from '../ch-codes/views/PipelineView';
 import ChDetailView from '../ch-codes/views/DetailView';
 import ChQueueView from '../ch-codes/views/QueueView';
@@ -28,6 +29,7 @@ export default function OnboardingModule() {
           <Route path="new" element={<NewOnboardingView />} />
           <Route path="updates" element={<UpdatesView />} />
           <Route path="board" element={<BoardView />} />
+          <Route path="cross-check" element={<CrossCheckView />} />
           {/* CH personal-code chase — rolled in as a sub-tab of onboarding */}
           <Route path="ch-codes" element={<ChPipelineView />} />
           <Route path="ch-codes/dashboard" element={<ChDashboardView />} />

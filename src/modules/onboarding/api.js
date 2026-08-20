@@ -970,3 +970,85 @@ export async function addNote(onboardingId, body, { actorId, stepId } = {}) {
   });
   if (error) throw error;
 }
+
+/* ─── Cross-check ──────────────────────────────────────────────────────────
+   The sense-check: what the onboarding board says against what BrightManager,
+   HMRC, BrightPay, TaxCalc and QuickBooks each know. See
+   sql/243_onboarding_crosscheck.sql for what each verdict means and — just as
+   important — what the evidence cannot prove.
+*/
+
+// Verdicts in the order they matter, with what to do about each.
+export const CROSSCHECK_VERDICTS = [
+  {
+    value: 'keep_on_board', label: 'Keep on the board', tone: 'danger',
+    blurb: 'No engagement letter, or HMRC has never shown us as the agent. Not onboarded, whatever the checklist says.',
+  },
+  {
+    value: 'not_set_up', label: 'Not set up', tone: 'warning',
+    blurb: 'Authorised and engaged, but a system the work runs on is missing the client.',
+  },
+  {
+    value: 'fix_bm', label: 'Fix BrightManager', tone: 'accent',
+    blurb: 'HMRC lets us scrape the client, so we are the agent — BM says otherwise.',
+  },
+  {
+    value: 'review_authorisation', label: 'Review authorisation', tone: 'info',
+    blurb: 'We hold an authorisation nothing bills or schedules — an unbilled service, or one to give up.',
+  },
+  {
+    value: 'loose_end', label: 'Loose end', tone: 'neutral',
+    blurb: 'Nothing blocking, but a company with no Companies House auth code cannot be filed for.',
+  },
+  { value: 'clean', label: 'Verified', tone: 'success', blurb: 'Every check that can be answered, answers yes.' },
+];
+
+export function crosscheckVerdictMeta(value) {
+  return CROSSCHECK_VERDICTS.find((v) => v.value === value) || CROSSCHECK_VERDICTS[CROSSCHECK_VERDICTS.length - 1];
+}
+
+export const TAX_LABELS = {
+  ct: 'Accounts & CT', sa: 'Self Assessment', vat: 'VAT', paye: 'PAYE', cis: 'CIS',
+};
+
+// One row per active client with every check on it, worst first.
+export async function listCrossCheck() {
+  const { data, error } = await supabase
+    .from('v_onboarding_crosscheck_board')
+    .select('*')
+    .order('severity')
+    .order('entity_name');
+  if (error) throw error;
+  return data || [];
+}
+
+// The per-tax detail behind one client's authorisation verdicts.
+export async function listCrossCheckTaxes(entityId) {
+  const { data, error } = await supabase
+    .from('v_onboarding_crosscheck')
+    .select('*')
+    .eq('entity_id', entityId);
+  if (error) throw error;
+  return data || [];
+}
+
+// How trustworthy each leg's evidence is. Read this before believing a column:
+// a scrape that reached a third of the clients we act for cannot condemn the
+// other two thirds, and the module says so rather than inventing findings.
+export async function getCrossCheckCoverage() {
+  const { data, error } = await supabase
+    .from('v_onboarding_crosscheck_coverage')
+    .select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+// BrightPay payrolls that match no client in Athena.
+export async function listCrossCheckOrphans() {
+  const { data, error } = await supabase
+    .from('v_onboarding_crosscheck_orphans')
+    .select('*')
+    .order('employer_name');
+  if (error) throw error;
+  return data || [];
+}

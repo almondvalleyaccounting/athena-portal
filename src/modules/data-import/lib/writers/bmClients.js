@@ -98,6 +98,28 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
     }
   }
 
+  // Side-load: the agent-authorisation flags per tax, when the export carried
+  // those columns. Feeds the BrightManager leg of Onboarding → Cross-check.
+  // Skipped entirely when no agent column was detected, so an export without
+  // them leaves every flag exactly as it was.
+  const agentRows = parsedRows
+    .filter((r) => r._agent_flags)
+    .map((r) => ({ bm_client_id: r.bm_client_id, ...r._agent_flags }));
+  let agentResult = null;
+  if (agentRows.length) {
+    const { data: agData, error: agError } = await supabase.rpc('import_bm_agent_flags', {
+      run_id: runId, payload: { rows: agentRows },
+    });
+    if (agError) {
+      // Non-fatal — the clients are already in; the cross-check just keeps
+      // reading "no data" for BM until the next import.
+      console.warn('[writeBmClients] import_bm_agent_flags failed:', agError.message);
+      agentResult = { error: agError.message };
+    } else {
+      agentResult = agData;
+    }
+  }
+
   // The BM upload is the source of truth for entity codes — confirm and
   // clear any admin_tasks (Sophie's BM list) the fresh data now satisfies.
   let confirmedTasks = 0;
@@ -130,5 +152,5 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
     }
   } catch { /* non-fatal */ }
 
-  return { ...data, reviewers: reviewerResult, admin_tasks_confirmed: confirmedTasks + confirmedNlac, ch_code_reconcile: codeReconcile };
+  return { ...data, reviewers: reviewerResult, agent_flags: agentResult, admin_tasks_confirmed: confirmedTasks + confirmedNlac, ch_code_reconcile: codeReconcile };
 }
