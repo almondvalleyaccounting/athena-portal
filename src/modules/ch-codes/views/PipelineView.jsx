@@ -389,11 +389,8 @@ export default function PipelineView() {
                 title="Escalate to Tracy. This stays on the record — logging a call or moving stage won't clear it."
                 onClick={() => actGroup(group, (row) => setComms(row, 'escalated', { actorId }))} />
             )}
-            {(rep.called_at || rep.escalation_status === 'call_needed') && (
-              <Btn icon={RotateCcw} label="Clear call flag" tone="neutral" disabled={busy}
-                title={isEscalated(rep) ? 'Clears the call only — the escalation stays' : 'Clears the call flag'}
-                onClick={() => actGroup(group, (row) => setComms(row, 'reset', { actorId }))} />
-            )}
+            {/* Clearing the call flag lives on the detail page, next to the
+                call record it undoes — the board is for moving things on. */}
             {isEscalated(rep) && (
               <Btn icon={Ban} label="Remove escalation" tone="neutral" disabled={busy}
                 title="Escalation is meant to be permanent — only use this if it was applied by mistake."
