@@ -10,6 +10,7 @@ import PersonEmail from '../components/PersonEmail';
 import { useAuth } from '../../../shell/AppShell';
 import {
   listChCodeRequests, CH_STAGES, stageMeta, commsOf, daysSince,
+  CALL_OUTCOMES, callOutcomeMeta, isEscalated, clearEscalation,
   advanceStage, setComms, setEmailsSent, recordDecision, recordIdPoaReceived,
   recordCodeReceived, markInformDirect, markEnteredBm, submitRequest, rejectRequest,
   reopenRequest, setPersonEmail, queueEmail, queuedCountsByRequest, queuedKindsByRequest,
@@ -58,22 +59,39 @@ function localNowValue() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+const fieldStyle = { width: '100%', padding: '9px 11px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box' };
+const fieldLabel = { display: 'block', fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, margin: '12px 0 5px' };
+
 function CallLogModal({ group, onConfirm, onCancel, busy }) {
   const [dt, setDt] = useState(localNowValue);
+  const [outcome, setOutcome] = useState(CALL_OUTCOMES[0].value);
+  const [note, setNote] = useState('');
   const name = group.rows[0].person?.name || 'this person';
   return (
     <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, fontFamily: font }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, width: 360, maxWidth: '92vw', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, width: 400, maxWidth: '92vw', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <PhoneCall size={16} color={tones.accent.solid} />
           <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Log a call</div>
         </div>
-        <p style={{ margin: '0 0 14px', fontSize: 13, color: '#64748b' }}>When did you call {name}?</p>
-        <input autoFocus type="datetime-local" value={dt} onChange={(e) => setDt(e.target.value)}
-          style={{ width: '100%', padding: '9px 11px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box' }} />
+        <p style={{ margin: '0 0 2px', fontSize: 13, color: '#64748b' }}>When did you call {name}, and what happened?</p>
+
+        <label style={fieldLabel}>When</label>
+        <input autoFocus type="datetime-local" value={dt} onChange={(e) => setDt(e.target.value)} style={fieldStyle} />
+
+        <label style={fieldLabel}>What happened</label>
+        <select value={outcome} onChange={(e) => setOutcome(e.target.value)} style={fieldStyle}>
+          {CALL_OUTCOMES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+
+        <label style={fieldLabel}>Note <span style={{ textTransform: 'none', fontWeight: 500, letterSpacing: 0 }}>(optional)</span></label>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3}
+          placeholder="Anything else worth knowing next time we pick this up…"
+          style={{ ...fieldStyle, resize: 'vertical' }} />
+
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
           <button onClick={onCancel} disabled={busy} style={{ padding: '8px 14px', fontSize: 13, fontWeight: 600, fontFamily: font, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 9, cursor: 'pointer' }}>Cancel</button>
-          <button onClick={() => dt && onConfirm(new Date(dt).toISOString())} disabled={!dt || busy}
+          <button onClick={() => dt && onConfirm({ calledAt: new Date(dt).toISOString(), outcome, note })} disabled={!dt || busy}
             style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, fontFamily: font, background: (!dt || busy) ? '#e5e7eb' : tones.accent.solid, color: (!dt || busy) ? '#94a3b8' : '#fff', border: 'none', borderRadius: 9, cursor: (!dt || busy) ? 'not-allowed' : 'pointer' }}>
             {busy ? 'Saving…' : 'Log call'}
           </button>
@@ -107,22 +125,43 @@ function EmailCounter({ value, onSave }) {
   );
 }
 
-// Chip for the escalation states only — the coloured email counter already
-// conveys the 0/1/2/3 email progress, so we don't duplicate it here.
+// Chips for the escalation/call/reply states — the coloured email counter
+// already conveys the 0/1/2/3 email progress, so we don't duplicate it here.
+// These stack rather than override each other: an escalated request that has
+// since been called shows both, because the escalation doesn't go away.
 function CommsChip({ r }) {
-  // Reply hold takes precedence — they answered; process it before chasing.
+  const chips = [];
+  // Reply hold comes first — they answered; process it before chasing.
   if (r.client_replied_at) {
-    return <span style={{ ...chipStyle('success'), display: 'inline-flex', alignItems: 'center', gap: 3 }}
-      title={`Email reply received ${new Date(r.client_replied_at).toLocaleString('en-GB')} — reminders held until the stage moves`}>
-      📩 Replied</span>;
+    chips.push(
+      <span key="replied" style={{ ...chipStyle('success'), display: 'inline-flex', alignItems: 'center', gap: 3 }}
+        title={`Email reply received ${new Date(r.client_replied_at).toLocaleString('en-GB')} — reminders held until the stage moves`}>
+        📩 Replied</span>,
+    );
   }
-  const c = commsOf(r);
-  if (c === 'called') {
-    return <span style={{ ...chipStyle('accent'), display: 'inline-flex', alignItems: 'center', gap: 3 }} title={r.called_at ? `Called ${new Date(r.called_at).toLocaleString('en-GB')}` : 'Call needed'}>
-      <PhoneCall size={10} /> {r.called_at ? `Called ${new Date(r.called_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Call needed'}</span>;
+  if (isEscalated(r)) {
+    chips.push(
+      <span key="esc" style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 3 }}
+        title="Escalated — stays on the record until someone removes it deliberately">
+        <AlertTriangle size={10} /> Escalated</span>,
+    );
   }
-  if (c === 'escalated') return <span style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={10} /> Escalated</span>;
-  return null;
+  if (r.called_at || r.escalation_status === 'call_needed') {
+    const oc = callOutcomeMeta(r.last_call_outcome);
+    const when = r.called_at ? new Date(r.called_at) : null;
+    const title = [
+      when ? `Called ${when.toLocaleString('en-GB')}` : 'Call needed',
+      oc ? `— ${oc.label}` : null,
+      r.last_call_note || null,
+    ].filter(Boolean).join(' ');
+    chips.push(
+      <span key="call" style={{ ...chipStyle(oc?.tone || 'accent'), display: 'inline-flex', alignItems: 'center', gap: 3 }} title={title}>
+        <PhoneCall size={10} />
+        {when ? `${when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}${oc && oc.value !== 'other' ? ` · ${oc.label}` : ''}` : 'Call needed'}
+      </span>,
+    );
+  }
+  return chips.length ? <>{chips}</> : null;
 }
 
 function Btn({ icon: Icon, label, onClick, disabled, tone = 'info', solid = false, title }) {
@@ -345,9 +384,26 @@ export default function PipelineView() {
         {chasing && (
           <>
             <Btn icon={PhoneCall} label="Log call" tone="accent" disabled={busy} onClick={() => setCallFor(group)} />
-            {rep.escalation_status !== 'escalated_tracy'
-              ? <Btn icon={AlertTriangle} label="Escalate" tone="danger" disabled={busy} onClick={() => actGroup(group, (row) => setComms(row, 'escalated', { actorId }))} />
-              : <Btn icon={RotateCcw} label="Clear flag" tone="neutral" disabled={busy} onClick={() => actGroup(group, (row) => setComms(row, 'reset', { actorId }))} />}
+            {!isEscalated(rep) && (
+              <Btn icon={AlertTriangle} label="Escalate" tone="danger" disabled={busy}
+                title="Escalate to Tracy. This stays on the record — logging a call or moving stage won't clear it."
+                onClick={() => actGroup(group, (row) => setComms(row, 'escalated', { actorId }))} />
+            )}
+            {(rep.called_at || rep.escalation_status === 'call_needed') && (
+              <Btn icon={RotateCcw} label="Clear call flag" tone="neutral" disabled={busy}
+                title={isEscalated(rep) ? 'Clears the call only — the escalation stays' : 'Clears the call flag'}
+                onClick={() => actGroup(group, (row) => setComms(row, 'reset', { actorId }))} />
+            )}
+            {isEscalated(rep) && (
+              <Btn icon={Ban} label="Remove escalation" tone="neutral" disabled={busy}
+                title="Escalation is meant to be permanent — only use this if it was applied by mistake."
+                onClick={() => {
+                  if (!window.confirm(`Remove the escalation on ${first.person?.name || 'this request'}?
+
+Escalation is meant to be permanent — only do this if it was applied by mistake.`)) return;
+                  actGroup(group, (row) => clearEscalation(row, { actorId }), 'Escalation removed.');
+                }} />
+            )}
           </>
         )}
 
@@ -579,7 +635,11 @@ export default function PipelineView() {
       {callFor && (
         <CallLogModal group={callFor} busy={busyId === callFor.key}
           onCancel={() => setCallFor(null)}
-          onConfirm={async (iso) => { const group = callFor; setCallFor(null); await actGroup(group, (row) => setComms(row, 'called', { actorId, calledAt: iso }), `Call logged for ${group.rows[0].person?.name || 'client'}.`); }} />
+          onConfirm={async ({ calledAt, outcome, note }) => {
+            const group = callFor; setCallFor(null);
+            await actGroup(group, (row) => setComms(row, 'called', { actorId, calledAt, outcome, note }),
+              `Call logged for ${group.rows[0].person?.name || 'client'} — ${callOutcomeMeta(outcome)?.label || outcome}.`);
+          }} />
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, PhoneCall } from 'lucide-react';
 import { Btn } from '../../../components/ui';
 import { chipStyle, tones } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
@@ -9,6 +9,7 @@ import {
   getChCodeRequest, stageMeta, recordDecision, recordIdPoaReceived,
   recordCodeReceived, markInformDirect, markEnteredBm, submitRequest, rejectRequest,
   reopenRequest, advanceStage, setComms, addNote, recordClientReply, setPersonEmail,
+  CALL_OUTCOMES, callOutcomeMeta, isEscalated, clearEscalation,
 } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -38,6 +39,8 @@ export default function DetailView() {
   const [busy, setBusy] = useState(false);
   const [codeInput, setCodeInput] = useState('');
   const [callAt, setCallAt] = useState(localNowValue);
+  const [callOutcome, setCallOutcome] = useState(CALL_OUTCOMES[0].value);
+  const [callNote, setCallNote] = useState('');
   const [noteInput, setNoteInput] = useState('');
   const [replyInput, setReplyInput] = useState('');
 
@@ -126,14 +129,16 @@ export default function DetailView() {
           mode="banner" person={req.person} requestId={req.id} actorId={actorId} onSaved={load}
         />
       )}
-      {req.escalation_status === 'call_needed' && (
+      {isEscalated(req) && (
         <div style={{ background: tones.danger.bg, color: tones.danger.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
-          📞 Call flagged for {req.person?.name}{req.called_at ? ` — logged ${new Date(req.called_at).toLocaleString('en-GB')}` : ''}.
+          🚨 Escalated{req.escalated_at ? ` on ${new Date(req.escalated_at).toLocaleDateString('en-GB')}` : ''} — this stays on the record until it is removed deliberately.
         </div>
       )}
-      {req.escalation_status === 'escalated_tracy' && (
-        <div style={{ background: tones.danger.bg, color: tones.danger.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
-          🚨 Escalated — no response since the call flag.
+      {(req.called_at || req.escalation_status === 'call_needed') && (
+        <div style={{ background: tones.accent.bg, color: tones.accent.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
+          📞 {req.called_at ? `Called ${new Date(req.called_at).toLocaleString('en-GB')}` : `Call flagged for ${req.person?.name}`}
+          {callOutcomeMeta(req.last_call_outcome) ? ` — ${callOutcomeMeta(req.last_call_outcome).label}` : ''}
+          {req.last_call_note ? `. ${req.last_call_note}` : '.'}
         </div>
       )}
       {req.stage === 's5_entered' && req.bm_code_mismatch && (
@@ -206,14 +211,43 @@ export default function DetailView() {
 
             {/* Comms ladder controls for chasing stages */}
             {chasing && (
-              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 6, paddingTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <input type="datetime-local" value={callAt} onChange={(e) => setCallAt(e.target.value)}
-                  style={{ padding: '6px 8px', fontSize: 12, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }} />
-                <button style={btnGhost} disabled={busy || !callAt}
-                  onClick={() => run(() => setComms(req, 'called', { actorId, calledAt: new Date(callAt).toISOString() }))}>Log call</button>
-                {req.escalation_status !== 'escalated_tracy'
-                  ? <button style={{ ...btnGhost, color: tones.danger.fg }} onClick={() => run(() => setComms(req, 'escalated', { actorId }))} disabled={busy}>Escalate</button>
-                  : <button style={btnGhost} onClick={() => run(() => setComms(req, 'reset', { actorId }))} disabled={busy}>Clear flag</button>}
+              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 6, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <input type="datetime-local" value={callAt} onChange={(e) => setCallAt(e.target.value)}
+                    style={{ padding: '6px 8px', fontSize: 12, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }} />
+                  <select value={callOutcome} onChange={(e) => setCallOutcome(e.target.value)}
+                    style={{ padding: '6px 8px', fontSize: 12, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff' }}>
+                    {CALL_OUTCOMES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <textarea value={callNote} onChange={(e) => setCallNote(e.target.value)} rows={2}
+                  placeholder="What happened on the call? (optional)"
+                  style={{ width: '100%', padding: '7px 9px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button style={btnGhost} disabled={busy || !callAt}
+                    onClick={() => run(async () => {
+                      await setComms(req, 'called', { actorId, calledAt: new Date(callAt).toISOString(), outcome: callOutcome, note: callNote });
+                      setCallNote(''); setCallAt(localNowValue());
+                    })}>Log call</button>
+                  {!isEscalated(req) && (
+                    <button style={{ ...btnGhost, color: tones.danger.fg }} disabled={busy}
+                      title="Escalate to Tracy. This stays on the record — logging a call or moving stage will not clear it."
+                      onClick={() => run(() => setComms(req, 'escalated', { actorId }))}>Escalate</button>
+                  )}
+                  {(req.called_at || req.escalation_status === 'call_needed') && (
+                    <button style={btnGhost} disabled={busy}
+                      title={isEscalated(req) ? 'Clears the call only — the escalation stays' : 'Clears the call flag'}
+                      onClick={() => run(() => setComms(req, 'reset', { actorId }))}>Clear call flag</button>
+                  )}
+                  {isEscalated(req) && (
+                    <button style={{ ...btnGhost, color: '#94a3b8' }} disabled={busy}
+                      title="Escalation is meant to be permanent — only use this if it was applied by mistake."
+                      onClick={() => {
+                        if (!window.confirm('Remove the escalation?\n\nEscalation is meant to be permanent — only do this if it was applied by mistake.')) return;
+                        run(() => clearEscalation(req, { actorId }));
+                      }}>Remove escalation</button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -240,6 +274,31 @@ export default function DetailView() {
             <button style={{ ...btnGhost, marginTop: 8 }} disabled={busy || !noteInput.trim()}
               onClick={() => run(async () => { await addNote(req.id, noteInput, { actorId }); setNoteInput(''); })}>Add note</button>
           </div>
+        </div>
+      </div>
+
+      <div style={{ ...card, marginTop: 16 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Calls</div>
+        {(req.calls || []).length === 0 && <div style={{ fontSize: 13, color: '#94a3b8' }}>No calls logged yet.</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {(req.calls || []).map((c) => {
+            const oc = callOutcomeMeta(c.outcome);
+            return (
+              <div key={c.id} style={{ display: 'flex', gap: 10, fontSize: 13 }}>
+                <PhoneCall size={13} color={tones.accent.fg} style={{ marginTop: 3, flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ color: '#1e293b', fontWeight: 600 }}>{new Date(c.called_at).toLocaleString('en-GB')}</span>
+                    {oc && <span style={{ ...chipStyle(oc.tone), fontSize: 11 }}>{oc.label}</span>}
+                  </div>
+                  {c.note && <div style={{ color: '#475569', marginTop: 3 }}>{c.note}</div>}
+                  <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
+                    Logged {new Date(c.created_at).toLocaleDateString('en-GB')}{c.author?.name ? ` · ${c.author.name}` : ''}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

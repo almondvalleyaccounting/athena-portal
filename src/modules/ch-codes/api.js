@@ -51,7 +51,24 @@ const STAGE_STATUS = {
   s3a_client: 'awaiting_code', s3b_us: 'awaiting_id_poa', s4_code: 'awaiting_code',
   s5_entered: 'code_received', s6_submitted: 'entered_on_bm', s7_rejected: 'stalled',
 };
-const RESET_COMMS = { emails_sent: 0, escalation_status: 'none', escalated_at: null, called_at: null, client_replied_at: null };
+// Every new stage starts its chase ladder fresh — EXCEPT the escalation,
+// which is a permanent state once applied (see setComms / clearEscalation).
+const RESET_COMMS = { emails_sent: 0, called_at: null, last_call_outcome: null, last_call_note: null, client_replied_at: null };
+// Spread this instead when the row is to hand, so a non-escalated request
+// still gets its call flag reset.
+function resetComms(request) {
+  return isEscalated(request) ? RESET_COMMS : { ...RESET_COMMS, escalation_status: 'none', escalated_at: null };
+}
+export function isEscalated(r) { return r?.escalation_status === 'escalated_tracy'; }
+
+// What happened on the call. Sophie picks one when logging it.
+export const CALL_OUTCOMES = [
+  { value: 'no_answer',            label: 'No answer',              tone: 'warning' },
+  { value: 'client_working_on_it', label: 'Client working on it',   tone: 'info' },
+  { value: 'client_sending_id',    label: 'Client sending us ID',   tone: 'accent' },
+  { value: 'other',                label: 'Other (see note)',       tone: 'neutral' },
+];
+export function callOutcomeMeta(v) { return CALL_OUTCOMES.find((o) => o.value === v) || null; }
 
 // ── Comms ladder WITHIN a chasing stage: no emails → 1/2/3 emails → called →
 // escalated. Resets every time the stage advances. Derived, not stored. ──
@@ -64,8 +81,8 @@ export const COMMS_STEPS = [
   { value: 'escalated',    label: 'Escalated', tone: 'danger' },
 ];
 export function commsOf(r) {
-  if (r.escalation_status === 'escalated_tracy') return 'escalated';
-  if (r.escalation_status === 'call_needed') return 'called';
+  if (isEscalated(r)) return 'escalated';
+  if (r.called_at || r.escalation_status === 'call_needed') return 'called';
   const n = r.emails_sent || 0;
   if (n >= 3) return 'three_emails';
   if (n === 2) return 'two_emails';
@@ -79,30 +96,67 @@ export function commsOf(r) {
 export async function advanceStage(request, toStage, { actorId } = {}) {
   await supabase.from('ch_code_requests').update({
     stage: toStage, status: STAGE_STATUS[toStage] || request.status,
-    ...RESET_COMMS, updated_at: new Date().toISOString(),
+    ...resetComms(request), updated_at: new Date().toISOString(),
   }).eq('id', request.id);
   await logActivity(request.id, 'status_change', `Moved to ${stageMeta(toStage).short} — ${stageMeta(toStage).label}.`, actorId);
 }
 
-// Comms-ladder actions within the current stage (call / escalate / clear).
-export async function setComms(request, action, { actorId, calledAt } = {}) {
+// Comms-ladder actions within the current stage (call / escalate / clear the
+// call flag). Escalation is deliberately NOT reachable from here in reverse —
+// once a request is escalated it stays escalated; see clearEscalation.
+export async function setComms(request, action, { actorId, calledAt, outcome, note } = {}) {
   const today = new Date().toISOString().slice(0, 10);
   let patch; let body; let kind = 'system';
   switch (action) {
     case 'called': {
       const when = calledAt || new Date().toISOString();
-      patch = { escalation_status: 'call_needed', escalated_at: today, called_at: when };
-      body = `Call logged for ${new Date(when).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`;
+      const oc = callOutcomeMeta(outcome)?.value || 'other';
+      const clean = (note || '').trim() || null;
+      await supabase.from('ch_code_calls').insert({
+        request_id: request.id, called_at: when, outcome: oc, note: clean, created_by: actorId || null,
+      });
+      patch = { called_at: when, last_call_outcome: oc, last_call_note: clean };
+      // The call flag is the pre-escalation rung of the ladder — never write
+      // it over an escalation, which is what used to lose it.
+      if (!isEscalated(request)) { patch.escalation_status = 'call_needed'; patch.escalated_at = today; }
+      const when_s = new Date(when).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      body = `Call logged for ${when_s} — ${callOutcomeMeta(oc)?.label || oc}.${clean ? ` ${clean}` : ''}`;
       kind = 'status_change';
       break;
     }
-    case 'escalated': patch = { escalation_status: 'escalated_tracy', escalated_at: today }; body = 'Escalated.'; break;
-    case 'reset':     patch = { escalation_status: 'none', escalated_at: null, called_at: null }; body = 'Call / escalation cleared.'; break;
+    case 'escalated':
+      if (isEscalated(request)) return;
+      patch = { escalation_status: 'escalated_tracy', escalated_at: today };
+      body = 'Escalated.';
+      break;
+    case 'reset':
+      // Clears the CALL flag only. An escalated request keeps its escalation.
+      patch = { called_at: null, last_call_outcome: null, last_call_note: null };
+      if (!isEscalated(request)) { patch.escalation_status = 'none'; patch.escalated_at = null; }
+      body = isEscalated(request) ? 'Call flag cleared (still escalated).' : 'Call flag cleared.';
+      break;
     default: return;
   }
   patch.updated_at = new Date().toISOString();
   await supabase.from('ch_code_requests').update(patch).eq('id', request.id);
   await logActivity(request.id, kind, body, actorId);
+}
+
+// The one way back out of an escalation — deliberate, and logged as such.
+export async function clearEscalation(request, { actorId } = {}) {
+  await supabase.from('ch_code_requests')
+    .update({ escalation_status: request.called_at ? 'call_needed' : 'none', updated_at: new Date().toISOString() })
+    .eq('id', request.id);
+  await logActivity(request.id, 'system', 'Escalation removed.', actorId);
+}
+
+// Calls logged against a request, newest first.
+export async function listCalls(requestId) {
+  const { data, error } = await supabase.from('ch_code_calls')
+    .select('*, author:staff_profiles!ch_code_calls_created_by_fkey(id, name)')
+    .eq('request_id', requestId).order('called_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
 }
 
 // Email kinds that can be queued from a tile.
@@ -135,7 +189,7 @@ export async function listChCodeRequests() {
 }
 
 export async function getChCodeRequest(id) {
-  const [{ data: req, error: e1 }, { data: activity, error: e2 }, { data: documents, error: e3 }] = await Promise.all([
+  const [{ data: req, error: e1 }, { data: activity, error: e2 }, { data: documents, error: e3 }, { data: calls, error: e4 }] = await Promise.all([
     supabase.from('ch_code_requests')
       .select(`
         *,
@@ -148,10 +202,14 @@ export async function getChCodeRequest(id) {
       .select('*, author:staff_profiles!ch_code_activity_created_by_fkey(id, name)')
       .eq('request_id', id).order('created_at', { ascending: false }),
     supabase.from('ch_code_documents').select('*').eq('request_id', id).order('created_at', { ascending: false }),
+    supabase.from('ch_code_calls')
+      .select('*, author:staff_profiles!ch_code_calls_created_by_fkey(id, name)')
+      .eq('request_id', id).order('called_at', { ascending: false }),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
   if (e3) throw e3;
+  if (e4) throw e4;
 
   // The request's entity_id is the CHASE ANCHOR (whichever company the chase
   // was seeded against) — not necessarily the person's own client record. A
@@ -165,7 +223,7 @@ export async function getChCodeRequest(id) {
     ownEntity = own || null;
   }
 
-  return { ...req, activity: activity || [], documents: documents || [], ownEntity };
+  return { ...req, activity: activity || [], documents: documents || [], calls: calls || [], ownEntity };
 }
 
 export async function listStaff() {
@@ -193,7 +251,7 @@ export async function recordDecision(request, decision, { actorId } = {}) {
     const push = await pushBillingItems([item.id], true, actorId);
     await supabase.from('ch_code_requests').update({
       decision: 'paid', stage: 's3b_us', status: STAGE_STATUS.s3b_us, billing_item_id: item.id,
-      ...RESET_COMMS, updated_at: new Date().toISOString(),
+      ...resetComms(request), updated_at: new Date().toISOString(),
     }).eq('id', request.id);
     await logActivity(request.id, 'status_change', 'Decision: we verify (£20+VAT invoice created and sent). Now at Stage 3b.', actorId);
     if (push?.results?.[0]?.error) {
@@ -203,7 +261,7 @@ export async function recordDecision(request, decision, { actorId } = {}) {
   }
   await supabase.from('ch_code_requests').update({
     decision: 'self', stage: 's3a_client', status: STAGE_STATUS.s3a_client,
-    ...RESET_COMMS, updated_at: new Date().toISOString(),
+    ...resetComms(request), updated_at: new Date().toISOString(),
   }).eq('id', request.id);
   await logActivity(request.id, 'status_change', 'Decision: client is self-verifying. Now at Stage 3a.', actorId);
   return null;
@@ -212,7 +270,7 @@ export async function recordDecision(request, decision, { actorId } = {}) {
 // Stage 3b: ID + proof of address received & verified → Stage 4 (awaiting code).
 export async function recordIdPoaReceived(request, { actorId } = {}) {
   await supabase.from('ch_code_requests').update({
-    stage: 's4_code', status: STAGE_STATUS.s4_code, ...RESET_COMMS, updated_at: new Date().toISOString(),
+    stage: 's4_code', status: STAGE_STATUS.s4_code, ...resetComms(request), updated_at: new Date().toISOString(),
   }).eq('id', request.id);
   await logActivity(request.id, 'status_change', 'ID/POA received & verified — now awaiting the code (Stage 4).', actorId);
 }
@@ -223,7 +281,7 @@ export async function recordCodeReceived(request, code, { actorId } = {}) {
   const trimmed = code.trim();
   await supabase.from('people').update({ ch_personal_code: trimmed }).eq('id', request.person_id);
   await supabase.from('ch_code_requests').update({
-    stage: 's5_entered', status: STAGE_STATUS.s5_entered, ...RESET_COMMS, updated_at: new Date().toISOString(),
+    stage: 's5_entered', status: STAGE_STATUS.s5_entered, ...resetComms(request), updated_at: new Date().toISOString(),
   }).eq('id', request.id);
   await logActivity(request.id, 'status_change', `Code received: ${trimmed}. Now at Stage 5 (entering on Inform Direct & BM).`, actorId);
   await supabase.from('admin_tasks').insert({
@@ -265,7 +323,9 @@ export async function rejectRequest(request, reason, { actorId } = {}) {
 export async function reopenRequest(request, { actorId } = {}) {
   await supabase.from('ch_code_requests').update({
     stage: 's1_offer', status: STAGE_STATUS.s1_offer, rejected_at: null, rejected_reason: null, submitted_at: null,
-    ...RESET_COMMS, updated_at: new Date().toISOString(),
+    // Reopening is an explicit fresh start, so this is the one stage move
+    // that also drops the escalation.
+    ...RESET_COMMS, escalation_status: 'none', escalated_at: null, updated_at: new Date().toISOString(),
   }).eq('id', request.id);
   await logActivity(request.id, 'status_change', 'Reopened to Stage 1.', actorId);
 }
@@ -363,7 +423,7 @@ export async function queueEmail(request, kind, { actorId } = {}) {
 // ── Dashboard data ──
 // Lightweight rows for the stage × sub-stage matrix.
 export async function listChCodeStageRows() {
-  const { data, error } = await supabase.from('ch_code_requests').select('stage, emails_sent, escalation_status');
+  const { data, error } = await supabase.from('ch_code_requests').select('stage, emails_sent, escalation_status, called_at');
   if (error) throw error;
   return data || [];
 }
