@@ -49,6 +49,41 @@ lands in an "Unmapped …" row and is visible there — that screen is the check
   bank balance; opening = closing − the month's movement. Verified to tie every
   quarter.
 
+## Sign conventions on the Projection tab
+
+Fixed 2026-08-20, after the forecast columns showed zero income and negative
+costs while the chart drew a +£80k profit line off the same rows.
+
+The two sides of the tab disagree on signs and always will, because they come
+from different systems:
+
+| | forecast engine | QBO actuals |
+|---|---|---|
+| costs | negative | positive |
+| liabilities | positive | positive |
+| money out | negative | negative |
+
+The engine **detects** each convention from the data rather than hardcoding it,
+so a pack that changes its mind does not silently invert a client's profit.
+`normaliseKind` in `projectionEngine.js` reads the whole-scenario total for a
+kind and flips if it is negative; the cashflow does the same per `outflow` line.
+Do not replace either with `Math.abs()` — that would hide a genuine cost credit
+or a net-inflow month.
+
+**Totals vs components.** `pnl.revenue_total` and `pnl.cost_total` are normally
+ignored, because the packs that publish components would then count everything
+twice. `general_cashflow` publishes no revenue components at all, so a total is
+used when the thing it totals produced nothing. The emptiness test is per-total
+and the difference matters: revenue tests the `income` category **alone**
+(`pnl.vat_frs_benefit` lands on `other_income` and would otherwise make an empty
+turnover row look populated), cost tests **every** cost category (a pack with
+`cost_of_sales` but no overheads would otherwise double-count).
+
+Ties checked against Puddleduck's live scenario for Aug 2026 — net 7,964.21 =
+`pnl.npat`, net assets 166,976.23 = `bs.net_assets`, opening + movement =
+closing, in − out = movement. Worth re-running these four whenever a new pack is
+linked; a pack with a third sign convention is the likeliest future breakage.
+
 ## Bigger pieces, not started
 
 **6. BrightPay data scraping.** Raised 2026-08-19 as a task in its own right.
