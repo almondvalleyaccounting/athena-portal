@@ -74,6 +74,33 @@ function parseAgentFlag(raw) {
   return null;
 }
 
+// The engagement-letter date. Anchor Gas Services showed the problem: BM holds
+// a signed date while Athena's checklist step still reads pending, so the
+// client was flagged for a letter that exists. Matched on wording, like the
+// agent columns.
+const LOE_HEADER = /(letter of engagement|engagement letter|\bloe\b)/i;
+
+export function detectLoeColumn(header) {
+  const i = header.findIndex((h) => h && LOE_HEADER.test(h));
+  return i < 0 ? null : { header: header[i], index: i };
+}
+
+// BM writes these as dates; anything unparseable is left null rather than
+// guessed at.
+function parseLoeDate(raw) {
+  const v = raw == null ? '' : String(raw).trim();
+  if (!v) return null;
+  // dd/mm/yyyy — the format BM exports, and the one Date() reads as US
+  const uk = v.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (uk) {
+    const [, d, m, y] = uk;
+    const year = y.length === 2 ? `20${y}` : y;
+    return `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  const iso = new Date(v);
+  return Number.isNaN(iso.getTime()) ? null : iso.toISOString().slice(0, 10);
+}
+
 // Find the agent columns in a header row. Returns [{ tax, header, index }].
 function detectAgentColumns(header) {
   const found = [];
@@ -126,6 +153,7 @@ export function parseBmClientsCsv(text) {
 
   // Agent-authorisation columns, if this export carries them.
   const agentCols = detectAgentColumns(header);
+  const loeCol = detectLoeColumn(header);
 
   const rows = [];
   const warnings = [];
@@ -209,6 +237,7 @@ export function parseBmClientsCsv(text) {
       _agent_flags: agentCols.length
         ? Object.fromEntries(agentCols.map((c) => [`bm_agent_${c.tax}`, parseAgentFlag(row[c.index])]))
         : null,
+      _loe_signed_date: loeCol ? parseLoeDate(row[loeCol.index]) : undefined,
     });
   }
 
@@ -243,5 +272,6 @@ export function parseBmClientsCsv(text) {
     // Shown in the dry-run preview: which agent columns were found, so an
     // export without them is visibly a no-op rather than a silent one.
     agentColumns: agentCols.map((c) => ({ tax: c.tax, header: c.header })),
+    loeColumn: loeCol ? loeCol.header : null,
   };
 }

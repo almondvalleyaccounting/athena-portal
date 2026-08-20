@@ -5,7 +5,7 @@ import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import ViewTabs from '../components/ViewTabs';
 import {
   listCrossCheck, listCrossCheckTaxes, getCrossCheckCoverage, listCrossCheckOrphans,
-  CROSSCHECK_VERDICTS, crosscheckVerdictMeta, TAX_LABELS,
+  listCrossCheckLinkConflicts, CROSSCHECK_VERDICTS, crosscheckVerdictMeta, TAX_LABELS,
 } from '../api';
 
 /*
@@ -25,6 +25,8 @@ import {
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
+// Header and rows share one grid so the pills sit under their heading.
+const GRID = '24px 2fr 1.2fr 2.4fr 2fr';
 
 // A tri-state cell: true / false / null-means-we-don't-know.
 function Flag({ value, good, bad, unknown = 'no data' }) {
@@ -56,8 +58,13 @@ function EvidenceStrip({ coverage }) {
             }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a' }}>{TAX_LABELS[c.tax] || c.tax}</div>
               <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
-                HMRC reached {c.hmrc_clients} of {c.we_do_clients}{pct != null ? ` · ${pct}%` : ''}
+                HMRC reached {c.hmrc_clients} of {c.we_do_clients} registered{pct != null ? ` · ${pct}%` : ''}
               </div>
+              {c.awaiting_registration > 0 && (
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                  {c.awaiting_registration} still awaiting a reference
+                </div>
+              )}
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
                 {c.last_scrape ? `scraped ${new Date(c.last_scrape).toLocaleDateString('en-GB')}` : 'never scraped'}
               </div>
@@ -115,7 +122,9 @@ function TaxDetail({ entityId }) {
             <td style={{ padding: '6px 8px', fontWeight: 600, color: '#0f172a' }}>{TAX_LABELS[r.tax] || r.tax}</td>
             <td style={{ padding: '6px 8px', color: '#475569' }}>
               {r.we_do
-                ? [r.is_billed && 'billed', r.is_scheduled && 'scheduled in BM'].filter(Boolean).join(' · ')
+                ? [r.is_billed && 'billed', r.is_scheduled && 'scheduled in BM',
+                   r.is_flagged && 'flagged in onboarding / reference on record']
+                    .filter(Boolean).join(' · ')
                 : <span style={{ color: '#94a3b8' }}>not a service</span>}
             </td>
             <td style={{ padding: '6px 8px' }}>
@@ -127,6 +136,19 @@ function TaxDetail({ entityId }) {
               <span style={chipStyle(r.hmrc_agent ? 'success' : 'neutral')}>
                 {r.hmrc_agent ? 'scraped — we are the agent' : 'not on the list'}
               </span>
+              {/* Which key resolved this account to the client. A name is a
+                  label, not an identity, so it is called out. */}
+              {r.hmrc_agent && (
+                <div style={{ marginTop: 3 }}>
+                  <span style={chipStyle(r.hmrc_link_basis === 'name' ? 'warning' : 'neutral')}>
+                    {r.hmrc_link_basis === 'utr' ? 'matched on UTR'
+                      : r.hmrc_link_basis === 'vrn' ? 'matched on VRN'
+                      : r.hmrc_link_basis === 'paye_ref' ? 'matched on PAYE ref'
+                      : r.hmrc_link_basis === 'name' ? 'matched on name only'
+                      : `matched: ${r.hmrc_link_basis}`}
+                  </span>
+                </div>
+              )}
             </td>
             <td style={{ padding: '6px 8px' }}>
               <span style={chipStyle(tone(r.verdict))}>{r.verdict?.replace(/_/g, ' ')}</span>
@@ -144,6 +166,7 @@ export default function CrossCheckView() {
   const [rows, setRows] = useState(null);
   const [coverage, setCoverage] = useState([]);
   const [orphans, setOrphans] = useState([]);
+  const [conflicts, setConflicts] = useState([]);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('problems'); // problems | <verdict> | wrongly_closed | ready | all
   const [scope, setScope] = useState('all');        // all | onboarding
@@ -154,6 +177,7 @@ export default function CrossCheckView() {
     listCrossCheck().then(setRows).catch((e) => setError(e.message));
     getCrossCheckCoverage().then(setCoverage).catch(() => {});
     listCrossCheckOrphans().then(setOrphans).catch(() => {});
+    listCrossCheckLinkConflicts().then(setConflicts).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -251,12 +275,35 @@ export default function CrossCheckView() {
         </div>
       ) : (
         <div style={{ ...card, overflow: 'hidden' }}>
+          {/* Column headings — the pills carry a lot and need naming. Same
+              grid as the rows below so they line up. */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: GRID, gap: 10, alignItems: 'end',
+            padding: '10px 14px 8px', background: '#fbfcfd', borderBottom: '1px solid #e5e7eb',
+            fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.4px',
+          }}>
+            <div />
+            <div>Client</div>
+            <div>Verdict</div>
+            <div>
+              Engagement &amp; HMRC authorisation
+              <div style={{ fontSize: 10.5, fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: '#94a3b8', marginTop: 2 }}>
+                letter of engagement, then whether HMRC shows us as agent
+              </div>
+            </div>
+            <div>
+              Systems, references &amp; billing
+              <div style={{ fontSize: 10.5, fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: '#94a3b8', marginTop: 2 }}>
+                BrightPay · TaxCalc · QuickBooks · the refs the work needs
+              </div>
+            </div>
+          </div>
           {filtered.map((r) => {
             const meta = crosscheckVerdictMeta(r.verdict);
             const isOpen = expanded[r.entity_id];
             return (
               <div key={r.entity_id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '24px 2fr 1.2fr 2.4fr 2fr', gap: 10, alignItems: 'center', padding: '10px 14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 10, alignItems: 'center', padding: '10px 14px' }}>
                   <button
                     onClick={() => setExpanded((x) => ({ ...x, [r.entity_id]: !x[r.entity_id] }))}
                     title="Show the tax-by-tax comparison"
@@ -289,9 +336,20 @@ export default function CrossCheckView() {
 
                   {/* Engagement + authorisation */}
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {r.has_onboarding
-                      ? <Flag value={!r.loe_signed} good="LOE signed" bad="no LOE" />
+                    {r.has_onboarding || r.loe_signed_date
+                      ? (
+                        <span title={r.loe_signed_at
+                          ? `Signed ${new Date(r.loe_signed_at).toLocaleDateString('en-GB')}${r.loe_from_bm_only ? ' — from BrightManager' : ''}`
+                          : 'No engagement letter recorded in Athena or BrightManager'}>
+                          <Flag value={!r.loe_signed} good="LOE signed" bad="no LOE" />
+                        </span>
+                      )
                       : <span style={{ ...chipStyle('neutral'), opacity: 0.7 }}>no LOE record</span>}
+                    {r.loe_from_bm_only && (
+                      <span style={chipStyle('info')} title="BrightManager holds the signed date but Athena's checklist step was never ticked">
+                        LOE date from BM — step not ticked
+                      </span>
+                    )}
                     {r.missing_authorisations > 0 && (
                       <span style={chipStyle('danger')}>no HMRC authorisation: {r.unauthorised_taxes}</span>
                     )}
@@ -301,22 +359,38 @@ export default function CrossCheckView() {
                     {r.agent_no_service > 0 && (
                       <span style={chipStyle('info')}>agent, no service ×{r.agent_no_service}</span>
                     )}
+                    {r.awaiting_taxes && (
+                      <span style={chipStyle('teal')} title="No reference on record yet, so there is nothing to be authorised for — a registration in progress">
+                        awaiting registration: {r.awaiting_taxes}
+                      </span>
+                    )}
                     {r.unverified_taxes && (
                       <span style={chipStyle('warning')}>unverified: {r.unverified_taxes}</span>
+                    )}
+                    {r.name_matched_accounts > 0 && (
+                      <span style={chipStyle('warning')} title="An HMRC account is tied to this client by name rather than by reference or UTR">
+                        HMRC account matched by name
+                      </span>
                     )}
                   </div>
 
                   {/* Systems the work runs on */}
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {r.does_payroll && <Flag value={r.payroll_not_on_brightpay} good="on BrightPay" bad="not on BrightPay" />}
+                    {/* BrightPay and TaxCalc only count once the registration
+                        they depend on exists — see v_onboarding_crosscheck_board. */}
+                    {r.does_payroll && r.paye_registered && (
+                      <Flag value={r.brightpay_missing} good="on BrightPay" bad="not on BrightPay" />
+                    )}
                     {r.brightpay_without_payroll_service && <span style={chipStyle('warning')}>BrightPay, no payroll fee</span>}
-                    {(r.does_accounts_ct || r.does_sa) && (
-                      <Flag value={r.missing_from_taxcalc} good="in TaxCalc" bad="not in TaxCalc" unknown="TaxCalc: no data" />
+                    {(r.does_accounts_ct || r.does_sa) && r.utr_registered && (
+                      <Flag value={r.taxcalc_missing} good="in TaxCalc" bad="not in TaxCalc" unknown="TaxCalc: no data" />
                     )}
                     {r.does_software && <Flag value={r.software_without_qbo} good="QBO linked" bad="no QBO" />}
-                    {r.vat_service_no_vrn && <span style={chipStyle('danger')}>no VAT number</span>}
-                    {r.payroll_no_paye_ref && <span style={chipStyle('danger')}>no PAYE ref</span>}
-                    {r.accounts_no_utr && <span style={chipStyle('danger')}>no UTR</span>}
+                    {r.billed_vat_not_registered && (
+                      <span style={chipStyle('accent')} title="Billed a VAT product, but not VAT registered by any record — BM service, onboarding flag or VAT number">
+                        billed VAT, not VAT registered
+                      </span>
+                    )}
                     {r.company_no_ch_auth_code && <span style={chipStyle('neutral')}>no CH auth code</span>}
                     {r.not_billed && <span style={{ ...chipStyle('neutral'), opacity: 0.8 }}>not in the fee engine</span>}
                   </div>
@@ -330,6 +404,42 @@ export default function CrossCheckView() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {conflicts.length > 0 && (
+        <div style={{ ...card, padding: '14px 18px', marginTop: 18, borderColor: tones.warning.border }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+            {conflicts.length} HMRC {conflicts.length === 1 ? 'account' : 'accounts'} tied to a client by something
+            weaker than a reference
+          </div>
+          <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 10, lineHeight: 1.5 }}>
+            SA, Corporation Tax and VAT are resolved on the UTR or the VRN, so they cannot drift. A PAYE account has
+            no UTR — the scheme reference is its only identity — so these are the ones where the link rests on a name
+            or a tidied-up reference, and authorisation for the wrong account would look like authorisation.
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
+                <th style={{ padding: '4px 8px', fontWeight: 600 }}>Client</th>
+                <th style={{ padding: '4px 8px', fontWeight: 600 }}>HMRC scheme</th>
+                <th style={{ padding: '4px 8px', fontWeight: 600 }}>Athena holds</th>
+                <th style={{ padding: '4px 8px', fontWeight: 600 }}>Why it matters</th>
+              </tr>
+            </thead>
+            <tbody>
+              {conflicts.map((c) => (
+                <tr key={`${c.tax}-${c.hmrc_key}`} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '6px 8px', fontWeight: 600, color: '#0f172a' }}>{c.entity_name}</td>
+                  <td style={{ padding: '6px 8px', color: '#334155', fontFamily: 'monospace' }}>{c.hmrc_key}</td>
+                  <td style={{ padding: '6px 8px', color: '#334155', fontFamily: 'monospace' }}>
+                    {c.athena_key || <span style={{ color: '#94a3b8', fontFamily: font }}>nothing</span>}
+                  </td>
+                  <td style={{ padding: '6px 8px', color: '#64748b', lineHeight: 1.45 }}>{c.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

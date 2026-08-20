@@ -997,8 +997,16 @@ export const CROSSCHECK_VERDICTS = [
     blurb: 'We hold an authorisation nothing bills or schedules — an unbilled service, or one to give up.',
   },
   {
+    value: 'check_billing', label: 'Check the billing', tone: 'accent',
+    blurb: 'Billed a VAT product while not VAT registered at all — a fee to correct, not an authorisation to chase.',
+  },
+  {
     value: 'loose_end', label: 'Loose end', tone: 'neutral',
-    blurb: 'Nothing blocking, but a company with no Companies House auth code cannot be filed for.',
+    blurb: 'Nothing blocking: a company with no Companies House auth code, or an engagement date BM has and Athena never ticked.',
+  },
+  {
+    value: 'awaiting_registration', label: 'Awaiting registration', tone: 'teal',
+    blurb: 'The reference does not exist yet, so there is nothing to be authorised for. In progress, not a failure.',
   },
   { value: 'clean', label: 'Verified', tone: 'success', blurb: 'Every check that can be answered, answers yes.' },
 ];
@@ -1039,6 +1047,18 @@ export async function getCrossCheckCoverage() {
   const { data, error } = await supabase
     .from('v_onboarding_crosscheck_coverage')
     .select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+// HMRC accounts linked to a client on a name or a normalised reference rather
+// than on an identity key. A name is a label, not an identity: one row here is
+// a client whose HMRC account may not be the account we think it is.
+export async function listCrossCheckLinkConflicts() {
+  const { data, error } = await supabase
+    .from('v_onboarding_crosscheck_link_conflicts')
+    .select('*')
+    .order('entity_name');
   if (error) throw error;
   return data || [];
 }

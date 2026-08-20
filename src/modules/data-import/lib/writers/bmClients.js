@@ -102,18 +102,24 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
   // those columns. Feeds the BrightManager leg of Onboarding → Cross-check.
   // Skipped entirely when no agent column was detected, so an export without
   // them leaves every flag exactly as it was.
+  // A key is included only when its column was in the file, so a missing
+  // column leaves the stored value alone (see import_bm_side_fields).
   const agentRows = parsedRows
-    .filter((r) => r._agent_flags)
-    .map((r) => ({ bm_client_id: r.bm_client_id, ...r._agent_flags }));
+    .filter((r) => r._agent_flags || r._loe_signed_date !== undefined)
+    .map((r) => ({
+      bm_client_id: r.bm_client_id,
+      ...(r._agent_flags || {}),
+      ...(r._loe_signed_date === undefined ? {} : { loe_signed_date: r._loe_signed_date }),
+    }));
   let agentResult = null;
   if (agentRows.length) {
-    const { data: agData, error: agError } = await supabase.rpc('import_bm_agent_flags', {
+    const { data: agData, error: agError } = await supabase.rpc('import_bm_side_fields', {
       run_id: runId, payload: { rows: agentRows },
     });
     if (agError) {
       // Non-fatal — the clients are already in; the cross-check just keeps
       // reading "no data" for BM until the next import.
-      console.warn('[writeBmClients] import_bm_agent_flags failed:', agError.message);
+      console.warn('[writeBmClients] import_bm_side_fields failed:', agError.message);
       agentResult = { error: agError.message };
     } else {
       agentResult = agData;
@@ -152,5 +158,5 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
     }
   } catch { /* non-fatal */ }
 
-  return { ...data, reviewers: reviewerResult, agent_flags: agentResult, admin_tasks_confirmed: confirmedTasks + confirmedNlac, ch_code_reconcile: codeReconcile };
+  return { ...data, reviewers: reviewerResult, bm_side_fields: agentResult, admin_tasks_confirmed: confirmedTasks + confirmedNlac, ch_code_reconcile: codeReconcile };
 }
