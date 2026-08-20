@@ -5,7 +5,8 @@ import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import ViewTabs from '../components/ViewTabs';
 import {
   listCrossCheck, listCrossCheckTaxes, getCrossCheckCoverage, listCrossCheckOrphans,
-  listCrossCheckLinkConflicts, CROSSCHECK_VERDICTS, crosscheckVerdictMeta, TAX_LABELS,
+  listCrossCheckLinkConflicts, listDirectorSa, setPersonUtr,
+  CROSSCHECK_VERDICTS, crosscheckVerdictMeta, TAX_LABELS,
 } from '../api';
 
 /*
@@ -85,10 +86,9 @@ function EvidenceStrip({ coverage }) {
         rather than passing or failing. Everything else is live.
       </div>
       <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>
-        Self Assessment has a second blind spot on top of the scrape: 93 companies pay us for their
-        directors' returns, where the fee sits on the company and the authorisation sits on a person.
-        Athena holds no UTR for a director, so there is no key from one to the other and none of those
-        authorisations can be checked here — they are marked, not counted as passing.
+        Directors' Self Assessment is checked per director, on the director's own UTR: expand a company
+        to see it. Where a director has no UTR on record, it can be typed in there and the check runs
+        immediately — no other set-up needed.
       </div>
     </div>
   );
@@ -164,6 +164,111 @@ function TaxDetail({ entityId }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+// Directors' Self Assessment for a company whose fee covers directors'
+// returns. The fee sits on the company and the authorisation sits on a person,
+// so this is the only place the two meet. Where a director has no UTR anywhere,
+// it can be typed in here — the check matches on the UTR itself, so it runs as
+// soon as one is recorded.
+function DirectorSa({ companyId }) {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(null);
+
+  const load = useCallback(() => {
+    listDirectorSa(companyId).then(setRows).catch((e) => setError(e.message));
+  }, [companyId]);
+  useEffect(() => { load(); }, [load]);
+
+  async function save(personId) {
+    setSaving(personId);
+    setError(null);
+    try {
+      await setPersonUtr(personId, draft[personId]);
+      setDraft((d) => ({ ...d, [personId]: '' }));
+      load();
+    } catch (e) { setError(e.message); }
+    setSaving(null);
+  }
+
+  if (error) return <div style={{ fontSize: 12.5, color: tones.danger.fg }}>{error}</div>;
+  if (!rows) return <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Loading directors…</div>;
+  if (!rows.length) return null;
+
+  const tone = (v) => ({
+    authorised: 'success', not_authorised: 'danger', unverified: 'warning', no_utr: 'neutral',
+  }[v] || 'neutral');
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>
+        Directors&apos; Self Assessment
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+        <thead>
+          <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
+            <th style={{ padding: '4px 8px', fontWeight: 600 }}>Director</th>
+            <th style={{ padding: '4px 8px', fontWeight: 600 }}>UTR</th>
+            <th style={{ padding: '4px 8px', fontWeight: 600 }}>HMRC</th>
+            <th style={{ padding: '4px 8px', fontWeight: 600 }}>Verdict</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((d) => (
+            <tr key={d.person_id} style={{ borderTop: '1px solid #f1f5f9' }}>
+              <td style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 600 }}>
+                {d.director_name || '—'}
+                {d.director_entity_name && (
+                  <div style={{ fontSize: 11, fontWeight: 400, color: '#94a3b8', marginTop: 1 }}>
+                    also a client: {d.director_entity_name}
+                  </div>
+                )}
+              </td>
+              <td style={{ padding: '6px 8px' }}>
+                {d.utr ? (
+                  <>
+                    <span style={{ fontFamily: 'monospace', color: '#334155' }}>{d.utr}</span>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{d.utr_source}</div>
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      value={draft[d.person_id] || ''}
+                      onChange={(e) => setDraft((x) => ({ ...x, [d.person_id]: e.target.value }))}
+                      placeholder="10-digit UTR"
+                      style={{ padding: '4px 8px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, width: 130 }}
+                    />
+                    <button
+                      onClick={() => save(d.person_id)}
+                      disabled={saving === d.person_id || !(draft[d.person_id] || '').trim()}
+                      style={{
+                        padding: '4px 10px', fontSize: 12, fontWeight: 600, fontFamily: font,
+                        background: tones.info.bg, color: tones.info.fg,
+                        border: `1px solid ${tones.info.border}`, borderRadius: 6, cursor: 'pointer',
+                      }}
+                    >
+                      {saving === d.person_id ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                )}
+              </td>
+              <td style={{ padding: '6px 8px' }}>
+                <span style={chipStyle(d.on_sa_list ? 'success' : 'neutral')}>
+                  {d.on_sa_list ? 'on the SA list' : 'not on the list'}
+                </span>
+              </td>
+              <td style={{ padding: '6px 8px' }}>
+                <span style={chipStyle(tone(d.verdict))}>{d.verdict?.replace(/_/g, ' ')}</span>
+                <div style={{ color: '#64748b', marginTop: 3, lineHeight: 1.45 }}>{d.verdict_detail}</div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -412,9 +517,14 @@ export default function CrossCheckView() {
                         PAYE authorisation, no payroll
                       </span>
                     )}
-                    {r.directors_sa_unverifiable && (
-                      <span style={{ ...chipStyle('neutral'), opacity: 0.8 }} title="This company pays for its directors' Self Assessment. The fee sits on the company and the authorisation sits on a person, and Athena holds no UTR for directors — so that authorisation cannot be checked here.">
-                        directors' SA unverifiable
+                    {r.directors_sa_no_utr > 0 && (
+                      <span style={chipStyle('neutral')} title="This company pays for its directors' returns and one of them has no UTR on record. Expand the row to add it — the check runs as soon as it is there.">
+                        {r.directors_sa_no_utr} director{r.directors_sa_no_utr === 1 ? '' : 's'} without a UTR
+                      </span>
+                    )}
+                    {r.directors_sa_authorised > 0 && (
+                      <span style={chipStyle('success')} title="Directors' Self Assessment confirmed against HMRC's list on the director's own UTR">
+                        {r.directors_sa_authorised} director SA authorised
                       </span>
                     )}
                     {r.company_no_ch_auth_code && <span style={chipStyle('neutral')}>no CH auth code</span>}
@@ -425,6 +535,7 @@ export default function CrossCheckView() {
                 {isOpen && (
                   <div style={{ padding: '4px 14px 14px 48px', background: '#fbfcfd' }}>
                     <TaxDetail entityId={r.entity_id} />
+                    {r.directors_billed_for_sa > 0 && <DirectorSa companyId={r.entity_id} />}
                   </div>
                 )}
               </div>

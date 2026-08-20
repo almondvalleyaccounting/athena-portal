@@ -1051,6 +1051,32 @@ export async function getCrossCheckCoverage() {
   return data || [];
 }
 
+// Directors' Self Assessment for a company we bill directors' returns for.
+// One row per director, with the UTR resolved from their own client record
+// first and then from people.utr.
+export async function listDirectorSa(companyId) {
+  const { data, error } = await supabase
+    .from('v_onboarding_crosscheck_director_sa')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('director_name');
+  if (error) throw error;
+  return data || [];
+}
+
+// Record a UTR against a director who is not a client in their own right. The
+// authorisation check matches on the UTR itself, so this makes the check run
+// immediately — nothing else needs setting up.
+export async function setPersonUtr(personId, utr) {
+  const clean = (utr || '').replace(/\D/g, '');
+  if (clean && clean.length !== 10) throw new Error('A UTR is 10 digits.');
+  const { error } = await supabase
+    .from('people')
+    .update({ utr: clean || null, updated_at: new Date().toISOString() })
+    .eq('id', personId);
+  if (error) throw error;
+}
+
 // HMRC accounts linked to a client on a name or a normalised reference rather
 // than on an identity key. A name is a label, not an identity: one row here is
 // a client whose HMRC account may not be the account we think it is.
