@@ -459,7 +459,7 @@ export default function AdminTasksPage() {
   // had no service, setting an error banner at the top of the page — out of
   // sight of the row that was clicked, so the button looked dead. No task has
   // ever carried a service, so that was every click.
-  async function addBillToTask(t, { serviceId, net }) {
+  async function addBillToTask(t, { serviceId, net, hold }) {
     if (!t.entity_id) { setError('Add a client to the task before billing it.'); return; }
     if (!isBillableService(serviceId)) { setError('Pick a service Billing offers before raising the bill.'); return; }
     const vat = Math.round(net * VAT_RATE * 100) / 100;
@@ -472,8 +472,15 @@ export default function AdminTasksPage() {
     if (be) { setError(be.message); return; }
     // The service goes onto the task too — it is what the work was billed as,
     // and the task is where the next person looks for that.
+    //
+    // Holding moves the task to Bill & Hold, off the live list until the bill
+    // is settled. Not holding leaves the stage alone, so a task that is still
+    // work to do stays on To Do with its bill attached — billing something is
+    // not the same as having finished it.
+    const patch = { billable: true, billing_item_id: bill.id, service_id: serviceId };
+    if (hold) patch.stage = 'bill_hold';
     const { error: ue } = await supabase.from('admin_tasks')
-      .update({ billable: true, billing_item_id: bill.id, stage: 'bill_hold', service_id: serviceId }).eq('id', t.id);
+      .update(patch).eq('id', t.id);
     if (ue) { setError(ue.message); return; }
     load();
   }
@@ -1125,11 +1132,11 @@ function AddBillModal({ task, serviceOptions, standardNetFor, onClose, onConfirm
   const netOk = Number.isFinite(net) && net >= 0;
   const vat = netOk ? Math.round(net * VAT_RATE * 100) / 100 : 0;
 
-  const submit = () => {
+  const submit = (hold) => {
     if (!serviceId) { setErr('Pick the service this work was — it decides the QuickBooks product the bill lands on.'); return; }
     if (!known) { setErr(`"${serviceId}" is not a service Billing offers — pick one from the list.`); return; }
     if (!netOk) { setErr('Enter a net amount of 0 or more.'); return; }
-    onConfirm({ serviceId, net });
+    onConfirm({ serviceId, net, hold });
   };
 
   return (
@@ -1157,7 +1164,7 @@ function AddBillModal({ task, serviceOptions, standardNetFor, onClose, onConfirm
           <input
             type="number" step="0.01" min="0" value={amount} autoFocus
             onChange={(e) => { setAmount(e.target.value); setErr(''); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') submit(true); }}
             placeholder={std != null ? `Standard fee ${std}` : '0.00'}
             style={{ ...selectInput, paddingLeft: 20 }}
           />
@@ -1171,10 +1178,17 @@ function AddBillModal({ task, serviceOptions, standardNetFor, onClose, onConfirm
 
         {err && <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 10 }}>{err}</div>}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
           <button onClick={onClose} style={btn('ghost')}>Cancel</button>
-          <button onClick={submit} style={btn('primary')}>
-            <Receipt size={13} /> Raise bill and hold
+          <button
+            onClick={() => submit(false)}
+            title="Raise the bill but leave the task where it is — the work is not finished just because it has been billed"
+            style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd' }}
+          >
+            <Receipt size={13} /> Bill and leave on To Do
+          </button>
+          <button onClick={() => submit(true)} title="Raise the bill and move the task to Bill and Hold, off the live list" style={btn('primary')}>
+            <Receipt size={13} /> Bill and Hold
           </button>
         </div>
       </div>
@@ -1302,7 +1316,7 @@ function TaskRow({
         )}
 
         {onAddBill && (
-          <button onClick={onAddBill} title="Raise a bill for this task (creates a draft in the Billing Module) and move it to Bill & Hold" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', flexShrink: 0 }}>
+          <button onClick={onAddBill} title="Raise a bill for this task — creates a draft in the Billing Module, and you choose whether the task is held or stays on the list" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', flexShrink: 0 }}>
             <Receipt size={12} /> Add bill
           </button>
         )}
