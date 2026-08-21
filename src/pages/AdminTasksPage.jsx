@@ -9,6 +9,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../shell/AppShell';
 import { commitAllocationDraft } from '../modules/work-planner/lib/allocationsQueries';
 import ClientTypeAhead from '../modules/work-planner/components/ClientTypeAhead';
+import { insertEntity } from '../modules/work-planner/lib/supabaseQueries';
+import NewClientModal from '../components/NewClientModal';
 import { stageMeta } from '../modules/ch-codes/api';
 
 const font = "'Outfit', sans-serif";
@@ -102,6 +104,7 @@ export default function AdminTasksPage() {
   const [newBillable, setNewBillable] = useState(false);
   const [newBillAmount, setNewBillAmount] = useState('');
   const [allEntities, setAllEntities] = useState([]);
+  const [newClientModal, setNewClientModal] = useState({ open: false, initialName: '', resolve: null });
   const [copied, setCopied] = useState(null);
   const [chCodes, setChCodes] = useState([]);
   const [docsByTask, setDocsByTask] = useState({});
@@ -371,6 +374,28 @@ export default function AdminTasksPage() {
     const { error: err } = await supabase.from('admin_tasks').update({ urgent }).eq('id', task.id);
     if (err) { setError(err.message); load(); }
   }
+
+  // A task can be raised for a client we haven't got on file yet — typing the
+  // name in the client picker offers "+ Add", which opens the shared
+  // NewClientModal here and resolves with the new entity so the picker selects
+  // it. Without this the picker's add link had no handler and did nothing.
+  const openNewClientModal = useCallback((name) => (
+    new Promise((resolve) => setNewClientModal({ open: true, initialName: name, resolve }))
+  ), []);
+
+  const handleNewClientSave = useCallback(async (fields) => {
+    const data = await insertEntity(fields); // throws → the modal shows the error and stays open
+    setAllEntities((prev) => [...prev, { id: data.id, name: data.name }]
+      .sort((a, b) => a.name.localeCompare(b.name)));
+    setEntities((prev) => ({ ...prev, [data.id]: data.name }));
+    setNewClientModal((m) => { if (m.resolve) m.resolve(data); return { open: false, initialName: '', resolve: null }; });
+    return data;
+  }, []);
+
+  const handleNewClientClose = useCallback(() => {
+    // Resolve with null so the picker doesn't sit waiting on a cancelled modal.
+    setNewClientModal((m) => { if (m.resolve) m.resolve(null); return { open: false, initialName: '', resolve: null }; });
+  }, []);
 
   async function addManual(asDraft = false) {
     if (!newTitle.trim() || savingTask) return;
@@ -752,7 +777,7 @@ export default function AdminTasksPage() {
               style={{ flex: '2 1 320px', padding: '8px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
             />
             <div style={{ flex: '0 0 auto' }}>
-              <ClientTypeAhead entityList={allEntities} value={newClient} onChange={setNewClient} size="small" />
+              <ClientTypeAhead entityList={allEntities} value={newClient} onChange={setNewClient} onAddNew={openNewClientModal} size="small" />
             </div>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#64748b' }} title="Target date">
               <CalendarDays size={13} color="#94a3b8" />
@@ -1057,6 +1082,13 @@ export default function AdminTasksPage() {
           onConfirm={(doneBy, minutes) => { complete(completeTask, { doneBy, minutes }); setCompleteTask(null); }}
         />
       )}
+
+      <NewClientModal
+        open={newClientModal.open}
+        initialName={newClientModal.initialName}
+        onClose={handleNewClientClose}
+        onSave={handleNewClientSave}
+      />
     </div>
   );
 }

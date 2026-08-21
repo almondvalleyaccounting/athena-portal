@@ -842,7 +842,6 @@ export default function ClientRemindersPage() {
                             entityList={entities}
                             value={row.entity_id || ''}
                             onChange={(id) => setEntityMatch(row, id)}
-                            onAddNew={async () => null}
                             size="small"
                             metaOf={(e) => [
                               e.utr && `UTR ${e.utr}`,

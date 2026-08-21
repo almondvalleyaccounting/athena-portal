@@ -248,7 +248,7 @@ export default function WaitingView() {
         {/* Filters */}
         <StaffFilter staff={staff} value={staffFilter} onChange={setStaffFilter} profileId={profile?.id} />
         <div style={{ minWidth: 180 }}>
-          <ClientTypeAhead entityList={entities} value={entityFilter} onChange={setEntityFilter} onAddNew={() => Promise.resolve(null)} size="small" />
+          <ClientTypeAhead entityList={entities} value={entityFilter} onChange={setEntityFilter} size="small" />
         </div>
         <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)} style={selStyle}>
           <option value="">All services</option>

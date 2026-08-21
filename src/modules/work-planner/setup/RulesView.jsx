@@ -432,7 +432,7 @@ function OverridesPanel({ rule, overrides, entities, onSave, onDelete }) {
         {adding ? (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 220 }}>
-              <ClientTypeAhead entityList={entities} value={newEntityId} onChange={setNewEntityId} onAddNew={() => Promise.resolve(null)} />
+              <ClientTypeAhead entityList={entities} value={newEntityId} onChange={setNewEntityId} />
             </div>
             <input type="number" step={1} placeholder={`Inherit (${rule.bm_deadline_offset_months}m)`}
               value={draft.bm_deadline_offset_months ?? ''}

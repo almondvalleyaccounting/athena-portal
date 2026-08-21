@@ -289,7 +289,6 @@ function DangerZone({ canEdit }) {
                   entityList={entities}
                   value={selectedEntityId}
                   onChange={setSelectedEntityId}
-                  onAddNew={() => Promise.resolve(null)}
                 />
               </div>
               <button

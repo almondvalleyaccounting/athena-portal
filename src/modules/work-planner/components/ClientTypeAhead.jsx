@@ -9,6 +9,11 @@ function firstChar(name) {
 }
 
 export default function ClientTypeAhead({ entityList, value, onChange, onAddNew, size = 'normal', metaOf }) {
+  // "+ Add" is only offered when the caller actually handed us a way to create
+  // a client. Most call sites (filters, settings) don't — and the row used to
+  // render for them anyway, so clicking it threw into an empty catch and looked
+  // like a dead link.
+  const canAddNew = typeof onAddNew === 'function';
   const [query, setQuery] = useState('');
   const [letter, setLetter] = useState(null); // null = all, '#' = digits/symbols, 'A'..'Z'
   const [open, setOpen] = useState(false);
@@ -161,18 +166,21 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
           </div>
 
           {/* Add new option */}
-          {query.trim() && !exactMatch && (
+          {canAddNew && query.trim() && !exactMatch && (
             <div
               onClick={async () => {
                 try {
                   const newEntity = await onAddNew(query.trim());
+                  setOpen(false);
                   if (newEntity) {
                     onChange(newEntity.id);
                     setQuery('');
-                    setOpen(false);
                   }
-                } catch {
-                  // Modal handles its own error display
+                } catch (err) {
+                  // The caller's modal surfaces the error to the user; log it so
+                  // a failure here is never invisible.
+                  console.error('[ClientTypeAhead] add new client failed:', err);
+                  setOpen(false);
                 }
               }}
               style={{

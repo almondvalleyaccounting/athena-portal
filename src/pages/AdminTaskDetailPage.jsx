@@ -4,6 +4,8 @@ import { ChevronLeft, Receipt, Flame, Send, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../shell/AppShell';
 import ClientTypeAhead from '../modules/work-planner/components/ClientTypeAhead';
+import { insertEntity } from '../modules/work-planner/lib/supabaseQueries';
+import NewClientModal from '../components/NewClientModal';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px' };
@@ -34,6 +36,7 @@ export default function AdminTaskDetailPage() {
   const [notes, setNotes] = useState([]);
   const [staffMap, setStaffMap] = useState({});
   const [allEntities, setAllEntities] = useState([]);
+  const [newClientModal, setNewClientModal] = useState({ open: false, initialName: '', resolve: null });
   const [fees, setFees] = useState([]); // standard_fees price book
   const [bill, setBill] = useState(null); // linked billing_items row
   const [loading, setLoading] = useState(true);
@@ -91,6 +94,24 @@ export default function AdminTaskDetailPage() {
   };
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Same as the admin list: the client picker's "+ Add" opens the shared
+  // NewClientModal and resolves with the new entity so the picker selects it.
+  const openNewClientModal = useCallback((name) => (
+    new Promise((resolve) => setNewClientModal({ open: true, initialName: name, resolve }))
+  ), []);
+
+  const handleNewClientSave = useCallback(async (fields) => {
+    const data = await insertEntity(fields); // throws → the modal keeps the error on screen
+    setAllEntities((prev) => [...prev, { id: data.id, name: data.name }]
+      .sort((a, b) => a.name.localeCompare(b.name)));
+    setNewClientModal((m) => { if (m.resolve) m.resolve(data); return { open: false, initialName: '', resolve: null }; });
+    return data;
+  }, []);
+
+  const handleNewClientClose = useCallback(() => {
+    setNewClientModal((m) => { if (m.resolve) m.resolve(null); return { open: false, initialName: '', resolve: null }; });
+  }, []);
 
   const save = async () => {
     setSaving(true);
@@ -187,7 +208,7 @@ export default function AdminTaskDetailPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 12 }}>
           <div>
             <div style={label}>Client</div>
-            <ClientTypeAhead entityList={allEntities} value={form.entity_id} onChange={(v) => setField('entity_id', v)} size="small" />
+            <ClientTypeAhead entityList={allEntities} value={form.entity_id} onChange={(v) => setField('entity_id', v)} onAddNew={openNewClientModal} size="small" />
           </div>
           <div>
             <div style={label}>Service (price book)</div>
@@ -274,6 +295,13 @@ export default function AdminTaskDetailPage() {
           </button>
         </div>
       </div>
+
+      <NewClientModal
+        open={newClientModal.open}
+        initialName={newClientModal.initialName}
+        onClose={handleNewClientClose}
+        onSave={handleNewClientSave}
+      />
     </div>
   );
 }

@@ -151,7 +151,6 @@ export default function ManualPaymentModal({ batch, entities, rows, emailOf, pro
             entityList={pickable}
             value={entityId}
             onChange={chooseEntity}
-            onAddNew={async () => null}
             metaOf={(e) => [
               e.utr && `UTR ${e.utr}`,
               e.bm_client_id && `ref ${e.bm_client_id}`,
