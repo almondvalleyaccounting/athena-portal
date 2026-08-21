@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { pushBillingItems, refreshBillingItems, fetchClientInvoices, fetchQboSettings } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
 import NewClientModal from '../../components/NewClientModal';
+import { fetchAdhocServices } from './billingServices';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import ServicePicker from './ServicePicker';
 
@@ -109,14 +110,17 @@ export default function BillingPage() {
 
   const loadData = async () => {
     try {
-      const [{ data: bills }, { data: ents }, { data: staff }, { data: svcRows }, { data: cmts }] = await Promise.all([
+      const [{ data: bills }, { data: ents }, { data: staff }, svcOpts, { data: cmts }] = await Promise.all([
         supabase.from('billing_items').select('*').order('created_at', { ascending: false }),
         supabase.from('entities').select('id, name').order('name'),
         supabase.from('staff_profiles').select('*').order('name'),
         // Ad-hoc line labels that actually map to a QBO product. Fee-engine
         // service ids are excluded — they're slugs, not something to pick
-        // from on a one-off bill.
-        supabase.from('qbo_service_items').select('service_id, qbo_item_name, default_description, qbo_category').eq('is_adhoc', true),
+        // from on a one-off bill. Shared with the admin-task screens, which
+        // raise bills into here and must offer the same services.
+        // Its own catch: a service list that fails to load shouldn't take the
+        // bills down with it, which is what this screen did before.
+        fetchAdhocServices().catch((e) => { console.error('[Billing] service options failed to load:', e); return []; }),
         supabase.from('billing_item_comments').select('*').order('created_at'),
       ]);
       setItems(bills || []);
@@ -124,12 +128,10 @@ export default function BillingPage() {
       setEntities(ents || []);
       // The label a line carries IS the service id — it's what resolves to a
       // QBO product on the push. The category only groups the picker.
-      setServices((svcRows || [])
-        .map((r) => ({ id: r.service_id, label: r.service_id, category: r.qbo_category }))
-        .sort((a, b) => a.label.localeCompare(b.label)));
-      setServiceDefaults(Object.fromEntries((svcRows || [])
-        .filter((r) => r.default_description)
-        .map((r) => [r.service_id, r.default_description])));
+      setServices(svcOpts || []);
+      setServiceDefaults(Object.fromEntries((svcOpts || [])
+        .filter((o) => o.defaultDescription)
+        .map((o) => [o.id, o.defaultDescription])));
       setStaffList((staff || []).map((s) => ({ ...s, name: s.full_name || s.name || s.email || 'Unknown' })));
       // On first load, silently re-confirm invoice number + sent status from
       // QBO for pushed bills that don't have them yet (or aren't sent yet).

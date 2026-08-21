@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Receipt, Flame, Send, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -6,6 +6,8 @@ import { useAuth } from '../shell/AppShell';
 import ClientTypeAhead from '../modules/work-planner/components/ClientTypeAhead';
 import { insertEntity } from '../modules/work-planner/lib/supabaseQueries';
 import NewClientModal from '../components/NewClientModal';
+import ServicePicker from '../modules/billing/ServicePicker';
+import { fetchAdhocServices } from '../modules/billing/billingServices';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px' };
@@ -38,7 +40,7 @@ export default function AdminTaskDetailPage() {
   const [allEntities, setAllEntities] = useState([]);
   const [newClientModal, setNewClientModal] = useState({ open: false, initialName: '', resolve: null });
   const [fees, setFees] = useState([]); // standard_fees price book
-  const [serviceItems, setServiceItems] = useState([]); // qbo_service_items — the pickable services
+  const [serviceOptions, setServiceOptions] = useState([]); // the Billing module's own service options
   const [bill, setBill] = useState(null); // linked billing_items row
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -58,7 +60,7 @@ export default function AdminTaskDetailPage() {
         supabase.from('staff_profiles').select('id, name, email'),
         supabase.from('entities').select('id, name').order('name'),
         supabase.from('standard_fees').select('task_name, service_id, standard_net').order('task_name'),
-        supabase.from('qbo_service_items').select('service_id, qbo_category').eq('is_adhoc', true),
+        fetchAdhocServices(),
       ]);
       if (e1) throw e1;
       setTask(t);
@@ -67,7 +69,7 @@ export default function AdminTaskDetailPage() {
       setStaffMap(Object.fromEntries((st || []).map((s) => [s.id, s.name || s.email])));
       setAllEntities(ents || []);
       setFees(sf || []);
-      setServiceItems(svc || []);
+      setServiceOptions(svc || []);
       setForm({
         title: t?.title || '', entity_id: t?.entity_id || '', service_id: t?.service_id || '',
         deadline: t?.deadline || '', urgent: !!t?.urgent, detail: t?.detail || '',
@@ -85,32 +87,12 @@ export default function AdminTaskDetailPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // The services on offer are the ad-hoc lines that map to a QuickBooks
-  // product — the same list Billing picks from, and what the bill needs at
-  // push time. The standard_fees price book only supplies the price now (it's
-  // fee-gated, so most staff get the names without the figures).
-  const serviceOptions = useMemo(() => {
-    const net = new Map();
-    for (const f of fees) if (f.service_id && !net.has(f.service_id)) net.set(f.service_id, Number(f.standard_net) || 0);
-    const opts = serviceItems
-      .filter((r) => r.service_id)
-      .map((r) => ({ id: r.service_id, category: r.qbo_category || 'Other', net: net.get(r.service_id) ?? null }));
-    // A service already on the task that's no longer in the catalogue still
-    // shows, so opening the task doesn't quietly blank what it was set to.
-    if (form.service_id && !opts.some((o) => o.id === form.service_id)) {
-      opts.push({ id: form.service_id, category: 'Not in the catalogue', net: null });
-    }
-    return opts.sort((a, b) => a.category.localeCompare(b.category) || a.id.localeCompare(b.id));
-  }, [serviceItems, fees, form.service_id]);
-
-  const serviceGroups = useMemo(() => {
-    const g = new Map();
-    for (const o of serviceOptions) {
-      if (!g.has(o.category)) g.set(o.category, []);
-      g.get(o.category).push(o);
-    }
-    return [...g.entries()];
-  }, [serviceOptions]);
+  // The task's service has to be one the Billing module offers — that's where
+  // its bill lands, and the service is what resolves to a QuickBooks product
+  // on the push. Same picker, same list. ServicePicker keeps a value that
+  // isn't in the list visible and flagged, so an older task can't be blanked
+  // just by opening it.
+  const isBillableService = (id) => !!id && serviceOptions.some((o) => o.id === id);
   const feeFor = (serviceId) => {
     const f = fees.find((x) => x.service_id === serviceId);
     return f ? Number(f.standard_net) : null;
@@ -177,6 +159,12 @@ export default function AdminTaskDetailPage() {
     // mapped to a QBO item on a catch-all income account — so the service has
     // to be a real one, chosen now rather than discovered at push time.
     if (!form.service_id) { setError('Set the task\'s service before billing it — pick the service the work actually was.'); return; }
+    // Anything the Billing module doesn't offer resolves to no QuickBooks
+    // product, so it would only fail at push time — refuse it here instead.
+    if (!isBillableService(form.service_id)) {
+      setError(`"${form.service_id}" isn't a billing service — pick one from the list before billing this task.`);
+      return;
+    }
     const std = feeFor(form.service_id);
     const raw = window.prompt('Net amount to bill (excl. VAT) — enter 0 if the figure isn\'t settled yet:', std != null ? String(std) : '');
     if (raw === null) return;
@@ -234,17 +222,14 @@ export default function AdminTaskDetailPage() {
             <ClientTypeAhead entityList={allEntities} value={form.entity_id} onChange={(v) => setField('entity_id', v)} onAddNew={openNewClientModal} size="small" />
           </div>
           <div>
-            <div style={label}>Service (billing catalogue)</div>
-            <select value={form.service_id} onChange={(e) => setField('service_id', e.target.value)} style={{ ...inputStyle, appearance: 'auto' }}>
-              <option value="">— none —</option>
-              {serviceGroups.map(([category, opts]) => (
-                <optgroup key={category} label={category}>
-                  {opts.map((s) => (
-                    <option key={s.id} value={s.id}>{s.id}{s.net ? ` — £${s.net}` : ''}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+            <div style={label}>Service (as billed)</div>
+            <ServicePicker
+              value={form.service_id}
+              options={serviceOptions}
+              onChange={(v) => setField('service_id', v)}
+              placeholder="— none —"
+              style={inputStyle}
+            />
           </div>
         </div>
 

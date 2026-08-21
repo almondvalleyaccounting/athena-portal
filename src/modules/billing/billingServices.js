@@ -1,3 +1,5 @@
+import { supabase } from '../../lib/supabase';
+
 // The service vocabularies that can end up on a QuickBooks invoice, in one
 // place. Both the ad-hoc bill editor (/billing) and the product mapping page
 // (/manage/billing/products) read from here.
@@ -149,4 +151,31 @@ export function candidateServices(existingRows = []) {
     out.push({ id: r.service_id, label: r.label || r.service_id, kind: r.is_adhoc ? 'adhoc' : 'fee_engine' });
   }
   return out;
+}
+
+// The one query behind every picker whose choice can end up as a bill line:
+// the bill editor in /billing, and the admin-task screens that raise bills
+// into it. A service is offered when it's mapped to a QuickBooks product and
+// flagged ad-hoc — so whatever is picked can actually be pushed, and the
+// surfaces can't drift into offering each other's vocabulary.
+//
+// Shaped for ServicePicker: { id, label, category }, plus the product's
+// standard invoice description for callers that pre-fill one.
+export async function fetchAdhocServices() {
+  const { data, error } = await supabase
+    .from('qbo_service_items')
+    .select('service_id, qbo_item_name, default_description, qbo_category')
+    .eq('is_adhoc', true);
+  if (error) throw error;
+  return (data || [])
+    .filter((r) => r.service_id)
+    // The label a line carries IS the service id — it's what resolves to a QBO
+    // product on the push, so it can't be prettified here.
+    .map((r) => ({
+      id: r.service_id,
+      label: r.service_id,
+      category: r.qbo_category || 'Other',
+      defaultDescription: r.default_description || '',
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }

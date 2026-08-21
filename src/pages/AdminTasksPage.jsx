@@ -11,6 +11,8 @@ import { commitAllocationDraft } from '../modules/work-planner/lib/allocationsQu
 import ClientTypeAhead from '../modules/work-planner/components/ClientTypeAhead';
 import { insertEntity } from '../modules/work-planner/lib/supabaseQueries';
 import NewClientModal from '../components/NewClientModal';
+import ServicePicker from '../modules/billing/ServicePicker';
+import { fetchAdhocServices } from '../modules/billing/billingServices';
 import { stageMeta } from '../modules/ch-codes/api';
 
 const font = "'Outfit', sans-serif";
@@ -110,34 +112,16 @@ export default function AdminTasksPage() {
   const [docsByTask, setDocsByTask] = useState({});
   const [billingById, setBillingById] = useState({}); // billing_items status for pipeline stages
   const [fees, setFees] = useState([]); // standard_fees price book (service → standard net)
-  const [serviceItems, setServiceItems] = useState([]); // qbo_service_items — the pickable services
+  const [serviceOptions, setServiceOptions] = useState([]); // the Billing module's own service options
   const [newService, setNewService] = useState('');
   const canPipeline = !!profile?.can_manage_task_pipeline;
 
-  // The services on offer are the ad-hoc lines that map to a QuickBooks
-  // product — the same list the Billing module picks from, because that
-  // mapping is what the bill needs at push time. This used to read the
-  // standard_fees price book instead, which is empty and fee-gated on top,
-  // so the dropdown had nothing in it for anybody. standard_fees now only
-  // supplies the standard price, shown when the reader is allowed to see it.
-  const serviceOptions = useMemo(() => {
-    const net = new Map();
-    for (const f of fees) if (f.service_id && !net.has(f.service_id)) net.set(f.service_id, Number(f.standard_net) || 0);
-    return serviceItems
-      .filter((r) => r.service_id)
-      .map((r) => ({ id: r.service_id, category: r.qbo_category || 'Other', net: net.get(r.service_id) ?? null }))
-      .sort((a, b) => a.category.localeCompare(b.category) || a.id.localeCompare(b.id));
-  }, [serviceItems, fees]);
-
-  // Grouped by QBO category, so a 30-odd-item list reads as a menu.
-  const serviceGroups = useMemo(() => {
-    const g = new Map();
-    for (const s2 of serviceOptions) {
-      if (!g.has(s2.category)) g.set(s2.category, []);
-      g.get(s2.category).push(s2);
-    }
-    return [...g.entries()];
-  }, [serviceOptions]);
+  // A task's service has to be one the Billing module offers, because that's
+  // where its bill lands and what resolves to a QuickBooks product on the
+  // push. So this is the same picker reading the same list — not a parallel
+  // vocabulary. (It used to read the standard_fees price book, which is empty
+  // and fee-gated on top, so the dropdown was empty for everybody.)
+  const isBillableService = (id) => !!id && serviceOptions.some((o) => o.id === id);
   const feeFor = (serviceId) => { const f = fees.find((x) => x.service_id === serviceId); return f ? Number(f.standard_net) : null; };
   const [clientFilter, setClientFilter] = useState('');
   // Report tab data — completions + creations over the last 14 days,
@@ -192,9 +176,7 @@ export default function AdminTasksPage() {
           .in('stage', CH_OPEN_STAGES)
           .order('updated_at', { ascending: true }),
         supabase.from('standard_fees').select('task_name, service_id, standard_net'),
-        // is_adhoc = the labels that resolve to a QBO product on a one-off
-        // bill; the fee-engine slugs are excluded the same way Billing does.
-        supabase.from('qbo_service_items').select('service_id, qbo_category').eq('is_adhoc', true),
+        fetchAdhocServices(),
       ]);
       if (e1) throw e1;
       setTasks(t || []);
@@ -214,7 +196,7 @@ export default function AdminTasksPage() {
       setAllEntities(ents || []);
       setChCodes(ch || []);
       setFees(sf || []);
-      setServiceItems(svc || []);
+      setServiceOptions(svc || []);
       const st2 = (st || []);
       setStaffMap(Object.fromEntries(st2.map((s) => [s.id, s.name])));
       setStaffList(st2.filter((s) => s.is_active !== false && s.email).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
@@ -476,6 +458,12 @@ export default function AdminTasksPage() {
     // See addTask: 'Admin' is no longer billable, so the task must carry a real
     // service before a bill can be raised off it.
     if (!t.service_id) { setError(`Set a service on "${t.title}" before billing it — pick the service the work actually was.`); return; }
+    // The service has to be one the Billing module offers, or the bill reaches
+    // it with a line that resolves to no QuickBooks product and fails at push.
+    if (!isBillableService(t.service_id)) {
+      setError(`"${t.service_id}" isn't a billing service any more — reopen the task and pick one from the list before billing it.`);
+      return;
+    }
     const std = feeFor(t.service_id);
     const raw = window.prompt(`Net amount to bill for "${t.title}" (excl. VAT) — enter 0 if the figure isn't settled yet:`, std != null ? String(std) : '');
     if (raw === null) return;
@@ -823,18 +811,18 @@ export default function AdminTasksPage() {
               <Flame size={13} color={newUrgent ? '#dc2626' : '#64748b'} /> Urgent
             </label>
 
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#475569' }} title="Fee-engine service — sets the standard fee and the QBO product on any bill">
+            {/* A span, not a label: the picker is a custom control, and label
+                activation would fight its own click handling. */}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#475569' }} title="The service the bill is coded to — the same list the Billing module picks from, and what maps to a QuickBooks product on the push">
               Service
-              <select value={newService} onChange={(e) => setNewService(e.target.value)}
-                style={{ fontSize: 12.5, fontFamily: font, padding: '6px 8px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none' }}>
-                <option value="">— none —</option>
-                {serviceGroups.map(([category, opts]) => (
-                  <optgroup key={category} label={category}>
-                    {opts.map((s) => <option key={s.id} value={s.id}>{s.id}{s.net ? ` (£${s.net})` : ''}</option>)}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
+              <ServicePicker
+                value={newService}
+                options={serviceOptions}
+                onChange={setNewService}
+                placeholder="— none —"
+                style={{ fontSize: 12.5, fontFamily: font, padding: '6px 8px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none', width: 240 }}
+              />
+            </span>
 
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#475569', cursor: 'pointer' }}>
               <input type="checkbox" checked={newBillable} onChange={(e) => setNewBillable(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#0e7fe0' }} />
