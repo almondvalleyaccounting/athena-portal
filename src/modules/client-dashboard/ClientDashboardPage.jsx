@@ -23,6 +23,7 @@ import UnderlyingPerformanceTab from './UnderlyingPerformanceTab';
 import ProjectionTab from './ProjectionTab';
 import ClientViewPreview from './ClientViewPreview';
 import ViewBar from './ViewBar';
+import TabErrorBoundary from './TabErrorBoundary';
 import KpiTab from './KpiTab';
 import ReportsTab from './ReportsTab';
 import { useKpiData } from './useKpiData';
@@ -684,7 +685,13 @@ export default function ClientDashboardPage() {
                 ))}
               </div>
 
-              {/* Tab body */}
+              {/* Tab body.
+
+                  Wrapped so a render error costs this tab and not the page —
+                  see TabErrorBoundary. `key={tab}` is load-bearing: it remounts
+                  the boundary on every switch, so a broken tab does not leave
+                  the next one showing a stale error panel. */}
+              <TabErrorBoundary key={tab} label={TABS.find((t) => t.id === tab)?.label} showDetail>
               {tab === 'overview' && (
                 <OverviewTab
                   detail={periodData?.pnl_chart_detail}
@@ -766,6 +773,8 @@ export default function ClientDashboardPage() {
                 <AgedTab data={asAtData?.ap_asat} title="Aged creditors (payables)" sameLabel="Same suppliers"
                   label="aged creditors" currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
               )}
+              </TabErrorBoundary>
+
               {/* Per-metric errors (partial pull) */}
               {partialErrors && (
                 <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#b45309', marginTop: '14px' }}>

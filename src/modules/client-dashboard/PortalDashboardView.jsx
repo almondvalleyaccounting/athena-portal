@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { portalTheme as t } from './portalTheme';
+import TabErrorBoundary from './TabErrorBoundary';
 import {
   buildBuckets, bucketsBetween, addMonths, aggregate, seriesFor,
   windowLabel, monthKeyOfDate,
@@ -169,10 +170,18 @@ export default function PortalDashboardView({
 
       {loading && !payload && <Muted>Fetching your figures…</Muted>}
 
-      {payload && active === 'overview' && <Overview payload={payload} grain={grain} basis={basis} view={view} />}
-      {payload && active === 'pl' && <ProfitAndLoss payload={payload} grain={grain} basis={basis} view={view} />}
-      {payload && active === 'bs' && <BalanceSummary payload={payload} />}
-      {payload && active === 'projection' && <Projection payload={payload} grain={grain} basis={basis} />}
+      {/* A render error here costs the client this section, not the whole
+          portal page — their onboarding steps, documents and quotes are on the
+          same screen. No `showDetail`: a React error message means nothing to a
+          client and reads as a broken product. It still reaches the console.
+          `key={active}` remounts on tab switch so one bad section does not
+          leave the next showing an error panel. */}
+      <TabErrorBoundary key={active} label={tabs.find((x) => x.key === active)?.label?.toLowerCase()}>
+        {payload && active === 'overview' && <Overview payload={payload} grain={grain} basis={basis} view={view} />}
+        {payload && active === 'pl' && <ProfitAndLoss payload={payload} grain={grain} basis={basis} view={view} />}
+        {payload && active === 'bs' && <BalanceSummary payload={payload} />}
+        {payload && active === 'projection' && <Projection payload={payload} grain={grain} basis={basis} />}
+      </TabErrorBoundary>
     </div>
   );
 }
