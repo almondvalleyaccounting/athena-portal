@@ -33,7 +33,9 @@ const MARK = {
   ok:        { glyph: '✓', bg: tones.success.bg, fg: tones.success.fg, border: tones.success.border },
   bad:       { glyph: '✕', bg: tones.danger.bg,  fg: tones.danger.fg,  border: tones.danger.border },
   awaiting:  { glyph: '○', bg: tones.teal.bg,    fg: tones.teal.fg,    border: tones.teal.border },
-  unverified:{ glyph: '~', bg: tones.warning.bg, fg: tones.warning.fg, border: tones.warning.border },
+  // Deliberately quiet: unverified means the scrape cannot prove anything
+  // yet, and ~200 amber marks were drowning the real signal.
+  unverified:{ glyph: '~', bg: '#fafaf9', fg: '#a8a29e', border: '#e7e5e4' },
   nodata:    { glyph: '?', bg: '#f8fafc',        fg: '#94a3b8',        border: '#e2e8f0' },
   info:      { glyph: 'i', bg: tones.info.bg,    fg: tones.info.fg,    border: tones.info.border },
 };
@@ -454,12 +456,12 @@ export default function CrossCheckView() {
       {/* The single caveat that changes how the marks read, one line. */}
       {partial.length > 0 && (
         <div
-          style={{ fontSize: 12, color: tones.warning.fg, marginBottom: 10 }}
+          style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}
           title={saCover
             ? `The Self Assessment run only keeps clients HMRC flags as having a statement, so the scrape reached ${saCover.hmrc_clients} of ${saCover.we_do_clients} registered clients. Publishing the whole client list (already built — needs one live scrape run) closes this. Until then absence proves nothing, so those marks read ~ instead of ✕.`
             : undefined}
         >
-          ⚠ {partial.map((c) => TAX_LABELS[c.tax] || c.tax).join(' and ')} scrape is partial — those marks read ~ (unverified), not ✕. Hover for why.
+          {partial.map((c) => TAX_LABELS[c.tax] || c.tax).join(' and ')} scrape is partial — those cells show a quiet ~ until it runs in full. Hover here for the fix.
         </div>
       )}
 
