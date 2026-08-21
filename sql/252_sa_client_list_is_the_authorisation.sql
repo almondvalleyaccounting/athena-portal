@@ -40,6 +40,15 @@ update hmrc.sa_client
 -- The counterpart to v_onboarding_crosscheck_orphans (BrightPay) and
 -- hmrc.link_exception (PAYE). Definer over the private hmrc schema, with its
 -- own predicate.
+-- No name suggestion here, deliberately. HMRC writes 'BAILLIE D E MRS' where we
+-- write 'Baillie, Diane', so an exact match found 0 of the 25 real rows; a
+-- surname-plus-initial match found 3, and one of those was 'STEWART D MR' and
+-- 'STEWART D W MR' both pointing at the same client — two different taxpayers
+-- suggesting one person. A hint that fires a tenth of the time and can
+-- misattribute someone's tax affairs is worse than no hint. Twenty-two of the
+-- twenty-five are simply not in Athena, so nothing could match them anyway.
+-- HMRC's own reference is the usable clue: KarenDillon, SamHenderson,
+-- AndrewHepburn, DerekLogan are our old-style references with the name in them.
 create or replace view v_hmrc_sa_unmatched as
 select sc.utr,
        sc.name           as hmrc_name,
@@ -47,25 +56,12 @@ select sc.utr,
        sc.statement_available,
        coalesce(sc.scope_reason, 'no_athena_record') as scope_reason,
        sc.first_seen,
-       sc.last_seen,
-       -- A name suggestion only, never a link: SA clients are individuals and
-       -- 'KEYS M MISS' against 'Keys, Morag' is exactly the sort of guess that
-       -- attributes one person's tax affairs to another. Staff decide.
-       s.id   as suggested_entity_id,
-       s.name as suggested_entity_name
+       sc.last_seen
   from hmrc.sa_client sc
-  left join lateral (
-    select e.id, e.name from entities e
-     where e.entity_status = 'active'
-       and regexp_replace(lower(e.name), '[^a-z0-9]', '', 'g')
-         = regexp_replace(lower(sc.name), '[^a-z0-9]', '', 'g')
-     order by e.name
-     limit 1
-  ) s on true
  where sc.entity_id is null
    and is_staff_or_service();
 
-comment on view v_hmrc_sa_unmatched is 'Clients on HMRC''s Self Assessment agent list that match no live Athena client — we hold the authorisation for someone the client list does not know. The SA counterpart to hmrc.link_exception. suggested_entity is a name hint for a human to confirm, never an automatic link.';
+comment on view v_hmrc_sa_unmatched is 'Clients on HMRC''s Self Assessment agent list that match no live Athena client — we hold the authorisation for someone the client list does not know. The SA counterpart of hmrc.link_exception. No name suggestion: HMRC''s name format cannot be matched safely to ours, and your_reference is the better clue.';
 grant select on v_hmrc_sa_unmatched to authenticated, service_role;
 revoke all on v_hmrc_sa_unmatched from public;
 revoke all on v_hmrc_sa_unmatched from anon;
