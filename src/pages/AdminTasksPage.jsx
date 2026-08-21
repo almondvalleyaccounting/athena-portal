@@ -110,15 +110,34 @@ export default function AdminTasksPage() {
   const [docsByTask, setDocsByTask] = useState({});
   const [billingById, setBillingById] = useState({}); // billing_items status for pipeline stages
   const [fees, setFees] = useState([]); // standard_fees price book (service → standard net)
+  const [serviceItems, setServiceItems] = useState([]); // qbo_service_items — the pickable services
   const [newService, setNewService] = useState('');
   const canPipeline = !!profile?.can_manage_task_pipeline;
 
-  // Distinct services from the price book + the standard net for each.
+  // The services on offer are the ad-hoc lines that map to a QuickBooks
+  // product — the same list the Billing module picks from, because that
+  // mapping is what the bill needs at push time. This used to read the
+  // standard_fees price book instead, which is empty and fee-gated on top,
+  // so the dropdown had nothing in it for anybody. standard_fees now only
+  // supplies the standard price, shown when the reader is allowed to see it.
   const serviceOptions = useMemo(() => {
-    const m = new Map();
-    for (const f of fees) if (f.service_id && !m.has(f.service_id)) m.set(f.service_id, Number(f.standard_net) || 0);
-    return [...m.entries()].map(([id, net]) => ({ id, net })).sort((a, b) => a.id.localeCompare(b.id));
-  }, [fees]);
+    const net = new Map();
+    for (const f of fees) if (f.service_id && !net.has(f.service_id)) net.set(f.service_id, Number(f.standard_net) || 0);
+    return serviceItems
+      .filter((r) => r.service_id)
+      .map((r) => ({ id: r.service_id, category: r.qbo_category || 'Other', net: net.get(r.service_id) ?? null }))
+      .sort((a, b) => a.category.localeCompare(b.category) || a.id.localeCompare(b.id));
+  }, [serviceItems, fees]);
+
+  // Grouped by QBO category, so a 30-odd-item list reads as a menu.
+  const serviceGroups = useMemo(() => {
+    const g = new Map();
+    for (const s2 of serviceOptions) {
+      if (!g.has(s2.category)) g.set(s2.category, []);
+      g.get(s2.category).push(s2);
+    }
+    return [...g.entries()];
+  }, [serviceOptions]);
   const feeFor = (serviceId) => { const f = fees.find((x) => x.service_id === serviceId); return f ? Number(f.standard_net) : null; };
   const [clientFilter, setClientFilter] = useState('');
   // Report tab data — completions + creations over the last 14 days,
@@ -149,7 +168,7 @@ export default function AdminTasksPage() {
       const { data: confirmed } = await supabase.rpc('admin_tasks_confirm_from_bm');
       if (confirmed > 0) setConfirmedNow(confirmed);
 
-      const [{ data: t, error: e1 }, { data: ct }, { data: d }, { data: st }, { data: obs }, { data: ents }, { data: ch }, { data: sf }] = await Promise.all([
+      const [{ data: t, error: e1 }, { data: ct }, { data: d }, { data: st }, { data: obs }, { data: ents }, { data: ch }, { data: sf }, { data: svc }] = await Promise.all([
         supabase.from('admin_tasks')
           .select('*, entity:entities(id, name)')
           .is('done_at', null).is('confirmed_at', null).is('dismissed_at', null)
@@ -173,6 +192,9 @@ export default function AdminTasksPage() {
           .in('stage', CH_OPEN_STAGES)
           .order('updated_at', { ascending: true }),
         supabase.from('standard_fees').select('task_name, service_id, standard_net'),
+        // is_adhoc = the labels that resolve to a QBO product on a one-off
+        // bill; the fee-engine slugs are excluded the same way Billing does.
+        supabase.from('qbo_service_items').select('service_id, qbo_category').eq('is_adhoc', true),
       ]);
       if (e1) throw e1;
       setTasks(t || []);
@@ -192,6 +214,7 @@ export default function AdminTasksPage() {
       setAllEntities(ents || []);
       setChCodes(ch || []);
       setFees(sf || []);
+      setServiceItems(svc || []);
       const st2 = (st || []);
       setStaffMap(Object.fromEntries(st2.map((s) => [s.id, s.name])));
       setStaffList(st2.filter((s) => s.is_active !== false && s.email).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
@@ -805,7 +828,11 @@ export default function AdminTasksPage() {
               <select value={newService} onChange={(e) => setNewService(e.target.value)}
                 style={{ fontSize: 12.5, fontFamily: font, padding: '6px 8px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none' }}>
                 <option value="">— none —</option>
-                {serviceOptions.map((s) => <option key={s.id} value={s.id}>{s.id}{s.net ? ` (£${s.net})` : ''}</option>)}
+                {serviceGroups.map(([category, opts]) => (
+                  <optgroup key={category} label={category}>
+                    {opts.map((s) => <option key={s.id} value={s.id}>{s.id}{s.net ? ` (£${s.net})` : ''}</option>)}
+                  </optgroup>
+                ))}
               </select>
             </label>
 

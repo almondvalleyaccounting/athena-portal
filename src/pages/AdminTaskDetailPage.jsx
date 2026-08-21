@@ -38,6 +38,7 @@ export default function AdminTaskDetailPage() {
   const [allEntities, setAllEntities] = useState([]);
   const [newClientModal, setNewClientModal] = useState({ open: false, initialName: '', resolve: null });
   const [fees, setFees] = useState([]); // standard_fees price book
+  const [serviceItems, setServiceItems] = useState([]); // qbo_service_items — the pickable services
   const [bill, setBill] = useState(null); // linked billing_items row
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -51,12 +52,13 @@ export default function AdminTaskDetailPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: t, error: e1 }, { data: n }, { data: st }, { data: ents }, { data: sf }] = await Promise.all([
+      const [{ data: t, error: e1 }, { data: n }, { data: st }, { data: ents }, { data: sf }, { data: svc }] = await Promise.all([
         supabase.from('admin_tasks').select('*, entity:entities(id, name)').eq('id', id).single(),
         supabase.from('admin_task_notes').select('*').eq('task_id', id).order('created_at', { ascending: true }),
         supabase.from('staff_profiles').select('id, name, email'),
         supabase.from('entities').select('id, name').order('name'),
         supabase.from('standard_fees').select('task_name, service_id, standard_net').order('task_name'),
+        supabase.from('qbo_service_items').select('service_id, qbo_category').eq('is_adhoc', true),
       ]);
       if (e1) throw e1;
       setTask(t);
@@ -65,6 +67,7 @@ export default function AdminTaskDetailPage() {
       setStaffMap(Object.fromEntries((st || []).map((s) => [s.id, s.name || s.email])));
       setAllEntities(ents || []);
       setFees(sf || []);
+      setServiceItems(svc || []);
       setForm({
         title: t?.title || '', entity_id: t?.entity_id || '', service_id: t?.service_id || '',
         deadline: t?.deadline || '', urgent: !!t?.urgent, detail: t?.detail || '',
@@ -82,12 +85,32 @@ export default function AdminTaskDetailPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Distinct services from the price book, with a representative standard net.
+  // The services on offer are the ad-hoc lines that map to a QuickBooks
+  // product — the same list Billing picks from, and what the bill needs at
+  // push time. The standard_fees price book only supplies the price now (it's
+  // fee-gated, so most staff get the names without the figures).
   const serviceOptions = useMemo(() => {
-    const m = new Map();
-    for (const f of fees) if (f.service_id && !m.has(f.service_id)) m.set(f.service_id, Number(f.standard_net) || 0);
-    return [...m.entries()].map(([id2, net]) => ({ id: id2, net })).sort((a, b) => a.id.localeCompare(b.id));
-  }, [fees]);
+    const net = new Map();
+    for (const f of fees) if (f.service_id && !net.has(f.service_id)) net.set(f.service_id, Number(f.standard_net) || 0);
+    const opts = serviceItems
+      .filter((r) => r.service_id)
+      .map((r) => ({ id: r.service_id, category: r.qbo_category || 'Other', net: net.get(r.service_id) ?? null }));
+    // A service already on the task that's no longer in the catalogue still
+    // shows, so opening the task doesn't quietly blank what it was set to.
+    if (form.service_id && !opts.some((o) => o.id === form.service_id)) {
+      opts.push({ id: form.service_id, category: 'Not in the catalogue', net: null });
+    }
+    return opts.sort((a, b) => a.category.localeCompare(b.category) || a.id.localeCompare(b.id));
+  }, [serviceItems, fees, form.service_id]);
+
+  const serviceGroups = useMemo(() => {
+    const g = new Map();
+    for (const o of serviceOptions) {
+      if (!g.has(o.category)) g.set(o.category, []);
+      g.get(o.category).push(o);
+    }
+    return [...g.entries()];
+  }, [serviceOptions]);
   const feeFor = (serviceId) => {
     const f = fees.find((x) => x.service_id === serviceId);
     return f ? Number(f.standard_net) : null;
@@ -211,11 +234,15 @@ export default function AdminTaskDetailPage() {
             <ClientTypeAhead entityList={allEntities} value={form.entity_id} onChange={(v) => setField('entity_id', v)} onAddNew={openNewClientModal} size="small" />
           </div>
           <div>
-            <div style={label}>Service (price book)</div>
+            <div style={label}>Service (billing catalogue)</div>
             <select value={form.service_id} onChange={(e) => setField('service_id', e.target.value)} style={{ ...inputStyle, appearance: 'auto' }}>
               <option value="">— none —</option>
-              {serviceOptions.map((s) => (
-                <option key={s.id} value={s.id}>{s.id}{s.net ? ` — £${s.net}` : ''}</option>
+              {serviceGroups.map(([category, opts]) => (
+                <optgroup key={category} label={category}>
+                  {opts.map((s) => (
+                    <option key={s.id} value={s.id}>{s.id}{s.net ? ` — £${s.net}` : ''}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
