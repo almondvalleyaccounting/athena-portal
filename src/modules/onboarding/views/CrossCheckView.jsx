@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ChevronDown, ChevronRight, Check } from 'lucide-react';
-import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { tones, chipStyle } from '../../../lib/tokens';
 import ViewTabs from '../components/ViewTabs';
 import {
   listCrossCheck, listCrossCheckTaxes, getCrossCheckCoverage, listCrossCheckOrphans,
@@ -12,97 +12,190 @@ import {
 /*
   Cross-check — the sense check on the onboarding board.
 
-  Every column here is somebody else's record, not ours: BrightManager's view
-  of who we act for, whether the HMRC scrape can reach the client (if it can,
-  we ARE the agent), whether BrightPay holds the payroll, whether the client
-  exists in TaxCalc, whether QuickBooks is connected. Where they disagree with
-  the checklist, the other system usually wins.
+  The whole page is one matrix: a row per client, a mark per check. Five marks
+  tell the story — ✓ verified, ✕ mismatch, ○ in progress, ~ unverifiable while
+  the SA scrape is partial, ? no feed. Everything behind a mark is on its hover
+  title, and the full evidence (per-tax comparison, directors' SA with inline
+  UTR capture) opens on click. Only clients with something to look at show by
+  default.
 
   The one thing this screen must never do is turn missing evidence into a
-  finding. A leg with no feed reads "no data"; a scrape that only reached a
-  third of the clients we act for reads "unverified" and says so in the
-  Evidence strip. See sql/243_onboarding_crosscheck.sql.
+  finding: a leg with no feed reads ?, never ✕. See sql/243–253.
 */
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
-// Header and rows share one grid so the pills sit under their heading.
-const GRID = '24px 2fr 1.2fr 2.4fr 2fr';
 
-// A tri-state cell: true / false / null-means-we-don't-know.
-function Flag({ value, good, bad, unknown = 'no data' }) {
-  if (value === null || value === undefined) {
-    return <span style={{ ...chipStyle('neutral'), opacity: 0.7 }}>{unknown}</span>;
+// ── The marks ──────────────────────────────────────────────────────────────
+// One visual language for every cell. state → shape + colour; the title is
+// where the words live.
+const MARK = {
+  ok:        { glyph: '✓', bg: tones.success.bg, fg: tones.success.fg, border: tones.success.border },
+  bad:       { glyph: '✕', bg: tones.danger.bg,  fg: tones.danger.fg,  border: tones.danger.border },
+  awaiting:  { glyph: '○', bg: tones.teal.bg,    fg: tones.teal.fg,    border: tones.teal.border },
+  unverified:{ glyph: '~', bg: tones.warning.bg, fg: tones.warning.fg, border: tones.warning.border },
+  nodata:    { glyph: '?', bg: '#f8fafc',        fg: '#94a3b8',        border: '#e2e8f0' },
+  info:      { glyph: 'i', bg: tones.info.bg,    fg: tones.info.fg,    border: tones.info.border },
+};
+
+function Dot({ cell }) {
+  if (!cell) {
+    // Not a service for this client — a faint dash, so the eye skips it.
+    return <span style={{ color: '#e2e8f0', fontSize: 12 }}>–</span>;
   }
-  return value
-    ? <span style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={9} /> {bad}</span>
-    : <span style={{ ...chipStyle('success'), display: 'inline-flex', alignItems: 'center', gap: 3 }}><Check size={9} /> {good}</span>;
-}
-
-// How much the evidence behind each leg can actually carry.
-function EvidenceStrip({ coverage }) {
-  if (!coverage.length) return null;
-  const partial = coverage.filter((c) => c.scrape_looks_partial);
+  const m = MARK[cell.state] || MARK.nodata;
   return (
-    <div style={{ ...card, padding: '14px 18px', marginBottom: 16 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>
-        Evidence quality — read this before believing a column
-      </div>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        {coverage.map((c) => {
-          const pct = c.coverage_ratio == null ? null : Math.round(Number(c.coverage_ratio) * 100);
-          return (
-            <div key={c.tax} style={{
-              border: `1px solid ${c.scrape_looks_partial ? tones.warning.border : '#e5e7eb'}`,
-              background: c.scrape_looks_partial ? tones.warning.bg : '#fff',
-              borderRadius: 10, padding: '8px 12px', minWidth: 150,
-            }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a' }}>{TAX_LABELS[c.tax] || c.tax}</div>
-              <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
-                HMRC reached {c.hmrc_clients} of {c.we_do_clients} registered{pct != null ? ` · ${pct}%` : ''}
-              </div>
-              {c.awaiting_registration > 0 && (
-                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                  {c.awaiting_registration} still awaiting a reference
-                </div>
-              )}
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                {c.last_scrape ? `scraped ${new Date(c.last_scrape).toLocaleDateString('en-GB')}` : 'never scraped'}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {partial.length > 0 && (
-        <div style={{ fontSize: 12.5, color: tones.warning.fg, marginTop: 10, lineHeight: 1.5 }}>
-          {partial.map((c) => TAX_LABELS[c.tax] || c.tax).join(' and ')}: the scrape reached too few of the clients we
-          act for to treat absence as missing authorisation. Those clients read <strong>unverified</strong> rather than
-          counting against them.
-          {partial.some((c) => c.tax === 'sa') && (
-            <>
-              {' '}The cause is known: the Self Assessment run keeps only clients HMRC flags as having a statement
-              available, so the other rows never reach Athena even though being on HMRC&apos;s client list is itself the
-              authorisation. Publishing the whole client list — not just the accounts it fetched statements for — would
-              close this without scraping anything more.
-            </>
-          )}
-        </div>
-      )}
-      <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 8, lineHeight: 1.5 }}>
-        BrightManager's agent fields and TaxCalc have no feed into Athena yet, so those columns read
-        <span style={{ ...chipStyle('neutral'), margin: '0 4px' }}>no data</span>
-        rather than passing or failing. Everything else is live.
-      </div>
-      <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>
-        Directors' Self Assessment is checked per director, on the director's own UTR: expand a company
-        to see it. Where a director has no UTR on record, it can be typed in there and the check runs
-        immediately — no other set-up needed.
-      </div>
-    </div>
+    <span
+      title={cell.title}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 20, height: 20, borderRadius: 6, fontSize: 11.5, fontWeight: 700,
+        background: m.bg, color: m.fg, border: `1px solid ${m.border}`,
+        cursor: cell.title ? 'help' : 'default',
+      }}
+    >
+      {m.glyph}
+    </span>
   );
 }
 
-// The per-tax authorisation detail behind one client, loaded on expand.
+// ── Deriving each cell from the board row ──────────────────────────────────
+const inList = (csv, tax) => Boolean(csv) && csv.split(', ').includes(tax);
+
+// HMRC authorisation per tax. For a company, the SA cell carries the
+// directors' returns we bill through it — the company itself never holds SA.
+function taxCell(r, tax) {
+  if (tax === 'sa' && r.entity_type === 'limited_company') {
+    if (!r.directors_billed_for_sa) return null;
+    if (r.directors_sa_not_authorised > 0) {
+      return { state: 'bad', title: `Directors' SA: ${r.directors_sa_not_authorised} director(s) we bill for whom HMRC has never shown us as agent` };
+    }
+    if (r.directors_sa_no_utr > 0) {
+      return { state: 'awaiting', title: `Directors' SA: ${r.directors_sa_no_utr} director(s) without a UTR on record — click the row to add one, the check runs immediately` };
+    }
+    if (r.directors_sa_unverified > 0) {
+      return { state: 'unverified', title: `Directors' SA: ${r.directors_sa_unverified} director(s) with a known UTR, not on the scraped SA list — the scrape is partial, so this proves nothing yet` };
+    }
+    if (r.directors_sa_authorised > 0) {
+      return { state: 'ok', title: `Directors' SA: all ${r.directors_sa_authorised} confirmed against HMRC on the director's own UTR` };
+    }
+    return { state: 'nodata', title: "Directors' SA: no directors recorded for this company" };
+  }
+
+  if (inList(r.bm_wrong_taxes, tax)) {
+    return { state: 'bad', title: `${TAX_LABELS[tax]}: HMRC lets us scrape this client, so we ARE the agent — BrightManager says otherwise and needs fixing` };
+  }
+  if (inList(r.unauthorised_taxes, tax)) {
+    return { state: 'bad', title: `${TAX_LABELS[tax]}: we do this work but HMRC has never shown this client on our agent list — authorisation is missing` };
+  }
+  if (inList(r.awaiting_taxes, tax)) {
+    return { state: 'awaiting', title: `${TAX_LABELS[tax]}: no reference on record yet, so there is nothing to be authorised for — a registration in progress` };
+  }
+  if (inList(r.unverified_taxes, tax)) {
+    return { state: 'unverified', title: `${TAX_LABELS[tax]}: not on the scraped agent list, but that scrape is partial — proves nothing yet` };
+  }
+  const does = {
+    ct: r.does_accounts_ct, sa: r.does_sa, vat: r.does_vat, paye: r.does_payroll,
+  }[tax];
+  if (!does) return null;
+  return { state: 'ok', title: `${TAX_LABELS[tax]}: authorised at HMRC and the service is switched on` };
+}
+
+function loeCell(r) {
+  if (r.loe_signed) {
+    return {
+      state: 'ok',
+      title: `Letter of engagement signed${r.loe_signed_at ? ` ${new Date(r.loe_signed_at).toLocaleDateString('en-GB')}` : ''}`
+        + (r.loe_from_bm_only ? ' — recorded in BrightManager; Athena’s checklist step was never ticked' : ''),
+    };
+  }
+  if (r.has_onboarding) {
+    return { state: 'bad', title: 'No letter of engagement signed — in Athena or BrightManager. The client stays on the board.' };
+  }
+  return { state: 'nodata', title: 'No onboarding record, so no engagement letter is tracked for this client' };
+}
+
+function bpCell(r) {
+  if (!r.does_payroll) {
+    if (r.brightpay_without_payroll_service) {
+      return { state: 'info', title: `BrightPay runs a payroll for this client (${r.brightpay_employer || 'employer'}) but no fee or scheduled work covers it` };
+    }
+    return null;
+  }
+  if (!r.paye_registered) {
+    return { state: 'awaiting', title: 'Payroll is a service but there is no PAYE reference yet — BrightPay set-up waits for the registration' };
+  }
+  if (r.brightpay_missing) {
+    return { state: 'bad', title: 'Payroll is a service and the PAYE scheme exists, but no BrightPay employer matches this client' };
+  }
+  return { state: 'ok', title: `On BrightPay as ${r.brightpay_employer || 'a matched employer'}` };
+}
+
+function tcCell(r) {
+  if (!r.does_accounts_ct && !r.does_sa) return null;
+  if (r.missing_from_taxcalc === null || r.missing_from_taxcalc === undefined) {
+    return { state: 'nodata', title: 'TaxCalc has no feed into Athena yet — unknown, not failing' };
+  }
+  if (r.taxcalc_missing) {
+    return { state: 'bad', title: 'Accounts / SA work is on, the UTR exists, and the client is not in TaxCalc' };
+  }
+  return { state: 'ok', title: 'In TaxCalc' };
+}
+
+function qboCell(r) {
+  if (!r.does_software) return null;
+  if (r.software_without_qbo) {
+    return { state: 'bad', title: 'Software is billed but no QuickBooks company is connected' };
+  }
+  return { state: 'ok', title: 'QuickBooks connected' };
+}
+
+function feeCell(r) {
+  const issues = [];
+  if (r.billed_vat_not_registered) issues.push('billed a VAT product while not VAT registered by any record');
+  if (r.billed_ct_not_a_company) issues.push('billed a Corporation Tax product but not a limited company');
+  if (r.payroll_unbilled) issues.push('we run the payroll on BrightPay and nothing bills it');
+  if (!issues.length) return null;
+  return { state: 'bad', title: `Fees: ${issues.join('; ')}` };
+}
+
+const CELLS = [
+  { key: 'loe',  label: 'LOE',  get: loeCell },
+  { key: 'ct',   label: 'CT',   get: (r) => taxCell(r, 'ct') },
+  { key: 'sa',   label: 'SA',   get: (r) => taxCell(r, 'sa') },
+  { key: 'vat',  label: 'VAT',  get: (r) => taxCell(r, 'vat') },
+  { key: 'paye', label: 'PAYE', get: (r) => taxCell(r, 'paye') },
+  { key: 'bp',   label: 'BPay', get: bpCell },
+  { key: 'tc',   label: 'TCalc', get: tcCell },
+  { key: 'qbo',  label: 'QBO',  get: qboCell },
+  { key: 'fee',  label: 'Fees', get: feeCell },
+];
+
+// ── Small pieces ───────────────────────────────────────────────────────────
+function Tile({ label, count, tone, active, onClick, hint }) {
+  const t = tones[tone] || tones.neutral;
+  return (
+    <button
+      onClick={onClick}
+      title={hint}
+      style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1,
+        padding: '8px 14px', minWidth: 92, borderRadius: 10, cursor: 'pointer', fontFamily: font,
+        background: active ? t.bg : '#fff',
+        border: `1px solid ${active ? t.border : '#e5e7eb'}`,
+      }}
+    >
+      <span style={{ fontSize: 19, fontWeight: 700, color: count ? t.fg : '#cbd5e1', lineHeight: 1.1 }}>{count}</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</span>
+    </button>
+  );
+}
+
+const detailsSummaryStyle = {
+  fontSize: 12.5, fontWeight: 600, color: '#64748b', cursor: 'pointer',
+  padding: '10px 16px', userSelect: 'none',
+};
+
 function TaxDetail({ entityId }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
@@ -280,6 +373,7 @@ function DirectorSa({ companyId }) {
   );
 }
 
+// ── The page ───────────────────────────────────────────────────────────────
 export default function CrossCheckView() {
   const navigate = useNavigate();
   const [rows, setRows] = useState(null);
@@ -287,8 +381,7 @@ export default function CrossCheckView() {
   const [orphans, setOrphans] = useState([]);
   const [conflicts, setConflicts] = useState([]);
   const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('problems'); // problems | <verdict> | wrongly_closed | ready | all
-  const [scope, setScope] = useState('all');        // all | onboarding
+  const [filter, setFilter] = useState('issues'); // issues | <verdict> | all
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState({});
 
@@ -301,12 +394,10 @@ export default function CrossCheckView() {
   useEffect(() => { load(); }, [load]);
 
   const counts = useMemo(() => {
-    const c = { problems: 0, wrongly_closed: 0, ready: 0, all: 0 };
+    const c = { issues: 0, all: 0 };
     (rows || []).forEach((r) => {
       c.all += 1;
-      if (r.verdict !== 'clean') c.problems += 1;
-      if (r.wrongly_closed) c.wrongly_closed += 1;
-      if (r.ready_to_close) c.ready += 1;
+      if (r.verdict !== 'clean') c.issues += 1;
       c[r.verdict] = (c[r.verdict] || 0) + 1;
     });
     return c;
@@ -315,25 +406,23 @@ export default function CrossCheckView() {
   const filtered = useMemo(() => {
     if (!rows) return [];
     return rows.filter((r) => {
-      if (scope === 'onboarding' && !r.has_onboarding) return false;
-      if (filter === 'problems' && r.verdict === 'clean') return false;
-      if (filter === 'wrongly_closed' && !r.wrongly_closed) return false;
-      if (filter === 'ready' && !r.ready_to_close) return false;
-      if (!['problems', 'wrongly_closed', 'ready', 'all'].includes(filter) && r.verdict !== filter) return false;
+      if (filter === 'issues' && r.verdict === 'clean') return false;
+      if (filter !== 'issues' && filter !== 'all' && r.verdict !== filter) return false;
       if (search && !r.entity_name?.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [rows, filter, scope, search]);
+  }, [rows, filter, search]);
+
+  const saCover = coverage.find((c) => c.tax === 'sa');
+  const partial = coverage.filter((c) => c.scrape_looks_partial);
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: font }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Cross-check</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b', maxWidth: 760, lineHeight: 1.5 }}>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
             Where the onboarding board disagrees with BrightManager, HMRC, BrightPay, TaxCalc and QuickBooks.
-            No engagement letter or no agent authorisation means the client belongs on the board, whatever
-            the checklist says.
           </p>
         </div>
         <ViewTabs active="Cross-check" />
@@ -341,50 +430,38 @@ export default function CrossCheckView() {
 
       {error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 10 }}>{error}</div>}
 
-      <EvidenceStrip coverage={coverage} />
-
-      {counts.wrongly_closed > 0 && (
-        <div style={{
-          ...card, borderColor: tones.danger.border, background: tones.danger.bg,
-          padding: '12px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-        }}>
-          <AlertTriangle size={16} color={tones.danger.fg} />
-          <span style={{ fontSize: 13.5, color: tones.danger.fg, fontWeight: 600 }}>
-            {counts.wrongly_closed} {counts.wrongly_closed === 1 ? 'client is' : 'clients are'} marked
-            complete without an engagement letter or an HMRC authorisation
-          </span>
-          <button onClick={() => setFilter('wrongly_closed')} style={pillStyle({ tone: 'danger', active: filter === 'wrongly_closed' })}>
-            Show them
-          </button>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button onClick={() => setFilter('problems')} style={pillStyle({ tone: 'info', active: filter === 'problems' })}>
-          Needs attention ({counts.problems})
-        </button>
-        {CROSSCHECK_VERDICTS.map((v) => (
-          <button key={v.value} onClick={() => setFilter(v.value)} title={v.blurb}
-            style={pillStyle({ tone: v.tone, active: filter === v.value })}>
-            {v.label} ({counts[v.value] || 0})
-          </button>
+      {/* One row of numbers. Each is a filter; the hover carries the meaning. */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'stretch' }}>
+        <Tile label="Needs a look" count={counts.issues || 0} tone="danger"
+              active={filter === 'issues'} onClick={() => setFilter('issues')}
+              hint="Every client where at least one check disagrees" />
+        {CROSSCHECK_VERDICTS.filter((v) => v.value !== 'clean' && counts[v.value]).map((v) => (
+          <Tile key={v.value} label={v.label} count={counts[v.value]} tone={v.tone}
+                active={filter === v.value} onClick={() => setFilter(v.value)} hint={v.blurb} />
         ))}
-        <button onClick={() => setFilter('ready')} style={pillStyle({ tone: 'success', active: filter === 'ready' })}>
-          Ready to close ({counts.ready})
-        </button>
-        <button onClick={() => setFilter('all')} style={pillStyle({ tone: 'neutral', active: filter === 'all' })}>
-          All ({counts.all})
-        </button>
-        <span style={{ width: 1, height: 22, background: '#e5e7eb', margin: '0 4px' }} />
-        <button onClick={() => setScope(scope === 'onboarding' ? 'all' : 'onboarding')}
-          style={pillStyle({ tone: 'accent', active: scope === 'onboarding' })}>
-          On the board only
-        </button>
+        <Tile label="Verified" count={counts.clean || 0} tone="success"
+              active={filter === 'clean'} onClick={() => setFilter('clean')}
+              hint={crosscheckVerdictMeta('clean').blurb} />
+        <Tile label="All" count={counts.all || 0} tone="neutral"
+              active={filter === 'all'} onClick={() => setFilter('all')}
+              hint="Every active client" />
         <input
           value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search client…"
-          style={{ padding: '6px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, minWidth: 200 }}
+          style={{ marginLeft: 'auto', padding: '6px 12px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 10, minWidth: 200, alignSelf: 'center' }}
         />
       </div>
+
+      {/* The single caveat that changes how the marks read, one line. */}
+      {partial.length > 0 && (
+        <div
+          style={{ fontSize: 12, color: tones.warning.fg, marginBottom: 10 }}
+          title={saCover
+            ? `The Self Assessment run only keeps clients HMRC flags as having a statement, so the scrape reached ${saCover.hmrc_clients} of ${saCover.we_do_clients} registered clients. Publishing the whole client list (already built — needs one live scrape run) closes this. Until then absence proves nothing, so those marks read ~ instead of ✕.`
+            : undefined}
+        >
+          ⚠ {partial.map((c) => TAX_LABELS[c.tax] || c.tax).join(' and ')} scrape is partial — those marks read ~ (unverified), not ✕. Hover for why.
+        </div>
+      )}
 
       {!rows ? (
         <div style={{ fontSize: 13, color: '#94a3b8' }}>Loading…</div>
@@ -394,221 +471,131 @@ export default function CrossCheckView() {
         </div>
       ) : (
         <div style={{ ...card, overflow: 'hidden' }}>
-          {/* Column headings — the pills carry a lot and need naming. Same
-              grid as the rows below so they line up. */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: GRID, gap: 10, alignItems: 'end',
-            padding: '10px 14px 8px', background: '#fbfcfd', borderBottom: '1px solid #e5e7eb',
-            fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.4px',
-          }}>
-            <div />
-            <div>Client</div>
-            <div>Verdict</div>
-            <div>
-              Engagement &amp; HMRC authorisation
-              <div style={{ fontSize: 10.5, fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: '#94a3b8', marginTop: 2 }}>
-                letter of engagement, then whether HMRC shows us as agent
-              </div>
-            </div>
-            <div>
-              Systems, references &amp; billing
-              <div style={{ fontSize: 10.5, fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: '#94a3b8', marginTop: 2 }}>
-                BrightPay · TaxCalc · QuickBooks · the refs the work needs
-              </div>
-            </div>
-          </div>
-          {filtered.map((r) => {
-            const meta = crosscheckVerdictMeta(r.verdict);
-            const isOpen = expanded[r.entity_id];
-            return (
-              <div key={r.entity_id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 10, alignItems: 'center', padding: '10px 14px' }}>
-                  <button
-                    onClick={() => setExpanded((x) => ({ ...x, [r.entity_id]: !x[r.entity_id] }))}
-                    title="Show the tax-by-tax comparison"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#94a3b8', display: 'flex' }}
-                  >
-                    {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  </button>
-
-                  <div>
-                    <div
-                      onClick={() => navigate(r.onboarding_id ? `/onboarding/${r.onboarding_id}` : `/clients/${r.entity_id}`)}
-                      style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', cursor: 'pointer' }}
-                    >
-                      {r.entity_name}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>
-                      {r.has_onboarding
-                        ? `on the board · ${r.onboarding_status}`
-                        : 'no onboarding record'}
-                      {r.ready_to_close ? ' · nothing left to prove' : ''}
-                    </div>
-                  </div>
-
-                  <div>
-                    <span style={chipStyle(meta.tone)}>{meta.label}</span>
-                    {r.wrongly_closed && (
-                      <div style={{ ...chipStyle('danger'), marginTop: 4 }}>marked complete</div>
-                    )}
-                  </div>
-
-                  {/* Engagement + authorisation */}
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {r.has_onboarding || r.loe_signed_date
-                      ? (
-                        <span title={r.loe_signed_at
-                          ? `Signed ${new Date(r.loe_signed_at).toLocaleDateString('en-GB')}${r.loe_from_bm_only ? ' — from BrightManager' : ''}`
-                          : 'No engagement letter recorded in Athena or BrightManager'}>
-                          <Flag value={!r.loe_signed} good="LOE signed" bad="no LOE" />
-                        </span>
-                      )
-                      : <span style={{ ...chipStyle('neutral'), opacity: 0.7 }}>no LOE record</span>}
-                    {r.loe_from_bm_only && (
-                      <span style={chipStyle('info')} title="BrightManager holds the signed date but Athena's checklist step was never ticked">
-                        LOE date from BM — step not ticked
-                      </span>
-                    )}
-                    {r.missing_authorisations > 0 && (
-                      <span style={chipStyle('danger')}>no HMRC authorisation: {r.unauthorised_taxes}</span>
-                    )}
-                    {r.bm_disagreements > 0 && (
-                      <span style={chipStyle('accent')}>BM wrong: {r.bm_wrong_taxes}</span>
-                    )}
-                    {r.agent_no_service > 0 && (
-                      <span style={chipStyle('info')}>agent, no service ×{r.agent_no_service}</span>
-                    )}
-                    {r.awaiting_taxes && (
-                      <span style={chipStyle('teal')} title="No reference on record yet, so there is nothing to be authorised for — a registration in progress">
-                        awaiting registration: {r.awaiting_taxes}
-                      </span>
-                    )}
-                    {r.unverified_taxes && (
-                      <span style={chipStyle('warning')}>unverified: {r.unverified_taxes}</span>
-                    )}
-                    {r.name_matched_accounts > 0 && (
-                      <span style={chipStyle('warning')} title="An HMRC account is tied to this client by name rather than by reference or UTR">
-                        HMRC account matched by name
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Systems the work runs on */}
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {/* BrightPay and TaxCalc only count once the registration
-                        they depend on exists — see v_onboarding_crosscheck_board. */}
-                    {r.does_payroll && r.paye_registered && (
-                      <Flag value={r.brightpay_missing} good="on BrightPay" bad="not on BrightPay" />
-                    )}
-                    {r.brightpay_without_payroll_service && <span style={chipStyle('warning')}>BrightPay, no payroll fee</span>}
-                    {(r.does_accounts_ct || r.does_sa) && r.utr_registered && (
-                      <Flag value={r.taxcalc_missing} good="in TaxCalc" bad="not in TaxCalc" unknown="TaxCalc: no data" />
-                    )}
-                    {r.does_software && <Flag value={r.software_without_qbo} good="QBO linked" bad="no QBO" />}
-                    {r.billed_vat_not_registered && (
-                      <span style={chipStyle('accent')} title="Billed a VAT product, but not VAT registered by any record — BM service, onboarding flag or VAT number">
-                        billed VAT, not VAT registered
-                      </span>
-                    )}
-                    {r.billed_ct_not_a_company && (
-                      <span style={chipStyle('accent')} title="Billed a Corporation Tax product but not a limited company — either the client type is wrong or the wrong product was sold">
-                        billed CT, not a company
-                      </span>
-                    )}
-                    {r.payroll_unbilled && (
-                      <span style={chipStyle('accent')} title="We hold the PAYE authorisation and BrightPay holds the payroll, but nothing bills or schedules it — we are running this payroll for free">
-                        payroll run, not billed
-                      </span>
-                    )}
-                    {r.paye_authorisation_dormant && (
-                      <span style={chipStyle('info')} title="We are the PAYE agent but there is no payroll anywhere — a dormant scheme to disengage from">
-                        PAYE authorisation, no payroll
-                      </span>
-                    )}
-                    {r.directors_sa_no_utr > 0 && (
-                      <span style={chipStyle('neutral')} title="This company pays for its directors' returns and one of them has no UTR on record. Expand the row to add it — the check runs as soon as it is there.">
-                        {r.directors_sa_no_utr} director{r.directors_sa_no_utr === 1 ? '' : 's'} without a UTR
-                      </span>
-                    )}
-                    {r.directors_sa_authorised > 0 && (
-                      <span style={chipStyle('success')} title="Directors' Self Assessment confirmed against HMRC's list on the director's own UTR">
-                        {r.directors_sa_authorised} director SA authorised
-                      </span>
-                    )}
-                    {r.company_no_ch_auth_code && <span style={chipStyle('neutral')}>no CH auth code</span>}
-                    {r.not_billed && <span style={{ ...chipStyle('neutral'), opacity: 0.8 }}>not in the fee engine</span>}
-                  </div>
-                </div>
-
-                {isOpen && (
-                  <div style={{ padding: '4px 14px 14px 48px', background: '#fbfcfd' }}>
-                    <TaxDetail entityId={r.entity_id} />
-                    {r.directors_billed_for_sa > 0 && <DirectorSa companyId={r.entity_id} />}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {conflicts.length > 0 && (
-        <div style={{ ...card, padding: '14px 18px', marginTop: 18, borderColor: tones.warning.border }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
-            {conflicts.length} HMRC {conflicts.length === 1 ? 'account' : 'accounts'} tied to a client by something
-            weaker than a reference
-          </div>
-          <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 10, lineHeight: 1.5 }}>
-            SA, Corporation Tax and VAT are resolved on the UTR or the VRN, so they cannot drift. A PAYE account has
-            no UTR — the scheme reference is its only identity — so these are the ones where the link rests on a name
-            or a tidied-up reference, and authorisation for the wrong account would look like authorisation.
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
-                <th style={{ padding: '4px 8px', fontWeight: 600 }}>Client</th>
-                <th style={{ padding: '4px 8px', fontWeight: 600 }}>HMRC scheme</th>
-                <th style={{ padding: '4px 8px', fontWeight: 600 }}>Athena holds</th>
-                <th style={{ padding: '4px 8px', fontWeight: 600 }}>Why it matters</th>
+              <tr style={{ background: '#fbfcfd', borderBottom: '1px solid #e5e7eb' }}>
+                <th style={{ padding: '9px 6px 9px 14px', width: 24 }} />
+                <th style={{ padding: '9px 8px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.4px' }}>Client</th>
+                {CELLS.map((c) => (
+                  <th key={c.key} style={{ padding: '9px 4px', width: 44, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                    {c.label}
+                  </th>
+                ))}
+                <th style={{ padding: '9px 14px 9px 8px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.4px' }}>Verdict</th>
               </tr>
             </thead>
             <tbody>
-              {conflicts.map((c) => (
-                <tr key={`${c.tax}-${c.hmrc_key}`} style={{ borderTop: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '6px 8px', fontWeight: 600, color: '#0f172a' }}>{c.entity_name}</td>
-                  <td style={{ padding: '6px 8px', color: '#334155', fontFamily: 'monospace' }}>{c.hmrc_key}</td>
-                  <td style={{ padding: '6px 8px', color: '#334155', fontFamily: 'monospace' }}>
-                    {c.athena_key || <span style={{ color: '#94a3b8', fontFamily: font }}>nothing</span>}
-                  </td>
-                  <td style={{ padding: '6px 8px', color: '#64748b', lineHeight: 1.45 }}>{c.note}</td>
-                </tr>
-              ))}
+              {filtered.map((r) => {
+                const meta = crosscheckVerdictMeta(r.verdict);
+                const isOpen = expanded[r.entity_id];
+                return (
+                  <React.Fragment key={r.entity_id}>
+                    <tr
+                      onClick={() => setExpanded((x) => ({ ...x, [r.entity_id]: !x[r.entity_id] }))}
+                      style={{ borderTop: '1px solid #f1f5f9', cursor: 'pointer', background: isOpen ? '#fbfcfd' : '#fff' }}
+                    >
+                      <td style={{ padding: '7px 6px 7px 14px', color: '#94a3b8' }}>
+                        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </td>
+                      <td style={{ padding: '7px 8px' }}>
+                        <span
+                          onClick={(e) => { e.stopPropagation(); navigate(r.onboarding_id ? `/onboarding/${r.onboarding_id}` : `/clients/${r.entity_id}`); }}
+                          title={r.has_onboarding ? `On the board · ${r.onboarding_status} — click to open` : 'No onboarding record — click to open the client'}
+                          style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}
+                        >
+                          {r.entity_name}
+                        </span>
+                        {r.wrongly_closed && (
+                          <span
+                            title="Marked complete without an engagement letter or an HMRC authorisation"
+                            style={{ marginLeft: 6, fontSize: 11 }}
+                          >
+                            ⚠
+                          </span>
+                        )}
+                      </td>
+                      {CELLS.map((c) => (
+                        <td key={c.key} style={{ padding: '7px 4px', textAlign: 'center' }}>
+                          <Dot cell={c.get(r)} />
+                        </td>
+                      ))}
+                      <td style={{ padding: '7px 14px 7px 8px', textAlign: 'right' }}>
+                        <span style={chipStyle(meta.tone)} title={meta.blurb}>{meta.label}</span>
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={CELLS.length + 3} style={{ padding: '4px 14px 16px 44px', background: '#fbfcfd' }}>
+                          <TaxDetail entityId={r.entity_id} />
+                          {r.directors_billed_for_sa > 0 && <DirectorSa companyId={r.entity_id} />}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
+          <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
+            ✓ verified · ✕ mismatch · ○ in progress · ~ unverified while the scrape is partial · ? no feed · – not a service
+            &nbsp;— hover a mark for the story, click a row for the evidence
+          </div>
         </div>
       )}
 
+      {/* The side-lists, folded away until wanted. */}
+      {conflicts.length > 0 && (
+        <details style={{ ...card, marginTop: 14 }}>
+          <summary style={detailsSummaryStyle}>
+            {conflicts.length} HMRC account{conflicts.length === 1 ? '' : 's'} tied to a client by something weaker than a reference
+          </summary>
+          <div style={{ padding: '0 16px 14px' }}>
+            <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 8, lineHeight: 1.5 }}>
+              SA, CT and VAT resolve on the UTR or VRN, so they cannot drift. A PAYE account has no UTR, so these
+              links rest on a name or a tidied-up reference — and authorisation for the wrong account would look
+              like authorisation.
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <tbody>
+                {conflicts.map((c) => (
+                  <tr key={`${c.tax}-${c.hmrc_key}`} style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '6px 8px', fontWeight: 600, color: '#0f172a' }}>{c.entity_name}</td>
+                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: '#334155' }}>{c.hmrc_key}</td>
+                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: '#334155' }}>
+                      {c.athena_key || <span style={{ color: '#94a3b8', fontFamily: font }}>nothing in Athena</span>}
+                    </td>
+                    <td style={{ padding: '6px 8px', color: '#64748b' }}>{c.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+
       {orphans.length > 0 && (
-        <div style={{ ...card, padding: '14px 18px', marginTop: 18 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
-            {orphans.length} BrightPay {orphans.length === 1 ? 'payroll' : 'payrolls'} matching no client
+        <details style={{ ...card, marginTop: 10 }}>
+          <summary style={detailsSummaryStyle}>
+            {orphans.length} BrightPay payroll{orphans.length === 1 ? '' : 's'} matching no client
+          </summary>
+          <div style={{ padding: '0 16px 14px' }}>
+            <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 8, lineHeight: 1.5 }}>
+              We run these payrolls but the employer name matches nothing on the client list — a client recorded
+              under a different name, or a payroll nobody is billed for.
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {orphans.map((o) => (
+                <span key={o.employer_id} style={{
+                  fontSize: 12.5, padding: '5px 10px', borderRadius: 8,
+                  border: '1px solid #e5e7eb', color: '#334155', background: '#fff',
+                }}>
+                  {o.employer_name}
+                  {o.brightpay_active === false && <span style={{ ...chipStyle('neutral'), marginLeft: 6 }}>inactive</span>}
+                </span>
+              ))}
+            </div>
           </div>
-          <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 10, lineHeight: 1.5 }}>
-            We run these payrolls but the employer name matches nothing in the client list — either a client
-            recorded under a different name, or a payroll nobody is being billed for.
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {orphans.map((o) => (
-              <span key={o.employer_id} style={{
-                fontSize: 12.5, padding: '5px 10px', borderRadius: 8,
-                border: '1px solid #e5e7eb', color: '#334155', background: '#fff',
-              }}>
-                {o.employer_name}
-                {o.brightpay_active === false && <span style={{ ...chipStyle('neutral'), marginLeft: 6 }}>inactive</span>}
-              </span>
-            ))}
-          </div>
-        </div>
+        </details>
       )}
     </div>
   );
