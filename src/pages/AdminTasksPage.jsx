@@ -131,6 +131,7 @@ export default function AdminTasksPage() {
 
   const [openNotes, setOpenNotes] = useState(() => new Set());
   const [escalateTask, setEscalateTask] = useState(null);
+  const [billTask, setBillTask] = useState(null); // task whose bill is being raised
   const [completeTask, setCompleteTask] = useState(null);
   // Sections default COLLAPSED — we persist which ones are expanded, so a
   // fresh load always opens with everything folded to the counts.
@@ -453,34 +454,26 @@ export default function AdminTasksPage() {
 
   // Add a bill to an existing task → creates a draft billing_items row (into
   // the Billing Module for accept/send) and moves the task to Bill & Hold.
-  async function addBillToTask(t) {
+  // The service and the amount are asked for in the modal, where the answer can
+  // be given on the spot. This used to refuse the click outright when the task
+  // had no service, setting an error banner at the top of the page — out of
+  // sight of the row that was clicked, so the button looked dead. No task has
+  // ever carried a service, so that was every click.
+  async function addBillToTask(t, { serviceId, net }) {
     if (!t.entity_id) { setError('Add a client to the task before billing it.'); return; }
-    // See addTask: 'Admin' is no longer billable, so the task must carry a real
-    // service before a bill can be raised off it.
-    if (!t.service_id) { setError(`Set a service on "${t.title}" before billing it — pick the service the work actually was.`); return; }
-    // The service has to be one the Billing module offers, or the bill reaches
-    // it with a line that resolves to no QuickBooks product and fails at push.
-    if (!isBillableService(t.service_id)) {
-      setError(`"${t.service_id}" isn't a billing service any more — reopen the task and pick one from the list before billing it.`);
-      return;
-    }
-    const std = feeFor(t.service_id);
-    const raw = window.prompt(`Net amount to bill for "${t.title}" (excl. VAT) — enter 0 if the figure isn't settled yet:`, std != null ? String(std) : '');
-    if (raw === null) return;
-    // 0 raises it as a £0.00 draft to be priced in the Billing module, which
-    // won't let a £0.00 bill be approved or pushed.
-    const net = String(raw).trim() === '' ? 0 : parseFloat(raw);
-    if (!Number.isFinite(net) || net < 0) { setError('Enter a net amount of 0 or more.'); return; }
+    if (!isBillableService(serviceId)) { setError('Pick a service Billing offers before raising the bill.'); return; }
     const vat = Math.round(net * VAT_RATE * 100) / 100;
     const gross = Math.round((net + vat) * 100) / 100;
     const { data: bill, error: be } = await supabase.from('billing_items').insert({
-      entity_id: t.entity_id, service: t.service_id, description: t.title,
+      entity_id: t.entity_id, service: serviceId, description: t.title,
       net_amount: net, vat_amount: vat, gross_amount: gross,
       status: 'draft', created_by: profile?.id || null,
     }).select('id').single();
     if (be) { setError(be.message); return; }
+    // The service goes onto the task too — it is what the work was billed as,
+    // and the task is where the next person looks for that.
     const { error: ue } = await supabase.from('admin_tasks')
-      .update({ billable: true, billing_item_id: bill.id, stage: 'bill_hold' }).eq('id', t.id);
+      .update({ billable: true, billing_item_id: bill.id, stage: 'bill_hold', service_id: serviceId }).eq('id', t.id);
     if (ue) { setError(ue.message); return; }
     load();
   }
@@ -948,7 +941,7 @@ export default function AdminTasksPage() {
         <Section title="Draft — not on the live list" count={draftOpen.length}
           collapsed={!expandedSet.has('draft')} onToggle={() => toggleCollapse('draft')}>
           {draftOpen.length === 0 && <Empty>No drafts.</Empty>}
-          {draftOpen.map((t) => taskRow(t, { stageSelect: canPipeline, onAddBill: !t.billing_item_id ? () => addBillToTask(t) : null, onRelease: () => publishDraft(t), releaseLabel: 'Publish' }))}
+          {draftOpen.map((t) => taskRow(t, { stageSelect: canPipeline, onAddBill: !t.billing_item_id ? () => setBillTask(t) : null, onRelease: () => publishDraft(t), releaseLabel: 'Publish' }))}
         </Section>
         <Section title="Bill & Hold" count={billHoldOpen.length}
           collapsed={!expandedSet.has('bill_hold')} onToggle={() => toggleCollapse('bill_hold')}>
@@ -963,7 +956,7 @@ export default function AdminTasksPage() {
         <Section title="To Do" count={todoOpen.length}
           collapsed={!expandedSet.has('todo')} onToggle={() => toggleCollapse('todo')}>
           {todoOpen.length === 0 && <Empty>Nothing on the live list.</Empty>}
-          {todoOpen.map((t) => taskRow(t, { stageSelect: canPipeline, onAddBill: (!t.billing_item_id && t.entity_id) ? () => addBillToTask(t) : null }))}
+          {todoOpen.map((t) => taskRow(t, { stageSelect: canPipeline, onAddBill: (!t.billing_item_id && t.entity_id) ? () => setBillTask(t) : null }))}
         </Section>
 
         {/* Reallocations (capacity planner) — a manual action of ours */}
@@ -1098,12 +1091,93 @@ export default function AdminTasksPage() {
         />
       )}
 
+      {billTask && (
+        <AddBillModal
+          task={billTask}
+          serviceOptions={serviceOptions}
+          standardNetFor={feeFor}
+          onClose={() => setBillTask(null)}
+          onConfirm={(answers) => { addBillToTask(billTask, answers); setBillTask(null); }}
+        />
+      )}
+
       <NewClientModal
         open={newClientModal.open}
         initialName={newClientModal.initialName}
         onClose={handleNewClientClose}
         onSave={handleNewClientSave}
       />
+    </div>
+  );
+}
+
+// Raising a bill off a task needs the two things a task does not necessarily
+// carry: which service the bill is coded to, and what it is worth.
+function AddBillModal({ task, serviceOptions, standardNetFor, onClose, onConfirm }) {
+  const [serviceId, setServiceId] = useState(task.service_id || '');
+  const [amount, setAmount] = useState('');
+  const [err, setErr] = useState('');
+
+  const known = !!serviceId && serviceOptions.some((o) => o.id === serviceId);
+  const std = known ? standardNetFor(serviceId) : null;
+  const typed = String(amount).trim();
+  const net = typed === '' ? (std ?? 0) : parseFloat(typed);
+  const netOk = Number.isFinite(net) && net >= 0;
+  const vat = netOk ? Math.round(net * VAT_RATE * 100) / 100 : 0;
+
+  const submit = () => {
+    if (!serviceId) { setErr('Pick the service this work was — it decides the QuickBooks product the bill lands on.'); return; }
+    if (!known) { setErr(`"${serviceId}" is not a service Billing offers — pick one from the list.`); return; }
+    if (!netOk) { setErr('Enter a net amount of 0 or more.'); return; }
+    onConfirm({ serviceId, net });
+  };
+
+  return (
+    <div onClick={onClose} style={modalBackdrop}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Receipt size={16} color="#0e7fe0" /> Raise a bill
+        </div>
+        <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 14 }}>
+          {task.entity?.name ? `${task.entity.name} — ` : ''}{task.title}
+        </div>
+
+        <label style={fieldLabel}>Service</label>
+        <ServicePicker
+          value={serviceId}
+          options={serviceOptions}
+          onChange={(v) => { setServiceId(v); setErr(''); }}
+          placeholder="Pick the service the work actually was"
+          style={selectInput}
+        />
+
+        <label style={{ ...fieldLabel, marginTop: 12 }}>Net amount (excl. VAT)</label>
+        <div style={{ position: 'relative' }}>
+          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#94a3b8' }}>£</span>
+          <input
+            type="number" step="0.01" min="0" value={amount} autoFocus
+            onChange={(e) => { setAmount(e.target.value); setErr(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+            placeholder={std != null ? `Standard fee ${std}` : '0.00'}
+            style={{ ...selectInput, paddingLeft: 20 }}
+          />
+        </div>
+        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 6 }}>
+          {netOk
+            ? `£${net.toFixed(2)} + £${vat.toFixed(2)} VAT = £${(net + vat).toFixed(2)} gross. `
+            : 'Enter a net amount of 0 or more. '}
+          Blank or 0 raises a placeholder — Billing will not approve or push a £0.00 bill.
+        </div>
+
+        {err && <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 10 }}>{err}</div>}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+          <button onClick={onClose} style={btn('ghost')}>Cancel</button>
+          <button onClick={submit} style={btn('primary')}>
+            <Receipt size={13} /> Raise bill and hold
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

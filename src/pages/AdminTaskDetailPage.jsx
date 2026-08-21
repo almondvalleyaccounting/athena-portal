@@ -179,8 +179,10 @@ export default function AdminTaskDetailPage() {
       net_amount: net, vat_amount: vat, gross_amount: gross, status: 'draft', created_by: profile?.id || null,
     }).select('id').single();
     if (be) { setError(be.message); return; }
+    // The service goes onto the task as well — it is what the work was billed
+    // as, and it would otherwise only be saved if the form was saved too.
     const { error: ue } = await supabase.from('admin_tasks')
-      .update({ billable: true, billing_item_id: b.id, stage: 'bill_hold' }).eq('id', id);
+      .update({ billable: true, billing_item_id: b.id, stage: 'bill_hold', service_id: form.service_id }).eq('id', id);
     if (ue) { setError(ue.message); return; }
     load();
   };
