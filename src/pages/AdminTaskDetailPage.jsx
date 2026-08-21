@@ -54,7 +54,7 @@ export default function AdminTaskDetailPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: t, error: e1 }, { data: n }, { data: st }, { data: ents }, { data: sf }, { data: svc }] = await Promise.all([
+      const [{ data: t, error: e1 }, { data: n }, { data: st }, { data: ents }, { data: sf }, svc] = await Promise.all([
         supabase.from('admin_tasks').select('*, entity:entities(id, name)').eq('id', id).single(),
         supabase.from('admin_task_notes').select('*').eq('task_id', id).order('created_at', { ascending: true }),
         supabase.from('staff_profiles').select('id, name, email'),
