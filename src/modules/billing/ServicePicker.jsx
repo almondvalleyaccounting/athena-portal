@@ -153,7 +153,18 @@ export default function ServicePicker({ value, options, onChange, style, disable
             </span>
           </div>
 
-          {flat.length === 0 && (
+          {/* An empty list and an empty search are different failures, and saying
+              "nothing matches" for both hides the first one. A picker with no
+              options at all is a load or permissions problem, not a catalogue
+              that has run out of services. */}
+          {options.length === 0 && (
+            <div style={{ padding: '12px 12px', fontSize: 12, color: '#b45309' }}>
+              No services loaded. This list is the QuickBooks product mapping — if it
+              stays empty, it failed to load rather than being empty.
+            </div>
+          )}
+
+          {options.length > 0 && flat.length === 0 && (
             <div style={{ padding: '12px 12px', fontSize: 12, color: '#94a3b8' }}>
               Nothing matches “{query}”. Only services mapped to a QuickBooks product can be billed.
             </div>
