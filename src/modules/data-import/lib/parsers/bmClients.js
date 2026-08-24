@@ -41,6 +41,57 @@ function normNI(v) {
   return t || null;
 }
 
+// ── Person references ────────────────────────────────────────────────────
+// BM's export carries two reference fields and they are not the same kind of
+// thing:
+//
+//   "Internal Reference"        -> the CLIENT  -> entities.bm_client_id
+//   "Person Internal Reference" -> the PERSON  -> people.bm_person_ref
+//
+// They share a namespace — 320 of the 344 person references in the 15/04/2026
+// export are byte-identical to some client's Internal Reference, because BM
+// codes an SA client after the person it belongs to. So they are read into
+// separate fields and never compared. Nothing in this file falls back to
+// matching one against the other.
+//
+// The person reference is also NOT unique per person: BETTD01 is both Denise
+// and Stephen Bett, SHAWW01 is both James and William Shaw. Identity is
+// (reference, date of birth) — see sql/255_bm_person_reference.sql. The scan
+// at the bottom of this file reports any reference carrying two names so a
+// new one shows up in the dry run rather than inside a merge.
+
+// dd/mm/yyyy (BM's UI export) and yyyy-mm-dd (BM's CSV export) both appear.
+// Anything else is left null — a wrong DOB is worse than no DOB, because DOB
+// is what separates two people who share a reference.
+function normDob(v) {
+  if (!v) return null;
+  const t = String(v).trim();
+  if (!t) return null;
+  let y; let m; let d;
+  const iso = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  const uk = t.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (iso) { [, y, m, d] = iso; } else if (uk) { [, d, m, y] = uk; } else { return null; }
+  const yr = Number(y); const mo = Number(m); const dy = Number(d);
+  if (mo < 1 || mo > 12 || dy < 1 || dy > 31) return null;
+  // A DOB outside living memory is a parse error, not a birthday.
+  if (yr < 1900 || yr > new Date().getFullYear()) return null;
+  return `${yr}-${String(mo).padStart(2, '0')}-${String(dy).padStart(2, '0')}`;
+}
+
+// Surname + first name, normalised. Mirrors _bm_name_key() in
+// sql/255_bm_person_reference.sql — keep the two in step. Handles BM's two
+// name shapes ("Hunter, Gordon" and "Gordon Alexander Hunter" are one key)
+// without collapsing Sarah and Simon Collister, who share a surname, an
+// initial and a BM reference.
+function nameKey(name) {
+  const raw = String(name || '').toLowerCase().replace(/[^a-z, ]/g, '');
+  const commaForm = raw.includes(',');
+  const t = raw.replace(/,/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!t.length) return null;
+  if (t.length === 1) return t[0];
+  return commaForm ? `${t[0]} ${t[1]}` : `${t[t.length - 1]} ${t[0]}`;
+}
+
 // ── Agent-authorisation columns ──────────────────────────────────────────
 // BrightManager records, per tax, whether we are the authorised agent. The
 // exact header wording isn't known here — it varies by BM version and by which
@@ -99,6 +150,40 @@ function parseLoeDate(raw) {
   }
   const iso = new Date(v);
   return Number.isNaN(iso.getTime()) ? null : iso.toISOString().slice(0, 10);
+}
+
+// Read one of the two person blocks BM puts on every client row. The
+// secondary block (columns 48-65) was dropped entirely until now, which is
+// why 57 people BM knows about had no record in Athena — including David
+// Boyd senior, who is only ever the SECONDARY contact on the two Monument
+// companies while his son holds the primary slot.
+//
+// `slot` is 'primary' or 'secondary'; the secondary headers are the primary
+// ones with a "Secondary " prefix, all the way through.
+function readPersonBlock(get, row, slot) {
+  const p = slot === 'secondary' ? 'Secondary ' : '';
+  const ref = normText(get(row, `${p}Person Internal Reference`));
+  const first = normText(get(row, `${p}First Name`));
+  const last = normText(get(row, `${p}Last Name`));
+  const preferred = normText(get(row, `${p}Preferred Name`));
+  const full = [first, last].filter(Boolean).join(' ') || null;
+
+  // No reference, or nothing to call them by — nothing to identify.
+  if (!ref || (!full && !preferred)) return null;
+
+  return {
+    slot,
+    person_ref: ref,
+    first_name: first,
+    last_name: last,
+    preferred_name: preferred,
+    name: full,
+    email: normEmail(get(row, `${p}Email`)),
+    phone: normText(get(row, `${p}Mobile Number`)),
+    ni_number: normNI(get(row, `${p}NI Number`)),
+    dob: normDob(get(row, `${p}Date of Birth`)),
+    ch_personal_code: normText(get(row, `${p}Companies House Personal Code`)),
+  };
 }
 
 // Find the agent columns in a header row. Returns [{ tax, header, index }].
@@ -201,6 +286,26 @@ export function parseBmClientsCsv(text) {
       warnings.push({ row: i + 1, bm_client_id: bmId, name, field: 'company_number', message: 'limited company without Company Number' });
     }
 
+    // Both person blocks. The slot is a property of the LINK, not of the
+    // person — 53 of BM's 344 references are primary on one client and
+    // secondary on another — so it travels with the row, not with the name.
+    const people = [
+      readPersonBlock(get, row, 'primary'),
+      readPersonBlock(get, row, 'secondary'),
+    ].filter(Boolean);
+
+    // The fuzzy code column, when the export spells the header differently.
+    if (people[0] && !people[0].ch_personal_code && codeIdx >= 0) {
+      people[0].ch_personal_code = normText(row[codeIdx]);
+    }
+
+    if (!people.length) {
+      warnings.push({
+        row: i + 1, bm_client_id: bmId, name, field: 'person_ref',
+        message: 'no Person Internal Reference on this row — the contact cannot be identified across clients, so a duplicate person will be created for this client alone',
+      });
+    }
+
     const primaryEmail = normEmail(get(row, 'Email'));
     if (!primaryEmail) {
       warnings.push({ row: i + 1, bm_client_id: bmId, name, field: 'email', message: 'no primary email — client portal user cannot be invited later' });
@@ -233,6 +338,13 @@ export function parseBmClientsCsv(text) {
       _primary_phone: normText(get(row, 'Mobile Number')),
       _primary_ni: normNI(get(row, 'NI Number')),
       _primary_ch_personal_code: codeIdx >= 0 ? normText(row[codeIdx]) : null,
+      // Both person blocks, keyed by BM's Person Internal Reference. Consumed
+      // by import_bm_people, which keys people on (reference, DOB) instead of
+      // on "the contact of this entity". Kept separate from bm_client_id
+      // above — the two references share a namespace and must never be
+      // compared. See the note at the top of this file.
+      _people: people,
+      _primary_person_ref: people.find((p) => p.slot === 'primary')?.person_ref || null,
       // Only taxes whose column exists get a key — see import_bm_agent_flags.
       _agent_flags: agentCols.length
         ? Object.fromEntries(agentCols.map((c) => [`bm_agent_${c.tax}`, parseAgentFlag(row[c.index])]))
@@ -267,11 +379,76 @@ export function parseBmClientsCsv(text) {
     }
   }
 
+  // Person-reference collision scan: one Person Internal Reference carrying
+  // two different people. BM does this for family members — it issues a
+  // second reference sometimes (BOYDD01 / BOYDD02, a father and son both
+  // called David Boyd) and not others. In the 15/04/2026 export four
+  // references collide, and each differs on name, DOB and NI at once:
+  //
+  //   BETTD01  Denise Bett b.1981-01-05 / Stephen Bett b.1965-08-04
+  //   BLACR01  Ronald Blacklaws b.1954-06-26 / James Blacklaw b.1978-11-10
+  //   COLLS02  Sarah Collister b.1982-07-29 / Simon Collister b.1980-03-29
+  //   SHAWW01  James Shaw b.1994-06-18 / William Shaw b.1960-06-15
+  //
+  // Identity is (reference, DOB) so these import as separate people
+  // correctly, but the reference is still wrong in BM and will keep colliding
+  // on every re-import until someone fixes it there. Reported so it lands on
+  // Sophie's list rather than being absorbed silently.
+  const refSeen = new Map();
+  for (const r of rows) {
+    for (const p of r._people || []) {
+      if (!refSeen.has(p.person_ref)) refSeen.set(p.person_ref, new Map());
+      const byKey = refSeen.get(p.person_ref);
+      const key = nameKey(p.name || p.preferred_name);
+      if (!key) continue;
+      if (!byKey.has(key)) {
+        byKey.set(key, { name: p.name || p.preferred_name, dob: p.dob, ni: p.ni_number, row: r._source_row });
+      }
+    }
+  }
+  const personRefCollisions = [];
+  for (const [ref, byKey] of refSeen) {
+    if (byKey.size < 2) continue;
+    const seen = Array.from(byKey.values());
+    personRefCollisions.push({ person_ref: ref, people: seen });
+    warnings.push({
+      row: seen[0].row,
+      bm_client_id: null,
+      name: null,
+      field: 'person_ref',
+      message: `Person Internal Reference "${ref}" is shared by ${seen.length} different people (${seen.map((s) => `${s.name}${s.dob ? ` b.${s.dob}` : ''}`).join(' / ')}). They import as separate people because their dates of birth differ, but the reference is wrong in BrightManager — give each of them their own, the way BM already does for the two David Boyds.`,
+    });
+  }
+
   return {
     rows, warnings, skipped, headerOk: true,
     // Shown in the dry-run preview: which agent columns were found, so an
     // export without them is visibly a no-op rather than a silent one.
     agentColumns: agentCols.map((c) => ({ tax: c.tax, header: c.header })),
     loeColumn: loeCol ? loeCol.header : null,
+    // One reference, two people — a BM data fix, not an Athena one.
+    personRefCollisions,
+    // Dry-run counters: how many people this upload actually describes, as
+    // against how many client rows it has.
+    personSummary: (() => {
+      const refs = new Set();
+      const ids = new Set();
+      let secondary = 0;
+      let missing = 0;
+      for (const r of rows) {
+        if (!(r._people || []).length) missing += 1;
+        for (const p of r._people || []) {
+          refs.add(p.person_ref);
+          ids.add(`${p.person_ref}|${p.dob || nameKey(p.name || p.preferred_name) || ''}`);
+          if (p.slot === 'secondary') secondary += 1;
+        }
+      }
+      return {
+        distinct_refs: refs.size,
+        distinct_people: ids.size,
+        secondary_contacts: secondary,
+        rows_without_a_person_ref: missing,
+      };
+    })(),
   };
 }

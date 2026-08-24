@@ -46,7 +46,15 @@ export async function archiveBmClients(runId, bmClientIds) {
 // Call the import RPC. `decisions` is a map of bm_client_id -> prospect uuid
 // for approved conversions (omit a bm_client_id to create a new entity).
 export async function writeBmClients(runId, parsedRows, decisions = {}) {
+  // Every row carries its people when the export has the person-reference
+  // column, and import_bm_people (called below) owns them. Telling
+  // import_bm_clients to skip its own contact block stops it minting a fresh
+  // person per entity — the reason Athena held 417 person rows for 348
+  // people. An export without the column falls back to the old path.
+  const hasPersonRefs = parsedRows.some((r) => (r._people || []).length);
+
   const payload = {
+    skip_people: hasPersonRefs,
     rows: parsedRows.map((r) => ({
       bm_client_id: r.bm_client_id,
       name: r.name,
@@ -72,6 +80,50 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
     run_id: runId, payload,
   });
   if (error) throw error;
+
+  // People, keyed on BM's Person Internal Reference. Runs AFTER the entities
+  // are in so the bm_client_id lookup resolves. One people row per human
+  // rather than per (client, contact), and the Secondary block — 57 people,
+  // previously dropped on the floor — comes in too.
+  //
+  // This never merges anything. Where it finds a legacy per-entity row that
+  // it cannot adopt, it writes a proposal to bm_person_merge_review for a
+  // human to apply. Merging live records that carry Companies House identity
+  // codes and open code chases is not an import's decision to make.
+  let peopleResult = null;
+  if (hasPersonRefs) {
+    const personRows = [];
+    for (const r of parsedRows) {
+      for (const p of r._people || []) {
+        personRows.push({
+          bm_client_id: r.bm_client_id,
+          person_ref: p.person_ref,
+          slot: p.slot,
+          first_name: p.first_name,
+          last_name: p.last_name,
+          preferred_name: p.preferred_name,
+          email: p.email,
+          phone: p.phone,
+          ni_number: p.ni_number,
+          ch_personal_code: p.ch_personal_code,
+          dob: p.dob,
+        });
+      }
+    }
+    if (personRows.length) {
+      const { data: peData, error: peError } = await supabase.rpc('import_bm_people', {
+        run_id: runId, payload: { rows: personRows },
+      });
+      if (peError) {
+        // Non-fatal — the entities are already in, and the contacts they had
+        // before this run are untouched. Surfaced so it isn't a silent skip.
+        console.warn('[writeBmClients] import_bm_people failed:', peError.message);
+        peopleResult = { error: peError.message };
+      } else {
+        peopleResult = peData;
+      }
+    }
+  }
 
   // Side-load: VAT + Accounts reviewers from the "Monitor" columns into
   // service_reviewers. Runs AFTER entities have been upserted so the
@@ -149,14 +201,68 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
   // otherwise.
   let codeReconcile = null;
   try {
-    const pairs = parsedRows
-      .filter((r) => r._primary_ch_personal_code)
-      .map((r) => ({ bm_client_id: r.bm_client_id, code: r._primary_ch_personal_code }));
+    // One pair per person, carrying the person reference, so the code lands
+    // on the person BM says it belongs to. Without the reference the RPC
+    // falls back to "the primary contact, or anyone on this client with the
+    // same first and last name" — which for the two David Boyds, father and
+    // son and both contacts of the same two companies, matches either man.
+    const pairs = hasPersonRefs
+      ? parsedRows.flatMap((r) => (r._people || [])
+        .filter((p) => p.ch_personal_code)
+        .map((p) => ({
+          bm_client_id: r.bm_client_id,
+          code: p.ch_personal_code,
+          person_ref: p.person_ref,
+        })))
+      : parsedRows
+        .filter((r) => r._primary_ch_personal_code)
+        .map((r) => ({ bm_client_id: r.bm_client_id, code: r._primary_ch_personal_code }));
     if (pairs.length) {
       const { data: rc } = await supabase.rpc('reconcile_ch_codes', { p_pairs: pairs });
       codeReconcile = rc;
     }
   } catch { /* non-fatal */ }
 
-  return { ...data, reviewers: reviewerResult, bm_side_fields: agentResult, admin_tasks_confirmed: confirmedTasks + confirmedNlac, ch_code_reconcile: codeReconcile };
+  return {
+    ...data,
+    people: peopleResult,
+    reviewers: reviewerResult,
+    bm_side_fields: agentResult,
+    admin_tasks_confirmed: confirmedTasks + confirmedNlac,
+    ch_code_reconcile: codeReconcile,
+  };
+}
+
+// The merge proposals from the most recent runs, newest first. Read-only —
+// applying is a separate, explicit call.
+export async function fetchPersonMergeReview(verdicts = ['proposed', 'blocked']) {
+  const { data, error } = await supabase
+    .from('v_bm_person_merge_review')
+    .select('*')
+    .in('verdict', verdicts)
+    .order('verdict', { ascending: true })
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  return data || [];
+}
+
+// Apply reviewed merges. Only 'proposed' rows move; 'blocked' ones are
+// refused by the RPC until someone clears the block deliberately.
+export async function applyPersonMerges(ids) {
+  const clean = [...new Set((ids || []).filter(Boolean))];
+  if (!clean.length) return { applied: 0, failed: [] };
+  const { data, error } = await supabase.rpc('apply_bm_person_merges', { p_ids: clean });
+  if (error) throw error;
+  return data;
+}
+
+export async function setPersonMergeVerdict(ids, verdict) {
+  const clean = [...new Set((ids || []).filter(Boolean))];
+  if (!clean.length) return 0;
+  const { data, error } = await supabase.rpc('set_bm_person_merge_verdict', {
+    p_ids: clean, p_verdict: verdict,
+  });
+  if (error) throw error;
+  return data || 0;
 }

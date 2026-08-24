@@ -119,6 +119,10 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   const [parsedRows, setParsedRows] = useState(null);
   // Which agent-authorisation columns this BM export turned out to carry.
   const [agentColumns, setAgentColumns] = useState([]);
+  // People, keyed on BM's Person Internal Reference: how many the upload
+  // describes, and any reference carrying two different people.
+  const [personSummary, setPersonSummary] = useState(null);
+  const [personRefCollisions, setPersonRefCollisions] = useState([]);
   const [matches, setMatches] = useState({});          // bm_client_id/bm_task_id -> match info
   const [decisions, setDecisions] = useState({});      // bm_client_id -> confirmed prospect_id (or 'reject')
   const [archiveSelection, setArchiveSelection] = useState({}); // bm_clients: bm_client_id -> bool (archive on approve?)
@@ -207,6 +211,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   useEffect(() => {
     setFile(null); setPreview(null); setStage('upload');
     setValidation(null); setParsedRows(null); setMatches({}); setDecisions({});
+    setPersonSummary(null); setPersonRefCollisions([]);
     setArchiveSelection({});
     setSeenTaskIds([]);
     setRun(null); setError(null);
@@ -273,6 +278,8 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
         const matchMap = await classifyBmProspects(parsed.rows);
         setParsedRows(parsed.rows);
         setAgentColumns(parsed.agentColumns || []);
+        setPersonSummary(parsed.personSummary || null);
+        setPersonRefCollisions(parsed.personRefCollisions || []);
         setMatches(matchMap);
         // Pre-confirm tier 1/2 matches; tier 3 requires explicit action
         const preDecisions = {};
@@ -395,6 +402,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
     }
     setFile(null); setPreview(null); setValidation(null);
     setParsedRows(null); setMatches({}); setDecisions({});
+    setPersonSummary(null); setPersonRefCollisions([]);
     setRun(null); setStage('upload'); setError(null);
   };
 
@@ -539,6 +547,12 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           )}
           {source.key === 'bm_clients' && parsedRows && (
             <AgentColumnsPanel columns={agentColumns} />
+          )}
+          {source.key === 'bm_clients' && parsedRows && (
+            <PeoplePanel summary={personSummary} rowCount={parsedRows.length} />
+          )}
+          {source.key === 'bm_clients' && parsedRows && (
+            <PersonRefCollisionPanel collisions={personRefCollisions} />
           )}
           {source.key === 'bm_clients' && validation.archiveCandidates?.length > 0 && (
             <ArchiveCandidatesPanel
@@ -1773,6 +1787,120 @@ function AgentColumnsPanel({ columns }) {
           are matched on wording, so no code change is needed.
         </div>
       )}
+    </div>
+  );
+}
+
+// What the upload says about PEOPLE, as against clients. BM's export carries
+// two reference fields — "Internal Reference" for the client and "Person
+// Internal Reference" for the contact — and until now Athena read only the
+// first, so one human who is the contact for eight clients became eight
+// people. This panel is how you see the difference before approving.
+function PeoplePanel({ summary, rowCount }) {
+  if (!summary) return null;
+  const {
+    distinct_refs: refs,
+    distinct_people: people,
+    secondary_contacts: secondary,
+    rows_without_a_person_ref: missing,
+  } = summary;
+
+  if (!refs) {
+    return (
+      <div style={{
+        background: '#fff', border: '1px solid #fcd34d', borderRadius: 12,
+        padding: '14px 18px', marginTop: 14,
+      }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
+          Person references — none found
+        </div>
+        <div style={{ fontSize: 12.5, color: '#92400e', lineHeight: 1.5 }}>
+          This export has no &quot;Person Internal Reference&quot; column, so contacts can&apos;t be
+          identified across clients. Athena falls back to the old behaviour: one person record per
+          client, meaning the same human appears once for every client they act for. Re-export from
+          BrightManager with the person columns included to fix it — no code change needed.
+        </div>
+      </div>
+    );
+  }
+
+  const Stat = ({ label, value, note }) => (
+    <div style={{ minWidth: 130 }}>
+      <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>{value}</div>
+      <div style={{ fontSize: 12, color: '#334155', fontWeight: 600 }}>{label}</div>
+      {note ? <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{note}</div> : null}
+    </div>
+  );
+
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #86efac', borderRadius: 12,
+      padding: '14px 18px', marginTop: 14,
+    }}>
+      <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>
+        People in this upload
+      </div>
+      <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap', marginBottom: 10 }}>
+        <Stat label="Client rows" value={rowCount} />
+        <Stat label="Person references" value={refs} note="BrightManager's person codes" />
+        <Stat
+          label="Distinct people"
+          value={people}
+          note={people > refs ? `${people - refs} reference${people - refs === 1 ? '' : 's'} split by date of birth` : 'one person per reference'}
+        />
+        <Stat label="Secondary contacts" value={secondary} note="previously not imported at all" />
+      </div>
+      <div style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.5 }}>
+        A person is identified by their reference <em>and</em> their date of birth, not by the
+        reference alone — BrightManager gives two people one reference in a handful of cases, and it
+        gives the same person one reference across every client they act for. Nothing is merged by
+        this import: where it finds an older duplicate record it writes a proposal for you to review.
+        {missing > 0 ? (
+          <>
+            {' '}
+            <strong>{missing}</strong> row{missing === 1 ? '' : 's'} carry no person reference, so
+            their contact can only be recorded against that one client.
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// One Person Internal Reference, two different people. A BrightManager data
+// fix, not an Athena one — it will keep colliding on every re-import until
+// the second person gets their own reference there.
+function PersonRefCollisionPanel({ collisions }) {
+  if (!collisions || collisions.length === 0) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
+        Needs attention in BrightManager · one person reference, two people
+      </p>
+      <RollupFrame
+        tone="amber"
+        title={`Shared Person Internal Reference · ${collisions.length} ${collisions.length === 1 ? 'reference' : 'references'}`}
+        summary="Two different people share one person reference in BrightManager — usually spouses or siblings. They import correctly as separate people here because their dates of birth differ, so nothing is blocked. But the reference is wrong at source and will collide again on every re-import. Give the second person their own reference in BM, the way BM already does for the two David Boyds."
+      >
+        {collisions.map((c) => (
+          <div key={c.person_ref} style={{ padding: '8px 14px', borderBottom: '1px solid rgba(252,211,77,0.4)' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+              <span style={{ flex: '0 0 110px', fontSize: 13, color: '#0f172a', fontFamily: 'monospace' }}>
+                {c.person_ref}
+              </span>
+              <span style={{ flex: 1, fontSize: 12, color: '#475569' }}>
+                {c.people.map((p) => (
+                  <span key={`${p.name}-${p.dob || ''}`} style={{ marginRight: 14 }}>
+                    <strong style={{ color: '#0f172a' }}>{p.name}</strong>
+                    {p.dob ? ` · b. ${p.dob}` : ' · no date of birth'}
+                    {p.ni ? ` · ${p.ni}` : ''}
+                  </span>
+                ))}
+              </span>
+            </div>
+          </div>
+        ))}
+      </RollupFrame>
     </div>
   );
 }
