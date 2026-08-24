@@ -133,27 +133,60 @@ config. Rotation is cheap; the real deliverable is knowing where all the copies 
 
 ## B. Needs a decision
 
-### B1. Staff MFA is enforced in the browser only — **(carried, now partly unblocked)**
-Still the largest remaining blast radius. `is_active_staff()` — the predicate every RLS
-policy gates on — only asks `auth.uid()`. Talk to `/rest/v1/` directly with a
-password-only session and the MFA challenge never runs; it is a UI curtain in
-`AppShell.jsx`.
+### B1. Staff MFA — **client half fixed 2026-08-24, database half prepared**
 
-What changed since 19 August: enrolment has moved from "opt-in, mostly absent" to
-**10 of 11 active staff holding a verified factor**. So step 1 of the sequencing is
-nearly done. Two things still block it:
+This was worse than the 19 August note said, and the measurement is the point.
 
-1. **One active staff member has no factor at all.** Requiring `aal2` locks them out
-   of a live system. They need enrolling first.
-2. **17 live trusted-device bypasses**, expiring between 31 August and 17 November.
-   `src/lib/trustedDevice.js` grants a 90-day `aal1` pass. An `aal2` predicate defeats
-   it wholesale — either those people get prompted every login (which is what the
-   mechanism exists to prevent), or the trusted-device notion has to become
-   server-side. That is a design decision, not a migration.
+`is_active_staff()` — the predicate behind 402 RLS policies — only asked `auth.uid()`.
+So a password-only session talking straight to `/rest/v1/` never met a challenge; the
+MFA screen in `AppShell.jsx` was a curtain, not a control. Same mistake as the
+2026-08-18 findings, one layer up: a check above the data layer means nothing when the
+predicate below it does not ask.
 
-Keep `is_staff_or_service()` passing `service_role` and no-JWT callers or every cron
-and edge function breaks. A gate that locks out the firm is a different outage, not a
-fix.
+But the client side was not working either. `MFAChallenge.jsx` had **"Remember this
+device for 90 days" ticked by default**, and `AppShell` short-circuited to `ok` whenever
+a matching `mfa_trusted_devices` row existed. So after one sign-in nobody ever completed
+a challenge again. Measured on 24 August:
+
+| | |
+|---|---|
+| Active staff holding a verified TOTP factor | 10 of 11 |
+| Live trusted-device rows (to 2026-11-17) | 17 |
+| Sessions at `aal2` | **0 of 10** |
+
+Zero. The firm had enrolled MFA and was not using it.
+
+**Fixed on the client:** the device bypass is gone — `AppShell` now always challenges an
+`aal1` session that has a factor, and the checkbox is removed. `aal` is a property of
+`auth.sessions` and survives token refresh, so the cost is one prompt per fresh sign-in,
+which is what MFA means. This is why the bypass was not reimplemented server-side: it
+was never buying convenience worth the price, and putting a device token in a header
+would have made it a second bearer credential.
+
+**Prepared, not applied:** [sql/258_mfa_aal2_required.sql.PREPARED](../sql/258_mfa_aal2_required.sql.PREPARED)
+adds the `aal2` test to `is_active_staff()`. It carries its own go-live checklist. Do
+not apply it before that checklist is complete — it is the highest-blast-radius function
+in the database, and applying it early locks out all eleven staff rather than fixing an
+exposure. `is_staff_or_service()` is deliberately unchanged, which is what keeps the 25
+cron jobs and 67 edge functions running.
+
+**The one blocker that needs a person, not code:** `ryan@tapee.io` is an active staff
+row with no MFA factor at all and last signed in 2026-04-16. Enrol them or set
+`is_active = false`. A four-month-dormant active account with no second factor is a
+finding on its own, and deactivating is the cheaper answer if they are no longer
+involved.
+
+The gate before applying, which is checkable rather than a judgement:
+
+```sql
+select count(*) filter (where s.aal = 'aal2')  as elevated,
+       count(*) filter (where s.aal <> 'aal2') as still_aal1
+from auth.sessions s
+join public.staff_profiles sp on sp.id = s.user_id
+where sp.is_active;
+```
+
+`still_aal1` must be 0.
 
 ### B2. `portal-dashboard` edge function and `sql/238` — **(carried)**
 Still the only part of the August surface never reviewed. Portal-facing, so the right

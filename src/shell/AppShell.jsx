@@ -7,7 +7,6 @@ import ChangePasswordScreen from './ChangePasswordScreen';
 import MFAChallenge from './MFAChallenge';
 import SecurityPage from './SecurityPage';
 import { CinematicPanel } from './LoginPage';
-import { checkTrustedDevice } from '../lib/trustedDevice';
 import useGlobalShortcuts from './useGlobalShortcuts';
 import { ShortcutsModal } from './ShortcutsMap';
 
@@ -95,8 +94,8 @@ export default function AppShell() {
   //   mustChallenge — user has a verified factor, session is aal1, and this
   //                   device is NOT remembered → show the 6-digit prompt.
   //   otherwise     — render the app normally.
-  // 'Remember this device' (90 days) lets aal1 sessions skip the prompt
-  // when a valid mfa_trusted_devices row matches the localStorage token.
+  // There is no device-remembering bypass: it kept every session at aal1,
+  // which made the MFA screen a curtain rather than a control.
   const [mfaState, setMfaState] = useState('checking'); // 'checking' | 'ok' | 'enrol' | 'challenge'
   const recheckMfa = React.useCallback(async () => {
     if (!session) { setMfaState('ok'); return; }
@@ -107,9 +106,15 @@ export default function AppShell() {
     const verified = (factors?.totp || []).some((f) => f.status === 'verified');
     if (!verified) { setMfaState('enrol'); return; }
     if (aal?.currentLevel === 'aal2') { setMfaState('ok'); return; }
-    // aal1 + has factor → maybe trusted device.
-    const trusted = await checkTrustedDevice(session.user.id);
-    setMfaState(trusted ? 'ok' : 'challenge');
+    // aal1 + has factor → challenge, always. The old 'remember this device'
+    // branch short-circuited to 'ok' and left the session at aal1 — with the
+    // checkbox ticked by default that meant nobody completed a challenge after
+    // their first sign-in, and every one of the firm's sessions sat at aal1.
+    // Since aal is a property of the session and survives token refresh, the
+    // cost of removing it is one prompt per fresh sign-in, which is what MFA
+    // means. Required before is_active_staff() can demand aal2 — see
+    // sql/258_mfa_aal2_required.sql.PREPARED and the 2026-08-24 follow-up.
+    setMfaState('challenge');
   }, [session]);
   useEffect(() => { recheckMfa(); }, [recheckMfa]);
 
