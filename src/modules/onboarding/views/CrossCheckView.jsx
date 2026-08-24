@@ -84,6 +84,10 @@ function taxCell(r, tax) {
     return { state: 'nodata', title: "Directors' SA: no directors recorded for this company" };
   }
 
+  if (tax === 'vat' && r.vat_ref_flag) {
+    if (r.vat_ref_flag === 'aliased') return { state: 'unverified', title: r.vat_ref_note };
+    return { state: 'bad', title: r.vat_ref_note };
+  }
   if (inList(r.bm_wrong_taxes, tax)) {
     return { state: 'bad', title: `${TAX_LABELS[tax]}: HMRC lets us scrape this client, so we ARE the agent — BrightManager says otherwise and needs fixing` };
   }
@@ -211,6 +215,7 @@ function TaxDetail({ entityId }) {
 
   const tone = (v) => ({
     authorised: 'success', bm_wrong: 'accent', not_authorised: 'danger',
+    invalid_reference: 'accent', reference_disputed: 'accent',
     unverified: 'warning', no_evidence: 'neutral', agent_but_no_service: 'info',
   }[v] || 'neutral');
 

@@ -1003,6 +1003,10 @@ export const CROSSCHECK_VERDICTS = [
     blurb: 'We hold an authorisation nothing bills or schedules — an unbilled service, or one to give up.',
   },
   {
+    value: 'fix_reference', label: 'Fix a reference', tone: 'accent',
+    blurb: 'A VAT number that fails its own checksum, or that HMRC says belongs to a different business — fixable at the desk, no HMRC contact needed.',
+  },
+  {
     value: 'check_billing', label: 'Check the billing', tone: 'accent',
     blurb: 'Billed a VAT product while not VAT registered, or a Corporation Tax product while not a company — a fee to correct, not an authorisation to chase.',
   },
