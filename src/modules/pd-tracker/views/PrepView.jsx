@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Lock, Plus, Trash2, Pin, PinOff, Check, ChevronDown, ChevronRight,
   Search, ExternalLink, NotebookPen, Archive, RotateCcw, UserPlus, Inbox, X, CornerDownLeft,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { Card, SectionTitle, Button, Input, Textarea, Select, Pill, EmptyState, FONT, SERIF } from '../components/ui';
@@ -11,7 +12,7 @@ import {
   loadWorkFeed, PREP_KINDS, WORK_FEED_SOURCES,
   loadPrepRequestsBySubject, loadPrepRequestsForMe, createPrepRequests,
   updatePrepRequest, deletePrepRequest,
-  loadPrepContributions, addPrepContribution, deletePrepContribution,
+  loadPrepContributions, addPrepContribution, dismissPrepContribution,
 } from '../lib/api';
 
 // Private prep space: the notes I build up between 1-2-1s. Nobody else can
@@ -31,14 +32,15 @@ export default function PrepView() {
   const [asking, setAsking] = useState(false);
   // Asks pointed at me — independent of who I'm preparing for.
   const [inbox, setInbox] = useState([]);
+  // A notification links straight at one ask (sql/260), so open on it.
+  const [params, setParams] = useSearchParams();
+  const focusRequestId = params.get('request') || '';
 
+  // No default subject. Whoever happened to sort first was preselected before,
+  // so notes could be written against the wrong person by simply not looking at
+  // the dropdown. Choosing is now an act.
   useEffect(() => {
-    loadStaff()
-      .then((s) => {
-        setStaff(s);
-        setSubjectId((cur) => cur || s.find((x) => x.id !== profile?.id)?.id || profile?.id || '');
-      })
-      .catch((e) => console.error(e));
+    loadStaff().then(setStaff).catch((e) => console.error(e));
   }, [profile?.id]);
 
   useEffect(() => {
@@ -59,24 +61,53 @@ export default function PrepView() {
       .finally(() => setLoadingFeed(false));
   }, [subjectId]);
 
-  useEffect(() => {
-    if (!subjectId || !profile?.id) { setRequests([]); setContributions([]); return; }
-    setAsking(false);
-    Promise.all([
-      loadPrepRequestsBySubject(profile.id, subjectId),
-      loadPrepContributions(profile.id, subjectId),
-    ])
-      .then(([r, c]) => { setRequests(r); setContributions(c); })
-      .catch((e) => console.error(e));
-  }, [subjectId, profile?.id]);
+  useEffect(() => { setAsking(false); }, [subjectId]);
+
+  // Everything on this page that somebody ELSE writes: what came back about
+  // the person I'm preparing for, and what has been asked of me. Both arrive
+  // while the page is open, so both are pulled again on a timer and whenever
+  // the tab comes back to the front — waiting for a manual reload is how
+  // feedback sits unread.
+  const refreshInbound = useCallback(async () => {
+    if (!profile?.id) return;
+    try {
+      const [mine, sent, got] = await Promise.all([
+        loadPrepRequestsForMe(profile.id),
+        subjectId ? loadPrepRequestsBySubject(profile.id, subjectId) : Promise.resolve(null),
+        subjectId ? loadPrepContributions(profile.id, subjectId) : Promise.resolve(null),
+      ]);
+      setInbox(mine);
+      if (sent) setRequests(sent);
+      if (got) setContributions(got);
+      if (!subjectId) { setRequests([]); setContributions([]); }
+    } catch (e) { console.error(e); }
+  }, [profile?.id, subjectId]);
+
+  useEffect(() => { refreshInbound(); }, [refreshInbound]);
 
   useEffect(() => {
-    if (!profile?.id) return;
-    loadPrepRequestsForMe(profile.id).then(setInbox).catch((e) => console.error(e));
-  }, [profile?.id]);
+    if (!profile?.id) return undefined;
+    const timer = setInterval(refreshInbound, 45000);
+    const onFocus = () => { if (!document.hidden) refreshInbound(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [refreshInbound, profile?.id]);
 
   const subject = staff.find((s) => s.id === subjectId);
   const subjectName = subject?.id === profile?.id ? 'yourself' : (subject?.name || '—');
+  const focusRequest = inbox.find((r) => r.id === focusRequestId) || null;
+
+  const clearFocus = () => {
+    if (!focusRequestId) return;
+    const next = new URLSearchParams(params);
+    next.delete('request');
+    setParams(next, { replace: true });
+  };
 
   const add = async (payload) => {
     try {
@@ -122,12 +153,13 @@ export default function PrepView() {
     } catch (e) { console.error(e); }
   };
 
+  // Clears it out of my prep and stays cleared. The author's copy is theirs.
   const dropContribution = async (id) => {
-    if (!window.confirm('Remove this contribution from your prep?')) return;
+    if (!window.confirm('Clear this out of your prep? It stops showing here. The colleague who wrote it keeps their own copy.')) return;
     try {
-      await deletePrepContribution(id);
+      await dismissPrepContribution(id);
       setContributions((p) => p.filter((c) => c.id !== id));
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); alert('Could not clear that: ' + (e.message || e)); }
   };
 
   // Pull a colleague's point into my own notes so it joins the 1-2-1 agenda.
@@ -137,19 +169,21 @@ export default function PrepView() {
     body: `${c.contributor?.name || 'A colleague'}: ${c.body}`,
   });
 
-  const answerRequest = async (request, kind, body) => {
+  const answerRequest = async (request, kind, body, visibility) => {
     try {
-      await addPrepContribution({ request, contributor_id: profile.id, kind, body });
+      await addPrepContribution({ request, contributor_id: profile.id, kind, body, visibility });
       setInbox((p) => p.map((r) => (r.id === request.id
-        ? { ...r, status: 'answered', responded_at: new Date().toISOString() }
+        ? { ...r, status: 'answered', responded_at: new Date().toISOString(), answer_route: visibility }
         : r)));
-    } catch (e) { console.error(e); }
+      clearFocus();
+    } catch (e) { console.error(e); alert('Could not send that: ' + (e.message || e)); }
   };
 
   const declineRequest = async (request) => {
     try {
       const saved = await updatePrepRequest(request.id, { status: 'declined', responded_at: new Date().toISOString() });
       setInbox((p) => p.map((r) => (r.id === request.id ? { ...r, ...saved } : r)));
+      clearFocus();
     } catch (e) { console.error(e); }
   };
 
@@ -169,11 +203,12 @@ export default function PrepView() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <span style={{ fontFamily: FONT, fontSize: 12, color: '#64748b' }}>Preparing for</span>
           <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} style={{ minWidth: 190 }}>
+            <option value="">— Choose someone —</option>
             {staff.map((s) => (
               <option key={s.id} value={s.id}>{s.name}{s.id === profile?.id ? ' (you)' : ''}</option>
             ))}
           </Select>
-          <Button variant="ghost" onClick={() => setAsking((v) => !v)} style={{ whiteSpace: 'nowrap' }}>
+          <Button variant="ghost" disabled={!subjectId} onClick={() => setAsking((v) => !v)} style={{ whiteSpace: 'nowrap' }}>
             <UserPlus size={13} style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
             Ask for input
           </Button>
@@ -182,10 +217,19 @@ export default function PrepView() {
 
       <InboxPanel
         inbox={inbox}
+        focusId={focusRequestId}
         onAnswer={answerRequest}
         onDecline={declineRequest}
       />
 
+      {!subjectId ? (
+        <EmptyState
+          icon={<NotebookPen size={28} />}
+          title="Pick who you're preparing for"
+          hint="Nobody is selected on purpose — notes written against the wrong person are worse than no notes."
+        />
+      ) : (
+      <>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22,
         background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 12, padding: '10px 14px',
@@ -288,6 +332,8 @@ export default function PrepView() {
           link_url: item.url || null,
         })}
       />
+      </>
+      )}
     </div>
   );
 }
@@ -352,6 +398,11 @@ function AskPanel({ staff, subjectName, alreadyAsked, onSend, onCancel }) {
   );
 }
 
+// 'answered' means something arrived, but not necessarily to me: a colleague
+// can address their answer to the subject alone, and then I get the fact of it
+// and none of the words (sql/260).
+const ROUTE_NOTE = { both: 'answered · copied to them', subject: 'answered · sent to them direct' };
+
 function RequestStrip({ requests, onCancel }) {
   const tone = { open: ['#fffbeb', '#b45309'], answered: ['#f0fdf4', '#15803d'], declined: ['#f8fafc', '#64748b'] };
   return (
@@ -368,7 +419,9 @@ function RequestStrip({ requests, onCancel }) {
             border: '1px solid ' + bg, borderRadius: 999, padding: '4px 6px 4px 12px',
           }}>
             <strong style={{ fontWeight: 600 }}>{r.responder?.name || 'Someone'}</strong>
-            <span style={{ opacity: 0.8 }}>{r.status}</span>
+            <span style={{ opacity: 0.8 }}>
+              {(r.status === 'answered' && ROUTE_NOTE[r.answer_route]) || r.status}
+            </span>
             {r.status === 'open' && (
               <button onClick={() => onCancel(r.id)} title="Withdraw" style={{ background: 'none', border: 'none', cursor: 'pointer', color: fg, padding: 2, lineHeight: 0 }}>
                 <X size={12} />
@@ -421,7 +474,7 @@ function ContributionsPanel({ contributions, subjectName, adoptedBodies, onAdopt
                 >
                   {adopted ? '✓ in my notes' : <><CornerDownLeft size={11} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />Add to my notes</>}
                 </button>
-                <IconBtn title="Remove from my prep" onClick={() => onDelete(c.id)}><Trash2 size={12} /></IconBtn>
+                <IconBtn title="Clear out of my prep — the author keeps their copy" onClick={() => onDelete(c.id)}><Trash2 size={12} /></IconBtn>
               </div>
             </div>
           );
@@ -431,53 +484,137 @@ function ContributionsPanel({ contributions, subjectName, adoptedBodies, onAdopt
   );
 }
 
-// My inbox: colleagues asking me to contribute to THEIR prep.
-function InboxPanel({ inbox, onAnswer, onDecline }) {
+// My inbox: colleagues asking me to contribute to THEIR prep. A notification
+// can point at one ask (?request=), and that one sorts first and scrolls into
+// view -- landing on a page about somebody else, with the ask folded into a
+// panel, is how Tracy ended up unsure what she had been sent to do.
+function InboxPanel({ inbox, focusId, onAnswer, onDecline }) {
   const [expanded, setExpanded] = useState(true);
-  const openOnes = inbox.filter((r) => r.status === 'open');
-  if (openOnes.length === 0) return null;
+  const anchor = useRef(null);
+
+  const openOnes = useMemo(() => {
+    const rows = inbox.filter((r) => r.status === 'open');
+    if (!focusId) return rows;
+    return [...rows].sort((a, b) => (a.id === focusId ? -1 : b.id === focusId ? 1 : 0));
+  }, [inbox, focusId]);
+
+  // Linked at an ask I have already dealt with: say so rather than show nothing.
+  const settled = focusId ? inbox.find((r) => r.id === focusId && r.status !== 'open') : null;
+
+  useEffect(() => {
+    if (!focusId || !anchor.current) return;
+    setExpanded(true);
+    anchor.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusId, openOnes.length]);
+
+  if (openOnes.length === 0 && !settled) return null;
 
   return (
     <Card style={{ marginBottom: 18, borderColor: '#fde68a', background: '#fffbeb' }}>
+      <div ref={anchor} />
       <button
         onClick={() => setExpanded((v) => !v)}
         style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}
       >
         <Inbox size={15} color="#b45309" />
         <span style={{ fontFamily: SERIF, fontSize: 17, color: '#0f172a' }}>
-          {openOnes.length} colleague{openOnes.length === 1 ? '' : 's'} asked for your input
+          {openOnes.length > 0
+            ? `${openOnes.length} colleague${openOnes.length === 1 ? '' : 's'} asked for your input`
+            : 'You have already answered this one'}
         </span>
         {expanded ? <ChevronDown size={14} color="#b45309" /> : <ChevronRight size={14} color="#b45309" />}
       </button>
       {expanded && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
           {openOnes.map((r) => (
-            <InboxItem key={r.id} request={r} onAnswer={onAnswer} onDecline={onDecline} />
+            <InboxItem key={r.id} request={r} highlight={r.id === focusId} onAnswer={onAnswer} onDecline={onDecline} />
           ))}
+          {openOnes.length === 0 && settled && (
+            <div style={{ fontFamily: FONT, fontSize: 12.5, color: '#78350f' }}>
+              {settled.requester?.name || 'A colleague'}&rsquo;s ask about {settled.subject?.name || 'a colleague'} is
+              marked <strong>{settled.status}</strong>. Nothing further is needed from you.
+            </div>
+          )}
         </div>
       )}
     </Card>
   );
 }
 
-function InboxItem({ request, onAnswer, onDecline }) {
+function InboxItem({ request, highlight, onAnswer, onDecline }) {
   const [body, setBody] = useState('');
   const [kind, setKind] = useState('work');
+  // Who reads it. The default stays the person who asked, because that is what
+  // they asked for -- but saying the thing to a colleague's face has to be one
+  // click away, not impossible. Tracy could not tell which of the three she
+  // was doing.
+  const [route, setRoute] = useState('requester');
+
+  const asker = request.requester?.name || 'the person who asked';
+  const about = request.subject?.name || 'the person it is about';
+  const askerFirst = asker.split(' ')[0];
+  const aboutFirst = about.split(' ')[0];
+
+  const ROUTES = [
+    { v: 'requester', label: `${askerFirst} only`, send: `Send to ${askerFirst}` },
+    { v: 'both', label: `${askerFirst} + ${aboutFirst}`, send: 'Send to both' },
+    { v: 'subject', label: `${aboutFirst} only`, send: `Send to ${aboutFirst}` },
+  ];
+  const explain = {
+    requester: `Private to ${asker}. ${about} is never shown it, and is never told it exists.`,
+    both: `${asker} and ${about} both read it, with your name on it.`,
+    subject: `${about} reads it, with your name on it. ${asker} is told you replied, but not what you said.`,
+  }[route];
+  const current = ROUTES.find((r) => r.v === route);
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 14px' }}>
+    <div style={{
+      background: '#fff', borderRadius: 10, padding: '12px 14px',
+      border: '1px solid ' + (highlight ? '#f59e0b' : '#fde68a'),
+      boxShadow: highlight ? '0 0 0 3px rgba(245,158,11,0.18)' : 'none',
+    }}>
       <div style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', marginBottom: 2 }}>
-        <strong>{request.requester?.name || 'A colleague'}</strong> would like your input on{' '}
-        <strong>{request.subject?.name || 'a colleague'}</strong>
+        <strong>{asker}</strong> would like your input on <strong>{about}</strong>
       </div>
       {request.message && (
         <div style={{ fontFamily: FONT, fontSize: 12.5, color: '#475569', fontStyle: 'italic', margin: '6px 0 8px', whiteSpace: 'pre-wrap' }}>
           &ldquo;{request.message}&rdquo;
         </div>
       )}
-      <div style={{ fontFamily: FONT, fontSize: 11.5, color: '#94a3b8', marginBottom: 10 }}>
-        Goes to {request.requester?.name || 'them'} only — {request.subject?.name || 'the person'} will not see it, and neither will anyone else asked.
+
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10,
+        background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 10,
+        padding: '10px 12px', margin: '10px 0',
+      }}>
+        <Users size={14} color="#475569" />
+        <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0f172a' }}>Who reads this</span>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {ROUTES.map((r) => {
+            const on = route === r.v;
+            return (
+              <button
+                key={r.v}
+                onClick={() => setRoute(r.v)}
+                style={{
+                  fontFamily: FONT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                  padding: '5px 11px', borderRadius: 999,
+                  border: '1px solid ' + (on ? '#0e7fe0' : '#cbd5e1'),
+                  background: on ? '#eff6ff' : '#fff',
+                  color: on ? '#0e7fe0' : '#475569',
+                }}
+              >
+                {on && <Check size={11} style={{ marginRight: 5, verticalAlign: 'text-bottom' }} />}
+                {r.label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ flexBasis: '100%', fontFamily: FONT, fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
+          {explain} Nobody else who was asked sees it. This choice is fixed once you send.
+        </div>
       </div>
+
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
         <Select value={kind} onChange={(e) => setKind(e.target.value)} style={{ width: 140, fontSize: 13, padding: '8px 10px' }}>
           {PREP_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
@@ -485,14 +622,14 @@ function InboxItem({ request, onAnswer, onDecline }) {
         <Textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          placeholder="Your feedback…"
+          placeholder={`Your feedback on ${aboutFirst}...`}
           style={{ minHeight: 56, fontSize: 13 }}
         />
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
         <Button variant="ghost" onClick={() => onDecline(request)}>Decline</Button>
-        <Button variant="accent" disabled={!body.trim()} onClick={() => { onAnswer(request, kind, body); setBody(''); }}>
-          Send privately
+        <Button variant="accent" disabled={!body.trim()} onClick={() => { onAnswer(request, kind, body, route); setBody(''); }}>
+          {current?.send || 'Send'}
         </Button>
       </div>
     </div>

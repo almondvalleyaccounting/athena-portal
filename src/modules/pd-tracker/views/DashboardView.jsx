@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, Award, Plus, Send, ExternalLink, GraduationCap } from 'lucide-react';
+import { Sparkles, Award, Plus, Send, ExternalLink, GraduationCap, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import RadarChart from '../components/RadarChart';
 import { Card, SectionTitle, Stat, Pill, ProgressBar, Button, FONT, SERIF, EmptyState, Select, Textarea, Input } from '../components/ui';
 import {
   loadSkills, loadSkillLevels, loadObjectives, loadCpd, loadOneToOnes, loadActions,
   loadKudosFeed, createKudos, loadStaff, LEARNING_PARTNER,
+  loadPrepContributionsAboutMe,
 } from '../lib/api';
 
 const BADGES = {
@@ -28,6 +29,9 @@ export default function DashboardView() {
   const [actions, setActions] = useState([]);
   const [kudosFeed, setKudosFeed] = useState([]);
   const [staff, setStaff] = useState([]);
+  // Feedback a colleague wrote about me and chose to show me (sql/260). Rows
+  // they kept private to the person who asked never reach here.
+  const [sharedFeedback, setSharedFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showKudosForm, setShowKudosForm] = useState(false);
   const [kudosDraft, setKudosDraft] = useState({ to_id: '', message: '', badge: 'star' });
@@ -36,17 +40,38 @@ export default function DashboardView() {
     if (!profile?.id) return;
     (async () => {
       try {
-        const [s, l, o, c, m, a, k, st] = await Promise.all([
+        const [s, l, o, c, m, a, k, st, fb] = await Promise.all([
           loadSkills(), loadSkillLevels(profile.id), loadObjectives(profile.id),
           loadCpd(profile.id), loadOneToOnes(profile.id), loadActions(profile.id),
-          loadKudosFeed(20), loadStaff(),
+          loadKudosFeed(20), loadStaff(), loadPrepContributionsAboutMe(profile.id),
         ]);
         setSkills(s); setLevels(l); setObjectives(o); setCpd(c);
         setOneToOnes(m); setActions(a); setKudosFeed(k); setStaff(st);
+        setSharedFeedback(fb);
       } catch (e) { console.error(e); }
       setLoading(false);
     })();
   }, [profile?.id]);
+
+  // A colleague can share feedback with me at any moment; pick it up without a
+  // reload. One indexed query, so a 60s beat costs nothing.
+  const refreshSharedFeedback = useCallback(() => {
+    if (!profile?.id) return;
+    loadPrepContributionsAboutMe(profile.id).then(setSharedFeedback).catch((e) => console.error(e));
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id) return undefined;
+    const timer = setInterval(refreshSharedFeedback, 60000);
+    const onFocus = () => { if (!document.hidden) refreshSharedFeedback(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [refreshSharedFeedback, profile?.id]);
 
   const levelMap = useMemo(() => {
     const m = { current: {}, target: {}, onRadar: {} };
@@ -138,6 +163,41 @@ export default function DashboardView() {
             : 'Set a few targets in the Skills tab and we\'ll surface where to focus.'}
         </div>
       </div>
+
+      {/* Feedback colleagues chose to show me. Only ever what its author
+          addressed to me — see sql/260. */}
+      {sharedFeedback.length > 0 && (
+        <Card style={{ marginBottom: 24, borderColor: '#c7d2fe' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <MessageCircle size={17} color="#4338ca" />
+            <div style={{ fontFamily: SERIF, fontSize: 18, color: '#0f172a' }}>
+              Feedback shared with you ({sharedFeedback.length})
+            </div>
+          </div>
+          <p style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', margin: '0 0 12px' }}>
+            Written by a colleague, and shown to you because they chose to. Bring it to your next 1-2-1
+            if you want to talk it through.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {sharedFeedback.map((f) => (
+              <div key={f.id} style={{ border: '1px solid #eef2ff', background: '#fbfcfe', borderRadius: 10, padding: '10px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
+                    {f.contributor?.name || 'A colleague'}
+                  </span>
+                  <Pill bg={f.kind === 'work' ? '#eff6ff' : '#f5f3ff'} fg={f.kind === 'work' ? '#0e7fe0' : '#7c3aed'}>
+                    {f.kind === 'work' ? 'Work' : 'Development'}
+                  </Pill>
+                  <span style={{ fontFamily: FONT, fontSize: 11, color: '#cbd5e1' }}>
+                    {new Date(f.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  </span>
+                </div>
+                <div style={{ fontFamily: FONT, fontSize: 13, color: '#1e293b', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{f.body}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Stat row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>

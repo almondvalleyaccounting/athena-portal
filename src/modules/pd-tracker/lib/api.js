@@ -772,16 +772,32 @@ export async function deletePrepRequest(id) {
   if (error) throw error;
 }
 
-// Everything colleagues have contributed to my prep on one person.
+// Everything colleagues have contributed to my prep on one person, minus what
+// I've cleared out of it (sql/261).
 export async function loadPrepContributions(requesterId, subjectId) {
   const { data, error } = await supabase
     .from('pd_prep_contributions')
     .select('*, contributor:contributor_id(id, name)')
     .eq('requester_id', requesterId)
     .eq('subject_id', subjectId)
+    .is('dismissed_at', null)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
+}
+
+// Clear a contribution out of MY prep. Not a delete: the author keeps their
+// words, and only they can destroy them. A plain delete from here matched zero
+// rows and silently succeeded, which read as a delete until the next reload.
+export async function dismissPrepContribution(id) {
+  const { data, error } = await supabase
+    .from('pd_prep_contributions')
+    .update({ dismissed_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 // What I've contributed to other people's prep (so I can see/edit my own words).
@@ -795,8 +811,24 @@ export async function loadMyPrepContributions(contributorId) {
   return data || [];
 }
 
+// Feedback colleagues addressed to ME as its subject (sql/260). Rows routed
+// 'requester' never appear here — RLS won't return them, and this filter says
+// so out loud.
+export async function loadPrepContributionsAboutMe(subjectId) {
+  const { data, error } = await supabase
+    .from('pd_prep_contributions')
+    .select('*, contributor:contributor_id(id, name), requester:requester_id(id, name)')
+    .eq('subject_id', subjectId)
+    .in('visibility', ['both', 'subject'])
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 // Answer a request. Marks it answered in the same round trip.
-export async function addPrepContribution({ request, contributor_id, kind, body }) {
+// `visibility` is the author's choice of audience and is fixed at write time
+// (sql/260): 'requester' | 'both' | 'subject'.
+export async function addPrepContribution({ request, contributor_id, kind, body, visibility = 'requester' }) {
   const { data, error } = await supabase
     .from('pd_prep_contributions')
     .insert({
@@ -806,6 +838,7 @@ export async function addPrepContribution({ request, contributor_id, kind, body 
       contributor_id,
       kind,
       body: body.trim(),
+      visibility,
     })
     .select('*, contributor:contributor_id(id, name)')
     .single();
@@ -825,6 +858,8 @@ export async function updatePrepContribution(id, patch) {
   return data;
 }
 
+// The author's own delete — theirs to destroy, nobody else's (sql/184). The
+// requester clears their view with dismissPrepContribution instead.
 export async function deletePrepContribution(id) {
   const { error } = await supabase.from('pd_prep_contributions').delete().eq('id', id);
   if (error) throw error;
