@@ -78,6 +78,23 @@ function normDob(v) {
   return `${yr}-${String(mo).padStart(2, '0')}-${String(dy).padStart(2, '0')}`;
 }
 
+// BM's "Mobile Number" column is free text and occasionally holds prose —
+// "As above" and "." are both in the 15/04/2026 export. Anything without a
+// plausible number of digits is rejected rather than stored: the Communications
+// SMS matcher keys on the last 9 digits, so a junk value is not merely useless,
+// it can collide. UK mobiles are normalised to E.164 because that is what
+// sending an SMS wants; the digits are preserved either way, so a number stored
+// as +447810553033 still matches a Google contact stored as "07810 553033".
+function normPhone(v) {
+  if (!v) return null;
+  const raw = String(v).trim();
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length < 10 || digits.length > 13) return null;
+  if (/^07\d{9}$/.test(digits)) return `+44${digits.slice(1)}`;
+  if (/^447\d{9}$/.test(digits)) return `+${digits}`;
+  return raw.replace(/\s+/g, ' ');
+}
+
 // Surname + first name, normalised. Mirrors _bm_name_key() in
 // sql/255_bm_person_reference.sql — keep the two in step. Handles BM's two
 // name shapes ("Hunter, Gordon" and "Gordon Alexander Hunter" are one key)
@@ -179,7 +196,7 @@ function readPersonBlock(get, row, slot) {
     preferred_name: preferred,
     name: full,
     email: normEmail(get(row, `${p}Email`)),
-    phone: normText(get(row, `${p}Mobile Number`)),
+    phone: normPhone(get(row, `${p}Mobile Number`)),
     ni_number: normNI(get(row, `${p}NI Number`)),
     dob: normDob(get(row, `${p}Date of Birth`)),
     ch_personal_code: normText(get(row, `${p}Companies House Personal Code`)),
@@ -335,7 +352,7 @@ export function parseBmClientsCsv(text) {
       _primary_last_name: normText(get(row, 'Last Name')),
       _primary_preferred_name: normText(get(row, 'Preferred Name')),
       _primary_name: [get(row, 'First Name'), get(row, 'Last Name')].filter(Boolean).join(' ') || null,
-      _primary_phone: normText(get(row, 'Mobile Number')),
+      _primary_phone: normPhone(get(row, 'Mobile Number')),
       _primary_ni: normNI(get(row, 'NI Number')),
       _primary_ch_personal_code: codeIdx >= 0 ? normText(row[codeIdx]) : null,
       // Both person blocks, keyed by BM's Person Internal Reference. Consumed

@@ -4,7 +4,8 @@ import { MessageSquare, Phone, Plus, RefreshCw, Send, X } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import {
   contactsByPhoneSuffix, counterpartNumber, fmtTime, listMessages,
-  loadContacts, phoneSuffix, resolveEntityNames, sendMessage,
+  loadContacts, loadPeoplePhones, peopleByPhoneSuffix, phoneSuffix,
+  resolveEntityNames, sendMessage,
 } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -18,6 +19,7 @@ export default function MessagesView({ channel }) {
   const [messages, setMessages] = useState(null);
   const [names, setNames] = useState({});
   const [contactMap, setContactMap] = useState(() => new Map());
+  const [peopleMap, setPeopleMap] = useState(() => new Map());
   const [active, setActive] = useState(null); // counterpart number
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -51,10 +53,19 @@ export default function MessagesView({ channel }) {
     loadContacts().then((c) => setContactMap(contactsByPhoneSuffix(c))).catch(() => {});
   }, []);
 
+  // BrightManager client contacts — third source, behind the client record
+  // and the Google contact book. Google holds a number for only 10 of its 918
+  // contacts, so without this most clients text in as a bare number.
+  useEffect(() => {
+    loadPeoplePhones().then((p) => setPeopleMap(peopleByPhoneSuffix(p))).catch(() => {});
+  }, []);
+
   const displayName = (conv) => {
     if (conv.entityId && names[conv.entityId]) return names[conv.entityId];
-    const contact = contactMap.get(phoneSuffix(conv.number));
-    return contact?.display_name || conv.number;
+    const suffix = phoneSuffix(conv.number);
+    const contact = contactMap.get(suffix);
+    if (contact?.display_name) return contact.display_name;
+    return peopleMap.get(suffix)?.name || conv.number;
   };
 
   // Group into conversations by counterpart number, newest first.

@@ -236,6 +236,39 @@ export async function loadContacts() {
     .order('id'));
 }
 
+// Client contacts from BrightManager, as a fallback source of names for
+// inbound numbers. The Google contact book above carries 918 contacts but a
+// phone number on only 10 of them, so on its own it leaves almost every
+// client texting in as a bare number. BM has a mobile for 304 of the 348
+// people it knows about (see sql/262_people_phone.sql).
+//
+// Deliberately a FALLBACK, not a merge into the vote above: Google duplicates
+// vote by weight, and a single BM row would either lose to a wrongly-merged
+// contact or win against a correct one for the wrong reason. Filling gaps is
+// the whole benefit and it carries none of that risk.
+export async function loadPeoplePhones() {
+  return fetchAllRows(() => supabase
+    .from('people')
+    .select('id, name, phone_suffix')
+    .not('phone_suffix', 'is', null)
+    .order('id'));
+}
+
+// suffix → name. Where two people share a suffix (a shared family mobile),
+// nobody wins: returning the wrong client's name is worse than showing the
+// number, which at least reads as unknown.
+export function peopleByPhoneSuffix(people) {
+  const seen = new Map();
+  const dupes = new Set();
+  for (const p of people || []) {
+    if (!p.phone_suffix) continue;
+    if (seen.has(p.phone_suffix)) { dupes.add(p.phone_suffix); continue; }
+    seen.set(p.phone_suffix, p);
+  }
+  for (const s of dupes) seen.delete(s);
+  return seen;
+}
+
 // suffix (last 9 digits) → contact, for SMS/WhatsApp name matching.
 // Google contact books are messy: the same number often sits on several
 // duplicate contacts, and occasionally on a wrongly-merged one belonging
