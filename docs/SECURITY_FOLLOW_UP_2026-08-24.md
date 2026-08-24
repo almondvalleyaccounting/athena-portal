@@ -94,22 +94,44 @@ write is refused.
 
 ## A. Yours — Supabase dashboard
 
-### A1. Allowed Redirect URLs — **(carried, still open, do this first)**
-Unchanged from 19 August and still the highest-severity item on the list, and still
-one I cannot check from here.
+### A1. Allowed Redirect URLs — **CLOSED 2026-08-24, and it was a real hole**
+Open since 19 August. There was no wildcard and no localhost entry — but the allow-list
+carried `https://athena-portal-build.vercel.app/**`, which **is not a domain we own**.
+It is absent from the Vercel alias list and returns `404 DEPLOYMENT_NOT_FOUND`. It
+matched the local folder name, not the project name (`athena-portal`).
 
-**Auth → URL Configuration.** `src/shell/LoginPage.jsx` sends
-`redirectTo: ${window.location.origin}/login` on password reset. If the allow-list
-holds a wildcard (`https://**`, `http://localhost:*`), an attacker can craft a reset
-link delivering the **recovery token to a host they control** — full takeover of a
-staff account, and staff accounts see every client's financials.
+The chain: the Supabase auth endpoints accept a `redirect_to` parameter and the anon key
+is public, so anyone could trigger password recovery for a known staff email with
+`redirect_to=https://athena-portal-build.vercel.app/login`. It matched the allow-list, so
+the recovery link in a genuine Supabase email would point at a host we do not control —
+and whoever claimed that Vercel project name would receive the token. Full staff-account
+takeover, and staff see every client's financials.
 
-Want to see: only real origins, no wildcards.
+Removed. The two remaining entries are the real production domains:
+`portal.almondvalleyaccounting.co.uk` (project `athena-portal`) and
+`clients.almondvalleyaccounting.co.uk` (project `athena-client-portal`).
 
-### A2. Leaked-password protection — **(carried, confirmed still off)**
-Verified off again today via the advisor lint set. **Auth → Policies → Password
-strength.** Given that one staff credential is the blast radius described in B1, this
-is disproportionately cheap.
+Lesson worth keeping: a redirect allow-list needs checking for *unowned* hosts, not just
+for wildcards. A dangling entry is a wildcard with extra steps.
+
+### A2. Leaked-password protection — **CLOSED 2026-08-24**
+On. Verified from here: the `auth_leaked_password_protection` lint has gone from the
+advisor set. Minimum length also raised to 8 with upper, lower and symbol required.
+
+### A2b. Public signup disabled — **CLOSED 2026-08-24, new**
+"Allow new users to sign up" was **on**. No UI offered it — `src/pages/LoginPage.jsx` has
+a Create Account form but is dead code, since `main.jsx` routes `shell/LoginPage`. That
+is irrelevant: the anon key is public, so while the setting was on anyone on the internet
+could POST `/auth/v1/signup` and mint themselves an `authenticated` account. That is the
+role holding EXECUTE on the definer functions and the table grants RLS gates — the
+difference between `merge_person` being reachable by an invited client and by anybody.
+
+Nothing depended on it. Staff come from `invite-user` → `auth.admin.createUser`; portal
+clients from `portal-send-code` → `admin.createUser` + `admin.generateLink`. Both use the
+admin API, which the toggle does not govern.
+
+Follow-on, not done: delete `src/pages/LoginPage.jsx`. A working Create Account form in
+the repo is one stray import from re-opening the door.
 
 ### A3. Storage bucket privacy — **(carried, now closed)**
 The audit's `storage_bucket_public` check returns zero rows, and `storage.objects` RLS
@@ -208,6 +230,23 @@ problem today — this is the only such row.
 ---
 
 ## C. Deliberately not doing, with reasons
+
+### C0. Two access decisions taken on 2026-08-24, on the record
+
+**`ryan@tapee.io` stays active and unenrolled.** Bobby's call, and it does not block the
+MFA work: he holds **0 sessions**, so he cannot hold the `still_aal1` gate open. Once
+sql/258 is applied the requirement enforces itself — signing in with no factor lands him
+on the app's enrolment screen, and the database refuses him until he completes it. So the
+residual is narrow: an active staff row, dormant since 2026-04-16, that grants nothing
+until someone authenticates it properly. Revisit if he is not coming back.
+
+**The three non-staff test accounts stay.** `bobbygallacher@hotmail.com`,
+`stephm10@hotmail.co.uk`, `ryanfindlayy@gmail.com` — portal tests, each created and used
+once in July. They are `authenticated` identities with passwords and no MFA. Tested
+reachability for exactly this shape of account: 0 rows from `entities`,
+`qbo_connections`, `reminder_emails` and every ungated-looking definer view. With public
+signup now off they also cannot be joined by new ones. Accepted.
+
 
 ### C1. The 38 `function_search_path_mutable` warnings
 Not sweeping these blind. The exploit requires an attacker to create a shadowing object
