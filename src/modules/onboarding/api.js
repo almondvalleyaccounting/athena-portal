@@ -778,7 +778,13 @@ export async function updateStep(step, patch, { actorId, logBody } = {}) {
 export async function getChaseConfig() {
   const { data, error } = await supabase
     .from('onboarding_chase_config')
-    .select('*')
+    // Explicit column list, not '*': cron_secret is revoked from `authenticated`
+    // (sql/256) and select('*') would ask for it and fail. It is only ever read
+    // by the chaser edge function as service_role.
+    .select('id, sending_enabled, first_chase_after_days, chase_every_days, max_chases, '
+          + 'internal_digest_enabled, updated_at, call_assignee_id, offboard_after_days, '
+          + 'weekly_enabled, checkin_auto_send_enabled, reply_scan_enabled, '
+          + 'weekly_recipient_ids, comms_ingest_enabled')
     .eq('id', true)
     .maybeSingle();
   if (error) throw error;
