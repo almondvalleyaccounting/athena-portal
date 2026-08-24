@@ -636,7 +636,11 @@ export default function ClientDetailView() {
             <EditableRow label="UTR" field="utr" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
             <EditableRow label="VAT Number" field="vat_number" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
             <EditableRow label="PAYE Ref" field="paye_ref" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
-            <EditableRow label="CH Auth Code" field="ch_auth_code" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
+            {/* Presence only, and read-only. Athena does not hold the code —
+                sql/257 coerces any write to the marker 'held' and a CHECK
+                constraint refuses a real one. BrightManager is the system of
+                record; a code is a filing credential we have no use for. */}
+            <DetailRow label="CH Auth Code" value={entity.ch_auth_code ? 'Held on BrightManager' : 'Not held'} />
             {entity.manager && <DetailRow label="Manager" value={entity.manager} />}
             {entity.grade && <DetailRow label="Grade" value={entity.grade} />}
             <DetailRow label="Expedite" value={entity.expedite ? 'Yes — prioritise post-period-end' : 'No'} />
@@ -796,7 +800,9 @@ function DetailRow({ label, value }) {
 
 // Fields that also live in BrightManager — editing these keeps the Athena
 // value, raises a Sophie to-do, and shows a "BM differs" flag until BM aligns.
-const BM_SHARED_FIELDS = new Set(['company_number', 'utr', 'vat_number', 'paye_ref', 'ch_auth_code']);
+// ch_auth_code is deliberately absent: Athena stores only a presence marker, so
+// there is no Athena-vs-BM value to disagree about. See sql/257.
+const BM_SHARED_FIELDS = new Set(['company_number', 'utr', 'vat_number', 'paye_ref']);
 const normCode = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Click-to-edit registration field. Always rendered (even when empty) so
