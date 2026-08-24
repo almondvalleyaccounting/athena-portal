@@ -110,3 +110,45 @@ five views went unnoticed while returning 72 clients' bookkeeping data to `anon`
 belongs to `PUBLIC` and a named-role revoke does nothing. Check
 `array_to_string(proacl,' ')`, then `grant to authenticated, service_role` and
 `revoke from public`.
+
+**A table-level grant defeats a column-level revoke.** Postgres treats column
+privileges as additive, so you cannot withhold one column from a role that holds
+SELECT on the table. To hide a secret column: `revoke select on <table> from
+authenticated`, then `grant select (every, other, column) ... to authenticated`. This
+is why `qbo_connections`, `gdrive_connections`, `reminder_emails` and
+`onboarding_chase_config` carry verbose grant lists in
+[sql/256](sql/256_hardening_authz_and_secrets.sql). A `select('*')` against such a
+table fails, so the frontend must name its columns.
+
+### A secret belongs to `service_role`, not to staff
+
+Tokens, API keys, cron secrets and magic-link tokens are read by edge functions running
+as `service_role`, which bypasses RLS. No browser needs them. So the default is that
+`authenticated` cannot read the secret column at all — not that a policy limits which
+rows it sees. `is_active_staff()` on a table containing a credential is eleven people
+holding that credential.
+
+The same applies to data we merely *store*: a Companies House auth code was held for 273
+clients and never used, because every consumer only asked whether one existed. Before
+adding a column that holds a credential, check whether a boolean does the job. Removing
+data beats defending it.
+
+**A one-off `DELETE` is not durable.** The BM importer rewrites what it imports, so
+purging a column leaves it repopulated on the next run. Enforce at the table — a
+`before insert or update` trigger covers every write path, present and future, and a
+CHECK constraint behind it survives the trigger being dropped. See
+[sql/257](sql/257_ch_auth_code_becomes_a_flag.sql).
+
+### New mutations go through an edge function
+
+The browser talks straight to PostgREST across ~500 `.from()` call sites and 225
+distinct tables and views, so authorisation lives in 402 RLS policies and 163 definer
+functions. That is why almost every finding this project has had is an authorisation
+finding: the surface is enormous and reviewed by eye.
+
+Migrating to a server-mediated API was costed and declined — see
+[docs/SECURITY_FOLLOW_UP_2026-08-24.md](docs/SECURITY_FOLLOW_UP_2026-08-24.md). The
+incremental substitute is a rule: **a new mutating path is an edge function, not a
+browser table write.** There are already 67 of them. Each one added shrinks the
+browser's grants toward read-only, which is most of the benefit of three tiers without
+a rewrite. Reads may stay direct where RLS genuinely expresses the rule.
