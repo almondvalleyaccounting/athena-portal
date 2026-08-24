@@ -35,33 +35,56 @@
 -- Go-live checklist — every box before applying
 -- ─────────────────────────────────────────────────────────────────────────────
 --
--- 1. Deal with ryan@tapee.io. Active staff row, no MFA factor at all, last sign-in
---    2026-04-16. Either enrol them or set is_active = false. A four-month-dormant
---    active account with no second factor is a finding in its own right, and
---    deactivating is the cheaper answer if they are no longer working on this.
+-- 1. ryan@tapee.io — DECIDED 2026-08-24: left active and unenrolled, and this is not
+--    a blocker. He holds 0 sessions, so he cannot hold the step-4 gate open, and once
+--    this migration is applied the requirement enforces itself: signing in with no
+--    factor lands him on the app's enrolment screen and the database refuses him until
+--    he completes it. Nothing to do here before applying.
 --
 -- 2. Deploy the client change that removes the trusted-device bypass (committed
 --    alongside this file). Without it nobody ever reaches aal2 and applying this
 --    migration locks out all eleven.
 --
--- 3. Have every active staff member sign in once and complete the challenge. Then
---    confirm — this is the gate, and it is checkable:
+-- 3. Get the staff who are actually around elevated. Nobody needs to sign out —
+--    mfa.verify() elevates the *existing* session, so opening Athena and entering the
+--    code is enough.
 --
---        select count(*) filter (where s.aal = 'aal2') as elevated,
---               count(*) filter (where s.aal <> 'aal2') as still_aal1
---        from auth.sessions s
---        join public.staff_profiles sp on sp.id = s.user_id
---        where sp.is_active;
+--    Do NOT wait for people who are on leave. An absent staff member sitting at aal1
+--    is not a reason to delay, because step 4 revokes their session anyway and they
+--    re-authenticate cleanly on return. Waiting a week to close a live exposure in
+--    order to spare someone one extra login is the wrong trade.
 --
---    still_aal1 must be 0. If it is not, stop — you are about to cause an outage,
---    not fix an exposure.
+-- 4. Immediately before applying, revoke every remaining aal1 session belonging to
+--    active staff:
 --
--- 4. Apply. Then immediately re-verify by impersonation, as an active staff member
+--        delete from auth.sessions s
+--         using public.staff_profiles sp
+--         where sp.id = s.user_id and sp.is_active and s.aal <> 'aal2';
+--
+--    This is the step that makes the rollout safe, and it is not about tidiness.
+--    Anyone still at aal1 is by definition someone who has not been through the new
+--    client flow, which means their browser may still be serving the pre-deploy
+--    bundle — the one that skips the challenge on a remembered device. That session
+--    would hit a database that now refuses it and the user would see permission
+--    errors rather than an MFA prompt. Forcing a fresh sign-in guarantees they load
+--    the current bundle and get challenged properly.
+--
+--    Then confirm the gate is closed:
+--
+--        select count(*) filter (where s.aal <> 'aal2') as still_aal1
+--          from auth.sessions s
+--          join public.staff_profiles sp on sp.id = s.user_id
+--         where sp.is_active;
+--
+--    still_aal1 must be 0 — which after the delete above it necessarily is. The
+--    check is there to catch a session created in the gap between the two.
+--
+-- 5. Apply. Then immediately re-verify by impersonation, as an active staff member
 --    *without* an aal claim (expect 0 rows) and with one (expect the counts staff saw
 --    before). Keep a postgres session open while you do it, so you can roll back
 --    without being locked out yourself.
 --
--- 5. Purge mfa_trusted_devices. The rows are inert once the client no longer reads
+-- 6. Purge mfa_trusted_devices. The rows are inert once the client no longer reads
 --    them, and leaving 17 live-looking bypass tokens in a table invites someone to
 --    wire them back up.
 --
@@ -109,7 +132,7 @@ $function$;
 commit;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Rollback, if step 4 goes wrong
+-- Rollback, if step 5 goes wrong
 -- ─────────────────────────────────────────────────────────────────────────────
 --
 -- create or replace function public.is_active_staff()
