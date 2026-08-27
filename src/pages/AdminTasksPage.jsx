@@ -75,6 +75,14 @@ function fmtShort(iso) {
   const d = new Date(iso + (iso.length === 10 ? 'T00:00:00Z' : ''));
   return isNaN(d) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
+/* Who put the task on the list. Manual and workplan tasks carry a staff
+   created_by; module-generated ones do not, and for those the section heading
+   already names the generator — so an empty label beats "system". */
+function addedByLabel(t, staffMap) {
+  if (t.created_by) return (staffMap && staffMap[t.created_by]) || 'staff';
+  if (t.source === 'sophie_workplan_import') return 'Workplan import';
+  return null;
+}
 function fmtNoteTime(iso) {
   const d = new Date(iso);
   return isNaN(d) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' +
@@ -558,10 +566,11 @@ export default function AdminTasksPage() {
       Urgent: t.urgent ? 'yes' : '', Field: FIELD_LABELS[t.field] || t.field || '',
       Value: t.value || '', Deadline: t.deadline || '', Source: t.source || '',
       Added: new Date(t.created_at).toLocaleDateString('en-GB'),
+      'Added by': addedByLabel(t, staffMap) || '',
       Escalated: t.escalated_to ? (staffMap[t.escalated_to] || 'yes') : '',
       Status: 'open',
     }));
-    const headers = ['Client', 'Task', 'Notes', 'Urgent', 'Field', 'Value', 'Deadline', 'Source', 'Added', 'Escalated', 'Status'];
+    const headers = ['Client', 'Task', 'Notes', 'Urgent', 'Field', 'Value', 'Deadline', 'Source', 'Added', 'Added by', 'Escalated', 'Status'];
     const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const csv = [headers.join(','), ...rows.map((r) => headers.map((h) => cell(r[h])).join(','))].join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
@@ -1261,6 +1270,7 @@ function TaskRow({
   const today = isoToday();
   const overdue = t.deadline && t.deadline < today;
   const urgent = !!t.urgent;
+  const addedBy = addedByLabel(t, staffMap);
 
   return (
     <div style={{
@@ -1298,6 +1308,15 @@ function TaskRow({
             <span style={{ fontSize: 10.5, padding: '1px 6px', borderRadius: 999, background: '#fef3c7', color: '#b45309', fontWeight: 600, whiteSpace: 'nowrap' }}>
               → {staffMap[t.escalated_to] || 'escalated'}
             </span>
+          )}
+          {addedBy && (
+            <span
+              title={`Added by ${addedBy} · ${fmtShort(t.created_at)}`}
+              style={{
+                fontSize: 10.5, padding: '1px 7px', borderRadius: 999, background: '#f1f5f9',
+                color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',
+              }}
+            >{addedBy}</span>
           )}
         </div>
 
@@ -1464,6 +1483,12 @@ function CompletedRow({ t, staffMap, onReopen, onOpenClient, onReviewBill }) {
         }}
       >{t.title}</span>
       {t.value && <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>{t.value}</span>}
+      {addedByLabel(t, staffMap) && (
+        <span title={`Added by ${addedByLabel(t, staffMap)} · ${fmtShort(t.created_at)}`} style={{
+          fontSize: 10.5, padding: '1px 7px', borderRadius: 999, background: '#f1f5f9',
+          color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',
+        }}>{addedByLabel(t, staffMap)}</span>
+      )}
       {(t.done_by || t.done_minutes) && (
         <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {t.done_by ? ((staffMap && staffMap[t.done_by]) || 'staff') : ''}{t.done_minutes ? ` · ${t.done_minutes}m` : ''}
