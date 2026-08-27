@@ -745,7 +745,13 @@ export default function BillingReviewPage() {
 function DeliveryGapsPanel({ canFix }) {
   const [gaps, setGaps] = useState(null);
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(null); // 'sweep' | 'fix'
+  const [busy, setBusy] = useState(null); // 'sweep' | 'preview' | billing_id
+  // Resolved address per billing_id, from a dry-run repair. The stored
+  // qbo_bill_email is only the first of three places an address can come from
+  // (template → Athena → the QBO customer record), so the row cannot say what
+  // it would actually send to without asking. Turning on auto-send to an
+  // address nobody looked at is how this failure repeats in a new shape.
+  const [resolved, setResolved] = useState({}); // billing_id → { email, email_source, reason }
 
   const load = async () => {
     const { data } = await supabase
@@ -753,6 +759,7 @@ function DeliveryGapsPanel({ canFix }) {
       .select('*')
       .order('monthly_net', { ascending: false });
     setGaps(data || []);
+    return data || [];
   };
   useEffect(() => { load(); }, []);
 
@@ -764,6 +771,7 @@ function DeliveryGapsPanel({ canFix }) {
     try {
       const { data, error } = await supabase.functions.invoke('qbo-recurring-delivery', { body: { mode: 'sweep' } });
       if (error) throw error;
+      setResolved({});
       await load();
       const sum = data?.summary || {};
       alert(`Checked ${sum.billing_rows_checked ?? 0} templates in QuickBooks.\n\n${sum.will_email_client ?? 0} email the client.\n${sum.will_not_email_client ?? 0} do not.`);
@@ -774,33 +782,63 @@ function DeliveryGapsPanel({ canFix }) {
     }
   };
 
-  const fixable = (gaps || []).filter((g) => g.repairable);
-
-  const fixAll = async () => {
-    if (fixable.length === 0) return;
-    const total = fixable.reduce((sum, g) => sum + (Number(g.monthly_net) || 0), 0);
-    // This starts real invoice emails to real clients, so it names them and it
-    // names the money before anything goes anywhere.
-    const ok = window.confirm(
-      `Turn on automatic emailing for ${fixable.length} recurring template${fixable.length === 1 ? '' : 's'}?\n\n`
-      + fixable.map((g) => `  • ${g.entity_name} — ${g.qbo_bill_email || g.athena_email}`).join('\n')
-      + `\n\n£${total.toFixed(2)}/month of billing. QuickBooks will email each invoice from its next run date onwards. Nothing is sent now, and past invoices are not resent.`
-    );
-    if (!ok) return;
-    setBusy('fix');
+  // Dry run over the listed rows: no QBO writes, just the address each repair
+  // would use and where it came from.
+  const preview = async (rows) => {
+    setBusy('preview');
     try {
       const { data, error } = await supabase.functions.invoke('qbo-recurring-delivery', {
-        body: { mode: 'repair', dry_run: false, billing_ids: fixable.map((g) => g.billing_id) },
+        body: { mode: 'repair', dry_run: true, billing_ids: rows.map((g) => g.billing_id) },
       });
       if (error) throw error;
+      const map = {};
+      for (const r of data?.results || []) {
+        map[r.billing_id] = { email: r.email || null, email_source: r.email_source || null, reason: r.reason || r.error || null };
+      }
+      setResolved((prev) => ({ ...prev, ...map }));
+      // The dry run re-reads each template from QBO and corrects the recorded
+      // state for any row that turns out to email after all, so reload — else
+      // a row that is actually fine sits in the list with no address to show
+      // and reads as the worst case rather than the best.
       await load();
-      const sum = data?.summary || {};
-      const errs = (data?.results || []).filter((r) => r.status === 'error');
-      alert(`Turned on emailing for ${sum.fixed ?? 0} template${sum.fixed === 1 ? '' : 's'}.`
-        + (sum.skipped ? `\n${sum.skipped} skipped.` : '')
-        + (errs.length ? `\n\nFailed:\n${errs.map((r) => `  • ${r.entity}: ${r.error}`).join('\n')}` : ''));
     } catch (err) {
-      alert('Fix failed: ' + (err.message || err));
+      alert('Preview failed: ' + (err.message || err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const openPanel = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && gaps?.length && Object.keys(resolved).length === 0) await preview(gaps);
+  };
+
+  // One client at a time. Each confirm names the client, the address and the
+  // money, because this is the step that starts real email to a real person.
+  const fixOne = async (g) => {
+    const r = resolved[g.billing_id];
+    const email = r?.email || g.qbo_bill_email || g.athena_email;
+    if (!email) { alert(`${g.entity_name} has no email address anywhere. Add one to the client record first.`); return; }
+    const ok = window.confirm(
+      `Turn on automatic emailing for ${g.entity_name}?\n\n`
+      + `Invoices go to: ${email}${r?.email_source ? ` (from ${r.email_source})` : ''}\n`
+      + `£${Number(g.monthly_net || 0).toFixed(2)}/month, next run ${g.qbo_next_run_date || 'unknown'}\n\n`
+      + `QuickBooks will email each invoice generated from that date onwards. Nothing is sent now, and past invoices are not resent.`
+    );
+    if (!ok) return;
+    setBusy(g.billing_id);
+    try {
+      const { data, error } = await supabase.functions.invoke('qbo-recurring-delivery', {
+        body: { mode: 'repair', dry_run: false, billing_ids: [g.billing_id] },
+      });
+      if (error) throw error;
+      const res = (data?.results || [])[0];
+      if (res?.status === 'error') { alert(`Failed: ${res.error}`); }
+      else if (res?.status === 'skipped') { alert(`Skipped: ${res.reason}`); }
+      await load();
+    } catch (err) {
+      alert('Failed: ' + (err.message || err));
     } finally {
       setBusy(null);
     }
@@ -820,7 +858,6 @@ function DeliveryGapsPanel({ canFix }) {
   }
 
   const atRisk = gaps.reduce((sum, g) => sum + (Number(g.monthly_net) || 0), 0);
-  const needAddress = gaps.length - fixable.length;
 
   return (
     <div style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
@@ -831,36 +868,53 @@ function DeliveryGapsPanel({ canFix }) {
         </div>
         <div style={{ fontSize: 12, color: '#b91c1c' }}>&#163;{atRisk.toFixed(2)}/month</div>
         <div style={{ flex: 1 }} />
-        <button onClick={() => setOpen((o) => !o)} style={{ fontSize: 11, background: '#fff', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontFamily: font }}>
-          {open ? 'Hide' : 'Show'}
+        <button onClick={openPanel} disabled={!!busy} style={{ fontSize: 11, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: busy ? 'default' : 'pointer', fontFamily: font, opacity: busy ? 0.6 : 1 }}>
+          {busy === 'preview' ? 'Checking addresses…' : open ? 'Hide' : 'Review one by one'}
         </button>
         <button onClick={recheck} disabled={!!busy} style={{ fontSize: 11, background: '#fff', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 10px', cursor: busy ? 'default' : 'pointer', fontFamily: font }}>
           {busy === 'sweep' ? 'Re-checking…' : 'Re-check'}
         </button>
-        {canFix && fixable.length > 0 && (
-          <button onClick={fixAll} disabled={!!busy} style={{ fontSize: 11, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: busy ? 'default' : 'pointer', fontFamily: font, opacity: busy ? 0.6 : 1 }}>
-            {busy === 'fix' ? 'Turning on…' : `Turn on emailing for ${fixable.length} →`}
-          </button>
-        )}
       </div>
-      <p style={{ fontSize: 11, color: '#7f1d1d', margin: '6px 0 0', maxWidth: 820 }}>
+      <p style={{ fontSize: 11, color: '#7f1d1d', margin: '6px 0 0', maxWidth: 860 }}>
         QuickBooks generates and posts these invoices on schedule, so the balance grows, but it was never told to send them.
-        {needAddress > 0 && ` ${needAddress} ${needAddress === 1 ? 'has' : 'have'} no email address anywhere — add one to the client record first.`}
-        {!canFix && ' Turning emailing on needs the billing-approval permission.'}
+        Turning emailing on affects invoices generated from the next run date onwards — past invoices are not resent.
+        {!canFix && ' Turning it on needs the billing-approval permission.'}
       </p>
       {open && (
         <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginTop: 10 }}>
-          <thead><tr style={{ background: '#fff1f2' }}><DiagTh>Client</DiagTh><DiagTh>Monthly</DiagTh><DiagTh>Next run</DiagTh><DiagTh>Email on template</DiagTh><DiagTh>Problem</DiagTh></tr></thead>
+          <thead><tr style={{ background: '#fff1f2' }}><DiagTh>Client</DiagTh><DiagTh>Monthly</DiagTh><DiagTh>Next run</DiagTh><DiagTh>Would email</DiagTh><DiagTh>Problem</DiagTh><DiagTh> </DiagTh></tr></thead>
           <tbody>
-            {gaps.map((g) => (
-              <tr key={g.billing_id} style={{ borderTop: '1px solid #fee2e2' }}>
-                <DiagTd>{g.entity_name}</DiagTd>
-                <DiagTd>&#163;{Number(g.monthly_net || 0).toFixed(2)}</DiagTd>
-                <DiagTd>{g.qbo_next_run_date || '—'}</DiagTd>
-                <DiagTd>{g.qbo_bill_email || g.athena_email || <span style={{ color: '#b91c1c' }}>none</span>}</DiagTd>
-                <DiagTd>{g.problem}{!g.repairable && ' — needs an address'}</DiagTd>
-              </tr>
-            ))}
+            {gaps.map((g) => {
+              const r = resolved[g.billing_id];
+              const email = r?.email || null;
+              const stuck = !!r && !email;
+              return (
+                <tr key={g.billing_id} style={{ borderTop: '1px solid #fee2e2' }}>
+                  <DiagTd>{g.entity_name}</DiagTd>
+                  <DiagTd>&#163;{Number(g.monthly_net || 0).toFixed(2)}</DiagTd>
+                  <DiagTd>{g.qbo_next_run_date || '—'}</DiagTd>
+                  <DiagTd>
+                    {email
+                      ? <span>{email}{r.email_source && r.email_source !== 'template' ? <span style={{ color: '#64748b' }}> ({r.email_source})</span> : null}</span>
+                      : stuck ? <span style={{ color: '#b91c1c' }}>no address anywhere</span>
+                      : <span style={{ color: '#94a3b8' }}>{g.qbo_bill_email || g.athena_email || '—'}</span>}
+                  </DiagTd>
+                  <DiagTd>{g.problem}</DiagTd>
+                  <DiagTd>
+                    {canFix && (
+                      <button
+                        onClick={() => fixOne(g)}
+                        disabled={!!busy || stuck}
+                        title={stuck ? 'Add an email address to the client record first' : 'Turn on automatic emailing for this client'}
+                        style={{ fontSize: 11, fontWeight: 600, background: stuck ? '#f1f5f9' : '#b91c1c', color: stuck ? '#94a3b8' : '#fff', border: 'none', borderRadius: 6, padding: '3px 9px', cursor: (busy || stuck) ? 'default' : 'pointer', fontFamily: font, opacity: busy && busy !== g.billing_id ? 0.5 : 1, whiteSpace: 'nowrap' }}
+                      >
+                        {busy === g.billing_id ? 'Turning on…' : 'Turn on'}
+                      </button>
+                    )}
+                  </DiagTd>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
