@@ -66,9 +66,10 @@ function groupLabelFor(key) { return (TASK_GROUPS.find((g) => g.key === key) || 
 // Fixed live-aggregation sections rendered after the task groups.
 const FIXED_SECTION_KEYS = ['chcodes', 'realloc', 'onboard'];
 const COLLAPSE_LS_KEY = 'athena_admin_tasks_expanded';
-// Last time this browser looked at the comments panel — used only to highlight
-// what has arrived since. Read receipts proper live on the notifications table.
-const COMMENTS_SEEN_LS_KEY = 'athena_admin_tasks_comments_seen';
+// When you last opened each task's comment thread, keyed by task id. Used only
+// to decide which speech bubbles show as unread. Read receipts proper live on
+// the notifications table.
+const NOTES_READ_LS_KEY = 'athena_admin_task_notes_read';
 // In-flight CH code chases shown on this list (pre-"entered" stages).
 const CH_OPEN_STAGES = ['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_code'];
 
@@ -141,12 +142,11 @@ export default function AdminTasksPage() {
   const [reportCreated, setReportCreated] = useState(null);
 
   const [openNotes, setOpenNotes] = useState(() => new Set());
-  const [showAllComments, setShowAllComments] = useState(false);
-  // Read ONCE at mount. The effect below moves the stored watermark forward a
-  // few seconds later, so re-reading it would clear the highlight out from
-  // under the comments you are still reading.
-  const [seenWatermark] = useState(() => {
-    try { return localStorage.getItem(COMMENTS_SEEN_LS_KEY); } catch { return null; }
+  // When you last opened each task's thread, per task. A comment written by
+  // someone else since then turns that task's speech bubble dark — so the
+  // signal sits on the task the comment is about, and clears when you read it.
+  const [notesReadAt, setNotesReadAt] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(NOTES_READ_LS_KEY) || '{}'); } catch { return {}; }
   });
   const [escalateTask, setEscalateTask] = useState(null);
   const [billTask, setBillTask] = useState(null); // task whose bill is being raised
@@ -220,15 +220,12 @@ export default function AdminTasksPage() {
       setStaffMap(Object.fromEntries(st2.map((s) => [s.id, s.name])));
       setStaffList(st2.filter((s) => s.is_active !== false && s.email).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
 
-      // Notes for open AND completed tasks. Completed used to be excluded, which
-      // meant a note written on a task somebody then ticked off became
-      // unreachable from this page — the Completed row had no thread and the
-      // note was never fetched. Sophie's "we are already agents for Stuart
-      // Angus on HMRC" sat in that hole.
+      // Notes for the open tasks — a Completed row has no thread to show them in.
       const allTaskIds = [...(t || []), ...(ct || [])].map((x) => x.id);
-      if (allTaskIds.length) {
+      const taskIds = (t || []).map((x) => x.id);
+      if (taskIds.length) {
         const { data: notes } = await supabase.from('admin_task_notes')
-          .select('*').in('task_id', allTaskIds).order('created_at', { ascending: true });
+          .select('*').in('task_id', taskIds).order('created_at', { ascending: true });
         const grouped = {};
         for (const n of notes || []) (grouped[n.task_id] ||= []).push(n);
         setNotesByTask(grouped);
@@ -556,6 +553,7 @@ export default function AdminTasksPage() {
       .select('*').eq('task_id', task.id).order('created_at', { ascending: true });
     setNotesByTask((prev) => ({ ...prev, [task.id]: notes || [] }));
     setOpenNotes((prev) => new Set(prev).add(task.id));
+    markNotesRead(task.id);
     return true;
   }
 
@@ -568,8 +566,20 @@ export default function AdminTasksPage() {
   function toggleNotes(taskId) {
     setOpenNotes((prev) => {
       const n = new Set(prev);
-      n.has(taskId) ? n.delete(taskId) : n.add(taskId);
+      const opening = !n.has(taskId);
+      opening ? n.add(taskId) : n.delete(taskId);
+      // Opening the thread is reading it, so that's when the bubble clears.
+      // Closing it doesn't mark anything — you can't unread a comment.
+      if (opening) markNotesRead(taskId);
       return n;
+    });
+  }
+
+  function markNotesRead(taskId) {
+    setNotesReadAt((prev) => {
+      const next = { ...prev, [taskId]: new Date().toISOString() };
+      try { localStorage.setItem(NOTES_READ_LS_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
+      return next;
     });
   }
 
@@ -638,46 +648,20 @@ export default function AdminTasksPage() {
     return [...byPerson.values()];
   }, [chCodes, clientFilter]);
 
-  // ── Comments, surfaced ──────────────────────────────────────────────────
-  // The thread on a task is three clicks from a fresh load: expand the
-  // section, find the row, click the speech bubble. So a colleague's comment
-  // was invisible in practice — Sophie wrote five and nobody read one. The
-  // newest comments now sit on the page itself, above the collapsed sections,
-  // with the client and who wrote it. Own comments included (they're the
-  // thread), but the count chip only counts other people's.
-  const recentComments = useMemo(() => {
-    // `completed` is null until the first load lands — the page uses null to
-    // mean "not fetched", the way `open` guards with (tasks || []). Spreading
-    // it raw threw on first render, which blanked the whole page.
-    const byId = new Map([...open, ...(completed || [])].map((t) => [t.id, t]));
-    const rows = [];
-    for (const [taskId, notes] of Object.entries(notesByTask)) {
-      const task = byId.get(taskId);
-      if (!task) continue;
-      if (clientFilter && task.entity_id !== clientFilter) continue;
-      for (const n of notes) rows.push({ ...n, task });
-    }
-    return rows.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-  }, [notesByTask, open, completed, clientFilter]);
+  // Which tasks are carrying a comment you haven't read: written by someone
+  // else, after the last time you opened that task's thread. Never opened it
+  // and somebody has commented? Then it's unread — which is the honest answer.
+  const hasUnreadNotes = useCallback((taskId) => {
+    const seen = notesReadAt[taskId] || '';
+    return (notesByTask[taskId] || []).some(
+      (n) => n.author_id && n.author_id !== profile?.id && (n.created_at || '') > seen
+    );
+  }, [notesByTask, notesReadAt, profile?.id]);
 
-  // "Unread" without a read-receipts table: comments by someone else since the
-  // last time this browser had the page open. It resets per browser, which is
-  // honest about what it knows — the notification bell (sql/265) is the part
-  // that follows you across devices.
-  const commentsSinceLastVisit = useMemo(
-    () => recentComments.filter((n) => n.author_id && n.author_id !== profile?.id
-      && (!seenWatermark || (n.created_at || '') > seenWatermark)),
-    [recentComments, profile?.id, seenWatermark]
+  const unreadIn = useCallback(
+    (list) => (list || []).filter((t) => hasUnreadNotes(t.id)).length,
+    [hasUnreadNotes]
   );
-
-  // Stamp the visit once the comments have actually loaded and been rendered.
-  useEffect(() => {
-    if (!recentComments.length) return;
-    const t = setTimeout(() => {
-      try { localStorage.setItem(COMMENTS_SEEN_LS_KEY, new Date().toISOString()); } catch { /* storage unavailable */ }
-    }, 4000);
-    return () => clearTimeout(t);
-  }, [recentComments.length]);
 
   const stats = useMemo(() => {
     const today = isoToday();
@@ -769,6 +753,7 @@ export default function AdminTasksPage() {
     <TaskRow
       key={t.id} t={t}
       notes={notesByTask[t.id] || []} notesOpen={openNotes.has(t.id)}
+      unreadNotes={hasUnreadNotes(t.id)}
       docs={docsByTask[t.id] || []}
       staffMap={staffMap} copied={copied === t.id}
       onComplete={() => setCompleteTask(t)}
@@ -805,8 +790,6 @@ export default function AdminTasksPage() {
           <Chip label="Reallocations" value={stats.realloc} tone={stats.realloc ? 'blue' : 'muted'} />
           <Chip label="Onboarding" value={stats.onboarding} tone={stats.onboarding ? 'blue' : 'muted'} />
           <Chip label="CH codes" value={stats.chcodes} tone={stats.chcodes ? 'blue' : 'muted'} />
-          <Chip label="New comments" value={commentsSinceLastVisit.length}
-            tone={commentsSinceLastVisit.length ? 'blue' : 'muted'} />
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -842,75 +825,6 @@ export default function AdminTasksPage() {
         </div>
       )}
       {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
-
-      {/* Comments on tasks — always open, because a collapsed panel is how the
-          last five months of them went unread. Newest first, across open and
-          completed tasks; click a row to open the task and its full thread. */}
-      {view !== 'report' && recentComments.length > 0 && (() => {
-        const newIds = new Set(commentsSinceLastVisit.map((n) => n.id));
-        const shown = showAllComments ? recentComments : recentComments.slice(0, 6);
-        const hidden = recentComments.length - shown.length;
-        return (
-          <div style={{ ...card, padding: '12px 16px 8px', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <MessageSquare size={14} color="#0e7fe0" />
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>Comments on tasks</span>
-              {newIds.size > 0 && (
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#0e7fe0', background: '#eff6ff', border: '1px solid #bae6fd', borderRadius: 999, padding: '1px 8px' }}>
-                  {newIds.size} new
-                </span>
-              )}
-              <span style={{ fontSize: 11.5, color: '#94a3b8', marginLeft: 'auto' }}>
-                {recentComments.length} in total
-              </span>
-            </div>
-            {shown.map((n) => (
-              <div
-                key={n.id}
-                onClick={() => navigate(`/planner/tasks/${n.task.id}`)}
-                style={{
-                  display: 'flex', gap: 10, alignItems: 'baseline', cursor: 'pointer',
-                  padding: '7px 8px', borderRadius: 8, borderTop: '1px solid #f1f5f9',
-                  background: newIds.has(n.id) ? '#f8fbff' : 'transparent',
-                }}
-              >
-                <span style={{
-                  flex: '0 0 6px', height: 6, borderRadius: 3, marginTop: 5,
-                  background: newIds.has(n.id) ? '#0e7fe0' : 'transparent',
-                }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, color: '#0f172a' }}>
-                    <span style={{ fontWeight: 700 }}>{n.task.entity?.name || n.task.title}</span>
-                    {n.task.entity?.name && (
-                      <span style={{ color: '#64748b' }}> · {n.task.title}</span>
-                    )}
-                    {n.task.done_at && (
-                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#16a34a', marginLeft: 6 }}>COMPLETED</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 12.5, color: '#334155', marginTop: 2 }}>
-                    {n.kind === 'escalation' && (
-                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#b45309', marginRight: 6 }}>ESCALATION</span>
-                    )}
-                    {n.body}
-                  </div>
-                </div>
-                <span style={{ flex: '0 0 auto', fontSize: 11.5, color: '#94a3b8' }}>
-                  {staffMap[n.author_id] || 'staff'} · {fmtNoteTime(n.created_at)}
-                </span>
-              </div>
-            ))}
-            {(hidden > 0 || showAllComments) && (
-              <button
-                onClick={() => setShowAllComments((v) => !v)}
-                style={{ ...btn('ghost'), border: 'none', padding: '6px 2px', fontSize: 11.5 }}
-              >
-                {showAllComments ? 'Show fewer' : `Show ${hidden} older comment${hidden === 1 ? '' : 's'}`}
-              </button>
-            )}
-          </div>
-        );
-      })()}
 
       {adding && (
         <div style={{ ...card, padding: '14px 16px', marginBottom: 16 }}>
@@ -1079,22 +993,22 @@ export default function AdminTasksPage() {
         <GroupHeader>Manually generated</GroupHeader>
         {/* Pipeline: Draft → Bill & Hold → Billed → To Do. Managers change a
             task's step with the row dropdown; uploaded tasks land on To Do. */}
-        <Section title="Draft — not on the live list" count={draftOpen.length}
+        <Section title="Draft — not on the live list" count={draftOpen.length} unread={unreadIn(draftOpen)}
           collapsed={!expandedSet.has('draft')} onToggle={() => toggleCollapse('draft')}>
           {draftOpen.length === 0 && <Empty>No drafts.</Empty>}
           {draftOpen.map((t) => taskRow(t, { stageSelect: canPipeline, onAddBill: !t.billing_item_id ? () => setBillTask(t) : null, onRelease: () => publishDraft(t), releaseLabel: 'Publish' }))}
         </Section>
-        <Section title="Bill & Hold" count={billHoldOpen.length}
+        <Section title="Bill & Hold" count={billHoldOpen.length} unread={unreadIn(billHoldOpen)}
           collapsed={!expandedSet.has('bill_hold')} onToggle={() => toggleCollapse('bill_hold')}>
           {billHoldOpen.length === 0 && <Empty>Nothing waiting on a bill to be raised.</Empty>}
           {billHoldOpen.map((t) => taskRow(t, { stageSelect: canPipeline }))}
         </Section>
-        <Section title="Billed — held until paid or released" count={billedOpen.length}
+        <Section title="Billed — held until paid or released" count={billedOpen.length} unread={unreadIn(billedOpen)}
           collapsed={!expandedSet.has('billed')} onToggle={() => toggleCollapse('billed')}>
           {billedOpen.length === 0 && <Empty>Nothing billed and awaiting release.</Empty>}
           {billedOpen.map((t) => taskRow(t, { stageSelect: canPipeline, ...(canPipeline ? { onRelease: () => releaseTask(t), releaseLabel: 'Release to To Do' } : {}) }))}
         </Section>
-        <Section title="To Do" count={todoOpen.length}
+        <Section title="To Do" count={todoOpen.length} unread={unreadIn(todoOpen)}
           collapsed={!expandedSet.has('todo')} onToggle={() => toggleCollapse('todo')}>
           {todoOpen.length === 0 && <Empty>Nothing on the live list.</Empty>}
           {todoOpen.map((t) => taskRow(t, { stageSelect: canPipeline, onAddBill: (!t.billing_item_id && t.entity_id) ? () => setBillTask(t) : null }))}
@@ -1158,7 +1072,7 @@ export default function AdminTasksPage() {
 
         {/* Offboarding — mirror tasks from us marking a client NLAC */}
         {offboardingOpen.length > 0 && (
-          <Section title="Offboarding — remove from BrightManager" count={offboardingOpen.length}
+          <Section title="Offboarding — remove from BrightManager" count={offboardingOpen.length} unread={unreadIn(offboardingOpen)}
             collapsed={!expandedSet.has('offboarding')} onToggle={() => toggleCollapse('offboarding')}>
             {offboardingOpen.map((t) => taskRow(t))}
           </Section>
@@ -1174,6 +1088,7 @@ export default function AdminTasksPage() {
           <Section
             key={key}
             title={groupLabelFor(key)} count={(systemGroups[key] || []).length}
+            unread={unreadIn(systemGroups[key])}
             collapsed={!expandedSet.has(key)} onToggle={() => toggleCollapse(key)}
           >
             {(systemGroups[key] || []).map((t) => taskRow(t))}
@@ -1386,7 +1301,7 @@ function CompleteModal({ task, staffList, defaultStaffId, onClose, onConfirm }) 
 }
 
 function TaskRow({
-  t, notes, notesOpen, docs, staffMap, copied,
+  t, notes, notesOpen, unreadNotes, docs, staffMap, copied,
   onComplete, onCopy, onDismiss, onDeadline, onToggleNotes, onAddNote, onEscalate,
   onToggleUrgent, onAttach, onOpenDoc, onDeleteDoc, onOpenClient, onReviewBill,
   onAddBill, onRelease, releaseLabel, onSetStage, stageSelect, onOpen,
@@ -1500,8 +1415,19 @@ function TaskRow({
           />
         </label>
 
-        <button onClick={onToggleNotes} title="Notes & responses"
-          style={{ ...iconBtn, color: notes.length ? '#0e7fe0' : '#94a3b8', borderColor: notes.length ? '#bae6fd' : '#e5e7eb' }}>
+        {/* Dark blue = somebody has commented since you last opened this
+            thread. Pale blue = comments you've already read. Grey = none.
+            The count stays put either way, so the colour is the only thing
+            that moves and it means exactly one thing. */}
+        <button onClick={onToggleNotes}
+          title={unreadNotes ? 'New comment — open the thread' : 'Notes & responses'}
+          style={{
+            ...iconBtn,
+            color: unreadNotes ? '#fff' : (notes.length ? '#0e7fe0' : '#94a3b8'),
+            background: unreadNotes ? '#1e3a8a' : undefined,
+            borderColor: unreadNotes ? '#1e3a8a' : (notes.length ? '#bae6fd' : '#e5e7eb'),
+            fontWeight: unreadNotes ? 700 : undefined,
+          }}>
           <MessageSquare size={13} />{notes.length > 0 && <span style={{ fontSize: 11, fontWeight: 700 }}>{notes.length}</span>}
         </button>
 
@@ -1922,16 +1848,29 @@ function EscalateModal({ task, staffList, onClose, onSend }) {
   );
 }
 
-function Section({ title, count, collapsed, onToggle, action, children }) {
+function Section({ title, count, collapsed, onToggle, action, unread = 0, children }) {
   return (
     <div style={{ ...card, overflow: 'hidden', marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: collapsed ? 'none' : '1px solid #f1f5f9' }}>
         <button onClick={onToggle} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginRight: 8, color: '#64748b', display: 'flex' }}>
           {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
         </button>
-        <span onClick={onToggle} style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, flex: 1, cursor: 'pointer' }}>
+        <span onClick={onToggle} style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer' }}>
           {title} ({count})
         </span>
+        {/* Sections default collapsed, so a dark bubble on a row you can't see
+            is no signal at all. Same bubble, same colour, carried up to the
+            header: this section is hiding N tasks with a new comment. */}
+        {unread > 0 && (
+          <span onClick={onToggle} title={`${unread} task${unread === 1 ? '' : 's'} with a new comment`}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 8, cursor: 'pointer',
+              padding: '2px 7px', borderRadius: 999, background: '#1e3a8a', color: '#fff',
+            }}>
+            <MessageSquare size={11} /><span style={{ fontSize: 11, fontWeight: 700 }}>{unread}</span>
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
         {action}
       </div>
       {!collapsed && children}
