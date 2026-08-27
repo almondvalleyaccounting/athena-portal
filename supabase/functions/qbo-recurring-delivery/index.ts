@@ -24,6 +24,13 @@ import { requireStaffOrService, authErrorResponse } from "../_shared/require-sta
 //   { mode: "sweep" }    read every template from QBO, record bill email +
 //                        email status on live_billing, return the gaps.
 //                        No QBO writes. Staff.
+//   { mode: "evidence", months?: 3 }
+//                        the other direction: read the invoices QBO has
+//                        already GENERATED from these templates and ask
+//                        whether each was actually emailed. Config predicts
+//                        delivery; DeliveryInfo.DeliveryTime records it. This
+//                        is what catches a template that reads as fine and
+//                        still is not reaching anyone. No writes at all.
 //   { mode: "repair", billing_ids?: [...], dry_run?: bool }
 //                        set BillEmail + EmailStatus="NeedToSend" on the
 //                        flagged templates. dry_run defaults TRUE — an apply
@@ -66,6 +73,9 @@ Deno.serve(async (req) => {
 
   try {
     if (mode === "sweep") return await sweep(sb, (body as { initiated_by?: string }).initiated_by ?? null);
+    if (mode === "evidence") {
+      return await evidence(sb, Number((body as { months?: number }).months ?? 3));
+    }
     if (mode === "repair") {
       return await repair(
         sb,
@@ -75,7 +85,7 @@ Deno.serve(async (req) => {
         (body as { initiated_by?: string }).initiated_by ?? null,
       );
     }
-    return jsonResponse({ success: false, error: `Unknown mode "${mode}" (expected sweep or repair)` }, 400);
+    return jsonResponse({ success: false, error: `Unknown mode "${mode}" (expected sweep, evidence or repair)` }, 400);
   } catch (e) {
     return jsonResponse({ success: false, error: (e as Error).message }, 500);
   }
@@ -123,14 +133,14 @@ async function sweep(sb: ReturnType<typeof getServiceClient>, initiatedBy: strin
 
   const { data: rows, error } = await sb
     .from("live_billing")
-    .select("id, entity_id, qbo_recurring_txn_id, monthly_net, entities(name, billing_email, prospect_email)")
+    .select("id, entity_id, qbo_recurring_txn_id, monthly_net, entities(name, entity_status, billing_email, prospect_email)")
     .eq("status", "active")
     .not("qbo_recurring_txn_id", "is", null);
   if (error) return jsonResponse({ success: false, error: error.message }, 500);
 
   const now = new Date().toISOString();
   const gaps: Array<Record<string, unknown>> = [];
-  let checked = 0, willEmail = 0, notInQbo = 0;
+  let checked = 0, willEmail = 0, notInQbo = 0, formerClient = 0;
 
   for (const row of rows || []) {
     const tpl = byTxn.get(String(row.qbo_recurring_txn_id));
@@ -156,6 +166,12 @@ async function sweep(sb: ReturnType<typeof getServiceClient>, initiatedBy: strin
     if (tpl.billEmail && tpl.emailStatus === AUTO_SEND) { willEmail++; continue; }
 
     const ent = (row.entities as Record<string, unknown> | null) || null;
+    // Former clients are excluded from the gap list the way every other
+    // operational surface excludes them — at read time (sql/134, sql/264). Their
+    // templates going quiet is correct, not a gap, and a banner that cries about
+    // a client who left is a banner people learn to close. The recorded state
+    // above is still written: that is truth about QBO either way.
+    if (String(ent?.entity_status ?? "active") !== "active") { formerClient++; continue; }
     const athenaEmail = (ent?.billing_email as string) || (ent?.prospect_email as string) || null;
     gaps.push({
       billing_id: row.id,
@@ -200,9 +216,192 @@ async function sweep(sb: ReturnType<typeof getServiceClient>, initiatedBy: strin
       will_email_client: willEmail,
       will_not_email_client: gaps.length,
       not_found_in_qbo: notInQbo,
+      former_clients_ignored: formerClient,
       monthly_net_at_risk: round2(gaps.reduce((s, g) => s + Number(g.monthly_net ?? 0), 0)),
     },
     gaps,
+  });
+}
+
+// -- Did QBO actually email what it generated? ------------------------------
+// The sweep reads intent off the template. This reads outcome off the
+// invoices, which is the only thing that proves a client was told.
+//
+// Two fields on a generated invoice record delivery:
+//
+//   EmailStatus = "EmailSent"     QBO considers it sent
+//   DeliveryInfo.DeliveryTime     when it went
+//
+// An invoice with neither was created, added to the client's balance, and
+// never sent.
+//
+// The join is by CUSTOMER, not by template id. An invoice's RecurDataRef is
+// the id of QBO's RecurData record, which lives in a different id space from
+// the RecurringTransaction's inner Invoice.Id — the value Athena stores in
+// live_billing.qbo_recurring_txn_id and the one the sweep matches on. They do
+// not correspond (MTG's template is 21605; its invoices carry RecurDataRef
+// 188), so joining on it silently classifies every template as "unknown
+// config" and reports zero problems. RecurDataRef is still the right filter
+// for "was this generated by a template at all" — just not a usable key.
+//
+// Read-only: no QBO writes, no live_billing writes. Evidence, not repair.
+async function evidence(sb: ReturnType<typeof getServiceClient>, months: number) {
+  const monthsBack = Math.max(1, Math.min(24, months));
+  const since = new Date();
+  since.setMonth(since.getMonth() - monthsBack);
+  const sinceStr = since.toISOString().slice(0, 10);
+
+  type Inv = {
+    id: string;
+    docNumber: string;
+    recurRef: string | null;
+    customerId: string;
+    customer: string;
+    date: string;
+    total: number;
+    balance: number;
+    emailStatus: string | null;
+    deliveredAt: string | null;
+    billEmail: string | null;
+  };
+
+  // Paged read, same reason as loadTemplates: an unpaged query stops at 100
+  // rows, and a short read here would understate the silent invoices — the
+  // one direction we must not get wrong.
+  const invoices: Inv[] = [];
+  const page = 1000;
+  let start = 1;
+  for (let guard = 0; guard < 50; guard++) {
+    const result = (await qboQuery(
+      `SELECT * FROM Invoice WHERE TxnDate >= '${sinceStr}' ORDERBY Id STARTPOSITION ${start} MAXRESULTS ${page}`,
+    )) as Record<string, unknown>;
+    const qr = (result?.QueryResponse as Record<string, unknown>) || {};
+    const rows = (qr.Invoice as Array<Record<string, unknown>>) || [];
+    for (const inv of rows) {
+      const delivery = (inv.DeliveryInfo as Record<string, unknown> | undefined) || undefined;
+      const cust = (inv.CustomerRef as Record<string, unknown> | undefined) || undefined;
+      invoices.push({
+        id: String(inv.Id),
+        docNumber: String(inv.DocNumber ?? ""),
+        recurRef: String(((inv.RecurDataRef as Record<string, unknown> | undefined)?.value) ?? "") || null,
+        customerId: String(cust?.value ?? ""),
+        customer: String(cust?.name ?? ""),
+        date: String(inv.TxnDate ?? "").slice(0, 10),
+        total: Number(inv.TotalAmt ?? 0),
+        balance: Number(inv.Balance ?? 0),
+        emailStatus: String(inv.EmailStatus ?? "").trim() || null,
+        deliveredAt: String(delivery?.DeliveryTime ?? "") || null,
+        billEmail: String(((inv.BillEmail as Record<string, unknown> | undefined)?.Address) ?? "").trim() || null,
+      });
+    }
+    if (rows.length < page) break;
+    start += page;
+  }
+
+  // Only the ones QBO itself attributes to a recurring template. An invoice
+  // raised by hand is somebody's deliberate act, not this question.
+  const fromTemplates = invoices.filter((i) => i.recurRef);
+  const wasEmailed = (i: Inv) => i.emailStatus === "EmailSent" || !!i.deliveredAt;
+
+  const { data: billing } = await sb
+    .from("live_billing")
+    .select("id, qbo_customer_id, qbo_recurring_txn_id, monthly_net, qbo_bill_email, qbo_email_status, entities(name)")
+    .eq("status", "active")
+    .not("qbo_recurring_txn_id", "is", null);
+
+  // Customer -> Athena's active recurring rows. A client can hold more than
+  // one template, so this is a list, and a client counts as configured only
+  // if every one of their templates is.
+  const byCustomer = new Map<string, Array<Record<string, unknown>>>();
+  for (const b of billing || []) {
+    const key = String(b.qbo_customer_id ?? "");
+    if (!key) continue;
+    const list = byCustomer.get(key) || [];
+    list.push(b as Record<string, unknown>);
+    byCustomer.set(key, list);
+  }
+
+  const groups = new Map<string, { generated: number; emailed: number; silent: Inv[]; customer: string; refs: Set<string> }>();
+  for (const i of fromTemplates) {
+    const g = groups.get(i.customerId) ||
+      { generated: 0, emailed: 0, silent: [] as Inv[], customer: i.customer, refs: new Set<string>() };
+    g.generated++;
+    g.refs.add(i.recurRef as string);
+    if (wasEmailed(i)) g.emailed++;
+    else g.silent.push(i);
+    groups.set(i.customerId, g);
+  }
+
+  const perClient = [...groups.entries()].map(([customerId, g]) => {
+    const rows = byCustomer.get(customerId) || [];
+    const ent = rows.length ? ((rows[0].entities as Record<string, unknown> | null) || null) : null;
+    // What the templates say they will do, as of the last sweep. Null means
+    // Athena holds no active recurring row for this customer — unknown, not
+    // fine.
+    const configured = rows.length
+      ? rows.every((r) => !!r.qbo_bill_email && r.qbo_email_status === AUTO_SEND)
+      : null;
+    return {
+      qbo_customer_id: customerId,
+      entity_name: (ent?.name as string) || g.customer || null,
+      qbo_customer_name: g.customer,
+      athena_billing_ids: rows.map((r) => r.id as string),
+      recur_template_refs: [...g.refs],
+      monthly_net: rows.length ? round2(rows.reduce((s, r) => s + Number(r.monthly_net ?? 0), 0)) : null,
+      configured_to_email: configured,
+      generated: g.generated,
+      emailed: g.emailed,
+      never_emailed: g.silent.length,
+      silent_invoice_total: round2(g.silent.reduce((s, i) => s + i.total, 0)),
+      silent_still_unpaid: round2(g.silent.reduce((s, i) => s + i.balance, 0)),
+      silent_invoices: g.silent
+        .sort((a, b2) => a.date.localeCompare(b2.date))
+        .map((i) => ({
+          invoice_id: i.id,
+          doc_number: i.docNumber,
+          date: i.date,
+          total: i.total,
+          balance: i.balance,
+          email_status: i.emailStatus,
+          bill_email: i.billEmail,
+        })),
+    };
+  });
+
+  // The failures are worth separating. A client whose template we already know
+  // is misconfigured receiving silent invoices is the expected consequence of
+  // that config. A client whose template is configured to email and who STILL
+  // has silent invoices is a different and worse problem: config is not the
+  // whole story there, and repairing config would not have fixed it.
+  const silentBadConfig = perClient.filter((t) => t.never_emailed > 0 && t.configured_to_email === false);
+  const silentGoodConfig = perClient.filter((t) => t.never_emailed > 0 && t.configured_to_email === true);
+  const silentUnknownConfig = perClient.filter((t) => t.never_emailed > 0 && t.configured_to_email === null);
+  const fullyDelivered = perClient.filter((t) => t.never_emailed === 0);
+
+  const bySilentValue = (a: { silent_invoice_total: number }, b: { silent_invoice_total: number }) =>
+    b.silent_invoice_total - a.silent_invoice_total;
+
+  return jsonResponse({
+    success: true,
+    mode: "evidence",
+    window: { since: sinceStr, months: monthsBack },
+    summary: {
+      invoices_in_window: invoices.length,
+      generated_by_recurring_template: fromTemplates.length,
+      emailed: fromTemplates.filter(wasEmailed).length,
+      never_emailed: fromTemplates.filter((i) => !wasEmailed(i)).length,
+      never_emailed_value: round2(fromTemplates.filter((i) => !wasEmailed(i)).reduce((s, i) => s + i.total, 0)),
+      never_emailed_still_unpaid: round2(fromTemplates.filter((i) => !wasEmailed(i)).reduce((s, i) => s + i.balance, 0)),
+      clients_seen: perClient.length,
+      clients_fully_delivered: fullyDelivered.length,
+      clients_with_silent_invoices: perClient.length - fullyDelivered.length,
+      clients_silent_bad_config: silentBadConfig.length,
+      clients_silent_despite_good_config: silentGoodConfig.length,
+      clients_silent_no_athena_row: silentUnknownConfig.length,
+    },
+    silent_despite_good_config: silentGoodConfig.sort(bySilentValue),
+    silent_bad_config: silentBadConfig.sort(bySilentValue),
+    silent_no_athena_row: silentUnknownConfig.sort(bySilentValue),
   });
 }
 
@@ -217,7 +416,7 @@ async function repair(
   // write to a template that is already fine.
   let q = sb
     .from("live_billing")
-    .select("id, entity_id, qbo_recurring_txn_id, monthly_net, entities(name, billing_email, prospect_email)")
+    .select("id, entity_id, qbo_recurring_txn_id, monthly_net, entities!inner(name, entity_status, billing_email, prospect_email)")
     .eq("status", "active")
     .not("qbo_recurring_txn_id", "is", null);
   if (billingIds && billingIds.length) {
@@ -229,7 +428,10 @@ async function repair(
     // checked at all, whose stored txn ids include stale ones QBO rejects.
     q = q
       .not("qbo_email_checked_at", "is", null)
-      .or(`qbo_bill_email.is.null,qbo_email_status.neq.${AUTO_SEND}`);
+      .or(`qbo_bill_email.is.null,qbo_email_status.neq.${AUTO_SEND}`)
+      // Same read-time former-client exclusion as the gap view. Explicit
+      // billing_ids still win — a deliberate per-row fix is the caller's call.
+      .eq("entities.entity_status", "active");
   }
   const { data: rows, error } = await q;
   if (error) return jsonResponse({ success: false, error: error.message }, 500);
