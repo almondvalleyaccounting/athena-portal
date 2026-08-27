@@ -66,6 +66,9 @@ function groupLabelFor(key) { return (TASK_GROUPS.find((g) => g.key === key) || 
 // Fixed live-aggregation sections rendered after the task groups.
 const FIXED_SECTION_KEYS = ['chcodes', 'realloc', 'onboard'];
 const COLLAPSE_LS_KEY = 'athena_admin_tasks_expanded';
+// Last time this browser looked at the comments panel — used only to highlight
+// what has arrived since. Read receipts proper live on the notifications table.
+const COMMENTS_SEEN_LS_KEY = 'athena_admin_tasks_comments_seen';
 // In-flight CH code chases shown on this list (pre-"entered" stages).
 const CH_OPEN_STAGES = ['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_code'];
 
@@ -138,6 +141,13 @@ export default function AdminTasksPage() {
   const [reportCreated, setReportCreated] = useState(null);
 
   const [openNotes, setOpenNotes] = useState(() => new Set());
+  const [showAllComments, setShowAllComments] = useState(false);
+  // Read ONCE at mount. The effect below moves the stored watermark forward a
+  // few seconds later, so re-reading it would clear the highlight out from
+  // under the comments you are still reading.
+  const [seenWatermark] = useState(() => {
+    try { return localStorage.getItem(COMMENTS_SEEN_LS_KEY); } catch { return null; }
+  });
   const [escalateTask, setEscalateTask] = useState(null);
   const [billTask, setBillTask] = useState(null); // task whose bill is being raised
   const [completeTask, setCompleteTask] = useState(null);
@@ -210,11 +220,15 @@ export default function AdminTasksPage() {
       setStaffMap(Object.fromEntries(st2.map((s) => [s.id, s.name])));
       setStaffList(st2.filter((s) => s.is_active !== false && s.email).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
 
-      // Notes for the open tasks
-      const taskIds = (t || []).map((x) => x.id);
-      if (taskIds.length) {
+      // Notes for open AND completed tasks. Completed used to be excluded, which
+      // meant a note written on a task somebody then ticked off became
+      // unreachable from this page — the Completed row had no thread and the
+      // note was never fetched. Sophie's "we are already agents for Stuart
+      // Angus on HMRC" sat in that hole.
+      const allTaskIds = [...(t || []), ...(ct || [])].map((x) => x.id);
+      if (allTaskIds.length) {
         const { data: notes } = await supabase.from('admin_task_notes')
-          .select('*').in('task_id', taskIds).order('created_at', { ascending: true });
+          .select('*').in('task_id', allTaskIds).order('created_at', { ascending: true });
         const grouped = {};
         for (const n of notes || []) (grouped[n.task_id] ||= []).push(n);
         setNotesByTask(grouped);
@@ -223,7 +237,6 @@ export default function AdminTasksPage() {
       }
 
       // Attachments (open + completed)
-      const allTaskIds = [...(t || []), ...(ct || [])].map((x) => x.id);
       if (allTaskIds.length) {
         const { data: docs } = await supabase.from('admin_task_documents')
           .select('*').in('task_id', allTaskIds).order('created_at', { ascending: true });
@@ -625,6 +638,44 @@ export default function AdminTasksPage() {
     return [...byPerson.values()];
   }, [chCodes, clientFilter]);
 
+  // ── Comments, surfaced ──────────────────────────────────────────────────
+  // The thread on a task is three clicks from a fresh load: expand the
+  // section, find the row, click the speech bubble. So a colleague's comment
+  // was invisible in practice — Sophie wrote five and nobody read one. The
+  // newest comments now sit on the page itself, above the collapsed sections,
+  // with the client and who wrote it. Own comments included (they're the
+  // thread), but the count chip only counts other people's.
+  const recentComments = useMemo(() => {
+    const byId = new Map([...open, ...completed].map((t) => [t.id, t]));
+    const rows = [];
+    for (const [taskId, notes] of Object.entries(notesByTask)) {
+      const task = byId.get(taskId);
+      if (!task) continue;
+      if (clientFilter && task.entity_id !== clientFilter) continue;
+      for (const n of notes) rows.push({ ...n, task });
+    }
+    return rows.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  }, [notesByTask, open, completed, clientFilter]);
+
+  // "Unread" without a read-receipts table: comments by someone else since the
+  // last time this browser had the page open. It resets per browser, which is
+  // honest about what it knows — the notification bell (sql/265) is the part
+  // that follows you across devices.
+  const commentsSinceLastVisit = useMemo(
+    () => recentComments.filter((n) => n.author_id && n.author_id !== profile?.id
+      && (!seenWatermark || (n.created_at || '') > seenWatermark)),
+    [recentComments, profile?.id, seenWatermark]
+  );
+
+  // Stamp the visit once the comments have actually loaded and been rendered.
+  useEffect(() => {
+    if (!recentComments.length) return;
+    const t = setTimeout(() => {
+      try { localStorage.setItem(COMMENTS_SEEN_LS_KEY, new Date().toISOString()); } catch { /* storage unavailable */ }
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [recentComments.length]);
+
   const stats = useMemo(() => {
     const today = isoToday();
     return {
@@ -751,6 +802,8 @@ export default function AdminTasksPage() {
           <Chip label="Reallocations" value={stats.realloc} tone={stats.realloc ? 'blue' : 'muted'} />
           <Chip label="Onboarding" value={stats.onboarding} tone={stats.onboarding ? 'blue' : 'muted'} />
           <Chip label="CH codes" value={stats.chcodes} tone={stats.chcodes ? 'blue' : 'muted'} />
+          <Chip label="New comments" value={commentsSinceLastVisit.length}
+            tone={commentsSinceLastVisit.length ? 'blue' : 'muted'} />
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -786,6 +839,75 @@ export default function AdminTasksPage() {
         </div>
       )}
       {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
+
+      {/* Comments on tasks — always open, because a collapsed panel is how the
+          last five months of them went unread. Newest first, across open and
+          completed tasks; click a row to open the task and its full thread. */}
+      {view !== 'report' && recentComments.length > 0 && (() => {
+        const newIds = new Set(commentsSinceLastVisit.map((n) => n.id));
+        const shown = showAllComments ? recentComments : recentComments.slice(0, 6);
+        const hidden = recentComments.length - shown.length;
+        return (
+          <div style={{ ...card, padding: '12px 16px 8px', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <MessageSquare size={14} color="#0e7fe0" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>Comments on tasks</span>
+              {newIds.size > 0 && (
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#0e7fe0', background: '#eff6ff', border: '1px solid #bae6fd', borderRadius: 999, padding: '1px 8px' }}>
+                  {newIds.size} new
+                </span>
+              )}
+              <span style={{ fontSize: 11.5, color: '#94a3b8', marginLeft: 'auto' }}>
+                {recentComments.length} in total
+              </span>
+            </div>
+            {shown.map((n) => (
+              <div
+                key={n.id}
+                onClick={() => navigate(`/planner/tasks/${n.task.id}`)}
+                style={{
+                  display: 'flex', gap: 10, alignItems: 'baseline', cursor: 'pointer',
+                  padding: '7px 8px', borderRadius: 8, borderTop: '1px solid #f1f5f9',
+                  background: newIds.has(n.id) ? '#f8fbff' : 'transparent',
+                }}
+              >
+                <span style={{
+                  flex: '0 0 6px', height: 6, borderRadius: 3, marginTop: 5,
+                  background: newIds.has(n.id) ? '#0e7fe0' : 'transparent',
+                }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, color: '#0f172a' }}>
+                    <span style={{ fontWeight: 700 }}>{n.task.entity?.name || n.task.title}</span>
+                    {n.task.entity?.name && (
+                      <span style={{ color: '#64748b' }}> · {n.task.title}</span>
+                    )}
+                    {n.task.done_at && (
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#16a34a', marginLeft: 6 }}>COMPLETED</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: '#334155', marginTop: 2 }}>
+                    {n.kind === 'escalation' && (
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#b45309', marginRight: 6 }}>ESCALATION</span>
+                    )}
+                    {n.body}
+                  </div>
+                </div>
+                <span style={{ flex: '0 0 auto', fontSize: 11.5, color: '#94a3b8' }}>
+                  {staffMap[n.author_id] || 'staff'} · {fmtNoteTime(n.created_at)}
+                </span>
+              </div>
+            ))}
+            {(hidden > 0 || showAllComments) && (
+              <button
+                onClick={() => setShowAllComments((v) => !v)}
+                style={{ ...btn('ghost'), border: 'none', padding: '6px 2px', fontSize: 11.5 }}
+              >
+                {showAllComments ? 'Show fewer' : `Show ${hidden} older comment${hidden === 1 ? '' : 's'}`}
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {adding && (
         <div style={{ ...card, padding: '14px 16px', marginBottom: 16 }}>
