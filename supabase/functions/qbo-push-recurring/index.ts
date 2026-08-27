@@ -1,4 +1,4 @@
-import { getServiceClient, qboFetch, logSync, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
+import { getServiceClient, qboFetch, recurringInner, logSync, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
 
 // Push staged fee uplifts (pending_monthly_amount on each service)
 // out to the corresponding QBO RecurringTransaction template. We
@@ -96,9 +96,12 @@ Deno.serve(async (req) => {
         throw new Error(`GET recurringtransaction/${txnId} failed: ${getResp.status} ${errText}`);
       }
       const getBody = await getResp.json() as Record<string, unknown>;
-      const innerKey = getBody.Invoice ? "Invoice" : getBody.SalesReceipt ? "SalesReceipt" : null;
-      if (!innerKey) throw new Error("RecurringTransaction response missing Invoice/SalesReceipt");
-      const template = getBody[innerKey] as Record<string, unknown>;
+      // The read endpoint nests the txn under RecurringTransaction; the query
+      // endpoint does not. This used to look only at the query shape, so every
+      // staged uplift push failed here with "missing Invoice/SalesReceipt".
+      const found = recurringInner(getBody);
+      if (!found) throw new Error("RecurringTransaction response missing Invoice/SalesReceipt");
+      const { key: innerKey, txn: template } = found;
 
       const recurringInfo = (template.RecurringInfo as Record<string, unknown> | undefined) || {};
       const schedule = (recurringInfo.ScheduleInfo as Record<string, unknown> | undefined)

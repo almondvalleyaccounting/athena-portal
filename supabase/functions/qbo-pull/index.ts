@@ -319,6 +319,15 @@ Deno.serve(async (req) => {
         const perYear = factor * 12;
         const tplCadence = perYear >= 12 ? "monthly" as const : "annual" as const;
         const tplCadenceMonths = Math.max(1, Math.round(12 / (perYear || 12)));
+        // Whether QBO will actually EMAIL what this template bills. A
+        // template needs BOTH an address and EmailStatus 'NeedToSend' (the
+        // "Automatically send emails" tick); with either missing it bills
+        // silently and the client's balance grows with nothing in their
+        // inbox. Recorded on every pull because nothing in Athena used to
+        // carry it — see sql/263 and qbo-recurring-delivery.
+        const tplBillEmail = String(((innerTxn.BillEmail as Record<string, unknown> | undefined)?.Address) ?? "").trim() || null;
+        const tplEmailStatus = String(innerTxn.EmailStatus ?? "").trim() || null;
+
         const monthlyNet = Math.round(totalAmount * factor * 100) / 100;
         const monthlyVat = Math.round(monthlyNet * 0.2 * 100) / 100;
         const monthlyGross = Math.round((monthlyNet + monthlyVat) * 100) / 100;
@@ -471,6 +480,9 @@ Deno.serve(async (req) => {
             annual_total: annualTotal,
             services,
             qbo_customer_id: qboCustomerId,
+            qbo_bill_email: tplBillEmail,
+            qbo_email_status: tplEmailStatus,
+            qbo_email_checked_at: now,
             last_synced_qbo: now,
             qbo_sync_status: "synced",
           }).eq("id", existing.id);
@@ -488,6 +500,9 @@ Deno.serve(async (req) => {
             status: "active",
             qbo_recurring_txn_id: txnId,
             qbo_customer_id: qboCustomerId,
+            qbo_bill_email: tplBillEmail,
+            qbo_email_status: tplEmailStatus,
+            qbo_email_checked_at: now,
             last_synced_qbo: now,
             qbo_sync_status: "synced",
           });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown, CalendarX, Copy, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown, CalendarX, Copy, RotateCcw, MailWarning } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
@@ -389,6 +389,8 @@ export default function BillingReviewPage() {
 
       <BillingTabs active="import" />
 
+      <DeliveryGapsPanel canFix={!!profile?.can_approve_billing} />
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <button
           onClick={async () => {
@@ -728,6 +730,139 @@ export default function BillingReviewPage() {
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+// A recurring template bills whether or not anyone tells the client. QBO needs
+// BOTH a BillEmail and EmailStatus 'NeedToSend' ("Automatically send emails");
+// with either missing it invoices in silence and the client's balance grows
+// with nothing in their inbox. Athena recorded neither field until sql/263, so
+// this failure had no surface at all — Bonny Braes ran that way from its
+// 2026-05-27 commit until a human noticed months later. This panel is that
+// surface: quiet when there is nothing wrong, loud when there is.
+function DeliveryGapsPanel({ canFix }) {
+  const [gaps, setGaps] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(null); // 'sweep' | 'fix'
+
+  const load = async () => {
+    const { data } = await supabase
+      .from('v_recurring_delivery_gaps')
+      .select('*')
+      .order('monthly_net', { ascending: false });
+    setGaps(data || []);
+  };
+  useEffect(() => { load(); }, []);
+
+  // Re-read the live templates from QBO. The panel shows recorded state, and
+  // recorded state is only as fresh as the last sweep or nightly pull — so
+  // offer the re-read rather than let a stale "all clear" stand.
+  const recheck = async () => {
+    setBusy('sweep');
+    try {
+      const { data, error } = await supabase.functions.invoke('qbo-recurring-delivery', { body: { mode: 'sweep' } });
+      if (error) throw error;
+      await load();
+      const sum = data?.summary || {};
+      alert(`Checked ${sum.billing_rows_checked ?? 0} templates in QuickBooks.\n\n${sum.will_email_client ?? 0} email the client.\n${sum.will_not_email_client ?? 0} do not.`);
+    } catch (err) {
+      alert('Re-check failed: ' + (err.message || err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const fixable = (gaps || []).filter((g) => g.repairable);
+
+  const fixAll = async () => {
+    if (fixable.length === 0) return;
+    const total = fixable.reduce((sum, g) => sum + (Number(g.monthly_net) || 0), 0);
+    // This starts real invoice emails to real clients, so it names them and it
+    // names the money before anything goes anywhere.
+    const ok = window.confirm(
+      `Turn on automatic emailing for ${fixable.length} recurring template${fixable.length === 1 ? '' : 's'}?\n\n`
+      + fixable.map((g) => `  • ${g.entity_name} — ${g.qbo_bill_email || g.athena_email}`).join('\n')
+      + `\n\n£${total.toFixed(2)}/month of billing. QuickBooks will email each invoice from its next run date onwards. Nothing is sent now, and past invoices are not resent.`
+    );
+    if (!ok) return;
+    setBusy('fix');
+    try {
+      const { data, error } = await supabase.functions.invoke('qbo-recurring-delivery', {
+        body: { mode: 'repair', dry_run: false, billing_ids: fixable.map((g) => g.billing_id) },
+      });
+      if (error) throw error;
+      await load();
+      const sum = data?.summary || {};
+      const errs = (data?.results || []).filter((r) => r.status === 'error');
+      alert(`Turned on emailing for ${sum.fixed ?? 0} template${sum.fixed === 1 ? '' : 's'}.`
+        + (sum.skipped ? `\n${sum.skipped} skipped.` : '')
+        + (errs.length ? `\n\nFailed:\n${errs.map((r) => `  • ${r.entity}: ${r.error}`).join('\n')}` : ''));
+    } catch (err) {
+      alert('Fix failed: ' + (err.message || err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (gaps === null) return null;
+  if (gaps.length === 0) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 11, color: '#64748b' }}>
+        <span style={{ color: '#059669' }}>&#10003;</span>
+        Every active recurring template emails its client.
+        <button onClick={recheck} disabled={!!busy} style={{ background: 'none', border: 'none', padding: 0, fontSize: 11, color: '#0e7fe0', cursor: 'pointer', fontFamily: font, textDecoration: 'underline' }}>
+          {busy === 'sweep' ? 'Re-checking…' : 're-check from QBO'}
+        </button>
+      </div>
+    );
+  }
+
+  const atRisk = gaps.reduce((sum, g) => sum + (Number(g.monthly_net) || 0), 0);
+  const needAddress = gaps.length - fixable.length;
+
+  return (
+    <div style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <MailWarning size={15} style={{ color: '#b91c1c', flexShrink: 0 }} />
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#991b1b' }}>
+          {gaps.length} recurring template{gaps.length === 1 ? '' : 's'} bill the client but never email them
+        </div>
+        <div style={{ fontSize: 12, color: '#b91c1c' }}>&#163;{atRisk.toFixed(2)}/month</div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setOpen((o) => !o)} style={{ fontSize: 11, background: '#fff', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontFamily: font }}>
+          {open ? 'Hide' : 'Show'}
+        </button>
+        <button onClick={recheck} disabled={!!busy} style={{ fontSize: 11, background: '#fff', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 10px', cursor: busy ? 'default' : 'pointer', fontFamily: font }}>
+          {busy === 'sweep' ? 'Re-checking…' : 'Re-check'}
+        </button>
+        {canFix && fixable.length > 0 && (
+          <button onClick={fixAll} disabled={!!busy} style={{ fontSize: 11, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: busy ? 'default' : 'pointer', fontFamily: font, opacity: busy ? 0.6 : 1 }}>
+            {busy === 'fix' ? 'Turning on…' : `Turn on emailing for ${fixable.length} →`}
+          </button>
+        )}
+      </div>
+      <p style={{ fontSize: 11, color: '#7f1d1d', margin: '6px 0 0', maxWidth: 820 }}>
+        QuickBooks generates and posts these invoices on schedule, so the balance grows, but it was never told to send them.
+        {needAddress > 0 && ` ${needAddress} ${needAddress === 1 ? 'has' : 'have'} no email address anywhere — add one to the client record first.`}
+        {!canFix && ' Turning emailing on needs the billing-approval permission.'}
+      </p>
+      {open && (
+        <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginTop: 10 }}>
+          <thead><tr style={{ background: '#fff1f2' }}><DiagTh>Client</DiagTh><DiagTh>Monthly</DiagTh><DiagTh>Next run</DiagTh><DiagTh>Email on template</DiagTh><DiagTh>Problem</DiagTh></tr></thead>
+          <tbody>
+            {gaps.map((g) => (
+              <tr key={g.billing_id} style={{ borderTop: '1px solid #fee2e2' }}>
+                <DiagTd>{g.entity_name}</DiagTd>
+                <DiagTd>&#163;{Number(g.monthly_net || 0).toFixed(2)}</DiagTd>
+                <DiagTd>{g.qbo_next_run_date || '—'}</DiagTd>
+                <DiagTd>{g.qbo_bill_email || g.athena_email || <span style={{ color: '#b91c1c' }}>none</span>}</DiagTd>
+                <DiagTd>{g.problem}{!g.repairable && ' — needs an address'}</DiagTd>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );

@@ -217,6 +217,34 @@ export async function qboQuery(query: string, realmId?: string): Promise<unknown
   return resp.json();
 }
 
+// Unwrap the transaction out of a RecurringTransaction response body.
+//
+// The two QBO endpoints do NOT agree on the envelope, and the difference is
+// silent rather than an error:
+//
+//   query  SELECT * FROM RecurringTransaction
+//          → QueryResponse.RecurringTransaction[] = [ { Invoice: {...} }, … ]
+//   read   GET recurringtransaction/{id}
+//          → { RecurringTransaction: { Invoice: {...} } }
+//
+// Reading `body.Invoice` off the second one yields undefined. Three call sites
+// assumed the query shape for the read, and each failed quietly in its own way:
+// qbo-fetch-template-meta wrote qbo_next_run_date = null for every template and
+// returned success (0 of 146 rows carried a next run date), and
+// qbo-push-recurring threw "missing Invoice/SalesReceipt" on every staged
+// uplift. Accept either shape here so nobody has to remember which is which.
+export function recurringInner(
+  body: Record<string, unknown> | null | undefined,
+): { key: "Invoice" | "SalesReceipt"; txn: Record<string, unknown> } | null {
+  if (!body) return null;
+  const wrapper = (body.RecurringTransaction as Record<string, unknown> | undefined) ?? body;
+  for (const key of ["Invoice", "SalesReceipt"] as const) {
+    const txn = wrapper[key] as Record<string, unknown> | undefined;
+    if (txn) return { key, txn };
+  }
+  return null;
+}
+
 // Log a sync operation
 export async function logSync(entry: {
   direction: "push" | "pull";

@@ -65,6 +65,8 @@ Deno.serve(async (req) => {
   //    revenue templates.
   let linked = 0;
   let inactive = 0;
+  let deliverable = 0;
+  const silentRows: Array<Record<string, unknown>> = [];
   const unlinkedNoEntity: Array<Record<string, unknown>> = [];
   const unlinkedNoBilling: Array<Record<string, unknown>> = [];
   const linkedRows: Array<Record<string, unknown>> = [];
@@ -82,6 +84,15 @@ Deno.serve(async (req) => {
     const nextDate = String(recurringInfo.NextDate || scheduleInfo?.NextDate || "");
     const active = recurringInfo.Active !== false;
     const hasNextRun = nextDate.length > 0;
+    // Whether QBO will actually EMAIL each invoice this template generates.
+    // Two independent things have to be true: the template carries a
+    // BillEmail, and its EmailStatus is "NeedToSend" — that flag is what the
+    // QBO UI shows as "Automatically send emails". A template with neither
+    // still bills the client and still grows their balance; it just never
+    // tells them. Nothing in Athena could see this before.
+    const billEmail = String(((inner.BillEmail as Record<string, unknown> | undefined)?.Address) ?? "").trim() || null;
+    const emailStatus = String(inner.EmailStatus ?? "").trim() || null;
+    const autoSend = emailStatus === "NeedToSend";
 
     // Treat templates with no upcoming run as inactive — they won't
     // auto-bill regardless of the Active flag (e.g. Reminder-type
@@ -94,6 +105,30 @@ Deno.serve(async (req) => {
 
     const entityId = qboCustomerId ? entityByQboId.get(qboCustomerId) : null;
     const billing = billingByTxn.get(txnId);
+
+    // Delivery report over every template that WILL run.
+    if (!billEmail || !autoSend) {
+      const ent = billing ? entityById.get(billing.entity_id) : (entityId ? entityById.get(entityId) : null);
+      silentRows.push({
+        txn_id: txnId,
+        template_name: templateName,
+        qbo_customer_id: qboCustomerId,
+        qbo_customer_name: qboCustomerName,
+        entity_id: ent?.id ?? null,
+        entity_name: ent?.name ?? null,
+        billing_id: billing?.id ?? null,
+        next_date: nextDate || null,
+        bill_email: billEmail,
+        email_status: emailStatus,
+        problem: !billEmail && !autoSend
+          ? "no BillEmail and auto-send off"
+          : !billEmail
+            ? "auto-send on but no BillEmail"
+            : "BillEmail set but auto-send off",
+      });
+    } else {
+      deliverable++;
+    }
 
     if (billing) {
       linked++;
@@ -117,7 +152,12 @@ Deno.serve(async (req) => {
       inactive,
       unlinked_no_entity_mapping: unlinkedNoEntity.length,
       unlinked_no_billing_row: unlinkedNoBilling.length,
+      // Of the templates that will run: how many actually email the client.
+      will_email_client: deliverable,
+      will_not_email_client: silentRows.length,
     },
+    silent_templates: silentRows.sort((a, b) =>
+      String(a.entity_name ?? a.qbo_customer_name).localeCompare(String(b.entity_name ?? b.qbo_customer_name))),
     unlinked_no_entity_mapping: unlinkedNoEntity,
     unlinked_no_billing_row: unlinkedNoBilling,
     inactive: inactiveRows,
