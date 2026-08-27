@@ -646,7 +646,10 @@ export default function AdminTasksPage() {
   // with the client and who wrote it. Own comments included (they're the
   // thread), but the count chip only counts other people's.
   const recentComments = useMemo(() => {
-    const byId = new Map([...open, ...completed].map((t) => [t.id, t]));
+    // `completed` is null until the first load lands — the page uses null to
+    // mean "not fetched", the way `open` guards with (tasks || []). Spreading
+    // it raw threw on first render, which blanked the whole page.
+    const byId = new Map([...open, ...(completed || [])].map((t) => [t.id, t]));
     const rows = [];
     for (const [taskId, notes] of Object.entries(notesByTask)) {
       const task = byId.get(taskId);
