@@ -227,6 +227,7 @@ export default function GroupsPage() {
                   <option value="sole_trader">Sole Trader</option>
                   <option value="partnership">Partnership</option>
                   <option value="llp">LLP</option>
+                  <option value="llp">LLP</option>
                 </select>
                 <div className="flex gap-2">
                   <Btn onClick={handleCreateNewClient} disabled={addingNew || !newClientName.trim()} variant="secondary" className="text-xs py-1 px-3">

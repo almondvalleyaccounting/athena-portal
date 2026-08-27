@@ -266,6 +266,7 @@ export default function EstimatesView() {
           <option value="limited_company">Limited company</option>
           <option value="sole_trader">Sole trader</option>
           <option value="partnership">Partnership</option>
+          <option value="llp">LLP</option>
         </select>
         <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={includeProspects} onChange={(e) => setIncludeProspects(e.target.checked)} />

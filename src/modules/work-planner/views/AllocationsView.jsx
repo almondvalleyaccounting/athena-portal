@@ -360,6 +360,7 @@ export default function AllocationsView() {
               <option value="limited_company">Limited company</option>
               <option value="sole_trader">Sole trader</option>
               <option value="partnership">Partnership</option>
+              <option value="llp">LLP</option>
             </select>
             <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
               <input type="checkbox" checked={showOnlyGaps} onChange={(e) => setShowOnlyGaps(e.target.checked)} />

@@ -1,0 +1,26 @@
+-- ============================================================
+-- An LLP is not a partnership as far as Companies House is concerned.
+--
+-- Ready Rentals LLP (SO307824) has never been fetched from Companies House
+-- once — no company_status, no ch_last_refreshed_at, no confirmation statement
+-- row — so it could not appear on the CS list. The refresh targets
+-- `type = 'limited_company'`, and Athena types it `partnership`.
+--
+-- That isn't a mis-keying. BrightManager records "Limited Liability
+-- Partnership" as its own client type and the importer flattens it:
+--   'Limited Liability Partnership': 'partnership'   (parsers/bmClients.js)
+-- So the distinction arrives on every import and is discarded on every import.
+-- Re-typing the row by hand would be undone by the next upload; the enum has
+-- to gain the value and the parser has to stop collapsing it.
+--
+-- An LLP sits across the two: registered at Companies House (annual accounts,
+-- confirmation statement, an authentication code, members rather than
+-- directors) but transparent for tax (SA800 partnership return, no
+-- corporation tax). That is exactly why one label cannot serve both.
+--
+-- This migration only ADDS the value. Postgres will not let a new enum label
+-- be used in the transaction that creates it, so the reclassification and the
+-- behaviour that depends on it are in sql/269.
+-- ============================================================
+
+alter type public.entity_type add value if not exists 'llp' after 'partnership';

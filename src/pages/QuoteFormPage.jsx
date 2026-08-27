@@ -448,6 +448,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
             <option value="sole_trader">Sole Trader</option>
             <option value="partnership">Partnership</option>
             <option value="llp">LLP</option>
+            <option value="llp">LLP</option>
           </select>
           <input value={f.client.turnover} onChange={(e) => f.setClient({ ...f.client, turnover: e.target.value })} placeholder="Est. turnover (£)" type="number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
           <div className="col-span-2 flex items-center gap-2">

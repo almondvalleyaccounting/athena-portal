@@ -4,9 +4,17 @@
 
 import { parseCsv } from '../parseCsv';
 
+// BrightManager distinguishes an LLP from an ordinary partnership and Athena
+// used to throw that away, mapping both to 'partnership'. An LLP is registered
+// at Companies House — accounts, a confirmation statement, an authentication
+// code, members not directors — while an ordinary partnership is not registered
+// at all. Collapsing them meant the Companies House refresh (which targets
+// registered bodies) never once fetched Ready Rentals LLP: no company status,
+// no confirmation statement date, so it could not appear on the CS list.
+// The distinction arrives on every import; keep it.
 const CLIENT_TYPE_MAP = {
   'Private Limited Company': 'limited_company',
-  'Limited Liability Partnership': 'partnership',
+  'Limited Liability Partnership': 'llp',
   'Partnership': 'partnership',
   'Self Assessment': 'sole_trader',
 };
@@ -284,11 +292,16 @@ export function parseBmClientsCsv(text) {
       continue;
     }
 
-    // UTR resolution — company UTR for LTD/LLP, Partnership UTR for partnerships
+    // UTR resolution. An LLP resolves exactly as a partnership does — it is
+    // transparent for tax and files an SA800 under a partnership UTR, and this
+    // is the branch it has always taken, so splitting the type changes no
+    // client's UTR. (The old comment here claimed LLPs took the company UTR;
+    // they never did. Corrected rather than implemented — changing which BM
+    // column a tax reference comes from is not a change to make on a guess.)
     let utr = null;
     if (type === 'limited_company') {
       utr = normUtr(get(row, 'Company UTR'));
-    } else if (type === 'partnership') {
+    } else if (type === 'partnership' || type === 'llp') {
       utr = normUtr(get(row, 'Partnership/Trust UTR')) || normUtr(get(row, 'Company UTR'));
     } else {
       utr = normUtr(get(row, 'Personal UTR Number'));
@@ -299,8 +312,9 @@ export function parseBmClientsCsv(text) {
     }
 
     const companyNumber = normCompanyNumber(get(row, 'Company Number'));
-    if (type === 'limited_company' && !companyNumber) {
-      warnings.push({ row: i + 1, bm_client_id: bmId, name, field: 'company_number', message: 'limited company without Company Number' });
+    // An LLP is registered too, so a missing number is the same data error.
+    if ((type === 'limited_company' || type === 'llp') && !companyNumber) {
+      warnings.push({ row: i + 1, bm_client_id: bmId, name, field: 'company_number', message: `${type === 'llp' ? 'LLP' : 'limited company'} without Company Number` });
     }
 
     // Both person blocks. The slot is a property of the LINK, not of the

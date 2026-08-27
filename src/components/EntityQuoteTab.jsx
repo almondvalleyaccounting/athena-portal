@@ -53,6 +53,7 @@ export default function EntityQuoteTab({ defaults: D, entity, onTotalsChange }) 
             <option value="sole_trader">Sole Trader</option>
             <option value="partnership">Partnership</option>
             <option value="llp">LLP</option>
+            <option value="llp">LLP</option>
           </select>
         </div>
       </div>

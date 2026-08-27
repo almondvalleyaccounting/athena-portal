@@ -35,6 +35,7 @@ const TIER_META = {
 
 const TYPE_LABEL = {
   limited_company: 'Ltd', sole_trader: 'Sole trader', partnership: 'Partnership',
+  llp: 'LLP',
 };
 
 function shortDate(iso) {

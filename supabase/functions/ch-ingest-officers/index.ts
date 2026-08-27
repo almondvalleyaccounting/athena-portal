@@ -1,9 +1,15 @@
-// ch-ingest-officers (v10)
+// ch-ingest-officers (v11)
+// v11: target on HAVING a company number, not on type = 'limited_company'.
+//      An LLP is on the Companies House register and files a confirmation
+//      statement like anyone else, but Athena types it 'partnership', so
+//      Ready Rentals LLP (SO307824) was never fetched once: no company_status,
+//      no ch_last_refreshed_at, no CS deadline row. The register decides who
+//      is on it, and a company number is what says so. One entity today.
 // v10: nightly/manual candidate pick now excludes nlac/archived entities —
 //      former clients are no longer refreshed at CH (no wasted calls, and no
 //      strike-off status events raised for them). See sql/134.
 // Pulls officers + PSCs + company profile (status, Confirmation Statement due)
-// from Companies House for limited companies.
+// from Companies House for everything we hold a company number for.
 //
 // Two entry modes:
 //   * Staff (JWT, can_manage_portal): manual refresh from the Data Import UI.
@@ -130,14 +136,20 @@ Deno.serve(async (req) => {
     const { limit = 20, force = false, only } = bodyIn || {};
     const cap = nightly ? NIGHTLY_CHUNK : Math.min(Math.max(1, Number(limit) || 20), 50);
 
-    // 3. Pick target entities: limited companies with company_number.
+    // 3. Pick target entities: anything we hold a company number for.
+    //    NOT type = 'limited_company' — that was the filter until v11 and it
+    //    silently skipped LLPs, which Athena types 'partnership' but Companies
+    //    House treats like any other registered body: same profile endpoint,
+    //    same officers, same confirmation statement. Holding a company number
+    //    IS the statement that CH knows about you; the type column is our own
+    //    bookkeeping. A wrong number 404s and is reported, as it always was.
     //    Nightly: the stalest first, skipping anything refreshed <20h ago.
     //    Manual: previous behaviour (not-yet-ingested first unless force),
     //    but now deterministically ordered so progress always advances.
     let pick = service.from("entities")
       .select("id, name, company_number, company_status, company_status_detail, ch_last_refreshed_at")
-      .eq("type", "limited_company")
       .not("company_number", "is", null)
+      .neq("company_number", "")
       // We do no work for former clients — don't spend CH calls on them, and
       // above all don't generate status events that trigger strike-off alerts.
       .not("entity_status", "in", "(nlac,archived)")

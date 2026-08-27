@@ -19,6 +19,7 @@ const ENTITY_TYPES = [
   { value: 'limited_company', label: 'Limited Company' },
   { value: 'sole_trader', label: 'Sole Trader' },
   { value: 'partnership', label: 'Partnership' },
+  { value: 'llp', label: 'LLP' },
 ];
 
 export default function NewClientModal({ open, onClose, onSave, initialName = '' }) {

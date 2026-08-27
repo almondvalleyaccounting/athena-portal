@@ -1252,6 +1252,7 @@ const ENTITY_TYPES = [
   { value: 'limited_company', label: 'Limited company' },
   { value: 'sole_trader',     label: 'Sole trader' },
   { value: 'partnership',     label: 'Partnership' },
+  { value: 'llp',             label: 'LLP' },
   { value: 'personal',        label: 'Personal' },
 ];
 
