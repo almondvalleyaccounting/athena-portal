@@ -70,6 +70,13 @@ const COLLAPSE_LS_KEY = 'athena_admin_tasks_expanded';
 // to decide which speech bubbles show as unread. Read receipts proper live on
 // the notifications table.
 const NOTES_READ_LS_KEY = 'athena_admin_task_notes_read';
+// What each clickable stat box narrows the list to, in words.
+const ATTENTION_LABEL = {
+  urgent: 'urgent only',
+  overdue: 'past their deadline only',
+  escalated: 'escalated only',
+  comments: 'those with a comment you have not read',
+};
 // In-flight CH code chases shown on this list (pre-"entered" stages).
 const CH_OPEN_STAGES = ['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_code'];
 
@@ -143,6 +150,12 @@ export default function AdminTasksPage() {
   const [reportCreated, setReportCreated] = useState(null);
 
   const [openNotes, setOpenNotes] = useState(() => new Set());
+  const [attention, setAttention] = useState(null); // which stat box is switched on
+  // The task ids the "New comments" box matched WHEN IT WAS CLICKED. Reading a
+  // thread marks it read, so a live predicate would delete the row out from
+  // under you the moment you opened it. The set is frozen until you switch the
+  // box off and on again.
+  const [attentionIds, setAttentionIds] = useState(null);
   // When you last opened each task's thread, per task. A comment written by
   // someone else since then turns that task's speech bubble dark — so the
   // signal sits on the task the comment is about, and clears when you read it.
@@ -610,7 +623,10 @@ export default function AdminTasksPage() {
     URL.revokeObjectURL(url);
   }
 
-  const open = useMemo(() => {
+  // openAll is what the stat boxes count; `open` is what the sections render.
+  // They have to be different lists, or clicking "Urgent" would narrow the very
+  // number you clicked and the box would report on its own filter.
+  const openAll = useMemo(() => {
     let list = (tasks || []).filter((t) => !t.done_at && !t.confirmed_at);
     if (clientFilter) list = list.filter((t) => t.entity_id === clientFilter);
     return list.sort((a, b) => {
@@ -675,20 +691,62 @@ export default function AdminTasksPage() {
     [confStatements, clientFilter]
   );
 
+  // Which stat box is switched on. One at a time — these are four ways of
+  // looking at the same list, not independent toggles that could accumulate
+  // into an empty set.
+  const ATTENTION = {
+    urgent: (t) => !!t.urgent,
+    overdue: (t) => t.deadline && t.deadline < isoToday(),
+    escalated: (t) => !!t.escalated_to,
+    // Frozen at click time — see attentionIds.
+    comments: (t) => !!attentionIds && attentionIds.has(t.id),
+  };
+  // openAll is what the boxes COUNT; open is what the sections RENDER. They
+  // have to be different lists, or clicking Urgent would narrow the very number
+  // you clicked and the box would end up reporting on its own filter.
+  const open = useMemo(
+    () => (attention && ATTENTION[attention] ? openAll.filter(ATTENTION[attention]) : openAll),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [openAll, attention, attentionIds]
+  );
+
+  // A box that filters: switch it on (off if it already was) and open every
+  // section, so matches are visible rather than hidden behind a count. A box
+  // that IS a section: open that one and scroll to it.
+  const toggleAttention = (key) => {
+    const next = attention === key ? null : key;
+    setAttention(next);
+    setAttentionIds(next === 'comments'
+      ? new Set(openAll.filter((t) => hasUnreadNotes(t.id)).map((t) => t.id))
+      : null);
+    if (next) persistExpanded(new Set(allSectionKeys));
+  };
+  const clearAttention = () => { setAttention(null); setAttentionIds(null); };
+  const revealSection = (key) => {
+    clearAttention();
+    persistExpanded(new Set([...expandedSet, key]));
+    // It has to be expanded before there is anything to scroll to.
+    setTimeout(() => {
+      document.getElementById(`admin-section-${key}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  };
+
   const stats = useMemo(() => {
     const today = isoToday();
     return {
-      open: open.length,
-      urgent: open.filter((t) => t.urgent).length,
-      overdue: open.filter((t) => t.deadline && t.deadline < today).length,
-      escalated: open.filter((t) => t.escalated_to).length,
+      open: openAll.length,
+      urgent: openAll.filter((t) => t.urgent).length,
+      overdue: openAll.filter((t) => t.deadline && t.deadline < today).length,
+      escalated: openAll.filter((t) => t.escalated_to).length,
       realloc: filteredDrafts.length,
       onboarding: filteredOnboardings.length,
       chcodes: filteredChCodes.length,
       confstat: filteredConfStatements.length,
       confstatOverdue: filteredConfStatements.filter((r) => r.overdue).length,
+      unread: unreadIn(openAll),
     };
-  }, [open, filteredDrafts, filteredOnboardings, filteredChCodes, filteredConfStatements]);
+  }, [openAll, filteredDrafts, filteredOnboardings, filteredChCodes, filteredConfStatements, unreadIn]);
 
   // ── Manually generated vs system generated ──
   // Manual = things we initiate in Athena (added-manually + uploaded workplan);
@@ -797,15 +855,28 @@ export default function AdminTasksPage() {
 
         {/* Stat chips share the header row — width is better spent here than stacked below */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 20 }}>
-          <Chip label="Open" value={stats.open} />
-          <Chip label="Urgent" value={stats.urgent} tone={stats.urgent ? 'red' : 'muted'} />
-          <Chip label="Overdue" value={stats.overdue} tone={stats.overdue ? 'red' : 'muted'} />
-          <Chip label="Escalated" value={stats.escalated} tone={stats.escalated ? 'amber' : 'muted'} />
-          <Chip label="Reallocations" value={stats.realloc} tone={stats.realloc ? 'blue' : 'muted'} />
-          <Chip label="Onboarding" value={stats.onboarding} tone={stats.onboarding ? 'blue' : 'muted'} />
-          <Chip label="CH codes" value={stats.chcodes} tone={stats.chcodes ? 'blue' : 'muted'} />
+          <Chip label="Open" value={stats.open}
+            active={!attention} onClick={() => { clearAttention(); persistExpanded(new Set(allSectionKeys)); }}
+            title="Every open task — clears any filter and opens all sections" />
+          <Chip label="Urgent" value={stats.urgent} tone={stats.urgent ? 'red' : 'muted'}
+            active={attention === 'urgent'} onClick={() => toggleAttention('urgent')} />
+          <Chip label="Overdue" value={stats.overdue} tone={stats.overdue ? 'red' : 'muted'}
+            active={attention === 'overdue'} onClick={() => toggleAttention('overdue')} />
+          <Chip label="Escalated" value={stats.escalated} tone={stats.escalated ? 'amber' : 'muted'}
+            active={attention === 'escalated'} onClick={() => toggleAttention('escalated')} />
+          <Chip label="New comments" value={stats.unread} tone={stats.unread ? 'blue' : 'muted'}
+            active={attention === 'comments'} onClick={() => toggleAttention('comments')}
+            title="Tasks someone has commented on since you last opened the thread" />
+          <Chip label="Reallocations" value={stats.realloc} tone={stats.realloc ? 'blue' : 'muted'}
+            onClick={() => revealSection('realloc')} />
+          <Chip label="Onboarding" value={stats.onboarding} tone={stats.onboarding ? 'blue' : 'muted'}
+            onClick={() => revealSection('onboard')} />
+          <Chip label="CH codes" value={stats.chcodes} tone={stats.chcodes ? 'blue' : 'muted'}
+            onClick={() => revealSection('chcodes')} />
           <Chip label="Conf. statements" value={stats.confstat}
-            tone={stats.confstatOverdue ? 'red' : (stats.confstat ? 'blue' : 'muted')} />
+            tone={stats.confstatOverdue ? 'red' : (stats.confstat ? 'blue' : 'muted')}
+            onClick={() => revealSection('confstat')}
+            title={stats.confstatOverdue ? `${stats.confstatOverdue} overdue` : 'Due within 14 days'} />
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -841,6 +912,24 @@ export default function AdminTasksPage() {
         </div>
       )}
       {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
+
+      {/* A filtered list and an empty list look identical, so say which is on. */}
+      {attention && (
+        <div style={{
+          ...card, borderColor: '#bae6fd', background: '#f0f9ff', padding: '8px 14px',
+          marginBottom: 16, fontSize: 12.5, color: '#0369a1',
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <span>
+            Showing {open.length} of {openAll.length} open task{openAll.length === 1 ? '' : 's'}
+            {' — '}{ATTENTION_LABEL[attention]}.
+          </span>
+          <button onClick={clearAttention}
+            style={{ ...btn('ghost'), padding: '3px 9px', fontSize: 11.5, marginLeft: 'auto' }}>
+            <X size={11} /> Show all
+          </button>
+        </div>
+      )}
 
       {adding && (
         <div style={{ ...card, padding: '14px 16px', marginBottom: 16 }}>
@@ -1034,6 +1123,7 @@ export default function AdminTasksPage() {
         <Section
           title="Task reallocations to apply in BM" count={filteredDrafts.length}
           collapsed={!expandedSet.has('realloc')} onToggle={() => toggleCollapse('realloc')}
+          anchor="realloc"
           action={<button onClick={() => navigate('/planner/allocations')} style={btn('ghost')}>Open capacity planner →</button>}
         >
           {filteredDrafts.length === 0 && <Empty>No reallocation proposals waiting.</Empty>}
@@ -1058,6 +1148,7 @@ export default function AdminTasksPage() {
         <Section
           title="Onboarding in flight" count={filteredOnboardings.length}
           collapsed={!expandedSet.has('onboard')} onToggle={() => toggleCollapse('onboard')}
+          anchor="onboard"
           action={<button onClick={() => navigate('/onboarding')} style={btn('ghost')}>Open onboarding →</button>}
         >
           {filteredOnboardings.length === 0 && <Empty>No onboardings in progress.</Empty>}
@@ -1115,6 +1206,7 @@ export default function AdminTasksPage() {
       <Section
         title="CH personal code chases" count={filteredChCodes.length}
         collapsed={!expandedSet.has('chcodes')} onToggle={() => toggleCollapse('chcodes')}
+        anchor="chcodes"
         action={<button onClick={() => navigate('/onboarding/ch-codes')} style={btn('ghost')}>Open CH codes →</button>}
       >
         {filteredChCodes.length === 0 && <Empty>No code chases in flight.</Empty>}
@@ -1148,6 +1240,7 @@ export default function AdminTasksPage() {
       <Section
         title="Confirmation statements — overdue and due in 14 days" count={filteredConfStatements.length}
         collapsed={!expandedSet.has('confstat')} onToggle={() => toggleCollapse('confstat')}
+        anchor="confstat"
         action={<span style={{ fontSize: 11.5, color: '#94a3b8' }}>
           {stats.confstatOverdue > 0
             ? `${stats.confstatOverdue} overdue · ${filteredConfStatements.length - stats.confstatOverdue} due within 14 days`
@@ -1928,9 +2021,10 @@ function EscalateModal({ task, staffList, onClose, onSend }) {
   );
 }
 
-function Section({ title, count, collapsed, onToggle, action, unread = 0, children }) {
+function Section({ title, count, collapsed, onToggle, action, unread = 0, anchor, children }) {
   return (
-    <div style={{ ...card, overflow: 'hidden', marginBottom: 16 }}>
+    <div id={anchor ? `admin-section-${anchor}` : undefined}
+      style={{ ...card, overflow: 'hidden', marginBottom: 16, scrollMarginTop: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: collapsed ? 'none' : '1px solid #f1f5f9' }}>
         <button onClick={onToggle} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginRight: 8, color: '#64748b', display: 'flex' }}>
           {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
@@ -1958,19 +2052,35 @@ function Section({ title, count, collapsed, onToggle, action, unread = 0, childr
   );
 }
 
-function Chip({ label, value, tone = 'default' }) {
+// A stat that does nothing is a stat you read once. Each of these is a box you
+// can click: the number is the count, the click takes you to what it counted —
+// either a filter over the task list or the section holding it. `active` shows
+// which filter is on, so a narrowed list never looks like an empty one.
+function Chip({ label, value, tone = 'default', onClick, active = false, title }) {
   const tones = {
-    default: { bg: '#f1f5f9', fg: '#0f172a' },
-    muted: { bg: '#f8fafc', fg: '#94a3b8' },
-    red: { bg: '#fee2e2', fg: '#b91c1c' },
-    amber: { bg: '#fef3c7', fg: '#b45309' },
-    blue: { bg: '#e0f2fe', fg: '#0369a1' },
+    default: { bg: '#f1f5f9', fg: '#0f172a', br: '#e2e8f0' },
+    muted: { bg: '#f8fafc', fg: '#94a3b8', br: '#eef2f7' },
+    red: { bg: '#fee2e2', fg: '#b91c1c', br: '#fecaca' },
+    amber: { bg: '#fef3c7', fg: '#b45309', br: '#fde68a' },
+    blue: { bg: '#e0f2fe', fg: '#0369a1', br: '#bae6fd' },
   };
   const c = tones[tone] || tones.default;
+  const clickable = typeof onClick === 'function';
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, padding: '5px 12px', borderRadius: 999, background: c.bg }}>
-      <span style={{ fontSize: 15, fontWeight: 700, color: c.fg, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
-      <span style={{ fontSize: 11.5, color: c.fg, opacity: 0.85 }}>{label}</span>
+    <div
+      onClick={onClick}
+      title={title || (clickable ? `Show ${label.toLowerCase()}` : undefined)}
+      style={{
+        display: 'inline-flex', alignItems: 'baseline', gap: 6,
+        padding: '4px 9px', borderRadius: 6,
+        background: active ? c.fg : c.bg,
+        border: `1px solid ${active ? c.fg : c.br}`,
+        cursor: clickable ? 'pointer' : 'default',
+        userSelect: 'none',
+      }}
+    >
+      <span style={{ fontSize: 14.5, fontWeight: 700, color: active ? '#fff' : c.fg, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      <span style={{ fontSize: 11.5, color: active ? '#fff' : c.fg, opacity: active ? 0.9 : 0.85 }}>{label}</span>
     </div>
   );
 }
