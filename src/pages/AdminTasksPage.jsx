@@ -64,7 +64,7 @@ function groupKeyFor(t) { return (TASK_GROUPS.find((g) => g.match(t)) || { key: 
 function groupLabelFor(key) { return (TASK_GROUPS.find((g) => g.key === key) || { label: 'Other' }).label; }
 
 // Fixed live-aggregation sections rendered after the task groups.
-const FIXED_SECTION_KEYS = ['chcodes', 'realloc', 'onboard'];
+const FIXED_SECTION_KEYS = ['chcodes', 'confstat', 'realloc', 'onboard'];
 const COLLAPSE_LS_KEY = 'athena_admin_tasks_expanded';
 // When you last opened each task's comment thread, keyed by task id. Used only
 // to decide which speech bubbles show as unread. Read receipts proper live on
@@ -121,6 +121,7 @@ export default function AdminTasksPage() {
   const [newClientModal, setNewClientModal] = useState({ open: false, initialName: '', resolve: null });
   const [copied, setCopied] = useState(null);
   const [chCodes, setChCodes] = useState([]);
+  const [confStatements, setConfStatements] = useState([]);
   const [docsByTask, setDocsByTask] = useState({});
   const [billingById, setBillingById] = useState({}); // billing_items status for pipeline stages
   const [fees, setFees] = useState([]); // standard_fees price book (service → standard net)
@@ -171,7 +172,7 @@ export default function AdminTasksPage() {
       const { data: confirmed } = await supabase.rpc('admin_tasks_confirm_from_bm');
       if (confirmed > 0) setConfirmedNow(confirmed);
 
-      const [{ data: t, error: e1 }, { data: ct }, { data: d }, { data: st }, { data: obs }, { data: ents }, { data: ch }, { data: sf }, svc] = await Promise.all([
+      const [{ data: t, error: e1 }, { data: ct }, { data: d }, { data: st }, { data: obs }, { data: ents }, { data: ch }, { data: sf }, svc, { data: cs }] = await Promise.all([
         supabase.from('admin_tasks')
           .select('*, entity:entities(id, name)')
           .is('done_at', null).is('confirmed_at', null).is('dismissed_at', null)
@@ -196,6 +197,11 @@ export default function AdminTasksPage() {
           .order('updated_at', { ascending: true }),
         supabase.from('standard_fees').select('task_name, service_id, standard_net'),
         fetchAdhocServices(),
+        // Confirmation statements overdue or landing inside 14 days. The view
+        // (sql/266) decides what counts — former clients, dissolved companies
+        // and filed statements are already out of it.
+        supabase.from('v_confirmation_statements_due')
+          .select('*').order('due_date', { ascending: true }),
       ]);
       if (e1) throw e1;
       setTasks(t || []);
@@ -214,6 +220,7 @@ export default function AdminTasksPage() {
       }
       setAllEntities(ents || []);
       setChCodes(ch || []);
+      setConfStatements(cs || []);
       setFees(sf || []);
       setServiceOptions(svc || []);
       const st2 = (st || []);
@@ -663,6 +670,11 @@ export default function AdminTasksPage() {
     [hasUnreadNotes]
   );
 
+  const filteredConfStatements = useMemo(
+    () => (clientFilter ? confStatements.filter((r) => r.entity_id === clientFilter) : confStatements),
+    [confStatements, clientFilter]
+  );
+
   const stats = useMemo(() => {
     const today = isoToday();
     return {
@@ -673,8 +685,10 @@ export default function AdminTasksPage() {
       realloc: filteredDrafts.length,
       onboarding: filteredOnboardings.length,
       chcodes: filteredChCodes.length,
+      confstat: filteredConfStatements.length,
+      confstatOverdue: filteredConfStatements.filter((r) => r.overdue).length,
     };
-  }, [open, filteredDrafts, filteredOnboardings, filteredChCodes]);
+  }, [open, filteredDrafts, filteredOnboardings, filteredChCodes, filteredConfStatements]);
 
   // ── Manually generated vs system generated ──
   // Manual = things we initiate in Athena (added-manually + uploaded workplan);
@@ -744,7 +758,7 @@ export default function AdminTasksPage() {
 
   // Collapse-all treats every section (both groups + fixed) as one set.
   const allSectionKeys = ['draft', 'bill_hold', 'billed', 'todo', 'realloc', 'onboard',
-    'offboarding', 'bm_keying', 'bm_data_error', 'person_dedup', 'other', 'chcodes'];
+    'offboarding', 'bm_keying', 'bm_data_error', 'person_dedup', 'other', 'chcodes', 'confstat'];
   const allCollapsed = !allSectionKeys.some((k) => expandedSet.has(k));
   const toggleAllCollapsed = () => persistExpanded(allCollapsed ? new Set(allSectionKeys) : new Set());
 
@@ -790,6 +804,8 @@ export default function AdminTasksPage() {
           <Chip label="Reallocations" value={stats.realloc} tone={stats.realloc ? 'blue' : 'muted'} />
           <Chip label="Onboarding" value={stats.onboarding} tone={stats.onboarding ? 'blue' : 'muted'} />
           <Chip label="CH codes" value={stats.chcodes} tone={stats.chcodes ? 'blue' : 'muted'} />
+          <Chip label="Conf. statements" value={stats.confstat}
+            tone={stats.confstatOverdue ? 'red' : (stats.confstat ? 'blue' : 'muted')} />
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -1123,6 +1139,70 @@ export default function AdminTasksPage() {
             </div>
           );
         })}
+      </Section>
+
+      {/* ── Confirmation statements (live from the nightly CH refresh) ──
+          Not admin_tasks rows: the due date comes off the Companies House
+          profile every night, so filing one takes it off this list on the next
+          run. Nothing to tick, and nothing to raise a task for. */}
+      <Section
+        title="Confirmation statements — overdue and due in 14 days" count={filteredConfStatements.length}
+        collapsed={!expandedSet.has('confstat')} onToggle={() => toggleCollapse('confstat')}
+        action={<span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+          {stats.confstatOverdue > 0
+            ? `${stats.confstatOverdue} overdue · ${filteredConfStatements.length - stats.confstatOverdue} due within 14 days`
+            : 'none overdue'}
+        </span>}
+      >
+        {filteredConfStatements.length === 0 && <Empty>Nothing overdue or due in the next 14 days.</Empty>}
+        {filteredConfStatements.map((r) => {
+          // days_late is signed: positive is past the date, negative is to go.
+          const late = Number(r.days_late) || 0;
+          const strikeOff = /strike-off|strike off|liquidation|receiver/i.test(
+            `${r.company_status || ''} ${r.company_status_detail || ''}`
+          );
+          return (
+            <div key={r.deadline_id} onClick={() => navigate(`/clients/${r.entity_id}`)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px',
+                borderTop: '1px solid #f8fafc', fontSize: 13, cursor: 'pointer',
+                background: r.overdue ? '#fffbfb' : '#fff',
+              }}>
+              <CalendarDays size={13} color={r.overdue ? '#b91c1c' : '#94a3b8'} style={{ flexShrink: 0 }} />
+              <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 240px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {r.entity_name}
+              </span>
+              <span style={{ color: '#64748b', flex: '0 0 96px', whiteSpace: 'nowrap' }}>
+                {r.company_number || ''}
+              </span>
+              <span style={{ color: '#475569', flex: 1, whiteSpace: 'nowrap' }}>
+                Due {new Date(r.due_date).toLocaleDateString('en-GB')}
+              </span>
+              {/* A company being struck off still legally owes the statement,
+                  so it stays on the list — but say so, because filing one for
+                  a company that is closing is usually wasted work. */}
+              {strikeOff && (
+                <span title={r.company_status_detail || r.company_status}
+                  style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#fef3c7', color: '#b45309', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {r.company_status_detail || r.company_status}
+                </span>
+              )}
+              <span style={{
+                fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+                color: r.overdue ? '#b91c1c' : '#0369a1',
+              }}>
+                {r.overdue
+                  ? `${late} day${late === 1 ? '' : 's'} overdue`
+                  : (late === 0 ? 'due today' : `${-late} day${-late === 1 ? '' : 's'} to go`)}
+              </span>
+            </div>
+          );
+        })}
+        {filteredConfStatements.length > 0 && (
+          <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
+            Straight from Companies House on the nightly refresh — file the statement and the row leaves this list on the next run. There is nothing to mark complete here.
+          </div>
+        )}
       </Section>
 
       </>)}
