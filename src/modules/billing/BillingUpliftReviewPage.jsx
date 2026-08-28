@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail, MailX, ArrowUp, ArrowDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -44,6 +44,16 @@ function firstNameOf(person) {
   if (person.first_name) return person.first_name.trim();
   if (person.name) return person.name.trim().split(/\s+/)[0] || null;
   return null;
+}
+
+// Name the rows a push declined and why. "Skipped: 1" says a fee raise
+// did not happen and nothing about the cause; the reason has always been
+// in the response, thrown away unread.
+function explainRows(rows, fallback) {
+  if (!rows || rows.length === 0) return '';
+  return '\n\n' + rows
+    .map((r) => `• ${r.entity || 'Unknown'} — ${r.reason || r.error || fallback || 'no reason given'}`)
+    .join('\n');
 }
 
 // Review staged uplifts (pending_monthly_amount on services) before
@@ -119,21 +129,46 @@ export default function BillingUpliftReviewPage() {
   };
   useEffect(() => { load(); }, []);
 
+  // Rows we've already asked QBO about, and why the date is still
+  // missing where the answer came back empty.
+  const metaAsked = useRef(new Set());
+  const [metaErrors, setMetaErrors] = useState({}); // billing_id → error text
+
+  // A template that 404s and a template with no next run date both
+  // render as a bare em-dash. Keep the reason so the cell can say which.
+  const noteMetaErrors = (data) => {
+    const next = {};
+    for (const u of data?.updates || []) if (u.error) next[u.billing_id] = u.error;
+    setMetaErrors((prev) => ({ ...prev, ...next }));
+  };
+
   // Auto-refresh next-run dates from QBO once the rows are loaded, but
-  // only for rows missing the date. Keeps the page fresh without
-  // hammering QBO if the user reloads frequently.
+  // only for rows missing the date, and only once per row per visit.
+  //
+  // The fetch is what fills qbo_next_run_date, so a row it SUCCEEDS on
+  // drops out of `stale` next pass — but a row it fails on does not.
+  // Re-running on [loading] therefore made load() → fetch → load() a
+  // closed cycle: three templates whose next date never arrived kept
+  // the page re-querying and blanking to "Loading…" roughly every
+  // second and a half, 39 invocations a minute against QBO. The ref
+  // remembers what we've asked, so a failure costs one attempt rather
+  // than one per second; "Refresh from QBO" is the way to ask again.
   useEffect(() => {
     if (loading || rows.length === 0) return;
-    const stale = rows.filter((r) => r.qbo_recurring_txn_id && !r.qbo_next_run_date).map((r) => r.id);
+    const stale = rows
+      .filter((r) => r.qbo_recurring_txn_id && !r.qbo_next_run_date && !metaAsked.current.has(r.id))
+      .map((r) => r.id);
     if (stale.length === 0) return;
+    stale.forEach((id) => metaAsked.current.add(id));
     (async () => {
       try {
-        await supabase.functions.invoke('qbo-fetch-template-meta', { body: { billing_ids: stale } });
+        const { data } = await supabase.functions.invoke('qbo-fetch-template-meta', { body: { billing_ids: stale } });
+        noteMetaErrors(data);
         await load();
       } catch (e) { /* best effort */ }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [loading, rows]);
 
   // Totals are now full-row (the QBO template's total monthly), not
   // just the pending services. Sum every approved monthly service —
@@ -271,8 +306,14 @@ export default function BillingUpliftReviewPage() {
     const ids = rows.filter((r) => r.qbo_recurring_txn_id).map((r) => r.id);
     if (ids.length === 0) return;
     setRefreshing(true);
+    // An explicit refresh is the user asking again, so drop the earlier
+    // answers — but count these ids as asked, or the effect below fires
+    // the moment load() returns and asks QBO a second time for nothing.
+    metaAsked.current = new Set(ids);
+    setMetaErrors({});
     try {
-      await supabase.functions.invoke('qbo-fetch-template-meta', { body: { billing_ids: ids } });
+      const { data } = await supabase.functions.invoke('qbo-fetch-template-meta', { body: { billing_ids: ids } });
+      noteMetaErrors(data);
       await load();
     } catch (err) {
       alert('Refresh failed: ' + (err.message || err));
@@ -297,12 +338,31 @@ export default function BillingUpliftReviewPage() {
       });
       if (error) throw error;
       const s = data?.summary || {};
-      const msg = `${label} complete\n\nPushed: ${s.pushed || 0}\nSkipped: ${s.skipped || 0}\nErrored: ${s.errored || 0}`;
+      const results = Array.isArray(data?.results) ? data.results : [];
       if (dryRun) {
         console.log('Dry-run results:', data);
-        alert(msg + '\n\nFull dry-run output logged to console.');
+        // The dry-run branch of the edge function returns before its
+        // skip check, so the summary counts come back all zero. The
+        // useful number is per row: how many QBO lines the pending
+        // services matched. No matches means a live push would skip it.
+        const wouldSkip = results.filter((r) => r.status === 'dry_run' && !r.match_count);
+        const wouldPush = results.filter((r) => r.status === 'dry_run' && r.match_count);
+        alert(
+          `Dry-run complete\n\nWould change: ${wouldPush.length}\nWould be skipped: ${wouldSkip.length}`
+          + explainRows(wouldSkip, 'no line on the QBO template matches the pending service — nothing for the push to overwrite')
+          + explainRows(results.filter((r) => r.status === 'skipped' || r.status === 'error'))
+          + '\n\nFull dry-run output logged to console.'
+        );
       } else {
-        alert(msg);
+        console.log('Push results:', data);
+        // A bare count is not an answer. Every row the function declines
+        // to push carries a reason — show it, or the row stays approved
+        // with nothing to act on and no clue what went wrong.
+        const problems = results.filter((r) => r.status === 'skipped' || r.status === 'error');
+        alert(
+          `${label} complete\n\nPushed: ${s.pushed || 0}\nSkipped: ${s.skipped || 0}\nErrored: ${s.errored || 0}`
+          + explainRows(problems)
+        );
         await load();
       }
     } catch (err) {
@@ -490,7 +550,11 @@ export default function BillingUpliftReviewPage() {
                       {r._delta > 0 ? '+' : ''}£{r._delta.toFixed(2)}
                     </Td>
                     <Td style={{ color: '#475569' }}>{r._goLive || '—'}</Td>
-                    <Td style={{ color: '#475569' }}>{r.qbo_next_run_date || '—'}</Td>
+                    <Td style={{ color: '#475569' }}>
+                      {r.qbo_next_run_date || (metaErrors[r.id]
+                        ? <span style={{ color: '#b45309', cursor: 'help' }} title={`QBO could not be read for this template: ${metaErrors[r.id]}`}>— ⚠</span>
+                        : '—')}
+                    </Td>
                     <Td><StatusChip status={status} /></Td>
                     <Td>
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
