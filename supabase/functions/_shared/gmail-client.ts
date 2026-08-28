@@ -8,6 +8,7 @@
 // with no argument it uses the practice-default row, so the existing senders
 // (reminders-send, chase-reply-scan, gmail-create-draft) behave as before.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { failureUpdate, refreshWithRetry } from "./oauth-refresh.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -128,27 +129,23 @@ export async function getValidGmailToken(mailbox?: string): Promise<GmailTokenIn
     return info(conn, conn.access_token);
   }
 
-  // Refresh.
-  const resp = await fetch(GOOGLE_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
-      grant_type: "refresh_token",
-      refresh_token: conn.refresh_token,
-    }),
-  });
-  if (!resp.ok) {
-    const errBody = await resp.text();
-    await sb.from("gmail_connections").update({
-      status: "error",
-      error_message: `Token refresh failed: ${resp.status} ${errBody}`,
-      updated_at: new Date().toISOString(),
-    }).eq("id", conn.id);
-    throw new Error(`Gmail token refresh failed: ${resp.status} ${errBody}`);
+  // Refresh. A transient failure leaves the connection active so the next run
+  // retries it — only a dead grant disables the mailbox. See _shared/oauth-refresh.ts.
+  const outcome = await refreshWithRetry(GOOGLE_TOKEN_URL, new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    grant_type: "refresh_token",
+    refresh_token: conn.refresh_token,
+  }));
+  if (!outcome.ok) {
+    await sb.from("gmail_connections").update(failureUpdate(outcome)).eq("id", conn.id);
+    throw new Error(
+      `Gmail token refresh failed after ${outcome.attempts} attempt(s): ` +
+      `${outcome.status} ${outcome.body}` +
+      (outcome.permanent ? " — reconnect required" : " — transient, will retry"),
+    );
   }
-  const tokens = await resp.json();
+  const tokens = outcome.tokens as Record<string, any>;
   const newExpiry = new Date(Date.now() + tokens.expires_in * 1000);
   await sb.from("gmail_connections").update({
     access_token: tokens.access_token,

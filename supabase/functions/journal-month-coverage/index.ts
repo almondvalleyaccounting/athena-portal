@@ -24,6 +24,7 @@
 // Body: { start, end, offset?, limit?, report_id? }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { failureUpdate, refreshWithRetry } from "../_shared/oauth-refresh.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -65,17 +66,23 @@ async function resolveSource(sb: any, realmId: string) {
 
 async function refreshToken(sb: any, src: any) {
   const basicAuth = btoa(`${QBO_CLIENT_ID}:${QBO_CLIENT_SECRET}`);
-  const resp = await fetch(QBO_TOKEN_URL, {
-    method: "POST",
-    headers: { "Authorization": `Basic ${basicAuth}`, "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
-    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: src.conn.refresh_token }),
-  });
+  // A 5xx or a dropped connection is retried and leaves the connection enabled
+  // so the next run picks it up; only a dead grant disables it. A transient
+  // blip once took accounts@ dark for 36 days. See _shared/oauth-refresh.ts.
+  const outcome = await refreshWithRetry(
+    QBO_TOKEN_URL,
+    new URLSearchParams({ grant_type: "refresh_token", refresh_token: src.conn.refresh_token }),
+    { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+  );
   const keyVal = src.conn[src.keyCol];
-  if (!resp.ok) {
-    await sb.from(src.table).update({ status: "error", error_message: `Token refresh failed: ${resp.status}`, updated_at: new Date().toISOString() }).eq(src.keyCol, keyVal);
-    throw new Error(`QBO token refresh failed: ${resp.status}`);
+  if (!outcome.ok) {
+    await sb.from(src.table).update(failureUpdate(outcome)).eq(src.keyCol, keyVal);
+    throw new Error(
+      `QBO token refresh failed after ${outcome.attempts} attempt(s): ${outcome.status} ${outcome.body}` +
+      (outcome.permanent ? " — reconnect required" : " — transient, will retry"),
+    );
   }
-  const t = await resp.json();
+  const t = outcome.tokens as Record<string, any>;
   await sb.from(src.table).update({
     access_token: t.access_token, refresh_token: t.refresh_token,
     token_expires_at: new Date(Date.now() + t.expires_in * 1000).toISOString(),

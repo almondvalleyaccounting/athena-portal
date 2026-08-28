@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { failureUpdate, refreshWithRetry } from "./oauth-refresh.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -127,32 +128,29 @@ async function refreshToken(sb: SupaClient, src: TokenSource) {
   const { table, keyCol, conn } = src;
   const basicAuth = btoa(`${QBO_CLIENT_ID}:${QBO_CLIENT_SECRET}`);
 
-  const resp = await fetch(QBO_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Basic ${basicAuth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "application/json",
-    },
-    body: new URLSearchParams({
+  // Same rule as Gmail: a 5xx or a dropped connection is retried and leaves the
+  // realm connected, so the next run picks it up. Only a dead grant sets
+  // status='error', because only that needs a human. See _shared/oauth-refresh.ts.
+  const outcome = await refreshWithRetry(
+    QBO_TOKEN_URL,
+    new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: conn.refresh_token,
     }),
-  });
+    { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+  );
 
   const keyVal = conn[keyCol] as string;
 
-  if (!resp.ok) {
-    const errBody = await resp.text();
-    await sb.from(table).update({
-      status: "error",
-      error_message: `Token refresh failed: ${resp.status} ${errBody}`,
-      updated_at: new Date().toISOString(),
-    }).eq(keyCol, keyVal);
-    throw new Error(`QBO token refresh failed: ${resp.status}`);
+  if (!outcome.ok) {
+    await sb.from(table).update(failureUpdate(outcome)).eq(keyCol, keyVal);
+    throw new Error(
+      `QBO token refresh failed after ${outcome.attempts} attempt(s): ${outcome.status}` +
+      (outcome.permanent ? " — reconnect required" : " — transient, will retry"),
+    );
   }
 
-  const tokens = await resp.json();
+  const tokens = outcome.tokens as Record<string, any>;
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
   const refreshExpiresAt = tokens.x_refresh_token_expires_in
     ? new Date(Date.now() + tokens.x_refresh_token_expires_in * 1000)

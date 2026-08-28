@@ -13,6 +13,7 @@
 // and the caller was told success. Diff against the deployment before
 // any future edit + deploy.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { failureUpdate, refreshWithRetry } from "../_shared/oauth-refresh.ts";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -26,17 +27,22 @@ function sb() { return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY); }
 
 async function refreshToken(client, conn) {
   const basicAuth = btoa(`${QBO_CLIENT_ID}:${QBO_CLIENT_SECRET}`);
-  const resp = await fetch(QBO_TOKEN_URL, {
-    method: "POST",
-    headers: { "Authorization": `Basic ${basicAuth}`, "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
-    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: conn.refresh_token }),
-  });
-  if (!resp.ok) {
-    const err = await resp.text();
-    await client.from("qbo_connections").update({ status: "error", error_message: `Token refresh failed: ${resp.status} ${err}`, updated_at: new Date().toISOString() }).eq("id", conn.id);
-    throw new Error(`QBO token refresh failed: ${resp.status} ${err}`);
+  // A 5xx or a dropped connection is retried and leaves the connection enabled
+  // so the next run picks it up; only a dead grant disables it. A transient
+  // blip once took accounts@ dark for 36 days. See _shared/oauth-refresh.ts.
+  const outcome = await refreshWithRetry(
+    QBO_TOKEN_URL,
+    new URLSearchParams({ grant_type: "refresh_token", refresh_token: conn.refresh_token }),
+    { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+  );
+  if (!outcome.ok) {
+    await client.from("qbo_connections").update(failureUpdate(outcome)).eq("id", conn.id);
+    throw new Error(
+      `QBO token refresh failed after ${outcome.attempts} attempt(s): ${outcome.status} ${outcome.body}` +
+      (outcome.permanent ? " — reconnect required" : " — transient, will retry"),
+    );
   }
-  const tokens = await resp.json();
+  const tokens = outcome.tokens as Record<string, any>;
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
   await client.from("qbo_connections").update({
     access_token: tokens.access_token, refresh_token: tokens.refresh_token,

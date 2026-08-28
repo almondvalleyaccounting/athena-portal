@@ -25,6 +25,7 @@
 //                           the 12-month floor in bounded runs (manual driver).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { failureUpdate, refreshWithRetry } from "../_shared/oauth-refresh.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -33,7 +34,8 @@ const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
-// Inlined from _shared/gmail-client.ts (kept self-contained for deployment):
+// Inlined from _shared/gmail-client.ts (token refresh itself is shared —
+// _shared/oauth-refresh.ts — so the retry rule cannot drift between copies):
 // resolve a mailbox's active connection and refresh the access token if it's
 // within 5 minutes of expiry, surfacing errors back onto the gmail_connections
 // row exactly as the shared helper does.
@@ -48,24 +50,22 @@ async function getValidGmailToken(mailbox: string): Promise<{ accessToken: strin
   if (expiresAt - Date.now() > 5 * 60 * 1000) {
     return { accessToken: conn.access_token as string, accountEmail: conn.account_email as string };
   }
-  const resp = await fetch(GOOGLE_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
-      grant_type: "refresh_token",
-      refresh_token: conn.refresh_token as string,
-    }),
-  });
-  if (!resp.ok) {
-    const errBody = await resp.text();
-    await sb.from("gmail_connections").update({
-      status: "error", error_message: `Token refresh failed: ${resp.status} ${errBody}`, updated_at: new Date().toISOString(),
-    }).eq("id", conn.id);
-    throw new Error(`Gmail token refresh failed: ${resp.status} ${errBody}`);
+  // A transient failure leaves the mailbox active so the next 15-minute run
+  // retries it; only a dead grant disables it. See _shared/oauth-refresh.ts.
+  const outcome = await refreshWithRetry(GOOGLE_TOKEN_URL, new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    grant_type: "refresh_token",
+    refresh_token: conn.refresh_token as string,
+  }));
+  if (!outcome.ok) {
+    await sb.from("gmail_connections").update(failureUpdate(outcome)).eq("id", conn.id);
+    throw new Error(
+      `Gmail token refresh failed after ${outcome.attempts} attempt(s): ${outcome.status} ${outcome.body}` +
+      (outcome.permanent ? " — reconnect required" : " — transient, will retry"),
+    );
   }
-  const tokens = await resp.json();
+  const tokens = outcome.tokens as Record<string, any>;
   await sb.from("gmail_connections").update({
     access_token: tokens.access_token,
     token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),

@@ -12,6 +12,7 @@
 // Auth: any active staff JWT. Body: { onboarding_id: string }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { failureUpdate, refreshWithRetry } from "../_shared/oauth-refresh.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -40,24 +41,23 @@ async function getValidDriveToken(sb: any): Promise<string> {
   if (new Date(conn.token_expires_at).getTime() - Date.now() > 5 * 60 * 1000) {
     return conn.access_token;
   }
-  const resp = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
-      grant_type: "refresh_token",
-      refresh_token: conn.refresh_token,
-    }),
-  });
-  if (!resp.ok) {
-    const errBody = await resp.text();
-    await sb.from("gdrive_connections").update({
-      status: "error", error_message: `Token refresh failed: ${resp.status} ${errBody}`, updated_at: new Date().toISOString(),
-    }).eq("id", conn.id);
-    throw new Error(`Drive token refresh failed: ${resp.status} ${errBody}`);
+  // A 5xx or a dropped connection is retried and leaves the connection enabled
+  // so the next run picks it up; only a dead grant disables it. A transient
+  // blip once took accounts@ dark for 36 days. See _shared/oauth-refresh.ts.
+  const outcome = await refreshWithRetry("https://oauth2.googleapis.com/token", new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    grant_type: "refresh_token",
+    refresh_token: conn.refresh_token,
+  }));
+  if (!outcome.ok) {
+    await sb.from("gdrive_connections").update(failureUpdate(outcome)).eq("id", conn.id);
+    throw new Error(
+      `Drive token refresh failed after ${outcome.attempts} attempt(s): ${outcome.status} ${outcome.body}` +
+      (outcome.permanent ? " — reconnect required" : " — transient, will retry"),
+    );
   }
-  const tokens = await resp.json();
+  const tokens = outcome.tokens as Record<string, any>;
   await sb.from("gdrive_connections").update({
     access_token: tokens.access_token,
     token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
