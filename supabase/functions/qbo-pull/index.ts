@@ -93,6 +93,19 @@ Deno.serve(async (req) => {
       if (name) entityMap.set(name, e);
     }
 
+    // Services that are billed once, never on a cycle — Company Formation,
+    // HMRC registrations, ID verification and so on. Flagged on the catalogue
+    // (qbo_items.is_one_off, sql/271) rather than hardcoded here, so staff can
+    // mark a new one without a deploy. Keyed on the fully-qualified name
+    // because that is exactly what a service_id is: the QBO ItemRef name.
+    const { data: oneOffItems } = await sb
+      .from("qbo_items").select("fully_qualified_name").eq("is_one_off", true);
+    const oneOffNames = new Set(
+      (oneOffItems || [])
+        .map((i: Record<string, unknown>) => String(i.fully_qualified_name || ""))
+        .filter(Boolean),
+    );
+
     const { data: existingMaps } = await sb.from("qbo_customer_mappings").select("qbo_customer_id, entity_id, role, qbo_customer_name");
     const mapByQboId = new Map<string, { entity_id: string | null; role: string; qbo_customer_name: string | null }>();
     for (const m of existingMaps || []) {
@@ -703,14 +716,25 @@ Deno.serve(async (req) => {
             months.reduce((s, [, v]) => s + v, 0) * 100,
           ) / 100;
 
-          let cadence: "monthly" | "annual";
-          let cadence_months: number;
+          let cadence: "monthly" | "annual" | "one_off";
+          let cadence_months: number | null;
+          let oneOffAmount: number | null = null;
           let monthlyAmount: number;
           let annualAmount: number;
           let needs_review = false;
           let review_reason: string | null = null;
 
-          if (priorAmt !== undefined) {
+          if (oneOffNames.has(bucket.service_id)) {
+            // Billed once per occurrence. It contributes nothing to the run
+            // rate, so its recurring amounts are zero and the real figure is
+            // kept beside them — otherwise dividing it by twelve turns a £50
+            // PAYE registration into £4.17 a month for ever. See sql/271.
+            cadence = "one_off";
+            cadence_months = null;
+            monthlyAmount = 0;
+            annualAmount = 0;
+            oneOffAmount = annualSum;
+          } else if (priorAmt !== undefined) {
             // Service appears in both latest and prior month.
             const lo = priorAmt * 0.9;
             const hi = priorAmt * 1.1;
@@ -730,6 +754,11 @@ Deno.serve(async (req) => {
             }
           } else {
             // Service appears in latest month only (across 12mo window).
+            //
+            // One sighting is genuinely ambiguous: a yearly accounts fee and a
+            // never-to-be-repeated one-off look identical from here. So it is
+            // still read as annual — that is the more common case — but it no
+            // longer approves itself. See the approval default below.
             cadence = "annual";
             cadence_months = 12;
             annualAmount = annualSum;
@@ -747,15 +776,25 @@ Deno.serve(async (req) => {
 
           // Approval-state merge with prior-pull data.
           //   Invoice-inferred monthly  → default 'suggested' (user gate).
-          //   Invoice-inferred annual   → default 'approved' (mechanical).
+          //   Invoice-inferred annual   → default 'suggested' (user gate).
+          //   One-off                   → 'approved', but it bills nothing.
           //   Prior 'approved' within ±10% of new monthly → stays approved.
           //   Prior 'rejected' → stays rejected.
           //   Drift >10% → reverts to 'suggested' with review_reason.
+          //
+          // Annual used to default to 'approved' as system:annual_default, on
+          // the grounds that it was mechanical. It was not: a single sighting
+          // cannot tell a yearly fee from a one-off, so every one-off nobody
+          // had thought to flag entered the run rate with no human ever asked.
+          // That is how £5k a year of revenue that did not exist accumulated
+          // across 37 service lines. An ambiguous inference now waits for a
+          // person. Prior approvals are untouched by this — the merge below
+          // keeps them — so this only gates genuinely new lines.
           const prior = priorServicesById.get(bucket.service_id);
           let approval_status: "suggested" | "approved" | "rejected" =
-            cadence === "annual" ? "approved" : "suggested";
-          let approved_by: string | null = cadence === "annual" ? "system:annual_default" : null;
-          let approved_at: string | null = cadence === "annual" ? now : null;
+            cadence === "one_off" ? "approved" : "suggested";
+          let approved_by: string | null = cadence === "one_off" ? "system:one_off" : null;
+          let approved_at: string | null = cadence === "one_off" ? now : null;
 
           if (prior) {
             const priorStatus = String(prior.approval_status || "");
@@ -831,7 +870,8 @@ Deno.serve(async (req) => {
             approval_status,
             approved_by,
             approved_at,
-            billing_type: cadence === "monthly" ? "recurring" : "annual",
+            one_off_amount: oneOffAmount,
+            billing_type: cadence === "monthly" ? "recurring" : cadence === "one_off" ? "one_off" : "annual",
             ...preserved,
           };
         });
@@ -846,7 +886,12 @@ Deno.serve(async (req) => {
         // keeps the existing dashboard filters sane while services
         // jsonb carries the true per-service cadence.
         const anyMonthly = services.some((s) => s.cadence === "monthly");
-        const rowBillingType = anyMonthly ? "recurring" : "annual";
+        const anyRecurringAtAll = services.some((s) => s.cadence !== "one_off");
+        const rowBillingType = anyMonthly
+          ? "recurring"
+          : anyRecurringAtAll
+            ? "annual"
+            : "one_off";
 
         const existingRow = existingForMerge;
 
