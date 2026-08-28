@@ -41,6 +41,27 @@ function accessToken() {
   throw new Error('No SUPABASE_ACCESS_TOKEN found in ~/.claude.json');
 }
 
+/**
+ * The deployed function's current verify_jwt, or null if it does not exist yet.
+ * Read rather than assumed, so a redeploy cannot change how a function is
+ * authenticated as a side effect of shipping a code change.
+ */
+async function currentVerifyJwt(slug) {
+  const resp = await fetch(
+    `https://api.supabase.com/v1/projects/${PROJECT_REF}/functions/${encodeURIComponent(slug)}`,
+    { headers: { Authorization: `Bearer ${accessToken()}` } },
+  );
+  if (resp.status === 404) return null;
+  if (!resp.ok) {
+    throw new Error(
+      `Could not read current verify_jwt for ${slug} (${resp.status}). ` +
+      `Refusing to deploy blind — pass --verify-jwt=true or --verify-jwt=false explicitly.`,
+    );
+  }
+  const body = await resp.json();
+  return body.verify_jwt !== false;
+}
+
 /** Collect the entrypoint plus every relative .ts dependency it reaches. */
 function collectFiles(slug) {
   const entry = path.join(FUNCTIONS_DIR, slug, 'index.ts');
@@ -108,12 +129,39 @@ async function main() {
 
   const dryRun = rest.includes('--dry-run');
   const jwtArg = rest.find((a) => a.startsWith('--verify-jwt='));
-  const verifyJwt = jwtArg ? jwtArg.split('=')[1] !== 'false' : true;
+
+  // Preserve whatever the deployed function already uses. This defaulted to
+  // true, so redeploying a function for an unrelated code change silently
+  // turned on JWT verification. That is not a no-op: it is the difference
+  // between a working OAuth callback and a blank error page, and between a
+  // running cron and a silent one.
+  //
+  // On 2026-08-28 a batch redeploy did exactly that to four functions —
+  // gmail-auth-callback (Google redirects the browser there with no
+  // Authorization header, so reconnecting a mailbox died on
+  // UNAUTHORIZED_NO_AUTH_HEADER) and comms-ingest, chase-reply-scan and
+  // ch-code-chase, whose pg_cron wrappers post with only x-cron-secret.
+  //
+  // verify_jwt is a property of how a function is REACHED, not of the change
+  // being deployed, so it now only moves when someone says so explicitly.
+  let verifyJwt;
+  if (jwtArg) {
+    verifyJwt = jwtArg.split('=')[1] !== 'false';
+  } else {
+    const current = await currentVerifyJwt(slug);
+    if (current === null) {
+      // Brand new function: default to on, and say so.
+      verifyJwt = true;
+      console.log(`  (new function — defaulting verify_jwt=true; pass --verify-jwt=false for a public callback or a cron target that sends no Authorization header)`);
+    } else {
+      verifyJwt = current;
+    }
+  }
 
   const files = collectFiles(slug);
   const entrypoint = `functions/${slug}/index.ts`;
 
-  console.log(`${slug}  verify_jwt=${verifyJwt}`);
+  console.log(`${slug}  verify_jwt=${verifyJwt}${jwtArg ? ' (explicit)' : ' (preserved)'}`);
   for (const [deployPath, abs] of files) {
     const bytes = fs.statSync(abs).size;
     const gated = fs.readFileSync(abs, 'utf8').includes('requireStaffOrService');
