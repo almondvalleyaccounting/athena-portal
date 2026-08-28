@@ -17,6 +17,7 @@ import {
   corsHeaders,
 } from "../_shared/qbo-client.ts";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
+import { describeQboError } from "../_shared/qbo-error.ts";
 
 type PushMode = "flat_invoice" | "recurring_template" | "setup_invoice_only";
 
@@ -365,7 +366,7 @@ Deno.serve(async (req) => {
     // Make sure email + address are on the customer record itself, even when
     // the customer already existed in QBO. Sparse update — leaves other
     // fields untouched.
-    await ensureCustomerContactDetails(qboCustomerId, clientEmail, clientAddr);
+    await ensureCustomerContactDetails(qboCustomerId, clientEmail, clientAddr, entityName);
 
     let setupInvoiceId: string | null = null;
     let setupSent = false;
@@ -556,16 +557,33 @@ async function findPortalUserAddrHint(sb: ReturnType<typeof getServiceClient>, e
 // Sparse-update a QBO customer so the email + billing address are present
 // on the customer record itself. Safe to call when they're already set
 // (sparse update only touches the fields we send).
-async function ensureCustomerContactDetails(customerId: string, email: string | null, addr: Record<string, unknown> | null): Promise<void> {
+//
+// clientName is only ever used to write an error a human can act on: when a QBO
+// merge deletes the customer we point at, the failure has to name the client and
+// say to re-link it, not paste a Fault envelope into the UI.
+async function ensureCustomerContactDetails(customerId: string, email: string | null, addr: Record<string, unknown> | null, clientName: string): Promise<void> {
   if (!email && !addr) return;
   const getResp = await qboFetch(`customer/${customerId}`);
-  if (!getResp.ok) throw new Error(`Failed to fetch QBO customer ${customerId}: ${getResp.status} ${await getResp.text()}`);
+  if (!getResp.ok) {
+    throw new Error(describeQboError(getResp.status, await getResp.text(), clientName));
+  }
   const cur = ((await getResp.json()) as { Customer: Record<string, unknown> }).Customer;
+  // A merged-away customer can still be readable while refusing every write, so
+  // check the flag rather than waiting for the update to fail.
+  if (cur.Active === false) {
+    throw new Error(
+      `The QuickBooks customer Athena has on file for ${clientName} is inactive in QuickBooks ` +
+      `(it was deleted, or merged into another customer). Re-link ${clientName} to the surviving ` +
+      `QuickBooks customer on the client page, then push again.`,
+    );
+  }
   const sparse: Record<string, unknown> = { Id: customerId, SyncToken: cur.SyncToken, sparse: true };
   if (email) sparse.PrimaryEmailAddr = { Address: email };
   if (addr) sparse.BillAddr = addr;
   const resp = await qboFetch("customer", { method: "POST", body: JSON.stringify(sparse) });
-  if (!resp.ok) throw new Error(`Failed to update QBO customer contact details: ${resp.status} ${await resp.text()}`);
+  if (!resp.ok) {
+    throw new Error(describeQboError(resp.status, await resp.text(), clientName));
+  }
 }
 
 function addDays(isoDate: string, days: number): string {

@@ -379,11 +379,26 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         onCommitted();
       } else {
         setPushStatus('push_error');
-        setError(`Committed to live billing, but the QBO push failed: ${result?.error || 'Unknown error'}. You can push from the Billing page later.`);
+        // Two separate facts, and running them into one sentence buried the
+        // one that matters. The commit IS saved — say so plainly — then give
+        // the QuickBooks reason its own line rather than appending it mid-clause.
+        setError(
+          `Committed to live billing — that part is saved.
+
+` +
+          `QuickBooks was not updated: ${result?.error || 'Unknown error.'}
+
+` +
+          `Once that's sorted you can push to QuickBooks from the Billing page.`
+        );
       }
     } catch (pushErr) {
       setPushStatus('push_error');
-      setError(`${pushErr.message}. If the commit was saved you can push from the Billing page later.`);
+      setError(
+        `${pushErr.message}
+
+If the commit was saved you can push to QuickBooks from the Billing page later.`
+      );
     }
     setCommitting(false);
   };
@@ -720,7 +735,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
 
             {pushStatus === 'pushing' && <p className="text-xs text-ocean-600">Pushing to QBO...</p>}
             {pushStatus === 'pushed' && <p className="text-xs text-green-600">Successfully pushed to QBO</p>}
-            {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2">{error}</div>}
+            {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2 whitespace-pre-line">{error}</div>}
           </div>
 
           <div className="p-4 border-t border-gray-200 flex justify-between gap-2">
@@ -871,7 +886,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
             )}
           </div>
 
-          {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2">{error}</div>}
+          {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2 whitespace-pre-line">{error}</div>}
         </div>
 
         {/* Footer */}
