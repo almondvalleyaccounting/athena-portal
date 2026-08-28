@@ -9,6 +9,7 @@ import EmptyState from '../../components/EmptyState';
 import GmailConnectionPanel from '../../components/GmailConnectionPanel';
 import { tones } from '../../lib/tokens';
 import { composeUpliftEmail } from './composeUpliftEmail';
+import { explainRows, explainBlocked } from './pushOutcome';
 import { fmtGbp } from '../../lib/money';
 
 const font = "'Outfit', sans-serif";
@@ -44,16 +45,6 @@ function firstNameOf(person) {
   if (person.first_name) return person.first_name.trim();
   if (person.name) return person.name.trim().split(/\s+/)[0] || null;
   return null;
-}
-
-// Name the rows a push declined and why. "Skipped: 1" says a fee raise
-// did not happen and nothing about the cause; the reason has always been
-// in the response, thrown away unread.
-function explainRows(rows, fallback) {
-  if (!rows || rows.length === 0) return '';
-  return '\n\n' + rows
-    .map((r) => `• ${r.entity || 'Unknown'} — ${r.reason || r.error || fallback || 'no reason given'}`)
-    .join('\n');
 }
 
 // Review staged uplifts (pending_monthly_amount on services) before
@@ -347,10 +338,15 @@ export default function BillingUpliftReviewPage() {
         // services matched. No matches means a live push would skip it.
         const wouldSkip = results.filter((r) => r.status === 'dry_run' && !r.match_count);
         const wouldPush = results.filter((r) => r.status === 'dry_run' && r.match_count);
+        const added = results.reduce((n, r) => n + (r.added_count || 0), 0);
+        const repriced = results.reduce((n, r) => n + (r.repriced_count || 0), 0);
         alert(
-          `Dry-run complete\n\nWould change: ${wouldPush.length}\nWould be skipped: ${wouldSkip.length}`
-          + explainRows(wouldSkip, 'no line on the QBO template matches the pending service — nothing for the push to overwrite')
+          `Dry-run complete\n\nTemplates to change: ${wouldPush.length}\n`
+          + `Lines to reprice: ${repriced}\nLines to add: ${added}\n`
+          + `Templates to skip: ${wouldSkip.length}`
+          + explainRows(wouldSkip, 'nothing on the template to reprice, and nothing that could be added')
           + explainRows(results.filter((r) => r.status === 'skipped' || r.status === 'error'))
+          + explainBlocked(results)
           + '\n\nFull dry-run output logged to console.'
         );
       } else {
@@ -359,9 +355,12 @@ export default function BillingUpliftReviewPage() {
         // to push carries a reason — show it, or the row stays approved
         // with nothing to act on and no clue what went wrong.
         const problems = results.filter((r) => r.status === 'skipped' || r.status === 'error');
+        const added = results.reduce((n, r) => n + (r.added_count || 0), 0);
         alert(
           `${label} complete\n\nPushed: ${s.pushed || 0}\nSkipped: ${s.skipped || 0}\nErrored: ${s.errored || 0}`
+          + (added ? `\nNew lines added to templates: ${added}` : '')
           + explainRows(problems)
+          + explainBlocked(results)
         );
         await load();
       }

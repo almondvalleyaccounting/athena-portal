@@ -7,6 +7,7 @@ import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter
 import SearchInput from '../../components/SearchInput';
 import PlanUpliftModal from './PlanUpliftModal';
 import BillingTabs from './BillingTabs';
+import { explainRows, explainBlocked } from './pushOutcome';
 import FiltersPopover from '../../components/FiltersPopover';
 import OverflowMenu from '../../components/OverflowMenu';
 import EmptyState from '../../components/EmptyState';
@@ -197,12 +198,33 @@ export default function BillingReviewPage() {
       });
       if (error) throw error;
       const s = data?.summary || {};
-      const msg = `${label} complete\n\nPushed: ${s.pushed || 0}\nSkipped: ${s.skipped || 0}\nErrored: ${s.errored || 0}`;
+      const results = Array.isArray(data?.results) ? data.results : [];
+      // Counts alone leave a skipped row unexplained; the push returns a
+      // reason per row. Same treatment as the Push uplifts tab.
+      const added = results.reduce((n, r) => n + (r.added_count || 0), 0);
+      const problems = results.filter((r) => r.status === 'skipped' || r.status === 'error');
       if (dryRun) {
         console.log('Dry-run results:', data);
-        alert(msg + '\n\nFull dry-run output logged to console.');
+        const wouldSkip = results.filter((r) => r.status === 'dry_run' && !r.match_count);
+        const wouldPush = results.filter((r) => r.status === 'dry_run' && r.match_count);
+        const repriced = results.reduce((n, r) => n + (r.repriced_count || 0), 0);
+        alert(
+          `Dry-run complete\n\nTemplates to change: ${wouldPush.length}\n`
+          + `Lines to reprice: ${repriced}\nLines to add: ${added}\n`
+          + `Templates to skip: ${wouldSkip.length}`
+          + explainRows(wouldSkip, 'nothing on the template to reprice, and nothing that could be added')
+          + explainRows(problems)
+          + explainBlocked(results)
+          + '\n\nFull dry-run output logged to console.'
+        );
       } else {
-        alert(msg);
+        console.log('Push results:', data);
+        alert(
+          `${label} complete\n\nPushed: ${s.pushed || 0}\nSkipped: ${s.skipped || 0}\nErrored: ${s.errored || 0}`
+          + (added ? `\nNew lines added to templates: ${added}` : '')
+          + explainRows(problems)
+          + explainBlocked(results)
+        );
         await load();
       }
     } catch (err) {
