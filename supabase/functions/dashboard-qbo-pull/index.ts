@@ -713,7 +713,14 @@ const pullAgedPayables = (sb: any, realmId: string) => agedAsAt(sb, realmId, "Ag
 // month columns. Serves the period tiles (totals), the P&L-by-month table (raw
 // report) and the trend chart (months + series). Non-monthly returns totals
 // only (used for the prior-period comparison).
-async function plReport(sb: any, realmId: string, start: string, end: string, monthly: boolean) {
+//
+// `keepReport` defaults to `monthly` because the raw tree is only worth its
+// weight in the cache row when something renders it. The comparative P&L wants
+// a single-column tree, so it asks for the report without asking for months.
+async function plReport(
+  sb: any, realmId: string, start: string, end: string, monthly: boolean,
+  keepReport: boolean = monthly,
+) {
   const path = `reports/ProfitAndLoss?start_date=${start}&end_date=${end}`
     + (monthly ? `&summarize_column_by=Month` : ``)
     + `&accounting_method=Accrual&minorversion=75`;
@@ -762,7 +769,7 @@ async function plReport(sb: any, realmId: string, start: string, end: string, mo
       expenses: series.Expenses || null,
       net_income: series.NetIncome || null,
     } : null,
-    report: monthly ? report : null,
+    report: keepReport ? report : null,
   };
 }
 
@@ -1156,6 +1163,18 @@ Deno.serve(async (req) => {
           () => plAccountDetail(sb, realmId, p.plStart, p.plEnd));
         await windowMetric(`pl_detail#${p.priorStart}_${p.priorEnd}`, p.priorStart, p.priorEnd, "pl_detail_prior",
           () => plAccountDetail(sb, realmId, p.priorStart, p.priorEnd));
+        // Comparative P&L for the year-on-year statement: the SAME LENGTH of
+        // time shifted back by the tab's Compare setting, as one column with
+        // its full account tree so both sides expand to the same depth.
+        // Distinct from `pl_prior` (which is always the immediately preceding
+        // period, and carries no tree) and from `pl_range` (which is monthly)
+        // — three different questions, three cache keys.
+        if (p.cmpStart && p.cmpEnd) {
+          const cs = String(p.cmpStart);
+          const ce = String(p.cmpEnd);
+          await windowMetric(`pl_cmp#${cs}_${ce}`, cs, ce, "pl_compare",
+            () => plReport(sb, realmId, cs, ce, false, true));
+        }
       }
 
       // Projection actuals — the three statements by month over the actuals
@@ -1185,6 +1204,17 @@ Deno.serve(async (req) => {
           const gs = String(win.asat.gridStart);
           await windowMetric(`bs_monthly#${gs}_${d}`, gs, d, "bs_grid",
             () => bsMonthlySeries(sb, realmId, gs, d));
+        }
+        // Comparative balance sheet: the same report at an earlier DATE (a
+        // position, so the date moves and the length of time does not).
+        // Its own key rather than sharing `bs_asat#<date>`, because that row
+        // carries the 13-month comparatives and the prior-month lines this one
+        // deliberately skips — one QBO call instead of two — and a shared key
+        // would serve the thinner version to whoever asked next.
+        if (win.asat.cmpDate) {
+          const cd = String(win.asat.cmpDate);
+          await windowMetric(`bs_cmp#${cd}`, null, cd, "bs_compare",
+            () => balanceSheetAsAt(sb, realmId, cd, false));
         }
         await windowMetric(`ar_asat#${d}`, null, d, "ar_asat",
           () => agedAsAt(sb, realmId, "AgedReceivables", d));

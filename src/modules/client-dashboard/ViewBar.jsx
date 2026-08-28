@@ -1,5 +1,5 @@
 import React from 'react';
-import { OUTFIT, inputStyle } from './dashboardData';
+import { OUTFIT, inputStyle, COMPARATIVES } from './dashboardData';
 import { GRAINS, BASES, VIEWS, MONTH_NAMES, yearEndMonthIndex } from './overviewGrain';
 import { Segmented } from './DashboardUI';
 
@@ -16,6 +16,9 @@ import { Segmented } from './DashboardUI';
     • the balance sheet is a position, so `showView` is off — owner costs do not
       change what the company owns
     • the aged reports are as-at, so they get no bar at all
+    • the two statement tabs get `compare`, and while a comparative is showing
+      they lose grain and basis: a two-column statement has no grain, and a
+      control that changes nothing is worse than one that isn't there
 
   The year-end picker only appears on the fiscal basis, because that is the only
   place it changes a number. It carries its source: a year end nobody has
@@ -44,6 +47,7 @@ const YEAR_END_SOURCE = {
 
 export default function ViewBar({
   grain, setGrain, basis, setBasis, view, setView,
+  compare, setCompare, compareHint = null,
   fiscalYear, onFiscalYearEndChange,
   showView = true, showGrain = true, showBasis = true,
   note = null, size = 'md',
@@ -65,6 +69,18 @@ export default function ViewBar({
             hint: v.key === 'underlying'
               ? 'Owner costs and one-off items removed — the same codes tagged on the Underlying Performance tab'
               : 'Straight from QuickBooks, nothing removed',
+          }))}
+        />
+      )}
+
+      {setCompare && (
+        <Segmented
+          label="Compare" value={compare} onChange={setCompare} size={size}
+          options={COMPARATIVES.map((c) => ({
+            ...c,
+            hint: c.months
+              ? `${compareHint || 'Against'} ${c.months} month${c.months === 1 ? '' : 's'} earlier, with the movement beside it`
+              : 'The period-by-period table — the shape rather than the delta',
           }))}
         />
       )}

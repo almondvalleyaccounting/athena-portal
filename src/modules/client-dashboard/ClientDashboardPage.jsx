@@ -11,9 +11,11 @@ import {
   money, moneyCompact, timeAgo, shortDate, shortMonth,
   latestByMetric, parseReportTree, reportMonthKeys, bucketReportTree,
   PERIOD_PRESETS, ASAT_PRESETS, computePeriod, computeAsAt,
+  comparativeDef, shiftMonthsBack, shiftRangeBack, mergeReportTrees, totalReportTree,
+  comparativeColumns, COMPARATIVE_KINDS, rangeLabel, percentChange,
   OUTFIT, PLAYFAIR, cardStyle, inputStyle,
 } from './dashboardData';
-import { LoadingCard, EmptyState, MetricTile } from './DashboardUI';
+import { LoadingCard, EmptyState, MetricTile, Delta } from './DashboardUI';
 import {
   buildBuckets, monthKeyOfDate, resolveFiscalYear, aggregate, seriesFor, windowLabel,
 } from './overviewGrain';
@@ -106,9 +108,19 @@ export default function ClientDashboardPage() {
   const [grain, setGrain] = useState(() => loadPrefs().grain || 'month');
   const [basis, setBasis] = useState(() => loadPrefs().basis || 'fiscal');
   const [view, setView] = useState(() => loadPrefs().view || 'reported');
+
+  // What each statement compares itself against. Held separately per tab
+  // because they answer different questions — a P&L wants last year, a balance
+  // sheet often wants last month — and remembered for the same reason the
+  // grain toggles are.
+  const [plCompare, setPlCompare] = useState(() => loadPrefs().plCompare || 'm12');
+  const [bsCompare, setBsCompare] = useState(() => loadPrefs().bsCompare || 'm12');
+
   useEffect(() => {
-    try { localStorage.setItem(PREF_KEY, JSON.stringify({ grain, basis, view })); } catch { /* private mode */ }
-  }, [grain, basis, view]);
+    try {
+      localStorage.setItem(PREF_KEY, JSON.stringify({ grain, basis, view, plCompare, bsCompare }));
+    } catch { /* private mode */ }
+  }, [grain, basis, view, plCompare, bsCompare]);
 
   // Windowed (filtered) data.
   const [periodData, setPeriodData] = useState(null); // { pl_range, pl_range_prior, pnl_chart_detail, bs_period }
@@ -362,8 +374,27 @@ export default function ClientDashboardPage() {
     () => buildBuckets({ grain, basis, anchorKey: (asAt.date || '').slice(0, 7) || monthKeyOfDate(today), fyIdx }),
     [grain, basis, asAt.date, fyIdx, today],
   );
-  const bsGridStart = bsGrid.window.start;
   const windowNote = windowLabel(grain, basis, overview.buckets);
+
+  /* Comparatives. A P&L shifts the whole RANGE back; a balance sheet shifts the
+     DATE. Both by the same number of months, which is what lets one control
+     mean the same thing on either tab — see COMPARATIVES.
+
+     The 12-month trend is the only setting that needs the monthly grid, so the
+     grid start is only sent then: otherwise the as-at pull fetches one extra
+     dated report instead of a thirteen-column one, which is the same single
+     QuickBooks call either way. */
+  const plCmpMonths = comparativeDef(plCompare).months;
+  const bsCmpMonths = comparativeDef(bsCompare).months;
+  const plCmpRange = useMemo(
+    () => shiftRangeBack(period.plStart, period.plEnd, plCmpMonths),
+    [period.plStart, period.plEnd, plCmpMonths],
+  );
+  const bsCmpDate = useMemo(
+    () => (bsCmpMonths ? shiftMonthsBack(asAt.date, bsCmpMonths) : null),
+    [asAt.date, bsCmpMonths],
+  );
+  const bsGridStart = bsCmpMonths ? null : bsGrid.window.start;
 
   /* One bar, rendered by whichever tab is open. Every tab that reports over
      time gets the same controls in the same place, and they keep their setting
@@ -439,6 +470,7 @@ export default function ClientDashboardPage() {
               priorStart: period.priorStart, priorEnd: period.priorEnd,
               chartStart, chartEnd, chartDetail: true,
               bsAsAt,
+              cmpStart: plCmpRange?.start || null, cmpEnd: plCmpRange?.end || null,
             },
           },
         },
@@ -446,7 +478,8 @@ export default function ClientDashboardPage() {
       if (!fnErr) setPeriodData(payload?.metrics || null);
     } catch { /* the reconnect banner is driven by the default pull */ }
     setPeriodLoading(false);
-  }, [realmId, periodKey, period.plStart, period.plEnd, period.priorStart, period.priorEnd, chartStart, chartEnd, bsAsAt]);
+  }, [realmId, periodKey, period.plStart, period.plEnd, period.priorStart, period.priorEnd,
+    chartStart, chartEnd, bsAsAt, plCmpRange?.start, plCmpRange?.end]);
 
   const fetchAsAt = useCallback(async (refresh = false) => {
     if (!realmId) return;
@@ -457,25 +490,29 @@ export default function ClientDashboardPage() {
           realmId, refresh,
           window: {
             kind: asAtKey === 'custom' ? 'custom' : 'preset',
-            asat: { date: asAt.date, gridStart: bsGridStart },
+            asat: { date: asAt.date, gridStart: bsGridStart, cmpDate: bsCmpDate },
           },
         },
       });
-      if (!fnErr) { setAsAtData(payload?.metrics || null); asAtLoadedRef.current = `${asAt.date}|${bsGridStart}`; }
+      if (!fnErr) {
+        setAsAtData(payload?.metrics || null);
+        asAtLoadedRef.current = `${asAt.date}|${bsGridStart}|${bsCmpDate}`;
+      }
     } catch { /* reconnect banner via the default pull */ }
     setAsAtLoading(false);
-  }, [realmId, asAtKey, asAt.date, bsGridStart]);
+  }, [realmId, asAtKey, asAt.date, bsGridStart, bsCmpDate]);
 
   // Period data: fetch on select and whenever the period window changes.
   useEffect(() => { if (realmId) fetchPeriod(false); }, [fetchPeriod]);
   // As-at data: fetch lazily on first visit to a balance/aged tab, and when the
   // as-at window changes while one of those tabs is open.
   useEffect(() => {
-    // Keyed on the grid window as well as the date: changing grain or basis
-    // moves the comparative columns, which needs a different pull.
-    const key = `${asAt.date}|${bsGridStart}`;
+    // Keyed on the grid window and the comparative date as well as the as-at
+    // date: changing grain, basis or the comparative moves the columns, which
+    // needs a different pull.
+    const key = `${asAt.date}|${bsGridStart}|${bsCmpDate}`;
     if (realmId && ASAT_TABS.has(tab) && asAtLoadedRef.current !== key) fetchAsAt(false);
-  }, [realmId, tab, asAt.date, bsGridStart, fetchAsAt]);
+  }, [realmId, tab, asAt.date, bsGridStart, bsCmpDate, fetchAsAt]);
 
   const lastPulled = cacheRows.length ? cacheRows[0].pulled_at : null;
   const winBusy = periodLoading || asAtLoading;
@@ -715,8 +752,15 @@ export default function ClientDashboardPage() {
               {tab === 'pnl' && (
                 <PnlTab
                   pnlMonthly={periodData?.pl_range} buckets={overview.buckets}
+                  compare={plCompare} cmpPnl={periodData?.pl_compare} cmpRange={plCmpRange}
                   currency={periodCurrency} loading={periodLoading} empty={emptyProps}
-                  bar={viewBar({ showView: false, note: 'Underlying is on its own tab, where the bridge from reported is shown.' })}
+                  bar={viewBar({
+                    showView: false,
+                    showGrain: plCompare === 'trend', showBasis: plCompare === 'trend',
+                    compare: plCompare, setCompare: setPlCompare,
+                    compareHint: 'The same length of time ending',
+                    note: 'Underlying is on its own tab, where the bridge from reported is shown.',
+                  })}
                 />
               )}
               {tab === 'underlying' && (
@@ -760,9 +804,18 @@ export default function ClientDashboardPage() {
               {tab === 'balance' && (
                 <BalanceSheetTab
                   balanceSheet={asAtData?.bs_asat} grid={asAtData?.bs_grid}
+                  compareSheet={asAtData?.bs_compare} compare={bsCompare} cmpDate={bsCmpDate}
                   buckets={bsGrid.buckets}
                   currency={asAtCurrency} loading={asAtLoading} empty={emptyProps}
-                  bar={viewBar({ showView: false, note: 'Each column is the position at that period end.' })}
+                  bar={viewBar({
+                    showView: false,
+                    showGrain: bsCompare === 'trend', showBasis: bsCompare === 'trend',
+                    compare: bsCompare, setCompare: setBsCompare,
+                    compareHint: 'The position',
+                    note: bsCompare === 'trend'
+                      ? 'Each column is the position at that period end.'
+                      : 'A balance sheet is a position, so the comparative is the same date earlier.',
+                  })}
                 />
               )}
               {tab === 'debtors' && (
@@ -898,7 +951,16 @@ function FilterRail({
 }
 
 /* ─── Expandable report table (P&L monthly / balance sheet) ────── */
-function ReportTable({ columns, rows, monthLabels = true }) {
+/*
+  `columnKinds` says how to READ each column, not how to style it: 'money' or
+  'pct'. A movement percentage rendered through the money formatter reads
+  "£12" when it means 12%, which is the sort of thing that survives review
+  because it looks like a number either way.
+
+  `dividerAt` draws a rule before that column index — the seam between the two
+  statements and the movement between them.
+*/
+function ReportTable({ columns, rows, monthLabels = true, columnKinds = null, dividerAt = null }) {
   const [expanded, setExpanded] = useState(() => new Set());
   const toggle = (id) => setExpanded((prev) => {
     const n = new Set(prev);
@@ -929,11 +991,16 @@ function ReportTable({ columns, rows, monthLabels = true }) {
   };
   rows.forEach((r) => push(r, 0));
 
-  const cellNum = (v) => (v === null || v === undefined ? '' : moneyCompact(v));
+  const cellNum = (v, i) => {
+    if (v === null || v === undefined) return '';
+    return columnKinds?.[i] === 'pct' ? percentChange(v) : moneyCompact(v);
+  };
   const numStyle = {
     fontFamily: OUTFIT, fontSize: '12.5px', textAlign: 'right', padding: '7px 10px',
     whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: '#334155',
   };
+  const divider = (i) => (dividerAt != null && i === dividerAt
+    ? { borderLeft: '1px solid #e5e7eb' } : null);
 
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -942,7 +1009,7 @@ function ReportTable({ columns, rows, monthLabels = true }) {
           <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
             <th style={{ ...numStyle, textAlign: 'left', color: '#94a3b8', fontWeight: 600, position: 'sticky', left: 0, backgroundColor: '#ffffff' }} />
             {columns.map((c, i) => (
-              <th key={i} style={{ ...numStyle, color: '#94a3b8', fontWeight: 600 }}>
+              <th key={i} style={{ ...numStyle, color: '#94a3b8', fontWeight: 600, ...divider(i) }}>
                 {monthLabels ? shortMonth(c) : c}
               </th>
             ))}
@@ -979,8 +1046,9 @@ function ReportTable({ columns, rows, monthLabels = true }) {
                     ...numStyle,
                     fontWeight: isBold ? 700 : 400,
                     color: vals && vals[i] !== null && vals[i] < 0 ? '#991b1b' : isBold ? '#0f172a' : '#475569',
+                    ...divider(i),
                   }}>
-                    {vals ? cellNum(vals[i]) : ''}
+                    {vals ? cellNum(vals[i], i) : ''}
                   </td>
                 ))}
               </tr>
@@ -994,16 +1062,25 @@ function ReportTable({ columns, rows, monthLabels = true }) {
 
 /* ─── P&L tab ──────────────────────────────────────────────────── */
 /*
-  P&L by period. The columns follow the grain and basis toggles rather than
-  QuickBooks' raw month columns, so fiscal quarters here mean the same three
-  months they mean on the Overview.
+  Two shapes of the same statement, chosen by the Compare control:
 
-  No View toggle: this tab is the reported statement. Taking owner costs out of
-  a statement without showing the bridge would be a figure nobody could tie
-  back, so that lives on the Underlying Performance tab, which shows the
-  reconciliation line by line.
+  • A COMPARATIVE P&L — the selected period, the same length of time shifted
+    back, the movement and the movement percent. Set Compare to "Last year"
+    and this is the year-on-year P&L an accountant means by that phrase: one
+    column each, not twenty-four, expandable to account level on both sides.
+
+  • A 12-MONTH TREND — the period-by-period table this tab has always been,
+    whose columns follow the grain and basis toggles so a fiscal quarter here
+    means the same three months it means on the Overview.
+
+  No View toggle either way: this tab is the reported statement. Taking owner
+  costs out of a statement without showing the bridge would be a figure nobody
+  could tie back, so that lives on the Underlying Performance tab, which shows
+  the reconciliation line by line.
 */
-function PnlTab({ pnlMonthly, buckets, currency, loading, empty, bar }) {
+function PnlTab({ pnlMonthly, compare, cmpPnl, cmpRange, buckets, currency, loading, empty, bar }) {
+  const isTrend = compare === 'trend';
+
   const parsed = useMemo(
     () => (pnlMonthly?.report ? parseReportTree(pnlMonthly.report) : null),
     [pnlMonthly],
@@ -1013,9 +1090,19 @@ function PnlTab({ pnlMonthly, buckets, currency, loading, empty, bar }) {
     [pnlMonthly],
   );
   const bucketed = useMemo(() => {
-    if (!parsed || !buckets?.length || !monthKeys.some(Boolean)) return null;
+    if (!isTrend || !parsed || !buckets?.length || !monthKeys.some(Boolean)) return null;
     return bucketReportTree(parsed.rows, monthKeys, buckets, 'sum');
-  }, [parsed, monthKeys, buckets]);
+  }, [isTrend, parsed, monthKeys, buckets]);
+
+  // Comparative: this period rolled to a single total, beside the comparative
+  // period's own single-column report.
+  const merged = useMemo(() => {
+    if (isTrend || !parsed) return null;
+    const cur = totalReportTree(parsed.rows, monthKeys);
+    if (!cur) return null;
+    const cmp = cmpPnl?.report ? parseReportTree(cmpPnl.report).rows : [];
+    return mergeReportTrees(cur, cmp);
+  }, [isTrend, parsed, monthKeys, cmpPnl]);
 
   if (!parsed) {
     return (
@@ -1026,30 +1113,50 @@ function PnlTab({ pnlMonthly, buckets, currency, loading, empty, bar }) {
     );
   }
 
+  const cmpMissing = !isTrend && !cmpPnl?.report;
+  const p = pnlMonthly.period;
+
   // Fall back to QuickBooks' own columns if the report has no month grain to
   // bucket (a single-period pull), rather than showing nothing.
-  const columns = bucketed ? buckets.map((b) => b.label) : parsed.columns;
-  const rows = bucketed || parsed.rows;
+  const columns = merged
+    ? comparativeColumns(rangeLabel(p?.start, p?.end), rangeLabel(cmpRange?.start, cmpRange?.end), 'Movement')
+    : bucketed ? buckets.map((b) => b.label) : parsed.columns;
+  const rows = merged || bucketed || parsed.rows;
 
   return (
     <>
       {bar}
       <div style={cardStyle}>
-        <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
           <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
             Profit &amp; Loss
           </span>
-          {pnlMonthly.period && (
+          {p && (
             <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
-              {shortDate(pnlMonthly.period.start)} → {shortDate(pnlMonthly.period.end)} · {currency}
+              {shortDate(p.start)} → {shortDate(p.end)}
+              {merged && cmpRange && ` vs ${shortDate(cmpRange.start)} → ${shortDate(cmpRange.end)}`}
+              {' '}· {currency}
             </span>
           )}
         </div>
         <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: 0, marginBottom: '10px' }}>
           Click a summary line (Income, Cost of Sales, Expenses…) to expand it to account level.
-          {bucketed && ' Columns follow the grain and year basis above.'}
+          {merged
+            ? ' Both columns cover the same length of time, so they are comparable line for line.'
+            : bucketed ? ' Columns follow the grain and year basis above.' : ''}
         </p>
-        <ReportTable columns={columns} rows={rows} monthLabels={!bucketed} />
+        {cmpMissing && (
+          <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#b45309', marginTop: 0, marginBottom: '10px' }}>
+            {loading
+              ? 'Pulling the comparative period…'
+              : 'The comparative period could not be pulled, so the second column is empty.'}
+          </p>
+        )}
+        <ReportTable
+          columns={columns} rows={rows} monthLabels={!merged && !bucketed}
+          columnKinds={merged ? COMPARATIVE_KINDS : null}
+          dividerAt={merged ? 2 : null}
+        />
       </div>
     </>
   );
@@ -1070,12 +1177,18 @@ function PnlTab({ pnlMonthly, buckets, currency, loading, empty, bar }) {
   account level in whichever of those you are looking at.
 
   Balances are STOCKS, so a bucket takes the position at its END — a quarter's
-  cash is the closing balance, never three months added together.
+  cash is the closing balance, never three months added together. The same
+  reason the comparative is a DATE shifted back rather than a period: there is
+  no such thing as "last year's cash" summed over a year.
 */
-function BalanceSheetTab({ balanceSheet, grid, buckets, currency, loading, empty, bar }) {
+function BalanceSheetTab({
+  balanceSheet, compareSheet, compare, cmpDate, grid, buckets, currency, loading, empty, bar,
+}) {
+  const isTrend = compare === 'trend';
+
   const parsed = useMemo(
-    () => (grid?.report ? parseReportTree(grid.report) : null),
-    [grid],
+    () => (isTrend && grid?.report ? parseReportTree(grid.report) : null),
+    [isTrend, grid],
   );
   const monthKeys = useMemo(() => grid?.month_keys || [], [grid]);
   const bucketed = useMemo(() => {
@@ -1083,12 +1196,24 @@ function BalanceSheetTab({ balanceSheet, grid, buckets, currency, loading, empty
     return bucketReportTree(parsed.rows, monthKeys, buckets, 'last');
   }, [parsed, monthKeys, buckets]);
 
+  // Comparative: the as-at report beside the same report at the shifted date.
+  // Both are single-column pulls at an exact date, so a custom as-at of the
+  // 12th compares against the 12th and not against a month end it never asked
+  // for — the reason this reads the two reports rather than picking a column
+  // out of the monthly grid.
+  const merged = useMemo(() => {
+    if (isTrend || !balanceSheet?.report) return null;
+    const cur = parseReportTree(balanceSheet.report).rows;
+    const cmp = compareSheet?.report ? parseReportTree(compareSheet.report).rows : [];
+    return mergeReportTrees(cur, cmp);
+  }, [isTrend, balanceSheet, compareSheet]);
+
   // Falls back to the single-column as-at report while the grid is still
   // loading, or for a client whose monthly pull failed — better a narrower
   // table than an empty tab.
   const fallback = useMemo(
-    () => (!bucketed && balanceSheet?.report ? parseReportTree(balanceSheet.report) : null),
-    [bucketed, balanceSheet],
+    () => (!merged && !bucketed && balanceSheet?.report ? parseReportTree(balanceSheet.report) : null),
+    [merged, bucketed, balanceSheet],
   );
 
   if (!balanceSheet) {
@@ -1101,14 +1226,25 @@ function BalanceSheetTab({ balanceSheet, grid, buckets, currency, loading, empty
   }
 
   const bs = balanceSheet;
+  const cmp = merged ? compareSheet : null;
   const within = bs.creditors_within_1yr;
   const after = bs.creditors_after_1yr;
   const liabSub = (within != null || after != null)
     ? `${money(within || 0, currency)} < 1yr · ${money(after || 0, currency)} > 1yr`
     : null;
+  const cmpLabel = comparativeDef(compare).label.toLowerCase();
+  const cmpMissing = !isTrend && !compareSheet?.report;
 
-  const columns = bucketed ? buckets.map((b) => b.label) : (fallback?.columns || []);
-  const rows = bucketed || fallback?.rows || [];
+  const columns = merged
+    ? comparativeColumns(shortDate(bs.period?.end), shortDate(cmpDate), 'Movement')
+    : bucketed ? buckets.map((b) => b.label) : (fallback?.columns || []);
+  const rows = merged || bucketed || fallback?.rows || [];
+
+  // Growing creditors is not good news, so the movement on that tile is
+  // coloured the other way round.
+  const delta = (now, prev, upIsGood = true) => (cmp
+    ? <Delta now={now} prev={prev} currency={currency} upIsGood={upIsGood} label={`vs ${cmpLabel}`} />
+    : null);
 
   return (
     <>
@@ -1116,10 +1252,13 @@ function BalanceSheetTab({ balanceSheet, grid, buckets, currency, loading, empty
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
           <MetricTile label="Total assets" value={bs.total_assets} currency={currency}
-            sub={bs.period?.end ? `as at ${shortDate(bs.period.end)}` : null} />
+            sub={bs.period?.end ? `as at ${shortDate(bs.period.end)}` : null}
+            delta={delta(bs.total_assets, cmp?.total_assets)} />
           <MetricTile label="Total liabilities" value={bs.total_liabilities} currency={currency}
-            sub={liabSub} />
-          <MetricTile label="Net assets" value={bs.net_assets ?? bs.equity} currency={currency} />
+            sub={liabSub}
+            delta={delta(bs.total_liabilities, cmp?.total_liabilities, false)} />
+          <MetricTile label="Net assets" value={bs.net_assets ?? bs.equity} currency={currency}
+            delta={delta(bs.net_assets ?? bs.equity, cmp?.net_assets ?? cmp?.equity)} />
         </div>
 
         <div style={cardStyle}>
@@ -1128,17 +1267,32 @@ function BalanceSheetTab({ balanceSheet, grid, buckets, currency, loading, empty
               Balance sheet
             </span>
             <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
-              as at {shortDate(bs.period?.end)} · {currency}
+              as at {shortDate(bs.period?.end)}
+              {merged && cmpDate && ` vs ${shortDate(cmpDate)}`}
+              {' '}· {currency}
             </span>
           </div>
           <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: 0, marginBottom: '10px' }}>
-            {bucketed
-              ? 'Each column is the position at that period end. Click a section to expand it to account level.'
-              : 'Click a section to expand it to account level.'}
+            {merged
+              ? 'Both columns are the position at that date. Click a section to expand it to account level.'
+              : bucketed
+                ? 'Each column is the position at that period end. Click a section to expand it to account level.'
+                : 'Click a section to expand it to account level.'}
             {' '}Total liabilities is creditors falling due within one year plus after more than one year.
           </p>
+          {cmpMissing && (
+            <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#b45309', marginTop: 0, marginBottom: '10px' }}>
+              {loading
+                ? 'Pulling the comparative date…'
+                : 'The comparative date could not be pulled, so the second column is empty.'}
+            </p>
+          )}
           {rows.length > 0
-            ? <ReportTable columns={columns} rows={rows} monthLabels={!bucketed} />
+            ? <ReportTable
+                columns={columns} rows={rows} monthLabels={!merged && !bucketed}
+                columnKinds={merged ? COMPARATIVE_KINDS : null}
+                dividerAt={merged ? 2 : null}
+              />
             : <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', margin: 0 }}>
                 Loading the comparative columns…
               </p>}

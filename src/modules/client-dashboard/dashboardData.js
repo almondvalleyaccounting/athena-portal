@@ -216,6 +216,167 @@ export function bucketReportTree(rows, monthKeys, buckets, how = 'sum') {
   return walk(rows);
 }
 
+/* ─── Comparatives ─────────────────────────────────────────────── */
+/*
+  A statement with one column is a number; a statement with a comparative is a
+  story. Both tabs that show a statement — P&L and Balance Sheet — take the
+  same control, and it means the same thing on each: shift back this many
+  months.
+
+  What differs is what "shift back" does to the figure, and it differs because
+  of what the figure IS. A P&L is a FLOW, so the comparative is the same LENGTH
+  of time ending earlier: twelve months to Jul 26 against twelve months to
+  Jul 25. A balance sheet is a POSITION, so the comparative is the same DATE
+  earlier: 31 Jul 26 against 31 Jul 25. Summing twelve months of closing cash,
+  or comparing one day against a year, are the two ways this goes wrong, and
+  keeping the flow/stock distinction here is what stops either reaching a
+  column heading.
+
+  `trend` is not a comparative at all — it is the period-by-period table these
+  tabs already had. It stays on the same control because from where the reader
+  sits it answers the same question (against what?), and because losing it
+  would be a downgrade for anyone who wants the shape rather than the delta.
+*/
+export const COMPARATIVES = [
+  { key: 'm1', label: 'Last month', months: 1 },
+  { key: 'm3', label: '3 months', months: 3 },
+  { key: 'm6', label: '6 months', months: 6 },
+  { key: 'm12', label: 'Last year', months: 12 },
+  { key: 'trend', label: '12-month trend', months: null },
+];
+
+export const comparativeDef = (key) =>
+  COMPARATIVES.find((c) => c.key === key) || COMPARATIVES.find((c) => c.key === 'm12');
+
+/*
+  Shift a yyyy-mm-dd back `n` months.
+
+  A date sitting on the LAST day of its month stays on the last day of the
+  month it lands in — 31 Aug back six months is 28 Feb, not a "31 Feb" that
+  JavaScript would roll forward into March. Anything else keeps its day number,
+  clamped to the target month's length. Month ends are the overwhelming case
+  here (both rail filters default to one), and a balance sheet dated 3 March
+  because the comparative overflowed is the kind of wrong that looks right.
+*/
+export function shiftMonthsBack(isoDate, n) {
+  if (!isoDate || !n) return isoDate || '';
+  const [y, m, d] = String(isoDate).slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const isMonthEnd = d === new Date(y, m, 0).getDate();
+  const targetLast = new Date(y, m - n, 0).getDate();
+  return iso(new Date(y, m - 1 - n, isMonthEnd ? targetLast : Math.min(d, targetLast)));
+}
+
+// A P&L period shifted back `n` months — both ends move, so the comparative is
+// the same length of time and the two columns are comparable like for like.
+export function shiftRangeBack(start, end, n) {
+  if (!n) return null;
+  return { start: shiftMonthsBack(start, n), end: shiftMonthsBack(end, n) };
+}
+
+/*
+  Merge two parsed report trees into one comparative statement.
+
+  QuickBooks does not hand back the same rows for two different periods — an
+  account with no activity last year is simply absent, and the account list
+  itself moves as clients tidy their chart. So a comparative cannot be a second
+  array bolted onto the first by position: line 14 of this year is not line 14
+  of last. Rows are matched by their label WITHIN THEIR PARENT, which is the
+  only identity a QBO report row carries (the account-name column).
+
+  A row present on one side only keeps its place and reads blank on the other.
+  That is the honest answer — no activity — and it is also the only way the
+  expanded detail still adds up to the section total on both sides. Dropping
+  the comparative-only rows would silently break that tie, which is the sort of
+  thing an accountant checks first.
+
+  Both trees must be single-valued (one figure per row). Returns the same shape
+  with `values` / `totals` of [current, comparative, movement, movement %].
+*/
+export function mergeReportTrees(curRows, cmpRows) {
+  const keyOf = (n) => `${n.kind}|${String(n.label || '').trim().toLowerCase()}|${n.group || ''}`;
+
+  // Movement is current − comparative on the figures as reported, so the
+  // column still adds up to the section's own movement. The percentage is over
+  // the ABSOLUTE comparative, so a loss narrowing from −10k to −4k reads +60%
+  // rather than −60%.
+  const pair = (a, b) => {
+    const n = (v) => (v === null || v === undefined || isNaN(v) ? null : Number(v));
+    const cur = n(a);
+    const cmp = n(b);
+    if (cur === null && cmp === null) return [null, null, null, null];
+    const diff = (cur || 0) - (cmp || 0);
+    const pct = cmp === null || Math.abs(cmp) < 0.005 ? null : (diff / Math.abs(cmp)) * 100;
+    return [cur, cmp, diff, pct];
+  };
+
+  const walk = (a, b) => {
+    const aList = a || [];
+    const bList = b || [];
+    const aKeys = new Set(aList.map(keyOf));
+    const bIndex = new Map();
+    for (const x of bList) if (!bIndex.has(keyOf(x))) bIndex.set(keyOf(x), x);
+
+    const out = aList.map((x) => node(x, bIndex.get(keyOf(x)) || null));
+    for (const x of bList) if (!aKeys.has(keyOf(x))) out.push(node(null, x));
+    return out;
+  };
+
+  const node = (a, b) => {
+    const src = a || b;
+    // Ids drive the expand/collapse set and both trees number from zero, so a
+    // comparative-only row has to be renamed or it collides with a current one.
+    const id = a ? src.id : `${src.id}_cmp`;
+    const hasValues = a?.values || b?.values;
+    const hasTotals = a?.totals || b?.totals;
+    return {
+      ...src,
+      id,
+      values: hasValues ? pair(a?.values?.[0], b?.values?.[0]) : null,
+      totals: hasTotals ? pair(a?.totals?.[0], b?.totals?.[0]) : null,
+      children: (a?.children || b?.children) ? walk(a?.children, b?.children) : src.children,
+    };
+  };
+
+  return walk(curRows, cmpRows);
+}
+
+// Roll a monthly report tree down to ONE column: the whole period. The current
+// side of a comparative P&L wants the period total beside last year's, not
+// twelve columns beside twelve more.
+export function totalReportTree(rows, monthKeys) {
+  const months = (monthKeys || []).filter(Boolean);
+  if (!months.length) return null;
+  return bucketReportTree(rows, monthKeys, [{ months }], 'sum');
+}
+
+// The columns a merged tree carries, and how each one should be read.
+export const comparativeColumns = (curLabel, cmpLabel, movementLabel = 'Movement') =>
+  [curLabel, cmpLabel, movementLabel, '%'];
+export const COMPARATIVE_KINDS = ['money', 'money', 'money', 'pct'];
+
+// Compact heading for a P&L column — "Aug 25 – Jul 26".
+export function rangeLabel(start, end) {
+  const one = (d) => {
+    if (!d) return '';
+    const [y, m] = String(d).slice(0, 7).split('-').map(Number);
+    if (!y || !m) return '';
+    return `${MONTHS_SHORT[m - 1]} ${String(y).slice(-2)}`;
+  };
+  const a = one(start);
+  const b = one(end);
+  return a && b && a !== b ? `${a} – ${b}` : (b || a);
+}
+
+// A movement percentage. Blank rather than "Infinity%" when there is nothing
+// to divide by — "up from nothing" is not a percentage, and printing one is
+// how a table stops being trusted.
+export function percentChange(v) {
+  if (v === null || v === undefined || isNaN(v) || !isFinite(v)) return '';
+  const dp = Math.abs(v) >= 100 ? 0 : 1;
+  return `${v > 0 ? '+' : ''}${v.toFixed(dp)}%`;
+}
+
 /* ─── Ratios ───────────────────────────────────────────────────── */
 // Defined as a config array so new ratios are one entry each. compute(ctx)
 // returns a number or null (→ rendered as "—"). ctx keys (all follow the
