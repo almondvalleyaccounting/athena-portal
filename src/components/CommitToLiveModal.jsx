@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { fmt, Btn } from './ui';
 import { exportQboCsv } from '../lib/qboExport';
@@ -6,6 +6,8 @@ import { pushToQbo, getQboStatus } from '../lib/qboApi';
 
 export default function CommitToLiveModal({ quote, lineItems, profile, onCommitted, onClose }) {
   const [committing, setCommitting] = useState(false);
+  // Billing row written by this attempt, so a thrown push can undo it.
+  const committedBillingId = useRef(null);
   const [error, setError] = useState('');
   const [qboAction, setQboAction] = useState('none'); // 'none' | 'push' | 'csv'
   const [qboConnected, setQboConnected] = useState(false);
@@ -349,6 +351,46 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
     }
   };
 
+  // Undo a commit whose push wrote nothing to QuickBooks. Returns true if it
+  // was undone, false if QuickBooks artefacts exist and the commit must stand.
+  //
+  // The delete carries the same guard as the manual revert on the quote page
+  // (no recurring txn, no invoice), so even if these checks raced a late
+  // write the row survives rather than orphaning a real QuickBooks document.
+  const rollBackCommitIfNothingPushed = async (billingId) => {
+    if (!billingId) return false;
+
+    // The setup invoice id is stamped on the quote, not the billing row, and
+    // it may already have been emailed to the client — so it counts.
+    const { data: q } = await supabase
+      .from('quotes').select('qbo_setup_invoice_id').eq('id', quote.id).maybeSingle();
+    if (q?.qbo_setup_invoice_id) return false;
+
+    const { data: deleted } = await supabase
+      .from('live_billing')
+      .delete()
+      .eq('id', billingId)
+      .is('qbo_recurring_txn_id', null)
+      .is('qbo_invoice_id', null)
+      .select('id');
+    if (!deleted || deleted.length === 0) return false;
+
+    // Billing row gone — put the quote back so it returns to the to-commit list.
+    await supabase
+      .from('quotes')
+      .update({ status: 'accepted', committed_at: null, committed_by: null })
+      .eq('id', quote.id);
+    await supabase.from('audit_log').insert({
+      user_id: profile.id,
+      action: 'commit_rolled_back',
+      entity_type: 'quote',
+      entity_id: quote.id,
+      detail: { billing_id: billingId, reason: 'QBO push failed before writing anything to QuickBooks' },
+    });
+    committedBillingId.current = null;
+    return true;
+  };
+
   // Review step — the final, terminal Commit. Saves the verified contact
   // details, writes the commit, then pushes to QBO. This is the ONLY place a
   // committed record is created on the push path.
@@ -356,9 +398,11 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
     setCommitting(true);
     setError('');
     setPushStatus('pushing');
+    committedBillingId.current = null; // this attempt only
     try {
       await persistContactDetails();
       const billingRow = await persistCommit();
+      committedBillingId.current = billingRow?.id || null;
       const hasSetupLines = (lineItems || []).some((l) => !l.is_recurring);
       const result = await pushToQbo(billingRow.id, profile.id, {
         mode: 'recurring_template',
@@ -379,25 +423,42 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         onCommitted();
       } else {
         setPushStatus('push_error');
-        // Two separate facts, and running them into one sentence buried the
-        // one that matters. The commit IS saved — say so plainly — then give
-        // the QuickBooks reason its own line rather than appending it mid-clause.
-        setError(
-          `Committed to live billing — that part is saved.
-
-` +
-          `QuickBooks was not updated: ${result?.error || 'Unknown error.'}
-
-` +
-          `Once that's sorted you can push to QuickBooks from the Billing page.`
-        );
+        // The commit is written before the push, because the push needs the
+        // billing row's id. So a failed push left the quote marked committed
+        // with a live_billing row behind — the client on live billing in
+        // Athena with nothing in QuickBooks — and the only way out was to
+        // notice and revert by hand. 191 Architecture hit exactly that.
+        //
+        // Undo it, but only when the push genuinely wrote nothing. If any of
+        // it did land, the commit stays: deleting the row would orphan a real
+        // QuickBooks document.
+        const rolledBack = await rollBackCommitIfNothingPushed(billingRow.id);
+        if (rolledBack) {
+          setError(
+            'Not committed — nothing was written to QuickBooks, so the commit has been undone.\n\n'
+            + (result?.error || 'Unknown error.')
+            + '\n\nFix that and commit again.'
+          );
+        } else {
+          setError(
+            'Committed to live billing — that part is saved, and some of it did reach QuickBooks.\n\n'
+            + 'QuickBooks was not fully updated: ' + (result?.error || 'Unknown error.')
+            + '\n\nCheck QuickBooks before retrying, then push from the Billing page.'
+          );
+        }
       }
     } catch (pushErr) {
       setPushStatus('push_error');
+      // A throw mid-push leaves the same half-commit as a failed result.
+      let rolledBack = false;
+      try {
+        rolledBack = await rollBackCommitIfNothingPushed(committedBillingId.current);
+      } catch { /* rollback is best-effort — never mask the original error */ }
       setError(
-        `${pushErr.message}
-
-If the commit was saved you can push to QuickBooks from the Billing page later.`
+        pushErr.message + '\n\n'
+        + (rolledBack
+          ? 'Nothing was written to QuickBooks, so the commit has been undone. Fix that and commit again.'
+          : 'If the commit was saved you can push to QuickBooks from the Billing page later.')
       );
     }
     setCommitting(false);
