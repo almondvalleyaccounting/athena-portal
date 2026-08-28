@@ -38,6 +38,14 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const RESEND_FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "info@almondvalleyaccounting.co.uk";
 const RESEND_FROM_NAME = Deno.env.get("RESEND_FROM_NAME") || "Almond Valley Accounting";
 
+// Resend delivers from its own infrastructure, so these never appear in
+// info@'s Sent items — which is exactly why nobody could see them. A blind
+// copy to info@ puts a visible record in the mailbox, and comms-ingest then
+// files it against the client automatically. Blind, so the client never sees
+// an internal address.
+const CH_CODE_BCC_EMAIL =
+  Deno.env.get("CH_CODE_BCC_EMAIL") ?? "info@almondvalleyaccounting.co.uk";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
@@ -47,11 +55,20 @@ const corsHeaders = {
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...corsHeaders } });
 }
-async function sendEmail(opts: { to: string; subject: string; html: string; text?: string }) {
+// bcc defaults to on: every caller here is a client email except the internal
+// digest, which passes bcc:false — copying a staff round-up back into info@
+// would be noise, not a record.
+async function sendEmail(opts: { to: string; subject: string; html: string; text?: string; bcc?: boolean }) {
+  const bcc = opts.bcc === false ? null : CH_CODE_BCC_EMAIL;
   const resp = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
-    body: JSON.stringify({ from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`, to: [opts.to], subject: opts.subject, html: opts.html, text: opts.text }),
+    body: JSON.stringify({
+      from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`,
+      to: [opts.to],
+      ...(bcc ? { bcc: [bcc] } : {}),
+      subject: opts.subject, html: opts.html, text: opts.text,
+    }),
   });
   const j = await resp.json().catch(() => ({}));
   return { ok: resp.ok, id: (j?.id as string) || null, error: resp.ok ? undefined : (j?.message || j) };
@@ -369,7 +386,7 @@ Deno.serve(async (req) => {
         ? [testRecipient]
         : [firstEmail(callAssignee?.email as string), sections.escalatedTracy.length ? firstEmail(escalateTo?.email as string) : null].filter(Boolean) as string[];
       for (const to of [...new Set(recipients)]) {
-        const r = await sendEmail({ to, subject, html, text });
+        const r = await sendEmail({ to, subject, html, text, bcc: false });
         results.push({ kind: "digest", to, ok: r.ok, resend_id: r.id, error: r.error });
         if (testRecipient) break;
       }

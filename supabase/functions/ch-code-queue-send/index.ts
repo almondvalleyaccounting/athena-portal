@@ -25,6 +25,14 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const RESEND_FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "info@almondvalleyaccounting.co.uk";
 const RESEND_FROM_NAME = Deno.env.get("RESEND_FROM_NAME") || "Almond Valley Accounting";
 
+// Resend delivers from its own infrastructure, so these never appear in
+// info@'s Sent items — which is exactly why nobody could see them. A blind
+// copy to info@ puts a visible record in the mailbox, and comms-ingest then
+// files it against the client automatically. Blind, so the client never sees
+// an internal address.
+const CH_CODE_BCC_EMAIL =
+  Deno.env.get("CH_CODE_BCC_EMAIL") ?? "info@almondvalleyaccounting.co.uk";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -39,7 +47,12 @@ async function sendEmail(opts: { to: string; subject: string; html: string; text
   const resp = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
-    body: JSON.stringify({ from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`, to: [opts.to], subject: opts.subject, html: opts.html, text: opts.text }),
+    body: JSON.stringify({
+      from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`,
+      to: [opts.to],
+      ...(CH_CODE_BCC_EMAIL ? { bcc: [CH_CODE_BCC_EMAIL] } : {}),
+      subject: opts.subject, html: opts.html, text: opts.text,
+    }),
   });
   const j = await resp.json().catch(() => ({}));
   return { ok: resp.ok, id: (j?.id as string) || null, error: resp.ok ? undefined : (j?.message || JSON.stringify(j)) };
@@ -90,7 +103,8 @@ Deno.serve(async (req) => {
         : kind === "code" ? "Code reminder" : kind === "self_verify" ? "Self-verify reminder" : "Reminder";
       await service.from("ch_code_activity").insert({
         request_id: item.request_id as string, kind: "email_out",
-        body: `${label} emailed to ${to} (from the queue).`, created_by: user.id,
+        body: `${label} emailed to ${to} (from the queue)${CH_CODE_BCC_EMAIL ? `, blind copy to ${CH_CODE_BCC_EMAIL}` : ""}.`,
+        created_by: user.id,
       });
 
       // Bump the current stage's comms ladder. The lifecycle stage is advanced

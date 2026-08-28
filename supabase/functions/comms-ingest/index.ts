@@ -173,6 +173,16 @@ async function buildEmailMap(service: ReturnType<typeof createClient>): Promise<
   return map;
 }
 
+// Our own addresses, not just the mailbox being scanned. Quote and CH-code
+// emails go out through Resend as info@ and are blind-copied to another of our
+// mailboxes, so the copy that lands in accounts@ was still sent BY us — keying
+// direction off the scanned mailbox alone would file it as inbound. For the
+// same reason a firm address never identifies a client.
+const FIRM_EMAIL_DOMAIN =
+  Deno.env.get("FIRM_EMAIL_DOMAIN") || "almondvalleyaccounting.co.uk";
+const isFirmAddress = (addr: string) =>
+  addr.toLowerCase().endsWith(`@${FIRM_EMAIL_DOMAIN.toLowerCase()}`);
+
 async function gmailList(token: string, q: string, pageToken?: string) {
   const params = new URLSearchParams({ q, maxResults: "100" });
   if (pageToken) params.set("pageToken", pageToken);
@@ -274,7 +284,7 @@ async function processMailbox(
     const entityIds = new Set<string>();
     let matchedEmail: string | null = null;
     for (const addr of participants) {
-      if (addr === mailboxLc) continue; // our own address never identifies a client
+      if (addr === mailboxLc || isFirmAddress(addr)) continue; // one of ours never identifies a client
       const hit = emailMap.get(addr);
       if (hit) { for (const eid of hit) entityIds.add(eid); if (!matchedEmail) matchedEmail = addr; }
     }
@@ -288,7 +298,7 @@ async function processMailbox(
     parseBody(full.payload, body);
 
     const occurredAt = internalMs ? new Date(internalMs).toISOString() : runStart.toISOString();
-    const direction = from.email === mailboxLc ? "out" : "in";
+    const direction = isFirmAddress(from.email) ? "out" : "in";
     const rfcId = headerOf(headers, "Message-ID") || null;
     const subject = headerOf(headers, "Subject") || null;
 

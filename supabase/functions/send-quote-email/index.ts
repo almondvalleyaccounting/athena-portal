@@ -47,6 +47,13 @@ const RESEND_FROM_NAME =
   Deno.env.get("RESEND_FROM_NAME") || "Almond Valley Accounting";
 const PORTAL_PUBLIC_URL =
   Deno.env.get("PORTAL_PUBLIC_URL") || "https://portal.almondvalleyaccounting.co.uk";
+// Resend delivers straight from its own infrastructure, so a quote we send
+// never touches a Gmail mailbox and never appears in anyone's Sent items. A
+// blind copy to accounts@ is the only way the firm keeps a visible record —
+// and comms-ingest then files it against the client automatically. Blind, so
+// the client never sees an internal address.
+const QUOTE_BCC_EMAIL =
+  Deno.env.get("QUOTE_BCC_EMAIL") ?? "accounts@almondvalleyaccounting.co.uk";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -494,6 +501,7 @@ Deno.serve(async (req) => {
         html,
       };
       if (cc.length) resendPayload.cc = cc;
+      if (QUOTE_BCC_EMAIL) resendPayload.bcc = [QUOTE_BCC_EMAIL];
       if (pdfBase64) {
         resendPayload.attachments = [
           { filename: filename.endsWith(".pdf") ? filename : `${filename}.pdf`, content: pdfBase64 },
@@ -534,7 +542,7 @@ Deno.serve(async (req) => {
 
       await serviceClient.from("audit_log").insert({
         user_id: caller.id, action: "sent_to_client_group", entity_type: "billing_group", entity_id: groupId,
-        detail: { recipient: to, recipients: toList, cc, subject, resend_id: resendId, companies: companies.length, quote_ids: quoteIds, had_pdf: Boolean(pdfBase64), had_accept_link: Boolean(acceptUrl) },
+        detail: { recipient: to, recipients: toList, cc, bcc: QUOTE_BCC_EMAIL || null, subject, resend_id: resendId, companies: companies.length, quote_ids: quoteIds, had_pdf: Boolean(pdfBase64), had_accept_link: Boolean(acceptUrl) },
       });
 
       return jsonResponse({ success: true, resend_id: resendId, group_id: groupId, sent_count: quoteIds.length, sent_at: sentAt });
@@ -621,6 +629,7 @@ Deno.serve(async (req) => {
       html,
     };
     if (cc.length) resendPayload.cc = cc;
+    if (QUOTE_BCC_EMAIL) resendPayload.bcc = [QUOTE_BCC_EMAIL];
     if (pdfBase64) {
       resendPayload.attachments = [
         { filename: filename.endsWith(".pdf") ? filename : `${filename}.pdf`, content: pdfBase64 },
@@ -711,6 +720,7 @@ Deno.serve(async (req) => {
         recipient: to,
         recipients: toList,
         cc,
+        bcc: QUOTE_BCC_EMAIL || null,
         subject,
         resend_id: resendId,
         had_pdf: Boolean(pdfBase64),
