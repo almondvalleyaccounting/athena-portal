@@ -2,10 +2,29 @@ import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Btn } from './ui';
 
+// A quote regularly goes to two directors, so both the To and CC boxes take a
+// comma- or semicolon-separated list. The edge function splits them again
+// server-side — this is only so the modal can validate and echo back what it
+// is about to send.
+const parseEmails = (raw) => {
+  const seen = new Set();
+  return String(raw || '')
+    .split(/[,;]/)
+    .map(e => e.trim())
+    .filter(e => {
+      if (!e) return false;
+      const key = e.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
 // Modal for composing and sending a quote to a client via email.
 // Generates PDF client-side, sends via Supabase Edge Function.
 export default function SendQuoteModal({ quote, lineItems, profile, onSent, onClose, pdfGenerator, groupId }) {
   const [recipientEmail, setRecipientEmail] = useState('');
+  const [ccEmail, setCcEmail] = useState('');
   const [subject, setSubject] = useState(`Services Quote: ${quote.relationship_group || 'Client'}`);
   const expiryStr = quote.valid_until ? new Date(quote.valid_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   // Lead with the instalment arithmetic. The annual figure held on the quote is
@@ -20,8 +39,13 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
 
+  const toList = parseEmails(recipientEmail);
+  const ccList = parseEmails(ccEmail).filter(
+    e => !toList.some(t => t.toLowerCase() === e.toLowerCase())
+  );
+
   const handleSend = async () => {
-    if (!recipientEmail) { setError('Enter a recipient email.'); return; }
+    if (!toList.length) { setError('Enter at least one recipient email.'); return; }
     setSending(true);
     setError('');
 
@@ -44,7 +68,8 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
             group_id: groupId,
             group_ref: quote.quote_ref,
             group_name: quote.relationship_group,
-            to: recipientEmail,
+            to: toList,
+            cc: ccList,
             subject,
             message,
             pdfBase64,
@@ -53,7 +78,8 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
           }
         : {
             quote_id: quote.id,
-            to: recipientEmail,
+            to: toList,
+            cc: ccList,
             subject,
             message,
             pdfBase64,
@@ -102,7 +128,10 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
         {sent ? (
           <div className="text-center py-6">
             <p className="text-sm text-green-700 font-medium mb-2">Quote sent successfully!</p>
-            <p className="text-xs text-gray-500">Sent to {recipientEmail}</p>
+            <p className="text-xs text-gray-500">Sent to {toList.join(', ')}</p>
+            {ccList.length > 0 && (
+              <p className="text-xs text-gray-500">CC {ccList.join(', ')}</p>
+            )}
             <Btn onClick={onClose} className="mt-4">Close</Btn>
           </div>
         ) : (
@@ -111,12 +140,34 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
 
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Recipient email</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Recipient email <span className="text-gray-400">(separate multiple with a comma)</span>
+                </label>
                 <input
                   type="email"
+                  multiple
                   value={recipientEmail}
                   onChange={e => setRecipientEmail(e.target.value)}
-                  placeholder="client@example.com"
+                  placeholder="director1@example.com, director2@example.com"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2"
+                />
+                {toList.length > 1 && (
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {toList.length} recipients — the accept link works for all of them, and the
+                    acceptance is recorded against {toList[0]}.
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  CC <span className="text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="email"
+                  multiple
+                  value={ccEmail}
+                  onChange={e => setCcEmail(e.target.value)}
+                  placeholder="accountant@example.com"
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2"
                 />
               </div>
@@ -140,7 +191,7 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
             </div>
 
             <div className="flex gap-2 mt-4">
-              <Btn onClick={handleSend} disabled={sending || !recipientEmail} className="flex-1">
+              <Btn onClick={handleSend} disabled={sending || !toList.length} className="flex-1">
                 {sending ? 'Sending...' : 'Send Quote'}
               </Btn>
               <Btn onClick={onClose} variant="ghost">Cancel</Btn>

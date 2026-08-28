@@ -8,8 +8,11 @@
 // Body:
 //   {
 //     quote_id | quoteId       : string (uuid)      required
-//     to                       : string (email)     required
-//     cc                       : string[]           optional
+//     to                       : string | string[] required
+//                                (a single address, a comma/semicolon-
+//                                separated list, or an array — a quote often
+//                                goes to two directors at once)
+//     cc                       : string | string[] optional
 //     subject                  : string             required
 //     message                  : string             optional (plain text; \n -> <br>)
 //     pdfBase64 | pdf_base64   : string (base64)    optional (attached if present)
@@ -51,6 +54,39 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+// Recipients may arrive as a single address, a comma/semicolon-separated
+// string, or an array — a quote regularly goes to two directors at once.
+// Splitting here (rather than trusting the caller) means a staff member can
+// simply type both addresses into the To box.
+//
+// The FIRST To address is the primary: it is what gets bound into the accept
+// token and recorded as accepted_client_email on acceptance. Every other
+// recipient receives the identical email and an identical working link — the
+// token is a bearer link, not a per-person credential, so a co-director
+// clicking it accepts normally; the acceptance is simply attributed to the
+// primary address.
+function parseEmailList(raw: unknown): string[] {
+  const parts = Array.isArray(raw) ? raw : [raw];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const part of parts) {
+    if (typeof part !== "string") continue;
+    for (const piece of part.split(/[,;]/)) {
+      const email = piece.trim();
+      if (!email) continue;
+      const key = email.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(email);
+    }
+  }
+  return out;
+}
+
+// Deliberately loose — Resend is the real validator. This only catches the
+// shapes that would otherwise reach Resend as one malformed address.
+const EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -363,13 +399,13 @@ Deno.serve(async (req) => {
     // 3. Parse body (accept both camel and snake case for resilience)
     body = await req.json().catch(() => ({}));
     quoteId = (body.quote_id as string) || (body.quoteId as string) || null;
-    const to = body.to as string | undefined;
-    const ccRaw = body.cc as string[] | string | undefined;
-    const cc = Array.isArray(ccRaw)
-      ? ccRaw.filter(Boolean)
-      : typeof ccRaw === "string" && ccRaw.trim()
-        ? [ccRaw.trim()]
-        : [];
+    const toList = parseEmailList(body.to);
+    // Primary recipient — the accept token and the audit trail are keyed to it.
+    const to: string | undefined = toList[0];
+    // A CC that duplicates a To address would deliver twice; drop it.
+    const cc = parseEmailList(body.cc).filter(
+      (e) => !toList.some((t) => t.toLowerCase() === e.toLowerCase()),
+    );
     const subject = body.subject as string | undefined;
     const messageText = (body.message as string | undefined) || "";
     const pdfBase64 =
@@ -382,6 +418,14 @@ Deno.serve(async (req) => {
         ? true
         : Boolean(body.include_accept_link);
 
+    const badAddress = [...toList, ...cc].find((e) => !EMAIL_RE.test(e));
+    if (badAddress) {
+      return jsonResponse(
+        { success: false, error: `Not a valid email address: ${badAddress}` },
+        400,
+      );
+    }
+
     // ── Group send branch ───────────────────────────────────────────────
     // When a group_id is supplied, the email summarises the whole group
     // (by company, by service), attaches the supplied group PDF, and the
@@ -389,7 +433,7 @@ Deno.serve(async (req) => {
     const groupId = (body.group_id as string) || null;
     if (groupId) {
       if (!to || !subject) {
-        return jsonResponse({ success: false, error: "to and subject are required" }, 400);
+        return jsonResponse({ success: false, error: "At least one recipient and a subject are required" }, 400);
       }
       const { data: groupRow } = await serviceClient
         .from("billing_groups").select("id, name").eq("id", groupId).single();
@@ -445,7 +489,7 @@ Deno.serve(async (req) => {
       const filename = (explicitFilename || `${groupRef || "group-quote"}.pdf`).replace(/[^a-zA-Z0-9._-]/g, "_");
       const resendPayload: Record<string, unknown> = {
         from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`,
-        to: [to],
+        to: toList,
         subject,
         html,
       };
@@ -466,7 +510,7 @@ Deno.serve(async (req) => {
         console.error("[send-quote-email] Resend error (group)", resendResp.status, resendJson);
         await serviceClient.from("audit_log").insert({
           user_id: caller.id, action: "send-quote-email-failed", entity_type: "billing_group", entity_id: groupId,
-          detail: { stage: "resend_api", status: resendResp.status, error: resendJson?.message || resendJson, recipient: to },
+          detail: { stage: "resend_api", status: resendResp.status, error: resendJson?.message || resendJson, recipient: to, recipients: toList },
         });
         return jsonResponse({ success: false, error: resendJson?.message || `Resend API error (${resendResp.status})` }, 502);
       }
@@ -482,7 +526,7 @@ Deno.serve(async (req) => {
           console.error("[send-quote-email] group status update failed after send", upErr);
           await serviceClient.from("audit_log").insert({
             user_id: caller.id, action: "send-quote-email-partial", entity_type: "billing_group", entity_id: groupId,
-            detail: { stage: "post_send_update", error: upErr.message, resend_id: resendId, recipient: to },
+            detail: { stage: "post_send_update", error: upErr.message, resend_id: resendId, recipient: to, recipients: toList },
           });
           return jsonResponse({ success: true, warning: "Email sent but group status update failed — needs manual reconcile", resend_id: resendId, group_id: groupId, sent_at: sentAt }, 200);
         }
@@ -490,7 +534,7 @@ Deno.serve(async (req) => {
 
       await serviceClient.from("audit_log").insert({
         user_id: caller.id, action: "sent_to_client_group", entity_type: "billing_group", entity_id: groupId,
-        detail: { recipient: to, cc, subject, resend_id: resendId, companies: companies.length, quote_ids: quoteIds, had_pdf: Boolean(pdfBase64), had_accept_link: Boolean(acceptUrl) },
+        detail: { recipient: to, recipients: toList, cc, subject, resend_id: resendId, companies: companies.length, quote_ids: quoteIds, had_pdf: Boolean(pdfBase64), had_accept_link: Boolean(acceptUrl) },
       });
 
       return jsonResponse({ success: true, resend_id: resendId, group_id: groupId, sent_count: quoteIds.length, sent_at: sentAt });
@@ -504,7 +548,7 @@ Deno.serve(async (req) => {
     }
     if (!to || !subject) {
       return jsonResponse(
-        { success: false, error: "to and subject are required" },
+        { success: false, error: "At least one recipient and a subject are required" },
         400,
       );
     }
@@ -572,7 +616,7 @@ Deno.serve(async (req) => {
       .replace(/[^a-zA-Z0-9._-]/g, "_");
     const resendPayload: Record<string, unknown> = {
       from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`,
-      to: [to],
+      to: toList,
       subject,
       html,
     };
@@ -607,6 +651,7 @@ Deno.serve(async (req) => {
           status: resendResp.status,
           error: resendJson?.message || resendJson,
           recipient: to,
+          recipients: toList,
         },
       });
       return jsonResponse(
@@ -640,6 +685,7 @@ Deno.serve(async (req) => {
           error: updateErr.message,
           resend_id: resendId,
           recipient: to,
+          recipients: toList,
         },
       });
       return jsonResponse(
@@ -663,6 +709,7 @@ Deno.serve(async (req) => {
       entity_id: quote.id,
       detail: {
         recipient: to,
+        recipients: toList,
         cc,
         subject,
         resend_id: resendId,
