@@ -919,9 +919,91 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ──────────────────────────────────────────────────────────
+    // Stale customer pointers.
+    //
+    // entities.qbo_customer_id is what qbo-push invoices against. Merging two
+    // customers in QuickBooks makes the loser a deleted list element, and an
+    // entity still pointing at it fails every push from then on — with a raw
+    // Fault envelope, at the moment someone is trying to commit a quote. That
+    // is how it was found on 2026-08-28: 191 Architecture, plus four more
+    // clients that had been quietly broken since May and June.
+    //
+    // This is the right place to notice. `SELECT * FROM Customer` returns only
+    // ACTIVE customers, so the set we just paged IS the live set, and it only
+    // exists when the pull actually succeeded — a check keyed off staleness
+    // instead would flag all 270 clients the day the pull stops.
+    //
+    // Reported, never repaired: this file will not guess a customer mapping,
+    // because guessing splits a client's billing across two customers.
+    // ──────────────────────────────────────────────────────────
+    const liveCustomerIds = new Set(qboCustomers.map((c) => String(c.Id || "")));
+    const stalePointers: Array<{ entity_id: string; name: string; qbo_customer_id: string; qbo_customer_name: string | null }> = [];
+    try {
+      const { data: pointed } = await sb
+        .from("entities")
+        .select("id, name, qbo_customer_id, qbo_customer_name")
+        .not("qbo_customer_id", "is", null);
+      for (const e of (pointed || []) as Array<Record<string, unknown>>) {
+        const id = String(e.qbo_customer_id || "");
+        if (!id || liveCustomerIds.has(id)) continue;
+        stalePointers.push({
+          entity_id: e.id as string,
+          name: (e.name as string) || "Unnamed client",
+          qbo_customer_id: id,
+          qbo_customer_name: (e.qbo_customer_name as string) || null,
+        });
+      }
+
+      if (stalePointers.length) {
+        const { data: admins } = await sb.from("staff_profiles")
+          .select("id").eq("is_active", true).eq("can_manage_portal", true);
+        // Dedupe on (recipient, entity + dead id), so a pointer that stays
+        // broken notifies once rather than every night, and re-notifies if it
+        // later breaks against a different customer.
+        //
+        // Filtered explicitly rather than with upsert/onConflict: the index
+        // behind this is notifications_dedupe, which is PARTIAL
+        // (WHERE source_key IS NOT NULL). PostgREST cannot infer a partial
+        // index as a conflict target, so an upsert here errors rather than
+        // silently doing the right thing.
+        const wanted = new Map<string, Record<string, unknown>>();
+        for (const sp of (admins || []) as Array<Record<string, unknown>>) {
+          for (const p of stalePointers) {
+            const sourceKey = `qbo_stale_customer:${p.entity_id}:${p.qbo_customer_id}`;
+            wanted.set(`${sp.id}|${sourceKey}`, {
+              recipient_id: sp.id as string,
+              kind: "qbo_mapping",
+              title: `${p.name} — QuickBooks customer no longer exists`,
+              body: `Athena bills ${p.name} against QuickBooks customer ${p.qbo_customer_id}`
+                + (p.qbo_customer_name ? ` ("${p.qbo_customer_name}")` : "")
+                + `, which is no longer active — it was deleted, or merged into another customer. `
+                + `Any commit or push for this client will fail until it is re-linked on the client page.`,
+              link_path: `/clients/${p.entity_id}`,
+              source_key: sourceKey,
+            });
+          }
+        }
+        if (wanted.size) {
+          const { data: already } = await sb.from("notifications")
+            .select("recipient_id, source_key")
+            .in("source_key", [...new Set([...wanted.values()].map((r) => r.source_key as string))]);
+          for (const a of (already || []) as Array<Record<string, unknown>>) {
+            wanted.delete(`${a.recipient_id}|${a.source_key}`);
+          }
+          if (wanted.size) await sb.from("notifications").insert([...wanted.values()]);
+        }
+      }
+    } catch (err) {
+      // Never let the check take the pull down with it.
+      stats.errors.push(`Stale pointer check: ${(err as Error).message}`);
+    }
+
     return jsonResponse({
       success: true,
       data: {
+        stale_customer_pointers: stalePointers.length,
+        stale_customer_pointer_detail: stalePointers,
         qbo_customers_seen: mapStats.seen,
         qbo_customers_new: mapStats.new,
         qbo_customers_auto_matched: mapStats.auto_matched,
