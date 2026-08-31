@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { rememberThisDevice, forgetThisDevice, TRUSTED_DEVICE_DAYS, UNTRUSTED_SESSION_DAYS } from '../lib/trustedDevice';
 
 // Shown after password sign-in when the user has a verified TOTP factor
 // and the current session is still aal1. On successful verify, the
 // session elevates to aal2 and the app proceeds.
+//
+// The "stay signed in" tick does not skip this screen next time — nothing
+// does, and see trustedDevice.js for why that is deliberate. It decides how
+// long the session this code is about to elevate may live: 30 days ticked,
+// 7 unticked. Untick it on a machine that is not yours.
 export default function MFAChallenge({ onPassed }) {
   const [factorId, setFactorId] = useState(null);
   const [challengeId, setChallengeId] = useState(null);
@@ -11,6 +17,7 @@ export default function MFAChallenge({ onPassed }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [staySignedIn, setStaySignedIn] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -39,6 +46,15 @@ export default function MFAChallenge({ onPassed }) {
       if (ch?.id) setChallengeId(ch.id);
       setCode('');
       return;
+    }
+    // Verified: the session is aal2 from here. Record (or clear) the
+    // device before handing back, so the shell's lifetime check reads a
+    // settled answer rather than racing this write.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (staySignedIn) {
+      if (user) await rememberThisDevice(user.id);
+    } else {
+      await forgetThisDevice();
     }
     setVerifying(false);
     onPassed?.();
@@ -69,10 +85,25 @@ export default function MFAChallenge({ onPassed }) {
               style={{ width: '100%', fontSize: 24, fontFamily: 'monospace', textAlign: 'center', letterSpacing: 6, padding: '12px 8px', border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none' }}
             />
             {error && <p style={{ fontSize: 12, color: '#b91c1c', marginTop: 10 }}>{error}</p>}
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={staySignedIn}
+                onChange={(e) => setStaySignedIn(e.target.checked)}
+                style={{ marginTop: 2, cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
+                Stay signed in on this device for {TRUSTED_DEVICE_DAYS} days.
+                <span style={{ display: 'block', color: '#94a3b8' }}>
+                  Untick on a shared or borrowed machine and this browser signs out after {UNTRUSTED_SESSION_DAYS} days instead.
+                  Either way you'll enter a code again the next time you sign in.
+                </span>
+              </span>
+            </label>
             <button
               onClick={handleVerify}
               disabled={verifying || code.length < 6 || !challengeId}
-              style={{ width: '100%', marginTop: 16, padding: '10px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: verifying || code.length < 6 ? 'not-allowed' : 'pointer', opacity: verifying || code.length < 6 ? 0.6 : 1 }}
+              style={{ width: '100%', marginTop: 14, padding: '10px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: verifying || code.length < 6 ? 'not-allowed' : 'pointer', opacity: verifying || code.length < 6 ? 0.6 : 1 }}
             >
               {verifying ? 'Verifying…' : 'Verify'}
             </button>

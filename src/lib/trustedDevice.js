@@ -1,11 +1,28 @@
 import { supabase } from './supabase';
 
-// "Remember this device for 90 days" support for MFA. The raw token lives
-// in localStorage; only its sha-256 hash is stored in the database, so a
-// dump of the table doesn't let anyone bypass MFA on other devices.
+// "Stay signed in on this device" support.
+//
+// Read the name carefully: a trusted device does NOT skip the 6-digit
+// challenge. It used to, and that was the 2026-08-24 finding — the app
+// short-circuited to 'ok' on a matching row, left the session at aal1, and
+// so nobody completed a challenge after their first sign-in. Never restore
+// that behaviour; sql/258_mfa_aal2_required.sql.PREPARED depends on every
+// staff session reaching aal2.
+//
+// What a trusted device buys now is time: the session on it is allowed to
+// live 30 days before the shell signs it out, against 7 days elsewhere.
+// Since every sign-in completes a challenge, that window IS the interval
+// between 2FA prompts — monthly on your own machine, weekly on one you
+// only ticked through once.
+//
+// The raw token lives in localStorage; only its sha-256 hash is stored in
+// the database, so a dump of the table gives an attacker nothing to replay.
 
 const STORAGE_KEY = 'mfaTrustedDeviceToken';
-const TRUST_DAYS = 90;
+const TRUST_DAYS = 30;
+
+// How long a session may live on a device that has not been remembered.
+export const UNTRUSTED_SESSION_DAYS = 7;
 
 async function sha256Hex(text) {
   const enc = new TextEncoder().encode(text);
@@ -44,9 +61,9 @@ export async function checkTrustedDevice(userId) {
   }
 }
 
-// Issued after a successful MFA verify (challenge or enrolment). Writes
-// the hash to mfa_trusted_devices with a 90-day expiry and stores the raw
-// token in localStorage on this device.
+// Issued after a successful MFA verify (challenge or enrolment) when the
+// user asked to stay signed in. Writes the hash to mfa_trusted_devices with
+// a 30-day expiry and stores the raw token in localStorage on this device.
 export async function rememberThisDevice(userId) {
   if (!userId) return;
   try {
@@ -66,8 +83,19 @@ export async function rememberThisDevice(userId) {
   }
 }
 
-export function forgetThisDevice() {
+// Drops the local token — which is what actually makes the device untrusted
+// — and best-effort deletes the matching row so a forgotten device stops
+// showing up as live. RLS confines the delete to the caller's own rows.
+export async function forgetThisDevice() {
+  const token = localStorage.getItem(STORAGE_KEY);
   localStorage.removeItem(STORAGE_KEY);
+  if (!token) return;
+  try {
+    const hash = await sha256Hex(token);
+    await supabase.from('mfa_trusted_devices').delete().eq('token_hash', hash);
+  } catch {
+    /* the local token is already gone, so this device is untrusted regardless */
+  }
 }
 
 export const TRUSTED_DEVICE_DAYS = TRUST_DAYS;

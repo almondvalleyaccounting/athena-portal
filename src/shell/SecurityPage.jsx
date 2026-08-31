@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { rememberThisDevice, forgetThisDevice } from '../lib/trustedDevice';
+import { rememberThisDevice, forgetThisDevice, checkTrustedDevice, TRUSTED_DEVICE_DAYS, UNTRUSTED_SESSION_DAYS } from '../lib/trustedDevice';
 
 const font = "'Outfit', sans-serif";
 
@@ -13,17 +13,31 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
   const [aal, setAal] = useState({ currentLevel: 'aal1', nextLevel: 'aal1' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [trusted, setTrusted] = useState(null); // null = unknown
 
   const refresh = async () => {
     setLoading(true);
-    const [{ data: list, error: lErr }, { data: levels }] = await Promise.all([
+    const [{ data: list, error: lErr }, { data: levels }, { data: { user } }] = await Promise.all([
       supabase.auth.mfa.listFactors(),
       supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+      supabase.auth.getUser(),
     ]);
     if (lErr) setError(lErr.message);
     setFactors(list?.totp || []);
     if (levels) setAal(levels);
+    setTrusted(user ? await checkTrustedDevice(user.id) : false);
     setLoading(false);
+  };
+
+  // Turning "stay signed in" on or off from here changes only how long this
+  // browser keeps a session before it has to sign in again. It has never
+  // been a way to skip the 6-digit code, and must not become one.
+  const setStaySignedIn = async (on) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    if (on) await rememberThisDevice(user.id);
+    else await forgetThisDevice();
+    refresh();
   };
 
   useEffect(() => { refresh(); }, []);
@@ -88,8 +102,9 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
       setEnrolling({ ...enrolling, verifying: false, code: '', challengeId: ch?.id || enrolling.challengeId, error: vErr.message || 'Verification failed' });
       return;
     }
-    // Enrolment just elevated this session to aal2 — remember the device
-    // so the 6-digit prompt isn't needed again for 90 days.
+    // Enrolment just elevated this session to aal2. Remember the device so
+    // this browser holds its session for 30 days rather than 7 — the prompt
+    // itself still comes back at the next sign-in.
     const { data: { user } } = await supabase.auth.getUser();
     if (user) await rememberThisDevice(user.id);
     setEnrolling(null);
@@ -104,7 +119,7 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
     // Wipe the local trusted-device token and any rows on the server —
     // there's no enrolled factor any more, so trusted-device claims must
     // not survive.
-    forgetThisDevice();
+    await forgetThisDevice();
     const { data: { user } } = await supabase.auth.getUser();
     if (user) await supabase.from('mfa_trusted_devices').delete().eq('user_id', user.id);
     refresh();
@@ -163,6 +178,22 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
             <p style={{ fontSize: 12, color: '#64748b', marginTop: 10, marginBottom: 0 }}>
               Session security level: <strong style={{ color: aal.currentLevel === 'aal2' ? '#15803d' : '#92400e' }}>{aal.currentLevel}</strong>
             </p>
+            {trusted !== null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  <div style={{ color: '#0f172a', fontWeight: 500, fontSize: 13 }}>This device</div>
+                  {trusted
+                    ? `Stays signed in for ${TRUSTED_DEVICE_DAYS} days, so you enter a code about once a month.`
+                    : `Signs out after ${UNTRUSTED_SESSION_DAYS} days, so you enter a code about once a week.`}
+                </div>
+                <button
+                  onClick={() => setStaySignedIn(!trusted)}
+                  style={{ flexShrink: 0, padding: '6px 10px', background: 'none', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: font }}
+                >
+                  {trusted ? 'Forget this device' : 'Stay signed in here'}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

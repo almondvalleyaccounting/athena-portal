@@ -84,9 +84,21 @@
 --    before). Keep a postgres session open while you do it, so you can roll back
 --    without being locked out yourself.
 --
--- 6. Purge mfa_trusted_devices. The rows are inert once the client no longer reads
---    them, and leaving 17 live-looking bypass tokens in a table invites someone to
---    wire them back up.
+-- 6. Do NOT purge mfa_trusted_devices. This step used to say the opposite, on the
+--    grounds that "the rows are inert once the client no longer reads them", and
+--    that reasoning expired on 2026-08-31.
+--
+--    The client reads the table again, for a different purpose. A matching row now
+--    lets a session live 30 days instead of 7 before the shell signs it out. It does
+--    not skip the challenge, and must never be made to again — src/lib/trustedDevice.js
+--    carries that warning at the top of the file, next to the code that would have to
+--    change for it to stop being true.
+--
+--    So a row is no longer a bypass token. It is a user's answer to "stay signed in on
+--    this device", and deleting it puts them back on a weekly code with no explanation
+--    of why. The 17 rows the bypass minted are safe to leave: their only remaining
+--    effect is the one their owners asked for when they ticked the box, and their
+--    90-day expiries run out by 2026-11-17 on their own.
 --
 -- ─────────────────────────────────────────────────────────────────────────────
 -- The change

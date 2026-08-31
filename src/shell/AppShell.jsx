@@ -9,6 +9,7 @@ import SecurityPage from './SecurityPage';
 import { CinematicPanel } from './LoginPage';
 import useGlobalShortcuts from './useGlobalShortcuts';
 import { ShortcutsModal } from './ShortcutsMap';
+import { checkTrustedDevice, TRUSTED_DEVICE_DAYS, UNTRUSTED_SESSION_DAYS } from '../lib/trustedDevice';
 
 /* ─── Auth context ─────────────────────────────────────────────── */
 const AuthContext = createContext(null);
@@ -64,38 +65,75 @@ export default function AppShell() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // ── Daily auto-logout at 00:01 GMT ──
-  // Sessions issued before today's 00:01 GMT cutoff get signed out as soon
-  // as the cutoff is reached (or on the next page focus / tick). Sessions
-  // started after the cutoff survive until the next day's cutoff.
+  // ── Session lifetime, which is what sets the 2FA cadence ──
+  // Every fresh sign-in completes a TOTP challenge (see the MFA gate below),
+  // so the maximum age of a session IS the interval between 2FA prompts:
+  //
+  //     remembered device  → 30 days
+  //     anywhere else      →  7 days
+  //
+  // This replaces a 00:01 GMT cutoff that signed everyone out nightly. That
+  // cutoff landed in fd4c1b9 as "independent of the upcoming TOTP MFA
+  // rollout" and was never meant to price 2FA — but once the challenge
+  // became unconditional, a nightly logout meant a code every morning,
+  // which is not what anyone chose.
+  //
+  // Age is taken from user.last_sign_in_at, stamped by the server when the
+  // password was accepted, rather than from the sessionStartedAt localStorage
+  // value the old check used. That value was rewritten on every SIGNED_IN
+  // event — session restores included — so it crept forward and the cutoff
+  // quietly stopped firing on long-lived tabs; auth.sessions held six-day-old
+  // sessions on 2026-08-31 that a daily logout should have ended. A window
+  // measured against a clock the client keeps resetting is not a window.
+  // localStorage remains the fallback for a session that arrives without the
+  // field, so a missing timestamp can never mean "never expires".
+  const [maxSessionDays, setMaxSessionDays] = useState(null); // null → still asking
   useEffect(() => {
-    if (!session) return;
-    const todaysCutoff = () => {
-      const now = new Date();
-      return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 1, 0);
-    };
+    if (!session) { setMaxSessionDays(null); return; }
+    let cancelled = false;
+    // Deliberately keyed on the session alone. Ticking "stay signed in" on
+    // the challenge screen writes the token after this has already answered
+    // 7, and the value is not re-read until the next load — which costs
+    // nothing, because a session that has just been created is nowhere near
+    // either limit.
+    checkTrustedDevice(session.user.id).then((trusted) => {
+      if (!cancelled) setMaxSessionDays(trusted ? TRUSTED_DEVICE_DAYS : UNTRUSTED_SESSION_DAYS);
+    });
+    return () => { cancelled = true; };
+  }, [session]);
+
+  useEffect(() => {
+    // Wait for the lookup. Applying the 7-day rule to a remembered device
+    // just because the answer had not come back yet is the same bug pointing
+    // the other way, and it would show up as a random sign-out.
+    if (!session || maxSessionDays === null) return;
+    const signedInAt = (() => {
+      const stamped = Date.parse(session.user?.last_sign_in_at || '');
+      if (!Number.isNaN(stamped)) return stamped;
+      return Number(localStorage.getItem('sessionStartedAt') || 0);
+    })();
+    if (!signedInAt) return;
+    const expiresAt = signedInAt + maxSessionDays * 24 * 60 * 60 * 1000;
     const check = async () => {
-      const startedAt = Number(localStorage.getItem('sessionStartedAt') || 0);
-      const cutoff = todaysCutoff();
-      if (startedAt && startedAt < cutoff && Date.now() >= cutoff) {
-        await supabase.auth.signOut();
-      }
+      if (Date.now() >= expiresAt) await supabase.auth.signOut();
     };
     check();
     const id = setInterval(check, 60_000);
     const onFocus = () => check();
     window.addEventListener('focus', onFocus);
     return () => { clearInterval(id); window.removeEventListener('focus', onFocus); };
-  }, [session]);
+  }, [session, maxSessionDays]);
 
   // ── MFA gate ──
   // Three states drive what we render:
-  //   mustEnrol     — user has no verified TOTP factor; hard-block until they enrol.
-  //   mustChallenge — user has a verified factor, session is aal1, and this
-  //                   device is NOT remembered → show the 6-digit prompt.
-  //   otherwise     — render the app normally.
-  // There is no device-remembering bypass: it kept every session at aal1,
-  // which made the MFA screen a curtain rather than a control.
+  //   enrol     — user has no verified TOTP factor; hard-block until they enrol.
+  //   challenge — user has a verified factor and the session is aal1 → show
+  //               the 6-digit prompt. Unconditionally, on every device.
+  //   ok        — render the app normally.
+  // Being a remembered device does not appear in that list and must not: the
+  // bypass kept every session at aal1, which made the MFA screen a curtain
+  // rather than a control. Remembering a device lengthens how long the
+  // session it elevated is allowed to live, and nothing else.
   const [mfaState, setMfaState] = useState('checking'); // 'checking' | 'ok' | 'enrol' | 'challenge'
   const recheckMfa = React.useCallback(async () => {
     if (!session) { setMfaState('ok'); return; }
@@ -111,8 +149,10 @@ export default function AppShell() {
     // checkbox ticked by default that meant nobody completed a challenge after
     // their first sign-in, and every one of the firm's sessions sat at aal1.
     // Since aal is a property of the session and survives token refresh, the
-    // cost of removing it is one prompt per fresh sign-in, which is what MFA
-    // means. Required before is_active_staff() can demand aal2 — see
+    // cost of keeping this unconditional is one prompt per fresh sign-in,
+    // which is what MFA means. How often a fresh sign-in happens is the knob
+    // that was actually too tight, and it is set above. Required before
+    // is_active_staff() can demand aal2 — see
     // sql/258_mfa_aal2_required.sql.PREPARED and the 2026-08-24 follow-up.
     setMfaState('challenge');
   }, [session]);
@@ -214,7 +254,7 @@ export default function AppShell() {
     );
   }
 
-  // ── Verified factor + aal1 + untrusted device → 6-digit challenge. ──
+  // ── Verified factor + aal1 → 6-digit challenge, on every device. ──
   if (mfaState === 'challenge') {
     return <MFAChallenge onPassed={recheckMfa} />;
   }
