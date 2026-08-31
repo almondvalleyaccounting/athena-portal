@@ -80,6 +80,23 @@ const ATTENTION_LABEL = {
 // In-flight CH code chases shown on this list (pre-"entered" stages).
 const CH_OPEN_STAGES = ['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_code'];
 
+/* Where a confirmation statement has got to, in the order the work happens:
+   the code first, then the client's sign-off, then bill, then get paid, then
+   file. Filing is last, so a statement stays on this list until it is done and
+   the nightly Companies House refresh takes it off.
+
+   The keys are the CHECK constraint in sql/268 — change one and change both.
+   No entry for "not started": that is the empty option, and clearing the
+   dropdown genuinely means nobody has picked it up. */
+const CS_STATUSES = [
+  { value: 'awaiting_ch_code', label: 'Awaiting CH Code', bg: '#fef3c7', fg: '#b45309' },
+  { value: 'awaiting_client_approval', label: 'Awaiting Client Approval', bg: '#e0f2fe', fg: '#0369a1' },
+  { value: 'to_be_billed', label: 'To be Billed', bg: '#ede9fe', fg: '#6d28d9' },
+  { value: 'awaiting_payment', label: 'Awaiting Payment', bg: '#ffedd5', fg: '#c2410c' },
+  { value: 'to_be_filed', label: 'To be Filed', bg: '#dcfce7', fg: '#166534' },
+];
+const CS_STATUS_META = Object.fromEntries(CS_STATUSES.map((s) => [s.value, s]));
+
 function isoToday() { return new Date().toISOString().slice(0, 10); }
 function fmtShort(iso) {
   if (!iso) return '';
@@ -129,6 +146,11 @@ export default function AdminTasksPage() {
   const [copied, setCopied] = useState(null);
   const [chCodes, setChCodes] = useState([]);
   const [confStatements, setConfStatements] = useState([]);
+  // Confirmation-statement note threads, keyed by progress_id (a row only has
+  // one once someone has touched it), plus which threads are open.
+  const [csNotes, setCsNotes] = useState({});
+  const [csOpenNotes, setCsOpenNotes] = useState(() => new Set());
+  const [csSaving, setCsSaving] = useState(null);
   const [docsByTask, setDocsByTask] = useState({});
   const [billingById, setBillingById] = useState({}); // billing_items status for pipeline stages
   const [fees, setFees] = useState([]); // standard_fees price book (service → standard net)
@@ -234,6 +256,19 @@ export default function AdminTasksPage() {
       setAllEntities(ents || []);
       setChCodes(ch || []);
       setConfStatements(cs || []);
+
+      // Confirmation-statement threads. Only rows someone has already touched
+      // have a progress_id, so on a quiet week this fetches nothing.
+      const csProgressIds = (cs || []).map((r) => r.progress_id).filter(Boolean);
+      if (csProgressIds.length) {
+        const { data: csn } = await supabase.from('confirmation_statement_notes')
+          .select('*').in('progress_id', csProgressIds).order('created_at', { ascending: true });
+        const grouped = {};
+        for (const n of csn || []) (grouped[n.progress_id] ||= []).push(n);
+        setCsNotes(grouped);
+      } else {
+        setCsNotes({});
+      }
       setFees(sf || []);
       setServiceOptions(svc || []);
       const st2 = (st || []);
@@ -554,6 +589,58 @@ export default function AdminTasksPage() {
       .select('*').single();
     if (err) { setError(err.message); return; }
     setNotesByTask((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), data] }));
+  }
+
+  /* Confirmation statements: both writes go through the edge function, which
+     resolves the period from the live deadline rather than trusting the
+     due_date this tab happens to be holding. See sql/268 for why that matters —
+     the same deadlines row comes back next year with a new date, and a status
+     written against the wrong period reads as progress that never happened.
+
+     The response carries the progress row back, which is how a row that had no
+     progress_id (nobody had touched it) gets one without a full reload. */
+  async function csUpdate(row, payload) {
+    setCsSaving(row.deadline_id);
+    const { data, error: err } = await supabase.functions.invoke('confirmation-statement-update', {
+      body: { entity_id: row.entity_id, ...payload },
+    });
+    setCsSaving(null);
+    if (err || !data?.success) { setError(err?.message || data?.error || 'Could not save'); return null; }
+    setConfStatements((prev) => prev.map((r) => (r.deadline_id === row.deadline_id ? {
+      ...r,
+      progress_id: data.progress.id,
+      work_status: data.progress.status,
+      work_status_set_at: data.progress.status_set_at,
+      work_status_set_by: data.progress.status_set_by,
+      note_count: (r.note_count || 0) + (data.note ? 1 : 0),
+    } : r)));
+    return data;
+  }
+
+  async function setCsStatus(row, status) {
+    if ((row.work_status || '') === (status || '')) return;
+    await csUpdate(row, { action: 'set_status', status: status || null });
+  }
+
+  async function addCsNote(row, body) {
+    const text = (body || '').trim();
+    if (!text) return;
+    const data = await csUpdate(row, { action: 'add_note', body: text });
+    if (!data?.note) return;
+    const pid = data.progress.id;
+    setCsNotes((prev) => ({ ...prev, [pid]: [...(prev[pid] || []), data.note] }));
+  }
+
+  /* Open threads are keyed on deadline_id, not progress_id: a row that nobody
+     has touched has no progress row yet, and the thread has to open before the
+     first note can be typed into it. deadline_id is on every row from the
+     start and does not change. */
+  function toggleCsNotes(row) {
+    setCsOpenNotes((prev) => {
+      const n = new Set(prev);
+      n.has(row.deadline_id) ? n.delete(row.deadline_id) : n.add(row.deadline_id);
+      return n;
+    });
   }
 
   async function submitEscalation(task, toStaffId, note) {
@@ -1234,9 +1321,15 @@ export default function AdminTasksPage() {
       </Section>
 
       {/* ── Confirmation statements (live from the nightly CH refresh) ──
-          Not admin_tasks rows: the due date comes off the Companies House
-          profile every night, so filing one takes it off this list on the next
-          run. Nothing to tick, and nothing to raise a task for. */}
+          Not admin_tasks rows. Completion still isn't ours to record: the due
+          date comes off the Companies House profile every night, so filing one
+          takes the row off this list on the next run.
+
+          Progress is ours, though. The status dropdown and the note thread
+          write to confirmation_statement_progress / _notes (sql/268) via the
+          confirmation-statement-update edge function, keyed on the period, so
+          filing a statement starts next year's blank rather than inheriting
+          this year's. */}
       <Section
         title="Confirmation statements — overdue and due in 14 days" count={filteredConfStatements.length}
         collapsed={!expandedSet.has('confstat')} onToggle={() => toggleCollapse('confstat')}
@@ -1248,52 +1341,22 @@ export default function AdminTasksPage() {
         </span>}
       >
         {filteredConfStatements.length === 0 && <Empty>Nothing overdue or due in the next 14 days.</Empty>}
-        {filteredConfStatements.map((r) => {
-          // days_late is signed: positive is past the date, negative is to go.
-          const late = Number(r.days_late) || 0;
-          const strikeOff = /strike-off|strike off|liquidation|receiver/i.test(
-            `${r.company_status || ''} ${r.company_status_detail || ''}`
-          );
-          return (
-            <div key={r.deadline_id} onClick={() => navigate(`/clients/${r.entity_id}`)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px',
-                borderTop: '1px solid #f8fafc', fontSize: 13, cursor: 'pointer',
-                background: r.overdue ? '#fffbfb' : '#fff',
-              }}>
-              <CalendarDays size={13} color={r.overdue ? '#b91c1c' : '#94a3b8'} style={{ flexShrink: 0 }} />
-              <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 240px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {r.entity_name}
-              </span>
-              <span style={{ color: '#64748b', flex: '0 0 96px', whiteSpace: 'nowrap' }}>
-                {r.company_number || ''}
-              </span>
-              <span style={{ color: '#475569', flex: 1, whiteSpace: 'nowrap' }}>
-                Due {new Date(r.due_date).toLocaleDateString('en-GB')}
-              </span>
-              {/* A company being struck off still legally owes the statement,
-                  so it stays on the list — but say so, because filing one for
-                  a company that is closing is usually wasted work. */}
-              {strikeOff && (
-                <span title={r.company_status_detail || r.company_status}
-                  style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#fef3c7', color: '#b45309', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  {r.company_status_detail || r.company_status}
-                </span>
-              )}
-              <span style={{
-                fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
-                color: r.overdue ? '#b91c1c' : '#0369a1',
-              }}>
-                {r.overdue
-                  ? `${late} day${late === 1 ? '' : 's'} overdue`
-                  : (late === 0 ? 'due today' : `${-late} day${-late === 1 ? '' : 's'} to go`)}
-              </span>
-            </div>
-          );
-        })}
+        {filteredConfStatements.map((r) => (
+          <ConfStatementRow
+            key={r.deadline_id} r={r}
+            notes={r.progress_id ? (csNotes[r.progress_id] || []) : []}
+            notesOpen={csOpenNotes.has(r.deadline_id)}
+            staffMap={staffMap}
+            saving={csSaving === r.deadline_id}
+            onSetStatus={(s) => setCsStatus(r, s)}
+            onToggleNotes={() => toggleCsNotes(r)}
+            onAddNote={(body) => addCsNote(r, body)}
+            onOpenClient={() => navigate(`/clients/${r.entity_id}`)}
+          />
+        ))}
         {filteredConfStatements.length > 0 && (
           <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
-            Straight from Companies House on the nightly refresh — file the statement and the row leaves this list on the next run. There is nothing to mark complete here.
+            Due dates come straight from Companies House on the nightly refresh — file the statement and the row leaves this list on the next run, so there is nothing to mark complete. The status and notes are yours: they record where the work has got to, and reset when the statement is filed and the next one falls due.
           </div>
         )}
       </Section>
@@ -1679,6 +1742,120 @@ function TaskRow({
             />
             <button onClick={() => { if (noteDraft.trim()) { onAddNote(noteDraft); setNoteDraft(''); } }}
               disabled={!noteDraft.trim()} style={{ ...btn('primary'), padding: '6px 12px' }}><Send size={12} /></button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* One confirmation statement on the admin list.
+   Its own component because the note draft needs local state, the same way
+   TaskRow keeps one. The row still opens the client page on click, so every
+   control inside stops propagation — otherwise picking a status navigates
+   away mid-change. */
+function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, onToggleNotes, onAddNote, onOpenClient }) {
+  const [noteDraft, setNoteDraft] = useState('');
+  // days_late is signed: positive is past the date, negative is to go.
+  const late = Number(r.days_late) || 0;
+  const strikeOff = /strike-off|strike off|liquidation|receiver/i.test(
+    `${r.company_status || ''} ${r.company_status_detail || ''}`
+  );
+  const status = CS_STATUS_META[r.work_status] || null;
+  const noteCount = notes.length || Number(r.note_count) || 0;
+  const stop = (e) => e.stopPropagation();
+
+  return (
+    <div style={{ borderTop: '1px solid #f8fafc', background: r.overdue ? '#fffbfb' : '#fff' }}>
+      <div onClick={onOpenClient}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>
+        <CalendarDays size={13} color={r.overdue ? '#b91c1c' : '#94a3b8'} style={{ flexShrink: 0 }} />
+        <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 210px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {r.entity_name}
+        </span>
+        <span style={{ color: '#64748b', flex: '0 0 90px', whiteSpace: 'nowrap' }}>
+          {r.company_number || ''}
+        </span>
+        <span style={{ color: '#475569', flex: 1, minWidth: 0, whiteSpace: 'nowrap' }}>
+          Due {new Date(r.due_date).toLocaleDateString('en-GB')}
+        </span>
+        {/* A company being struck off still legally owes the statement, so it
+            stays on the list — but say so, because filing one for a company
+            that is closing is usually wasted work. */}
+        {strikeOff && (
+          <span title={r.company_status_detail || r.company_status}
+            style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#fef3c7', color: '#b45309', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {r.company_status_detail || r.company_status}
+          </span>
+        )}
+
+        {/* The status reads as a coloured pill and edits as a dropdown, so a
+            glance down the list sorts "waiting on the client" from "nobody has
+            started" without opening anything. */}
+        <select
+          value={r.work_status || ''}
+          disabled={saving}
+          onClick={stop}
+          onChange={(e) => { stop(e); onSetStatus(e.target.value); }}
+          title={status
+            ? `${status.label}${r.work_status_set_at ? ` — set ${fmtNoteTime(r.work_status_set_at)} by ${staffMap[r.work_status_set_by] || 'staff'}` : ''}`
+            : 'Not started — pick where this statement has got to'}
+          style={{
+            fontSize: 11.5, fontFamily: font, fontWeight: status ? 600 : 400,
+            padding: '3px 6px', borderRadius: 999, outline: 'none', flexShrink: 0,
+            border: `1px solid ${status ? status.bg : '#e2e8f0'}`,
+            background: status ? status.bg : '#fff',
+            color: status ? status.fg : '#94a3b8',
+            opacity: saving ? 0.5 : 1,
+          }}
+        >
+          <option value="">Not started</option>
+          {CS_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+
+        <button onClick={(e) => { stop(e); onToggleNotes(); }}
+          title={noteCount ? `${noteCount} note${noteCount === 1 ? '' : 's'}` : 'Add a note'}
+          style={{ ...btn('ghost'), padding: '3px 7px', flexShrink: 0, color: noteCount ? '#4338ca' : '#94a3b8' }}>
+          <MessageSquare size={13} />{noteCount > 0 && <span style={{ fontSize: 11, marginLeft: 3 }}>{noteCount}</span>}
+        </button>
+
+        <span style={{
+          fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+          width: 108, textAlign: 'right',
+          color: r.overdue ? '#b91c1c' : '#0369a1',
+        }}>
+          {r.overdue
+            ? `${late} day${late === 1 ? '' : 's'} overdue`
+            : (late === 0 ? 'due today' : `${-late} day${-late === 1 ? '' : 's'} to go`)}
+        </span>
+      </div>
+
+      {notesOpen && (
+        <div onClick={stop} style={{ padding: '4px 16px 12px 46px', background: '#fafbfc' }}>
+          {notes.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8', padding: '4px 0' }}>No notes yet.</div>}
+          {notes.map((n) => (
+            <div key={n.id} style={{ fontSize: 12.5, color: '#334155', padding: '4px 0', display: 'flex', gap: 8 }}>
+              <span style={{
+                fontSize: 10, padding: '1px 6px', borderRadius: 4, flexShrink: 0, height: 16, alignSelf: 'flex-start', marginTop: 1,
+                background: '#eef2ff', color: '#4338ca',
+              }}>note</span>
+              <div>
+                <span>{n.body}</span>
+                <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 11 }}>
+                  — {staffMap[n.author_id] || 'staff'} · {fmtNoteTime(n.created_at)}
+                </span>
+              </div>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <input
+              value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && noteDraft.trim()) { onAddNote(noteDraft); setNoteDraft(''); } }}
+              placeholder="Add a note…"
+              style={{ flex: 1, fontSize: 12.5, fontFamily: font, padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
+            />
+            <button onClick={() => { if (noteDraft.trim()) { onAddNote(noteDraft); setNoteDraft(''); } }}
+              disabled={!noteDraft.trim() || saving} style={{ ...btn('primary'), padding: '6px 12px' }}><Send size={12} /></button>
           </div>
         </div>
       )}
