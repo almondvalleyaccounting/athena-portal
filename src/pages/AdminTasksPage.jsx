@@ -89,11 +89,14 @@ const CH_OPEN_STAGES = ['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_c
    statement stays on this list until it is done and the nightly Companies
    House refresh takes it off.
 
-   `stuck` is the chase not moving. Client Unresponsive is not a point on that
-   line — it is where a statement falls out of it, usually from Awaiting CH
-   Code or Awaiting Client Approval — so it does not belong in the run of five.
-   It is also the state that turns into Allow to Drift if it lasts, which is
-   why it sits between the two.
+   `stuck` is the chase not moving, and it holds both reasons that happens:
+   Call Needed is stalled on us (nothing moves until somebody rings), Client
+   Unresponsive is stalled on them. Neither is a point on the ordered line —
+   they are where a statement falls out of it, usually from Awaiting CH Code or
+   Awaiting Client Approval — so neither belongs in the run of five. Call
+   Needed leads because it is the one somebody can act on today; Client
+   Unresponsive is what it becomes when the call does not land, and Allow to
+   Drift is what that becomes if it lasts.
 
    `decided` is the other outcome — we are not filing this one. Allow to Drift
    is a deliberate choice to stop chasing; Apply to Close is a company on its
@@ -103,9 +106,9 @@ const CH_OPEN_STAGES = ['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_c
    same run would read as one. None of it takes the row off the list or clears
    its overdue flag either, because neither of those stops being true.
 
-   The keys are the CHECK constraint in sql/268 (extended by sql/269 and
-   sql/270) — change one and change both. No entry for "not started": that is
-   the empty option, and clearing the dropdown genuinely means nobody has
+   The keys are the CHECK constraint in sql/268 (extended by sql/269, sql/270
+   and sql/271) — change one and change both. No entry for "not started": that
+   is the empty option, and clearing the dropdown genuinely means nobody has
    picked it up. */
 const CS_STATUSES = [
   { value: 'awaiting_ch_code', label: 'Awaiting CH Code', group: 'working', bg: '#fef3c7', fg: '#b45309' },
@@ -113,6 +116,7 @@ const CS_STATUSES = [
   { value: 'to_be_billed', label: 'To be Billed', group: 'working', bg: '#ede9fe', fg: '#6d28d9' },
   { value: 'awaiting_payment', label: 'Awaiting Payment', group: 'working', bg: '#ffedd5', fg: '#c2410c' },
   { value: 'to_be_filed', label: 'To be Filed', group: 'working', bg: '#dcfce7', fg: '#166534' },
+  { value: 'call_needed', label: 'Call Needed', group: 'stuck', bg: '#ccfbf1', fg: '#0f766e' },
   { value: 'client_unresponsive', label: 'Client Unresponsive', group: 'stuck', bg: '#fee2e2', fg: '#b91c1c' },
   { value: 'allow_to_drift', label: 'Allow to Drift', group: 'decided', bg: '#f1f5f9', fg: '#475569' },
   { value: 'apply_to_close', label: 'Apply to Close', group: 'decided', bg: '#ffe4e6', fg: '#9f1239' },

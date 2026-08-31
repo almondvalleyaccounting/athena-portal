@@ -36,9 +36,9 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...cors } });
 }
 
-// Must match the CHECK constraint in sql/268, extended by sql/269 and sql/270.
-// Kept as a list here too so a bad value is a 400 with a readable message
-// rather than a constraint violation.
+// Must match the CHECK constraint in sql/268, extended by sql/269, sql/270 and
+// sql/271. Kept as a list here too so a bad value is a 400 with a readable
+// message rather than a constraint violation.
 const STATUSES = [
   // Working on it, in order.
   "awaiting_ch_code",
@@ -46,9 +46,10 @@ const STATUSES = [
   "to_be_billed",
   "awaiting_payment",
   "to_be_filed",
-  // Stuck, then the two ways it ends without filing. None of these is a
-  // further step, and none takes the row off the list or clears its overdue
-  // flag.
+  // Stuck — on us, then on them — then the two ways it ends without filing.
+  // None of these is a further step, and none takes the row off the list or
+  // clears its overdue flag.
+  "call_needed",
   "client_unresponsive",
   "allow_to_drift",
   "apply_to_close",
@@ -72,6 +73,27 @@ Deno.serve(async (req) => {
   if (!entityId) return json({ success: false, error: "entity_id required" }, 400);
   if (action !== "set_status" && action !== "add_note") {
     return json({ success: false, error: "action must be set_status or add_note" }, 400);
+  }
+
+  // Validate the payload before touching the database — cheaper, and it means a
+  // new status can be confirmed live without writing to anybody's row: send it
+  // with an entity that has no open statement and a 404 (rather than a 400)
+  // says the value was accepted. Testing that against a real client is how a
+  // status Sophie had set got overwritten.
+  //
+  // An empty dropdown clears the status. That is a real state — "on the list,
+  // nobody has started" — and distinct from all nine.
+  const rawStatus = payload.status;
+  const status: string | null =
+    rawStatus === null || rawStatus === undefined || rawStatus === "" ? null : String(rawStatus);
+  if (action === "set_status" && status !== null && !STATUSES.includes(status)) {
+    return json({ success: false, error: `Unknown status: ${status}` }, 400);
+  }
+
+  const noteBody = String(payload.body ?? "").trim();
+  if (action === "add_note") {
+    if (!noteBody) return json({ success: false, error: "body required" }, 400);
+    if (noteBody.length > MAX_NOTE) return json({ success: false, error: "Note too long" }, 400);
   }
 
   // Which period this is. Read from deadlines, not from the caller — the whole
@@ -110,13 +132,6 @@ Deno.serve(async (req) => {
 
   try {
     if (action === "set_status") {
-      const raw = payload.status;
-      // An empty dropdown clears the status. That is a real state — "on the
-      // list, nobody has started" — and distinct from any of the five.
-      const status: string | null = raw === null || raw === undefined || raw === "" ? null : String(raw);
-      if (status !== null && !STATUSES.includes(status)) {
-        return json({ success: false, error: `Unknown status: ${status}` }, 400);
-      }
       const progress = await ensureProgress({
         status,
         status_set_by: caller.userId,
@@ -125,14 +140,10 @@ Deno.serve(async (req) => {
       return json({ success: true, progress });
     }
 
-    const text = String(payload.body ?? "").trim();
-    if (!text) return json({ success: false, error: "body required" }, 400);
-    if (text.length > MAX_NOTE) return json({ success: false, error: "Note too long" }, 400);
-
     const progress = await ensureProgress();
     const { data: note, error: nErr } = await service
       .from("confirmation_statement_notes")
-      .insert({ progress_id: progress.id, author_id: caller.userId, body: text })
+      .insert({ progress_id: progress.id, author_id: caller.userId, body: noteBody })
       .select("*")
       .single();
     if (nErr) return json({ success: false, error: nErr.message }, 500);
