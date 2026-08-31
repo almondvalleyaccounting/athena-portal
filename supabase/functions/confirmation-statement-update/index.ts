@@ -36,14 +36,20 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...cors } });
 }
 
-// Must match the CHECK constraint in sql/268. Kept as a list here too so a bad
-// value is a 400 with a readable message rather than a constraint violation.
+// Must match the CHECK constraint in sql/268, extended by sql/269. Kept as a
+// list here too so a bad value is a 400 with a readable message rather than a
+// constraint violation.
 const STATUSES = [
+  // Working on it, in order.
   "awaiting_ch_code",
   "awaiting_client_approval",
   "to_be_billed",
   "awaiting_payment",
   "to_be_filed",
+  // Not filing this one. Dispositions, not further steps — neither takes the
+  // row off the list or clears its overdue flag.
+  "allow_to_drift",
+  "apply_to_close",
 ];
 
 const MAX_NOTE = 4000;
