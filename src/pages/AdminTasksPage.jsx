@@ -99,16 +99,19 @@ const CH_OPEN_STAGES = ['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_c
    Drift is what that becomes if it lasts.
 
    `decided` is the other outcome — we are not filing this one. Allow to Drift
-   is a deliberate choice to stop chasing; Apply to Close is a company on its
-   way out.
+   is a deliberate choice to stop chasing. Apply to Close and Strike Off
+   Submitted are one path in two stages: intending to close the company, then
+   the DS01 actually in. Strike Off Submitted is the only status with an exit
+   that is not filing — once Companies House dissolves the company the view's
+   own filter drops the row, so it clears itself.
 
    Nothing outside `working` is a further step, and listing any of it in the
    same run would read as one. None of it takes the row off the list or clears
    its overdue flag either, because neither of those stops being true.
 
-   The keys are the CHECK constraint in sql/268 (extended by sql/269, sql/270
-   and sql/271) — change one and change both. No entry for "not started": that
-   is the empty option, and clearing the dropdown genuinely means nobody has
+   The keys are the CHECK constraint in sql/268 (extended by sql/269 through
+   sql/272) — change one and change both. No entry for "not started": that is
+   the empty option, and clearing the dropdown genuinely means nobody has
    picked it up. */
 const CS_STATUSES = [
   { value: 'awaiting_ch_code', label: 'Awaiting CH Code', group: 'working', bg: '#fef3c7', fg: '#b45309' },
@@ -120,6 +123,8 @@ const CS_STATUSES = [
   { value: 'client_unresponsive', label: 'Client Unresponsive', group: 'stuck', bg: '#fee2e2', fg: '#b91c1c' },
   { value: 'allow_to_drift', label: 'Allow to Drift', group: 'decided', bg: '#f1f5f9', fg: '#475569' },
   { value: 'apply_to_close', label: 'Apply to Close', group: 'decided', bg: '#ffe4e6', fg: '#9f1239' },
+  // A deeper shade of Apply to Close's rose: same path, one stage further on.
+  { value: 'strike_off_submitted', label: 'Strike Off Submitted', group: 'decided', bg: '#fecdd3', fg: '#881337' },
 ];
 const CS_STATUS_META = Object.fromEntries(CS_STATUSES.map((s) => [s.value, s]));
 const CS_STATUS_GROUPS = [

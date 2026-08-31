@@ -36,8 +36,8 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...cors } });
 }
 
-// Must match the CHECK constraint in sql/268, extended by sql/269, sql/270 and
-// sql/271. Kept as a list here too so a bad value is a 400 with a readable
+// Must match the CHECK constraint in sql/268, extended by sql/269 through
+// sql/272. Kept as a list here too so a bad value is a 400 with a readable
 // message rather than a constraint violation.
 const STATUSES = [
   // Working on it, in order.
@@ -46,13 +46,15 @@ const STATUSES = [
   "to_be_billed",
   "awaiting_payment",
   "to_be_filed",
-  // Stuck — on us, then on them — then the two ways it ends without filing.
+  // Stuck — on us, then on them — then the ways it ends without filing
+  // (apply_to_close -> strike_off_submitted being one path in two stages).
   // None of these is a further step, and none takes the row off the list or
   // clears its overdue flag.
   "call_needed",
   "client_unresponsive",
   "allow_to_drift",
   "apply_to_close",
+  "strike_off_submitted",
 ];
 
 const MAX_NOTE = 4000;
