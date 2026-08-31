@@ -82,34 +82,45 @@ const CH_OPEN_STAGES = ['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_c
 
 /* Where a confirmation statement has got to.
 
-   Two kinds of answer, and the dropdown keeps them apart on purpose.
+   Three kinds of answer, and the dropdown keeps them apart on purpose.
 
    `working` is the chase, in the order it happens: the code first, then the
    client's sign-off, then bill, then get paid, then file. Filing is last, so a
    statement stays on this list until it is done and the nightly Companies
    House refresh takes it off.
 
+   `stuck` is the chase not moving. Client Unresponsive is not a point on that
+   line — it is where a statement falls out of it, usually from Awaiting CH
+   Code or Awaiting Client Approval — so it does not belong in the run of five.
+   It is also the state that turns into Allow to Drift if it lasts, which is
+   why it sits between the two.
+
    `decided` is the other outcome — we are not filing this one. Allow to Drift
    is a deliberate choice to stop chasing; Apply to Close is a company on its
-   way out. Neither is a sixth step, and listing them in the same run would
-   read as one, which is why they sit under their own heading. Both leave the
-   row on the list and still overdue, because both of those are still true.
+   way out.
 
-   The keys are the CHECK constraint in sql/268 (extended by sql/269) — change
-   one and change both. No entry for "not started": that is the empty option,
-   and clearing the dropdown genuinely means nobody has picked it up. */
+   Nothing outside `working` is a further step, and listing any of it in the
+   same run would read as one. None of it takes the row off the list or clears
+   its overdue flag either, because neither of those stops being true.
+
+   The keys are the CHECK constraint in sql/268 (extended by sql/269 and
+   sql/270) — change one and change both. No entry for "not started": that is
+   the empty option, and clearing the dropdown genuinely means nobody has
+   picked it up. */
 const CS_STATUSES = [
   { value: 'awaiting_ch_code', label: 'Awaiting CH Code', group: 'working', bg: '#fef3c7', fg: '#b45309' },
   { value: 'awaiting_client_approval', label: 'Awaiting Client Approval', group: 'working', bg: '#e0f2fe', fg: '#0369a1' },
   { value: 'to_be_billed', label: 'To be Billed', group: 'working', bg: '#ede9fe', fg: '#6d28d9' },
   { value: 'awaiting_payment', label: 'Awaiting Payment', group: 'working', bg: '#ffedd5', fg: '#c2410c' },
   { value: 'to_be_filed', label: 'To be Filed', group: 'working', bg: '#dcfce7', fg: '#166534' },
+  { value: 'client_unresponsive', label: 'Client Unresponsive', group: 'stuck', bg: '#fee2e2', fg: '#b91c1c' },
   { value: 'allow_to_drift', label: 'Allow to Drift', group: 'decided', bg: '#f1f5f9', fg: '#475569' },
   { value: 'apply_to_close', label: 'Apply to Close', group: 'decided', bg: '#ffe4e6', fg: '#9f1239' },
 ];
 const CS_STATUS_META = Object.fromEntries(CS_STATUSES.map((s) => [s.value, s]));
 const CS_STATUS_GROUPS = [
   { key: 'working', label: 'Working on it' },
+  { key: 'stuck', label: 'Stuck' },
   { key: 'decided', label: 'Not filing this one' },
 ];
 

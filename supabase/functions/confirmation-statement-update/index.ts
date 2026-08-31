@@ -36,9 +36,9 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...cors } });
 }
 
-// Must match the CHECK constraint in sql/268, extended by sql/269. Kept as a
-// list here too so a bad value is a 400 with a readable message rather than a
-// constraint violation.
+// Must match the CHECK constraint in sql/268, extended by sql/269 and sql/270.
+// Kept as a list here too so a bad value is a 400 with a readable message
+// rather than a constraint violation.
 const STATUSES = [
   // Working on it, in order.
   "awaiting_ch_code",
@@ -46,8 +46,10 @@ const STATUSES = [
   "to_be_billed",
   "awaiting_payment",
   "to_be_filed",
-  // Not filing this one. Dispositions, not further steps — neither takes the
-  // row off the list or clears its overdue flag.
+  // Stuck, then the two ways it ends without filing. None of these is a
+  // further step, and none takes the row off the list or clears its overdue
+  // flag.
+  "client_unresponsive",
   "allow_to_drift",
   "apply_to_close",
 ];
