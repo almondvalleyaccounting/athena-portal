@@ -1981,7 +1981,10 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
         <span style={{ color: '#64748b', flex: '0 0 78px', whiteSpace: 'nowrap' }}>
           {r.company_number || ''}
         </span>
-        <span style={{ color: '#475569', flex: 1, minWidth: 0, whiteSpace: 'nowrap' }}>
+        {/* The date never shrinks — it is the whole point of the row. The
+            strike-off badge below it may, and a spacer takes what is left, so
+            the controls stay right-aligned whether or not there is a badge. */}
+        <span style={{ color: '#475569', flex: '0 0 auto', whiteSpace: 'nowrap' }}>
           Due {new Date(r.due_date).toLocaleDateString('en-GB')}
         </span>
         {/* A company being struck off still legally owes the statement, so it
@@ -1989,10 +1992,15 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
             that is closing is usually wasted work. */}
         {strikeOff && (
           <span title={r.company_status_detail || r.company_status}
-            style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#fef3c7', color: '#b45309', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            style={{
+              fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#fef3c7',
+              color: '#b45309', whiteSpace: 'nowrap', flex: '0 1 auto',
+              minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
             {r.company_status_detail || r.company_status}
           </span>
         )}
+        <span style={{ flex: 1, minWidth: 8 }} />
 
         {/* Status reads as a coloured pill and edits as a dropdown, so a glance
             down the list sorts "waiting on the client" from "nobody has
