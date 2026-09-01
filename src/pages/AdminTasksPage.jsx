@@ -1089,8 +1089,14 @@ export default function AdminTasksPage() {
   }, [completedFiltered]);
 
   // Collapse-all treats every section (both groups + fixed) as one set.
-  const allSectionKeys = ['draft', 'bill_hold', 'billed', 'todo', 'realloc', 'onboard',
-    'offboarding', 'bm_keying', 'bm_data_error', 'person_dedup', 'other', 'chcodes', 'confstat'];
+  const allSectionKeys = [
+    // Active tasks
+    'todo', 'confstat', 'chcodes', 'onboard',
+    // Pipeline tasks
+    'draft', 'bill_hold', 'billed',
+    // Tidy up tasks
+    'realloc', 'offboarding', 'bm_keying', 'bm_data_error', 'person_dedup', 'other',
+  ];
   const allCollapsed = !allSectionKeys.some((k) => expandedSet.has(k));
   const toggleAllCollapsed = () => persistExpanded(allCollapsed ? new Set(allSectionKeys) : new Set());
 
@@ -1412,55 +1418,98 @@ export default function AdminTasksPage() {
         ))}
       </>)}
 
-      {/* ── Open view: Manually generated (pipeline) + System generated ── */}
+      {/* ── Open view: Active tasks → Pipeline tasks → Tidy up tasks ── */}
       {view === 'open' && (<>
-        <GroupHeader>Manually generated</GroupHeader>
-        {/* Pipeline: Draft → Bill & Hold → Billed → To Do. Managers change a
-            task's step with the row dropdown; uploaded tasks land on To Do. */}
-        <Section title="Draft — not on the live list" count={draftOpen.length} unread={unreadIn(draftOpen)}
-          collapsed={!expandedSet.has('draft')} onToggle={() => toggleCollapse('draft')}>
-          {draftOpen.length === 0 && <Empty>No drafts.</Empty>}
-          {draftOpen.map((t) => taskRow(t, { stageSelect: canPipeline, onAddBill: !t.billing_item_id ? () => setBillTask(t) : null, onRelease: () => publishDraft(t), releaseLabel: 'Publish' }))}
-        </Section>
-        <Section title="Bill & Hold" count={billHoldOpen.length} unread={unreadIn(billHoldOpen)}
-          collapsed={!expandedSet.has('bill_hold')} onToggle={() => toggleCollapse('bill_hold')}>
-          {billHoldOpen.length === 0 && <Empty>Nothing waiting on a bill to be raised.</Empty>}
-          {billHoldOpen.map((t) => taskRow(t, { stageSelect: canPipeline }))}
-        </Section>
-        <Section title="Billed — held until paid or released" count={billedOpen.length} unread={unreadIn(billedOpen)}
-          collapsed={!expandedSet.has('billed')} onToggle={() => toggleCollapse('billed')}>
-          {billedOpen.length === 0 && <Empty>Nothing billed and awaiting release.</Empty>}
-          {billedOpen.map((t) => taskRow(t, { stageSelect: canPipeline, ...(canPipeline ? { onRelease: () => releaseTask(t), releaseLabel: 'Release to To Do' } : {}) }))}
-        </Section>
+        {/* ── Active tasks ──────────────────────────────────────────────
+            What somebody works through today, in the order it gets picked
+            up. Everything here is live and owed to a client or a registrar.
+
+            To Do leads because it is the only one of the four that is
+            admin_tasks rows; the other three are live aggregations from
+            their own modules, and they are here because they are work in
+            flight, not because they share a table. Grouping by where the
+            data comes from is what buried the To Do list under a billing
+            pipeline that mostly holds nothing. */}
+        <GroupHeader>Active tasks</GroupHeader>
         <Section title="To Do" count={todoOpen.length} unread={unreadIn(todoOpen)}
           collapsed={!expandedSet.has('todo')} onToggle={() => toggleCollapse('todo')}>
           {todoOpen.length === 0 && <Empty>Nothing on the live list.</Empty>}
           {todoOpen.map((t) => taskRow(t, { stageSelect: canPipeline, onAddBill: (!t.billing_item_id && t.entity_id) ? () => setBillTask(t) : null }))}
         </Section>
 
-        {/* Reallocations (capacity planner) — a manual action of ours */}
+        {/* ── Confirmation statements (live from the nightly CH refresh) ──
+            Not admin_tasks rows. Completion still isn't ours to record: the due
+            date comes off the Companies House profile every night, so filing one
+            takes the row off this list on the next run.
+
+            Progress is ours, though. The status dropdown and the note thread
+            write to confirmation_statement_progress / _notes (sql/268) via the
+            confirmation-statement-update edge function, keyed on the period, so
+            filing a statement starts next year's blank rather than inheriting
+            this year's. */}
         <Section
-          title="Task reallocations to apply in BM" count={filteredDrafts.length}
-          collapsed={!expandedSet.has('realloc')} onToggle={() => toggleCollapse('realloc')}
-          anchor="realloc"
-          action={<button onClick={() => navigate('/planner/allocations')} style={btn('ghost')}>Open capacity planner →</button>}
+          title="Confirmation statements — overdue and due in 14 days" count={filteredConfStatements.length}
+          collapsed={!expandedSet.has('confstat')} onToggle={() => toggleCollapse('confstat')}
+          anchor="confstat"
+          action={<span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+            {stats.confstatOverdue > 0
+              ? `${stats.confstatOverdue} overdue · ${filteredConfStatements.length - stats.confstatOverdue} due within 14 days`
+              : 'none overdue'}
+            {/* The two numbers that are about us rather than about the client. */}
+            {stats.confstatActionLate > 0 && ` · ${stats.confstatActionLate} action${stats.confstatActionLate === 1 ? '' : 's'} past its date`}
+            {stats.confstatNoAction > 0 && ` · ${stats.confstatNoAction} with no next action`}
+          </span>}
         >
-          {filteredDrafts.length === 0 && <Empty>No reallocation proposals waiting.</Empty>}
-          {filteredDrafts.map((d) => (
-            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13 }}>
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>{entities[d.entity_id] || 'Client'}</span>
-              <span style={{ color: '#64748b', flex: 1 }}>{String(d.canonical_service_id || '').replace(/_/g, ' ')}</span>
-              <span style={{ color: '#475569', whiteSpace: 'nowrap' }}>→ {staffMap[d.proposed_fee_earner_id] || 'unassigned'}</span>
-              <button onClick={() => completeRealloc(d)} title="Mark applied in BM" style={completeBtn(false)}>
-                <CheckCircle2 size={13} /> Complete
-              </button>
-            </div>
+          {filteredConfStatements.length === 0 && <Empty>Nothing overdue or due in the next 14 days.</Empty>}
+          {filteredConfStatements.map((r) => (
+            <ConfStatementRow
+              key={r.deadline_id} r={r}
+              notes={r.progress_id ? (csNotes[r.progress_id] || []) : []}
+              notesOpen={csOpenNotes.has(r.deadline_id)}
+              staffMap={staffMap}
+              saving={csSaving === r.deadline_id}
+              onSetStatus={(s) => setCsStatus(r, s)}
+              onSetNextAction={(next) => setCsNextAction(r, next)}
+              onToggleNotes={() => toggleCsNotes(r)}
+              onAddNote={(body) => addCsNote(r, body)}
+              onOpenClient={() => navigate(`/clients/${r.entity_id}`)}
+            />
           ))}
-          {filteredDrafts.length > 0 && (
+          {filteredConfStatements.length > 0 && (
             <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
-              Marking one complete assumes you've made the change in BM. The next BM upload checks it — if the assignee still doesn't match, it reappears here.
+              Due dates come straight from Companies House on the nightly refresh — file the statement and the row leaves this list on the next run, so there is nothing to mark complete. The rest is yours: <b>status</b> is where the work has got to, <b>next action</b> is what to do about it and by when. Both reset when the statement is filed and the next one falls due. A next action dated after the deadline is a plan, not an extension — the day count on the right does not move for it.
             </div>
           )}
+        </Section>
+        {/* ── CH personal code chases (live from the ch-codes module) ── */}
+        <Section
+          title="CH personal code chases" count={filteredChCodes.length}
+          collapsed={!expandedSet.has('chcodes')} onToggle={() => toggleCollapse('chcodes')}
+          anchor="chcodes"
+          action={<button onClick={() => navigate('/onboarding/ch-codes')} style={btn('ghost')}>Open CH codes →</button>}
+        >
+          {filteredChCodes.length === 0 && <Empty>No code chases in flight.</Empty>}
+          {filteredChCodes.map((r) => {
+            const meta = stageMeta(r.stage);
+            return (
+              <div key={r.id} onClick={() => navigate(`/onboarding/ch-codes/${r.id}`)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13, cursor: 'pointer' }}>
+                <KeyRound size={13} color="#94a3b8" style={{ flexShrink: 0 }} />
+                <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 190px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {r.person?.name || 'Person'}
+                </span>
+                <span style={{ color: '#64748b', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {(r.entities && r.entities.length ? r.entities.join(', ') : r.entity?.name) || ''}
+                </span>
+                <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#e0f2fe', color: '#0369a1', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {meta.short} · {meta.label}
+                </span>
+                <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {r.emails_sent ? `${r.emails_sent} email${r.emails_sent === 1 ? '' : 's'} sent` : 'no emails yet'}
+                </span>
+              </div>
+            );
+          })}
         </Section>
 
         {/* Onboarding in flight */}
@@ -1496,6 +1545,70 @@ export default function AdminTasksPage() {
           })}
         </Section>
 
+
+        {/* ── Pipeline tasks ────────────────────────────────────────────
+            The billing states a manual task passes through before it
+            reaches To Do: Draft → Bill & Hold → Billed. Nothing here is
+            work to do today — it is work waiting on a decision or on money
+            — which is why it sits below the active list rather than above
+            it. Managers move a task between steps with the row dropdown.
+
+            To Do is the fourth step of the same pipeline and lives in
+            Active tasks instead, because that is what it is: the step where
+            the work is actually done. */}
+        <GroupHeader>Pipeline tasks</GroupHeader>
+        {/* Uploaded tasks land on To Do, so most work never appears here. */}
+        <Section title="Draft — not on the live list" count={draftOpen.length} unread={unreadIn(draftOpen)}
+          collapsed={!expandedSet.has('draft')} onToggle={() => toggleCollapse('draft')}>
+          {draftOpen.length === 0 && <Empty>No drafts.</Empty>}
+          {draftOpen.map((t) => taskRow(t, { stageSelect: canPipeline, onAddBill: !t.billing_item_id ? () => setBillTask(t) : null, onRelease: () => publishDraft(t), releaseLabel: 'Publish' }))}
+        </Section>
+        <Section title="Bill & Hold" count={billHoldOpen.length} unread={unreadIn(billHoldOpen)}
+          collapsed={!expandedSet.has('bill_hold')} onToggle={() => toggleCollapse('bill_hold')}>
+          {billHoldOpen.length === 0 && <Empty>Nothing waiting on a bill to be raised.</Empty>}
+          {billHoldOpen.map((t) => taskRow(t, { stageSelect: canPipeline }))}
+        </Section>
+        <Section title="Billed — held until paid or released" count={billedOpen.length} unread={unreadIn(billedOpen)}
+          collapsed={!expandedSet.has('billed')} onToggle={() => toggleCollapse('billed')}>
+          {billedOpen.length === 0 && <Empty>Nothing billed and awaiting release.</Empty>}
+          {billedOpen.map((t) => taskRow(t, { stageSelect: canPipeline, ...(canPipeline ? { onRelease: () => releaseTask(t), releaseLabel: 'Release to To Do' } : {}) }))}
+        </Section>
+
+        {/* ── Tidy up tasks ─────────────────────────────────────────────
+            Housekeeping: keeping Athena and BrightManager saying the same
+            thing. A reallocation to key in, a client to remove, a data
+            error Athena's rules raised, two people who look like one.
+
+            None of it is client work and none of it has a deadline, so it
+            goes last — but it does not go away, because every one of these
+            is a thing the next BM import will keep re-raising until it is
+            done. */}
+        <GroupHeader>Tidy up tasks</GroupHeader>
+        {/* Reallocations (capacity planner) — a manual action of ours */}
+        <Section
+          title="Task reallocations to apply in BM" count={filteredDrafts.length}
+          collapsed={!expandedSet.has('realloc')} onToggle={() => toggleCollapse('realloc')}
+          anchor="realloc"
+          action={<button onClick={() => navigate('/planner/allocations')} style={btn('ghost')}>Open capacity planner →</button>}
+        >
+          {filteredDrafts.length === 0 && <Empty>No reallocation proposals waiting.</Empty>}
+          {filteredDrafts.map((d) => (
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13 }}>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>{entities[d.entity_id] || 'Client'}</span>
+              <span style={{ color: '#64748b', flex: 1 }}>{String(d.canonical_service_id || '').replace(/_/g, ' ')}</span>
+              <span style={{ color: '#475569', whiteSpace: 'nowrap' }}>→ {staffMap[d.proposed_fee_earner_id] || 'unassigned'}</span>
+              <button onClick={() => completeRealloc(d)} title="Mark applied in BM" style={completeBtn(false)}>
+                <CheckCircle2 size={13} /> Complete
+              </button>
+            </div>
+          ))}
+          {filteredDrafts.length > 0 && (
+            <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
+              Marking one complete assumes you've made the change in BM. The next BM upload checks it — if the assignee still doesn't match, it reappears here.
+            </div>
+          )}
+        </Section>
+
         {/* Offboarding — mirror tasks from us marking a client NLAC */}
         {offboardingOpen.length > 0 && (
           <Section title="Offboarding — remove from BrightManager" count={offboardingOpen.length} unread={unreadIn(offboardingOpen)}
@@ -1504,12 +1617,6 @@ export default function AdminTasksPage() {
           </Section>
         )}
 
-        <GroupHeader>System generated</GroupHeader>
-        {visibleSystemKeys.length === 0 && (
-          <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
-            No data issues flagged — Athena and BrightManager are in step. 🎉
-          </div>
-        )}
         {visibleSystemKeys.map((key) => (
           <Section
             key={key}
@@ -1521,81 +1628,11 @@ export default function AdminTasksPage() {
           </Section>
         ))}
 
-      {/* ── CH personal code chases (live from the ch-codes module) ── */}
-      <Section
-        title="CH personal code chases" count={filteredChCodes.length}
-        collapsed={!expandedSet.has('chcodes')} onToggle={() => toggleCollapse('chcodes')}
-        anchor="chcodes"
-        action={<button onClick={() => navigate('/onboarding/ch-codes')} style={btn('ghost')}>Open CH codes →</button>}
-      >
-        {filteredChCodes.length === 0 && <Empty>No code chases in flight.</Empty>}
-        {filteredChCodes.map((r) => {
-          const meta = stageMeta(r.stage);
-          return (
-            <div key={r.id} onClick={() => navigate(`/onboarding/ch-codes/${r.id}`)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13, cursor: 'pointer' }}>
-              <KeyRound size={13} color="#94a3b8" style={{ flexShrink: 0 }} />
-              <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 190px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {r.person?.name || 'Person'}
-              </span>
-              <span style={{ color: '#64748b', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {(r.entities && r.entities.length ? r.entities.join(', ') : r.entity?.name) || ''}
-              </span>
-              <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#e0f2fe', color: '#0369a1', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                {meta.short} · {meta.label}
-              </span>
-              <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                {r.emails_sent ? `${r.emails_sent} email${r.emails_sent === 1 ? '' : 's'} sent` : 'no emails yet'}
-              </span>
-            </div>
-          );
-        })}
-      </Section>
-
-      {/* ── Confirmation statements (live from the nightly CH refresh) ──
-          Not admin_tasks rows. Completion still isn't ours to record: the due
-          date comes off the Companies House profile every night, so filing one
-          takes the row off this list on the next run.
-
-          Progress is ours, though. The status dropdown and the note thread
-          write to confirmation_statement_progress / _notes (sql/268) via the
-          confirmation-statement-update edge function, keyed on the period, so
-          filing a statement starts next year's blank rather than inheriting
-          this year's. */}
-      <Section
-        title="Confirmation statements — overdue and due in 14 days" count={filteredConfStatements.length}
-        collapsed={!expandedSet.has('confstat')} onToggle={() => toggleCollapse('confstat')}
-        anchor="confstat"
-        action={<span style={{ fontSize: 11.5, color: '#94a3b8' }}>
-          {stats.confstatOverdue > 0
-            ? `${stats.confstatOverdue} overdue · ${filteredConfStatements.length - stats.confstatOverdue} due within 14 days`
-            : 'none overdue'}
-          {/* The two numbers that are about us rather than about the client. */}
-          {stats.confstatActionLate > 0 && ` · ${stats.confstatActionLate} action${stats.confstatActionLate === 1 ? '' : 's'} past its date`}
-          {stats.confstatNoAction > 0 && ` · ${stats.confstatNoAction} with no next action`}
-        </span>}
-      >
-        {filteredConfStatements.length === 0 && <Empty>Nothing overdue or due in the next 14 days.</Empty>}
-        {filteredConfStatements.map((r) => (
-          <ConfStatementRow
-            key={r.deadline_id} r={r}
-            notes={r.progress_id ? (csNotes[r.progress_id] || []) : []}
-            notesOpen={csOpenNotes.has(r.deadline_id)}
-            staffMap={staffMap}
-            saving={csSaving === r.deadline_id}
-            onSetStatus={(s) => setCsStatus(r, s)}
-            onSetNextAction={(next) => setCsNextAction(r, next)}
-            onToggleNotes={() => toggleCsNotes(r)}
-            onAddNote={(body) => addCsNote(r, body)}
-            onOpenClient={() => navigate(`/clients/${r.entity_id}`)}
-          />
-        ))}
-        {filteredConfStatements.length > 0 && (
-          <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
-            Due dates come straight from Companies House on the nightly refresh — file the statement and the row leaves this list on the next run, so there is nothing to mark complete. The rest is yours: <b>status</b> is where the work has got to, <b>next action</b> is what to do about it and by when. Both reset when the statement is filed and the next one falls due. A next action dated after the deadline is a plan, not an extension — the day count on the right does not move for it.
+        {visibleSystemKeys.length === 0 && (
+          <div style={{ ...card, padding: '14px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+            No data issues flagged — Athena and BrightManager are in step. 🎉
           </div>
         )}
-      </Section>
 
       </>)}
       </>)}
