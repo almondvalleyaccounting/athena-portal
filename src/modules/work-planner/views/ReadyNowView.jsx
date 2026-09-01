@@ -9,11 +9,19 @@ import {
 
 const font = "'Outfit', sans-serif";
 
+// Grouped by what the job is waiting on, not by where BM's status name sits in
+// the alphabet. "To Review" and "Reviewed" are opposite ends of the review step
+// — one is waiting for a reviewer, the other has cleared review and is waiting
+// to go out — so they are not the same bucket. "Reviewed" sits with "To Send to
+// Client to Approve" because both mean the same thing to whoever is working the
+// list: it is finished, and our move is to send it. Only "Awaiting Approval" is
+// genuinely with the client.
 const STATUS_GROUPS = {
   'Not started': ['No Latest Action', 'No Progress', 'Records Requested', 'Part Records Received'],
   'In progress': ['Records Received', 'In Progress', 'Queries Requested'],
-  'To review':   ['To Review', 'Reviewed'],
-  'With client': ['To Send to Client to Approve', 'Awaiting Approval'],
+  'To review':   ['To Review'],
+  'To send':     ['Reviewed', 'To Send to Client to Approve'],
+  'With client': ['Awaiting Approval'],
   'Other':       ['Other - See Note', 'Striking Off Application'],
 };
 const STATUS_TO_GROUP = (() => {
@@ -27,6 +35,7 @@ const GROUP_COLOUR = {
   'Not started': '#94a3b8',
   'In progress': '#0ea5e9',
   'To review':   '#a855f7',
+  'To send':     '#0d9488',
   'With client': '#f59e0b',
   'Other':       '#64748b',
 };
