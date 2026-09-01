@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   CheckCircle2, ClipboardList, Copy, Download, Plus, X,
   ChevronDown, ChevronRight, MessageSquare, AlertTriangle, Send, CalendarDays, RotateCcw, Receipt,
@@ -14,6 +14,7 @@ import NewClientModal from '../components/NewClientModal';
 import ServicePicker from '../modules/billing/ServicePicker';
 import { fetchAdhocServices } from '../modules/billing/billingServices';
 import { stageMeta } from '../modules/ch-codes/api';
+import { AdminTaskDrawer } from '../components/AdminTaskDetail';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
@@ -184,6 +185,12 @@ function fmtNoteTime(iso) {
 
 export default function AdminTasksPage() {
   const navigate = useNavigate();
+  /* Which task the drawer is showing, kept in the query string rather than in
+     state. Three things follow that plain state would not give: the browser
+     Back button closes the drawer instead of leaving the page, an open task can
+     be pasted to somebody, and a reload comes back where you were. */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const drawerTaskId = searchParams.get('task');
   const { profile } = useAuth();
   const [tasks, setTasks] = useState(null);
   const [completed, setCompleted] = useState(null);
@@ -274,6 +281,24 @@ export default function AdminTasksPage() {
     n.has(key) ? n.delete(key) : n.add(key);
     persistExpanded(n);
   };
+
+  /* Opening pushes a history entry so Back closes the drawer; closing replaces
+     it, so Back from a closed drawer goes wherever you came from rather than
+     re-opening the task you just shut. */
+  const openTask = useCallback((id) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('task', id);
+      return next;
+    });
+  }, [setSearchParams]);
+  const closeTask = useCallback(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('task');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const load = useCallback(async () => {
     try {
@@ -1089,7 +1114,7 @@ export default function AdminTasksPage() {
       onOpenDoc={openDoc}
       onDeleteDoc={deleteDoc}
       onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
-      onOpen={() => navigate(`/planner/tasks/${t.id}`)}
+      onOpen={() => openTask(t.id)}
       onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
       onSetStage={(stage) => setTaskStage(t, stage)}
       {...extra}
@@ -1574,6 +1599,12 @@ export default function AdminTasksPage() {
 
       </>)}
       </>)}
+
+      {/* One task, slid in over the list rather than replacing it — the list's
+          scroll position, filters and open sections all survive. */}
+      {drawerTaskId && (
+        <AdminTaskDrawer taskId={drawerTaskId} onClose={closeTask} onChanged={load} />
+      )}
 
       {escalateTask && (
         <EscalateModal
