@@ -847,6 +847,15 @@ export default function AdminTasksPage() {
   const serviceHidesFixedSections = !!serviceFilter;
   const serviceKeepsConfStatements = !serviceFilter || serviceFilter === CS_SERVICE_ID;
 
+  /* The open list before service and search touch it. Only the banner uses it,
+     and only as the denominator: "showing 0 of 0" is what you get when the
+     number you are comparing against has been narrowed by the same filter you
+     are describing, and it tells you nothing. "0 of 22" says what happened. */
+  const openBase = useMemo(() => {
+    const list = (tasks || []).filter((t) => !t.done_at && !t.confirmed_at);
+    return clientFilter ? list.filter((t) => t.entity_id === clientFilter) : list;
+  }, [tasks, clientFilter]);
+
   // openAll is what the stat boxes count; `open` is what the sections render.
   // They have to be different lists, or clicking "Urgent" would narrow the very
   // number you clicked and the box would report on its own filter.
@@ -1201,7 +1210,7 @@ export default function AdminTasksPage() {
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
         }}>
           <span>
-            Showing {open.length} of {openAll.length} open task{openAll.length === 1 ? '' : 's'}
+            Showing {open.length} of {openBase.length} open task{openBase.length === 1 ? '' : 's'}
             {attention ? ` — ${ATTENTION_LABEL[attention]}` : ''}
             {serviceFilter ? ` — ${serviceFilter === NO_SERVICE ? 'no service set' : serviceFilter}` : ''}
             {q ? ` — matching “${textFilter.trim()}”` : ''}.
