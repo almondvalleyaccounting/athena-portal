@@ -1,7 +1,8 @@
 // confirmation-statement-update — Athena Portal
 //
-// The two writes behind the confirmation-statement section of the admin task
-// list: set where a statement has got to, and add a note to its thread.
+// The writes behind the confirmation-statement section of the admin task list:
+// set where a statement has got to, set what we do next about it, and add a
+// note to its thread.
 //
 // Why a function and not a table write. The browser holds SELECT on
 // confirmation_statement_progress / _notes and nothing else (sql/268), because
@@ -15,9 +16,18 @@
 //     the server decides which statement that means.
 //   * Attribution is the JWT's user, not a field in the body.
 //
-// Body: { entity_id, action: "set_status" | "add_note", status?, body? }
-//   set_status — status is one of the five steps, or null to clear it.
-//   add_note   — body is the note text.
+// Body: { entity_id, action: "set_status" | "set_next_action" | "add_note",
+//         status?, next_action?, next_action_due?, body? }
+//   set_status      — where the statement is, or null to clear it.
+//   set_next_action — what we do next and by when. Both fields are written on
+//                     every call, so clearing the action clears its date with
+//                     it; a date left behind by an action nobody is doing any
+//                     more is a plan that reads as live and is not.
+//   add_note        — body is the note text.
+//
+// status and next_action answer different questions and are set separately
+// (sql/273). "Awaiting Approval" does not say whether to ring or email; "Phone
+// Client" does not say what the statement is waiting on.
 //
 // Returns { success, progress, note? } with the row the caller should render.
 
@@ -36,9 +46,14 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...cors } });
 }
 
-// Must match the CHECK constraint in sql/268, extended by sql/269 through
-// sql/272. Kept as a list here too so a bad value is a 400 with a readable
-// message rather than a constraint violation.
+// Must match the CHECK constraints in sql/273 (which supersede sql/268-272).
+// Kept as lists here too so a bad value is a 400 with a readable message
+// rather than a constraint violation.
+//
+// "call_needed" is deliberately absent: it was never a state, and sql/273
+// moved it to next_action = "phone_client". A stale tab still sending it gets
+// a 400 rather than a silent write, which is the right way for an old client
+// to fail.
 const STATUSES = [
   // Working on it, in order.
   "awaiting_ch_code",
@@ -46,16 +61,30 @@ const STATUSES = [
   "to_be_billed",
   "awaiting_payment",
   "to_be_filed",
-  // Stuck — on us, then on them — then the ways it ends without filing
-  // (apply_to_close -> strike_off_submitted being one path in two stages).
-  // None of these is a further step, and none takes the row off the list or
-  // clears its overdue flag.
-  "call_needed",
+  // Parked — the general case, then the two that say why.
+  "on_hold",
   "client_unresponsive",
   "allow_to_drift",
+  // Not filing this one (apply_to_close -> strike_off_submitted is one path in
+  // two stages). Nothing outside the five steps takes the row off the list or
+  // clears its overdue flag.
   "apply_to_close",
   "strike_off_submitted",
 ];
+
+const NEXT_ACTIONS = [
+  "send_statement",
+  "send_email",
+  "process_amendments",
+  "phone_client",
+];
+
+// A date and nothing else, so a caller cannot smuggle an expression in.
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+function isRealDate(iso: string) {
+  const t = Date.parse(`${iso}T00:00:00Z`);
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === iso;
+}
 
 const MAX_NOTE = 4000;
 
@@ -73,8 +102,8 @@ Deno.serve(async (req) => {
   const entityId: string = payload.entity_id;
   const action: string = payload.action;
   if (!entityId) return json({ success: false, error: "entity_id required" }, 400);
-  if (action !== "set_status" && action !== "add_note") {
-    return json({ success: false, error: "action must be set_status or add_note" }, 400);
+  if (action !== "set_status" && action !== "set_next_action" && action !== "add_note") {
+    return json({ success: false, error: "action must be set_status, set_next_action or add_note" }, 400);
   }
 
   // Validate the payload before touching the database — cheaper, and it means a
@@ -84,12 +113,29 @@ Deno.serve(async (req) => {
   // status Sophie had set got overwritten.
   //
   // An empty dropdown clears the status. That is a real state — "on the list,
-  // nobody has started" — and distinct from all nine.
+  // nobody has started" — and distinct from all ten.
+  const blank = (v: unknown) => v === null || v === undefined || v === "";
   const rawStatus = payload.status;
-  const status: string | null =
-    rawStatus === null || rawStatus === undefined || rawStatus === "" ? null : String(rawStatus);
+  const status: string | null = blank(rawStatus) ? null : String(rawStatus);
   if (action === "set_status" && status !== null && !STATUSES.includes(status)) {
     return json({ success: false, error: `Unknown status: ${status}` }, 400);
+  }
+
+  // An empty next action clears the date with it — see the note at the top.
+  const nextAction: string | null = blank(payload.next_action) ? null : String(payload.next_action);
+  const nextActionDue: string | null =
+    nextAction === null || blank(payload.next_action_due) ? null : String(payload.next_action_due);
+  if (action === "set_next_action") {
+    if (nextAction !== null && !NEXT_ACTIONS.includes(nextAction)) {
+      return json({ success: false, error: `Unknown next action: ${nextAction}` }, 400);
+    }
+    // Shape first, then that it is a real day — 2026-02-31 passes the regex and
+    // would come back as a 500 from the date column otherwise. Round-tripping
+    // through Date catches both that (it rolls to 3 March) and an unparseable
+    // month (NaN, so the round trip is empty rather than equal).
+    if (nextActionDue !== null && (!ISO_DATE.test(nextActionDue) || !isRealDate(nextActionDue))) {
+      return json({ success: false, error: "next_action_due must be a real date, YYYY-MM-DD" }, 400);
+    }
   }
 
   const noteBody = String(payload.body ?? "").trim();
@@ -138,6 +184,16 @@ Deno.serve(async (req) => {
         status,
         status_set_by: caller.userId,
         status_set_at: new Date().toISOString(),
+      });
+      return json({ success: true, progress });
+    }
+
+    if (action === "set_next_action") {
+      const progress = await ensureProgress({
+        next_action: nextAction,
+        next_action_due: nextActionDue,
+        next_action_set_by: caller.userId,
+        next_action_set_at: new Date().toISOString(),
       });
       return json({ success: true, progress });
     }

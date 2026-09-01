@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, ClipboardList, Copy, Download, Plus, X,
   ChevronDown, ChevronRight, MessageSquare, AlertTriangle, Send, CalendarDays, RotateCcw, Receipt,
-  Flame, Paperclip, ChevronsDownUp, ChevronsUpDown, KeyRound,
+  Flame, Paperclip, ChevronsDownUp, ChevronsUpDown, KeyRound, Search,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../shell/AppShell';
@@ -49,6 +49,16 @@ function billAmountOk(raw) {
 
 const FIELD_LABELS = { ch_auth_code: 'CH auth code', utr: 'UTR', vat_number: 'VAT number', paye_ref: 'PAYE ref' };
 
+// The service filter's own value for "coded to nothing". A sentinel rather than
+// the empty string, because the empty string already means "no filter" and the
+// two questions are opposites.
+const NO_SERVICE = '__no_service__';
+// The one service every confirmation-statement row is, by definition — so the
+// service filter can keep that section instead of blanking it. It is a
+// qbo_service_items.service_id, which is the label verbatim (see
+// billingServices.fetchAdhocServices).
+const CS_SERVICE_ID = 'Confirmation Statement';
+
 // Sections group by the module that generated the task (kind/source) so
 // bulk-imported or manually-typed tasks don't get lost among the BM
 // code-verification queue, which is what "To key into BrightManager" is for.
@@ -80,48 +90,51 @@ const ATTENTION_LABEL = {
 // In-flight CH code chases shown on this list (pre-"entered" stages).
 const CH_OPEN_STAGES = ['s1_offer', 's2_decision', 's3a_client', 's3b_us', 's4_code'];
 
-/* Where a confirmation statement has got to.
+/* Where a confirmation statement has got to — and, separately, what we do
+   next about it.
 
-   Three kinds of answer, and the dropdown keeps them apart on purpose.
+   Two questions, two controls. They used to be one dropdown, and by the time
+   it held ten values it was answering both at once and doing neither well:
+   "Awaiting Client Approval" never said whether to ring or email, and "Call
+   Needed" was an instruction with no record of the state it came out of.
+   sql/273 split them. Nothing was dropped — nine of the ten values stayed as
+   statuses (two relabelled), and Call Needed became the Phone Client action.
 
    `working` is the chase, in the order it happens: the code first, then the
    client's sign-off, then bill, then get paid, then file. Filing is last, so a
    statement stays on this list until it is done and the nightly Companies
    House refresh takes it off.
 
-   `stuck` is the chase not moving, and it holds both reasons that happens:
-   Call Needed is stalled on us (nothing moves until somebody rings), Client
-   Unresponsive is stalled on them. Neither is a point on the ordered line —
-   they are where a statement falls out of it, usually from Awaiting CH Code or
-   Awaiting Client Approval — so neither belongs in the run of five. Call
-   Needed leads because it is the one somebody can act on today; Client
-   Unresponsive is what it becomes when the call does not land, and Allow to
-   Drift is what that becomes if it lasts.
+   `held` is the chase parked. On Hold is the general case; Client Unresponsive
+   and Allow to Drift say why, and both are kept because "they will not reply"
+   and "we have decided to stop chasing" are different facts about different
+   people. None of the three is a point on the ordered line — they are where a
+   statement falls out of it, usually from Awaiting CH Code or Awaiting
+   Approval — so none belongs in the run of five.
 
-   `decided` is the other outcome — we are not filing this one. Allow to Drift
-   is a deliberate choice to stop chasing. Apply to Close and Strike Off
-   Submitted are one path in two stages: intending to close the company, then
-   the DS01 actually in. Strike Off Submitted is the only status with an exit
-   that is not filing — once Companies House dissolves the company the view's
-   own filter drops the row, so it clears itself.
+   `decided` is the other outcome — we are not filing this one. Apply to Close
+   and Strike Off Submitted are one path in two stages: intending to close the
+   company, then the DS01 actually in. Strike Off Submitted is the only status
+   with an exit that is not filing — once Companies House dissolves the company
+   the view's own filter drops the row, so it clears itself.
 
    Nothing outside `working` is a further step, and listing any of it in the
    same run would read as one. None of it takes the row off the list or clears
    its overdue flag either, because neither of those stops being true.
 
-   The keys are the CHECK constraint in sql/268 (extended by sql/269 through
-   sql/272) — change one and change both. No entry for "not started": that is
-   the empty option, and clearing the dropdown genuinely means nobody has
+   The keys are the CHECK constraint in sql/273 — change one and change both,
+   and the edge function's own list with them. No entry for "not started": that
+   is the empty option, and clearing the dropdown genuinely means nobody has
    picked it up. */
 const CS_STATUSES = [
-  { value: 'awaiting_ch_code', label: 'Awaiting CH Code', group: 'working', bg: '#fef3c7', fg: '#b45309' },
-  { value: 'awaiting_client_approval', label: 'Awaiting Client Approval', group: 'working', bg: '#e0f2fe', fg: '#0369a1' },
+  { value: 'awaiting_ch_code', label: 'CH Code(s) Needed', group: 'working', bg: '#fef3c7', fg: '#b45309' },
+  { value: 'awaiting_client_approval', label: 'Awaiting Approval', group: 'working', bg: '#e0f2fe', fg: '#0369a1' },
   { value: 'to_be_billed', label: 'To be Billed', group: 'working', bg: '#ede9fe', fg: '#6d28d9' },
   { value: 'awaiting_payment', label: 'Awaiting Payment', group: 'working', bg: '#ffedd5', fg: '#c2410c' },
-  { value: 'to_be_filed', label: 'To be Filed', group: 'working', bg: '#dcfce7', fg: '#166534' },
-  { value: 'call_needed', label: 'Call Needed', group: 'stuck', bg: '#ccfbf1', fg: '#0f766e' },
-  { value: 'client_unresponsive', label: 'Client Unresponsive', group: 'stuck', bg: '#fee2e2', fg: '#b91c1c' },
-  { value: 'allow_to_drift', label: 'Allow to Drift', group: 'decided', bg: '#f1f5f9', fg: '#475569' },
+  { value: 'to_be_filed', label: 'To Be Filed', group: 'working', bg: '#dcfce7', fg: '#166534' },
+  { value: 'on_hold', label: 'On Hold', group: 'held', bg: '#e2e8f0', fg: '#475569' },
+  { value: 'client_unresponsive', label: 'Client Unresponsive', group: 'held', bg: '#fee2e2', fg: '#b91c1c' },
+  { value: 'allow_to_drift', label: 'Allow to Drift', group: 'held', bg: '#f1f5f9', fg: '#475569' },
   { value: 'apply_to_close', label: 'Apply to Close', group: 'decided', bg: '#ffe4e6', fg: '#9f1239' },
   // A deeper shade of Apply to Close's rose: same path, one stage further on.
   { value: 'strike_off_submitted', label: 'Strike Off Submitted', group: 'decided', bg: '#fecdd3', fg: '#881337' },
@@ -129,9 +142,25 @@ const CS_STATUSES = [
 const CS_STATUS_META = Object.fromEntries(CS_STATUSES.map((s) => [s.value, s]));
 const CS_STATUS_GROUPS = [
   { key: 'working', label: 'Working on it' },
-  { key: 'stuck', label: 'Stuck' },
+  { key: 'held', label: 'On hold' },
   { key: 'decided', label: 'Not filing this one' },
 ];
+
+/* What we do next, and when. Four things somebody can actually sit down and
+   do — not four more states. The date is when WE said we would do it, which is
+   not the filing deadline and does not move it: a next action dated next
+   Tuesday on a statement 271 days late is a plan, not an excuse, and the day
+   count on the right keeps saying so.
+
+   Keys are the CHECK constraint in sql/273. Phone Client is where the old
+   "Call Needed" status went. */
+const CS_NEXT_ACTIONS = [
+  { value: 'send_statement', label: 'Send Statement' },
+  { value: 'send_email', label: 'Send Email' },
+  { value: 'process_amendments', label: 'Process Amendments' },
+  { value: 'phone_client', label: 'Phone Client' },
+];
+const CS_NEXT_ACTION_META = Object.fromEntries(CS_NEXT_ACTIONS.map((a) => [a.value, a]));
 
 function isoToday() { return new Date().toISOString().slice(0, 10); }
 function fmtShort(iso) {
@@ -202,6 +231,14 @@ export default function AdminTasksPage() {
   const isBillableService = (id) => !!id && serviceOptions.some((o) => o.id === id);
   const feeFor = (serviceId) => { const f = fees.find((x) => x.service_id === serviceId); return f ? Number(f.standard_net) : null; };
   const [clientFilter, setClientFilter] = useState('');
+  // Two more ways to narrow the list. Service reads admin_tasks.service_id —
+  // the same vocabulary the bill is coded to, so "show me everything on
+  // Confirmation Statement" is one pick rather than a scan. Text is the
+  // catch-all: it sweeps the description, the notes, the comment thread and
+  // the attachment names, because what you remember about a task is rarely the
+  // field it was typed into.
+  const [serviceFilter, setServiceFilter] = useState('');
+  const [textFilter, setTextFilter] = useState('');
   // Report tab data — completions + creations over the last 14 days,
   // loaded lazily the first time the Report view opens.
   const [reportRows, setReportRows] = useState(null);
@@ -648,6 +685,13 @@ export default function AdminTasksPage() {
       work_status: data.progress.status,
       work_status_set_at: data.progress.status_set_at,
       work_status_set_by: data.progress.status_set_by,
+      next_action: data.progress.next_action,
+      next_action_due: data.progress.next_action_due,
+      next_action_set_at: data.progress.next_action_set_at,
+      next_action_set_by: data.progress.next_action_set_by,
+      // The view derives this; recompute it here rather than reload for it.
+      next_action_overdue: !!data.progress.next_action && !!data.progress.next_action_due
+        && data.progress.next_action_due < isoToday(),
       note_count: (r.note_count || 0) + (data.note ? 1 : 0),
     } : r)));
     return data;
@@ -656,6 +700,17 @@ export default function AdminTasksPage() {
   async function setCsStatus(row, status) {
     if ((row.work_status || '') === (status || '')) return;
     await csUpdate(row, { action: 'set_status', status: status || null });
+  }
+
+  /* The action and its date are one write, always both fields. Clearing the
+     action clears the date with it — a date sitting under "— none —" is a
+     commitment to do nothing by Thursday, which is worse than blank. */
+  async function setCsNextAction(row, { action, due }) {
+    const nextAction = action || null;
+    const nextDue = nextAction ? (due || null) : null;
+    if ((row.next_action || '') === (nextAction || '')
+        && (row.next_action_due || '') === (nextDue || '')) return;
+    await csUpdate(row, { action: 'set_next_action', next_action: nextAction, next_action_due: nextDue });
   }
 
   async function addCsNote(row, body) {
@@ -746,24 +801,72 @@ export default function AdminTasksPage() {
     URL.revokeObjectURL(url);
   }
 
+  /* The service list is built from the tasks actually in front of you, not from
+     the whole Billing catalogue: a dropdown of 40 services where 36 return
+     nothing is a worse control than one with 4 that all work. NO_SERVICE is its
+     own entry because "which of these has nobody coded yet" is a real question,
+     and one an empty selection cannot ask. */
+  const serviceFilterOptions = useMemo(() => {
+    const set = new Set();
+    for (const t of [...(tasks || []), ...(completed || [])]) if (t.service_id) set.add(t.service_id);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [tasks, completed]);
+
+  const q = textFilter.trim().toLowerCase();
+
+  /* Everything about a task that is words, in one string. The comment thread and
+     the attachment names are in here deliberately: what you remember is "Yvonne
+     said something about the landlord", and that lives in a note, not in the
+     title. Notes are already loaded for every open task, so this costs nothing. */
+  const taskText = useCallback((t) => [
+    t.title, t.detail, t.value, t.entity?.name, t.source, t.service_id,
+    FIELD_LABELS[t.field] || t.field, t.escalation_note,
+    ...(notesByTask[t.id] || []).map((n) => n.body),
+    ...(docsByTask[t.id] || []).map((d) => d.original_name),
+  ].filter(Boolean).join(' \u0001 ').toLowerCase(), [notesByTask, docsByTask]);
+
+  const matchText = useCallback((...parts) => {
+    if (!q) return true;
+    return parts.filter(Boolean).join(' \u0001 ').toLowerCase().includes(q);
+  }, [q]);
+  const matchTaskText = useCallback((t) => !q || taskText(t).includes(q), [q, taskText]);
+  const matchTaskService = useCallback((t) => {
+    if (!serviceFilter) return true;
+    if (serviceFilter === NO_SERVICE) return !t.service_id;
+    return t.service_id === serviceFilter;
+  }, [serviceFilter]);
+
+  /* A service filter is a question about billable work, and only admin_tasks
+     carries a service. Reallocations, onboardings and CH-code chases have no
+     comparable field — matching them on anything would be inventing a mapping —
+     so they drop out while one is on, and the banner says so rather than leaving
+     three sections looking mysteriously empty.
+
+     Confirmation statements are the exception, and not a special case: every row
+     in that section IS the Confirmation Statement service. */
+  const serviceHidesFixedSections = !!serviceFilter;
+  const serviceKeepsConfStatements = !serviceFilter || serviceFilter === CS_SERVICE_ID;
+
   // openAll is what the stat boxes count; `open` is what the sections render.
   // They have to be different lists, or clicking "Urgent" would narrow the very
   // number you clicked and the box would report on its own filter.
   const openAll = useMemo(() => {
     let list = (tasks || []).filter((t) => !t.done_at && !t.confirmed_at);
     if (clientFilter) list = list.filter((t) => t.entity_id === clientFilter);
+    list = list.filter(matchTaskService).filter(matchTaskText);
     return list.sort((a, b) => {
       if (!!a.urgent !== !!b.urgent) return a.urgent ? -1 : 1; // urgent first
       const ad = a.deadline || '9999-12-31', bd = b.deadline || '9999-12-31';
       if (ad !== bd) return ad < bd ? -1 : 1;
       return (b.created_at || '').localeCompare(a.created_at || '');
     });
-  }, [tasks, clientFilter]);
+  }, [tasks, clientFilter, matchTaskService, matchTaskText]);
 
   const completedFiltered = useMemo(() => {
-    const list = completed || [];
-    return clientFilter ? list.filter((t) => t.entity_id === clientFilter) : list;
-  }, [completed, clientFilter]);
+    let list = completed || [];
+    if (clientFilter) list = list.filter((t) => t.entity_id === clientFilter);
+    return list.filter(matchTaskService).filter(matchTaskText);
+  }, [completed, clientFilter, matchTaskService, matchTaskText]);
   const reportCompletions = useMemo(() => {
     const list = reportRows || [];
     return clientFilter ? list.filter((t) => t.entity_id === clientFilter) : list;
@@ -772,17 +875,20 @@ export default function AdminTasksPage() {
     const list = reportCreated || [];
     return clientFilter ? list.filter((t) => t.entity_id === clientFilter) : list;
   }, [reportCreated, clientFilter]);
-  const filteredDrafts = useMemo(
-    () => (clientFilter ? drafts.filter((d) => d.entity_id === clientFilter) : drafts),
-    [drafts, clientFilter]
-  );
-  const filteredOnboardings = useMemo(
-    () => (clientFilter ? onboardings.filter((o) => o.entity?.id === clientFilter) : onboardings),
-    [onboardings, clientFilter]
-  );
+  const filteredDrafts = useMemo(() => {
+    if (serviceHidesFixedSections) return [];
+    const list = clientFilter ? drafts.filter((d) => d.entity_id === clientFilter) : drafts;
+    return list.filter((d) => matchText(entities[d.entity_id], d.canonical_service_id, staffMap[d.proposed_fee_earner_id]));
+  }, [drafts, clientFilter, entities, staffMap, matchText, serviceHidesFixedSections]);
+  const filteredOnboardings = useMemo(() => {
+    if (serviceHidesFixedSections) return [];
+    const list = clientFilter ? onboardings.filter((o) => o.entity?.id === clientFilter) : onboardings;
+    return list.filter((o) => matchText(o.entity?.name, o.nextStep, o.status));
+  }, [onboardings, clientFilter, matchText, serviceHidesFixedSections]);
   // One entry per PERSON (a person needs one code across all their companies),
   // matching how the CH codes pipeline counts its tiles.
   const filteredChCodes = useMemo(() => {
+    if (serviceHidesFixedSections) return [];
     const source = clientFilter ? chCodes.filter((r) => r.entity?.id === clientFilter) : chCodes;
     const byPerson = new Map();
     for (const r of source) {
@@ -791,8 +897,10 @@ export default function AdminTasksPage() {
       const g = byPerson.get(key);
       if (r.entity?.name && !g.entities.includes(r.entity.name)) g.entities.push(r.entity.name);
     }
-    return [...byPerson.values()];
-  }, [chCodes, clientFilter]);
+    // Grouped by person first, so the text has to see every company they are on.
+    return [...byPerson.values()]
+      .filter((g) => matchText(g.person?.name, stageMeta(g.stage)?.label, ...g.entities));
+  }, [chCodes, clientFilter, matchText, serviceHidesFixedSections]);
 
   // Which tasks are carrying a comment you haven't read: written by someone
   // else, after the last time you opened that task's thread. Never opened it
@@ -809,10 +917,15 @@ export default function AdminTasksPage() {
     [hasUnreadNotes]
   );
 
-  const filteredConfStatements = useMemo(
-    () => (clientFilter ? confStatements.filter((r) => r.entity_id === clientFilter) : confStatements),
-    [confStatements, clientFilter]
-  );
+  const filteredConfStatements = useMemo(() => {
+    if (!serviceKeepsConfStatements) return [];
+    const list = clientFilter ? confStatements.filter((r) => r.entity_id === clientFilter) : confStatements;
+    return list.filter((r) => matchText(
+      r.entity_name, r.company_number,
+      CS_STATUS_META[r.work_status]?.label, CS_NEXT_ACTION_META[r.next_action]?.label,
+      ...(r.progress_id ? (csNotes[r.progress_id] || []).map((n) => n.body) : []),
+    ));
+  }, [confStatements, clientFilter, csNotes, matchText, serviceKeepsConfStatements]);
 
   // Which stat box is switched on. One at a time — these are four ways of
   // looking at the same list, not independent toggles that could accumulate
@@ -867,6 +980,10 @@ export default function AdminTasksPage() {
       chcodes: filteredChCodes.length,
       confstat: filteredConfStatements.length,
       confstatOverdue: filteredConfStatements.filter((r) => r.overdue).length,
+      // Late on the action WE set, which is a different failure from late at
+      // Companies House and the only one of the two we control.
+      confstatActionLate: filteredConfStatements.filter((r) => r.next_action_overdue).length,
+      confstatNoAction: filteredConfStatements.filter((r) => !r.next_action).length,
       unread: unreadIn(openAll),
     };
   }, [openAll, filteredDrafts, filteredOnboardings, filteredChCodes, filteredConfStatements, unreadIn]);
@@ -1008,12 +1125,49 @@ export default function AdminTasksPage() {
         </div>
       </div>
 
-      {/* Filter + collapse toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+      {/* Filter + collapse toolbar. Service and search narrow the Open and
+          Completed lists; the Report tab reads aggregates that don't carry a
+          service or a description, so they'd filter half the numbers and leave
+          the rest — it keeps the client filter only, and the controls hide. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Filter by client</span>
         <ClientTypeAhead entityList={allEntities} value={clientFilter} onChange={setClientFilter} size="small" />
-        {clientFilter && (
-          <button onClick={() => setClientFilter('')} style={{ ...btn('ghost'), padding: '4px 9px', fontSize: 11.5 }}>
+
+        {view !== 'report' && (<>
+          <select
+            value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)}
+            title="The service a task's bill is coded to"
+            style={{
+              fontSize: 12, fontFamily: font, padding: '6px 8px', borderRadius: 8,
+              border: `1px solid ${serviceFilter ? '#0e7fe0' : '#cbd5e1'}`,
+              color: serviceFilter ? '#0e7fe0' : '#475569',
+              fontWeight: serviceFilter ? 600 : 400, outline: 'none', maxWidth: 240,
+            }}
+          >
+            <option value="">All services</option>
+            <option value={NO_SERVICE}>— no service set —</option>
+            {serviceFilterOptions.map((id) => <option key={id} value={id}>{id}</option>)}
+          </select>
+
+          <div style={{ position: 'relative' }}>
+            <Search size={12} color="#94a3b8" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)' }} />
+            <input
+              value={textFilter} onChange={(e) => setTextFilter(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setTextFilter(''); }}
+              placeholder="Search descriptions, notes, comments…"
+              style={{
+                width: 260, padding: '6px 10px 6px 26px', fontSize: 12, fontFamily: font,
+                border: `1px solid ${q ? '#0e7fe0' : '#cbd5e1'}`, borderRadius: 8, outline: 'none',
+              }}
+            />
+          </div>
+        </>)}
+
+        {(clientFilter || serviceFilter || textFilter) && (
+          <button
+            onClick={() => { setClientFilter(''); setServiceFilter(''); setTextFilter(''); }}
+            style={{ ...btn('ghost'), padding: '4px 9px', fontSize: 11.5 }}
+          >
             <X size={11} /> Clear
           </button>
         )}
@@ -1036,18 +1190,26 @@ export default function AdminTasksPage() {
       )}
       {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
 
-      {/* A filtered list and an empty list look identical, so say which is on. */}
-      {attention && (
+      {/* A filtered list and an empty list look identical, so say which is on.
+          The service line matters most: it empties three whole sections, and
+          silently is exactly how somebody concludes there are no CH-code chases
+          left. */}
+      {(attention || serviceFilter || q) && (
         <div style={{
           ...card, borderColor: '#bae6fd', background: '#f0f9ff', padding: '8px 14px',
           marginBottom: 16, fontSize: 12.5, color: '#0369a1',
-          display: 'flex', alignItems: 'center', gap: 10,
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
         }}>
           <span>
             Showing {open.length} of {openAll.length} open task{openAll.length === 1 ? '' : 's'}
-            {' — '}{ATTENTION_LABEL[attention]}.
+            {attention ? ` — ${ATTENTION_LABEL[attention]}` : ''}
+            {serviceFilter ? ` — ${serviceFilter === NO_SERVICE ? 'no service set' : serviceFilter}` : ''}
+            {q ? ` — matching “${textFilter.trim()}”` : ''}.
+            {serviceFilter && ' Reallocations, onboardings and CH-code chases carry no service, so they are hidden.'}
+            {serviceFilter && !serviceKeepsConfStatements && ' Confirmation statements too.'}
           </span>
-          <button onClick={clearAttention}
+          <button
+            onClick={() => { clearAttention(); setServiceFilter(''); setTextFilter(''); }}
             style={{ ...btn('ghost'), padding: '3px 9px', fontSize: 11.5, marginLeft: 'auto' }}>
             <X size={11} /> Show all
           </button>
@@ -1374,6 +1536,9 @@ export default function AdminTasksPage() {
           {stats.confstatOverdue > 0
             ? `${stats.confstatOverdue} overdue · ${filteredConfStatements.length - stats.confstatOverdue} due within 14 days`
             : 'none overdue'}
+          {/* The two numbers that are about us rather than about the client. */}
+          {stats.confstatActionLate > 0 && ` · ${stats.confstatActionLate} action${stats.confstatActionLate === 1 ? '' : 's'} past its date`}
+          {stats.confstatNoAction > 0 && ` · ${stats.confstatNoAction} with no next action`}
         </span>}
       >
         {filteredConfStatements.length === 0 && <Empty>Nothing overdue or due in the next 14 days.</Empty>}
@@ -1385,6 +1550,7 @@ export default function AdminTasksPage() {
             staffMap={staffMap}
             saving={csSaving === r.deadline_id}
             onSetStatus={(s) => setCsStatus(r, s)}
+            onSetNextAction={(next) => setCsNextAction(r, next)}
             onToggleNotes={() => toggleCsNotes(r)}
             onAddNote={(body) => addCsNote(r, body)}
             onOpenClient={() => navigate(`/clients/${r.entity_id}`)}
@@ -1392,7 +1558,7 @@ export default function AdminTasksPage() {
         ))}
         {filteredConfStatements.length > 0 && (
           <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
-            Due dates come straight from Companies House on the nightly refresh — file the statement and the row leaves this list on the next run, so there is nothing to mark complete. The status and notes are yours: they record where the work has got to, and reset when the statement is filed and the next one falls due.
+            Due dates come straight from Companies House on the nightly refresh — file the statement and the row leaves this list on the next run, so there is nothing to mark complete. The rest is yours: <b>status</b> is where the work has got to, <b>next action</b> is what to do about it and by when. Both reset when the statement is filed and the next one falls due. A next action dated after the deadline is a plan, not an extension — the day count on the right does not move for it.
           </div>
         )}
       </Section>
@@ -1790,7 +1956,7 @@ function TaskRow({
    TaskRow keeps one. The row still opens the client page on click, so every
    control inside stops propagation — otherwise picking a status navigates
    away mid-change. */
-function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, onToggleNotes, onAddNote, onOpenClient }) {
+function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, onSetNextAction, onToggleNotes, onAddNote, onOpenClient }) {
   const [noteDraft, setNoteDraft] = useState('');
   // days_late is signed: positive is past the date, negative is to go.
   const late = Number(r.days_late) || 0;
@@ -1798,6 +1964,9 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
     `${r.company_status || ''} ${r.company_status_detail || ''}`
   );
   const status = CS_STATUS_META[r.work_status] || null;
+  const action = CS_NEXT_ACTION_META[r.next_action] || null;
+  // Our own date, judged against today — nothing to do with the filing deadline.
+  const actionLate = !!r.next_action_overdue;
   const noteCount = notes.length || Number(r.note_count) || 0;
   const stop = (e) => e.stopPropagation();
 
@@ -1806,10 +1975,10 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
       <div onClick={onOpenClient}
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>
         <CalendarDays size={13} color={r.overdue ? '#b91c1c' : '#94a3b8'} style={{ flexShrink: 0 }} />
-        <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 210px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 178px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {r.entity_name}
         </span>
-        <span style={{ color: '#64748b', flex: '0 0 90px', whiteSpace: 'nowrap' }}>
+        <span style={{ color: '#64748b', flex: '0 0 78px', whiteSpace: 'nowrap' }}>
           {r.company_number || ''}
         </span>
         <span style={{ color: '#475569', flex: 1, minWidth: 0, whiteSpace: 'nowrap' }}>
@@ -1825,8 +1994,8 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
           </span>
         )}
 
-        {/* The status reads as a coloured pill and edits as a dropdown, so a
-            glance down the list sorts "waiting on the client" from "nobody has
+        {/* Status reads as a coloured pill and edits as a dropdown, so a glance
+            down the list sorts "waiting on the client" from "nobody has
             started" without opening anything. */}
         <select
           value={r.work_status || ''}
@@ -1839,6 +2008,7 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
           style={{
             fontSize: 11.5, fontFamily: font, fontWeight: status ? 600 : 400,
             padding: '3px 6px', borderRadius: 999, outline: 'none', flexShrink: 0,
+            maxWidth: 168,
             border: `1px solid ${status ? status.bg : '#e2e8f0'}`,
             background: status ? status.bg : '#fff',
             color: status ? status.fg : '#94a3b8',
@@ -1853,6 +2023,54 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
             </optgroup>
           ))}
         </select>
+
+        {/* And the half that is a job rather than a state. Changing the action
+            keeps whatever date was on it; clearing it drops the date too,
+            because a date under "no action" is a commitment to do nothing by
+            Thursday. */}
+        <select
+          value={r.next_action || ''}
+          disabled={saving}
+          onClick={stop}
+          onChange={(e) => { stop(e); onSetNextAction({ action: e.target.value, due: r.next_action_due || '' }); }}
+          title={action
+            ? `Next: ${action.label}${r.next_action_set_at ? ` — set ${fmtNoteTime(r.next_action_set_at)} by ${staffMap[r.next_action_set_by] || 'staff'}` : ''}`
+            : 'No next action — pick what happens next on this one'}
+          style={{
+            fontSize: 11.5, fontFamily: font, fontWeight: action ? 600 : 400,
+            padding: '3px 6px', borderRadius: 8, outline: 'none', flexShrink: 0, width: 150,
+            border: `1px solid ${action ? (actionLate ? '#fca5a5' : '#c7d2fe') : '#e2e8f0'}`,
+            background: action ? (actionLate ? '#fef2f2' : '#eef2ff') : '#fff',
+            color: action ? (actionLate ? '#b91c1c' : '#4338ca') : '#94a3b8',
+            opacity: saving ? 0.5 : 1,
+          }}
+        >
+          <option value="">No next action</option>
+          {CS_NEXT_ACTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+        </select>
+
+        {/* Disabled until there is an action to date, so the two are never out
+            of step. Red once it is behind — that is us being late, and it is
+            the number on this row anybody can do something about today. */}
+        <input
+          type="date"
+          value={r.next_action_due || ''}
+          disabled={saving || !r.next_action}
+          onClick={stop}
+          onChange={(e) => { stop(e); onSetNextAction({ action: r.next_action, due: e.target.value }); }}
+          title={r.next_action
+            ? (actionLate ? 'This action is past the date we set for it' : 'When we do the next action — not the filing deadline')
+            : 'Pick a next action first'}
+          style={{
+            fontSize: 11.5, fontFamily: font, padding: '3px 6px', borderRadius: 8,
+            outline: 'none', flexShrink: 0, width: 122,
+            border: `1px solid ${actionLate ? '#fca5a5' : '#e2e8f0'}`,
+            background: r.next_action ? (actionLate ? '#fef2f2' : '#fff') : '#f8fafc',
+            color: actionLate ? '#b91c1c' : '#475569',
+            fontWeight: actionLate ? 600 : 400,
+            opacity: saving || !r.next_action ? 0.55 : 1,
+          }}
+        />
 
         <button onClick={(e) => { stop(e); onToggleNotes(); }}
           title={noteCount ? `${noteCount} note${noteCount === 1 ? '' : 's'}` : 'Add a note'}
