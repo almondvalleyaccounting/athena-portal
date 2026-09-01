@@ -1,4 +1,12 @@
-// ch-ingest-officers (v11)
+// ch-ingest-officers (v12)
+// v12: also write the ACCOUNTS filing deadline, not just the confirmation
+//      statement one. Same profile call, same upsert shape, tag 'CH Accounts'
+//      (the enum value already existed and had never been used). This is what
+//      the daily "accounts due at Companies House today" email reads — it has
+//      to come from CH itself, because a BrightManager export that is two days
+//      stale would have the team emailed about a deadline that has moved.
+//      Also: nightly mode now accepts a stale_hours override (default 20) so a
+//      backfill can be driven without waiting a night per chunk.
 // v11: target on HAVING a company number, not on type = 'limited_company'.
 //      An LLP is on the Companies House register and files a confirmation
 //      statement like anyone else, but Athena types it 'partnership', so
@@ -94,6 +102,40 @@ function reformatChName(s: string): string {
     .join(" ");
 }
 
+// A filing deadline we hold for an entity is one row per tag, kept current
+// rather than accumulated: Companies House rolls next_due forward the moment
+// the filing lands, so the row leaving the "due soon" window IS the evidence
+// it was filed. Nothing to tick off by hand.
+async function upsertDeadline(
+  service: any,
+  entityId: string,
+  tag: string,
+  title: string,
+  dueDate: string,
+): Promise<void> {
+  const { data: existing } = await service.from("deadlines")
+    .select("id, due_date, title").eq("entity_id", entityId).eq("tag", tag)
+    .neq("status", "complete").maybeSingle();
+  if (existing) {
+    if (existing.due_date !== dueDate || existing.title !== title) {
+      await service.from("deadlines")
+        .update({ due_date: dueDate, title, updated_at: new Date().toISOString() })
+        .eq("id", existing.id);
+    }
+  } else {
+    await service.from("deadlines").insert({ entity_id: entityId, title, due_date: dueDate, tag });
+  }
+}
+
+// "Accounts to 31 March 2025" — the period end is the only thing that tells
+// you WHICH set of accounts is due, so it goes in the title.
+function accountsTitle(periodEnd: string | null): string {
+  if (!periodEnd) return "Annual Accounts";
+  const d = new Date(`${periodEnd}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "Annual Accounts";
+  return `Accounts to ${d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}`;
+}
+
 const TITLES = new Set(["dr", "mr", "mrs", "ms", "miss", "sir", "dame", "prof", "professor", "rev", "lord", "lady"]);
 function nameTokens(s: string): string[] {
   return (s || "").toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/)
@@ -158,7 +200,12 @@ Deno.serve(async (req) => {
 
     if (only && Array.isArray(only) && only.length) pick = pick.in("id", only);
     if (nightly) {
-      pick = pick.or(`ch_last_refreshed_at.is.null,ch_last_refreshed_at.lt.${new Date(Date.now() - 20 * 3600 * 1000).toISOString()}`);
+      // stale_hours 0 means "take the stalest chunk regardless of when it was
+      // last read" — how a backfill is driven without a night per chunk.
+      const staleHours = Number.isFinite(Number(bodyIn?.stale_hours)) ? Math.max(0, Number(bodyIn.stale_hours)) : 20;
+      if (staleHours > 0) {
+        pick = pick.or(`ch_last_refreshed_at.is.null,ch_last_refreshed_at.lt.${new Date(Date.now() - staleHours * 3600 * 1000).toISOString()}`);
+      }
     }
     const { data: candidates, error: candErr } = await pick;
     if (candErr) return jsonResponse({ error: candErr.message }, 500);
@@ -233,18 +280,17 @@ Deno.serve(async (req) => {
 
           const csNextDue: string | null = profileRes.body?.confirmation_statement?.next_due ?? null;
           if (csNextDue) {
-            const { data: existingDeadline } = await service.from("deadlines")
-              .select("id, due_date").eq("entity_id", e.id).eq("tag", "Confirmation Statement")
-              .neq("status", "complete").maybeSingle();
-            if (existingDeadline) {
-              if (existingDeadline.due_date !== csNextDue) {
-                await service.from("deadlines").update({ due_date: csNextDue, updated_at: new Date().toISOString() }).eq("id", existingDeadline.id);
-              }
-            } else {
-              await service.from("deadlines").insert({
-                entity_id: e.id, title: "Confirmation Statement", due_date: csNextDue, tag: "Confirmation Statement",
-              });
-            }
+            await upsertDeadline(service, e.id, "Confirmation Statement", "Confirmation Statement", csNextDue);
+          }
+
+          // Accounts. CH gives this two ways depending on how much it knows
+          // about the company: the richer `accounts.next_accounts` block, and
+          // the flat `accounts.next_due`. Prefer the block, fall back.
+          const acc = profileRes.body?.accounts ?? null;
+          const accNextDue: string | null = acc?.next_accounts?.due_on ?? acc?.next_due ?? null;
+          const accPeriodEnd: string | null = acc?.next_accounts?.period_end_on ?? acc?.next_made_up_to ?? null;
+          if (accNextDue) {
+            await upsertDeadline(service, e.id, "CH Accounts", accountsTitle(accPeriodEnd), accNextDue);
           }
         } else if (profileRes.status === 404) {
           errors.push({ entity_id: e.id, name: e.name, error: friendlyError(new Error("404"), cn) });
