@@ -66,7 +66,20 @@ type RecurringTpl = {
   billAddr: Record<string, unknown> | null;
 };
 
-Deno.serve(async (req) => {
+// An uncaught throw in here does NOT reach the browser as an error it can
+// read. The runtime answers 500 with no CORS headers, the browser blocks the
+// response, and supabase-js can only report "Failed to send a request to the
+// Edge Function" — indistinguishable from a broken deploy or a dead network.
+// That is how a two-minute QuickBooks timeout on "Copy from past invoice"
+// looked like Athena being down. So every exit is JSON, with CORS.
+Deno.serve((req) => handleRequest(req).catch(unhandledError));
+
+function unhandledError(e: unknown): Response {
+  console.error("qbo-push-billing-items error:", e);
+  return jsonResponse({ success: false, error: (e as Error)?.message || "Unexpected error" }, 500);
+}
+
+async function handleRequest(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
@@ -582,7 +595,7 @@ Deno.serve(async (req) => {
     summary: { total: ids.length, sent, created_unsent: created, errored },
     results,
   });
-});
+}
 
 function addDays(isoDate: string, days: number): string {
   const d = new Date(isoDate + "T00:00:00Z");

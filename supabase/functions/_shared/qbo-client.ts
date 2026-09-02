@@ -170,6 +170,32 @@ async function refreshToken(sb: SupaClient, src: TokenSource) {
   return tokens;
 }
 
+// How long to wait on a QuickBooks READ before giving up.
+//
+// Intuit's gateway sits on a slow query for roughly two minutes and then
+// answers 504 "stream timeout" — which is exactly what it did across billing
+// and qbo-pull on 2026-09-01. Two minutes of spinner tells the reader nothing
+// that thirty seconds wouldn't, and the browser has usually given up long
+// before the function does, so bound the read here and turn it into a sentence.
+//
+// READS ONLY, and that restriction is the whole point. A write is never
+// aborted: QBO may have created the invoice before the connection dropped, so
+// a caller told "failed" retries and books it twice. A slow write is only
+// slow; waiting is the cheaper mistake.
+const QBO_READ_TIMEOUT_MS = 30_000;
+
+/** Turn an aborted fetch into a sentence; pass anything else through. */
+function qboNetworkError(e: unknown): Error {
+  const name = (e as Error)?.name;
+  if (name === "TimeoutError" || name === "AbortError") {
+    return new Error(
+      `QuickBooks did not respond within ${Math.round(QBO_READ_TIMEOUT_MS / 1000)} seconds. ` +
+        `It is usually busy rather than broken, and nothing was changed — try again in a minute.`,
+    );
+  }
+  return e instanceof Error ? e : new Error(String(e));
+}
+
 // Make a QBO API call with automatic auth. Pass realmId to target a client.
 export async function qboFetch(
   path: string,
@@ -186,7 +212,18 @@ export async function qboFetch(
     headers.set("Content-Type", "application/json");
   }
 
-  const resp = await fetch(url, { ...options, headers });
+  // A caller that brought its own signal keeps it. Otherwise reads get the
+  // timeout above and writes get none — see QBO_READ_TIMEOUT_MS.
+  const isWrite = !!options.body;
+  const readSignal = () =>
+    options.signal ?? (isWrite ? undefined : AbortSignal.timeout(QBO_READ_TIMEOUT_MS));
+
+  let resp: Response;
+  try {
+    resp = await fetch(url, { ...options, headers, signal: readSignal() });
+  } catch (e) {
+    throw qboNetworkError(e);
+  }
 
   // If 401, try one token refresh and retry
   if (resp.status === 401) {
@@ -196,8 +233,14 @@ export async function qboFetch(
       await refreshToken(sb, src);
       const { accessToken: newToken } = await getValidToken(realmId);
       headers.set("Authorization", `Bearer ${newToken}`);
-      return fetch(url, { ...options, headers });
-    } catch {
+      // A fresh signal: the first one may already have burned part of its budget.
+      return await fetch(url, { ...options, headers, signal: readSignal() });
+    } catch (e) {
+      // A timeout on the retry is worth reporting; a failed refresh is not —
+      // returning the original 401 is what lets the caller say "reconnect".
+      if ((e as Error)?.name === "TimeoutError" || (e as Error)?.name === "AbortError") {
+        throw qboNetworkError(e);
+      }
       return resp;
     }
   }
@@ -210,6 +253,16 @@ export async function qboQuery(query: string, realmId?: string): Promise<unknown
   const resp = await qboFetch(`query?query=${encodeURIComponent(query)}&minorversion=75`, {}, realmId);
   if (!resp.ok) {
     const err = await resp.text();
+    // 502/503/504 is Intuit's own gateway giving up, not anything wrong with
+    // the query or the connection. Say that, because "QBO query failed: 504
+    // stream timeout" reads like an Athena bug and sends people to look in
+    // entirely the wrong place.
+    if (resp.status >= 502 && resp.status <= 504) {
+      throw new Error(
+        `QuickBooks is not responding right now (Intuit returned ${resp.status}). ` +
+          `Nothing was changed — try again in a minute.`,
+      );
+    }
     throw new Error(`QBO query failed: ${resp.status} ${err}`);
   }
   return resp.json();

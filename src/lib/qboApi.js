@@ -1,5 +1,32 @@
 import { supabase } from './supabase';
 
+/**
+ * Dig the real sentence out of a failed edge-function call.
+ *
+ * supabase-js hides the response body behind two generic messages, and
+ * neither one distinguishes "QuickBooks is busy" from "Athena is broken":
+ *
+ *   FunctionsHttpError  -> "Edge Function returned a non-2xx status code"
+ *   FunctionsFetchError -> "Failed to send a request to the Edge Function"
+ *
+ * The first hides a body that says exactly what went wrong, so read it. The
+ * second means the fetch itself never completed — a CORS-less 500 from an
+ * uncaught throw, or a genuinely dead network — so name both possibilities
+ * rather than leaving the user staring at a spinner that just stopped.
+ */
+async function edgeError(error, fallback) {
+  try {
+    const payload = error?.context && typeof error.context.json === 'function'
+      ? await error.context.json()
+      : null;
+    if (payload?.error) return new Error(String(payload.error));
+  } catch { /* the body wasn't JSON — fall through */ }
+  if (/failed to send a request/i.test(error?.message || '')) {
+    return new Error(`${fallback} — the request didn't complete. Check your connection and try again.`);
+  }
+  return new Error(error?.message || fallback);
+}
+
 /** Get QBO connection status */
 export async function getQboStatus() {
   const { data, error } = await supabase.functions.invoke('qbo-status');
@@ -78,7 +105,7 @@ export async function pushBillingItems(billingItemIds, send, initiatedBy, dryRun
       new_customer_name: opts.newCustomerName || undefined,
     },
   });
-  if (error) throw error;
+  if (error) throw await edgeError(error, 'The QuickBooks push failed');
   return data;
 }
 
@@ -88,7 +115,7 @@ export async function assignInvoiceNumbers(billingItemIds) {
   const { data, error } = await supabase.functions.invoke('qbo-push-billing-items', {
     body: { assign_numbers: true, billing_item_ids: billingItemIds || [] },
   });
-  if (error) throw error;
+  if (error) throw await edgeError(error, 'Could not ask QuickBooks to assign invoice numbers');
   return data;
 }
 
@@ -98,7 +125,7 @@ export async function fetchQboSettings() {
   const { data, error } = await supabase.functions.invoke('qbo-push-billing-items', {
     body: { check_settings: true },
   });
-  if (error) throw error;
+  if (error) throw await edgeError(error, 'Could not read the QuickBooks sales settings');
   return data;
 }
 
@@ -108,7 +135,7 @@ export async function fetchClientInvoices(entityId) {
   const { data, error } = await supabase.functions.invoke('qbo-push-billing-items', {
     body: { list_invoices: true, entity_id: entityId },
   });
-  if (error) throw error;
+  if (error) throw await edgeError(error, 'Could not load invoices from QuickBooks');
   return data;
 }
 
@@ -118,7 +145,7 @@ export async function refreshBillingItems(billingItemIds, initiatedBy) {
   const { data, error } = await supabase.functions.invoke('qbo-push-billing-items', {
     body: { refresh: true, billing_item_ids: billingItemIds || [], initiated_by: initiatedBy },
   });
-  if (error) throw error;
+  if (error) throw await edgeError(error, 'Could not re-check these invoices in QuickBooks');
   return data;
 }
 

@@ -86,6 +86,10 @@ export default function BillingPage() {
   const [showInvoicePicker, setShowInvoicePicker] = useState(false);
   const [invLoading, setInvLoading] = useState(false);
   const [invError, setInvError] = useState('');
+  // "No matching QuickBooks customer" is an answer, not a fault — retrying it
+  // gets the same answer. A QBO timeout is worth another go, so only that one
+  // offers the button.
+  const [invRetryable, setInvRetryable] = useState(false);
   const [clientInvoices, setClientInvoices] = useState([]);
   const [expandedInv, setExpandedInv] = useState(null);
   const [customTxn, setCustomTxn] = useState(null); // QBO custom-transaction-numbers: null=unknown
@@ -285,12 +289,15 @@ export default function BillingPage() {
   const openInvoicePicker = async () => {
     if (!formClient) return;
     setShowInvoicePicker(true);
-    setInvLoading(true); setInvError(''); setClientInvoices([]); setExpandedInv(null);
+    setInvLoading(true); setInvError(''); setInvRetryable(false); setClientInvoices([]); setExpandedInv(null);
     try {
       const res = await fetchClientInvoices(formClient);
       if (res?.customer_found === false) setInvError('This client has no matching QuickBooks customer yet.');
       setClientInvoices(res?.invoices || []);
-    } catch (e) { setInvError(e.message || 'Could not load invoices from QuickBooks'); }
+    } catch (e) {
+      setInvError(e.message || 'Could not load invoices from QuickBooks');
+      setInvRetryable(true);
+    }
     setInvLoading(false);
   };
 
@@ -1295,7 +1302,14 @@ export default function BillingPage() {
             <h2 style={{fontFamily:"'Playfair Display', serif",fontSize:20,fontWeight:500,color:'#0f172a',margin:'0 0 4px'}}>Copy from a past invoice</h2>
             <p style={{fontSize:13,color:'#64748b',marginBottom:16}}>{entityMap[formClient]?.name||'Client'} · last 24 months from QuickBooks</p>
             {invLoading && <p style={{fontSize:13,color:'#94a3b8',padding:'24px 0',textAlign:'center'}}>Loading invoices from QuickBooks…</p>}
-            {invError && <div style={{fontSize:12,color:'#b91c1c',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'10px 12px',marginBottom:12}}>{invError}</div>}
+            {invError && (
+              <div style={{fontSize:12,color:'#b91c1c',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'10px 12px',marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+                <span>{invError}</span>
+                {invRetryable && (
+                  <button onClick={openInvoicePicker} style={{...btnOutline,gap:4,flexShrink:0}}><RefreshCw size={13}/> Try again</button>
+                )}
+              </div>
+            )}
             {!invLoading && !invError && clientInvoices.length===0 && <p style={{fontSize:13,color:'#94a3b8',padding:'24px 0',textAlign:'center'}}>No invoices in the last 24 months.</p>}
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
               {clientInvoices.map((inv)=>{
