@@ -569,6 +569,7 @@ export default function QuoteDetailPage() {
           quote={quote}
           lineItems={lineItems}
           profile={profile}
+          entityIds={[quote.entity_id, ...(groupData?.quoteEntities || []).map(qe => qe.entity_id)]}
           onSent={() => { setShowSendModal(false); loadQuote(); }}
           onClose={() => setShowSendModal(false)}
         />

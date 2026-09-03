@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { resolveQuoteRecipients } from '../lib/quoteRecipients';
 import { Btn } from './ui';
 
 // A quote regularly goes to two directors, so both the To and CC boxes take a
@@ -22,9 +23,15 @@ const parseEmails = (raw) => {
 
 // Modal for composing and sending a quote to a client via email.
 // Generates PDF client-side, sends via Supabase Edge Function.
-export default function SendQuoteModal({ quote, lineItems, profile, onSent, onClose, pdfGenerator, groupId }) {
+export default function SendQuoteModal({ quote, lineItems, profile, onSent, onClose, pdfGenerator, groupId, entityIds }) {
   const [recipientEmail, setRecipientEmail] = useState('');
   const [ccEmail, setCcEmail] = useState('');
+  // We already hold this address — on the client record, on its contacts, and
+  // in the audit trail of the last send. Opening the box empty meant retyping
+  // it for every re-send, which is how a quote goes to a typo.
+  const [prefill, setPrefill] = useState(null);
+  const [prefillLoading, setPrefillLoading] = useState(true);
+  const [prefillEdited, setPrefillEdited] = useState(false);
   const [subject, setSubject] = useState(`Services Quote: ${quote.relationship_group || 'Client'}`);
   const expiryStr = quote.valid_until ? new Date(quote.valid_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   // Lead with the instalment arithmetic. The annual figure held on the quote is
@@ -38,6 +45,28 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
+
+  const entityIdKey = (entityIds || []).filter(Boolean).join(',');
+  useEffect(() => {
+    let cancelled = false;
+    setPrefillLoading(true);
+    resolveQuoteRecipients(quote, { groupId, entityIds })
+      .then(res => {
+        if (cancelled) return;
+        setPrefill(res);
+        setPrefillLoading(false);
+        // Never overwrite something already typed.
+        if (res.to.length) {
+          setRecipientEmail(prev => (prev.trim() ? prev : res.to.join(', ')));
+        }
+        if (res.cc.length) {
+          setCcEmail(prev => (prev.trim() ? prev : res.cc.join(', ')));
+        }
+      })
+      .catch(() => { if (!cancelled) setPrefillLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quote?.id, groupId, entityIdKey]);
 
   const toList = parseEmails(recipientEmail);
   const ccList = parseEmails(ccEmail).filter(
@@ -147,10 +176,37 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
                   type="email"
                   multiple
                   value={recipientEmail}
-                  onChange={e => setRecipientEmail(e.target.value)}
-                  placeholder="director1@example.com, director2@example.com"
+                  onChange={e => { setRecipientEmail(e.target.value); setPrefillEdited(true); }}
+                  placeholder={prefillLoading ? 'Looking up the client’s email…' : 'director1@example.com, director2@example.com'}
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2"
                 />
+                {/* Say where the address came from — a prefill you cannot trace
+                    is a prefill nobody checks. */}
+                {!prefillLoading && prefill?.sourceLabel && !prefillEdited && (
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    From {prefill.sourceLabel}
+                    {prefill.source === 'last_send' && prefill.sentAt
+                      ? ` on ${new Date(prefill.sentAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                      : ''}
+                    {' — check it before sending.'}
+                  </p>
+                )}
+                {!prefillLoading && prefillEdited && prefill?.to?.length > 0
+                  && recipientEmail.trim() !== prefill.to.join(', ') && (
+                  <button
+                    type="button"
+                    onClick={() => { setRecipientEmail(prefill.to.join(', ')); setPrefillEdited(false); }}
+                    className="text-[10px] text-ocean-600 hover:underline mt-1"
+                  >
+                    Restore {prefill.to.join(', ')}
+                  </button>
+                )}
+                {!prefillLoading && !prefill?.to?.length && (
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    No email on file for this client — add one to the client record so the next
+                    quote fills itself in.
+                  </p>
+                )}
                 {toList.length > 1 && (
                   <p className="text-[10px] text-gray-400 mt-1">
                     {toList.length} recipients — the accept link works for all of them, and the

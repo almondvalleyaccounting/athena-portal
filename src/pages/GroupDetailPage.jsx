@@ -444,6 +444,7 @@ export default function GroupDetailPage() {
           lineItems={allLineItems}
           profile={profile}
           groupId={groupId}
+          entityIds={quotes.map(q => q.entity_id)}
           pdfGenerator={() => generateGroupQuotePdfBase64(group, quotes, groupEntities, discounts)}
           onSent={handleGroupSent}
           onClose={() => setShowSendModal(false)}
