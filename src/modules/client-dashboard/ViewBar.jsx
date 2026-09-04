@@ -80,7 +80,7 @@ export default function ViewBar({
             ...c,
             hint: c.months
               ? `${compareHint || 'Against'} ${c.months} month${c.months === 1 ? '' : 's'} earlier, with the movement beside it`
-              : 'The period-by-period table — the shape rather than the delta',
+              : 'The period-by-period table — one column per month, quarter or year, set by the grain beside it',
           }))}
         />
       )}

@@ -380,7 +380,7 @@ export default function ClientDashboardPage() {
      DATE. Both by the same number of months, which is what lets one control
      mean the same thing on either tab — see COMPARATIVES.
 
-     The 12-month trend is the only setting that needs the monthly grid, so the
+     Trend is the only setting that needs the monthly grid, so the
      grid start is only sent then: otherwise the as-at pull fetches one extra
      dated report instead of a thirteen-column one, which is the same single
      QuickBooks call either way. */

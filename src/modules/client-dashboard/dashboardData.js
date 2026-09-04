@@ -233,16 +233,19 @@ export function bucketReportTree(rows, monthKeys, buckets, how = 'sum') {
   column heading.
 
   `trend` is not a comparative at all — it is the period-by-period table these
-  tabs already had. It stays on the same control because from where the reader
-  sits it answers the same question (against what?), and because losing it
-  would be a downgrade for anyone who wants the shape rather than the delta.
+  tabs already had, and it is the one setting under which the grain and basis
+  toggles still mean something. It stays on the same control because from where
+  the reader sits it answers the same question (against what?), and because
+  losing it would be a downgrade for anyone who wants the shape rather than the
+  delta. It is called just "Trend" because how many periods it shows is the
+  grain's business, not this control's: Months gives twelve, Years gives five.
 */
 export const COMPARATIVES = [
   { key: 'm1', label: 'Last month', months: 1 },
   { key: 'm3', label: '3 months', months: 3 },
   { key: 'm6', label: '6 months', months: 6 },
   { key: 'm12', label: 'Last year', months: 12 },
-  { key: 'trend', label: '12-month trend', months: null },
+  { key: 'trend', label: 'Trend', months: null },
 ];
 
 export const comparativeDef = (key) =>
