@@ -77,6 +77,9 @@ const ASAT_TABS = new Set(['balance', 'debtors', 'creditors']);
 // them means someone who thinks in fiscal quarters isn't re-picking them on
 // every client they open.
 const PREF_KEY = 'ava_dash_overview_prefs';
+// Stamped once the P&L's `trend` default has been applied to this browser, so
+// a remembered `m12` from before that default does not outlive it.
+const PL_TREND_DEFAULT = 'plTrendDefault';
 const loadPrefs = () => {
   try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}') || {}; } catch { return {}; }
 };
@@ -110,15 +113,27 @@ export default function ClientDashboardPage() {
   const [view, setView] = useState(() => loadPrefs().view || 'reported');
 
   // What each statement compares itself against. Held separately per tab
-  // because they answer different questions — a P&L wants last year, a balance
-  // sheet often wants last month — and remembered for the same reason the
-  // grain toggles are.
-  const [plCompare, setPlCompare] = useState(() => loadPrefs().plCompare || 'm12');
+  // because they answer different questions — a P&L opens on the trend, a
+  // balance sheet on last year — and remembered for the same reason the grain
+  // toggles are.
+  //
+  // The P&L defaults to `trend`, the period-by-period table: it is the view
+  // this tab had before comparatives existed, it is the only setting where the
+  // grain and basis toggles do anything, and a reader who wants one column
+  // against another asks for it. `PL_TREND_DEFAULT` migrates the browsers that
+  // remembered the old default once, so the change is visible to someone who
+  // never explicitly chose a comparative — after which their own choice sticks.
+  const [plCompare, setPlCompare] = useState(() => {
+    const prefs = loadPrefs();
+    return prefs[PL_TREND_DEFAULT] ? (prefs.plCompare || 'trend') : 'trend';
+  });
   const [bsCompare, setBsCompare] = useState(() => loadPrefs().bsCompare || 'm12');
 
   useEffect(() => {
     try {
-      localStorage.setItem(PREF_KEY, JSON.stringify({ grain, basis, view, plCompare, bsCompare }));
+      localStorage.setItem(PREF_KEY, JSON.stringify({
+        grain, basis, view, plCompare, bsCompare, [PL_TREND_DEFAULT]: true,
+      }));
     } catch { /* private mode */ }
   }, [grain, basis, view, plCompare, bsCompare]);
 
@@ -1064,14 +1079,16 @@ function ReportTable({ columns, rows, monthLabels = true, columnKinds = null, di
 /*
   Two shapes of the same statement, chosen by the Compare control:
 
+  • THE TREND — the period-by-period table this tab has always been, whose
+    columns follow the grain and basis toggles so a fiscal quarter here means
+    the same three months it means on the Overview. This is the default,
+    because it is the view the tab had before comparatives existed and the
+    only one where those toggles change anything.
+
   • A COMPARATIVE P&L — the selected period, the same length of time shifted
     back, the movement and the movement percent. Set Compare to "Last year"
     and this is the year-on-year P&L an accountant means by that phrase: one
     column each, not twenty-four, expandable to account level on both sides.
-
-  • A 12-MONTH TREND — the period-by-period table this tab has always been,
-    whose columns follow the grain and basis toggles so a fiscal quarter here
-    means the same three months it means on the Overview.
 
   No View toggle either way: this tab is the reported statement. Taking owner
   costs out of a statement without showing the bridge would be a figure nobody
