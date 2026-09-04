@@ -40,17 +40,32 @@ function belowTheLine(name) {
   return BELOW_THE_LINE.find(b => b.re.test(name || '')) || null;
 }
 
-/** QBO report section → our generic category. */
+/*
+  QBO report section → our generic category.
+
+  The section decides income vs cost; the account NAME decides whether a cost
+  is people cost. Both halves matter, and the name has to be consulted for
+  every cost section rather than just for Expenses.
+
+  This is not fussiness. Plenty of clients post wages, employer's NI and
+  employer's pension to accounts QuickBooks types as Cost of Goods Sold —
+  Puddleduck does, and for a nursery it is defensible bookkeeping, staff being
+  the direct cost of the service. But the Projection tab puts forecast columns
+  beside ACTUAL columns, and the actuals side
+  (projectionMapping.defaultActualCategory) reads the name before the type, so
+  it files those same accounts under Staff costs. Seeding on the section alone
+  put £222k of wages into the forecast's Cost of sales and left Staff costs at
+  nil, which read as the model having lost the payroll — two columns of the one
+  table disagreeing about the one account.
+
+  It also gets the VAT treatment right by consequence: `payroll` seeds as
+  outside the scope of VAT, which wages are wherever they are posted.
+*/
 function categoryFor(group, accountName) {
-  switch (group) {
-    case 'Income':
-    case 'OtherIncome':
-      return 'income';
-    case 'COGS':
-      return 'cost_of_sales';
-    default:
-      return PAYROLL_RE.test(accountName || '') ? 'payroll' : 'overheads';
-  }
+  if (group === 'Income' || group === 'OtherIncome') return 'income';
+  if (PAYROLL_RE.test(accountName || '')) return 'payroll';
+  if (group === 'COGS') return 'cost_of_sales';
+  return 'overheads';
 }
 
 /** Connections available to seed from, newest first. */
