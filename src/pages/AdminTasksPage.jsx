@@ -373,9 +373,13 @@ export default function AdminTasksPage() {
       setStaffMap(Object.fromEntries(st2.map((s) => [s.id, s.name])));
       setStaffList(st2.filter((s) => s.is_active !== false && s.email).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
 
-      // Notes for the open tasks — a Completed row has no thread to show them in.
+      // Notes for open AND completed tasks. A thread doesn't stop existing when
+      // the task is ticked off: Completed rows used to be fetched without their
+      // notes, so a comment written shortly before completion — or after it —
+      // was rendered nowhere and nobody knew it was there. Two hundred-odd task
+      // ids in one .in() is the same single round trip either way.
       const allTaskIds = [...(t || []), ...(ct || [])].map((x) => x.id);
-      const taskIds = (t || []).map((x) => x.id);
+      const taskIds = allTaskIds;
       if (taskIds.length) {
         const { data: notes } = await supabase.from('admin_task_notes')
           .select('*').in('task_id', taskIds).order('created_at', { ascending: true });
@@ -1213,7 +1217,19 @@ export default function AdminTasksPage() {
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <TabBtn active={view === 'open'} onClick={() => setView('open')}>Open</TabBtn>
-          <TabBtn active={view === 'completed'} onClick={() => setView('completed')}>Completed</TabBtn>
+          {/* The unread count rides on the tab because the "New comments" box
+              below counts open tasks only, and a comment left on a task
+              somebody then ticked off is exactly the one nobody goes looking
+              for. */}
+          <TabBtn active={view === 'completed'} onClick={() => setView('completed')}>
+            Completed
+            {unreadIn(completedFiltered) > 0 && (
+              <span title="Completed tasks carrying a comment you have not read" style={{
+                marginLeft: 6, fontSize: 10.5, fontWeight: 700, padding: '0 5px', borderRadius: 999,
+                background: view === 'completed' ? '#fff' : '#1e3a8a', color: view === 'completed' ? '#1e3a8a' : '#fff',
+              }}>{unreadIn(completedFiltered)}</span>
+            )}
+          </TabBtn>
           {profile?.can_view_admin_report && (
             <TabBtn active={view === 'report'} onClick={() => setView('report')}>Report</TabBtn>
           )}
@@ -1409,6 +1425,10 @@ export default function AdminTasksPage() {
             {(groupedCompleted[key] || []).map((t) => (
               <CompletedRow
                 key={t.id} t={t} staffMap={staffMap}
+                notes={notesByTask[t.id] || []} notesOpen={openNotes.has(t.id)}
+                unreadNotes={hasUnreadNotes(t.id)}
+                onToggleNotes={() => toggleNotes(t.id)}
+                onAddNote={(body) => addNote(t.id, body)}
                 onReopen={() => reopen(t)}
                 onOpenClient={t.entity?.id ? () => navigate(`/clients/${t.entity.id}`) : null}
                 onReviewBill={t.billing_item_id ? () => navigate(`/billing?highlight=${t.billing_item_id}`) : null}
@@ -2207,7 +2227,11 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
   );
 }
 
-function CompletedRow({ t, staffMap, onReopen, onOpenClient, onReviewBill }) {
+function CompletedRow({
+  t, notes, notesOpen, unreadNotes, staffMap,
+  onReopen, onOpenClient, onReviewBill, onToggleNotes, onAddNote,
+}) {
+  const [noteDraft, setNoteDraft] = useState('');
   // Verification status: BM checks tasks with a field silently on each import;
   // field-less tasks confirm the moment they're completed.
   const badge = !t.field
@@ -2218,40 +2242,95 @@ function CompletedRow({ t, staffMap, onReopen, onOpenClient, onReviewBill }) {
   const when = t.confirmed_at || t.done_at;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc' }}>
-      <CheckCircle2 size={14} color="#16a34a" style={{ flexShrink: 0 }} />
-      <span
-        onClick={onOpenClient || undefined} title={t.title}
-        style={{
-          flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: '#334155',
-          cursor: onOpenClient ? 'pointer' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}
-      >{t.title}</span>
-      {t.value && <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>{t.value}</span>}
-      {addedByLabel(t, staffMap) && (
-        <span title={`Added by ${addedByLabel(t, staffMap)} · ${fmtShort(t.created_at)}`} style={{
-          fontSize: 10.5, padding: '1px 7px', borderRadius: 999, background: '#f1f5f9',
-          color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',
-        }}>{addedByLabel(t, staffMap)}</span>
-      )}
-      {(t.done_by || t.done_minutes) && (
-        <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
-          {t.done_by ? ((staffMap && staffMap[t.done_by]) || 'staff') : ''}{t.done_minutes ? ` · ${t.done_minutes}m` : ''}
-        </span>
-      )}
-      <span title={badge.hint} style={{
-        fontSize: 10.5, padding: '2px 8px', borderRadius: 999, background: badge.bg, color: badge.fg,
-        fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',
-      }}>{badge.text}</span>
-      <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtShort(when)}</span>
-      {onReviewBill && (
-        <button onClick={onReviewBill} title="Open the bill raised for this task" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', padding: '5px 10px', fontSize: 12 }}>
-          <Receipt size={12} /> Review bill
+    <div style={{ borderTop: '1px solid #f8fafc' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px' }}>
+        <CheckCircle2 size={14} color="#16a34a" style={{ flexShrink: 0 }} />
+        <span
+          onClick={onOpenClient || undefined} title={t.title}
+          style={{
+            flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: '#334155',
+            cursor: onOpenClient ? 'pointer' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
+        >{t.title}</span>
+        {t.value && <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>{t.value}</span>}
+        {addedByLabel(t, staffMap) && (
+          <span title={`Added by ${addedByLabel(t, staffMap)} · ${fmtShort(t.created_at)}`} style={{
+            fontSize: 10.5, padding: '1px 7px', borderRadius: 999, background: '#f1f5f9',
+            color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',
+          }}>{addedByLabel(t, staffMap)}</span>
+        )}
+        {(t.done_by || t.done_minutes) && (
+          <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {t.done_by ? ((staffMap && staffMap[t.done_by]) || 'staff') : ''}{t.done_minutes ? ` · ${t.done_minutes}m` : ''}
+          </span>
+        )}
+        <span title={badge.hint} style={{
+          fontSize: 10.5, padding: '2px 8px', borderRadius: 999, background: badge.bg, color: badge.fg,
+          fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',
+        }}>{badge.text}</span>
+        <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtShort(when)}</span>
+        {/* Same three-state bubble as an open row: dark blue = someone commented
+            and you haven't opened the thread, pale blue = read, grey = none. A
+            completed task keeps its thread — closing the task doesn't answer the
+            question somebody asked on it. */}
+        <button onClick={onToggleNotes}
+          title={unreadNotes ? 'New comment — open the thread' : 'Notes & responses'}
+          style={{
+            ...iconBtn,
+            color: unreadNotes ? '#fff' : (notes.length ? '#0e7fe0' : '#94a3b8'),
+            background: unreadNotes ? '#1e3a8a' : undefined,
+            borderColor: unreadNotes ? '#1e3a8a' : (notes.length ? '#bae6fd' : '#e5e7eb'),
+            fontWeight: unreadNotes ? 700 : undefined,
+          }}>
+          <MessageSquare size={13} />{notes.length > 0 && <span style={{ fontSize: 11, fontWeight: 700 }}>{notes.length}</span>}
         </button>
+        {onReviewBill && (
+          <button onClick={onReviewBill} title="Open the bill raised for this task" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', padding: '5px 10px', fontSize: 12 }}>
+            <Receipt size={12} /> Review bill
+          </button>
+        )}
+        <button onClick={onReopen} title="Move back to open tasks" style={{ ...btn('ghost'), padding: '5px 10px', fontSize: 12 }}>
+          <RotateCcw size={12} /> Reopen
+        </button>
+      </div>
+
+      {notesOpen && (
+        <div style={{ padding: '4px 16px 12px 46px', background: '#fafbfc' }}>
+          {t.detail && (
+            <div style={{ fontSize: 12.5, color: '#475569', padding: '6px 0', borderBottom: '1px solid #f1f5f9', whiteSpace: 'pre-wrap' }}>
+              {t.detail}
+            </div>
+          )}
+          {notes.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8', padding: '4px 0' }}>No notes yet.</div>}
+          {notes.map((n) => (
+            <div key={n.id} style={{ fontSize: 12.5, color: '#334155', padding: '4px 0', display: 'flex', gap: 8 }}>
+              <span style={{
+                fontSize: 10, padding: '1px 6px', borderRadius: 4, flexShrink: 0, height: 16, alignSelf: 'flex-start', marginTop: 1,
+                background: n.kind === 'escalation' ? '#fef3c7' : '#eef2ff', color: n.kind === 'escalation' ? '#b45309' : '#4338ca',
+              }}>{n.kind === 'escalation' ? 'escalation' : 'note'}</span>
+              <div>
+                <span>{n.body}</span>
+                <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 11 }}>
+                  — {staffMap[n.author_id] || 'staff'} · {fmtNoteTime(n.created_at)}
+                </span>
+              </div>
+            </div>
+          ))}
+          {/* You can still reply on a completed task. The alternative is
+              reopening it just to answer a question, which puts work back on
+              the open list that nobody has to do. */}
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <input
+              value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && noteDraft.trim()) { onAddNote(noteDraft); setNoteDraft(''); } }}
+              placeholder="Add a note or response…"
+              style={{ flex: 1, fontSize: 12.5, fontFamily: font, padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
+            />
+            <button onClick={() => { if (noteDraft.trim()) { onAddNote(noteDraft); setNoteDraft(''); } }}
+              disabled={!noteDraft.trim()} style={{ ...btn('primary'), padding: '6px 12px' }}><Send size={12} /></button>
+          </div>
+        </div>
       )}
-      <button onClick={onReopen} title="Move back to open tasks" style={{ ...btn('ghost'), padding: '5px 10px', fontSize: 12 }}>
-        <RotateCcw size={12} /> Reopen
-      </button>
     </div>
   );
 }
