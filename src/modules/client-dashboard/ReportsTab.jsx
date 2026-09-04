@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { FileBarChart, Plus, X, Trash2, Save, GripVertical } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
-import { money, OUTFIT, cardStyle, inputStyle } from './dashboardData';
-import { GRAINS, BASES, VIEWS, buildBuckets, aggregate, seriesFor, windowLabel, monthKeyOfDate } from './overviewGrain';
+import { OUTFIT, cardStyle, inputStyle } from './dashboardData';
+import { GRAINS, BASES, VIEWS } from './overviewGrain';
 import { Segmented, LoadingCard } from './DashboardUI';
-import { BucketChart, LineChart } from './DashboardCharts';
-import { buildKpiModel, formatKpi, FINANCIAL_KEYS } from './kpiEngine';
+import { FINANCIAL_KEYS } from './kpiEngine';
+import ReportView from './ReportView';
 
 /*
   Custom reports.
@@ -141,6 +141,7 @@ export default function ReportsTab({
         <ReportView
           report={active} detail={detail} bs={bs} config={config} kpi={kpi}
           fyIdx={fyIdx} currency={currency} clientName={clientName}
+          cardStyle={cardStyle}
         />
       )}
 
@@ -161,141 +162,6 @@ const blankReport = () => ({
 });
 
 /* ─── Rendering a report ───────────────────────────────────────── */
-function ReportView({ report, detail, bs, config, kpi, fyIdx, currency, clientName }) {
-  const model = useMemo(() => {
-    // The report carries its own grain, basis and length, so it looks the same
-    // every month regardless of where the Overview happens to be pointed.
-    const anchor = detail?.month_keys?.length
-      ? detail.month_keys[detail.month_keys.length - 1]
-      : monthKeyOfDate(new Date());
-    const { buckets, prior } = buildBuckets({
-      grain: report.grain, basis: report.basis, anchorKey: anchor, fyIdx, count: report.periods,
-    });
-
-    const fin = detail
-      ? aggregate(detail, [prior, ...buckets], {
-        ownerAccountIds: config?.ownerAccountIds,
-        accountsById: config?.accountsById,
-        oneoffs: config?.oneoffs,
-      }).slice(1)
-      : buckets.map(() => null);
-
-    const financials = (bi, key) => {
-      const r = fin[bi];
-      if (!r) return null;
-      if (key === 'cash') return bs?.cash ?? null;
-      if (key === 'debtors') return bs?.debtors ?? null;
-      if (key === 'creditors') return bs?.accounts_payable ?? bs?.creditors_within_1yr ?? null;
-      const s = seriesFor(r, report.view);
-      if (key === 'income') return s.income;
-      if (key === 'net_income') return s.net_income;
-      return r[key] ?? null;
-    };
-
-    const kpiModel = buildKpiModel({
-      definitions: kpi.definitions, dimensionValues: kpi.dimensionValues,
-      values: kpi.values, buckets, financials,
-    });
-
-    return { buckets, fin, financials, kpiModel };
-  }, [report, detail, bs, config, kpi, fyIdx]);
-
-  const { buckets, financials, kpiModel } = model;
-
-  const rows = (report.rows || []).map((r) => {
-    if (r.source === 'financial') {
-      const meta = FIN_ROWS.find((f) => f.key === r.key);
-      return {
-        key: `fin-${r.key}`,
-        label: r.label || meta?.label || r.key,
-        unit: 'money', decimals: 0,
-        values: buckets.map((_, bi) => financials(bi, r.key)),
-      };
-    }
-    const k = kpiModel.byKey[r.key];
-    if (!k) return { key: `kpi-${r.key}`, label: r.label || r.key, unit: 'number', decimals: 0, values: buckets.map(() => null), missing: true };
-    return {
-      key: `kpi-${r.key}`,
-      label: r.label || k.definition.label,
-      unit: k.definition.unit, decimals: k.definition.decimals,
-      values: k.total,
-    };
-  });
-
-  const chartRow = rows[0];
-
-  return (
-    <>
-      <div style={cardStyle}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>{report.name}</span>
-          <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>
-            {clientName} · {windowLabel(report.grain, report.basis, buckets)}
-            {report.view === 'underlying' && ' · underlying'}
-            {!report.entity_id && (report.sector_id ? ' · sector report' : ' · practice-wide report')}
-          </span>
-        </div>
-        {report.description && (
-          <p style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#64748b', margin: '6px 0 0' }}>{report.description}</p>
-        )}
-      </div>
-
-      {report.chart !== 'none' && chartRow && (
-        <div style={cardStyle}>
-          <div style={{ fontFamily: OUTFIT, fontSize: '14px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
-            {chartRow.label}
-          </div>
-          {report.chart === 'bars_line' && rows.length > 1 ? (
-            <BucketChart
-              points={buckets.map((b, i) => ({ label: b.label, income: chartRow.values[i], net: rows[1].values[i] }))}
-              currency={currency}
-              incomeLabel={chartRow.label} netLabel={rows[1].label}
-            />
-          ) : (
-            <LineChart
-              points={buckets.map((b, i) => ({ label: b.label, value: chartRow.values[i] }))}
-              currency={currency}
-            />
-          )}
-        </div>
-      )}
-
-      <div style={{ ...cardStyle, padding: '16px 0 6px' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: `${240 + buckets.length * 92}px` }}>
-            <thead>
-              <tr>
-                <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, backgroundColor: '#fff', minWidth: '210px' }} />
-                {buckets.map((b) => <th key={b.key} style={th}>{b.label}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={buckets.length + 1} style={{ ...td, textAlign: 'left', paddingLeft: '20px', color: '#94a3b8' }}>
-                  This report has no rows yet.
-                </td></tr>
-              )}
-              {rows.map((r) => (
-                <tr key={r.key}>
-                  <td style={{ ...td, textAlign: 'left', position: 'sticky', left: 0, backgroundColor: '#fff', fontWeight: 600, color: r.missing ? '#b45309' : '#0f172a', paddingLeft: '20px' }}>
-                    {r.label}
-                    {r.missing && <span style={{ fontWeight: 400, fontSize: '11px' }}> · no longer exists on this client</span>}
-                  </td>
-                  {r.values.map((v, i) => (
-                    <td key={i} style={td}>
-                      {r.unit === 'money' ? money(v, currency) : formatKpi(v, r.unit, r.decimals, currency)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
-  );
-}
-
 /* ─── Editor ───────────────────────────────────────────────────── */
 function ReportEditor({ draft, setDraft, kpi, busy, canScopeWide, hasSector, onClose, onSave }) {
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
@@ -441,14 +307,6 @@ function ReportEditor({ draft, setDraft, kpi, busy, canScopeWide, hasSector, onC
 }
 
 /* ─── Styles ───────────────────────────────────────────────────── */
-const th = {
-  fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', fontWeight: 700,
-  textAlign: 'right', padding: '7px 14px', whiteSpace: 'nowrap', borderBottom: '1px solid #e5e7eb',
-};
-const td = {
-  fontFamily: OUTFIT, fontSize: '12.5px', textAlign: 'right', padding: '7px 14px',
-  whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', borderBottom: '1px solid #f8fafc',
-};
 const lbl = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, fontWeight: 600, color: '#475569' };
 const lblText = { fontSize: 12, fontWeight: 600, color: '#475569' };
 const hint = { fontSize: 11.5, fontWeight: 400, color: '#94a3b8', lineHeight: 1.5 };

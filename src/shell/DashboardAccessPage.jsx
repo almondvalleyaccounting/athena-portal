@@ -3,6 +3,9 @@ import { BarChart3, Plus, X, RotateCcw, Info, Eye, Loader } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AppShell';
 import ClientViewPreview from '../modules/client-dashboard/ClientViewPreview';
+// One list of sections, shared with the per-client Client access tab. Two lists
+// would mean a flag added in one place is silently ungrantable in the other.
+import { SECTIONS } from '../modules/client-dashboard/ClientAccessTab';
 
 const font = "'Outfit', sans-serif";
 
@@ -35,13 +38,6 @@ const font = "'Outfit', sans-serif";
   which filters to their verified email claim and never touches this page.
 */
 
-const SECTIONS = [
-  { key: 'show_overview', label: 'Overview', hint: 'Headline figures, trend chart, key ratios.' },
-  { key: 'show_pl', label: 'P&L', hint: 'Income and cost detail by period.' },
-  { key: 'show_balance', label: 'Balance sheet', hint: 'Assets, liabilities and the month-by-month comparatives.' },
-  { key: 'show_underlying', label: 'Underlying', hint: 'Owner costs and one-offs stripped out. Exposes which nominal codes we treat as the owner\'s personal spending.' },
-  { key: 'show_projection', label: 'Projection', hint: 'The linked forecast scenario. A forecast a client can see is a commitment.' },
-];
 
 const fmtDate = (d) =>
   (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
@@ -333,10 +329,11 @@ function GrantModal({ clients, existing, onClose, onDone, onError }) {
   const [entityId, setEntityId] = useState('');
   const [email, setEmail] = useState('');
   const [note, setNote] = useState('');
-  const [flags, setFlags] = useState({
-    show_overview: true, show_pl: true,
-    show_balance: false, show_underlying: false, show_projection: false,
-  });
+  // The standard offer: everything except the two that are a decision.
+  const [flags, setFlags] = useState(() => SECTIONS.reduce((a, x) => ({
+    ...a,
+    [x.key]: x.key !== 'show_underlying' && x.key !== 'show_projection',
+  }), {}));
   const [contacts, setContacts] = useState([]);
   const [saving, setSaving] = useState(false);
 

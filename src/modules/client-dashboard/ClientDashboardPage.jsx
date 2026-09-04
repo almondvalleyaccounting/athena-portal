@@ -2,20 +2,21 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import {
   RefreshCw, AlertCircle, CheckCircle, Loader,
-  Link2Off, Plus, X, Star, ChevronDown, ChevronRight, Eye,
+  Link2Off, Plus, X, Star, Eye,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getReportsAuthUrl } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
 import {
-  money, moneyCompact, timeAgo, shortDate, shortMonth,
+  money, timeAgo, shortDate,
   latestByMetric, parseReportTree, reportMonthKeys, bucketReportTree,
   PERIOD_PRESETS, ASAT_PRESETS, computePeriod, computeAsAt,
   comparativeDef, shiftMonthsBack, shiftRangeBack, mergeReportTrees, totalReportTree,
-  comparativeColumns, COMPARATIVE_KINDS, rangeLabel, percentChange,
+  comparativeColumns, COMPARATIVE_KINDS, rangeLabel,
   OUTFIT, PLAYFAIR, cardStyle, inputStyle,
 } from './dashboardData';
 import { LoadingCard, EmptyState, MetricTile, Delta } from './DashboardUI';
+import { ReportTable, AgedSection } from './StatementTables';
 import {
   buildBuckets, monthKeyOfDate, resolveFiscalYear, aggregate, seriesFor, windowLabel,
 } from './overviewGrain';
@@ -28,6 +29,7 @@ import ViewBar from './ViewBar';
 import TabErrorBoundary from './TabErrorBoundary';
 import KpiTab from './KpiTab';
 import ReportsTab from './ReportsTab';
+import ClientAccessTab from './ClientAccessTab';
 import { useKpiData } from './useKpiData';
 import { buildKpiModel } from './kpiEngine';
 
@@ -69,6 +71,10 @@ const TABS = [
   { id: 'projection', label: 'Projection' },
   { id: 'kpis', label: 'KPIs' },
   { id: 'reports', label: 'Reports' },
+  // Last, and only for portal admins: it is about who may look, not about the
+  // figures, and it is the answer to a question asked while the client is on
+  // the phone — which is why it is here and not only on /admin.
+  { id: 'access', label: 'Client access', perm: 'can_manage_portal' },
 ];
 const PERIOD_TABS = new Set(['overview', 'pnl', 'underlying', 'kpis', 'reports']);
 const ASAT_TABS = new Set(['balance', 'debtors', 'creditors']);
@@ -470,6 +476,17 @@ export default function ClientDashboardPage() {
     return m.rows.filter((r) => r.definition.show_on_overview);
   }, [kpi.definitions, kpi.dimensionValues, kpi.values, overview.buckets, kpiFinancials]);
 
+  /*
+    Tabs this person may open. `perm` on a tab entry names a staff flag; a tab
+    without one is for everybody who can reach the page. Hidden rather than
+    disabled: a tab that is visible and then refuses is a worse answer than a
+    tab that was never offered.
+  */
+  const visibleTabs = useMemo(
+    () => TABS.filter((t) => !t.perm || profile?.[t.perm] === true),
+    [profile],
+  );
+
   /* Windowed pulls ------------------------------------------------ */
   const fetchPeriod = useCallback(async (refresh = false) => {
     if (!realmId) return;
@@ -720,7 +737,7 @@ export default function ClientDashboardPage() {
             <>
               {/* Tabs */}
               <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid #e5e7eb', marginBottom: '20px', flexWrap: 'wrap' }}>
-                {TABS.map((t) => (
+                {visibleTabs.map((t) => (
                   <button
                     key={t.id}
                     onClick={() => setTab(t.id)}
@@ -806,6 +823,12 @@ export default function ClientDashboardPage() {
                   canManagePacks={profile?.can_manage_kpi_packs === true}
                 />
               )}
+              {tab === 'access' && (
+                <ClientAccessTab
+                  entityId={entityId} clientName={selectedName} realmId={realmId}
+                  canManage={profile?.can_manage_portal === true}
+                />
+              )}
               {tab === 'projection' && (
                 <ProjectionTab
                   realmId={realmId} entityId={entityId} clientName={selectedName}
@@ -885,7 +908,9 @@ function FilterRail({
         <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
           {tab === 'projection'
             ? 'The projection sets its own timeline — the linked scenario and the actuals cut-off.'
-            : 'Bookkeeping health reflects the current state of the file.'}
+            : tab === 'access'
+              ? 'Access is not a period. The preview panel carries the client’s own date controls.'
+              : 'This tab reflects the current state of the file.'}
         </div>
         {freshness}
       </div>
@@ -961,116 +986,6 @@ function FilterRail({
         {!isAsAt && tab === 'overview' && ' Overview counts its buckets back from this end date.'}
       </div>
       {freshness}
-    </div>
-  );
-}
-
-/* ─── Expandable report table (P&L monthly / balance sheet) ────── */
-/*
-  `columnKinds` says how to READ each column, not how to style it: 'money' or
-  'pct'. A movement percentage rendered through the money formatter reads
-  "£12" when it means 12%, which is the sort of thing that survives review
-  because it looks like a number either way.
-
-  `dividerAt` draws a rule before that column index — the seam between the two
-  statements and the movement between them.
-*/
-function ReportTable({ columns, rows, monthLabels = true, columnKinds = null, dividerAt = null }) {
-  const [expanded, setExpanded] = useState(() => new Set());
-  const toggle = (id) => setExpanded((prev) => {
-    const n = new Set(prev);
-    if (n.has(id)) n.delete(id); else n.add(id);
-    return n;
-  });
-
-  const visible = [];
-  const push = (node, depth) => {
-    if (node.kind === 'section') {
-      const open = expanded.has(node.id);
-      const expandable = (node.children || []).length > 0;
-      visible.push({ node, depth, open, expandable, kind: 'section' });
-      if (open) {
-        node.children.forEach((c) => push(c, depth + 1));
-        if (node.totals) {
-          visible.push({
-            node: { id: `${node.id}_total`, label: node.totalLabel || `Total ${node.label}`, values: node.totals },
-            depth, kind: 'sectionTotal',
-          });
-        }
-      }
-    } else if (node.kind === 'summary') {
-      visible.push({ node, depth, kind: 'summary' });
-    } else {
-      visible.push({ node, depth, kind: 'row' });
-    }
-  };
-  rows.forEach((r) => push(r, 0));
-
-  const cellNum = (v, i) => {
-    if (v === null || v === undefined) return '';
-    return columnKinds?.[i] === 'pct' ? percentChange(v) : moneyCompact(v);
-  };
-  const numStyle = {
-    fontFamily: OUTFIT, fontSize: '12.5px', textAlign: 'right', padding: '7px 10px',
-    whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: '#334155',
-  };
-  const divider = (i) => (dividerAt != null && i === dividerAt
-    ? { borderLeft: '1px solid #e5e7eb' } : null);
-
-  return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: `${220 + columns.length * 78}px` }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-            <th style={{ ...numStyle, textAlign: 'left', color: '#94a3b8', fontWeight: 600, position: 'sticky', left: 0, backgroundColor: '#ffffff' }} />
-            {columns.map((c, i) => (
-              <th key={i} style={{ ...numStyle, color: '#94a3b8', fontWeight: 600, ...divider(i) }}>
-                {monthLabels ? shortMonth(c) : c}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map(({ node, depth, open, expandable, kind }) => {
-            const isBold = kind === 'section' || kind === 'summary' || kind === 'sectionTotal';
-            const vals = kind === 'section' ? (open ? null : node.totals) : node.values;
-            return (
-              <tr
-                key={node.id}
-                onClick={kind === 'section' && expandable ? () => toggle(node.id) : undefined}
-                style={{
-                  borderBottom: '1px solid #f1f5f9',
-                  cursor: kind === 'section' && expandable ? 'pointer' : 'default',
-                  backgroundColor: kind === 'summary' ? '#f8fafc' : 'transparent',
-                }}
-              >
-                <td style={{
-                  ...numStyle, textAlign: 'left', paddingLeft: `${10 + depth * 18}px`,
-                  fontWeight: isBold ? 700 : 400, color: isBold ? '#0f172a' : '#475569',
-                  position: 'sticky', left: 0, backgroundColor: kind === 'summary' ? '#f8fafc' : '#ffffff',
-                }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    {kind === 'section' && expandable && (open
-                      ? <ChevronDown size={13} style={{ color: '#94a3b8', flexShrink: 0 }} />
-                      : <ChevronRight size={13} style={{ color: '#94a3b8', flexShrink: 0 }} />)}
-                    {node.label}
-                  </span>
-                </td>
-                {columns.map((_, i) => (
-                  <td key={i} style={{
-                    ...numStyle,
-                    fontWeight: isBold ? 700 : 400,
-                    color: vals && vals[i] !== null && vals[i] < 0 ? '#991b1b' : isBold ? '#0f172a' : '#475569',
-                    ...divider(i),
-                  }}>
-                    {vals ? cellNum(vals[i], i) : ''}
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
     </div>
   );
 }
@@ -1321,104 +1236,11 @@ function BalanceSheetTab({
 
 
 /* ─── Debtors & Creditors tab ──────────────────────────────────── */
-const BUCKET_DEFS = [
-  ['current', 'Current'],
-  ['b1_30', '1–30 days'],
-  ['b31_60', '31–60 days'],
-  ['b61_90', '61–90 days'],
-  ['b91_plus', '91+ days'],
-];
-
-function AgedSection({ title, data, currency, sameLabel }) {
-  if (!data) return null;
-  const top = (data.top || []).slice(0, 10);
-  const sc = data.same_clients;
-  return (
-    <div style={cardStyle}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '4px' }}>
-        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>{title}</span>
-        <span style={{ fontFamily: OUTFIT, fontSize: '18px', fontWeight: 700, color: '#0f172a', marginLeft: 'auto' }}>
-          {money(data.buckets?.total, currency)}
-        </span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-        <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>
-          as at {shortDate(data.period?.end)}
-        </span>
-      </div>
-
-      {/* Same-client comparison — the CURRENT list's balances back in time */}
-      {sc && (sc.last_month?.total != null || sc.three_months?.total != null) && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '16px' }}>
-          {[
-            ['Now', sc.current_total, data.period?.end],
-            ['Last month', sc.last_month?.total, sc.last_month?.date],
-            ['3 months ago', sc.three_months?.total, sc.three_months?.date],
-          ].map(([label, val, date]) => (
-            <div key={label} style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '10px 12px' }}>
-              <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
-              <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
-                {val == null ? '—' : money(val, currency)}
-              </div>
-              <div style={{ fontFamily: OUTFIT, fontSize: '10.5px', color: '#cbd5e1' }}>{date ? shortDate(date) : ''}</div>
-            </div>
-          ))}
-          <div style={{ gridColumn: '1 / -1', fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginTop: '-4px' }}>
-            {sameLabel} on the current file ({sc.names}) — their combined balance at each date. Names on the file now only.
-          </div>
-        </div>
-      )}
-
-      {/* Ageing buckets */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '16px' }}>
-        {BUCKET_DEFS.map(([key, label]) => (
-          <div key={key} style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '10px 12px' }}>
-            <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
-            <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: key === 'b91_plus' && Math.abs(data.buckets?.[key] || 0) > 0.005 ? '#991b1b' : '#0f172a' }}>
-              {money(data.buckets?.[key], currency)}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Top balances */}
-      {top.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                <th style={{ ...agedTh, textAlign: 'left' }}>Largest balances</th>
-                {BUCKET_DEFS.map(([k, l]) => <th key={k} style={agedTh}>{l}</th>)}
-                <th style={agedTh}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {top.map((r, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ ...agedTd, textAlign: 'left', color: '#0f172a', fontWeight: 500 }}>{r.name}</td>
-                  {BUCKET_DEFS.map(([k]) => (
-                    <td key={k} style={{ ...agedTd, color: k === 'b91_plus' && Math.abs(r[k] || 0) > 0.005 ? '#991b1b' : '#475569' }}>
-                      {Math.abs(r[k] || 0) > 0.005 ? money(r[k], currency) : ''}
-                    </td>
-                  ))}
-                  <td style={{ ...agedTd, fontWeight: 700, color: '#0f172a' }}>{money(r.total, currency)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-const agedTh = { fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', fontWeight: 600, textAlign: 'right', padding: '6px 10px', whiteSpace: 'nowrap' };
-const agedTd = { fontFamily: OUTFIT, fontSize: '12.5px', textAlign: 'right', padding: '7px 10px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' };
-
 function AgedTab({ data, title, sameLabel, label, currency, loading, empty }) {
   if (!data) return loading ? <LoadingCard label={label} /> : <EmptyState label={label} {...empty} />;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <AgedSection title={title} data={data} currency={currency} sameLabel={sameLabel} />
+      <AgedSection title={title} data={data} currency={currency} sameLabel={sameLabel} cardStyle={cardStyle} />
     </div>
   );
 }

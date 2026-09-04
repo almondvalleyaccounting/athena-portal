@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 import { Eye, Loader } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import PortalDashboardView, { portalTabsFor } from './PortalDashboardView';
+import { usePortalDashboard } from './usePortalDashboard';
 import { portalTheme } from './portalTheme';
 
 const font = "'Outfit', sans-serif";
@@ -15,46 +16,34 @@ const font = "'Outfit', sans-serif";
   would look right and be wrong, which is the worst outcome for a screen whose
   only job is to let someone sign off on what a client will be shown.
 
-  The strip along the top says whose view it is and, just as importantly, what
-  is being withheld — reading "no projection" is how you notice you meant to
-  switch it on.
+  The controls come from the same hook the client's page uses, so the preview can
+  work the date picker, the Compare control and every tab. It used to hold a
+  thinner copy of that state, which meant the half of the page a client would
+  actually poke at was the half the preview could not reach.
+
+  The strip along the top says whose view it is and, just as importantly, what is
+  being withheld — reading "no projection" is how you notice you meant to switch
+  it on.
 */
 export const SECTION_LABELS = {
   show_overview: 'Overview', show_pl: 'P&L', show_balance: 'Balance sheet',
-  show_underlying: 'Underlying', show_projection: 'Projection',
+  show_debtors: 'Debtors', show_creditors: 'Creditors', show_kpis: 'Measures',
+  show_reports: 'Reports', show_underlying: 'Underlying', show_projection: 'Projection',
 };
 
 export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
-  const [payload, setPayload] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [grain, setGrain] = useState('month');
-  const [basis, setBasis] = useState('fiscal');
-  const [view, setView] = useState('reported');
-  const [tab, setTab] = useState('overview');
+  // The section flags are part of the fetch signature because the SERVER applies
+  // them: turning Underlying on has to re-fetch, not just re-render, since the
+  // account rows that make the underlying view possible are withheld without it.
+  const flagSignature = Object.keys(SECTION_LABELS).map((k) => (row[k] ? '1' : '0')).join('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data, error: e } = await supabase.functions.invoke('portal-dashboard', {
-        body: { entityId: row.entity_id, previewEmail: row.email, grain, basis },
-      });
-      if (e) throw e;
-      if (!data?.success) throw new Error(data?.error || 'Could not load the preview.');
-      setPayload(data);
-    } catch (e) {
-      setError(String(e.message || e));
-    }
-    setLoading(false);
-    // The section flags are in the deps because the server applies them: turning
-    // Underlying on has to re-fetch, not just re-render, since the account rows
-    // that make the underlying view possible are withheld without it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [row.entity_id, row.email, grain, basis,
-    row.show_overview, row.show_pl, row.show_balance, row.show_underlying, row.show_projection]);
-
-  useEffect(() => { load(); }, [load]);
+  const ui = usePortalDashboard({
+    supabase,
+    entityId: row.entity_id,
+    previewEmail: row.email,
+    grant: row,
+    flagSignature,
+  });
 
   return (
     <div
@@ -67,7 +56,7 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 'min(840px, 100%)', height: '100%', background: portalTheme.bg,
+          width: 'min(980px, 100%)', height: '100%', background: portalTheme.bg,
           display: 'flex', flexDirection: 'column', fontFamily: font,
           boxShadow: '-8px 0 32px rgba(15,23,42,0.18)',
         }}
@@ -79,7 +68,7 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
             <span style={{ fontSize: 14, fontWeight: 700 }}>
               Previewing as {row.email}
             </span>
-            {loading && <Loader size={13} style={{ animation: 'spin 1s linear infinite' }} />}
+            {ui.loading && <Loader size={13} style={{ animation: 'spin 1s linear infinite' }} />}
             <button
               onClick={onClose}
               style={{ marginLeft: 'auto', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
@@ -89,10 +78,10 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
           </div>
           <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 5, lineHeight: 1.55 }}>
             {row.entity_name} · the real client view, fetched through the client's own endpoint
-            with their grant applied — not a mock.
+            with their grant applied — not a mock. Every control below works as it will for them.
             {onToggle
-              ? ' Click a section below to switch it on or off and watch the page change; the change saves as you click.'
-              : ' Sections are set on Client Dashboard Access.'}
+              ? ' Click a section to switch it on or off and watch the page change; the change saves as you click.'
+              : ' Sections are set on the Client access tab.'}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 9 }}>
             {Object.keys(SECTION_LABELS).map((k) => {
@@ -125,25 +114,15 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
 
         {/* The client's own page, verbatim */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 18px 60px' }}>
-          <div style={{ maxWidth: 720, margin: '0 auto' }}>
-            {error && (
-              <div style={{ fontSize: 13.5, color: '#991b1b', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '12px 15px', marginBottom: 12 }}>
-                {error}{' '}
-                <button onClick={load} style={{ border: 'none', background: 'none', color: '#991b1b', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>
-                  Retry
-                </button>
-              </div>
-            )}
+          <div style={{ maxWidth: 880, margin: '0 auto' }}>
             <PortalDashboardView
-              payload={payload}
-              loading={loading}
-              onRetry={load}
-              grain={grain} setGrain={setGrain}
-              basis={basis} setBasis={setBasis}
-              view={view} setView={setView}
-              tab={tab} setTab={setTab}
+              payload={ui.payload}
+              loading={ui.loading}
+              error={ui.error}
+              onRetry={ui.reload}
+              ui={ui}
             />
-            {payload && portalTabsFor(payload).length === 0 && (
+            {ui.payload && portalTabsFor(ui.payload).length === 0 && (
               <div style={{ fontSize: 13.5, color: portalTheme.muted, textAlign: 'center', padding: '30px 0' }}>
                 Every section is switched off, so this person would see nothing at all.
               </div>
@@ -154,4 +133,3 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
     </div>
   );
 }
-
