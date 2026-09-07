@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Eye, Plus, X, RotateCcw, Info, Loader, Check } from 'lucide-react';
+import { Eye, Plus, X, RotateCcw, Info, Loader, Check, Mail } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { OUTFIT, cardStyle, inputStyle, shortDate } from './dashboardData';
 import ClientViewPreview from './ClientViewPreview';
@@ -46,6 +46,36 @@ const STANDARD = SECTIONS.reduce((a, s) => ({
 }), {});
 
 const fmtDate = (d) => (d ? shortDate(d) : '—');
+
+// A non-2xx from an edge function arrives as FunctionsHttpError with the body
+// unread on error.context — the readable reason is in there, not in .message.
+async function fnError(error) {
+  try {
+    const body = await error?.context?.json?.();
+    if (body?.error) return String(body.error);
+  } catch { /* not JSON, or the body was already consumed */ }
+  return String(error?.message || 'The request failed');
+}
+
+/*
+  What the line under someone's email should say.
+
+  "invited — not signed in yet" was the whole story before, and it quietly
+  blamed the client for a silence that was ours: granting access sends nothing,
+  so a person could hold a full dashboard grant for a month having never been
+  told the portal existed. Not signed in because they are ignoring us and not
+  signed in because nobody has told them are different problems with different
+  fixes, so they now read differently — and only one of them is amber.
+*/
+function personStatus(r) {
+  if (r.has_portal_login) return { text: 'has signed in', tone: '#94a3b8' };
+  if (r.link_sent_at) {
+    const times = r.link_sent_count > 1 ? ` · sent ${r.link_sent_count}×` : '';
+    return { text: `sent their sign-in details ${fmtDate(r.link_sent_at)}${times} — not signed in yet`, tone: '#64748b' };
+  }
+  if (r.has_invite) return { text: 'nobody has told them yet', tone: '#b45309' };
+  return { text: 'no invite', tone: '#b45309' };
+}
 
 export default function ClientAccessTab({ entityId, clientName, realmId, canManage }) {
   const [rows, setRows] = useState([]);
@@ -113,6 +143,39 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
       const { error } = await supabase.rpc('revoke_dashboard_access', { p_id: row.id, p_hard: false });
       if (error) throw error;
       setMsg({ tone: 'success', text: `Dashboard access removed for ${row.email}.` });
+      await load();
+    } catch (e) { setMsg({ tone: 'error', text: String(e.message || e) }); }
+    setBusy(null);
+  };
+
+  /*
+    Emails them the portal address and the email to use — through an edge
+    function, because it needs the Resend key and because a new mutating path is
+    an edge function. There is no token in the email, so it authenticates nobody
+    and a forward or a typo costs nothing; the code they actually sign in with is
+    requested by them, at the portal, and checked at that moment.
+  */
+  const sendLink = async (row) => {
+    const again = !!row.link_sent_at;
+    if (!window.confirm(
+      `Email ${row.email} their sign-in details for ${row.entity_name}?\n\n`
+      + 'They get the portal address and the email address to use — no code and no link '
+      + 'that signs anyone in, so it is harmless if it goes astray. info@ is blind-copied '
+      + 'so there is a record of it.'
+      + (again ? `\n\nLast sent ${fmtDate(row.link_sent_at)}.` : ''),
+    )) return;
+    setBusy(row.id);
+    setMsg(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('portal-send-link', {
+        body: { entity_id: row.entity_id, email: row.email },
+      });
+      if (error) throw new Error(await fnError(error));
+      if (data?.success === false) throw new Error(data.error || 'The send failed');
+      setMsg({
+        tone: data?.warning ? 'error' : 'success',
+        text: data?.warning || `Sign-in details sent to ${row.email}.`,
+      });
       await load();
     } catch (e) { setMsg({ tone: 'error', text: String(e.message || e) }); }
     setBusy(null);
@@ -224,9 +287,11 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
           <Info size={15} style={{ color: '#94a3b8', flexShrink: 0, marginTop: 1 }} />
           <span style={{ fontFamily: OUTFIT, fontSize: 12.5, color: '#64748b', lineHeight: 1.6 }}>
             Giving access also issues a portal invite if they haven't one, so they can actually sign
-            in. It sends no email — tell them, or send it from their onboarding screen. Nothing
-            internal is reachable from the portal: not bookkeeping health, not drift scores, not our
-            notes. <strong>Preview</strong> fetches their view through their own endpoint, so what you
+            in — but it tells them nothing. <strong>Send link</strong> does that: the portal address
+            and the email address to use, with no code and no link that signs anyone in, blind-copied
+            to info@. They ask for their own six-digit code at the portal. Nothing internal is
+            reachable from there: not bookkeeping health, not drift scores, not our notes.
+            {' '}<strong>Preview</strong> fetches their view through their own endpoint, so what you
             see there is what they get.
           </span>
         </div>
@@ -252,6 +317,16 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
           rows={live} busy={busy} onToggle={toggle}
           action={(r) => (
             <span style={{ display: 'inline-flex', gap: 6 }}>
+              <button
+                onClick={() => sendLink(r)}
+                disabled={busy === r.id}
+                style={r.link_sent_at || r.has_portal_login ? linkishBtn : primaryLinkBtn}
+                title={r.has_portal_login
+                  ? `${r.email} has signed in already — send the details again if they have lost them`
+                  : `Email ${r.email} the portal address and how to sign in`}
+              >
+                <Mail size={13} /> {r.link_sent_at ? 'Send again' : 'Send link'}
+              </button>
               <button onClick={() => setPreviewId(r.id)} disabled={!r.realm_id} style={linkishBtn}
                 title={r.realm_id ? `See exactly what ${r.email} sees` : 'No live QuickBooks connection to preview'}>
                 <Eye size={13} /> Preview
@@ -374,10 +449,8 @@ function AccessTable({ rows, busy, onToggle, action, readOnly }) {
             <tr key={r.id}>
               <td style={td}>
                 <div style={{ fontWeight: 600, color: '#0f172a' }}>{r.email}</div>
-                <div style={{ fontSize: 11.5, color: r.has_portal_login ? '#94a3b8' : '#b45309' }}>
-                  {r.has_portal_login
-                    ? 'has signed in'
-                    : r.has_invite ? 'invited — not signed in yet' : 'no invite'}
+                <div style={{ fontSize: 11.5, color: personStatus(r).tone }}>
+                  {personStatus(r).text}
                 </div>
               </td>
               {SECTIONS.map((s) => (
@@ -614,3 +687,6 @@ const linkishBtn = {
   fontFamily: OUTFIT, fontSize: 12, fontWeight: 600, color: '#334155', cursor: 'pointer',
 };
 const dangerBtn = { ...linkishBtn, color: '#991b1b', borderColor: '#fecaca' };
+// Nudged, not shouted: the one row action that is outstanding work rather than
+// something you might want. It reverts to the plain style once they have been told.
+const primaryLinkBtn = { ...linkishBtn, color: '#1E4560', borderColor: '#bfdbfe', background: '#eff6ff' };

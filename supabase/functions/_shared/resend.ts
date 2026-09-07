@@ -25,6 +25,13 @@ export async function sendEmail(opts: {
   html: string;
   text?: string;
   cc?: string[];
+  /**
+   * Blind copy. Resend leaves no Sent item in Gmail, so anything the practice
+   * sends this way is invisible in the mailbox unless it copies itself in —
+   * which is also what lets comms-ingest file it against the client. Same
+   * pattern as the CH auth-code emails.
+   */
+  bcc?: string[];
   replyTo?: string;
 }): Promise<SendResult> {
   const payload: Record<string, unknown> = {
@@ -35,6 +42,7 @@ export async function sendEmail(opts: {
   };
   if (opts.text) payload.text = opts.text;
   if (opts.cc && opts.cc.length) payload.cc = opts.cc;
+  if (opts.bcc && opts.bcc.length) payload.bcc = opts.bcc;
   if (opts.replyTo) payload.reply_to = opts.replyTo;
 
   const resp = await fetch("https://api.resend.com/emails", {
