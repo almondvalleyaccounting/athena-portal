@@ -1,18 +1,33 @@
 import React, { useState, useMemo } from 'react';
 import { Loader, Plus, X, TrendingUp, Info, ChevronDown, ArrowUpRight, ArrowDownRight, Sparkles, Check } from 'lucide-react';
 import { money, shortDate, OUTFIT, cardStyle, inputStyle } from './dashboardData';
-import { aggregate } from './overviewGrain';
+import {
+  aggregate, bucketsInPeriod, combineBuckets, precedingSpan, MONTH_NAMES, yearEndMonthIndex,
+} from './overviewGrain';
 import { suggestOwnerCosts } from './ownerCostSuggestions';
 
 /*
   Underlying Performance tab — custom analysis that normalises reported profit
   to what the business earns for the owner.
 
-  Reports on the LATEST BUCKET from the view bar, against the one before it, so
-  switching to fiscal quarters here means the same three months it means on the
-  Overview. It reads the same pnl_chart_detail metric through the same
-  aggregate() call the Overview uses: the headline here and the Overview's
-  "underlying profit" tile are one number, not two that happen to agree.
+  Reports over a SPAN chosen on the tab, against the equally long span before
+  it, reading the same pnl_chart_detail metric through the same aggregate() call
+  the Overview uses: a single bucket here and the Overview's "underlying profit"
+  tile are one number, not two that happen to agree.
+
+  The span used to be fixed at the newest bucket, which made the page's period
+  selector look broken. buildBuckets emits the grain's own count anchored on the
+  end of the selected period, so "Last 12 months" and "Last 5 years" both end at
+  the last full month and, on a years grain, produce the identical five buckets;
+  reading only the newest one gave the same figure under either. Now the period
+  chooses the span — every bucket it touches, fused — and the choice is on
+  screen and overridable, with its exact dates spelled out rather than left to
+  be inferred from "FY26".
+
+  Fusing buckets rather than summing their results matters: margins are ratios,
+  and five years of margin cannot be averaged into a five-year margin. The
+  combined span goes through aggregate() as one period, so the total is income
+  and profit summed across the months and the margin computed once from those.
 
   Reported net profit
     + Owner costs removed   (a per-client group of tagged QBO nominal codes —
@@ -44,8 +59,17 @@ import { suggestOwnerCosts } from './ownerCostSuggestions';
 const acctLabel = (acct_num, name) => `${acct_num ? `${acct_num} · ` : ''}${name || ''}`.trim();
 const isIncomeGroup = (g) => /income/i.test(g || '');
 
+// "1 Aug 2025 – 31 Jul 2026" — what FY26 actually means, said out loud.
+const spanDates = (b) => (b ? `${shortDate(b.start)} – ${shortDate(b.end)}` : '');
+
+const unitWord = (grain, n) => {
+  const one = grain === 'month' ? 'month' : grain === 'quarter' ? 'quarter' : 'year';
+  return `${one}${n === 1 ? '' : 's'}`;
+};
+
 export default function UnderlyingPerformanceTab({
   detail, buckets, prior, currency, loading, empty, config, bar,
+  period, grain = 'month', basis = 'fiscal', fiscalYear,
 }) {
   // The owner-cost / one-off configuration is owned by the page (see
   // useUnderlyingConfig) because the Overview tab's underlying view strips the
@@ -57,6 +81,77 @@ export default function UnderlyingPerformanceTab({
     confirmSuggestions, dismissSuggestions, restoreDismissed,
     addOneoff, removeOneoff,
   } = config;
+
+  /*
+    Which buckets the page's period selector actually touches, and what the tab
+    is reporting on out of those.
+
+    `scope` is held as a bucket key, or 'all' for every touched bucket fused
+    into one. It is validated against the current options rather than reset by
+    an effect: changing the grain replaces every key, and a stale key should
+    quietly fall back to the default instead of rendering an empty period.
+  */
+  const [scope, setScope] = useState('all');
+
+  const inPeriod = useMemo(
+    () => bucketsInPeriod(buckets, { start: period?.plStart, end: period?.plEnd }),
+    [buckets, period?.plStart, period?.plEnd],
+  );
+
+  const spanAll = useMemo(
+    () => combineBuckets(
+      inPeriod,
+      inPeriod.length > 1
+        ? `${inPeriod.length} ${basis === 'calendar' ? 'calendar' : 'fiscal'} ${unitWord(grain, inPeriod.length)}`
+        : inPeriod[0]?.label,
+    ),
+    [inPeriod, grain, basis],
+  );
+
+  // 'all' whenever the period covers more than one bucket: the selector says
+  // "last 5 years", so five years is what the tab should open on.
+  const effectiveScope = useMemo(() => {
+    if (scope === 'all') return 'all';
+    return inPeriod.some((b) => b.key === scope) ? scope : 'all';
+  }, [scope, inPeriod]);
+
+  const span = useMemo(
+    () => (effectiveScope === 'all'
+      ? spanAll
+      : combineBuckets(inPeriod.filter((b) => b.key === effectiveScope))),
+    [effectiveScope, spanAll, inPeriod],
+  );
+
+  /*
+    Whether the grain cannot reach as far back as the page filter asks.
+
+    buildBuckets emits a fixed count per grain — 12 months, 8 quarters, 5 years
+    — so "last 5 years" on a months grain can only ever offer the newest twelve.
+    Saying the span came from the filter would then be a lie, and a silent one:
+    the figure is right for what it covers and wrong for what was asked for.
+  */
+  const truncated = useMemo(() => {
+    if (!period?.plStart || !inPeriod.length) return false;
+    return inPeriod[0].start > period.plStart;
+  }, [period?.plStart, inPeriod]);
+
+  /*
+    The comparator: the equally long stretch immediately before the span.
+
+    Only offered when every one of its months was actually pulled. The window
+    behind pnl_chart_detail is the buckets plus ONE more, so a single bucket
+    always has its predecessor but a five-year total does not have the five
+    years before it — and a delta computed against a partly-empty range would
+    read as a collapse in trade rather than as missing data.
+  */
+  const comparator = useMemo(() => {
+    if (!span || !detail) return null;
+    const before = precedingSpan(span);
+    if (!before) return null;
+    const have = new Set(detail.month_keys || []);
+    return before.months.every((m) => have.has(m)) ? before : null;
+  }, [span, detail]);
+
   /*
     Adjustment maths — over the LATEST BUCKET from the view bar, with the bucket
     before it as the comparator.
@@ -72,14 +167,24 @@ export default function UnderlyingPerformanceTab({
     const empty = {
       owner: [], ownerAddBack: 0, oo: [], oneoffCost: 0, oneoffIncome: 0, rowsById: {},
       reportedNet: null, reportedMargin: null, underlyingNet: null, underlyingMargin: null,
-      prior: {}, bucket: null,
+      prior: {}, bucket: null, parts: [],
     };
-    if (!detail || !buckets?.length) return empty;
+    if (!detail || !span) return empty;
 
-    const bucket = buckets[buckets.length - 1];
-    const [priorAgg, curAgg] = aggregate(detail, [prior, bucket], {
+    const bucket = span;
+    // The comparator goes through the same call so both sides are computed the
+    // same way; when there is none, aggregate() runs on the span alone.
+    const aggs = aggregate(detail, comparator ? [comparator, bucket] : [bucket], {
       ownerAccountIds, accountsById, oneoffs,
     });
+    const curAgg = aggs[aggs.length - 1];
+    const priorAgg = comparator ? aggs[0] : null;
+
+    // Bucket by bucket inside the span, so a five-year total can be read as the
+    // five years it is made of. Only worth showing when the span fuses several.
+    const parts = span.spans > 1
+      ? aggregate(detail, inPeriod, { ownerAccountIds, accountsById, oneoffs })
+      : [];
 
     // Per-account amounts over the bucket, for the config list and for the
     // suggestion tiles ("what would accepting this move?").
@@ -133,11 +238,12 @@ export default function UnderlyingPerformanceTab({
       oneoffIncome: curAgg?.oneoff_income ?? 0,
       rowsById,
       bucket,
-      priorLabel: priorAgg?.label || null,
+      parts: parts.map((p) => ({ ...p, ...marginsFor(p) })),
+      priorSpan: comparator,
       ...marginsFor(curAgg),
       prior: marginsFor(priorAgg),
     };
-  }, [detail, buckets, prior, ownerRows, ownerAccountIds, oneoffs, accountsById]);
+  }, [detail, span, comparator, inPeriod, ownerRows, ownerAccountIds, oneoffs, accountsById]);
   /* Suggested owner costs — nominal codes that look like director personal items
      but haven't been confirmed or rejected yet. Amounts come from the same
      period P&L the maths uses, so the tile shows what accepting would move. */
@@ -174,11 +280,27 @@ export default function UnderlyingPerformanceTab({
   const ownerIdSet = new Set(ownerRows.map((o) => o.account_id));
 
   const periodLabel = calc.bucket?.label || 'period';
-  const deltaLabel = calc.priorLabel ? `vs ${calc.priorLabel}` : 'vs prior period';
+  const deltaLabel = calc.priorSpan
+    ? `vs ${spanDates(calc.priorSpan)}`
+    : 'no comparable earlier period pulled';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {bar}
+
+      <PeriodBar
+        options={inPeriod}
+        spanAll={spanAll}
+        value={effectiveScope}
+        onChange={setScope}
+        span={calc.bucket}
+        grain={grain}
+        basis={basis}
+        fiscalYear={fiscalYear}
+        periodLabel={period?.label}
+        comparator={calc.priorSpan}
+        truncated={truncated}
+      />
 
       {/* Headline tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
@@ -200,7 +322,7 @@ export default function UnderlyingPerformanceTab({
             From reported to underlying profit
           </span>
           <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
-            {calc.bucket && `${shortDate(calc.bucket.start)} → ${shortDate(calc.bucket.end)}`}
+            {spanDates(calc.bucket)}
           </span>
         </div>
         <WaterfallRow label="Reported net profit" value={calc.reportedNet} currency={currency} kind="base" />
@@ -209,6 +331,12 @@ export default function UnderlyingPerformanceTab({
         <WaterfallRow label="Less: One-off income removed" value={-calc.oneoffIncome} currency={currency} kind="sub" />
         <WaterfallRow label="Underlying profit for the owner" value={calc.underlyingNet} currency={currency} kind="total" />
       </div>
+
+      {/* What a combined total is made of. A five-year figure with no way to see
+          the five years is a number you have to take on trust. */}
+      {calc.parts.length > 1 && (
+        <PartsTable parts={calc.parts} total={calc} currency={currency} grain={grain} basis={basis} />
+      )}
 
       {/* Suggested owner costs — proposal only, ticks make it real */}
       {suggestions.length > 0 && (
@@ -269,6 +397,152 @@ export default function UnderlyingPerformanceTab({
     </div>
   );
 }
+
+/* ─── Period bar ───────────────────────────────────────────────── */
+/*
+  Says what is being reported on, in dates, and lets it be changed.
+
+  "FY26" alone is a label you have to decode — it means the fiscal year ENDING
+  in 2026, which for a July year end runs from August 2025, and nothing on the
+  old screen said so. Every option here carries its own range, the heading
+  repeats the one in force, and the year end is named underneath, because the
+  whole thing hinges on a month that Athena often has to infer.
+*/
+function PeriodBar({
+  options, spanAll, value, onChange, span, grain, basis, fiscalYear, periodLabel, comparator,
+  truncated,
+}) {
+  const multi = (options?.length || 0) > 1;
+  const yearEnd = MONTH_NAMES[yearEndMonthIndex(basis, fiscalYear?.fyIdx ?? 9)];
+
+  return (
+    <div style={{
+      display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap',
+      padding: '12px 16px', backgroundColor: '#f8fafc',
+      border: '1px solid #e5e7eb', borderRadius: '12px',
+    }}>
+      <div style={{ minWidth: 200, flex: 1 }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Reporting on
+        </div>
+        <div style={{ fontFamily: OUTFIT, fontSize: 14.5, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>
+          {span?.label || '—'}
+        </div>
+        <div style={{ fontFamily: OUTFIT, fontSize: 12.5, color: '#475569' }}>
+          {spanDates(span)}
+        </div>
+      </div>
+
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontFamily: OUTFIT, fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Period
+        <select
+          // With one bucket in the period there is no "all" to combine, so the
+          // control shows that bucket rather than a value with no option.
+          value={multi ? value : (options[0]?.key || '')}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ ...inputStyle, minWidth: 260, textTransform: 'none', letterSpacing: 0 }}
+        >
+          {multi && (
+            <option value="all">
+              {spanAll?.label} · {spanDates(spanAll)}
+            </option>
+          )}
+          {[...options].reverse().map((b) => (
+            <option key={b.key} value={b.key}>
+              {b.label} · {spanDates(b)}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div style={{ flexBasis: '100%', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        <Info size={14} style={{ color: '#94a3b8', flexShrink: 0, marginTop: 2 }} />
+        <span style={{ fontFamily: OUTFIT, fontSize: 12, color: '#64748b', lineHeight: 1.55 }}>
+          {basis === 'calendar'
+            ? 'Calendar years end 31 December.'
+            : `Fiscal years end in ${yearEnd}, so FY26 is the year ending in ${yearEnd} 2026.`}
+          {periodLabel && ` Set by the page filter (${periodLabel}) and the grain above.`}
+          {comparator
+            ? ` Movements compare against ${spanDates(comparator)}.`
+            : ' No movement is shown: the equally long stretch before this one has not been pulled, and a comparison against a part-filled range would read as a collapse in trade.'}
+        </span>
+      </div>
+
+      {truncated && (
+        <div style={{
+          flexBasis: '100%', display: 'flex', gap: 8, alignItems: 'flex-start',
+          padding: '9px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 9,
+        }}>
+          <Info size={14} style={{ color: '#b45309', flexShrink: 0, marginTop: 2 }} />
+          <span style={{ fontFamily: OUTFIT, fontSize: 12, color: '#92400e', lineHeight: 1.55 }}>
+            This is short of the filter. At the <strong>{unitWord(grain, 1)}</strong> grain only the
+            most recent {options.length} {unitWord(grain, options.length)} are built, so nothing
+            before {shortDate(options[0]?.start)} is available here — not the whole of
+            {' '}{periodLabel || 'the selected period'}.
+            {grain !== 'year' && ' Switch the grain above to Years to span the whole filter.'}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── The buckets behind a combined total ──────────────────────── */
+function PartsTable({ parts, total, currency, grain, basis }) {
+  const unit = `${basis === 'calendar' ? 'Calendar' : 'Fiscal'} ${unitWord(grain, 1)}`;
+  return (
+    <div style={cardStyle}>
+      <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+        The {parts.length} {unitWord(grain, parts.length)} behind that total
+      </div>
+      <p style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#64748b', margin: '0 0 12px', lineHeight: 1.55 }}>
+        The total is not these rows added up on the margin line — income and profit are summed
+        across every month and the margin worked out once from those, because an average of five
+        margins is not the margin of five years.
+      </p>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+          <thead>
+            <tr>
+              <th style={pTh}>{unit}</th>
+              <th style={pTh}>Covering</th>
+              <th style={{ ...pTh, textAlign: 'right' }}>Reported</th>
+              <th style={{ ...pTh, textAlign: 'right' }}>Underlying</th>
+              <th style={{ ...pTh, textAlign: 'right' }}>Underlying margin</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...parts].reverse().map((p) => (
+              <tr key={p.key}>
+                <td style={{ ...pTd, fontWeight: 600, color: '#0f172a' }}>{p.label}</td>
+                <td style={{ ...pTd, color: '#64748b', whiteSpace: 'nowrap' }}>{spanDates(p)}</td>
+                <td style={pNum}>{p.reportedNet == null ? '—' : money(p.reportedNet, currency)}</td>
+                <td style={pNum}>{p.underlyingNet == null ? '—' : money(p.underlyingNet, currency)}</td>
+                <td style={pNum}>{p.underlyingMargin == null ? '—' : `${p.underlyingMargin.toFixed(1)}%`}</td>
+              </tr>
+            ))}
+            <tr>
+              <td style={{ ...pTd, ...pTotal, fontWeight: 700 }}>Total</td>
+              <td style={{ ...pTd, ...pTotal, color: '#64748b', whiteSpace: 'nowrap' }}>{spanDates(total.bucket)}</td>
+              <td style={{ ...pNum, ...pTotal }}>{total.reportedNet == null ? '—' : money(total.reportedNet, currency)}</td>
+              <td style={{ ...pNum, ...pTotal }}>{total.underlyingNet == null ? '—' : money(total.underlyingNet, currency)}</td>
+              <td style={{ ...pNum, ...pTotal }}>{total.underlyingMargin == null ? '—' : `${total.underlyingMargin.toFixed(1)}%`}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const pTh = {
+  fontFamily: OUTFIT, fontSize: 11, color: '#94a3b8', fontWeight: 700, textAlign: 'left',
+  padding: '8px 10px', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
+  textTransform: 'uppercase', letterSpacing: '0.04em',
+};
+const pTd = { fontFamily: OUTFIT, fontSize: 13, color: '#334155', padding: '9px 10px', borderBottom: '1px solid #f1f5f9' };
+const pNum = { ...pTd, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 };
+const pTotal = { borderTop: '2px solid #e5e7eb', borderBottom: 'none', color: '#0f172a' };
 
 /* ─── Bits ─────────────────────────────────────────────────────── */
 const rowStyle = {

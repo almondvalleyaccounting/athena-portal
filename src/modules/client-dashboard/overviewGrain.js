@@ -376,6 +376,79 @@ export const seriesFor = (row, view) => (view === 'underlying'
   ? { income: row?.u_income ?? null, net_income: row?.u_net_income ?? null }
   : { income: row?.income ?? null, net_income: row?.net_income ?? null });
 
+/* ─── Spanning several buckets ─────────────────────────────────── */
+/*
+  buildBuckets always emits the grain's own count — 12 months, 8 quarters, 5
+  years — anchored on the end of the selected period. That is right for a chart,
+  which wants a consistent amount of history, but it means the period selector
+  moves the anchor and nothing else: "Last 12 months" and "Last 5 years" both
+  end at the last full month, so on a years grain both produce the identical
+  five buckets. Any tab reading only the newest bucket therefore reports the
+  same figure under either, which reads as a broken filter.
+
+  These three let a tab say what it is actually reporting on: which buckets the
+  chosen period touches, how to fuse them into one, and what came immediately
+  before that.
+*/
+
+// Bucket overlaps the yyyy-mm-dd range at all — not "sits entirely inside it".
+// Containment is too strict to be useful: "last 12 months" ending August is
+// Sep–Aug, which does not contain a fiscal year ending in July, so a
+// containment test would answer "no complete periods" for the commonest case.
+const overlaps = (b, start, end) => (!end || b.start <= end) && (!start || b.end >= start);
+
+/** The buckets a selected period touches; the newest one if it touches none. */
+export function bucketsInPeriod(buckets, { start, end } = {}) {
+  if (!buckets?.length) return [];
+  const hit = buckets.filter((b) => overlaps(b, start, end));
+  return hit.length ? hit : [buckets[buckets.length - 1]];
+}
+
+/** Several consecutive buckets fused into one, for aggregate(). */
+export function combineBuckets(list, label) {
+  if (!list?.length) return null;
+  if (list.length === 1) return { ...list[0], spans: 1 };
+  const first = list[0];
+  const last = list[list.length - 1];
+  return {
+    key: `${first.startKey}_${last.endKey}`,
+    label: label || `${first.label} – ${last.label}`,
+    start: first.start,
+    end: last.end,
+    startKey: first.startKey,
+    endKey: last.endKey,
+    months: list.flatMap((b) => b.months),
+    spans: list.length,
+  };
+}
+
+/**
+ * The equally long span immediately before this one — the honest comparator for
+ * a fused span, since the bucket before a five-year total is the five years
+ * before it and not the fourth year of it.
+ *
+ * Returns the span whether or not we hold the data for it; the caller checks
+ * that against the months actually pulled, because a comparator built from a
+ * half-present range is worse than no comparator.
+ */
+export function precedingSpan(bucket) {
+  if (!bucket?.months?.length) return null;
+  const n = bucket.months.length;
+  const endAbs = absOf(bucket.startKey) - 1;
+  const startAbs = endAbs - (n - 1);
+  const months = [];
+  for (let a = startAbs; a <= endAbs; a++) months.push(keyOf(a));
+  return {
+    key: keyOf(endAbs),
+    label: 'the period before',
+    start: firstDay(keyOf(startAbs)),
+    end: lastDay(keyOf(endAbs)),
+    startKey: keyOf(startAbs),
+    endKey: keyOf(endAbs),
+    months,
+  };
+}
+
 /* ─── Window description, for the chart heading ────────────────── */
 export function windowLabel(grain, basis, buckets) {
   if (!buckets?.length) return '';

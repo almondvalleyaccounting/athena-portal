@@ -802,6 +802,10 @@ export default function ClientDashboardPage() {
                   config={underlyingConfig}
                   buckets={overview.buckets} prior={overview.prior}
                   detail={periodData?.pnl_chart_detail}
+                  // The tab decides its own span out of these: the period
+                  // selector only anchors buildBuckets, so without them the tab
+                  // reads the same newest bucket whatever the page filter says.
+                  period={period} grain={grain} basis={basis} fiscalYear={fiscalYear}
                   bar={viewBar({ showView: false, note: 'This tab is the underlying view — the toggle above would say the same thing twice.' })}
                 />
               )}
