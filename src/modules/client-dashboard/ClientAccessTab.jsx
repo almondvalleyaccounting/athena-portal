@@ -3,6 +3,11 @@ import { Eye, Plus, X, RotateCcw, Info, Loader, Check, Mail } from 'lucide-react
 import { supabase } from '../../lib/supabase';
 import { OUTFIT, cardStyle, inputStyle, shortDate } from './dashboardData';
 import ClientViewPreview from './ClientViewPreview';
+// Shared with /admin/dashboard-access, which grants the same access from the
+// other direction and so needs the same way of telling somebody about it.
+import {
+  personStatus, sendPortalLink, confirmSendLink, sendLinkLabel, sendLinkIsPending, sendLinkTitle,
+} from './portalLink';
 
 /*
   Client access — who, on THIS client, can see their own dashboard, and what of.
@@ -46,36 +51,6 @@ const STANDARD = SECTIONS.reduce((a, s) => ({
 }), {});
 
 const fmtDate = (d) => (d ? shortDate(d) : '—');
-
-// A non-2xx from an edge function arrives as FunctionsHttpError with the body
-// unread on error.context — the readable reason is in there, not in .message.
-async function fnError(error) {
-  try {
-    const body = await error?.context?.json?.();
-    if (body?.error) return String(body.error);
-  } catch { /* not JSON, or the body was already consumed */ }
-  return String(error?.message || 'The request failed');
-}
-
-/*
-  What the line under someone's email should say.
-
-  "invited — not signed in yet" was the whole story before, and it quietly
-  blamed the client for a silence that was ours: granting access sends nothing,
-  so a person could hold a full dashboard grant for a month having never been
-  told the portal existed. Not signed in because they are ignoring us and not
-  signed in because nobody has told them are different problems with different
-  fixes, so they now read differently — and only one of them is amber.
-*/
-function personStatus(r) {
-  if (r.has_portal_login) return { text: 'has signed in', tone: '#94a3b8' };
-  if (r.link_sent_at) {
-    const times = r.link_sent_count > 1 ? ` · sent ${r.link_sent_count}×` : '';
-    return { text: `sent their sign-in details ${fmtDate(r.link_sent_at)}${times} — not signed in yet`, tone: '#64748b' };
-  }
-  if (r.has_invite) return { text: 'nobody has told them yet', tone: '#b45309' };
-  return { text: 'no invite', tone: '#b45309' };
-}
 
 export default function ClientAccessTab({ entityId, clientName, realmId, canManage }) {
   const [rows, setRows] = useState([]);
@@ -156,26 +131,12 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
     requested by them, at the portal, and checked at that moment.
   */
   const sendLink = async (row) => {
-    const again = !!row.link_sent_at;
-    if (!window.confirm(
-      `Email ${row.email} their sign-in details for ${row.entity_name}?\n\n`
-      + 'They get the portal address and the email address to use — no code and no link '
-      + 'that signs anyone in, so it is harmless if it goes astray. info@ is blind-copied '
-      + 'so there is a record of it.'
-      + (again ? `\n\nLast sent ${fmtDate(row.link_sent_at)}.` : ''),
-    )) return;
+    if (!confirmSendLink(row)) return;
     setBusy(row.id);
     setMsg(null);
     try {
-      const { data, error } = await supabase.functions.invoke('portal-send-link', {
-        body: { entity_id: row.entity_id, email: row.email },
-      });
-      if (error) throw new Error(await fnError(error));
-      if (data?.success === false) throw new Error(data.error || 'The send failed');
-      setMsg({
-        tone: data?.warning ? 'error' : 'success',
-        text: data?.warning || `Sign-in details sent to ${row.email}.`,
-      });
+      const res = await sendPortalLink(row);
+      setMsg({ tone: res.warning ? 'error' : 'success', text: res.text });
       await load();
     } catch (e) { setMsg({ tone: 'error', text: String(e.message || e) }); }
     setBusy(null);
@@ -320,12 +281,10 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
               <button
                 onClick={() => sendLink(r)}
                 disabled={busy === r.id}
-                style={r.link_sent_at || r.has_portal_login ? linkishBtn : primaryLinkBtn}
-                title={r.has_portal_login
-                  ? `${r.email} has signed in already — send the details again if they have lost them`
-                  : `Email ${r.email} the portal address and how to sign in`}
+                style={sendLinkIsPending(r) ? primaryLinkBtn : linkishBtn}
+                title={sendLinkTitle(r)}
               >
-                <Mail size={13} /> {r.link_sent_at ? 'Send again' : 'Send link'}
+                <Mail size={13} /> {sendLinkLabel(r)}
               </button>
               <button onClick={() => setPreviewId(r.id)} disabled={!r.realm_id} style={linkishBtn}
                 title={r.realm_id ? `See exactly what ${r.email} sees` : 'No live QuickBooks connection to preview'}>

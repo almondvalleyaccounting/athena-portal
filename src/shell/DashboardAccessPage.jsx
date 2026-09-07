@@ -1,11 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Plus, X, RotateCcw, Info, Eye, Loader } from 'lucide-react';
+import { BarChart3, Plus, X, RotateCcw, Info, Eye, Loader, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AppShell';
 import ClientViewPreview from '../modules/client-dashboard/ClientViewPreview';
 // One list of sections, shared with the per-client Client access tab. Two lists
 // would mean a flag added in one place is silently ungrantable in the other.
 import { SECTIONS } from '../modules/client-dashboard/ClientAccessTab';
+// Telling a client they have access is the same act from either screen, so it is
+// the same code — including the wording of the confirm and the status line.
+import {
+  personStatus, sendPortalLink, confirmSendLink, sendLinkLabel, sendLinkIsPending, sendLinkTitle,
+} from '../modules/client-dashboard/portalLink';
 
 const font = "'Outfit', sans-serif";
 
@@ -92,6 +97,23 @@ export default function DashboardAccessPage() {
       setMsg({ tone: 'error', text: String(e.message || e) });
       await load();
     }
+    setBusy(null);
+  };
+
+  /*
+    Emails them the portal address and the email to use. No token in it, so it
+    authenticates nobody; the six-digit code is still requested by the client at
+    the portal. See modules/client-dashboard/portalLink.
+  */
+  const sendLink = async (row) => {
+    if (!confirmSendLink(row)) return;
+    setBusy(row.id);
+    setMsg(null);
+    try {
+      const res = await sendPortalLink(row);
+      setMsg({ tone: res.warning ? 'error' : 'success', text: res.text });
+      await load();
+    } catch (e) { setMsg({ tone: 'error', text: String(e.message || e) }); }
     setBusy(null);
   };
 
@@ -186,9 +208,11 @@ export default function DashboardAccessPage() {
         <Info size={15} style={{ color: '#94a3b8', flexShrink: 0, marginTop: 1 }} />
         <span style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.6 }}>
           Giving access also issues a portal invite if the person hasn't one, so they can actually sign
-          in. It does not send an email — do that from the client's onboarding screen, or just tell them.
-          The client only ever sees cached or freshly pulled QuickBooks figures; nothing internal
-          (bookkeeping health, drift, staff notes) is reachable from the portal.
+          in — but it tells them nothing. <strong>Send link</strong> does that: the portal address and
+          the email address to use, with no code and no link that signs anyone in, blind-copied to
+          info@. They ask for their own six-digit code at the portal. The client only ever sees cached
+          or freshly pulled QuickBooks figures; nothing internal (bookkeeping health, drift, staff
+          notes) is reachable from the portal.
         </span>
       </div>
 
@@ -208,6 +232,14 @@ export default function DashboardAccessPage() {
           rows={live} busy={busy} onToggle={toggle}
           action={(r) => (
             <span style={{ display: 'inline-flex', gap: 6 }}>
+              <button
+                onClick={() => sendLink(r)}
+                disabled={busy === r.id}
+                style={sendLinkIsPending(r) ? primaryLinkBtn : linkishBtn}
+                title={sendLinkTitle(r)}
+              >
+                <Mail size={13} /> {sendLinkLabel(r)}
+              </button>
               <button onClick={() => setPreviewId(r.id)} disabled={!r.realm_id} style={linkishBtn}
                 title={r.realm_id ? `See exactly what ${r.email} sees` : 'No live QuickBooks connection to preview'}>
                 <Eye size={13} /> Preview
@@ -280,10 +312,8 @@ function AccessTable({ rows, busy, onToggle, action, readOnly }) {
             <tr key={r.id}>
               <td style={td}>
                 <div style={{ fontWeight: 600, color: '#0f172a' }}>{r.email}</div>
-                <div style={{ fontSize: 11.5, color: r.has_portal_login ? '#94a3b8' : '#b45309' }}>
-                  {r.has_portal_login
-                    ? 'has signed in'
-                    : r.has_invite ? 'invited — not signed in yet' : 'no invite'}
+                <div style={{ fontSize: 11.5, color: personStatus(r).tone }}>
+                  {personStatus(r).text}
                 </div>
               </td>
               <td style={td}>
@@ -522,3 +552,6 @@ const linkishBtn = {
   borderRadius: 8, padding: '6px 12px', background: '#fff', color: '#475569',
   fontFamily: font, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
 };
+// Nudged, not shouted: the one row action that is outstanding work rather than
+// something you might want. Reverts to the plain style once they have been told.
+const primaryLinkBtn = { ...linkishBtn, color: '#1E4560', borderColor: '#bfdbfe', background: '#eff6ff' };
