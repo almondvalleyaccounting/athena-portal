@@ -54,6 +54,8 @@ declare
   v_live      boolean;
   v_raised    int := 0;
   v_closed    int := 0;
+  v_book      int;
+  v_rows      int;
   n           int;
   live_ref    text[] := '{}';   -- missing Internal Reference
   live_person text[] := '{}';   -- shared Person Internal Reference
@@ -216,10 +218,38 @@ begin
 
   ---------------------------------------------------------------------------
   -- Self-close. Every one of these three checks runs on every bm_clients
-  -- import, so a finding this run did NOT report has been fixed at source.
+  -- import, so a finding this run did NOT report has been fixed at source —
+  -- but only if the run actually looked at the whole book. A one-client
+  -- re-run, or a CSV somebody filtered before exporting it, reports none of
+  -- the other findings for the simple reason that it never saw those rows,
+  -- and closing five open BM data errors off the back of a single-row upload
+  -- would be worse than never having raised them. So coverage is measured
+  -- against the largest recent upload, in the spirit of the archive panel's
+  -- own partial-upload heuristic: below 80% we raise but never close.
+  --
   -- Scoped by value prefix so it can never touch the other things that live
   -- under source='bm_data_error'.
   ---------------------------------------------------------------------------
+  select coalesce(max(source_row_count), 0) into v_book
+    from import_log
+   where source_key = 'bm_clients' and status = 'complete'
+     and created_at > now() - interval '120 days';
+
+  select coalesce(source_row_count, 0) into v_rows from import_log where id = p_run_id;
+
+  if v_book > 0 and v_rows < (v_book * 0.8) then
+    return jsonb_build_object(
+      'raised', v_raised,
+      'closed', 0,
+      'partial_upload', true,
+      'rows', v_rows,
+      'book', v_book,
+      'missing_reference', array_length(live_ref, 1),
+      'shared_person_reference', array_length(live_person, 1),
+      'company_number_clash', array_length(live_clash, 1)
+    );
+  end if;
+
   update admin_tasks set done_at = now(), confirmed_at = now()
    where value like 'import:missing_ref:%'
      and done_at is null and confirmed_at is null and dismissed_at is null
