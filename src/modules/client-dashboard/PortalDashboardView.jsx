@@ -152,10 +152,15 @@ export default function PortalDashboardView({
           <div style={{ fontSize: 'clamp(19px, 4.2vw, 24px)', fontWeight: 700, margin: '5px 0 4px' }}>
             {payload?.company_name || 'Your business'}
           </div>
-          <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.55 }}>
-            Straight from your bookkeeping, kept up to date by us.
-            {payload?.pulled_at && ` Last checked ${shortDate(payload.pulled_at)}.`}
-          </div>
+          {/* The freshness date stays — it is the one thing here a client cannot
+              work out for themselves, and it decides whether they trust the
+              figures. The line that used to precede it only told them what the
+              page already is. */}
+          {payload?.pulled_at && (
+            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.55 }}>
+              Last checked {shortDate(payload.pulled_at)}.
+            </div>
+          )}
 
           {grants.length > 1 && setEntityId && (
             <select
