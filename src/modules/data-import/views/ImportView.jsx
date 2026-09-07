@@ -12,7 +12,7 @@ import {
 } from '../lib/importQueries';
 import { isNstTask } from '../lib/writers/bmTasks';
 import { parseBmClientsCsv } from '../lib/parsers/bmClients';
-import { classifyBmProspects, writeBmClients, fetchArchiveCandidates, archiveBmClients } from '../lib/writers/bmClients';
+import { classifyBmProspects, writeBmClients, fetchArchiveCandidates, archiveBmClients, raiseBmImportTasks } from '../lib/writers/bmClients';
 import { parseBmTasksCsv } from '../lib/parsers/bmTasks';
 import { classifyBmTasks, writeBmTasks } from '../lib/writers/bmTasks';
 
@@ -437,9 +437,17 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           errors: result.errors || [],
         });
         setRun(done);
+
+        // The findings this run recorded become tasks on the admin list. The
+        // preview panels have always shown them and the browser has always
+        // thrown them away — BLACR01, COLLS02 and SHAWW01 have been reported
+        // on every import since April and are still shared in BM. Runs after
+        // markComplete because the row-level errors only exist from then.
+        const tidyUps = await raiseBmImportTasks(run.id);
+
         setValidation((v) => ({
           ...v,
-          writeResult: { ...result, archived: archiveResult.archived },
+          writeResult: { ...result, archived: archiveResult.archived, tidy_ups: tidyUps },
         }));
       } else if (source.key === 'bm_tasks') {
         // Apply persisted task-type exclusions before writing. Any row
@@ -839,6 +847,13 @@ function ValidationReport({ validation, staff, onRecheck, rechecking }) {
           <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#1e293b', padding: 6 }}>
             Skipped — will not be imported ({skippedRows.length})
           </summary>
+          {skippedRows.some((s) => s.field === 'bm_client_id' && s.name) && (
+            <p style={{ fontSize: 11.5, color: '#64748b', padding: '0 6px 6px', margin: 0 }}>
+              A row with no Internal Reference goes onto the admin task list when you approve this
+              import — nothing about that client comes across until the reference exists in
+              BrightManager, and the task clears itself once it does.
+            </p>
+          )}
           <IssueTable issues={skippedRows} kind="skipped" />
         </details>
       )}
@@ -1881,7 +1896,7 @@ function PersonRefCollisionPanel({ collisions }) {
       <RollupFrame
         tone="amber"
         title={`Shared Person Internal Reference · ${collisions.length} ${collisions.length === 1 ? 'reference' : 'references'}`}
-        summary="Two different people share one person reference in BrightManager — usually spouses or siblings. They import correctly as separate people here because their dates of birth differ, so nothing is blocked. But the reference is wrong at source and will collide again on every re-import. Give the second person their own reference in BM, the way BM already does for the two David Boyds."
+        summary="Two different people share one person reference in BrightManager — usually spouses or siblings. They import correctly as separate people here because their dates of birth differ, so nothing is blocked. But the reference is wrong at source and will collide again on every re-import. Give the second person their own reference in BM, the way BM already does for the two David Boyds. Approving this import puts each one on the admin task list, where it stays until an import stops reporting it."
       >
         {collisions.map((c) => (
           <div key={c.person_ref} style={{ padding: '8px 14px', borderBottom: '1px solid rgba(252,211,77,0.4)' }}>
@@ -2348,6 +2363,18 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
           )}
           {wr.orphans_adopted > 0 && (
             <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>orphan records adopted</span><span style={resultNum}>{wr.orphans_adopted.toLocaleString()}</span></div>
+          )}
+          {wr.tidy_ups?.raised > 0 && (
+            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>tidy-ups added to admin tasks</span><span style={resultNum}>{wr.tidy_ups.raised.toLocaleString()}</span></div>
+          )}
+          {wr.tidy_ups?.closed > 0 && (
+            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>tidy-ups fixed at source (closed)</span><span style={resultNum}>{wr.tidy_ups.closed.toLocaleString()}</span></div>
+          )}
+          {(wr.tidy_ups?.raised > 0 || wr.tidy_ups?.closed > 0) && (
+            <p style={{ fontSize: 11.5, color: '#047857', marginTop: 2, marginBottom: 8, paddingLeft: 18 }}>
+              On the admin task list under <strong>BM Data Errors</strong>. Each one closes itself
+              once an import stops reporting it, so fixing it in BrightManager is the whole job.
+            </p>
           )}
           <DuplicateBmRefPanel skipped={wr.skipped || []} />
           <DuplicateCompanyPanel skipped={wr.skipped || []} />

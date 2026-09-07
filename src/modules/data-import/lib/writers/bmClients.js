@@ -233,6 +233,25 @@ export async function writeBmClients(runId, parsedRows, decisions = {}) {
   };
 }
 
+// Turn this run's recorded findings into admin tasks. Deliberately NOT part
+// of writeBmClients: `errors` only reach import_log when the run is marked
+// complete, and the row-level error (a company number already held by another
+// record) is the one finding that silently loses a client's whole update. So
+// this runs after markComplete, reads what the run wrote down, and raises
+// from that rather than from anything held in the browser.
+//
+// Idempotent, dismissal-respecting and self-closing — see
+// sql/278_bm_import_tidy_up_tasks.sql. Non-fatal by contract: the import has
+// already succeeded by the time it is called.
+export async function raiseBmImportTasks(runId) {
+  const { data, error } = await supabase.rpc('raise_bm_import_tasks', { p_run_id: runId });
+  if (error) {
+    console.warn('[writeBmClients] raise_bm_import_tasks failed:', error.message);
+    return { error: error.message };
+  }
+  return data;
+}
+
 // The merge proposals from the most recent runs, newest first. Read-only —
 // applying is a separate, explicit call.
 export async function fetchPersonMergeReview(verdicts = ['proposed', 'blocked']) {
