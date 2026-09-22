@@ -4,6 +4,7 @@ import { Landmark } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fetchLatestRunPerService, fetchStaleClients } from './hmrcApi';
 import AuthorisationsView from './AuthorisationsView';
+import CisCreditView from './CisCreditView';
 import AllTaxesView from './AllTaxesView';
 import BreakdownView from './BreakdownView';
 import PayeTab from './PayeTab';
@@ -53,6 +54,7 @@ const TABS = [
   { to: 'corporation-tax', label: 'Corporation Tax',  tax: true },
   { to: 'vat',             label: 'VAT',              tax: true },
   { to: 'self-assessment', label: 'Self Assessment',  tax: true },
+  { to: 'cis-credit',      label: 'CIS credit' },
   { to: 'authorisations',  label: 'Not our clients' },
 ];
 
@@ -178,6 +180,7 @@ export default function HmrcModule() {
         <Route path="corporation-tax"  element={<ByTaxView tax="corporation-tax" clients={clients} />} />
         <Route path="vat"              element={<ByTaxView tax="vat" clients={clients} />} />
         <Route path="self-assessment"  element={<ByTaxView tax="self-assessment" clients={clients} />} />
+        <Route path="cis-credit" element={<CisCreditView />} />
         <Route path="authorisations" element={<AuthorisationsView />} />
         {/* Tabs that were folded into others. Old links, and anything bookmarked,
             still land somewhere sensible rather than on a 404 or silently on
