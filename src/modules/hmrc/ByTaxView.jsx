@@ -458,7 +458,7 @@ function CtDetail({ rows, name, meta, moves, drill, setDrill }) {
   return (
     <div style={card}>
       <Head title={`${name} — Corporation Tax by accounting period`}
-            sub={`${rows.length} period${rows.length === 1 ? '' : 's'}, newest first · click a figure for the reallocations behind it — the scrape does not yet hold the payments`} />
+            sub={`${rows.length} period${rows.length === 1 ? '' : 's'}, newest first · click a figure for the payments and reallocations behind it`} />
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
           <thead>
@@ -499,7 +499,6 @@ function CtDetail({ rows, name, meta, moves, drill, setDrill }) {
                       <td colSpan={9} style={{ padding: '10px 14px' }}>
                         <Movements moves={moves} match={(m) => m.period === p.period_end}
                                    label={`Corporation Tax · accounting period to ${shortDate(p.period_end)}`}
-                                   paymentsHeld={false}
                                    onClose={() => setDrill(null)} />
                       </td>
                     </tr>
@@ -788,12 +787,13 @@ const MOVEMENT_META = {
 };
 
 // `paymentsHeld` says whether the scrape holds this head's payments, because the
-// empty state means opposite things either way. On VAT it does, so nothing here
-// means HMRC itemised nothing. On Corporation Tax it does NOT: the scrape reads
-// HMRC's Tax and Repayments/Reallocations breakdowns but never the Less paid
-// one, so an empty panel may simply be payments we have not fetched. Saying
-// "HMRC has not itemised it" there would be a lie about HMRC — it itemises every
-// one of them on a page we skip.
+// empty state means opposite things either way. Every head now does, so nothing
+// passes false — Corporation Tax was the exception for a year, because the
+// scrape read HMRC's Tax and Repayments/Reallocations breakdowns and never the
+// Less paid one. LJM Gas Glasgow's period to 31 Dec 2023 showed 8 movements
+// against HMRC's 23. The flag stays because the distinction is real and the next
+// head we add may arrive half-fed: an empty panel that means "HMRC itemised
+// nothing" and one that means "we did not fetch it" must not read the same.
 function Movements({ moves, match, label, onClose, paymentsHeld = true }) {
   const mine = moves.filter(match);
   return (
