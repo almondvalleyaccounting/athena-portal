@@ -5,6 +5,7 @@ import { fetchPayeReadiness } from './api';
 import PayeWorkingPaper from './PayeWorkingPaper';
 import NominalMapView from './NominalMapView';
 import NominalMapBulk from './NominalMapBulk';
+import HmrcQboCompare from './HmrcQboCompare';
 import { font, card, th, thNum, td, tdNum, inputStyle, Pill, ErrorBar } from './wpShared';
 
 /*
@@ -29,6 +30,7 @@ const TABS = [
   { to: 'paye', label: 'PAYE', status: 'live' },
   { to: 'mapping', label: 'Nominal mapping', status: 'live' },
   { to: 'mapping-bulk', label: 'Map the book', status: 'live' },
+  { to: 'hmrc-vs-books', label: 'HMRC vs books', status: 'live' },
   { to: 'corporation-tax', label: 'Corporation Tax', status: 'planned' },
   { to: 'net-wages', label: 'Net wages', status: 'planned' },
 ];
@@ -224,6 +226,7 @@ export default function WorkingPapersModule() {
         <Route path="paye" element={<PayeWorkingPaper entity={entity} />} />
         <Route path="mapping" element={<NominalMapView entity={entity} />} />
         <Route path="mapping-bulk" element={<NominalMapBulk />} />
+        <Route path="hmrc-vs-books" element={<HmrcQboCompare />} />
         <Route path="corporation-tax" element={
           <Planned title="Corporation tax — HMRC · QuickBooks · TaxCalc">
             <p style={{ marginBottom: 10 }}>
