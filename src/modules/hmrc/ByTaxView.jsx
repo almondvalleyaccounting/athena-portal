@@ -458,7 +458,7 @@ function CtDetail({ rows, name, meta, moves, drill, setDrill }) {
   return (
     <div style={card}>
       <Head title={`${name} — Corporation Tax by accounting period`}
-            sub={`${rows.length} period${rows.length === 1 ? '' : 's'}, newest first · click a figure for the payments and reallocations behind it`} />
+            sub={`${rows.length} period${rows.length === 1 ? '' : 's'}, newest first · click a figure for the reallocations behind it — the scrape does not yet hold the payments`} />
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
           <thead>
@@ -499,6 +499,7 @@ function CtDetail({ rows, name, meta, moves, drill, setDrill }) {
                       <td colSpan={9} style={{ padding: '10px 14px' }}>
                         <Movements moves={moves} match={(m) => m.period === p.period_end}
                                    label={`Corporation Tax · accounting period to ${shortDate(p.period_end)}`}
+                                   paymentsHeld={false}
                                    onClose={() => setDrill(null)} />
                       </td>
                     </tr>
@@ -786,15 +787,32 @@ const MOVEMENT_META = {
   unclear:          { label: 'Unclear',             colour: '#94a3b8' },
 };
 
-function Movements({ moves, match, label, onClose }) {
+// `paymentsHeld` says whether the scrape holds this head's payments, because the
+// empty state means opposite things either way. On VAT it does, so nothing here
+// means HMRC itemised nothing. On Corporation Tax it does NOT: the scrape reads
+// HMRC's Tax and Repayments/Reallocations breakdowns but never the Less paid
+// one, so an empty panel may simply be payments we have not fetched. Saying
+// "HMRC has not itemised it" there would be a lie about HMRC — it itemises every
+// one of them on a page we skip.
+function Movements({ moves, match, label, onClose, paymentsHeld = true }) {
   const mine = moves.filter(match);
   return (
     <>
       <DrillHead title={label} sub={`${mine.length} movement${mine.length === 1 ? '' : 's'}`} onClose={onClose} />
+      {!paymentsHeld && (
+        <div style={{ fontSize: 11.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a',
+                      borderRadius: 4, padding: '6px 10px', marginBottom: 8, lineHeight: 1.45, maxWidth: 640 }}>
+          Reallocations only. The scrape does not yet read HMRC&rsquo;s &ldquo;Less paid&rdquo; breakdown, so
+          payments against this period are missing here even though the Paid column above counts them.
+        </div>
+      )}
       {mine.length === 0 ? (
         <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5, maxWidth: 640 }}>
-          HMRC records no payment or reallocation against this period. For an unpaid period that is the
-          point; for a settled one it means HMRC has not itemised how it was cleared.
+          {paymentsHeld
+            ? `HMRC records no payment or reallocation against this period. For an unpaid period that is the
+               point; for a settled one it means HMRC has not itemised how it was cleared.`
+            : `HMRC records no reallocation against this period. If it was settled, it was settled by payments —
+               see the note above.`}
         </div>
       ) : (
         <table style={{ fontSize: 11.5, borderCollapse: 'collapse', minWidth: 560, background: '#fff' }}>
