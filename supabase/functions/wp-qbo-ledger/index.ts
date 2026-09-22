@@ -195,12 +195,7 @@ Deno.serve(async (req) => {
       }, 502);
     }
 
-    const report = await resp.json();
-    if (pick("debug") === "1") {
-      return jsonResponse({ success: true, raw: report });
-    }
-
-    const { rows, stated } = harvestAccount(report, accountId);
+    const { rows, stated } = harvestAccount(await resp.json(), accountId);
     const movement = Math.round(rows.reduce((a, r) => a + (r.amount ?? 0), 0) * 100) / 100;
 
     return jsonResponse({
