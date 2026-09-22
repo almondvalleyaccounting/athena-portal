@@ -3,7 +3,8 @@ import { Download, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { downloadCSV } from '../../lib/exportUtils';
 import SearchInput from '../../components/SearchInput';
-import { font, card, th, td, btnQuiet, Pill, ErrorBar, money } from './wpShared';
+import { pullQboBalances } from './api';
+import { font, card, th, td, btn, btnQuiet, Pill, ErrorBar, money } from './wpShared';
 
 /*
  * Working Papers → HMRC against the books.
@@ -52,6 +53,8 @@ export default function HmrcQboCompare() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [view, setView] = useState('valued');
+  const [asAt, setAsAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [valuing, setValuing] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -65,21 +68,62 @@ export default function HmrcQboCompare() {
   };
   useEffect(load, []);
 
+  // Every valuation date present, newest first. The screen shows ONE date at a
+  // time: mixing a December year end with a September valuation in one table
+  // would put two different questions in one column.
+  const dates = useMemo(
+    () => [...new Set(rows.map((r) => r.qbo_as_at).filter(Boolean))].sort().reverse(),
+    [rows]);
+
+  // Rows for the chosen date, plus the unvalued ones, which belong to no date.
+  const atDate = useMemo(
+    () => rows.filter((r) => r.qbo_as_at === asAt || r.qbo_as_at == null),
+    [rows, asAt]);
+
   const groups = useMemo(() => ({
-    valued:   rows.filter((r) => r.status !== 'not valued'),
-    variance: rows.filter((r) => r.status === 'variance'),
-    timing:   rows.filter((r) => r.status === 'timing'),
-    unvalued: rows.filter((r) => r.status === 'not valued'),
-    all:      rows,
-  }), [rows]);
+    valued:   atDate.filter((r) => r.status !== 'not valued'),
+    variance: atDate.filter((r) => r.status === 'variance'),
+    timing:   atDate.filter((r) => r.status === 'timing'),
+    unvalued: atDate.filter((r) => r.status === 'not valued'),
+    all:      atDate,
+  }), [atDate]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (groups[view] || rows)
+    return (groups[view] || atDate)
       .filter((r) => !q || (r.entity_name || '').toLowerCase().includes(q))
       .sort((a, b) => Math.abs(n(b.variance)) - Math.abs(n(a.variance)));
-  }, [groups, view, rows, search]);
+  }, [groups, view, atDate, search]);
 
+
+  // Value every mapped client at the chosen date.
+  //
+  // Sequential, deliberately. Each realm costs TWO QuickBooks report calls -- a
+  // GeneralLedger from 1990 and a BalanceSheet to check it against -- and the
+  // GeneralLedger over a whole file is the heavy one. Firing a hundred of those
+  // at Intuit in parallel is how you get rate-limited into a half-valued book,
+  // and a half-valued book looks exactly like a reconciled one.
+  const valueAll = async () => {
+    const targets = [...new Map(
+      rows.filter((r) => r.realm_id).map((r) => [r.realm_id, r.entity_name]),
+    )];
+    if (!targets.length) return;
+
+    let done = 0, failed = 0;
+    for (const [realmId, name] of targets) {
+      setValuing(`${name} — ${done + failed + 1} of ${targets.length}`);
+      try { await pullQboBalances(realmId, asAt); done++; }
+      catch { failed++; }   // one dead connection must not stop the rest
+    }
+    setValuing("");
+    // Said out loud. A client whose QuickBooks could not be reached is not
+    // valued, and an unvalued client reads as "not valued" rather than as a
+    // problem, so the count has to appear somewhere.
+    if (failed) {
+      setError(`${done} valued, ${failed} could not be reached — those clients need a QuickBooks reconnect.`);
+    }
+    load();
+  };
   const exportCsv = () => {
     downloadCSV(
       `hmrc-vs-quickbooks-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -123,6 +167,33 @@ export default function HmrcQboCompare() {
         rather than to a tax bill. And the two sides are as at different dates; both are on the row.
       </p>
 
+      <div style={{ ...card, padding: 12, marginBottom: 12, display: 'flex',
+                    alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12.5, color: '#0f172a' }}>Value the mapped nominals as at</div>
+        <input type="date" value={asAt} onChange={(e) => setAsAt(e.target.value)}
+          style={{ fontFamily: font, fontSize: 12.5, padding: '5px 8px',
+                   border: '1px solid #e5e7eb', borderRadius: 6, color: '#0f172a' }} />
+        <button onClick={valueAll} disabled={!!valuing}
+          style={{ ...btn, fontSize: 12.5, opacity: valuing ? 0.6 : 1 }}>
+          {valuing || 'Value every mapped client'}
+        </button>
+        {dates.length > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+            <span style={{ fontSize: 11.5, color: '#94a3b8' }}>Showing</span>
+            <select value={asAt} onChange={(e) => setAsAt(e.target.value)}
+              style={{ fontFamily: font, fontSize: 12, padding: '4px 8px',
+                       border: '1px solid #e5e7eb', borderRadius: 6, color: '#475569' }}>
+              {dates.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: '#94a3b8', flexBasis: '100%', lineHeight: 1.5 }}>
+          Two QuickBooks reports per client and the ledger one runs from 1990, so this is slow and goes
+          one client at a time on purpose. Only nominals somebody has already mapped get valued — map
+          them on <b>Map the book</b> first. Re-running a date you have already valued re-prices it
+          rather than adding a second figure.
+        </div>
+      </div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <SearchInput value={search} onChange={setSearch} placeholder="Client name…" style={{ minWidth: 220 }} />
         {chip('valued', 'Compared')}

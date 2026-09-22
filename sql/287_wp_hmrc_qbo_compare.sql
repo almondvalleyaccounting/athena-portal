@@ -18,17 +18,28 @@
 -- PAYE liability, which is the obvious mistake, would net a debtor against a
 -- creditor and produce a number meaning nothing.
 --
--- THE TWO SIDES ARE AS AT DIFFERENT DATES AND THAT IS NOT FIXABLE HERE. HMRC's
--- figures are as at its last scrape, effectively now. QuickBooks is valued at
--- whatever date someone asked wp-qbo-accounts for. Both dates are returned so a
--- reader can see the gap rather than assume there is none -- a client's December
--- year-end balance against HMRC's September position is a real comparison for
--- some questions and nonsense for others, and only the reader knows which.
+-- PAYE CANNOT TIE AND IS NOT ASKED TO. hmrc.position.total_debt is HMRC's
+-- OVERDUE figure, never a creditor, so a month accrued in the ledger and not yet
+-- due to HMRC is a difference here by construction. Those rows are flagged
+-- hmrc_overdue_only and get status 'timing' rather than 'variance', because the
+-- alternative is somebody spending an afternoon on what is simply last month's
+-- payroll. hmrc_paye_balance_at is the comparable figure and is an RPC per
+-- scheme per date -- the honest next step, not something to fake here.
+--
+-- ONE ROW PER VALUATION DATE. This first took max(as_at) per realm, which meant
+-- valuing a year end AFTER valuing today silently moved every variance on the
+-- screen with nothing on HMRC's side having changed. The caller picks the date.
+--
+-- THE TWO SIDES ARE STILL AS AT DIFFERENT DATES AND THAT IS NOT FIXABLE HERE.
+-- HMRC's figures are as at its last scrape, effectively now. Both dates are
+-- returned so a reader can see the gap rather than assume there is none -- a
+-- December year-end balance against a September HMRC position is a real
+-- comparison for some questions and nonsense for others, and only the reader
+-- knows which.
 --
 -- A VARIANCE HERE IS A QUESTION, NOT AN ERROR. HMRC and a ledger legitimately
--- differ: a month accrued but not yet due, a payment in transit, an EPS HMRC has
--- not processed. The value is in the size and the direction, and in nothing
--- moving when it should.
+-- differ: a payment in transit, an EPS HMRC has not processed. The value is in
+-- the size and the direction, and in nothing moving when it should.
 
 create or replace view public.v_wp_hmrc_qbo_compare
 with (security_invoker = false) as
@@ -46,24 +57,17 @@ conn as (
    where status = 'active' and not is_practice and entity_id is not null
    group by entity_id
 ),
--- The latest valuation per realm. wp_qbo_balance keeps a row per as-at date, so
--- without this the comparison would sum a client's December and March balances.
-latest_asat as (
-  select realm_id, max(as_at) as as_at from wp_qbo_balance group by realm_id
-),
 qbo as (
-  select m.entity_id, p.head, p.role,
+  select m.entity_id, p.head, p.role, b.as_at,
          sum(b.balance * coalesce(m.sign, 1)) as amount,
          count(*)                             as accounts,
-         string_agg(m.qbo_account_name, ', ' order by m.qbo_account_name) as account_names,
-         max(b.as_at)                         as as_at
+         string_agg(m.qbo_account_name, ', ' order by m.qbo_account_name) as account_names
     from wp_nominal_map m
-    join pairing p   on p.role = m.role
-    join conn c      on c.entity_id = m.entity_id
-    join latest_asat l on l.realm_id = c.realm_id
+    join pairing p on p.role = m.role
+    join conn c    on c.entity_id = m.entity_id
     join wp_qbo_balance b
-      on b.realm_id = c.realm_id and b.account_id = m.qbo_account_id and b.as_at = l.as_at
-   group by m.entity_id, p.head, p.role
+      on b.realm_id = c.realm_id and b.account_id = m.qbo_account_id
+   group by m.entity_id, p.head, p.role, b.as_at
 ),
 -- HMRC's side. Three heads come from the tax summary; CIS comes from the pot.
 hmrc as (
@@ -79,6 +83,7 @@ hmrc as (
 )
 select e.id                          as entity_id,
        e.name                        as entity_name,
+       cn.realm_id,
        p.head,
        p.role,
        p.what,
@@ -89,11 +94,6 @@ select e.id                          as entity_id,
        q.account_names,
        q.as_at                          as qbo_as_at,
        h.as_at                          as hmrc_as_at,
-       -- hmrc.position.total_debt is HMRC OVERDUE figure, never a creditor. A
-       -- month accrued in the ledger and not yet due to HMRC is a difference
-       -- here by construction, not one worth chasing. hmrc_paye_balance_at is
-       -- the comparable figure and is an RPC per scheme per date, so this says
-       -- so rather than quietly setting a creditor against an arrears number.
        p.hmrc_overdue_only,
        case
          when q.amount is null                                        then 'not valued'
@@ -112,7 +112,7 @@ select e.id                          as entity_id,
    and public.hmrc_can_read();
 
 comment on view public.v_wp_hmrc_qbo_compare is
-  'Client books against HMRC, per head. variance = QuickBooks less HMRC, so positive always means the books carry more than HMRC agrees. cis compares the CIS suffered ASSET to the unallocated credit pot, not to a tax liability. The two sides are as at different dates and both are returned.';
+  'Client books against HMRC, per head, ONE ROW PER VALUATION DATE - the caller picks which, because taking the newest meant a year-end valuation silently moved every variance with nothing on HMRC''s side having changed. variance = QuickBooks less HMRC, so positive always means the books carry more than HMRC agrees. cis compares the CIS suffered ASSET to the unallocated credit pot. PAYE is flagged hmrc_overdue_only: HMRC total_debt is arrears not a creditor, so an accrued month reads as a difference by construction.';
 
 revoke all on public.v_wp_hmrc_qbo_compare from public, anon, authenticated;
 grant select on public.v_wp_hmrc_qbo_compare to authenticated, service_role;
