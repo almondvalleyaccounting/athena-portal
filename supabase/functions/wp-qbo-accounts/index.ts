@@ -82,13 +82,44 @@ async function fetchChart(realmId: string): Promise<AccountRow[]> {
  */
 function harvestBalances(report: unknown): Map<string, number> {
   const found = new Map<string, number>();
-  const colTitles: string[] = (
-    (report as { Columns?: { Column?: { ColTitle?: string }[] } })?.Columns?.Column ?? []
-  ).map((c) => c?.ColTitle ?? "");
-  // The closing figure is the column QBO titles "Balance"; fall back to the
-  // last column, which is what it is on every report shape seen so far.
-  let balanceIdx = colTitles.findIndex((t) => /^balance$/i.test(t));
-  if (balanceIdx < 0) balanceIdx = colTitles.length - 1;
+
+  // The column's real name is in MetaData.ColKey. Matching on ColTitle and
+  // falling back to "the last column" was wrong twice over: QuickBooks DROPS the
+  // balance column from a GeneralLedger (it returns Amount as the last column
+  // instead), and this harvest writes once per POSTING row, so "the last one
+  // wins" stored the last posting's amount as though it were a closing balance.
+  //
+  // Village Estates' PAYE control at 31 Dec 2025 came out as -531.55, which is
+  // the 31 December Employment Allowance journal. The account's actual closing
+  // balance is 437.50, and all five mapped accounts in that file were wrong the
+  // same way.
+  const cols = (report as {
+    Columns?: { Column?: {
+      ColTitle?: string;
+      MetaData?: { Name?: string; Value?: string }[];
+    }[] };
+  })?.Columns?.Column ?? [];
+  const keys = cols.map((c) =>
+    String(c?.MetaData?.find((m) => m?.Name === "ColKey")?.Value ?? c?.ColTitle ?? ""));
+
+  const balanceIdx = keys.findIndex((k) => /^balance$/i.test(k));
+  const amountIdx = keys.findIndex((k) => k === "subt_nat_amount");
+
+  // Three shapes, because this harvests BOTH reports:
+  //   a Balance column       — already a closing figure, take the last
+  //   an Amount column only  — GeneralLedger with the balance column dropped.
+  //                            From the epoch, the SUM of postings IS the
+  //                            closing balance, so accumulate.
+  //   neither                — BalanceSheet, whose value is the last column and
+  //                            is already a balance. Keeping this fallback
+  //                            matters: without it the cross-check silently
+  //                            returns nothing and every figure looks agreed.
+  let valueIdx: number;
+  let accumulate = false;
+  if (balanceIdx >= 0) valueIdx = balanceIdx;
+  else if (amountIdx >= 0) { valueIdx = amountIdx; accumulate = true; }
+  else valueIdx = keys.length - 1;
+  if (valueIdx < 0) return found;
 
   const walk = (rows: unknown[]) => {
     for (const row of rows ?? []) {
@@ -101,19 +132,19 @@ function harvestBalances(report: unknown): Map<string, number> {
       const cd = r?.ColData;
       const id = cd?.[0]?.id;
       if (id) {
-        const raw = cd?.[balanceIdx]?.value ?? "";
+        const raw = cd?.[valueIdx]?.value ?? "";
         const n = Number(String(raw).replace(/,/g, ""));
         if (raw !== "" && Number.isFinite(n)) {
-          // A GeneralLedger can emit several rows for one account across
-          // sections; the last closing balance wins, not the sum.
-          found.set(id, n);
+          if (accumulate) found.set(id, Math.round(((found.get(id) ?? 0) + n) * 100) / 100);
+          else found.set(id, n);   // a real balance column already closes
         }
       }
-      // A section's own account id can sit on its Header rather than a ColData
-      // row — sub-account parents come through this way.
+      // A section own account id can sit on its Header rather than a ColData
+      // row — sub-account parents come through this way. Never accumulated: a
+      // header repeats a total that the postings beneath it already carry.
       const hid = r?.Header?.ColData?.[0]?.id;
-      if (hid && !found.has(hid)) {
-        const raw = r.Header?.ColData?.[balanceIdx]?.value ?? "";
+      if (hid && !found.has(hid) && !accumulate) {
+        const raw = r.Header?.ColData?.[valueIdx]?.value ?? "";
         const n = Number(String(raw).replace(/,/g, ""));
         if (raw !== "" && Number.isFinite(n)) found.set(hid, n);
       }
@@ -225,13 +256,20 @@ Deno.serve(async (req) => {
         const glv = gl.get(accountId);
         const bsv = bs.get(accountId);
         if (glv == null && bsv == null) { absent.push(accountId); continue; }
-        const value = glv ?? bsv!;
+        // A disagreement is NOT STORED. The header says "the paper must say so
+        // rather than pick one" and then this picked one — the GeneralLedger
+        // figure, which was the broken one — so Village Estates' five mapped
+        // accounts all carried a disputed value that a paper would have
+        // reconciled against without ever seeing the dispute. A working paper
+        // with no figure asks a question; a working paper with a wrong figure
+        // answers one.
         if (glv != null && bsv != null && Math.abs(glv - bsv) > 0.005) {
           disagreements.push({ account_id: accountId, general_ledger: glv, balance_sheet: bsv });
+          continue;
         }
         rows.push({
           realm_id: realmId, account_id: accountId, as_at: asAt,
-          balance: value, pulled_at: new Date().toISOString(),
+          balance: glv ?? bsv!, pulled_at: new Date().toISOString(),
         });
       }
 
