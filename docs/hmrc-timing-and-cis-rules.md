@@ -143,6 +143,52 @@ A client with a 31 December year end still has its offset capacity reset on
 6 April, part-way through its own accounting year. Presenting CIS on the
 accounting year would be arithmetically tidy and professionally wrong.
 
+#### Cash moves freely. Credit does not.
+
+HMRC's overdue-payments page states two things under one heading, and they obey
+different rules — which is why sql/281 keeps them as separate `kind` values
+rather than one pot:
+
+- **Unallocated payments** are cash the client actually sent that HMRC has not
+  matched to a bill. Cash can be allocated to **any** outstanding liability, in
+  any tax year, on request.
+- **Unallocated credits** are a claim, chiefly CIS suffered. These are bound by
+  the tax-year rule above.
+
+Never add them together and call the result available.
+
+#### The pot HMRC states carries no age, and the age is what matters
+
+For credit, `v_hmrc_unallocated_credit` gives HMRC's own balance but does **not**
+say which tax year it arose in — and that is the only thing determining what can
+be done with it today:
+
+- credit that arose in the **current** year is locked to the current year's PAYE
+  bills until 6 April;
+- credit from a **closed** year is free to be set against another year's debt,
+  another tax, or repaid.
+
+So "credit exceeds debt" is not by itself an actionable comparison. On
+22 September 2026 that comparison suggested nine clients could clear £25,038.48
+of arrears. Re-reading it against the *debt's* tax year cut it to £940.51 — also
+wrong. **The test is the credit's year, not the debt's**, and for cash there is
+no test at all.
+
+The only age signal available is the `Not allocated` rows in `hmrc.credit`,
+grouped by `tax_year`, and it is reliable only where the years do not overlap:
+
+- **Hawk Eye Systems** — £12,648.80, all in 2024-25, matching the stated pot
+  exactly. A closed year, so it reaches the £7,236.06 of 2024-25 arrears now.
+- **Trefoil Energy Systems** — stated pot £46,837.78, but the `Not allocated`
+  rows from 2022-23 to 2026-27 sum to £168,301.11. HMRC restates the running
+  balance each year, so the years double-count and no age can be read off them.
+  £35,400.16 appears against 2026-27, which if it is genuinely current-year
+  credit is locked until 6 April 2027.
+
+Where the two disagree, the stated pot is the balance and the yearly rows are
+**not** a decomposition of it. Do not sum them.
+
+
 ### The claim mechanism, and why it drifts
 
 A company subcontractor claims CIS suffered on an **EPS**, per tax month, due by
