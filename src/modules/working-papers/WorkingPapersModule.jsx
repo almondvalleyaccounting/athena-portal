@@ -4,6 +4,7 @@ import { FileSpreadsheet, Search } from 'lucide-react';
 import { fetchPayeReadiness } from './api';
 import PayeWorkingPaper from './PayeWorkingPaper';
 import NominalMapView from './NominalMapView';
+import NominalMapBulk from './NominalMapBulk';
 import { font, card, th, thNum, td, tdNum, inputStyle, Pill, ErrorBar } from './wpShared';
 
 /*
@@ -27,6 +28,7 @@ import { font, card, th, thNum, td, tdNum, inputStyle, Pill, ErrorBar } from './
 const TABS = [
   { to: 'paye', label: 'PAYE', status: 'live' },
   { to: 'mapping', label: 'Nominal mapping', status: 'live' },
+  { to: 'mapping-bulk', label: 'Map the book', status: 'live' },
   { to: 'corporation-tax', label: 'Corporation Tax', status: 'planned' },
   { to: 'net-wages', label: 'Net wages', status: 'planned' },
 ];
@@ -221,6 +223,7 @@ export default function WorkingPapersModule() {
         <Route index element={<Navigate to={`/working-papers/paye${keep}`} replace />} />
         <Route path="paye" element={<PayeWorkingPaper entity={entity} />} />
         <Route path="mapping" element={<NominalMapView entity={entity} />} />
+        <Route path="mapping-bulk" element={<NominalMapBulk />} />
         <Route path="corporation-tax" element={
           <Planned title="Corporation tax — HMRC · QuickBooks · TaxCalc">
             <p style={{ marginBottom: 10 }}>

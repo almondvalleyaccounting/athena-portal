@@ -91,6 +91,8 @@ export const NOMINAL_ROLES = [
     hint: 'The clearing account, where the file uses one. Should be nil after a clean month.' },
   { role: 'pension_control', label: 'Pension control',
     hint: 'Employee and employer pension owed to the provider.' },
+  { role: 'vat_control', label: 'VAT control',
+    hint: 'The VAT creditor. QuickBooks types this itself as GlobalTaxPayable, so it maps almost without ambiguity.' },
   { role: 'ct_liability', label: 'Corporation tax',
     hint: 'The CT creditor — for the corporation tax paper, next after PAYE.' },
 ];
