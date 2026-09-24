@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { AlertTriangle, ExternalLink, FilePlus2 } from 'lucide-react';
+import { AlertTriangle, FilePlus2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import { useAuth } from '../../shell/AppShell';
@@ -147,7 +147,13 @@ export default function FeeEngineGapsPage() {
             {r.tier <= 2 && (r.review_status || 'pending') === 'pending' && (
               <AlertTriangle size={12} style={{ color: tm.colour, flexShrink: 0 }} />
             )}
-            <span style={{ fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.entity_name}>{r.entity_name}</span>
+            {/* The name is the link to the record (it replaced a separate
+                "Client ↗" link) and, like that link, opens in a new tab so the
+                filtered list stays where it was. */}
+            <a href={`/clients/${r.entity_id}`} target="_blank" rel="noreferrer" title={`Open ${r.entity_name} in a new tab`}
+              style={{ fontWeight: 500, color: '#1E4560', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'underline', textDecorationColor: '#cbd5e1', textUnderlineOffset: 3 }}>
+              {r.entity_name}
+            </a>
             <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{TYPE_LABEL[r.entity_type] || r.entity_type}</span>
           </div>
         );
@@ -210,20 +216,24 @@ export default function FeeEngineGapsPage() {
       render: (r) => <BlurInput value={r.review_notes} onChange={(v) => setNotes(r, v)} placeholder="Notes…" />,
     },
     {
-      key: 'actions', label: 'Actions', width: 150, sortable: false,
-      render: (r) => (
-        <div style={{ display: 'flex', gap: 10 }}>
-          <a href={`/manage/quotes/new?entity=${r.entity_id}`}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#0e7fe0', textDecoration: 'none' }}
-            title="Set up a fee — raise a quote for this client">
-            <FilePlus2 size={12} /> Quote
-          </a>
-          <a href={`/clients/${r.entity_id}`} target="_blank" rel="noreferrer"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#64748b', textDecoration: 'none' }}>
-            Client <ExternalLink size={11} />
-          </a>
-        </div>
-      ),
+      key: 'actions', label: '', width: 140, align: 'right', sortable: false,
+      // One main action per row (UI audit, Sprint 4): a pending gap's next
+      // step is to set up a fee, so it gets the one button; resolved rows
+      // just say so. The status dropdown and notes stay as they are.
+      render: (r) => {
+        const status = r.review_status || 'pending';
+        if (status === 'pending') {
+          return (
+            <a href={`/manage/quotes/new?entity=${r.entity_id}`}
+              onClick={(e) => { if (e.ctrlKey || e.metaKey || e.button !== 0) return; e.preventDefault(); navigate(`/manage/quotes/new?entity=${r.entity_id}`); }}
+              title="Set up a fee — raise a quote for this client"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', fontSize: 13, fontWeight: 600, borderRadius: 8, background: '#1E4560', color: '#fff', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+              <FilePlus2 size={13} /> Raise quote
+            </a>
+          );
+        }
+        return <span style={{ fontSize: 12.5, color: '#94a3b8' }}>{status === 'actioned' ? 'Done' : 'Cleared'}</span>;
+      },
     },
   ];
 
