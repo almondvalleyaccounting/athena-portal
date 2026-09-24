@@ -64,7 +64,10 @@ function useBreadcrumb() {
   for (const m of MODULES) {
     for (const c of m.children || []) {
       for (const p of [c.route, ...(c.matchPaths || [])]) {
-        if (hits(p) && (!best || p.length > best.len)) best = { mod: m, child: c, len: p.length };
+        // The module's own root matches only itself, or /planner would claim
+        // /planner/tasks for Planner.
+        const ok = p === m.route ? pathname === p : hits(p);
+        if (ok && (!best || p.length > best.len)) best = { mod: m, child: c, len: p.length };
       }
     }
   }
