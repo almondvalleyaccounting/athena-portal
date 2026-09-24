@@ -587,7 +587,12 @@ function findColumn(dateISO, columns) {
 
 const gridTh = { padding: '8px 6px', fontSize: 11, fontWeight: 600, color: '#64748b', borderBottom: '1px solid #e5e7eb' };
 
-const navBtn = { ...BTN.secondary.md, width: 28, height: 28, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
+// A 28px square arrow button, not a text button — deliberately not BTN.
+const navBtn = {
+  width: 28, height: 28, border: '1px solid #e5e7eb', background: '#fff',
+  borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  color: '#475569', fontFamily: font,
+};
 const todayBtn = { ...BTN.secondary.sm, cursor: 'pointer' };
 const selStyle = {
   padding: '6px 10px', fontSize: 13, fontFamily: font,

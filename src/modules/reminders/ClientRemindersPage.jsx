@@ -658,7 +658,7 @@ export default function ClientRemindersPage() {
     },
     {
       // Athena (BM) Client — the matched client picker
-      key: 'matched', label: 'Matched (BM)', width: 210, wrap: true,
+      key: 'matched', label: 'Matched (BM)', width: '15%', wrap: true,
       sortValue: (row) => (row.entity_id ? entityById[row.entity_id]?.name : null) || null,
       render: (row) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -681,7 +681,7 @@ export default function ClientRemindersPage() {
     },
     {
       // Reminder — exclusion reason (persists, changeable)
-      key: 'reminder', label: 'Reminder', width: 150, wrap: true,
+      key: 'reminder', label: 'Reminder', width: '10%', wrap: true,
       sortValue: (row) => (!rowUtr(row) ? null : (IGNORE_LABEL[ignoreReason(row)] || 'Reminding')),
       render: (row) => {
         if (!rowUtr(row)) return <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>—</span>;
@@ -706,7 +706,7 @@ export default function ClientRemindersPage() {
       },
     },
     {
-      key: 'email', label: 'Email', width: 190,
+      key: 'email', label: 'Email', width: '14%',
       sortValue: (row) => emailOf(row),
       render: (row) => {
         const email = emailOf(row);
@@ -733,7 +733,7 @@ export default function ClientRemindersPage() {
       },
     },
     {
-      key: 'amount', label: 'Amount', width: 110, align: 'right', firstDir: 'desc',
+      key: 'amount', label: 'Amount', width: '8%', align: 'right', firstDir: 'desc',
       sortValue: (row) => (row.amount != null ? Number(row.amount) : null),
       render: (row) => (
         <span style={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -760,13 +760,13 @@ export default function ClientRemindersPage() {
     },
     {
       // Preference — status chip only
-      key: 'pref', label: 'Preference', width: 110,
+      key: 'pref', label: 'Preference', width: '8%',
       sortValue: (row) => (PREF_META[prefStatusOf(row)] || PREF_META.not_asked).label,
       render: (row) => <PrefChip status={prefStatusOf(row)} />,
     },
     {
       // Set — manual preference override
-      key: 'set', label: 'Set', width: 120, sortable: false,
+      key: 'set', label: 'Set', width: '9%', sortable: false,
       render: (row) => (row.entity_id && entityById[row.entity_id] ? (
         <select
           value=""
@@ -789,7 +789,7 @@ export default function ClientRemindersPage() {
       )),
     },
     {
-      key: 'paid', label: 'Payment', width: 100,
+      key: 'paid', label: 'Payment', width: '7%',
       sortValue: (row) => (PAID_META[row.status] || PAID_META.unpaid).label,
       render: (row) => {
         const paidMeta = PAID_META[row.status] || PAID_META.unpaid;
@@ -811,13 +811,13 @@ export default function ClientRemindersPage() {
     {
       // Hand-added rows can be removed; the × by the name moved here into a
       // ⋮ menu (UI audit, Sprint 4). Same handler and confirm.
-      key: 'rowmenu', label: '', width: 56, align: 'right', sortable: false,
+      key: 'rowmenu', label: '', width: 44, align: 'right', sortable: false,
       render: (row) => ((row.source || 'taxcalc') === 'manual'
         ? <RowMenu items={[{ label: 'Remove hand-added row…', icon: Trash2, danger: true, onClick: () => deleteManualRow(row) }]} />
         : null),
     },
     {
-      key: 'last', label: 'Last contact', width: 170, wrap: true, firstDir: 'desc',
+      key: 'last', label: 'Last contact', width: '11%', wrap: true, firstDir: 'desc',
       sortValue: (row) => (row.entity_id ? lastEmailByEntity[row.entity_id]?.sent_at : null) || null,
       render: (row) => {
         const lastEm = row.entity_id ? lastEmailByEntity[row.entity_id] : null;

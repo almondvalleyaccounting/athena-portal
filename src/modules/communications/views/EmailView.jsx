@@ -1299,7 +1299,8 @@ export default function EmailView() {
       {/* ── Middle: thread list ── Wider than it was: one-line rows need room
           for sender + subject + the hover actions, and the reading pane was
           sprawling past a comfortable measure on a wide monitor. */}
-      <div style={{ width: 560, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
+      {/* Thread list: 560px where there's room, narrowing to 340px on a laptop so the preview still fits. */}
+      <div style={{ flex: '0 1 560px', minWidth: 340, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}>
             <Search size={14} color="#94a3b8" />
@@ -1660,7 +1661,12 @@ const suggChipBtn = {
 };
 
 // Hover-revealed per-row action.
-const rowActionBtn = { ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, cursor: 'pointer' };
+// A 22px square icon button, not a text button — deliberately not BTN.
+const rowActionBtn = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 22, height: 22, padding: 0, border: '1px solid #e2e8f0', borderRadius: 5,
+  background: '#fff', cursor: 'pointer', color: '#475569',
+};
 
 const railBtn = { ...BTN.secondary.sm, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', textAlign: 'left', whiteSpace: 'nowrap' };
 

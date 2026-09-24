@@ -144,7 +144,9 @@ export default function DataTable({
 
   return (
     <div style={{ fontFamily: font }}>
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+      {/* overflowX auto, not hidden: a table wider than its frame (a narrow
+          laptop, many columns) scrolls sideways instead of being cut off. */}
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <colgroup>
             {selection && <col style={{ width: 44 }} />}

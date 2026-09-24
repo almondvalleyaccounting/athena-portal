@@ -78,6 +78,8 @@ for (const f of walk(ROOT)) {
         if (['background', 'backgroundColor', 'color', 'border'].includes(k) && props[k] === undefined) literalLook = false;
       }
       if (!literalLook) continue;
+      // A fixed width/height marks an icon button (a square), not a text button.
+      if (typeof props.width === 'number' || typeof props.height === 'number') continue;
       const kind = kindOf(props);
       if (!kind) continue;
       const size = sizeOf(props);

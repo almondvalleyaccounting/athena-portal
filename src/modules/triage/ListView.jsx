@@ -18,17 +18,17 @@ const today = () => new Date().toISOString().slice(0, 10);
 function buildColumns(staffMap, actionsByCase) {
   return [
     {
-      key: 'client', label: 'Client', width: 200,
+      key: 'client', label: 'Client', width: '15%',
       sortValue: (c) => caseHeadline(c).toLowerCase(),
       render: (c) => <span style={{ fontWeight: 600, color: '#0f172a' }}>{caseHeadline(c)}</span>,
     },
     {
-      key: 'type', label: 'Type', width: 110,
+      key: 'type', label: 'Type', width: '8%',
       sortValue: (c) => c.category,
       render: (c) => { const cat = CATEGORY_MAP[c.category] || CATEGORY_MAP.general; return <span style={chip(cat.tone)}>{cat.short}</span>; },
     },
     {
-      key: 'stage', label: 'Stage', width: 140,
+      key: 'stage', label: 'Stage', width: '10%',
       sortValue: (c) => STAGE_RANK[c.stage] ?? 9,
       render: (c) => { const st = STAGE_MAP[c.stage] || STAGE_MAP.not_started; return <span style={chip(st.tone)}>{st.label}</span>; },
     },
@@ -43,12 +43,12 @@ function buildColumns(staffMap, actionsByCase) {
       ),
     },
     {
-      key: 'owner', label: 'Owner', width: 130,
+      key: 'owner', label: 'Owner', width: '9%',
       sortValue: (c) => (staffMap[c.assignee_id] || '').toLowerCase() || null,
       render: (c) => staffMap[c.assignee_id] || none,
     },
     {
-      key: 'priority', label: 'Priority', width: 95,
+      key: 'priority', label: 'Priority', width: '7%',
       sortValue: (c) => PRIORITY_RANK[c.priority] ?? 9,
       render: (c) => {
         const pr = c.priority && PRIORITY_MAP[c.priority];
@@ -56,7 +56,7 @@ function buildColumns(staffMap, actionsByCase) {
       },
     },
     {
-      key: 'next', label: 'Next action', width: 220, wrap: true,
+      key: 'next', label: 'Next action', width: '15%', wrap: true,
       sortValue: (c) => nextOpenAction(actionsByCase[c.id] || [])?.target_date || null,
       render: (c) => {
         const next = nextOpenAction(actionsByCase[c.id] || []);
@@ -65,7 +65,7 @@ function buildColumns(staffMap, actionsByCase) {
       },
     },
     {
-      key: 'target', label: 'Target', width: 100,
+      key: 'target', label: 'Target', width: '8%',
       sortValue: (c) => c.target_date || null,
       render: (c) => {
         if (!c.target_date) return none;
@@ -74,7 +74,7 @@ function buildColumns(staffMap, actionsByCase) {
       },
     },
     {
-      key: 'age', label: 'Open', width: 70,
+      key: 'age', label: 'Open', width: '5%',
       sortValue: (c) => -daysOpen(c.created_at),
       render: (c) => <span style={{ color: '#94a3b8' }}>{daysOpen(c.created_at)}d</span>,
     },
