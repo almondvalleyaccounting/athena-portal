@@ -73,7 +73,9 @@ function useBreadcrumb() {
 
   const segments = [{ label: mod.label, path: mod.route }];
   const child = best?.child;
-  if (child && child.route !== mod.route) {
+  // A child that shares its module's route (Work › Planner) still names itself
+  // on its other tabs (/planner/waiting …), just not on the module root.
+  if (child && (child.route !== mod.route || pathname !== mod.route)) {
     segments.push({ label: child.label, path: child.route });
   }
 
