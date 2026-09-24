@@ -116,9 +116,13 @@ export default function Sidebar() {
 
   // Collapse state — persisted to localStorage, auto-collapse on narrow viewports
   const [collapsed, setCollapsed] = useState(() => {
+    // A narrow screen (a phone, a split window) always starts collapsed —
+    // the stored preference is a desktop choice and would otherwise give a
+    // phone a 268px sidebar.
+    if (window.innerWidth < 1024) return true;
     const stored = localStorage.getItem('athena_sidebar_collapsed');
     if (stored !== null) return stored === 'true';
-    return window.innerWidth < 1024;
+    return false;
   });
 
   // Auto-collapse on resize
