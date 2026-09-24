@@ -3,6 +3,20 @@ import { ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const font = "'Outfit', sans-serif";
 
+const PAGE_SIZES = [50, 100, 150, 200, 250, 500, 1000];
+const SIZE_KEY = 'athena.table.pageSize';
+// A per-viewer convenience: if storage is blocked the table just uses the
+// page's default.
+function storedPageSize() {
+  try { const v = parseInt(window.localStorage.getItem(SIZE_KEY), 10); return PAGE_SIZES.includes(v) ? v : null; } catch { return null; }
+}
+
+// The rows-per-page the viewer will actually see — for a page that needs to
+// work out which page a row lands on (e.g. a deep link to one record).
+export function tablePageSize(defaultSize = 50) {
+  return storedPageSize() || defaultSize;
+}
+
 /*
   Standard table for long lists (UI audit, Sprint 4): sortable column
   headings, paging, and rows that open a record — with Ctrl/Cmd-click or a
@@ -28,7 +42,9 @@ const font = "'Outfit', sans-serif";
               a tickbox column; the heading box ticks every filtered row, not
               just the page. Pass onToggleAll to decide what the heading box
               does yourself (e.g. replace the selection with what is in view)
-  pageSize:   default 50; 0 turns paging off
+  pageSize:   default 50; 0 turns paging off. The viewer can pick 50–1,000
+              rows a page under the table; the choice is remembered in their
+              browser for every table
   renderExpanded: (row) => node | null — detail shown full-width under a
               row (expand in place); the caller decides which rows are open
 
@@ -54,11 +70,13 @@ export function sortRows(rows, columns, sort) {
 export default function DataTable({
   columns, rows, rowKey = (r) => r.id, rowHref, onOpen, onRowClick, rowStyle, rowTitle,
   sort: sortProp, onSort: onSortProp, defaultSort = null,
-  page: pageProp, onPage: onPageProp, pageSize = 50,
+  page: pageProp, onPage: onPageProp, pageSize: pageSizeProp = 50,
   footer, selection, renderExpanded, empty = 'Nothing to show.',
 }) {
   const [sortState, setSortState] = useState(defaultSort);
   const [pageState, setPageState] = useState(1);
+  const [chosenSize, setChosenSize] = useState(storedPageSize);
+  const pageSize = pageSizeProp > 0 ? (chosenSize || pageSizeProp) : 0;
   const sort = sortProp !== undefined ? sortProp : sortState;
   const onSort = onSortProp || ((s) => { setSortState(s); setPageState(1); });
   const page = pageProp !== undefined ? pageProp : pageState;
@@ -232,6 +250,24 @@ export default function DataTable({
             {paged ? `${start + 1}–${start + visible.length} of ${sorted.length}` : `${sorted.length} row${sorted.length === 1 ? '' : 's'}`}
             {selection && sel.size > 0 && <span style={{ marginLeft: 10, color: '#1E4560', fontWeight: 600 }}>· {sel.size} ticked</span>}
           </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          {paged && (
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              Rows per page
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  setChosenSize(v);
+                  try { window.localStorage.setItem(SIZE_KEY, String(v)); } catch { /* storage blocked */ }
+                  onPage(1);
+                }}
+                style={{ padding: '4px 6px', fontSize: 13.5, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', fontFamily: font, color: '#334155' }}
+              >
+                {PAGE_SIZES.map((n) => <option key={n} value={n}>{n.toLocaleString('en-GB')}</option>)}
+              </select>
+            </label>
+          )}
           {pages > 1 && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <button aria-label="Previous page" disabled={current <= 1} onClick={() => onPage(current - 1)} style={pageBtn(current <= 1)}><ChevronLeft size={16} /></button>
@@ -239,6 +275,7 @@ export default function DataTable({
               <button aria-label="Next page" disabled={current >= pages} onClick={() => onPage(current + 1)} style={pageBtn(current >= pages)}><ChevronRight size={16} /></button>
             </span>
           )}
+          </span>
         </div>
       )}
     </div>

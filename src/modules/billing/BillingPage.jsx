@@ -8,7 +8,7 @@ import NewClientModal from '../../components/NewClientModal';
 import { fetchAdhocServices } from './billingServices';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import ServicePicker from './ServicePicker';
-import DataTable, { sortRows } from '../../components/DataTable';
+import DataTable, { tablePageSize, sortRows } from '../../components/DataTable';
 import SearchInput from '../../components/SearchInput';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 
@@ -635,12 +635,6 @@ export default function BillingPage() {
   };
 
   const toggleExpand = (id) => setExpanded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  // "Select all" ticks the whole tab, or only the search results while searching.
-  const toggleSelectAll = () => {
-    const pool = search.trim() ? shown : filtered;
-    if (pool.length > 0 && pool.every((i) => selected.has(i.id))) setSelected(new Set());
-    else setSelected(new Set(pool.map((i) => i.id)));
-  };
 
   const handleExport = () => {
     const toExport = selected.size > 0 ? filtered.filter((i) => selected.has(i.id)) : filtered;
@@ -774,7 +768,7 @@ export default function BillingPage() {
   useEffect(() => {
     if (!highlightId || loading) return;
     const idx = sortRows(shown, columns, sort).findIndex((i) => i.id === highlightId);
-    if (idx >= 0) setPage(Math.floor(idx / LIST_PAGE_SIZE) + 1);
+    if (idx >= 0) setPage(Math.floor(idx / tablePageSize(LIST_PAGE_SIZE)) + 1);
   }, [highlightId, loading, filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Line detail + the comment thread, opened in place under the row.
@@ -1024,11 +1018,9 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* Select all + search */}
+      {/* Search — ticking every bill is the table's heading tickbox */}
       {filtered.length > 0 && (
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,padding:'0 4px'}}>
-          <input type="checkbox" checked={(search.trim()?shown:filtered).length>0&&(search.trim()?shown:filtered).every((i)=>selected.has(i.id))} onChange={toggleSelectAll} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0'}}/>
-          <span style={{fontSize:12,color:'#94a3b8'}}>Select all</span>
           <SearchInput
             value={search}
             onChange={(v)=>{setSearch(v);setPage(1);}}

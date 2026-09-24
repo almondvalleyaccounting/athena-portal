@@ -131,11 +131,6 @@ export default function EntitiesPage() {
     });
   };
 
-  const selectAll = () => {
-    if (selected.size === filtered.length) setSelected(new Set());
-    else setSelected(new Set(filtered.map(e => e.id)));
-  };
-
   const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); };
 
   const selectedEntities = entities.filter(e => selected.has(e.id));
@@ -372,19 +367,6 @@ export default function EntitiesPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Select all — ticks every client shown, across both sections */}
-          {selectMode && (
-            <label className="flex items-center px-1 cursor-pointer w-fit">
-              <input
-                type="checkbox"
-                checked={selected.size === filtered.length && filtered.length > 0}
-                onChange={selectAll}
-                className="w-3 h-3 accent-ocean-600 mr-3"
-              />
-              <span className="text-xs text-gray-400">Select all</span>
-            </label>
-          )}
-
           {/* Clients with pending quotes */}
           {withPending.length > 0 && (
             <div>
