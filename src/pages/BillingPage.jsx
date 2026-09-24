@@ -108,7 +108,7 @@ export default function BillingPage() {
       // Load accepted quotes for comparison
       const acceptedQuotes = await all('accepted quotes', () => supabase
         .from('quotes')
-        .select('id, entity_id, primary_entity_id, relationship_group, monthly_gross, monthly_net, annual_total, status, accepted_at, committed_at')
+        .select('id, entity_id, relationship_group, monthly_gross, monthly_net, annual_total, status, accepted_at, committed_at')
         .in('status', ['accepted', 'committed'])
         .order('accepted_at', { ascending: false })
         .order('id', { ascending: true }));

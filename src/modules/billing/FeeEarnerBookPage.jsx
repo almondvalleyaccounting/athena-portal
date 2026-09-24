@@ -28,7 +28,7 @@ export default function FeeEarnerBookPage() {
       const results = await Promise.allSettled([
         supabase.from('client_service_allocations').select('*'),
         supabase.from('live_billing').select('entity_id, services, billing_type, status, entity:entities(id, name)').eq('status', 'active'),
-        supabase.from('quotes').select('id, entity_id, primary_entity_id, quote_ref, status, monthly_gross, annual_total, accepted_at, committed_at, relationship_group').in('status', ['accepted']),
+        supabase.from('quotes').select('id, entity_id, quote_ref, status, monthly_gross, annual_total, accepted_at, committed_at, relationship_group').in('status', ['accepted']),
         supabase.from('staff_profiles').select('id, name, email').order('name'),
       ]);
       setAllocations(results[0].value?.data || []);
