@@ -402,7 +402,7 @@ export default function Sidebar() {
                         display: 'flex',
                         alignItems: 'center',
                         width: '100%',
-                        padding: '6px 12px 6px 44px',
+                        padding: '6px 8px 6px 44px',
                         borderRadius: 6,
                         border: 'none',
                         background: isChildActive(child, kids) ? 'rgba(56, 189, 248, 0.08)' : 'transparent',
@@ -425,10 +425,11 @@ export default function Sidebar() {
                         fontSize: 13,
                         fontWeight: isChildActive(child, kids) ? 600 : 400,
                         color: isChildActive(child, kids) ? '#0f172a' : '#64748b',
+                        whiteSpace: 'nowrap',
                       }}>
                         {child.label}
                       </span>
-                      {child.inDevelopment && <span style={{ marginLeft: 'auto', paddingLeft: 6 }}><InDevelopmentTag short /></span>}
+                      {child.inDevelopment && <span style={{ marginLeft: 'auto', paddingLeft: 4, display: 'flex' }}><InDevelopmentTag short /></span>}
                     </button>
                   ))}
                 </div>
@@ -791,7 +792,7 @@ function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, bet
           >
             {label}
           </span>
-          {inDevelopment && <span style={{ marginLeft: hasChevron ? 6 : 'auto' }}><InDevelopmentTag short /></span>}
+          {inDevelopment && <span style={{ marginLeft: hasChevron ? 6 : 'auto', display: 'flex' }}><InDevelopmentTag short /></span>}
           {hasChevron && (
             <ChevronDown
               size={14}
