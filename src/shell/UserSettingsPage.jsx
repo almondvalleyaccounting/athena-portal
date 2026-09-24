@@ -118,9 +118,9 @@ export default function UserSettingsPage() {
         How your name and colour appear across Athena, and the days you work.
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
         {/* Profile — the wide card */}
-        <section style={{ ...card, gridColumn: 'span 2' }}>
+        <section style={card}>
           <h2 style={cardTitle}>Profile</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 18 }}>
             <div>
