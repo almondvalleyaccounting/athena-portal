@@ -23,7 +23,7 @@ const base = {
 
 const sizes = {
   md: { padding: '8px 16px', fontSize: 14 },
-  sm: { padding: '5px 10px', fontSize: 13, borderRadius: 6 },
+  sm: { padding: '5px 8px', fontSize: 13, borderRadius: 6 },
 };
 
 const kinds = {

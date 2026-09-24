@@ -109,7 +109,7 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
   const base = 'inline-flex items-center justify-center gap-1.5 border font-medium leading-tight transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
   const sizes = {
     md: 'px-4 py-2 text-sm rounded-lg',
-    sm: 'px-2.5 py-[5px] text-[13px] rounded-md',
+    sm: 'px-2 py-[5px] text-[13px] rounded-md',
   };
   const variants = {
     // One main-action colour across Athena (UI audit, Sprint 3): ocean with

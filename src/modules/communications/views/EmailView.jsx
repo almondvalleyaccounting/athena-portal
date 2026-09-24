@@ -1668,7 +1668,8 @@ const rowActionBtn = {
   background: '#fff', cursor: 'pointer', color: '#475569',
 };
 
-const railBtn = { ...BTN.secondary.sm, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', textAlign: 'left', whiteSpace: 'nowrap' };
+// The rail is 212px with two buttons a row, so these keep their slightly smaller text.
+const railBtn = { ...BTN.secondary.sm, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', textAlign: 'left', whiteSpace: 'nowrap' };
 
 const addOptionStyle = {
   display: 'flex', alignItems: 'center', gap: 7, padding: '7px 10px', fontSize: 13.5, fontWeight: 600,
