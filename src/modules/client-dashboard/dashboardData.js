@@ -471,6 +471,7 @@ export const PERIOD_PRESETS = [
   { key: 'last365', label: 'Last 365 days' },
   { key: 'mtd', label: 'This month to date' },
   { key: 'lastMonth', label: 'Last month' },
+  { key: 'ytdLastMonth', label: 'YTD to last month' },
   { key: 'lastFiscalYear', label: 'Last fiscal year' },
   { key: 'lastCalendarYear', label: 'Last calendar year' },
   { key: 'custom', label: 'Custom…' },
@@ -543,6 +544,18 @@ export function computePeriod(key, today = new Date(), fyIdx = 9, custom = null)
       setMonthPrior(1);
       label = monthLabel(plStart); deltaLabel = 'vs previous month';
       break;
+    // The fiscal year so far, to the last COMPLETE month — the management-
+    // accounts view. In the first month of a new year there is no complete
+    // month yet, so it is the whole of the year just finished.
+    case 'ytdLastMonth': {
+      plEnd = new Date(y, m, 0);
+      const startYear = plEnd.getMonth() >= fyIdx ? plEnd.getFullYear() : plEnd.getFullYear() - 1;
+      plStart = new Date(startYear, fyIdx, 1);
+      const span = (plEnd.getFullYear() - plStart.getFullYear()) * 12 + plEnd.getMonth() - plStart.getMonth() + 1;
+      setMonthPrior(span);
+      label = `year to ${monthLabel(plEnd)}`; deltaLabel = `vs prior ${span} month${span === 1 ? '' : 's'}`;
+      break;
+    }
     case 'lastFiscalYear': {
       const r = lastFiscalYearRange(today, fyIdx);
       plStart = r.start; plEnd = r.end; setMonthPrior(12);

@@ -1,115 +1,190 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Star, Loader, AlertTriangle, Link2Off, ArrowRight, RefreshCw, CheckCircle2, Clock } from 'lucide-react';
+import { Star, Loader, ArrowRight, RefreshCw, LayoutGrid, List, Rows3, Grid3x3 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
+import { PERIOD_PRESETS, OUTFIT, PLAYFAIR, cardStyle, inputStyle } from './dashboardData';
+import { resolveFiscalYear } from './overviewGrain';
 import {
-  money, moneyCompact, timeAgo, shortDate, shortMonth,
-  OUTFIT, PLAYFAIR, cardStyle,
-} from './dashboardData';
-import {
-  buildPortfolioFigures, portfolioFlags, attentionScore, PORTFOLIO_METRICS,
+  portfolioWindow, buildPortfolioFigures, portfolioFlags, attentionScore,
+  DEFAULT_PERIOD, HEADLINE_METRICS, PULL_RESULT_NAMES,
 } from './portfolioSignals';
+import { C, ExpandedTile, CompactTile, ListView } from './PortfolioViews';
 
 /*
-  Portfolio Dashboard — the logged-in user's starred clients at a glance, read
-  as a CFO would: every figure against a comparator, and a line of flags that
-  says which clients need looking at.
+  Portfolio Dashboard — the logged-in user's starred clients, read as a CFO
+  would: every figure against a comparator, and a line of flags that says who
+  needs looking at.
 
-  Stars live in staff_client_favourites (RLS: own rows). Figures come from
-  qbo_dashboard_cache_latest (one row per realm+metric, sql/293) — no live pulls
-  on load, so the page stays instant. The nightly job in sql/293 keeps starred
-  realms current; "Refresh all" re-pulls on demand through dashboard-qbo-pull.
-  All the arithmetic is in portfolioSignals.js.
+  Period: the Client Dashboard's own presets (plus its "YTD to last month",
+  the default here), resolved per client against THAT client's year end — so
+  "last fiscal year" means each client's own. Each figure is the period vs the
+  same period a year earlier, and balances are as at the period end.
+
+  Figures come from qbo_dashboard_cache under the dated keys portfolioWindow()
+  names; the page never pulls on load. The nightly jobs (sql/293, sql/294) keep
+  the headline metrics and the default period current; Refresh all (or a
+  tile's Pull now) pulls the selected period through dashboard-qbo-pull.
+  A custom range is never cached, so its figures live in page state only.
 */
 
 const BAD_CH_STATUS = /(strike|liquidat|administrat|insolven|dissolv|receiver)/i;
+const UI_KEY = 'athena.portfolio.ui';
 
-const C = {
-  ink: '#0f172a', sub: '#64748b', faint: '#94a3b8', rule: '#f1f5f9',
-  good: '#15803d', bad: '#b91c1c', accent: '#38bdf8',
-  redBg: '#fef2f2', redBd: '#fecaca', redFg: '#991b1b',
-  ambBg: '#fffbeb', ambBd: '#fde68a', ambFg: '#92400e',
-};
+// Only the fields portfolioSignals reads — the cached reports also carry whole
+// QuickBooks report trees that this page has no use for.
+const CACHE_COLUMNS = [
+  'realm_id', 'metric_key', 'period_end', 'pulled_at',
+  'income:data->income', 'net_income:data->net_income', 'currency:data->currency',
+  'series:data->series', 'months:data->months', 'month_keys:data->month_keys', 'period:data->period',
+  'cash:data->cash', 'debtors:data->debtors', 'current_assets:data->current_assets',
+  'current_liabilities:data->current_liabilities', 'comparatives:data->comparatives',
+  'buckets:data->buckets',
+].join(', ');
+const toRow = ({ realm_id, metric_key, period_end, pulled_at, ...data }) => ({ realm_id, metric_key, period_end, pulled_at, data });
+
+function readUi() {
+  try { return JSON.parse(localStorage.getItem(UI_KEY) || '{}') || {}; } catch { return {}; }
+}
+function writeUi(ui) {
+  try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch { /* private window */ }
+}
 
 export default function PortfolioDashboardPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
-  const [cards, setCards] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [sortBy, setSortBy] = useState('attention');
-  const [refreshing, setRefreshing] = useState(null); // { done, total, failed: [] }
+  const saved = useRef(readUi()).current;
 
-  const load = async () => {
+  const [clients, setClients] = useState([]);       // favourites + connection + fiscal year
+  const [headline, setHeadline] = useState({});     // realm → { company, file_health }
+  const [periodRows, setPeriodRows] = useState({}); // realm → { pl, plPrior, … }
+  const [live, setLive] = useState({});             // realm → rows from a custom-range pull
+  const [pullState, setPullState] = useState({});   // realm → { pulling, error }
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(null);
+
+  const [view, setView] = useState(saved.view === 'list' ? 'list' : 'tiles');
+  const [density, setDensity] = useState(saved.density === 'compact' ? 'compact' : 'expanded');
+  const [periodKey, setPeriodKey] = useState(
+    PERIOD_PRESETS.some((p) => p.key === saved.periodKey) && saved.periodKey !== 'custom' ? saved.periodKey : DEFAULT_PERIOD,
+  );
+  const [customPeriod, setCustomPeriod] = useState({ start: '', end: '' });
+  const [sortBy, setSortBy] = useState(saved.sortBy || 'attention');
+
+  useEffect(() => { writeUi({ view, density, periodKey, sortBy }); }, [view, density, periodKey, sortBy]);
+
+  const today = useMemo(() => new Date(), []);
+
+  /* 1. Who is starred, and each client's year end ------------------ */
+  const loadClients = useCallback(async () => {
     if (!profile?.id) return;
     setLoading(true);
     try {
-      // 1. My starred clients (realm-keyed; CH status via the optional entity link)
       const { data: favs } = await supabase
         .from('staff_client_favourites')
         .select('realm_id, entity_id, created_at, entity:entities(id, name, company_status, company_status_detail)')
         .eq('staff_id', profile.id)
         .order('created_at', { ascending: true });
       const favourites = (favs || []).filter((f) => f.realm_id);
-      if (!favourites.length) { setCards([]); setLoading(false); return; }
+      if (!favourites.length) { setClients([]); setLoading(false); return; }
 
-      // 2. QBO report connections for those realms
       const realmIds = favourites.map((f) => f.realm_id);
-      const { data: conns } = await supabase
-        .from('qbo_report_connections')
-        .select('realm_id, company_name, entity_id, status')
-        .in('realm_id', realmIds);
-      const connByRealm = {};
-      for (const c of conns || []) connByRealm[c.realm_id] = c;
-
-      // 3. Latest snapshot per headline metric, plus ~2 months of aged-debtor
-      //    buckets (just the buckets) so the tile can say whether 90+ is rising.
-      const since = new Date(Date.now() - 70 * 86400000).toISOString().slice(0, 10);
-      const [{ data: latestRows }, { data: agedRows }] = await Promise.all([
+      const [{ data: conns }, { data: yearEnds }, { data: latest }] = await Promise.all([
+        supabase.from('qbo_report_connections')
+          .select('realm_id, company_name, entity_id, status, fiscal_year_end_month')
+          .in('realm_id', realmIds),
+        supabase.from('v_client_year_end').select('realm_id, month, source').in('realm_id', realmIds),
         supabase.from('qbo_dashboard_cache_latest')
-          .select('realm_id, metric_key, period_end, data, pulled_at')
+          .select('realm_id, metric_key, pulled_at, data')
           .in('realm_id', realmIds)
-          .in('metric_key', PORTFOLIO_METRICS),
-        supabase.from('qbo_dashboard_cache')
-          .select('realm_id, metric_key, period_end, pulled_at, buckets:data->buckets')
-          .in('realm_id', realmIds)
-          .eq('metric_key', 'aged_receivables')
-          .gte('period_end', since)
-          .order('pulled_at', { ascending: false }),
+          .in('metric_key', HEADLINE_METRICS),
       ]);
-      const rowsByRealm = {};
-      for (const r of latestRows || []) (rowsByRealm[r.realm_id] ||= []).push(r);
-      for (const r of agedRows || []) {
-        (rowsByRealm[r.realm_id] ||= []).push({ ...r, data: { buckets: r.buckets } });
-      }
-      for (const k of Object.keys(rowsByRealm)) {
-        rowsByRealm[k].sort((a, b) => String(b.pulled_at).localeCompare(String(a.pulled_at)));
-      }
+      const connBy = Object.fromEntries((conns || []).map((c) => [c.realm_id, c]));
+      const yeBy = Object.fromEntries((yearEnds || []).map((y) => [y.realm_id, y]));
+      const head = {};
+      for (const r of latest || []) (head[r.realm_id] ||= {})[r.metric_key] = r;
 
-      setCards(favourites.map((f, i) => {
-        const conn = connByRealm[f.realm_id] || null;
+      setHeadline(head);
+      setClients(favourites.map((f, i) => {
+        const conn = connBy[f.realm_id] || null;
         const chStatus = f.entity?.company_status || null;
         const chDetail = f.entity?.company_status_detail || null;
-        const chBad = !!(chStatus && chStatus !== 'active');
         const chLabel = chStatus
           ? `${chStatus.replace(/-/g, ' ')}${chDetail ? ` (${chDetail.replace(/-/g, ' ')})` : ''}` : '';
-        const chSevere = BAD_CH_STATUS.test(chLabel);
-        const figures = buildPortfolioFigures(rowsByRealm[f.realm_id] || []);
-        const flags = portfolioFlags(figures, { chBad, chSevere, chLabel });
+        // Same resolution as the Client Dashboard, so "last fiscal year" here
+        // is the year that page would show for this client.
+        const fy = resolveFiscalYear({
+          overrideEndMonth: conn?.fiscal_year_end_month,
+          bmEndMonth: yeBy[f.realm_id]?.month,
+          bmSource: yeBy[f.realm_id]?.source,
+          qboStartMonth: head[f.realm_id]?.company?.data?.fiscal_year_start_month,
+        });
         return {
           order: i,
           realmKey: f.realm_id,
           realmId: f.realm_id,
-          connected: !!conn,
+          connected: !!conn && conn.status === 'active',
           name: conn?.company_name || f.entity?.name || 'Unknown client',
-          figures, flags, score: attentionScore(flags),
+          chBad: !!(chStatus && chStatus !== 'active'),
+          chSevere: BAD_CH_STATUS.test(chLabel),
+          chLabel,
+          fyIdx: fy.fyIdx,
         };
       }));
-    } catch { setCards([]); }
+    } catch { setClients([]); }
     setLoading(false);
-  };
+  }, [profile?.id]);
 
-  useEffect(() => { load(); }, [profile?.id]);
+  useEffect(() => { loadClients(); }, [loadClients]);
+
+  /* 2. Each client's window for the selected period ---------------- */
+  const customReady = periodKey !== 'custom'
+    || !!(customPeriod.start && customPeriod.end && customPeriod.start <= customPeriod.end);
+  const windows = useMemo(() => {
+    if (!customReady) return {};
+    const out = {};
+    for (const c of clients) out[c.realmKey] = portfolioWindow(periodKey, today, c.fyIdx, customPeriod);
+    return out;
+  }, [clients, periodKey, customPeriod, customReady, today]);
+
+  /* 3. The cached rows those windows name --------------------------- */
+  const loadPeriod = useCallback(async () => {
+    const stored = Object.keys(windows).filter((r) => windows[r].stored);
+    if (!stored.length) { setPeriodRows({}); return; }
+    const keys = [...new Set(stored.flatMap((r) => Object.values(windows[r].keys)))];
+    try {
+      const { data } = await supabase.from('qbo_dashboard_cache')
+        .select(CACHE_COLUMNS)
+        .in('realm_id', stored)
+        .in('metric_key', keys)
+        .order('pulled_at', { ascending: false });
+      const byRealmKey = {};
+      for (const r of data || []) {
+        const k = `${r.realm_id}|${r.metric_key}`;
+        if (!byRealmKey[k]) byRealmKey[k] = toRow(r);
+      }
+      const out = {};
+      for (const r of stored) {
+        out[r] = {};
+        for (const [name, key] of Object.entries(windows[r].keys)) out[r][name] = byRealmKey[`${r}|${key}`] || null;
+      }
+      setPeriodRows(out);
+    } catch { setPeriodRows({}); }
+  }, [windows]);
+
+  useEffect(() => { loadPeriod(); }, [loadPeriod]);
+  // A new custom range invalidates what the last one pulled.
+  useEffect(() => { setLive({}); }, [periodKey, customPeriod.start, customPeriod.end]);
+
+  /* 4. Cards ------------------------------------------------------- */
+  const cards = useMemo(() => clients.map((c) => {
+    const w = windows[c.realmKey] || null;
+    const rows = (w && !w.stored ? live[c.realmKey] : periodRows[c.realmKey]) || {};
+    const figures = buildPortfolioFigures(rows, { fileHealth: headline[c.realmKey]?.file_health?.data || null });
+    const flags = figures.hasFigures ? portfolioFlags(figures, c) : [];
+    const ps = pullState[c.realmKey] || {};
+    return { ...c, window: w, figures, flags, score: attentionScore(flags), pulling: !!ps.pulling, pullError: ps.error || null };
+  }), [clients, windows, periodRows, live, headline, pullState]);
 
   const sorted = useMemo(() => {
     const list = [...cards];
@@ -119,84 +194,178 @@ export default function PortfolioDashboardPage() {
     return list;
   }, [cards, sortBy]);
 
-  const unstar = async (realmId) => {
-    setCards((prev) => prev.filter((c) => c.realmKey !== realmId));
+  /* 5. Pulling ----------------------------------------------------- */
+  // One client: headline metrics, then the period — in sequence, so the two
+  // calls never race to refresh the same Intuit token.
+  const pullOne = useCallback(async (card) => {
+    const w = windows[card.realmKey];
+    if (!w || !card.connected) return false;
+    setPullState((s) => ({ ...s, [card.realmKey]: { pulling: true } }));
+    let ok = true;
     try {
-      await supabase.from('staff_client_favourites').delete()
-        .eq('staff_id', profile.id).eq('realm_id', realmId);
-    } catch { load(); }
-  };
+      const { data: h, error: he } = await supabase.functions.invoke('dashboard-qbo-pull', {
+        body: { realmId: card.realmId, refresh: true, metrics: HEADLINE_METRICS },
+      });
+      if (he || !h?.success) ok = false;
+      const { data, error } = await supabase.functions.invoke('dashboard-qbo-pull', {
+        body: {
+          realmId: card.realmId, refresh: true,
+          window: {
+            kind: w.stored ? 'preset' : 'custom',
+            portfolio: {
+              plStart: w.plStart, plEnd: w.plEnd, cmpStart: w.cmpStart, cmpEnd: w.cmpEnd,
+              chartStart: w.chartStart, chartEnd: w.chartEnd, asAt: w.asAt, arPrevDate: w.arPrevDate,
+            },
+          },
+        },
+      });
+      if (error || !data?.success) ok = false;
+      if (!w.stored && data?.metrics) {
+        const at = data.pulled_at || new Date().toISOString();
+        const rows = {};
+        for (const [resp, name] of Object.entries(PULL_RESULT_NAMES)) {
+          const m = data.metrics[resp];
+          rows[name] = m ? { data: m, pulled_at: at, period_end: name === 'arPrev' ? w.arPrevDate : w.asAt } : null;
+        }
+        setLive((prev) => ({ ...prev, [card.realmKey]: rows }));
+      }
+    } catch { ok = false; }
+    setPullState((s) => ({
+      ...s,
+      [card.realmKey]: { pulling: false, error: ok ? null : 'Pull failed — open the dashboard to see why (often an expired connection).' },
+    }));
+    return ok;
+  }, [windows]);
 
-  // Re-pull every starred, connected realm — two at a time, so a long list
-  // doesn't fan out a burst of QuickBooks calls at once.
+  const afterPull = useCallback(async () => {
+    try {
+      const { data: latest } = await supabase.from('qbo_dashboard_cache_latest')
+        .select('realm_id, metric_key, pulled_at, data')
+        .in('realm_id', clients.map((c) => c.realmKey))
+        .in('metric_key', HEADLINE_METRICS);
+      const head = {};
+      for (const r of latest || []) (head[r.realm_id] ||= {})[r.metric_key] = r;
+      setHeadline(head);
+    } catch { /* keep what we had */ }
+    await loadPeriod();
+  }, [clients, loadPeriod]);
+
+  const pullSingle = async (card) => { await pullOne(card); await afterPull(); };
+
+  // Two clients at a time, so a long list doesn't fire a burst of QuickBooks calls.
   const refreshAll = async () => {
     const targets = cards.filter((c) => c.connected);
-    if (!targets.length) return;
+    if (!targets.length || !customReady) return;
     const state = { done: 0, total: targets.length, failed: [] };
     setRefreshing({ ...state });
     const queue = [...targets];
     const worker = async () => {
       while (queue.length) {
         const c = queue.shift();
-        try {
-          const { data, error } = await supabase.functions.invoke('dashboard-qbo-pull', {
-            body: { realmId: c.realmId, refresh: true, metrics: PORTFOLIO_METRICS },
-          });
-          if (error || !data?.success) state.failed.push(c.name);
-        } catch { state.failed.push(c.name); }
+        if (!(await pullOne(c))) state.failed.push(c.name);
         state.done += 1;
         setRefreshing({ ...state });
       }
     };
     await Promise.all([worker(), worker()]);
-    await load();
+    await afterPull();
     setRefreshing(state.failed.length ? { ...state, finished: true } : null);
   };
 
+  const unstar = async (card) => {
+    setClients((prev) => prev.filter((c) => c.realmKey !== card.realmKey));
+    try {
+      await supabase.from('staff_client_favourites').delete()
+        .eq('staff_id', profile.id).eq('realm_id', card.realmKey);
+    } catch { loadClients(); }
+  };
+  const open = (card) => { if (card.connected) navigate(`/client-dashboard?realm=${encodeURIComponent(card.realmId)}`); };
+
+  const pickPeriod = (k) => {
+    if (k === 'custom' && !customPeriod.start) {
+      const any = Object.values(windows)[0];
+      setCustomPeriod({ start: any?.plStart || '', end: any?.plEnd || '' });
+    }
+    setPeriodKey(k);
+  };
+
+  const busy = !!refreshing && !refreshing.finished;
   const flaggedCount = cards.filter((c) => c.flags.some((f) => f.level === 'red')).length;
+  const notPulled = cards.filter((c) => c.connected && !c.figures.hasFigures).length;
+  const presetLabel = PERIOD_PRESETS.find((p) => p.key === periodKey)?.label || '';
 
   return (
     <div style={{ margin: '0 auto', padding: '40px 24px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', flexWrap: 'wrap', marginBottom: '24px' }}>
-        <div style={{ flex: 1, minWidth: '260px' }}>
-          <h1 style={{ fontFamily: PLAYFAIR, fontSize: '28px', fontWeight: 500, color: C.ink, marginBottom: '8px' }}>
-            Portfolio
-          </h1>
-          <p style={{ fontFamily: OUTFIT, fontSize: '14.5px', color: C.sub, margin: 0 }}>
-            Your starred clients, each figure against last year or last month. Refreshed from QuickBooks every morning.
-            {!loading && cards.length > 0 && flaggedCount > 0 && (
-              <span style={{ color: C.redFg, fontWeight: 600 }}> {flaggedCount} need{flaggedCount === 1 ? 's' : ''} attention.</span>
-            )}
-          </p>
-        </div>
-        {!loading && cards.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              style={{ fontFamily: OUTFIT, fontSize: '14px', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: '10px', background: '#fff', color: C.ink }}
-            >
-              <option value="attention">Needs attention first</option>
-              <option value="starred">Order starred</option>
-              <option value="revenue">Revenue YTD</option>
-              <option value="name">Name</option>
-            </select>
-            <button
-              onClick={refreshAll}
-              disabled={!!refreshing && !refreshing.finished}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
-                border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#fff',
-                cursor: refreshing && !refreshing.finished ? 'default' : 'pointer',
-                fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: '#0369a1',
-              }}
-            >
-              <RefreshCw size={14} style={refreshing && !refreshing.finished ? { animation: 'spin 1s linear infinite' } : undefined} />
-              {refreshing && !refreshing.finished ? `Refreshing ${refreshing.done}/${refreshing.total}…` : 'Refresh all'}
-            </button>
-          </div>
+      <h1 style={{ fontFamily: PLAYFAIR, fontSize: '28px', fontWeight: 500, color: C.ink, marginBottom: '8px' }}>
+        Portfolio
+      </h1>
+      <p style={{ fontFamily: OUTFIT, fontSize: '14.5px', color: C.sub, margin: '0 0 18px' }}>
+        Your starred clients over the period you choose, each against the same period last year, on each client's own year end.
+        {!loading && flaggedCount > 0 && (
+          <span style={{ color: C.redFg, fontWeight: 600 }}> {flaggedCount} need{flaggedCount === 1 ? 's' : ''} attention.</span>
         )}
-      </div>
+      </p>
+
+      {!loading && clients.length > 0 && (
+        <div style={{ ...cardStyle, padding: '12px 14px', marginBottom: '16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 14px' }}>
+          <Segmented value={view} onChange={setView}
+            options={[{ key: 'tiles', label: 'Tiles', icon: LayoutGrid }, { key: 'list', label: 'List', icon: List }]} />
+          {view === 'tiles' && (
+            <Segmented value={density} onChange={setDensity}
+              options={[{ key: 'compact', label: 'Compact', icon: Grid3x3 }, { key: 'expanded', label: 'Expanded', icon: Rows3 }]} />
+          )}
+
+          <label style={ctlLabel}>
+            Period
+            <select value={periodKey} onChange={(e) => pickPeriod(e.target.value)} style={selectStyle}>
+              {PERIOD_PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+            </select>
+          </label>
+          {periodKey === 'custom' && (
+            <>
+              <input type="date" value={customPeriod.start} max={customPeriod.end || undefined}
+                onChange={(e) => setCustomPeriod((c) => ({ ...c, start: e.target.value }))} style={dateStyle} aria-label="From" />
+              <span style={{ fontFamily: OUTFIT, fontSize: '14px', color: C.faint }}>to</span>
+              <input type="date" value={customPeriod.end} min={customPeriod.start || undefined}
+                onChange={(e) => setCustomPeriod((c) => ({ ...c, end: e.target.value }))} style={dateStyle} aria-label="To" />
+            </>
+          )}
+
+          {view === 'tiles' && (
+            <label style={ctlLabel}>
+              Sort
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={selectStyle}>
+                <option value="attention">Needs attention first</option>
+                <option value="starred">Order starred</option>
+                <option value="revenue">Revenue</option>
+                <option value="name">Name</option>
+              </select>
+            </label>
+          )}
+
+          <button onClick={refreshAll} disabled={busy || !customReady}
+            title={`Pull "${presetLabel}" from QuickBooks for every starred client`}
+            style={{
+              marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
+              border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#fff',
+              cursor: busy || !customReady ? 'default' : 'pointer', opacity: customReady ? 1 : 0.5,
+              fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: '#0369a1',
+            }}>
+            <RefreshCw size={14} style={busy ? { animation: 'spin 1s linear infinite' } : undefined} />
+            {busy ? `Refreshing ${refreshing.done}/${refreshing.total}…` : `Refresh all · ${presetLabel}`}
+          </button>
+
+          <div style={{ flexBasis: '100%', fontFamily: OUTFIT, fontSize: '13px', color: C.faint }}>
+            {periodKey === 'custom'
+              ? (customReady ? 'Custom ranges are pulled live and not kept — press Refresh all to load them.' : 'Pick both dates.')
+              : periodKey === DEFAULT_PERIOD
+                ? 'Refreshed from QuickBooks every morning.'
+                : 'Pulled on demand; once pulled, this period stays cached.'}
+            {' '}Dates follow each client's own year end — each tile shows its range.
+            {notPulled > 0 && customReady && ` ${notPulled} client${notPulled === 1 ? ' has' : 's have'} no figures for this period yet.`}
+          </div>
+        </div>
+      )}
 
       {refreshing?.finished && refreshing.failed.length > 0 && (
         <div style={{ ...cardStyle, padding: '10px 14px', marginBottom: '16px', fontFamily: OUTFIT, fontSize: '14px', color: C.ambFg, backgroundColor: C.ambBg, border: `1px solid ${C.ambBd}` }}>
@@ -211,7 +380,7 @@ export default function PortfolioDashboardPage() {
         </div>
       )}
 
-      {!loading && cards.length === 0 && (
+      {!loading && clients.length === 0 && (
         <div style={{ ...cardStyle, textAlign: 'center', padding: '56px 24px' }}>
           <Star size={28} style={{ color: '#f59e0b', marginBottom: '12px' }} />
           <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: C.ink, marginBottom: '6px' }}>
@@ -221,22 +390,30 @@ export default function PortfolioDashboardPage() {
             Open the Client Dashboard, pick a client and click the star next to their name.
             Starred clients appear here with their key metrics, so you can watch your portfolio at a glance.
           </div>
-          <button
-            onClick={() => navigate('/client-dashboard')}
+          <button onClick={() => navigate('/client-dashboard')}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px',
               border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
               cursor: 'pointer', fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: C.accent,
-            }}
-          >
+            }}>
             Open Client Dashboard <ArrowRight size={14} />
           </button>
         </div>
       )}
 
-      {!loading && cards.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(520px, 100%), 1fr))', gap: '16px' }}>
-          {sorted.map((c) => <PortfolioCard key={c.realmKey} card={c} navigate={navigate} unstar={unstar} />)}
+      {!loading && clients.length > 0 && view === 'list' && (
+        <ListView cards={cards} onOpen={open} onUnstar={unstar} onPull={pullSingle} />
+      )}
+
+      {!loading && clients.length > 0 && view === 'tiles' && (
+        <div style={{
+          display: 'grid', gap: density === 'compact' ? '12px' : '16px',
+          gridTemplateColumns: `repeat(auto-fill, minmax(min(${density === 'compact' ? 280 : 520}px, 100%), 1fr))`,
+        }}>
+          {sorted.map((c) => (density === 'compact'
+            ? <CompactTile key={c.realmKey} card={c} onOpen={() => open(c)} onUnstar={() => unstar(c)} onPull={() => pullSingle(c)} />
+            : <ExpandedTile key={c.realmKey} card={c} onOpen={() => open(c)} onUnstar={() => unstar(c)} onPull={() => pullSingle(c)} />
+          ))}
         </div>
       )}
 
@@ -245,312 +422,30 @@ export default function PortfolioDashboardPage() {
   );
 }
 
-/* ─── Card ─────────────────────────────────────────────────────── */
+/* ─── Controls ─────────────────────────────────────────────────── */
 
-function PortfolioCard({ card, navigate, unstar }) {
-  const f = card.figures;
-  const cur = f.currency;
-  const openDash = () => { if (card.realmId) navigate(`/client-dashboard?realm=${encodeURIComponent(card.realmId)}`); };
-  const shownFlags = card.flags.slice(0, 4);
-  const moreFlags = card.flags.length - shownFlags.length;
+const ctlLabel = { display: 'inline-flex', alignItems: 'center', gap: '6px', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: C.faint };
+const selectStyle = { fontFamily: OUTFIT, fontSize: '14px', padding: '7px 10px', border: '1px solid #e5e7eb', borderRadius: '10px', background: '#fff', color: C.ink };
+const dateStyle = { ...inputStyle, padding: '6px 10px', fontSize: '14px' };
 
+function Segmented({ value, onChange, options }) {
   return (
-    <div style={{ ...cardStyle, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            onClick={openDash}
-            title={card.realmId ? 'Open dashboard' : undefined}
+    <div role="group" style={{ display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: '10px', overflow: 'hidden' }}>
+      {options.map((o, i) => {
+        const active = value === o.key;
+        const Icon = o.icon;
+        return (
+          <button key={o.key} onClick={() => onChange(o.key)} aria-pressed={active}
             style={{
-              fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: C.ink,
-              cursor: card.realmId ? 'pointer' : 'default', overflow: 'hidden',
-              textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}
-          >
-            {card.name}
-          </div>
-          {f.ytdPeriod?.start && (
-            <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: C.faint, marginTop: '2px' }}>
-              Year to date {shortDate(f.ytdPeriod.start)} – {shortDate(f.ytdPeriod.end)}, against the same dates last year
-            </div>
-          )}
-        </div>
-        {f.oldestPulledAt && <FreshnessChip f={f} />}
-        <button
-          onClick={() => unstar(card.realmKey)}
-          title="Remove from Portfolio"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', flexShrink: 0 }}
-        >
-          <Star size={16} style={{ color: '#f59e0b', fill: '#f59e0b' }} />
-        </button>
-      </div>
-
-      {!card.connected ? (
-        <div style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: C.faint, display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Link2Off size={14} /> No QuickBooks reports connection for this client.
-        </div>
-      ) : !f.hasFigures ? (
-        <div style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: C.faint }}>
-          No cached figures yet — use Refresh all, or open the dashboard to pull from QuickBooks
-          (reconnect them if the pull fails).
-        </div>
-      ) : (
-        <>
-          {/* Verdict */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {shownFlags.length === 0 ? (
-              <span style={chip('good')}><CheckCircle2 size={11} /> Nothing flagged</span>
-            ) : shownFlags.map((fl) => (
-              <span key={fl.text} style={chip(fl.level)}>
-                <AlertTriangle size={11} /> {fl.text}
-              </span>
-            ))}
-            {moreFlags > 0 && (
-              <span title={card.flags.slice(4).map((x) => x.text).join('\n')} style={{ ...chip('amber'), cursor: 'help' }}>
-                +{moreFlags} more
-              </span>
-            )}
-          </div>
-
-          {/* Three columns */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '14px 18px' }}>
-            <Column title="Performance">
-              <Metric
-                label="Revenue YTD"
-                value={money(f.revenue, cur)}
-                delta={f.revenueChange != null ? { text: fmtPct(f.revenueChange), good: f.revenueChange >= 0 } : null}
-                note={f.revenuePrior != null ? `${moneyCompact(f.revenuePrior, cur)} last year` : 'no prior year'}
-              />
-              <Metric
-                label="Net profit YTD"
-                value={money(f.profit, cur)}
-                negative={f.profit < 0}
-                delta={f.profitDelta != null ? { text: fmtMoneyDelta(f.profitDelta, cur), good: f.profitDelta >= 0 } : null}
-                note={f.profitPrior != null ? `${moneyCompact(f.profitPrior, cur)} last year` : null}
-              />
-              <Metric
-                label="Net margin"
-                value={f.margin != null ? `${(f.margin * 100).toFixed(1)}%` : '—'}
-                negative={f.margin < 0}
-                delta={f.marginDeltaPts != null ? { text: `${f.marginDeltaPts >= 0 ? '+' : '−'}${Math.abs(f.marginDeltaPts).toFixed(1)} pts`, good: f.marginDeltaPts >= 0 } : null}
-                note={f.marginPrior != null ? `${(f.marginPrior * 100).toFixed(1)}% last year` : null}
-              />
-            </Column>
-
-            <Column title="Cash & liquidity">
-              <Metric
-                label="Cash"
-                value={money(f.cash, cur)}
-                negative={f.cash < 0}
-                delta={f.cashDeltaM1 != null ? { text: `${fmtMoneyDelta(f.cashDeltaM1, cur)} on last month`, good: f.cashDeltaM1 >= 0 } : null}
-                note={f.cashDeltaM12 != null ? `${fmtMoneyDelta(f.cashDeltaM12, cur)} on a year ago` : null}
-              />
-              <Metric
-                label="Cash cover"
-                value={f.cashCover != null ? `${f.cashCover.toFixed(1)} months` : '—'}
-                tone={f.cashCover == null ? null : f.cashCover < 1 ? 'bad' : f.cashCover < 2 ? 'warn' : null}
-                note={f.avgCosts != null ? `costs avg ${moneyCompact(f.avgCosts, cur)}/mo` : null}
-              />
-              <Metric
-                label="Working capital"
-                value={money(f.workingCapital, cur)}
-                negative={f.workingCapital < 0}
-                note={f.workingCapitalM12 != null ? `${moneyCompact(f.workingCapitalM12, cur)} a year ago` : 'current assets less current liabilities'}
-              />
-            </Column>
-
-            <Column title="Debtors & creditors">
-              <Metric
-                label="Debtors"
-                value={money(f.debtors, cur)}
-                note={f.debtorDays != null ? `${Math.round(f.debtorDays)} debtor days` : null}
-              />
-              {f.ar && <AgeingBar aged={f.ar} previous={f.arPrev} currency={cur} />}
-              <Metric
-                label="Creditors"
-                value={money(f.ap?.total ?? null, cur)}
-                note={f.ap ? `${Math.round(f.ap.over90Share * 100)}% over 90 days` : null}
-              />
-            </Column>
-          </div>
-
-          {f.monthly.length > 1 && <TrendChart months={f.monthly} currency={cur} />}
-        </>
-      )}
-
-      {/* Footer */}
-      <div style={{ display: 'flex', alignItems: 'center', marginTop: 'auto', paddingTop: '2px' }}>
-        {card.connected && (
-          <button
-            onClick={openDash}
-            style={{
-              marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px',
-              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-              fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: C.accent,
-            }}
-          >
-            Open dashboard <ArrowRight size={13} />
+              display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px',
+              border: 'none', borderLeft: i ? '1px solid #e5e7eb' : 'none', cursor: 'pointer',
+              backgroundColor: active ? '#f0f9ff' : '#fff', color: active ? '#0369a1' : '#475569',
+              fontFamily: OUTFIT, fontSize: '14px', fontWeight: active ? 700 : 500,
+            }}>
+            <Icon size={14} /> {o.label}
           </button>
-        )}
-      </div>
+        );
+      })}
     </div>
   );
-}
-
-/* ─── Pieces ───────────────────────────────────────────────────── */
-
-function chip(level) {
-  const s = level === 'red' ? [C.redFg, C.redBg, C.redBd]
-    : level === 'amber' ? [C.ambFg, C.ambBg, C.ambBd]
-    : ['#166534', '#f0fdf4', '#bbf7d0'];
-  return {
-    display: 'inline-flex', alignItems: 'center', gap: '4px',
-    fontFamily: OUTFIT, fontSize: '12.5px', fontWeight: 600, padding: '3px 9px', borderRadius: '7px',
-    color: s[0], backgroundColor: s[1], border: `1px solid ${s[2]}`,
-  };
-}
-
-function FreshnessChip({ f }) {
-  const label = f.oldestPulledAt === f.newestPulledAt || !f.newestPulledAt
-    ? timeAgo(f.oldestPulledAt) : `${timeAgo(f.newestPulledAt)} – ${timeAgo(f.oldestPulledAt)}`;
-  return (
-    <span
-      title={`Oldest figure on this card pulled ${new Date(f.oldestPulledAt).toLocaleString('en-GB')}`}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0, marginTop: '2px',
-        fontFamily: OUTFIT, fontSize: '12px', fontWeight: f.stale ? 600 : 400,
-        color: f.stale ? C.ambFg : '#cbd5e1',
-        ...(f.stale ? { backgroundColor: C.ambBg, border: `1px solid ${C.ambBd}`, borderRadius: '7px', padding: '2px 7px' } : {}),
-      }}
-    >
-      <Clock size={11} /> {label}
-    </span>
-  );
-}
-
-function Column({ title, children }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
-      <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.faint, borderBottom: `1px solid ${C.rule}`, paddingBottom: '4px' }}>
-        {title}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function Metric({ label, value, delta, note, negative, tone }) {
-  const colour = negative || tone === 'bad' ? C.redFg : tone === 'warn' ? C.ambFg : C.ink;
-  return (
-    <div style={{ minWidth: 0 }}>
-      <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: C.faint }}>{label}</div>
-      <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: colour, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {value}
-      </div>
-      {delta && (
-        <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', fontWeight: 600, color: delta.good ? C.good : C.bad }}>
-          {delta.good ? '▲' : '▼'} {delta.text}
-        </div>
-      )}
-      {note && <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: C.faint }}>{note}</div>}
-    </div>
-  );
-}
-
-const AGE_BANDS = [
-  ['current', 'Current', '#bae6fd'],
-  ['b1_30', '1–30', '#7dd3fc'],
-  ['b31_60', '31–60', '#fcd34d'],
-  ['b61_90', '61–90', '#fb923c'],
-  ['b91_plus', '90+', '#dc2626'],
-];
-
-function AgeingBar({ aged, previous, currency }) {
-  const tip = AGE_BANDS.map(([k, l]) => `${l}: ${money(aged.buckets[k], currency)}`).join('\n');
-  const prevShare = previous ? previous.over90Share : null;
-  const prevDate = previous?.asAt ? new Date(previous.asAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null;
-  return (
-    <div title={tip}>
-      <div style={{ display: 'flex', height: '8px', borderRadius: '4px', overflow: 'hidden', backgroundColor: C.rule, gap: '1px' }}>
-        {AGE_BANDS.map(([k, , colour]) => {
-          const w = aged.total > 0 ? Math.max(0, aged.buckets[k]) / aged.total : 0;
-          return w > 0 ? <div key={k} style={{ width: `${w * 100}%`, backgroundColor: colour }} /> : null;
-        })}
-      </div>
-      <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: aged.over90Share >= 0.25 ? C.redFg : C.faint, marginTop: '3px', fontWeight: aged.over90Share >= 0.25 ? 600 : 400 }}>
-        {Math.round(aged.over90Share * 100)}% over 90 days
-        {prevShare != null && (
-          <span style={{ fontWeight: 400, color: C.faint }}> · {Math.round(prevShare * 100)}% on {prevDate}</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// 12 months: revenue as bars, net profit as a line, one shared scale with a
-// zero line so losses sit visibly below it. A part-month is drawn hatched.
-function TrendChart({ months, currency }) {
-  const W = 560, H = 96, P = { l: 4, r: 4, t: 8, b: 16 };
-  const vals = months.flatMap((m) => [m.income, m.net]);
-  const max = Math.max(...vals, 0);
-  const min = Math.min(...vals, 0);
-  const span = max - min || 1;
-  const iw = (W - P.l - P.r) / months.length;
-  const y = (v) => P.t + (1 - (v - min) / span) * (H - P.t - P.b);
-  const cx = (i) => P.l + iw * i + iw / 2;
-  const line = months.map((m, i) => `${cx(i).toFixed(1)},${y(m.net).toFixed(1)}`).join(' ');
-
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', fontFamily: OUTFIT, fontSize: '12px', color: C.faint, marginBottom: '4px' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ width: '9px', height: '9px', backgroundColor: '#bae6fd', borderRadius: '2px' }} /> Revenue
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ width: '12px', height: '2px', backgroundColor: '#0f766e' }} /> Net profit
-        </span>
-        <span style={{ marginLeft: 'auto' }}>last 12 months · peak {moneyCompact(max, currency)}</span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }} role="img"
-        aria-label="Monthly revenue and net profit, last 12 months">
-        <defs>
-          <pattern id="pf-hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <rect width="4" height="4" fill="#e0f2fe" /><line x1="0" y1="0" x2="0" y2="4" stroke="#bae6fd" strokeWidth="2" />
-          </pattern>
-        </defs>
-        {months.map((m, i) => {
-          const top = y(Math.max(m.income, 0));
-          const h = Math.abs(y(m.income) - y(0));
-          return (
-            <rect key={i} x={P.l + iw * i + iw * 0.15} y={m.income >= 0 ? top : y(0)} width={iw * 0.7} height={Math.max(h, 0.5)}
-              fill={m.partial ? 'url(#pf-hatch)' : '#bae6fd'} rx="1.5">
-              <title>{`${m.label}${m.partial ? ' (to date)' : ''}: revenue ${money(m.income, currency)}, net profit ${money(m.net, currency)}`}</title>
-            </rect>
-          );
-        })}
-        <line x1={P.l} x2={W - P.r} y1={y(0)} y2={y(0)} stroke="#cbd5e1" strokeWidth="1" />
-        <polyline points={line} fill="none" stroke="#0f766e" strokeWidth="2" strokeLinejoin="round" />
-        {months.map((m, i) => (
-          <circle key={i} cx={cx(i)} cy={y(m.net)} r="2.2" fill={m.net < 0 ? C.bad : '#0f766e'} />
-        ))}
-      </svg>
-      <div style={{ display: 'flex', fontFamily: OUTFIT, fontSize: '11px', color: '#cbd5e1' }}>
-        {months.map((m, i) => (
-          <span key={i} style={{ flex: 1, textAlign: 'center' }}>{i % 2 === 0 || months.length <= 6 ? shortMonth(m.label).split(' ')[0] : ''}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Formatting ───────────────────────────────────────────────── */
-
-function fmtPct(v) {
-  const p = Math.abs(v * 100);
-  return `${p >= 10 ? Math.round(p) : p.toFixed(1)}% vs last year`;
-}
-
-function fmtMoneyDelta(v, currency) {
-  return `${v >= 0 ? '+' : '−'}${moneyCompact(Math.abs(v), currency)}`;
 }

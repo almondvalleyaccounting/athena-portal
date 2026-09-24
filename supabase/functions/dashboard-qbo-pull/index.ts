@@ -1193,6 +1193,39 @@ Deno.serve(async (req) => {
           () => cashFlowMonthly(sb, realmId, ps, pe));
       }
 
+      // Portfolio tile — the lightest set that answers "how did this period go,
+      // against the same period last year, and where does it leave them". Every
+      // key is one the Client Dashboard already writes (pl_cmp#, pnl_chart#,
+      // bs_asat#, ar_asat#, ap_asat#), so a period pulled on either page serves
+      // the other. The chart is 24 months: the last 12 are the bars, the first
+      // 12 are last year's line.
+      if (win.portfolio) {
+        const pf = win.portfolio;
+        const ps = String(pf.plStart), pe = String(pf.plEnd);
+        const cs = String(pf.cmpStart), ce = String(pf.cmpEnd);
+        const hs = String(pf.chartStart), he = String(pf.chartEnd);
+        const d = String(pf.asAt || pe);
+        await windowMetric(`pl_cmp#${ps}_${pe}`, ps, pe, "pf_pl",
+          () => plReport(sb, realmId, ps, pe, false, true));
+        await windowMetric(`pl_cmp#${cs}_${ce}`, cs, ce, "pf_pl_prior",
+          () => plReport(sb, realmId, cs, ce, false, true));
+        await windowMetric(`pnl_chart#${hs}_${he}`, hs, he, "pf_chart",
+          () => plReport(sb, realmId, hs, he, true));
+        await windowMetric(`bs_asat#${d}`, null, d, "pf_bs",
+          () => balanceSheetAsAt(sb, realmId, d, true));
+        await windowMetric(`ar_asat#${d}`, null, d, "pf_ar",
+          () => agedAsAt(sb, realmId, "AgedReceivables", d));
+        await windowMetric(`ap_asat#${d}`, null, d, "pf_ap",
+          () => agedAsAt(sb, realmId, "AgedPayables", d));
+        // Debtor ageing a month earlier, so "90+ is rising" compares two dated
+        // positions rather than whatever snapshot happened to be lying about.
+        if (pf.arPrevDate) {
+          const dp = String(pf.arPrevDate);
+          await windowMetric(`ar_asat#${dp}`, null, dp, "pf_ar_prev",
+            () => agedAsAt(sb, realmId, "AgedReceivables", dp));
+        }
+      }
+
       if (win.asat) {
         const d = String(win.asat.date);
         await windowMetric(`bs_asat#${d}`, null, d, "bs_asat",
