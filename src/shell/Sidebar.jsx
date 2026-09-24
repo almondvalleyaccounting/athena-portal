@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import InDevelopmentTag from './InDevelopmentTag';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Receipt,
@@ -369,6 +370,7 @@ export default function Sidebar() {
                 clickable={clickable}
                 planned={mod.status === 'planned'}
                 beta={mod.status === 'beta'}
+                inDevelopment={mod.inDevelopment}
                 hasChevron={hasChildren && !collapsed}
                 chevronOpen={isExpanded}
                 onClick={() => {
@@ -426,6 +428,7 @@ export default function Sidebar() {
                       }}>
                         {child.label}
                       </span>
+                      {child.inDevelopment && <span style={{ marginLeft: 'auto', paddingLeft: 6 }}><InDevelopmentTag short /></span>}
                     </button>
                   ))}
                 </div>
@@ -725,7 +728,7 @@ function ContextMenu({ menu, onClose }) {
 }
 
 /* ─── Nav item sub-component ───────────────────────────────────── */
-function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, beta, hasChevron, chevronOpen, onClick, onContextMenu }) {
+function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, beta, inDevelopment, hasChevron, chevronOpen, onClick, onContextMenu }) {
   const [hovered, setHovered] = useState(false);
 
   const baseStyle = {
@@ -768,7 +771,7 @@ function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, bet
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={baseStyle}
-      title={collapsed ? label : planned ? 'Coming soon' : undefined}
+      title={collapsed ? (inDevelopment ? `${label} — in development` : label) : planned ? 'Coming soon' : undefined}
     >
       {active && <div style={accentStyle} />}
       <Icon
@@ -788,6 +791,7 @@ function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, bet
           >
             {label}
           </span>
+          {inDevelopment && <span style={{ marginLeft: hasChevron ? 6 : 'auto' }}><InDevelopmentTag short /></span>}
           {hasChevron && (
             <ChevronDown
               size={14}

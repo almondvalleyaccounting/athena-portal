@@ -1,3 +1,7 @@
+// `inDevelopment: true` marks a module or sub-item Bobby has said is only
+// partly built (2026-09-24). It stays in the nav, tagged, so the team can tell
+// what to rely on. Everything unmarked is trusted. Re-ask as modules graduate —
+// don't flip a flag on your own judgement.
 export const MODULES = [
   {
     id: 'fee-engine',
@@ -13,7 +17,7 @@ export const MODULES = [
       { id: 'fe-clients', label: 'Clients', route: '/manage/clients' },
       { id: 'fe-quotes', label: 'Quotes', route: '/manage/quotes' },
       { id: 'fe-groups', label: 'Groups', route: '/manage/groups' },
-      { id: 'fe-billing', label: 'Billing Review', route: '/manage/billing' },
+      { id: 'fe-billing', label: 'Billing Review', route: '/manage/billing', inDevelopment: true },
       { id: 'fe-pricing', label: 'Pricing', route: '/manage/quotes/pricing', permissions: ['can_edit_fee_schedule'] },
     ],
   },
@@ -44,9 +48,9 @@ export const MODULES = [
     status: 'live',
     group: 'billing',
     children: [
-      { id: 'onboarding-list', label: 'List', route: '/onboarding/list' },
-      { id: 'onboarding-board', label: 'Board', route: '/onboarding/board' },
-      { id: 'onboarding-crosscheck', label: 'Cross-check', route: '/onboarding/cross-check' },
+      { id: 'onboarding-list', label: 'List', route: '/onboarding/list', inDevelopment: true },
+      { id: 'onboarding-board', label: 'Board', route: '/onboarding/board', inDevelopment: true },
+      { id: 'onboarding-crosscheck', label: 'Cross-check', route: '/onboarding/cross-check', inDevelopment: true },
       { id: 'onboarding-ch-codes', label: 'CH Codes', route: '/onboarding/ch-codes' },
     ],
   },
@@ -79,6 +83,7 @@ export const MODULES = [
         id: 'wp-task',
         label: 'Planner',
         route: '/planner',
+        inDevelopment: true,
         matchPaths: ['/planner', '/planner/waiting', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed'],
       },
       {
@@ -91,6 +96,7 @@ export const MODULES = [
         id: 'wp-bk-health',
         label: 'Bookkeeping Health',
         route: '/planner/bookkeeping-health',
+        inDevelopment: true,
         // The old /planner/drift path still resolves, so keep it matchable.
         matchPaths: ['/planner/bookkeeping-health', '/planner/drift'],
       },
@@ -98,22 +104,25 @@ export const MODULES = [
         id: 'wp-capacity',
         label: 'Capacity',
         route: '/planner/allocations',
+        inDevelopment: true,
         matchPaths: ['/planner/allocations', '/planner/estimates', '/planner/capacity'],
       },
       {
         id: 'wp-job-review',
         label: 'Job Review',
         route: '/planner/review',
+        inDevelopment: true,
         matchPaths: ['/planner/review', '/planner/review/team'],
       },
       {
         id: 'wp-timesheets',
         label: 'Timesheets',
         route: '/timesheets',
+        inDevelopment: true,
         permissions: ['can_view_timesheets'],
         matchPaths: ['/timesheets'],
       },
-      { id: 'wp-triage', label: 'Triage Board', route: '/triage' },
+      { id: 'wp-triage', label: 'Triage Board', route: '/triage', inDevelopment: true },
     ],
   },
   {
@@ -131,6 +140,7 @@ export const MODULES = [
       {
         id: 'cw-hmrc',
         label: 'HMRC',
+        inDevelopment: true,
         // Lands on the consolidated all-taxes view, which is the front door now.
         route: '/hmrc/all',
         // The tabs that were folded into PAYE — statement, payments, balance —
@@ -153,6 +163,7 @@ export const MODULES = [
     // account, a client's ledger and their payroll on one page.
     permissions: ['can_view_reports'],
     status: 'live',
+    inDevelopment: true,
     group: 'data',
     children: [
       { id: 'wp-paye', label: 'PAYE', route: '/working-papers/paye', matchPaths: ['/working-papers', '/working-papers/paye'] },
@@ -168,6 +179,7 @@ export const MODULES = [
     icon: 'trending-up',
     permissions: ['can_manage_portal'],
     status: 'live',
+    inDevelopment: true,
     group: 'data',
   },
   {
@@ -186,6 +198,7 @@ export const MODULES = [
     icon: 'user-check',
     permissions: ['can_view_recruitment'],
     status: 'live',
+    inDevelopment: true,
     group: 'team',
     children: [
       { id: 'rec-vacancies', label: 'Vacancies', route: '/recruitment', matchPaths: ['/recruitment'] },
@@ -220,3 +233,26 @@ export const MODULES = [
     group: 'meta',
   },
 ];
+
+// Pages that belong to an in-development area, for the "In development" tag
+// in the top bar. Explicit because several areas are reached through routes
+// the nav doesn't list (onboarding detail pages, planner tabs, planner setup)
+// and because trusted pages share prefixes with unfinished ones — /planner/ready
+// and /planner/tasks are trusted, the rest of /planner is not.
+const DEV_EXACT = ['/planner', '/onboarding'];
+const DEV_PREFIXES = [
+  '/manage/billing',
+  '/onboarding/list', '/onboarding/board', '/onboarding/cross-check', '/onboarding/new', '/onboarding/updates',
+  '/planner/waiting', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed',
+  '/planner/bookkeeping-health', '/planner/drift',
+  '/planner/allocations', '/planner/estimates', '/planner/capacity',
+  '/planner/review', '/planner/setup',
+  '/timesheets', '/triage', '/hmrc', '/working-papers', '/planning', '/recruitment',
+];
+const ONBOARDING_DETAIL = /^\/onboarding\/[0-9a-f-]{36}(\/|$)/i;
+
+export function isInDevelopmentPath(pathname) {
+  if (DEV_EXACT.includes(pathname)) return true;
+  if (ONBOARDING_DETAIL.test(pathname)) return true;
+  return DEV_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
+}

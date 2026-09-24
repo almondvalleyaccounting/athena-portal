@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { MODULES } from '../modules.config';
+import { MODULES, isInDevelopmentPath } from '../modules.config';
+import InDevelopmentTag from './InDevelopmentTag';
 import { useAuth } from './AppShell';
 import QuickSearch from './QuickSearch';
 import ActivityBell from './ActivityBell';
@@ -153,6 +154,9 @@ export default function TopBar() {
             </React.Fragment>
           );
         })}
+        {isInDevelopmentPath(location.pathname) && (
+          <span style={{ marginLeft: 6 }}><InDevelopmentTag /></span>
+        )}
       </div>
 
       {/* ── Center: Quick Search ── */}
