@@ -9,6 +9,7 @@ import { fetchAdhocServices } from './billingServices';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import ServicePicker from './ServicePicker';
 import DataTable, { tablePageSize, sortRows } from '../../components/DataTable';
+import RowMenu from '../../components/RowMenu';
 import SearchInput from '../../components/SearchInput';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 
@@ -753,7 +754,7 @@ export default function BillingPage() {
         ),
     },
     {
-      key: 'actions', label: '', width: compact ? 110 : 176, align: 'right', sortable: false,
+      key: 'actions', label: '', width: compact ? 160 : 190, align: 'right', sortable: false,
       // data-no-row-click: a click on a disabled button (Approve on a £0.00
       // bill) mustn't fall through and open the row either.
       render: (item) => (
@@ -1586,27 +1587,43 @@ function CalcInput({ value, onChange, dp = 2, placeholder, style }) {
   );
 }
 
+// One main action per row (UI audit, Sprint 4): the bill's obvious next step
+// is the button; everything else is in the ⋮ menu, Delete last and in red.
+// Same handlers as before — only where they sit has changed.
 function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   const s = item.status;
-  const sz = compact?12:14;
-  const b = {background:'none',border:'none',cursor:'pointer',padding:compact?2:4,borderRadius:4,display:'inline-flex',alignItems:'center',transition:'all 0.12s'};
+  const sz = compact ? 12 : 14;
   // A £0.00 bill is a placeholder — raise it by all means, but it can't be
-  // approved until someone puts a figure on it.
+  // approved until someone puts a figure on it, so its next step is the amount.
   const priced = isPriced(item);
+  const pad = compact ? '2px 8px' : '5px 12px';
+  const fs = compact ? 12 : 13;
+  const solid = { display: 'inline-flex', alignItems: 'center', gap: 4, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', padding: pad, fontSize: fs, fontWeight: 600, fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap' };
+  const quiet = { ...solid, background: '#fff', color: '#334155', border: '1px solid #cbd5e1' };
+  const note = { fontSize: compact ? 11.5 : 12.5, color: '#64748b', whiteSpace: 'nowrap' };
+
+  let main = null;
+  if (s === 'draft' && priced) {
+    main = <button onClick={() => onStatus(item, 'approved')} style={solid} title="Approve"><Check size={sz} strokeWidth={3} />Approve</button>;
+  } else if (s === 'draft') {
+    main = <button onClick={onEdit} style={quiet} title="Needs an amount first — a £0.00 bill can't be approved or pushed">Add amount</button>;
+  } else if (s === 'not_required') {
+    main = <button onClick={() => onStatus(item, 'draft')} style={quiet} title="Back to draft"><RotateCcw size={sz} />Back to draft</button>;
+  } else if (s === 'approved') {
+    main = <span style={note} title="Approved bills go to QuickBooks with Push to QB at the top of the page">Goes with next push</span>;
+  }
+
+  const items = [
+    // "Add amount" already opens the editor for an unpriced draft.
+    s !== 'pushed' && !(s === 'draft' && !priced) && { label: 'Edit', icon: Pencil, onClick: onEdit },
+    (s === 'draft' || s === 'approved') && { label: 'Mark not required', icon: Ban, onClick: () => onStatus(item, 'not_required') },
+    { label: 'Delete…', icon: Trash2, onClick: onDelete, danger: true },
+  ].filter(Boolean);
+
   return (
-    <div style={{display:'flex',gap:compact?3:5,alignItems:'center',flexShrink:0}}>
-      {/* Approve — solid green so it's unmissable (was a faint grey tick). */}
-      {s==='draft' && (
-        <button onClick={()=>priced && onStatus(item,'approved')} disabled={!priced}
-          title={priced?'Approve':"Needs an amount first — a £0.00 bill can't be approved or pushed"}
-          style={{display:'inline-flex',alignItems:'center',gap:4,background:priced?'#059669':'#e2e8f0',color:priced?'#fff':'#94a3b8',border:'none',borderRadius:6,cursor:priced?'pointer':'not-allowed',padding:compact?'2px 7px':'5px 10px',fontSize:compact?11:13,fontWeight:600,fontFamily:"'Outfit', sans-serif"}}>
-          <Check size={sz} strokeWidth={3}/>{!compact && 'Approve'}
-        </button>
-      )}
-      {(s==='draft'||s==='approved') && <button onClick={()=>onStatus(item,'not_required')} style={b} title="Mark not required"><Ban size={sz} style={{color:'#cbd5e1'}}/></button>}
-      {s==='not_required' && <button onClick={()=>onStatus(item,'draft')} style={b} title="Back to draft"><RotateCcw size={sz} style={{color:'#94a3b8'}}/></button>}
-      {s!=='pushed' && <button onClick={onEdit} style={b} title="Edit"><Pencil size={sz} style={{color:'#cbd5e1'}}/></button>}
-      <button onClick={onDelete} style={b} title="Delete"><Trash2 size={sz} style={{color:'#cbd5e1'}}/></button>
+    <div style={{ display: 'flex', gap: compact ? 4 : 6, alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0 }}>
+      {main}
+      <RowMenu items={items} compact={compact} />
     </div>
   );
 }
