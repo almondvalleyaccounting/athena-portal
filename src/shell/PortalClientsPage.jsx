@@ -82,10 +82,10 @@ export default function PortalClientsPage() {
 
   const thStyle = {
     textAlign: 'left', padding: '10px 14px', fontWeight: 600, color: '#0f172a',
-    borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap', fontSize: 13,
+    borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap', fontSize: 14,
   };
   const tdStyle = {
-    padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 13, color: '#334155',
+    padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 14, color: '#334155',
   };
 
   if (!canManage) {
@@ -94,7 +94,7 @@ export default function PortalClientsPage() {
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
           Portal Clients
         </h1>
-        <p style={{ fontSize: 14, color: '#64748b' }}>
+        <p style={{ fontSize: 14.5, color: '#64748b' }}>
           You need the Portal admin permission to manage client portal access.
         </p>
       </div>
@@ -108,7 +108,7 @@ export default function PortalClientsPage() {
           Portal Clients
         </h1>
       </div>
-      <p style={{ fontSize: 14, color: '#64748b', marginBottom: 24 }}>
+      <p style={{ fontSize: 14.5, color: '#64748b', marginBottom: 24 }}>
         Everyone invited to the client portal, across all clients. Invite new emails from the
         client's onboarding screen; revoke here to fully end access.
       </p>
@@ -116,7 +116,7 @@ export default function PortalClientsPage() {
       {msg && (
         <div
           style={{
-            fontSize: 13, marginBottom: 16, padding: '10px 14px', borderRadius: 10,
+            fontSize: 14, marginBottom: 16, padding: '10px 14px', borderRadius: 10,
             background: msg.tone === 'success' ? '#f0fdf4' : '#fef2f2',
             border: `1px solid ${msg.tone === 'success' ? '#bbf7d0' : '#fecaca'}`,
             color: msg.tone === 'success' ? '#16a34a' : '#ef4444',
@@ -128,11 +128,11 @@ export default function PortalClientsPage() {
 
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
         {loading ? (
-          <p style={{ fontSize: 14, color: '#94a3b8', padding: '20px 24px' }}>Loading portal clients...</p>
+          <p style={{ fontSize: 14.5, color: '#94a3b8', padding: '20px 24px' }}>Loading portal clients...</p>
         ) : rows.length === 0 ? (
           <div style={{ padding: '28px 24px', textAlign: 'center' }}>
             <Globe size={20} color="#cbd5e1" style={{ marginBottom: 8 }} />
-            <p style={{ fontSize: 14, color: '#94a3b8' }}>
+            <p style={{ fontSize: 14.5, color: '#94a3b8' }}>
               No portal invites yet. Invite clients from their onboarding screen.
             </p>
           </div>
@@ -157,7 +157,7 @@ export default function PortalClientsPage() {
                       {row.claimed_at ? (
                         <span
                           style={{
-                            fontSize: 12, fontWeight: 600, color: '#16a34a',
+                            fontSize: 13, fontWeight: 600, color: '#16a34a',
                             background: '#f0fdf4', border: '1px solid #bbf7d0',
                             borderRadius: 8, padding: '2px 10px', whiteSpace: 'nowrap',
                           }}
@@ -167,7 +167,7 @@ export default function PortalClientsPage() {
                       ) : (
                         <span
                           style={{
-                            fontSize: 12, fontWeight: 600, color: '#64748b',
+                            fontSize: 13, fontWeight: 600, color: '#64748b',
                             background: '#f8fafc', border: '1px solid #e5e7eb',
                             borderRadius: 8, padding: '2px 10px', whiteSpace: 'nowrap',
                           }}
@@ -176,7 +176,7 @@ export default function PortalClientsPage() {
                         </span>
                       )}
                       {row.claimed_at && row.has_membership === false && (
-                        <span style={{ fontSize: 11, color: '#d97706', marginLeft: 8 }}>
+                        <span style={{ fontSize: 12, color: '#d97706', marginLeft: 8 }}>
                           no data access
                         </span>
                       )}
@@ -189,7 +189,7 @@ export default function PortalClientsPage() {
                         onClick={() => revoke(row)}
                         disabled={busy === row.invite_id}
                         style={{
-                          fontFamily: font, fontSize: 12, fontWeight: 600, color: '#ef4444',
+                          fontFamily: font, fontSize: 13, fontWeight: 600, color: '#ef4444',
                           background: 'none', border: '1px solid #fecaca', borderRadius: 8,
                           padding: '5px 12px', cursor: busy === row.invite_id ? 'wait' : 'pointer',
                         }}
@@ -213,12 +213,12 @@ export default function PortalClientsPage() {
             borderRadius: 12, padding: '16px 20px',
           }}
         >
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: '#475569', marginBottom: 10 }}>
             Recently revoked
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {revoked.map((row) => (
-              <div key={row.invite_id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#334155' }}>
+              <div key={row.invite_id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#334155' }}>
                 <span style={{ flex: 1 }}>
                   <span style={{ fontWeight: 500, color: '#0f172a' }}>{row.email}</span>
                   <span style={{ color: '#94a3b8' }}> — {row.entity_name}</span>
@@ -228,7 +228,7 @@ export default function PortalClientsPage() {
                   disabled={busy === row.invite_id}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
-                    fontFamily: font, fontSize: 12, fontWeight: 600, color: '#0e7fe0',
+                    fontFamily: font, fontSize: 13, fontWeight: 600, color: '#0e7fe0',
                     background: 'none', border: '1px solid #bae6fd', borderRadius: 8,
                     padding: '5px 12px', cursor: busy === row.invite_id ? 'wait' : 'pointer',
                   }}

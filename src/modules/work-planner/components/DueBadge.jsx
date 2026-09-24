@@ -7,7 +7,7 @@ export default function DueBadge({ date }) {
   return (
     <span
       style={{
-        fontSize: 9,
+        fontSize: 10,
         fontWeight: 500,
         padding: '1px 4px',
         borderRadius: 3,

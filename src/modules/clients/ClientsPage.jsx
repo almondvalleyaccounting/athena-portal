@@ -123,7 +123,7 @@ export default function ClientsPage() {
     const label = s === 'nlac' ? 'Former client' : s.replace('_', ' ');
     return (
       <span style={{
-        fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
+        fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
         background: st.bg, color: st.color, fontFamily: "'Outfit', sans-serif",
         textTransform: 'capitalize',
       }}>
@@ -138,20 +138,20 @@ export default function ClientsPage() {
     if (monthly === 0 && annual === 0) {
       return (
         <div style={{ textAlign: 'right', minWidth: 100 }}>
-          <div style={{ fontSize: 11, color: '#cbd5e1' }}>—</div>
+          <div style={{ fontSize: 12, color: '#cbd5e1' }}>—</div>
         </div>
       );
     }
     return (
       <div style={{ textAlign: 'right', minWidth: 110 }} title="Approved fees, ex VAT">
         {monthly > 0 && (
-          <div style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>
-            {fmtGbp(monthly)}<span style={{ fontSize: 10, fontWeight: 500, color: '#94a3b8' }}> /mo</span>
+          <div style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>
+            {fmtGbp(monthly)}<span style={{ fontSize: 11, fontWeight: 500, color: '#94a3b8' }}> /mo</span>
           </div>
         )}
         {annual > 0 && (
-          <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#0f766e' }}>
-            {fmtGbp(annual)}<span style={{ fontSize: 10, color: '#94a3b8' }}> /yr</span>
+          <div style={{ fontSize: 12, fontFamily: 'monospace', color: '#0f766e' }}>
+            {fmtGbp(annual)}<span style={{ fontSize: 11, color: '#94a3b8' }}> /yr</span>
           </div>
         )}
       </div>
@@ -162,7 +162,7 @@ export default function ClientsPage() {
     if (source === 'athena') {
       return (
         <span style={{
-          fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
+          fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
           background: '#dbeafe', color: '#0e7fe0', fontFamily: "'Outfit', sans-serif",
         }}>
           Athena
@@ -188,10 +188,10 @@ export default function ClientsPage() {
       {typeIcon(e.type)}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{e.name}</span>
+          <span style={{ fontSize: 14.5, fontWeight: 500, color: '#0f172a' }}>{e.name}</span>
           {sourceBadge(e.source)}
         </div>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+        <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
           {e.type?.replace('_', ' ')}
           {e.company_number && ` · ${e.company_number}`}
           {e.manager && ` · ${e.manager}`}
@@ -210,7 +210,7 @@ export default function ClientsPage() {
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 4 }}>
             Clients
           </h1>
-          <p style={{ fontSize: 13, color: '#64748b' }}>
+          <p style={{ fontSize: 14, color: '#64748b' }}>
             {clientRows.length} clients · {prospectRows.length} prospects{athenaCount > 0 && ` · ${athenaCount} created in Athena`}
           </p>
         </div>
@@ -220,7 +220,7 @@ export default function ClientsPage() {
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
               backgroundColor: '#fff', color: '#0f172a',
-              fontSize: 13, fontWeight: 500, border: '1px solid #e5e7eb', borderRadius: 10,
+              fontSize: 14, fontWeight: 500, border: '1px solid #e5e7eb', borderRadius: 10,
               padding: '10px 14px', cursor: 'pointer',
               fontFamily: "'Outfit', sans-serif",
             }}
@@ -232,7 +232,7 @@ export default function ClientsPage() {
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
               backgroundColor: '#0f172a', color: '#fff',
-              fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 10,
+              fontSize: 14, fontWeight: 600, border: 'none', borderRadius: 10,
               padding: '10px 18px', cursor: 'pointer', transition: 'all 0.2s ease',
               fontFamily: "'Outfit', sans-serif",
             }}
@@ -250,7 +250,7 @@ export default function ClientsPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name, company number, or manager..."
           style={{
-            width: '100%', padding: '11px 16px 11px 40px', fontSize: 14,
+            width: '100%', padding: '11px 16px 11px 40px', fontSize: 14.5,
             border: '1px solid #e5e7eb', borderRadius: 10, outline: 'none',
             fontFamily: "'Outfit', sans-serif", transition: 'border-color 0.2s ease',
             boxSizing: 'border-box',
@@ -263,13 +263,13 @@ export default function ClientsPage() {
       <AlphabetFilter items={entities} selected={letter} onChange={setLetter} />
 
       {loading ? (
-        <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: 40 }}>Loading clients...</p>
+        <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 14, padding: 40 }}>Loading clients...</p>
       ) : visibleCount === 0 ? (
         <div style={{ textAlign: 'center', padding: 60, background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb' }}>
-          <p style={{ fontSize: 15, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>
+          <p style={{ fontSize: 15.5, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>
             {entities.length === 0 ? 'No clients yet' : 'No matches'}
           </p>
-          <p style={{ fontSize: 13, color: '#cbd5e1' }}>
+          <p style={{ fontSize: 14, color: '#cbd5e1' }}>
             {entities.length === 0 ? 'Add a client or import from BrightManager.' : 'Try a different search term.'}
           </p>
         </div>
@@ -289,7 +289,7 @@ export default function ClientsPage() {
         <button
           onClick={() => setShowArchived((v) => !v)}
           style={{
-            marginTop: 20, fontSize: 12, color: '#64748b', background: 'none',
+            marginTop: 20, fontSize: 13, color: '#64748b', background: 'none',
             border: 'none', cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
             textDecoration: 'underline',
           }}
@@ -314,10 +314,10 @@ function Section({ title, count, rows, renderRow }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-        <h2 style={{ fontSize: 13, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+        <h2 style={{ fontSize: 14, fontWeight: 600, color: '#64748b', margin: 0 }}>
           {title}
         </h2>
-        <span style={{ fontSize: 12, color: '#94a3b8' }}>{count}</span>
+        <span style={{ fontSize: 13, color: '#94a3b8' }}>{count}</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {rows.map(renderRow)}

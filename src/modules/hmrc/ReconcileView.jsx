@@ -72,7 +72,7 @@ export default function ReconcileView() {
     <div>
       <ErrorBar message={error} />
 
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 860, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 860, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
         Every place the HMRC agent list and Athena disagree. Until these are cleared the debt totals are
         incomplete — a scheme Athena has never heard of contributes nothing to the totals on the Chasing tab.
         Tick a row off once you have fixed the underlying record; the next scrape only re-raises what is
@@ -93,7 +93,7 @@ export default function ReconcileView() {
           />
         ))}
         <div style={{ flex: 1 }} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b', fontFamily: font, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#64748b', fontFamily: font, cursor: 'pointer' }}>
           <input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} />
           Show cleared ({rows.length - open.length})
         </label>
@@ -101,7 +101,7 @@ export default function ReconcileView() {
 
       {kind !== 'all' && EXCEPTION_KINDS[kind] && (
         <div style={{
-          fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e5e7eb',
+          fontSize: 13, color: '#475569', background: '#f8fafc', border: '1px solid #e5e7eb',
           borderRadius: 8, padding: '8px 12px', marginBottom: 12, lineHeight: 1.5,
         }}>
           {EXCEPTION_KINDS[kind].hint}
@@ -109,13 +109,13 @@ export default function ReconcileView() {
       )}
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading exceptions…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading exceptions…</div>
       ) : (
         <div style={card}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
                   <th style={th}>Kind</th>
                   <th style={th}>Scheme</th>
                   <th style={th}>Athena</th>
@@ -142,9 +142,9 @@ export default function ReconcileView() {
                       </td>
                       <td style={td}>
                         <div style={{ fontWeight: 500, color: '#0f172a' }}>{r.hmrc_name}</div>
-                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{r.paye_ref}</div>
+                        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>{r.paye_ref}</div>
                       </td>
-                      <td style={{ ...td, fontSize: 12 }}>
+                      <td style={{ ...td, fontSize: 13 }}>
                         {r.entity_id ? (
                           <a href={`/clients/${r.entity_id}`} target="_blank" rel="noreferrer"
                              style={{ color: '#0e7fe0', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -155,23 +155,23 @@ export default function ReconcileView() {
                           // not a link — the actual fix is keying the PAYE ref
                           // onto the client record.
                           <div>
-                            <div style={{ fontSize: 10, color: '#94a3b8' }}>Possible match</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>Possible match</div>
                             <a href={`/clients/${r.suggested_entity_id}`} target="_blank" rel="noreferrer"
                                style={{ color: '#7c3aed', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               {r.suggested_entity_name} <ExternalLink size={11} />
                             </a>
                             {r.suggested_entity_status && r.suggested_entity_status !== 'active' && (
-                              <span style={{ fontSize: 10, color: '#c2410c', marginLeft: 5 }}>({r.suggested_entity_status})</span>
+                              <span style={{ fontSize: 11, color: '#c2410c', marginLeft: 5 }}>({r.suggested_entity_status})</span>
                             )}
                           </div>
                         ) : (
                           <span style={{ color: '#cbd5e1' }}>No match</span>
                         )}
                       </td>
-                      <td style={{ ...td, fontSize: 12, color: '#64748b', maxWidth: 160 }}>
+                      <td style={{ ...td, fontSize: 13, color: '#64748b', maxWidth: 160 }}>
                         {r.hmrc_value || '—'}
                         {r.athena_value && r.athena_value !== r.hmrc_value && (
-                          <div style={{ fontSize: 11, color: '#c2410c', marginTop: 2 }}>Athena: {r.athena_value}</div>
+                          <div style={{ fontSize: 12, color: '#c2410c', marginTop: 2 }}>Athena: {r.athena_value}</div>
                         )}
                       </td>
                       {/* One note field, seeded by the scraper with why it
@@ -181,14 +181,14 @@ export default function ReconcileView() {
                       <td style={{ ...td, minWidth: 220 }}>
                         <BlurInput value={r.note} onChange={(v) => saveNote(r, v)} placeholder="What did you find?" />
                       </td>
-                      <td style={{ ...td, fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{shortDate(r.raised_at)}</td>
+                      <td style={{ ...td, fontSize: 13, color: '#94a3b8', whiteSpace: 'nowrap' }}>{shortDate(r.raised_at)}</td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
                         <button
                           onClick={() => toggleResolved(r)}
                           title={r.resolved ? 'Put this back on the outstanding list' : 'Mark as dealt with'}
                           style={{
                             display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px',
-                            fontSize: 12, fontFamily: font, borderRadius: 7, cursor: 'pointer',
+                            fontSize: 13, fontFamily: font, borderRadius: 7, cursor: 'pointer',
                             color: r.resolved ? '#64748b' : '#059669',
                             background: r.resolved ? '#f8fafc' : '#f0fdf4',
                             border: `1px solid ${r.resolved ? '#e5e7eb' : '#05966933'}`,

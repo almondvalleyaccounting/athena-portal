@@ -39,7 +39,7 @@ export default function ChangePasswordScreen({ onComplete, onLogout }) {
     border: '1px solid #e5e7eb',
     borderRadius: '10px',
     padding: '12px 16px',
-    fontSize: '14px',
+    fontSize: '14.5px',
     fontFamily: "'Outfit', sans-serif",
     outline: 'none',
     boxSizing: 'border-box',
@@ -84,7 +84,7 @@ export default function ChangePasswordScreen({ onComplete, onLogout }) {
         <p
           style={{
             fontFamily: "'Outfit', sans-serif",
-            fontSize: '14px',
+            fontSize: '14.5px',
             color: '#64748b',
             textAlign: 'center',
             marginBottom: '24px',
@@ -126,7 +126,7 @@ export default function ChangePasswordScreen({ onComplete, onLogout }) {
             color: '#ffffff',
             fontFamily: "'Outfit', sans-serif",
             fontWeight: 600,
-            fontSize: '14px',
+            fontSize: '14.5px',
             borderRadius: '10px',
             padding: '14px',
             border: 'none',
@@ -141,7 +141,7 @@ export default function ChangePasswordScreen({ onComplete, onLogout }) {
           <p
             style={{
               color: '#ef4444',
-              fontSize: '13px',
+              fontSize: '14px',
               fontFamily: "'Outfit', sans-serif",
               marginTop: '12px',
               textAlign: 'center',
@@ -159,7 +159,7 @@ export default function ChangePasswordScreen({ onComplete, onLogout }) {
               background: 'none',
               border: 'none',
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '13px',
+              fontSize: '14px',
               color: '#94a3b8',
               cursor: 'pointer',
               padding: 0,

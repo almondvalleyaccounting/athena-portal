@@ -30,18 +30,18 @@ const ACCENT = '#0e7fe0';
 */
 
 const btnPrimary = (enabled) => ({
-  padding: '8px 16px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '8px 16px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: enabled ? ACCENT : '#e5e7eb', color: enabled ? '#fff' : '#94a3b8',
   border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
 });
 const btnGhost = {
-  padding: '7px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: '#fff', color: '#334155', border: '1px solid #e5e7eb',
   borderRadius: 8, cursor: 'pointer',
 };
-const lbl = { fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, display: 'block' };
+const lbl = { fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4, display: 'block' };
 const input = {
-  padding: '6px 10px', fontSize: 12.5, fontFamily: font, border: '1px solid #e5e7eb',
+  padding: '6px 10px', fontSize: 13.5, fontFamily: font, border: '1px solid #e5e7eb',
   borderRadius: 8, background: '#fff', color: '#0f172a',
 };
 
@@ -55,7 +55,7 @@ function Note({ tone, children }) {
   return (
     <div style={{
       padding: '8px 11px', background: t.bg, border: `1px solid ${t.border}`,
-      borderRadius: 8, fontSize: 12, color: t.color, marginBottom: 8,
+      borderRadius: 8, fontSize: 13, color: t.color, marginBottom: 8,
     }}>
       {children}
     </div>
@@ -132,11 +132,11 @@ export default function ManualPaymentModal({ batch, entities, rows, emailOf, pro
     }}>
       <div style={{ ...card, width: 560, maxWidth: '94vw', maxHeight: '88vh', overflowY: 'auto', padding: 20, fontFamily: font }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Add a client payment by hand</div>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Add a client payment by hand</div>
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer', fontFamily: font }}>×</button>
         </div>
-        <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 14px' }}>
+        <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 14px' }}>
           For clients whose figures aren't in the TaxCalc export — typically someone who joined
           us after their return was filed elsewhere. Take the amount from their HMRC statement
           or the return they've given us.
@@ -210,10 +210,10 @@ export default function ManualPaymentModal({ batch, entities, rows, emailOf, pro
 
         {ent && (
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px', marginBottom: 14, background: '#f8fafc' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
               What the reminder will use
             </div>
-            <div style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.7 }}>
+            <div style={{ fontSize: 13.5, color: '#334155', lineHeight: 1.7 }}>
               <div>
                 Email:{' '}
                 {email
@@ -231,7 +231,7 @@ export default function ManualPaymentModal({ batch, entities, rows, emailOf, pro
           </div>
         )}
 
-        <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 12 }}>
+        <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 12 }}>
           Adding the payment doesn't email anyone. The row lands as <strong>Unpaid</strong> in the
           batch — they still need to opt in, and every send goes through the review queue.
         </div>

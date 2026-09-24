@@ -139,13 +139,13 @@ export default function GroupReallocateModal({
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>
               Group
             </div>
             <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 500, color: '#0f172a', margin: '2px 0 0' }}>
               {group?.label_person_name || 'Ungrouped'}
             </h2>
-            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
               {memberEntities.length} member{memberEntities.length === 1 ? '' : 's'} ·{' '}
               {groupPeople.length} {groupPeople.length === 1 ? 'person' : 'people'}
             </div>
@@ -174,7 +174,7 @@ export default function GroupReallocateModal({
                     <tr key={p.person_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={tdStyle}>
                         <div style={{ fontWeight: 500, color: '#0f172a' }}>{p.person_name}</div>
-                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
                           {p.person?.source?.replace(/_/g, ' ') || ''}
                           {p.person?.dob_year ? ` · ${p.person.dob_month ?? '?'}/${p.person.dob_year}` : ''}
                         </div>
@@ -182,9 +182,9 @@ export default function GroupReallocateModal({
                       <td style={tdStyle}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           {p.roles.map((r, i) => (
-                            <div key={i} style={{ fontSize: 12 }}>
+                            <div key={i} style={{ fontSize: 13 }}>
                               <span style={{
-                                fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3,
+                                fontSize: 11, fontWeight: 600, padding: '1px 5px', borderRadius: 3,
                                 background: '#e2e8f0', color: '#475569', marginRight: 6,
                               }}>{r.role.replace(/_/g, ' ')}</span>
                               {entitiesById.get(r.entity_id)?.name || r.entity_id.slice(0, 8)}
@@ -240,7 +240,7 @@ export default function GroupReallocateModal({
                           <td key={s.id} style={{ ...tdStyle, textAlign: 'center' }}>
                             <span style={{
                               display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                              background: colour, color: '#fff', fontSize: 11, fontWeight: 600,
+                              background: colour, color: '#fff', fontSize: 12, fontWeight: 600,
                               fontStyle: eff.source === 'bm' ? 'italic' : 'normal',
                               outline: eff.source === 'draft' ? '2px solid #f59e0b' : 'none',
                             }}>
@@ -259,7 +259,7 @@ export default function GroupReallocateModal({
           {/* Bulk reallocate */}
           <Section title="Bulk reallocate this group">
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-              <label style={{ fontSize: 13, color: '#475569' }}>Assign all selected services to:</label>
+              <label style={{ fontSize: 14, color: '#475569' }}>Assign all selected services to:</label>
               <select
                 value={bulkTargetId}
                 onChange={(e) => setBulkTargetId(e.target.value)}
@@ -273,7 +273,7 @@ export default function GroupReallocateModal({
             </div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
               {ALLOCATION_SERVICES.map((s) => (
-                <label key={s.id} style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <label key={s.id} style={{ fontSize: 13, color: '#475569', display: 'flex', alignItems: 'center', gap: 4 }}>
                   <input
                     type="checkbox"
                     checked={bulkServices.has(s.id)}
@@ -289,7 +289,7 @@ export default function GroupReallocateModal({
                 </label>
               ))}
             </div>
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
               {bulkTargetId
                 ? <>Will create <strong>{affectedCells.length}</strong> reallocation proposal{affectedCells.length === 1 ? '' : 's'}{' '}
                    (skips n/a cells and cells already assigned to {staffMap[bulkTargetId]?.name}).</>
@@ -346,7 +346,7 @@ function MergePicker({ from, people, onCancel, onConfirm, busy }) {
         <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 500, margin: '0 0 6px', color: '#0f172a' }}>
           Merge person
         </h3>
-        <p style={{ fontSize: 13, color: '#475569', margin: '0 0 14px' }}>
+        <p style={{ fontSize: 14, color: '#475569', margin: '0 0 14px' }}>
           Move all of <strong>{from.person_name}</strong>'s links onto another person record, then delete this one. Used to fix duplicates (e.g. sole-trader Graeme + CH-derived Graeme).
         </p>
         <input
@@ -356,7 +356,7 @@ function MergePicker({ from, people, onCancel, onConfirm, busy }) {
           placeholder="Search people…"
           onChange={(e) => { setQuery(e.target.value); setTarget(null); }}
           style={{
-            width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font,
+            width: '100%', padding: '8px 10px', fontSize: 14, fontFamily: font,
             border: '1px solid #cbd5e1', borderRadius: 6, marginBottom: 10,
           }}
         />
@@ -373,11 +373,11 @@ function MergePicker({ from, people, onCancel, onConfirm, busy }) {
                   display: 'block', width: '100%', textAlign: 'left',
                   padding: '8px 10px', border: 'none', background: '#fff',
                   borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
-                  fontFamily: font, fontSize: 13,
+                  fontFamily: font, fontSize: 14,
                 }}
               >
                 <div style={{ color: '#0f172a' }}>{p.name}</div>
-                <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>
                   {p.source?.replace(/_/g, ' ')}{p.dob_year ? ` · ${p.dob_month ?? '?'}/${p.dob_year}` : ''}
                 </div>
               </button>
@@ -387,7 +387,7 @@ function MergePicker({ from, people, onCancel, onConfirm, busy }) {
         {target && (
           <div style={{
             background: '#fef3c7', border: '1px solid #fde68a',
-            borderRadius: 6, padding: '10px 12px', fontSize: 13, color: '#92400e',
+            borderRadius: 6, padding: '10px 12px', fontSize: 14, color: '#92400e',
           }}>
             Merge <strong>{from.person_name}</strong> → <strong>{target.name}</strong>?
             This is permanent.
@@ -412,8 +412,7 @@ function Section({ title, children }) {
   return (
     <div>
       <div style={{
-        fontSize: 11, fontWeight: 600, color: '#64748b',
-        textTransform: 'uppercase', letterSpacing: 0.5,
+        fontSize: 12, fontWeight: 600, color: '#64748b',
         marginBottom: 10,
       }}>{title}</div>
       {children}
@@ -422,25 +421,24 @@ function Section({ title, children }) {
 }
 
 function Empty({ children }) {
-  return <div style={{ fontSize: 13, color: '#94a3b8', fontStyle: 'italic' }}>{children}</div>;
+  return <div style={{ fontSize: 14, color: '#94a3b8', fontStyle: 'italic' }}>{children}</div>;
 }
 
-const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 13 };
+const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 14 };
 const thStyle = {
-  textAlign: 'left', padding: '8px 10px', fontSize: 11,
+  textAlign: 'left', padding: '8px 10px', fontSize: 12,
   fontWeight: 600, color: '#64748b',
-  textTransform: 'uppercase', letterSpacing: 0.5,
   borderBottom: '1px solid #e5e7eb',
 };
 const tdStyle = { padding: '8px 10px', verticalAlign: 'top' };
 const selectStyle = {
-  padding: '6px 10px', fontSize: 13, fontFamily: font,
+  padding: '6px 10px', fontSize: 14, fontFamily: font,
   border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff',
 };
 
 function smallBtn(variant) {
   const base = {
-    padding: '6px 14px', fontSize: 12, fontWeight: 500,
+    padding: '6px 14px', fontSize: 13, fontWeight: 500,
     fontFamily: font, borderRadius: 6, cursor: 'pointer',
   };
   if (variant === 'primary') return { ...base, background: '#0f172a', color: '#fff', border: '1px solid #0f172a' };

@@ -704,7 +704,7 @@ export default function BillingPage() {
       ))}
       <div style={{display:'flex',alignItems:'center',gap:12,marginTop:2}}>
         <button onClick={addLine} style={{...btnOutline,gap:5,flexShrink:0,whiteSpace:'nowrap'}}><Plus size={14}/> Add line</button>
-        <span style={{fontSize:11,color:'#94a3b8'}}>
+        <span style={{fontSize:12,color:'#94a3b8'}}>
           Qty × Rate = Amount — fill in any two and the third works itself out. Sums work too: type <code style={calcHint}>100*10</code> then Tab.
           {' '}Not sure of the figure yet? Put <b>0</b> in Amount — it saves as a £0.00 placeholder and can&apos;t be approved until it&apos;s priced.
         </span>
@@ -722,9 +722,9 @@ export default function BillingPage() {
         {editingId && commentsOf(editingId).length > 0 && (
           <div style={{marginBottom:8,display:'flex',flexDirection:'column',gap:6}}>
             {commentsOf(editingId).map((c)=>(
-              <div key={c.id} style={{fontSize:12,color:'#475569',background:'#f8fafc',borderRadius:8,padding:'7px 10px',whiteSpace:'pre-line'}}>
+              <div key={c.id} style={{fontSize:13,color:'#475569',background:'#f8fafc',borderRadius:8,padding:'7px 10px',whiteSpace:'pre-line'}}>
                 <span style={{fontWeight:600,color:'#0f172a'}}>{staffMap[c.author_id]?.name||'Unknown'}</span>
-                <span style={{color:'#94a3b8',fontSize:11}}> · {commentDate(c.created_at)}</span>
+                <span style={{color:'#94a3b8',fontSize:12}}> · {commentDate(c.created_at)}</span>
                 <div>{c.body}</div>
               </div>
             ))}
@@ -737,14 +737,14 @@ export default function BillingPage() {
           placeholder="e.g. rebuilt 14 months of bookkeeping after the old bookkeeper left — agreed with the client on the call"
           style={{...inputStyle,resize:'vertical',minHeight:44,lineHeight:1.5}}
         />
-        <p style={{fontSize:11,color:'#94a3b8',marginTop:4}}>
+        <p style={{fontSize:12,color:'#94a3b8',marginTop:4}}>
           Internal only — stays in Athena. It isn&apos;t sent to QuickBooks and the client never sees it. Use the line <b>Description</b> above for anything that should appear on the invoice.
         </p>
       </div>
 
       {/* Totals + actions */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:16,borderTop:'1px solid #f1f5f9',paddingTop:12}}>
-        <div style={{fontSize:13,color:'#64748b'}}>
+        <div style={{fontSize:14,color:'#64748b'}}>
           Total: <b style={{color:'#0f172a'}}>{fmt(formTotals.net)}</b> net · {fmt(formTotals.vat)} VAT · <b style={{color:'#0e7fe0'}}>{fmt(formTotals.gross)}</b> gross
         </div>
         <div style={{display:'flex',gap:6}}>
@@ -761,7 +761,7 @@ export default function BillingPage() {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
         <div>
           <h1 style={{fontFamily:"'Playfair Display', serif",fontSize:26,fontWeight:500,color:'#0f172a',marginBottom:4}}>Billing</h1>
-          <p style={{fontSize:13,color:'#64748b'}}>{counts.pipeline} in pipeline · {counts.all} total</p>
+          <p style={{fontSize:14,color:'#64748b'}}>{counts.pipeline} in pipeline · {counts.all} total</p>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           {approvedItems.length > 0 && (
@@ -788,7 +788,7 @@ export default function BillingPage() {
         if (blanks.length === 0) return null;
         // Setting still on → invoices will keep coming through un-numbered.
         if (customTxn === true) return (
-          <div style={{display:'flex',gap:10,alignItems:'flex-start',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'12px 16px',marginBottom:16,fontSize:13,color:'#92400e',lineHeight:1.5}}>
+          <div style={{display:'flex',gap:10,alignItems:'flex-start',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'12px 16px',marginBottom:16,fontSize:14,color:'#92400e',lineHeight:1.5}}>
             <AlertTriangle size={16} style={{color:'#d97706',flexShrink:0,marginTop:1}}/>
             <div>
               <b>QuickBooks isn&apos;t numbering these invoices.</b> Your QBO company has &ldquo;Custom transaction numbers&rdquo; switched on, so invoices Athena pushes go in without a number. Turn it off in QBO → <i>Account &amp; Settings → Sales → Sales form content → &ldquo;Custom transaction numbers&rdquo;</i>, then use the button here to assign numbers.
@@ -799,7 +799,7 @@ export default function BillingPage() {
         // were created before auto-numbering. QBO only numbers on create,
         // not via the API on update, so they must be saved once in QBO.
         return (
-          <div style={{display:'flex',gap:10,alignItems:'flex-start',background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'12px 16px',marginBottom:16,fontSize:13,color:'#1e40af',lineHeight:1.5}}>
+          <div style={{display:'flex',gap:10,alignItems:'flex-start',background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'12px 16px',marginBottom:16,fontSize:14,color:'#1e40af',lineHeight:1.5}}>
             <AlertTriangle size={16} style={{color:'#0e7fe0',flexShrink:0,marginTop:1}}/>
             <div>{blanks.length} pushed invoice{blanks.length!==1?'s':''} {blanks.length!==1?'have':'has'} no QuickBooks number (created before auto-numbering). Open {blanks.length!==1?'each':'it'} in QuickBooks and click <b>Save</b> to assign the number, then use <b>Refresh from QBO</b> here to pull it in.</div>
           </div>
@@ -820,7 +820,7 @@ export default function BillingPage() {
                 <h2 style={{fontFamily:"'Playfair Display', serif",fontSize:20,fontWeight:500,color:'#0f172a',margin:0}}>
                   {editingId ? 'Edit bill' : 'New bill'}
                 </h2>
-                <p style={{fontSize:12,color:'#94a3b8',margin:'3px 0 0'}}>
+                <p style={{fontSize:13,color:'#94a3b8',margin:'3px 0 0'}}>
                   {editingId
                     ? `${entityMap[items.find((i)=>i.id===editingId)?.entity_id]?.name || 'Client'} — one invoice per bill, one line per thing being charged`
                     : 'One client per bill — it becomes one QuickBooks invoice with a line per service'}
@@ -839,19 +839,19 @@ export default function BillingPage() {
       <div style={{display:'flex',gap:2,marginBottom:16,borderBottom:'1px solid #e5e7eb'}}>
         {[{value:'pipeline',label:'Pipeline'},{value:'all',label:'All'},...Object.entries(STATUS_CONFIG).map(([k,v])=>({value:k,label:v.label}))].map((tab)=>(
           <button key={tab.value} onClick={()=>{setFilter(tab.value);setSelected(new Set());}} style={{
-            padding:'8px 14px',fontSize:12,fontWeight:filter===tab.value?600:400,
+            padding:'8px 14px',fontSize:13,fontWeight:filter===tab.value?600:400,
             color:filter===tab.value?'#0f172a':'#94a3b8',background:'none',border:'none',
             borderBottom:filter===tab.value?'2px solid #38bdf8':'2px solid transparent',
             cursor:'pointer',fontFamily:"'Outfit', sans-serif",
           }}>
-            {tab.label} <span style={{fontSize:10,color:filter===tab.value?'#38bdf8':'#cbd5e1',marginLeft:4}}>{counts[tab.value]||0}</span>
+            {tab.label} <span style={{fontSize:11,color:filter===tab.value?'#38bdf8':'#cbd5e1',marginLeft:4}}>{counts[tab.value]||0}</span>
           </button>
         ))}
       </div>
 
       {/* Totals bar */}
       {filtered.length > 0 && (
-        <div style={{display:'flex',gap:20,marginBottom:16,padding:'10px 18px',background:'#f8fafc',borderRadius:10,fontSize:13}}>
+        <div style={{display:'flex',gap:20,marginBottom:16,padding:'10px 18px',background:'#f8fafc',borderRadius:10,fontSize:14}}>
           <span style={{color:'#64748b'}}>{filtered.length} items</span>
           <span><b style={{color:'#0f172a'}}>Net:</b> {fmt(totals.net)}</span>
           <span><b style={{color:'#0f172a'}}>VAT:</b> {fmt(totals.vat)}</span>
@@ -863,15 +863,15 @@ export default function BillingPage() {
       {filtered.length > 0 && (
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,padding:'0 4px'}}>
           <input type="checkbox" checked={selected.size===filtered.length&&filtered.length>0} onChange={toggleSelectAll} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0'}}/>
-          <span style={{fontSize:11,color:'#94a3b8'}}>Select all</span>
+          <span style={{fontSize:12,color:'#94a3b8'}}>Select all</span>
         </div>
       )}
 
       {/* List */}
-      {loading ? <p style={{textAlign:'center',color:'#94a3b8',fontSize:13,padding:40}}>Loading...</p>
+      {loading ? <p style={{textAlign:'center',color:'#94a3b8',fontSize:14,padding:40}}>Loading...</p>
       : filtered.length===0 ? (
         <div style={{textAlign:'center',padding:60,background:'#fff',borderRadius:12,border:'1px solid #e5e7eb'}}>
-          <p style={{fontSize:14,color:'#94a3b8'}}>No billing items in this view.</p>
+          <p style={{fontSize:14.5,color:'#94a3b8'}}>No billing items in this view.</p>
         </div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:compact?3:6}}>
@@ -895,7 +895,7 @@ export default function BillingPage() {
 
             if (compact) return (
               <div key={item.id} id={`billing-item-${item.id}`} style={{background:isHighlighted?'#eff6ff':isSelected?'#eff6ff':'#fff',borderRadius:8,overflow:'hidden',border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
-                <div onClick={()=>toggleExpand(item.id)} title={isOpen?'Hide detail':'Show the line detail'} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',fontSize:12,cursor:'pointer'}}>
+                <div onClick={()=>toggleExpand(item.id)} title={isOpen?'Hide detail':'Show the line detail'} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',fontSize:13,cursor:'pointer'}}>
                   <span onClick={swallow} style={{display:'inline-flex',flexShrink:0}}>
                     <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:13,height:13,cursor:'pointer',accentColor:'#0e7fe0'}}/>
                   </span>
@@ -904,9 +904,9 @@ export default function BillingPage() {
                   <span style={{fontWeight:600,color:'#0f172a',flexShrink:0}}>{fmt(item.gross_amount)}</span>
                   <CommentTag count={cmts.length} compact/>
                   <UnpricedTag item={item} compact/>
-                  <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 6px',borderRadius:4,flexShrink:0}}>{sc.label}</span>
+                  <span style={{fontSize:11,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 6px',borderRadius:4,flexShrink:0}}>{sc.label}</span>
                   <QboInvoiceTag item={item}/>
-                  <span style={{fontSize:10,color:'#94a3b8',flexShrink:0}}>{addedBy} · {dateStr}</span>
+                  <span style={{fontSize:11,color:'#94a3b8',flexShrink:0}}>{addedBy} · {dateStr}</span>
                   <span onClick={swallow} style={{display:'inline-flex',flexShrink:0}}>
                     <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} compact/>
                   </span>
@@ -937,13 +937,13 @@ export default function BillingPage() {
                     {isOpen?<ChevronDown size={14} style={{color:'#94a3b8'}}/>:<ChevronRight size={14} style={{color:'#cbd5e1'}}/>}
                   </span>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:14,fontWeight:500,color:'#0f172a',marginBottom:2}}>{clientName}</div>
-                    <div style={{fontSize:12,color:'#64748b',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:isOpen?'normal':'nowrap'}}>
+                    <div style={{fontSize:14.5,fontWeight:500,color:'#0f172a',marginBottom:2}}>{clientName}</div>
+                    <div style={{fontSize:13,color:'#64748b',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:isOpen?'normal':'nowrap'}}>
                       {descPreview || <span style={{fontStyle:'italic',color:'#cbd5e1'}}>No description</span>}
                       {item.service && <span style={{color:'#0f172a',fontWeight:500}}> · {item.service}</span>}
                     </div>
-                    <div style={{fontSize:11,color:'#94a3b8',marginTop:4,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-                      <span style={{fontSize:10,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 8px',borderRadius:6}}>{sc.label}</span>
+                    <div style={{fontSize:12,color:'#94a3b8',marginTop:4,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                      <span style={{fontSize:11,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 8px',borderRadius:6}}>{sc.label}</span>
                       <QboInvoiceTag item={item}/>
                       <CommentTag count={cmts.length}/>
                       <UnpricedTag item={item}/>
@@ -954,7 +954,7 @@ export default function BillingPage() {
                   </div>
                   <div style={{textAlign:'right',flexShrink:0}}>
                     <div style={{fontSize:16,fontWeight:700,color:'#0f172a'}}>{fmt(item.gross_amount)}</div>
-                    <div style={{fontSize:10,color:'#64748b'}}>{fmt(item.net_amount)} + {fmt(item.vat_amount)} VAT</div>
+                    <div style={{fontSize:11,color:'#64748b'}}>{fmt(item.net_amount)} + {fmt(item.vat_amount)} VAT</div>
                   </div>
                   <span onClick={swallow} style={{display:'inline-flex',flexShrink:0}}>
                     <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange}/>
@@ -987,7 +987,7 @@ export default function BillingPage() {
               <AlertTriangle size={24} style={{color:'#d97706'}}/>
               <h2 style={{fontFamily:"'Playfair Display', serif",fontSize:20,fontWeight:500,color:'#0f172a',margin:0}}>Confirm Push to QuickBooks</h2>
             </div>
-            <p style={{fontSize:13,color:'#64748b',marginBottom:14,lineHeight:1.6}}>
+            <p style={{fontSize:14,color:'#64748b',marginBottom:14,lineHeight:1.6}}>
               You are about to create QuickBooks invoices for <b>{pushTargets.length} approved billing item{pushTargets.length!==1?'s':''}</b> (VAT at the standard 20% rate).
             </p>
 
@@ -995,12 +995,12 @@ export default function BillingPage() {
                 individually in the Send column of the list below. */}
             <div style={{display:'flex',gap:8,marginBottom:16}}>
               <button onClick={()=>setAllSendModes('send')} style={{...modeBtn, ...(sendMode==='send'&&!mixedSend?modeBtnActive:{})}}>
-                <div style={{fontWeight:600,fontSize:13}}>Send all now</div>
-                <div style={{fontSize:11,color:'#64748b'}}>Email every invoice to the client immediately</div>
+                <div style={{fontWeight:600,fontSize:14}}>Send all now</div>
+                <div style={{fontSize:12,color:'#64748b'}}>Email every invoice to the client immediately</div>
               </button>
               <button onClick={()=>setAllSendModes('draft')} style={{...modeBtn, ...(sendMode==='draft'&&!mixedSend?modeBtnActive:{})}}>
-                <div style={{fontWeight:600,fontSize:13}}>All as drafts</div>
-                <div style={{fontSize:11,color:'#64748b'}}>Don&apos;t send — you&apos;ll send these from QBO later</div>
+                <div style={{fontWeight:600,fontSize:14}}>All as drafts</div>
+                <div style={{fontSize:12,color:'#64748b'}}>Don&apos;t send — you&apos;ll send these from QBO later</div>
               </button>
             </div>
 
@@ -1008,10 +1008,10 @@ export default function BillingPage() {
                 being confirmed, and the Send column is where each one is set
                 to email now or hold as a draft. */}
             <div style={{background:'#f8fafc',borderRadius:8,padding:'8px 14px',marginBottom:20,maxHeight:380,overflowY:'auto'}}>
-              {previewLoading && <div style={{fontSize:12,color:'#94a3b8',padding:'4px 0'}}>Checking QuickBooks…</div>}
-              {previewError && <div style={{fontSize:12,color:'#b91c1c',padding:'4px 0'}}>Couldn&apos;t load preview: {previewError}</div>}
+              {previewLoading && <div style={{fontSize:13,color:'#94a3b8',padding:'4px 0'}}>Checking QuickBooks…</div>}
+              {previewError && <div style={{fontSize:13,color:'#b91c1c',padding:'4px 0'}}>Couldn&apos;t load preview: {previewError}</div>}
               {/* Header */}
-              <div style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,padding:'4px 0',fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.04em',borderBottom:'1px solid #e5e7eb'}}>
+              <div style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,padding:'4px 0',fontSize:11,fontWeight:700,color:'#94a3b8',borderBottom:'1px solid #e5e7eb'}}>
                 <span>Client</span><span>Service</span><span>Type</span><span>QuickBooks customer</span><span>Send</span>
                 <span style={{textAlign:'right'}}>Net</span><span style={{textAlign:'right'}}>VAT</span><span style={{textAlign:'right'}}>Gross</span>
               </div>
@@ -1026,7 +1026,7 @@ export default function BillingPage() {
                 const willSend = willSendItem(item.id);
                 const isCurrent = Math.min(contactIndex,pushTargets.length-1)===idx;
                 return (
-                  <div key={item.id} onClick={()=>setContactIndex(idx)} style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,alignItems:'center',padding:'7px 4px',borderBottom:'1px solid #f1f5f9',fontSize:12,cursor:'pointer',background:isCurrent?'#eff6ff':'transparent',borderRadius:6}}>
+                  <div key={item.id} onClick={()=>setContactIndex(idx)} style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,alignItems:'center',padding:'7px 4px',borderBottom:'1px solid #f1f5f9',fontSize:13,cursor:'pointer',background:isCurrent?'#eff6ff':'transparent',borderRadius:6}}>
                     <span style={ellip} title={entityMap[item.entity_id]?.name}>{!ready && <span style={{color:'#b45309'}} title="Needs email + address">⚠ </span>}{entityMap[item.entity_id]?.name||'—'}</span>
                     <span style={{...ellip,color:(p?.unmapped?.length>0)?'#b45309':'#475569'}} title={(p?.unmapped?.length>0)?`No QuickBooks product mapped for: ${p.unmapped.join(', ')} — map it (qbo_service_items) before pushing or this line will error`:(item.description||item.service)}>{(p?.unmapped?.length>0)?<span title="Service not mapped to a QuickBooks product">⚠ </span>:null}{item.service}</span>
                     <span style={{color:'#64748b'}}>One-off</span>
@@ -1067,8 +1067,8 @@ export default function BillingPage() {
                           style={{...sendToggleBtn, borderLeft:'1px solid #e5e7eb', ...(mode==='draft'||!liveEmail?sendToggleDraft:{})}}
                         >Draft</button>
                       </span>
-                      {willSend && <span style={{...ellip,color:'#059669',fontSize:11}} title={liveEmail}>→ {liveEmail}</span>}
-                      {mode==='send' && !liveEmail && <span style={{color:'#b45309',fontSize:11}} title="No email on file — this will be created as a draft">no email</span>}
+                      {willSend && <span style={{...ellip,color:'#059669',fontSize:12}} title={liveEmail}>→ {liveEmail}</span>}
+                      {mode==='send' && !liveEmail && <span style={{color:'#b45309',fontSize:12}} title="No email on file — this will be created as a draft">no email</span>}
                     </span>
                     <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.net_amount)}</span>
                     <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(item.vat_amount)}</span>
@@ -1077,7 +1077,7 @@ export default function BillingPage() {
                 );
               })}
               {/* Totals */}
-              <div style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,padding:'8px 0 0',borderTop:'2px solid #e5e7eb',marginTop:2,fontSize:13,fontWeight:700}}>
+              <div style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,padding:'8px 0 0',borderTop:'2px solid #e5e7eb',marginTop:2,fontSize:14,fontWeight:700}}>
                 <span style={{gridColumn:'1 / 6'}}>Total ({pushTargets.length})</span>
                 <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.net_amount||0),0))}</span>
                 <span style={{textAlign:'right',fontFamily:'monospace',color:'#64748b'}}>{fmt(pushTargets.reduce((s,i)=>s+(i.vat_amount||0),0))}</span>
@@ -1087,15 +1087,15 @@ export default function BillingPage() {
 
             {/* Payment terms */}
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
-              <label style={{fontSize:13,color:'#475569',fontWeight:500}}>Due in</label>
+              <label style={{fontSize:14,color:'#475569',fontWeight:500}}>Due in</label>
               <input
                 type="number"
                 min="0"
                 value={dueDays}
                 onChange={(e)=>setDueDays(e.target.value)}
-                style={{width:70,padding:'6px 8px',fontSize:13,border:'1px solid #e5e7eb',borderRadius:8,fontFamily:"'Outfit', sans-serif"}}
+                style={{width:70,padding:'6px 8px',fontSize:14,border:'1px solid #e5e7eb',borderRadius:8,fontFamily:"'Outfit', sans-serif"}}
               />
-              <span style={{fontSize:13,color:'#64748b'}}>days from invoice date</span>
+              <span style={{fontSize:14,color:'#64748b'}}>days from invoice date</span>
             </div>
 
             {/* Billing contact (mandatory: email + address). Seeded from QBO
@@ -1110,16 +1110,16 @@ export default function BillingPage() {
               return (
                 <div style={{background:'#f8fafc',borderRadius:10,border:'1px solid #e5e7eb',padding:'14px 16px',marginBottom:16}}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-                    <span style={{fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em'}}>Billing contact</span>
+                    <span style={{fontSize:12,fontWeight:700,color:'#64748b'}}>Billing contact</span>
                     {pushTargets.length>1 && (
-                      <div style={{display:'flex',alignItems:'center',gap:8,fontSize:12,color:'#64748b'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'#64748b'}}>
                         <button onClick={()=>setContactIndex((i)=>(i-1+pushTargets.length)%pushTargets.length)} disabled={pushing} style={navBtn} title="Previous">‹</button>
                         <span>{Math.min(contactIndex,pushTargets.length-1)+1} of {pushTargets.length}</span>
                         <button onClick={()=>setContactIndex((i)=>(i+1)%pushTargets.length)} disabled={pushing} style={navBtn} title="Next">›</button>
                       </div>
                     )}
                   </div>
-                  <div style={{fontSize:13,fontWeight:600,color:'#0f172a',marginBottom:8}}>{name} — {curTarget.service}</div>
+                  <div style={{fontSize:14,fontWeight:600,color:'#0f172a',marginBottom:8}}>{name} — {curTarget.service}</div>
 
                   {/* QuickBooks customer — stated plainly, because the email
                       and address below get written onto THIS customer record,
@@ -1134,26 +1134,26 @@ export default function BillingPage() {
                       <div style={{marginBottom:10,padding:'8px 10px',borderRadius:8,background:tone.bg,border:`1px solid ${tone.br}`}}>
                         <label style={{...formLabel,marginBottom:4}}>QuickBooks customer</label>
                         {t.mode==='missing' ? (
-                          <div style={{fontSize:12,color:'#b91c1c'}}>
+                          <div style={{fontSize:13,color:'#b91c1c'}}>
                             This client is mapped to QuickBooks customer <b>#{t.id}</b>, which QuickBooks no longer returns — it may have been deleted or merged. Clear or correct the mapping on the client record before pushing; this bill will error otherwise.
                           </div>
                         ) : mapped ? (
                           <>
-                            <div style={{fontSize:13,fontWeight:600,color:'#0f172a'}}>
+                            <div style={{fontSize:14,fontWeight:600,color:'#0f172a'}}>
                               {t.name}{t.id && <span style={{fontWeight:400,color:'#64748b'}}> · #{t.id}</span>}
                             </div>
-                            <div style={{fontSize:11,color:'#64748b',marginTop:2}}>
+                            <div style={{fontSize:12,color:'#64748b',marginTop:2}}>
                               {t.source==='stored' ? 'Mapped on the client record'
                                 : t.source==='name_match' ? 'Matched on name'
                                 : 'Will be linked to this client on push'}
                               {t.name && t.name.toLowerCase() !== name.toLowerCase() && ' — note the QuickBooks name differs from the Athena name'}
                               {t.inactive && ' · inactive in QuickBooks'}
                             </div>
-                            <div style={{fontSize:11,color:'#64748b',marginTop:4}}>The email and address below are saved onto this customer in QuickBooks, so they apply to its future invoices too.</div>
+                            <div style={{fontSize:12,color:'#64748b',marginTop:4}}>The email and address below are saved onto this customer in QuickBooks, so they apply to its future invoices too.</div>
                           </>
                         ) : (
                           <>
-                            <div style={{fontSize:12,color:'#92400e',marginBottom:8}}>
+                            <div style={{fontSize:13,color:'#92400e',marginBottom:8}}>
                               No QuickBooks customer is mapped to <b>{name}</b>.
                               {cands.length>0 ? ` ${cands.length} ${cands.length===1?'customer looks':'customers look'} similar — link one only if it's genuinely the same client.` : ' Nothing similar found in QuickBooks.'}
                             </div>
@@ -1199,11 +1199,11 @@ export default function BillingPage() {
                                   placeholder="Name as it should appear in QuickBooks"
                                   style={{...inputStyle,marginBottom:0}}
                                 />
-                                <p style={{fontSize:11,color:'#92400e',marginTop:4}}>
+                                <p style={{fontSize:12,color:'#92400e',marginTop:4}}>
                                   This becomes the customer&apos;s name in QuickBooks and shows on every invoice it ever gets. Athena&apos;s name comes from BrightManager&apos;s import, so check the capitalisation and use the trading name if that&apos;s what the client bills under.
                                 </p>
                                 {!custNameOf(curTarget.entity_id).trim() && (
-                                  <p style={{fontSize:11,color:'#b45309',marginTop:2}}>A name is required to create the customer.</p>
+                                  <p style={{fontSize:12,color:'#b45309',marginTop:2}}>A name is required to create the customer.</p>
                                 )}
                               </div>
                             )}
@@ -1236,11 +1236,11 @@ export default function BillingPage() {
                     <input value={cc.postcode} onChange={(e)=>setContact(id,{postcode:e.target.value})} disabled={pushing} placeholder="Postcode" style={{...inputStyle,width:120}}/>
                   </div>
                   {pushTargets.length>1 && (
-                    <button onClick={()=>{ const src=contactOf(id); setContacts((prev)=>{ const next={...prev}; pushTargets.forEach((t)=>{ next[t.id]={...contactOf(t.id),line1:src.line1,line2:src.line2,city:src.city,postcode:src.postcode}; }); return next; }); }} disabled={pushing} style={{marginTop:8,fontSize:12,color:'#0e7fe0',background:'none',border:'none',cursor:'pointer',padding:0,fontFamily:"'Outfit', sans-serif"}}>
+                    <button onClick={()=>{ const src=contactOf(id); setContacts((prev)=>{ const next={...prev}; pushTargets.forEach((t)=>{ next[t.id]={...contactOf(t.id),line1:src.line1,line2:src.line2,city:src.city,postcode:src.postcode}; }); return next; }); }} disabled={pushing} style={{marginTop:8,fontSize:13,color:'#0e7fe0',background:'none',border:'none',cursor:'pointer',padding:0,fontFamily:"'Outfit', sans-serif"}}>
                       Apply this address to all
                     </button>
                   )}
-                  {!isContactReady(id) && <p style={{fontSize:11,color:'#b45309',marginTop:8}}>Needs an email and address (line 1 + postcode) before pushing.</p>}
+                  {!isContactReady(id) && <p style={{fontSize:12,color:'#b45309',marginTop:8}}>Needs an email and address (line 1 + postcode) before pushing.</p>}
                 </div>
               );
             })()}
@@ -1249,14 +1249,14 @@ export default function BillingPage() {
             {pushResults && (
               <div style={{marginBottom:16,padding:'10px 14px',borderRadius:8,background:pushResults.error?'#fef2f2':'#f8fafc',border:`1px solid ${pushResults.error?'#fecaca':'#e5e7eb'}`}}>
                 {pushResults.error ? (
-                  <div style={{fontSize:12,color:'#b91c1c'}}>{pushResults.error}</div>
+                  <div style={{fontSize:13,color:'#b91c1c'}}>{pushResults.error}</div>
                 ) : (
                   <>
-                    <div style={{fontSize:12,fontWeight:600,color:'#0f172a',marginBottom:6}}>
+                    <div style={{fontSize:13,fontWeight:600,color:'#0f172a',marginBottom:6}}>
                       {pushResults.summary.sent} sent · {pushResults.summary.created_unsent} draft{pushResults.summary.errored?` · ${pushResults.summary.errored} failed`:''}
                     </div>
                     {(pushResults.results||[]).filter((r)=>r.status==='error'||r.reason).map((r)=>(
-                      <div key={r.billing_item_id} style={{fontSize:11,color:r.status==='error'?'#b91c1c':'#92400e',padding:'2px 0'}}>
+                      <div key={r.billing_item_id} style={{fontSize:12,color:r.status==='error'?'#b91c1c':'#92400e',padding:'2px 0'}}>
                         <b>{r.entity}:</b> {r.reason || r.status}
                       </div>
                     ))}
@@ -1265,17 +1265,17 @@ export default function BillingPage() {
               </div>
             )}
             {notReadyTargets.length>0 && pushTargets.length>0 && !previewLoading && (
-              <p style={{fontSize:12,color:'#b45309',marginBottom:8}}>
+              <p style={{fontSize:13,color:'#b45309',marginBottom:8}}>
                 {notReadyTargets.length} {notReadyTargets.length===1?'item needs':'items need'} an email + address (line 1 + postcode) before you can push.
               </p>
             )}
             {unmappedTargets.length>0 && !previewLoading && (
-              <p style={{fontSize:12,color:'#b45309',marginBottom:8}}>
+              <p style={{fontSize:13,color:'#b45309',marginBottom:8}}>
                 {unmappedTargets.length===1?'1 client has':`${unmappedTargets.length} clients have`} no QuickBooks customer mapped ({unmappedTargets.map((i)=>entityMap[i.entity_id]?.name||'—').join(', ')}). Pick the customer to link — or confirm a new one — in the billing contact panel above.
               </p>
             )}
             {unpricedTargets.length>0 && (
-              <p style={{fontSize:12,color:'#b45309',marginBottom:8}}>
+              <p style={{fontSize:13,color:'#b45309',marginBottom:8}}>
                 {unpricedTargets.length} {unpricedTargets.length===1?'item has':'items have'} no amount yet (£0.00). Price {unpricedTargets.length===1?'it':'them'} or mark {unpricedTargets.length===1?'it':'them'} not required — a £0.00 invoice can&apos;t go to QuickBooks.
               </p>
             )}
@@ -1300,39 +1300,39 @@ export default function BillingPage() {
         <div onClick={()=>setShowInvoicePicker(false)} style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
           <div onClick={(e)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:'28px',maxWidth:720,width:'100%',maxHeight:'85vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
             <h2 style={{fontFamily:"'Playfair Display', serif",fontSize:20,fontWeight:500,color:'#0f172a',margin:'0 0 4px'}}>Copy from a past invoice</h2>
-            <p style={{fontSize:13,color:'#64748b',marginBottom:16}}>{entityMap[formClient]?.name||'Client'} · last 24 months from QuickBooks</p>
-            {invLoading && <p style={{fontSize:13,color:'#94a3b8',padding:'24px 0',textAlign:'center'}}>Loading invoices from QuickBooks…</p>}
+            <p style={{fontSize:14,color:'#64748b',marginBottom:16}}>{entityMap[formClient]?.name||'Client'} · last 24 months from QuickBooks</p>
+            {invLoading && <p style={{fontSize:14,color:'#94a3b8',padding:'24px 0',textAlign:'center'}}>Loading invoices from QuickBooks…</p>}
             {invError && (
-              <div style={{fontSize:12,color:'#b91c1c',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'10px 12px',marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+              <div style={{fontSize:13,color:'#b91c1c',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'10px 12px',marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
                 <span>{invError}</span>
                 {invRetryable && (
                   <button onClick={openInvoicePicker} style={{...btnOutline,gap:4,flexShrink:0}}><RefreshCw size={13}/> Try again</button>
                 )}
               </div>
             )}
-            {!invLoading && !invError && clientInvoices.length===0 && <p style={{fontSize:13,color:'#94a3b8',padding:'24px 0',textAlign:'center'}}>No invoices in the last 24 months.</p>}
+            {!invLoading && !invError && clientInvoices.length===0 && <p style={{fontSize:14,color:'#94a3b8',padding:'24px 0',textAlign:'center'}}>No invoices in the last 24 months.</p>}
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
               {clientInvoices.map((inv)=>{
                 const open = expandedInv===inv.id;
                 return (
                   <div key={inv.id} style={{border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden'}}>
                     <div onClick={()=>setExpandedInv(open?null:inv.id)} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',cursor:'pointer',background:open?'#f8fafc':'#fff'}}>
-                      <span style={{fontSize:12,color:'#94a3b8',width:14}}>{open?'▾':'▸'}</span>
-                      <span style={{fontSize:13,fontWeight:600,color:'#0f172a',width:96}}>{inv.doc_number?`INV #${inv.doc_number}`:'—'}</span>
-                      <span style={{fontSize:12,color:'#64748b',flex:1}}>{inv.txn_date} · {inv.lines.length} line{inv.lines.length!==1?'s':''}</span>
-                      <span style={{fontSize:13,fontWeight:600,color:'#0f172a'}}>{fmt(inv.total_amt)}</span>
-                      <button onClick={(e)=>{e.stopPropagation();copyInvoiceToForm(inv);}} style={{...btnPrimary,padding:'6px 10px',fontSize:12,gap:4}}><Plus size={13}/> Copy</button>
+                      <span style={{fontSize:13,color:'#94a3b8',width:14}}>{open?'▾':'▸'}</span>
+                      <span style={{fontSize:14,fontWeight:600,color:'#0f172a',width:96}}>{inv.doc_number?`INV #${inv.doc_number}`:'—'}</span>
+                      <span style={{fontSize:13,color:'#64748b',flex:1}}>{inv.txn_date} · {inv.lines.length} line{inv.lines.length!==1?'s':''}</span>
+                      <span style={{fontSize:14,fontWeight:600,color:'#0f172a'}}>{fmt(inv.total_amt)}</span>
+                      <button onClick={(e)=>{e.stopPropagation();copyInvoiceToForm(inv);}} style={{...btnPrimary,padding:'6px 10px',fontSize:13,gap:4}}><Plus size={13}/> Copy</button>
                     </div>
                     {open && (
                       <div style={{borderTop:'1px solid #f1f5f9',padding:'8px 14px',background:'#fafafa'}}>
                         {inv.lines.map((l,i)=>(
-                          <div key={i} style={{display:'flex',gap:10,fontSize:12,padding:'4px 0',borderBottom:i<inv.lines.length-1?'1px solid #f1f5f9':'none'}}>
+                          <div key={i} style={{display:'flex',gap:10,fontSize:13,padding:'4px 0',borderBottom:i<inv.lines.length-1?'1px solid #f1f5f9':'none'}}>
                             <span style={{fontWeight:500,color:'#0f172a',minWidth:150}}>{l.service||'—'}</span>
                             <span style={{color:'#64748b',flex:1,whiteSpace:'pre-line'}}>{l.description||''}</span>
                             <span style={{fontFamily:'monospace',color:'#0f172a'}}>{fmt(l.amount)}</span>
                           </div>
                         ))}
-                        {inv.lines.length===0 && <p style={{fontSize:12,color:'#94a3b8',padding:'4px 0'}}>No service lines on this invoice.</p>}
+                        {inv.lines.length===0 && <p style={{fontSize:13,color:'#94a3b8',padding:'4px 0'}}>No service lines on this invoice.</p>}
                       </div>
                     )}
                   </div>
@@ -1361,9 +1361,9 @@ function QboInvoiceTag({ item }) {
   return (
     <>
       {item.qbo_doc_number
-        ? <span style={{ fontSize: 10, fontWeight: 600, color: '#0e7fe0', background: '#eff6ff', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>INV #{item.qbo_doc_number}</span>
-        : <span title="No invoice number in QuickBooks — likely 'Custom transaction numbers' is on. See the banner above." style={{ fontSize: 10, fontWeight: 600, color: '#b45309', background: '#fffbeb', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>no #</span>}
-      <span style={{ fontSize: 10, fontWeight: 600, color: tone.c, background: tone.b, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>{tone.t}</span>
+        ? <span style={{ fontSize: 11, fontWeight: 600, color: '#0e7fe0', background: '#eff6ff', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>INV #{item.qbo_doc_number}</span>
+        : <span title="No invoice number in QuickBooks — likely 'Custom transaction numbers' is on. See the banner above." style={{ fontSize: 11, fontWeight: 600, color: '#b45309', background: '#fffbeb', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>no #</span>}
+      <span style={{ fontSize: 11, fontWeight: 600, color: tone.c, background: tone.b, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>{tone.t}</span>
     </>
   );
 }
@@ -1373,13 +1373,13 @@ function QboInvoiceTag({ item }) {
 function BillLines({ lines, fmt }) {
   return (
     <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa', padding: '8px 18px 10px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: DETAIL_COLS, gap: 10, padding: '2px 0 4px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #eef2f7' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: DETAIL_COLS, gap: 10, padding: '2px 0 4px', fontSize: 11, fontWeight: 700, color: '#94a3b8', borderBottom: '1px solid #eef2f7' }}>
         <span>Service</span><span>Description</span>
         <span style={{ textAlign: 'right' }}>Qty</span><span style={{ textAlign: 'right' }}>Rate</span>
         <span style={{ textAlign: 'right' }}>Net</span><span style={{ textAlign: 'right' }}>VAT</span><span style={{ textAlign: 'right' }}>Gross</span>
       </div>
       {lines.map((l, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: DETAIL_COLS, gap: 10, padding: '6px 0', fontSize: 12, borderBottom: i < lines.length - 1 ? '1px solid #f1f5f9' : 'none', alignItems: 'baseline' }}>
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: DETAIL_COLS, gap: 10, padding: '6px 0', fontSize: 13, borderBottom: i < lines.length - 1 ? '1px solid #f1f5f9' : 'none', alignItems: 'baseline' }}>
           <span style={{ fontWeight: 500, color: '#0f172a' }}>{l.service || '—'}</span>
           {/* pre-line so multi-line descriptions read as they were typed. */}
           <span style={{ color: '#475569', whiteSpace: 'pre-line' }}>{l.description || <span style={{ fontStyle: 'italic', color: '#cbd5e1' }}>No description</span>}</span>
@@ -1401,7 +1401,7 @@ function CommentTag({ count, compact }) {
   return (
     <span
       title={`${count} internal comment${count!==1?'s':''} — open the tile to read${count!==1?' them':''}`}
-      style={{display:'inline-flex',alignItems:'center',gap:3,fontSize:10,fontWeight:600,color:'#7c3aed',background:'#f5f3ff',padding:'2px 6px',borderRadius:compact?4:6,flexShrink:0}}
+      style={{display:'inline-flex',alignItems:'center',gap:3,fontSize:11,fontWeight:600,color:'#7c3aed',background:'#f5f3ff',padding:'2px 6px',borderRadius:compact?4:6,flexShrink:0}}
     >
       <MessageSquare size={compact?10:11}/> {count}
     </span>
@@ -1415,7 +1415,7 @@ function UnpricedTag({ item, compact }) {
   return (
     <span
       title="No amount on this bill yet — put a figure on it before it can be approved or pushed"
-      style={{fontSize:10,fontWeight:600,color:'#b45309',background:'#fffbeb',padding:compact?'2px 6px':'2px 8px',borderRadius:compact?4:6,flexShrink:0}}
+      style={{fontSize:11,fontWeight:600,color:'#b45309',background:'#fffbeb',padding:compact?'2px 6px':'2px 8px',borderRadius:compact?4:6,flexShrink:0}}
     >Amount TBC</span>
   );
 }
@@ -1425,20 +1425,20 @@ function UnpricedTag({ item, compact }) {
 function BillComments({ comments, staffMap, meId, draft, onDraft, onAdd, onDelete, busy }) {
   return (
     <div style={{ borderTop: '1px solid #f1f5f9', background: '#fbfaff', padding: '10px 18px 12px' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.04em', marginBottom:8 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, fontWeight:700, color:'#94a3b8', marginBottom:8 }}>
         <MessageSquare size={11}/> Internal comments
-        <span style={{ fontWeight:500, textTransform:'none', letterSpacing:0, fontSize:11, color:'#a5a3b8' }}>· stays in Athena, never sent to QuickBooks or the client</span>
+        <span style={{ fontWeight:500, textTransform:'none', letterSpacing:0, fontSize:12, color:'#a5a3b8' }}>· stays in Athena, never sent to QuickBooks or the client</span>
       </div>
       {comments.length === 0 && (
-        <p style={{ fontSize:12, color:'#cbd5e1', fontStyle:'italic', margin:'0 0 8px' }}>Nothing yet — add anything the approver should know about this bill.</p>
+        <p style={{ fontSize:13, color:'#cbd5e1', fontStyle:'italic', margin:'0 0 8px' }}>Nothing yet — add anything the approver should know about this bill.</p>
       )}
       {comments.length > 0 && (
         <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
           {comments.map((c)=>(
             <div key={c.id} style={{ background:'#fff', border:'1px solid #ede9fe', borderRadius:8, padding:'8px 10px' }}>
               <div style={{ display:'flex', alignItems:'baseline', gap:6, marginBottom:2 }}>
-                <span style={{ fontSize:12, fontWeight:600, color:'#0f172a' }}>{staffMap[c.author_id]?.name || 'Unknown'}</span>
-                <span style={{ fontSize:11, color:'#94a3b8' }}>{commentDate(c.created_at)}</span>
+                <span style={{ fontSize:13, fontWeight:600, color:'#0f172a' }}>{staffMap[c.author_id]?.name || 'Unknown'}</span>
+                <span style={{ fontSize:12, color:'#94a3b8' }}>{commentDate(c.created_at)}</span>
                 {/* Only the author can remove their own comment (RLS enforces it too). */}
                 {c.author_id === meId && (
                   <button onClick={()=>onDelete(c)} title="Delete this comment" style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', padding:2, display:'inline-flex' }}>
@@ -1446,7 +1446,7 @@ function BillComments({ comments, staffMap, meId, draft, onDraft, onAdd, onDelet
                   </button>
                 )}
               </div>
-              <div style={{ fontSize:12, color:'#475569', whiteSpace:'pre-line', lineHeight:1.5 }}>{c.body}</div>
+              <div style={{ fontSize:13, color:'#475569', whiteSpace:'pre-line', lineHeight:1.5 }}>{c.body}</div>
             </div>
           ))}
         </div>
@@ -1464,7 +1464,7 @@ function BillComments({ comments, staffMap, meId, draft, onDraft, onAdd, onDelet
           onClick={onAdd}
           disabled={busy || !draft.trim()}
           title="Ctrl/⌘ + Enter"
-          style={{ ...btnPrimary, padding:'8px 12px', fontSize:12, opacity:(busy||!draft.trim())?0.4:1, cursor:(busy||!draft.trim())?'default':'pointer' }}
+          style={{ ...btnPrimary, padding:'8px 12px', fontSize:13, opacity:(busy||!draft.trim())?0.4:1, cursor:(busy||!draft.trim())?'default':'pointer' }}
         >{busy ? 'Saving…' : 'Comment'}</button>
       </div>
     </div>
@@ -1522,7 +1522,7 @@ function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
       {s==='draft' && (
         <button onClick={()=>priced && onStatus(item,'approved')} disabled={!priced}
           title={priced?'Approve':"Needs an amount first — a £0.00 bill can't be approved or pushed"}
-          style={{display:'inline-flex',alignItems:'center',gap:4,background:priced?'#059669':'#e2e8f0',color:priced?'#fff':'#94a3b8',border:'none',borderRadius:6,cursor:priced?'pointer':'not-allowed',padding:compact?'2px 7px':'5px 10px',fontSize:compact?10:12,fontWeight:600,fontFamily:"'Outfit', sans-serif"}}>
+          style={{display:'inline-flex',alignItems:'center',gap:4,background:priced?'#059669':'#e2e8f0',color:priced?'#fff':'#94a3b8',border:'none',borderRadius:6,cursor:priced?'pointer':'not-allowed',padding:compact?'2px 7px':'5px 10px',fontSize:compact?11:13,fontWeight:600,fontFamily:"'Outfit', sans-serif"}}>
           <Check size={sz} strokeWidth={3}/>{!compact && 'Approve'}
         </button>
       )}
@@ -1534,19 +1534,19 @@ function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   );
 }
 
-const btnPrimary ={display:'inline-flex',alignItems:'center',gap:5,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#0f172a',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
-const btnOutline = {display:'inline-flex',alignItems:'center',gap:4,padding:'8px 14px',fontSize:13,fontWeight:600,background:'#fff',color:'#0f172a',border:'1px solid #e5e7eb',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
-const inputStyle = {width:'100%',padding:'8px 12px',fontSize:13,border:'1px solid #e5e7eb',borderRadius:8,outline:'none',fontFamily:"'Outfit', sans-serif",boxSizing:'border-box'};
+const btnPrimary ={display:'inline-flex',alignItems:'center',gap:5,padding:'8px 14px',fontSize:14,fontWeight:600,background:'#0f172a',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
+const btnOutline = {display:'inline-flex',alignItems:'center',gap:4,padding:'8px 14px',fontSize:14,fontWeight:600,background:'#fff',color:'#0f172a',border:'1px solid #e5e7eb',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
+const inputStyle = {width:'100%',padding:'8px 12px',fontSize:14,border:'1px solid #e5e7eb',borderRadius:8,outline:'none',fontFamily:"'Outfit', sans-serif",boxSizing:'border-box'};
 // Narrower gutters for the qty/rate/amount boxes — seven columns on one row.
 const numInput = {...inputStyle,padding:'8px 7px',textAlign:'right'};
 const modeBtn = {flex:1,textAlign:'left',padding:'10px 12px',borderRadius:10,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",color:'#0f172a'};
-const navBtn = {padding:'2px 8px',borderRadius:6,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",fontSize:13,color:'#475569'};
+const navBtn = {padding:'2px 8px',borderRadius:6,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",fontSize:14,color:'#475569'};
 // Client · Service · Type · QuickBooks customer · Send · Net · VAT · Gross.
 // The customer column carries a full QBO customer name, so it needs room —
 // truncating it to "GJ Cummins Plumbing a…" defeats the point of showing it.
 const INVOICE_COLS = '1.3fr 0.9fr 0.5fr 1.5fr 1.9fr 0.8fr 0.7fr 0.85fr';
 // Per-row Send/Draft toggle in the push-confirm list.
-const sendToggleBtn = {padding:'3px 8px',fontSize:11,fontWeight:600,border:'none',background:'#fff',color:'#94a3b8',cursor:'pointer',fontFamily:"'Outfit', sans-serif",lineHeight:1.5};
+const sendToggleBtn = {padding:'3px 8px',fontSize:12,fontWeight:600,border:'none',background:'#fff',color:'#94a3b8',cursor:'pointer',fontFamily:"'Outfit', sans-serif",lineHeight:1.5};
 const sendToggleSend = {background:'#059669',color:'#fff'};
 const sendToggleDraft = {background:'#e2e8f0',color:'#334155'};
 // Wider service column than the rest of the row needs: the product names run
@@ -1717,6 +1717,6 @@ const ellip = { overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' 
 const modeBtnActive = {borderColor:'#059669',background:'#f0fdf4',boxShadow:'0 0 0 1px #059669'};
 // Link-existing / create-new, in the unmapped-customer panel. Sized down from
 // modeBtn — it sits inside the billing-contact card, not across the modal.
-const custModeBtn = {flex:1,textAlign:'center',padding:'6px 8px',fontSize:12,fontWeight:600,borderRadius:8,border:'1px solid #e5e7eb',background:'#fff',color:'#475569',cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
+const custModeBtn = {flex:1,textAlign:'center',padding:'6px 8px',fontSize:13,fontWeight:600,borderRadius:8,border:'1px solid #e5e7eb',background:'#fff',color:'#475569',cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
 const custModeBtnActive = {borderColor:'#0e7fe0',background:'#eff6ff',color:'#0f172a',boxShadow:'0 0 0 1px #0e7fe0'};
-const formLabel = {display:'block',fontSize:11,fontWeight:600,color:'#64748b',textTransform:'uppercase',marginBottom:4,fontFamily:"'Outfit', sans-serif"};
+const formLabel = {display:'block',fontSize:12,fontWeight:600,color:'#64748b',marginBottom:4,fontFamily:"'Outfit', sans-serif"};

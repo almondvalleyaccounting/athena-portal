@@ -132,28 +132,28 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
             Security
           </h1>
-          <p style={{ fontSize: 13, color: '#64748b', maxWidth: 640, marginBottom: 18 }}>
+          <p style={{ fontSize: 14, color: '#64748b', maxWidth: 640, marginBottom: 18 }}>
             Set up two-factor authentication so signing in to Athena requires both your password and a code from your phone's authenticator app.
           </p>
         </>
       )}
 
-      {error && <div style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 8, padding: '8px 12px', marginBottom: 14 }}>{error}</div>}
+      {error && <div style={{ fontSize: 13, color: '#b91c1c', background: '#fee2e2', borderRadius: 8, padding: '8px 12px', marginBottom: 14 }}>{error}</div>}
 
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 18, marginBottom: 18 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', margin: 0, marginBottom: 4 }}>
+        <h3 style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', margin: 0, marginBottom: 4 }}>
           Authenticator app (TOTP)
         </h3>
-        <p style={{ fontSize: 12, color: '#64748b', margin: 0, marginBottom: 14 }}>
+        <p style={{ fontSize: 13, color: '#64748b', margin: 0, marginBottom: 14 }}>
           Use Google Authenticator, Authy, 1Password, or any TOTP-compatible app on your phone.
         </p>
 
         {loading ? (
-          <p style={{ fontSize: 13, color: '#94a3b8' }}>Loading…</p>
+          <p style={{ fontSize: 14, color: '#94a3b8' }}>Loading…</p>
         ) : factors.length === 0 ? (
           <button
             onClick={startEnroll}
-            style={{ padding: '8px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            style={{ padding: '8px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
           >
             Enrol authenticator
           </button>
@@ -161,34 +161,34 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
           <>
             {factors.map((f) => (
               <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid #f1f5f9' }}>
-                <div style={{ fontSize: 13 }}>
+                <div style={{ fontSize: 14 }}>
                   <div style={{ color: '#0f172a', fontWeight: 500 }}>{f.friendly_name || 'Authenticator'}</div>
-                  <div style={{ color: '#64748b', fontSize: 11 }}>
+                  <div style={{ color: '#64748b', fontSize: 12 }}>
                     {f.status === 'verified' ? 'Active' : 'Unverified'} · added {new Date(f.created_at).toLocaleDateString('en-GB')}
                   </div>
                 </div>
                 <button
                   onClick={() => removeFactor(f.id)}
-                  style={{ padding: '6px 10px', background: 'none', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}
+                  style={{ padding: '6px 10px', background: 'none', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}
                 >
                   Remove
                 </button>
               </div>
             ))}
-            <p style={{ fontSize: 12, color: '#64748b', marginTop: 10, marginBottom: 0 }}>
+            <p style={{ fontSize: 13, color: '#64748b', marginTop: 10, marginBottom: 0 }}>
               Session security level: <strong style={{ color: aal.currentLevel === 'aal2' ? '#15803d' : '#92400e' }}>{aal.currentLevel}</strong>
             </p>
             {trusted !== null && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>
-                  <div style={{ color: '#0f172a', fontWeight: 500, fontSize: 13 }}>This device</div>
+                <div style={{ fontSize: 13, color: '#64748b' }}>
+                  <div style={{ color: '#0f172a', fontWeight: 500, fontSize: 14 }}>This device</div>
                   {trusted
                     ? `Stays signed in for ${TRUSTED_DEVICE_DAYS} days, so you enter a code about once a month.`
                     : `Signs out after ${UNTRUSTED_SESSION_DAYS} days, so you enter a code about once a week.`}
                 </div>
                 <button
                   onClick={() => setStaySignedIn(!trusted)}
-                  style={{ flexShrink: 0, padding: '6px 10px', background: 'none', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: font }}
+                  style={{ flexShrink: 0, padding: '6px 10px', background: 'none', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, cursor: 'pointer', fontFamily: font }}
                 >
                   {trusted ? 'Forget this device' : 'Stay signed in here'}
                 </button>
@@ -205,16 +205,16 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
             <h3 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', margin: 0, marginBottom: 8 }}>
               Enrol authenticator
             </h3>
-            <p style={{ fontSize: 12, color: '#64748b', marginTop: 0, marginBottom: 14 }}>
+            <p style={{ fontSize: 13, color: '#64748b', marginTop: 0, marginBottom: 14 }}>
               Scan this QR code with your authenticator app, then enter the 6-digit code it shows.
             </p>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
               <img src={enrolling.qrSrc} alt="Authenticator QR code" width={220} height={220} style={{ display: 'block' }} />
             </div>
-            <details style={{ fontSize: 11, color: '#94a3b8', marginBottom: 14 }}>
+            <details style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>
               <summary style={{ cursor: 'pointer' }}>Can't scan? Enter this code manually.</summary>
               <p style={{ marginTop: 6, marginBottom: 4, color: '#64748b' }}>In your authenticator app choose "enter a setup key" and paste:</p>
-              <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', color: '#0f172a', fontSize: 13, letterSpacing: 1 }}>{enrolling.secret}</div>
+              <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', color: '#0f172a', fontSize: 14, letterSpacing: 1 }}>{enrolling.secret}</div>
               <p style={{ marginTop: 4, color: '#94a3b8' }}>Account: Athena · Type: time-based</p>
             </details>
             <input
@@ -226,13 +226,13 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
               inputMode="numeric"
               style={{ width: '100%', fontSize: 22, fontFamily: 'monospace', textAlign: 'center', letterSpacing: 6, padding: '10px 8px', border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none' }}
             />
-            {enrolling.error && <p style={{ fontSize: 12, color: '#b91c1c', marginTop: 8, marginBottom: 0 }}>{enrolling.error}</p>}
+            {enrolling.error && <p style={{ fontSize: 13, color: '#b91c1c', marginTop: 8, marginBottom: 0 }}>{enrolling.error}</p>}
             <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
-              <button onClick={cancelEnroll} style={{ padding: '8px 14px', background: 'none', color: '#64748b', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={cancelEnroll} style={{ padding: '8px 14px', background: 'none', color: '#64748b', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, cursor: 'pointer' }}>Cancel</button>
               <button
                 onClick={verifyEnroll}
                 disabled={enrolling.verifying || enrolling.code.length < 6}
-                style={{ padding: '8px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: enrolling.verifying || enrolling.code.length < 6 ? 'not-allowed' : 'pointer', opacity: enrolling.verifying || enrolling.code.length < 6 ? 0.6 : 1 }}
+                style={{ padding: '8px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: enrolling.verifying || enrolling.code.length < 6 ? 'not-allowed' : 'pointer', opacity: enrolling.verifying || enrolling.code.length < 6 ? 0.6 : 1 }}
               >
                 {enrolling.verifying ? 'Verifying…' : 'Verify & activate'}
               </button>

@@ -512,7 +512,7 @@ export default function DashboardPage() {
                     <button
                       key={key}
                       onClick={() => setRevenueStatusFilter(revenueStatusFilter === key ? null : key)}
-                      className={`text-[11px] px-2 py-1 rounded-full border transition-all ${
+                      className={`text-[12px] px-2 py-1 rounded-full border transition-all ${
                         isActive
                           ? 'bg-ocean-600 text-white border-ocean-600'
                           : 'bg-white text-gray-400 border-gray-200 hover:border-ocean-300'
@@ -525,7 +525,7 @@ export default function DashboardPage() {
                 {revenueStatusFilter && (
                   <button
                     onClick={() => setRevenueStatusFilter(null)}
-                    className="text-[11px] text-gray-400 hover:text-gray-600 px-1"
+                    className="text-[12px] text-gray-400 hover:text-gray-600 px-1"
                   >
                     Reset
                   </button>
@@ -552,7 +552,7 @@ export default function DashboardPage() {
                 {/* Services section */}
                 {filtered.serviceRows.length > 0 && (
                   <>
-                    <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold pt-2 pb-1">Services</div>
+                    <div className="text-[11px] text-gray-400 font-semibold pt-2 pb-1">Services</div>
                     {filtered.serviceRows.map((row, i) => renderRevenueRow(row, `svc-${i}`))}
                     {renderSubtotalRow('Services Subtotal', filtered.servicesTotalAnnual, filtered.servicesPrevAnnual, filtered.servicesTotalAnnual - filtered.servicesPrevAnnual)}
                   </>
@@ -561,7 +561,7 @@ export default function DashboardPage() {
                 {/* Software section */}
                 {filtered.softwareRows.length > 0 && (
                   <>
-                    <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold pt-3 pb-1">Software</div>
+                    <div className="text-[11px] text-gray-400 font-semibold pt-3 pb-1">Software</div>
                     {filtered.softwareRows.map((row, i) => renderRevenueRow(row, `sw-${i}`))}
                     {renderSubtotalRow('Software Subtotal', filtered.softwareTotalAnnual, filtered.softwarePrevAnnual, filtered.softwareTotalAnnual - filtered.softwarePrevAnnual)}
                   </>

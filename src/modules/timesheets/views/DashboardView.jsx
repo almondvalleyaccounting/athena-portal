@@ -252,12 +252,12 @@ export default function DashboardView() {
           {PERIODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
         </select>
         <input type="date" value={customFrom} onChange={(e) => { setCustomFrom(e.target.value); setPeriod('custom'); }} style={{ ...selectStyle, width: 135 }} />
-        <span style={{ color: '#94a3b8', fontSize: 12 }}>to</span>
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>to</span>
         <input type="date" value={customTo} onChange={(e) => { setCustomTo(e.target.value); setPeriod('custom'); }} style={{ ...selectStyle, width: 135 }} />
         <button onClick={handleExport} style={{ ...navBtn, gap: 5 }}><Download size={13} /> Export</button>
       </div>
 
-      {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading dashboard...</div> : (<>
+      {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading dashboard...</div> : (<>
         {/* Summary cards — click to drill down */}
         <div style={{ display: 'flex', gap: 16, marginBottom: expandedStat ? 12 : 28 }}>
           <StatCard label="Total Time" value={minutesToDisplay(allMinutes)} accent="#0e7fe0" onClick={() => toggleStat('total')} active={expandedStat === 'total'} />
@@ -276,9 +276,9 @@ export default function DashboardView() {
                 {expandedStat === 'services' && 'All Transactions — by Service'}
                 {expandedStat === 'clients' && 'All Transactions — by Client'}
               </h3>
-              <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 10 }}>{statTransactions.length} entries</span>
+              <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 10 }}>{statTransactions.length} entries</span>
               <div style={{ flex: 1 }} />
-              <button onClick={() => setExpandedStat(null)} style={{ ...navBtn, fontSize: 11, padding: '3px 8px', color: '#94a3b8' }}>Close</button>
+              <button onClick={() => setExpandedStat(null)} style={{ ...navBtn, fontSize: 12, padding: '3px 8px', color: '#94a3b8' }}>Close</button>
             </div>
             <TransactionList items={statTransactions} entityMap={entityMap} staffMap={staffMap} />
           </div>
@@ -321,7 +321,7 @@ export default function DashboardView() {
           <div style={{ ...cardStyle, gridColumn: '1 / -1' }}>
             <h3 style={sectionTitle}>Top 20 Clients — Time vs Billing</h3>
             {byClient.length === 0 ? <div style={emptyStyle}>No data</div> : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
                     <th style={thStyle}>Client</th>
@@ -380,7 +380,7 @@ export default function DashboardView() {
               <Lock size={13} style={{ color: '#94a3b8' }} />
               <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Locked Periods</h3>
             </div>
-            <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 14 }}>
+            <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 14 }}>
               Time entries dated inside a locked period can't be added, edited or deleted by anyone.
               {isAdmin ? ' Only portal admins can lock and unlock periods.' : ' Contact a portal admin to lock or unlock a period.'}
             </div>
@@ -388,7 +388,7 @@ export default function DashboardView() {
             {locks.length === 0 ? (
               <div style={{ ...emptyStyle, padding: 12 }}>No locked periods</div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: isAdmin ? 14 : 0 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: isAdmin ? 14 : 0 }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
                     <th style={thStyle}>Period</th>
@@ -411,7 +411,7 @@ export default function DashboardView() {
                       <td style={{ padding: '8px 10px', color: '#94a3b8' }}>{l.locked_at ? new Date(l.locked_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
                       {isAdmin && (
                         <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                          <button onClick={() => handleUnlock(l)} style={{ ...navBtn, fontSize: 11, padding: '3px 9px', color: '#b91c1c', borderColor: '#fecaca' }}>Unlock</button>
+                          <button onClick={() => handleUnlock(l)} style={{ ...navBtn, fontSize: 12, padding: '3px 9px', color: '#b91c1c', borderColor: '#fecaca' }}>Unlock</button>
                         </td>
                       )}
                     </tr>
@@ -425,7 +425,7 @@ export default function DashboardView() {
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={labelStyle}>Lock a period</span>
                   <input type="date" value={lockFrom} onChange={(e) => setLockFrom(e.target.value)} style={{ ...selectStyle, width: 135 }} />
-                  <span style={{ color: '#94a3b8', fontSize: 12 }}>to</span>
+                  <span style={{ color: '#94a3b8', fontSize: 13 }}>to</span>
                   <input type="date" value={lockTo} onChange={(e) => setLockTo(e.target.value)} style={{ ...selectStyle, width: 135 }} />
                   <input
                     type="text" placeholder="Note (optional)" value={lockNote}
@@ -443,7 +443,7 @@ export default function DashboardView() {
                     <Lock size={12} /> {lockSaving ? 'Locking...' : 'Lock'}
                   </button>
                 </div>
-                {lockError && <div style={{ fontSize: 11.5, color: '#b91c1c', marginTop: 8 }}>{lockError}</div>}
+                {lockError && <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 8 }}>{lockError}</div>}
               </div>
             )}
           </div>
@@ -455,16 +455,16 @@ export default function DashboardView() {
 
 /* ─── Transaction drilldown list ── */
 function TransactionList({ items, entityMap, staffMap }) {
-  if (items.length === 0) return <div style={{ padding: '8px 16px', fontSize: 11, color: '#cbd5e1' }}>No transactions</div>;
+  if (items.length === 0) return <div style={{ padding: '8px 16px', fontSize: 12, color: '#cbd5e1' }}>No transactions</div>;
   return (
     <div style={{ background: '#f8fafc', borderRadius: 6, margin: '4px 0 8px', padding: '6px 0', maxHeight: 400, overflowY: 'auto' }}>
       {items.map((t, i) => (
-        <div key={i} style={{ display: 'flex', gap: 8, padding: '4px 12px', fontSize: 11, borderBottom: '1px solid #f1f5f9' }}>
+        <div key={i} style={{ display: 'flex', gap: 8, padding: '4px 12px', fontSize: 12, borderBottom: '1px solid #f1f5f9' }}>
           <span style={{ color: '#0f172a', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title || t.service || '—'}</span>
           <span style={{ color: '#64748b', flexShrink: 0 }}>{t._entity ? (entityMap[t._entity]?.name || '') : ''}</span>
           <span style={{ color: '#94a3b8', flexShrink: 0 }}>{staffMap[t._staff]?.name?.split(' ')[0] || ''}</span>
           <span style={{ fontWeight: 600, color: '#0f172a', flexShrink: 0, width: 50, textAlign: 'right' }}>{minutesToDisplay(t._mins)}</span>
-          <span style={{ color: '#cbd5e1', flexShrink: 0, width: 55, textAlign: 'right', fontSize: 10 }}>{new Date(t.completed_at || t.work_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+          <span style={{ color: '#cbd5e1', flexShrink: 0, width: 55, textAlign: 'right', fontSize: 11 }}>{new Date(t.completed_at || t.work_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
         </div>
       ))}
     </div>
@@ -484,7 +484,7 @@ function StatCard({ label, value, accent, onClick, active }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 500, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</span>
+        <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8' }}>{label}</span>
         {onClick && <ChevronDown size={11} style={{ color: '#cbd5e1', transform: active ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />}
       </div>
       <div style={{ fontSize: 24, fontWeight: 700, color: accent, fontFamily: "'Outfit', sans-serif" }}>{value}</div>
@@ -495,20 +495,20 @@ function StatCard({ label, value, accent, onClick, active }) {
 function BarRow({ label, value, max, colour, labelWidth = 100, onClick, active }) {
   return (
     <div onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: onClick ? 'pointer' : 'default', padding: '4px 0', borderRadius: 4, background: active ? '#f8fafc' : 'transparent', marginBottom: 2 }}>
-      <span style={{ fontSize: 12, fontWeight: 500, color: '#0f172a', width: labelWidth, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 500, color: '#0f172a', width: labelWidth, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
       <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 4, height: 18, overflow: 'hidden' }}>
         <div style={{ width: `${Math.max(3, (value / (max || 1)) * 100)}%`, height: '100%', background: colour, borderRadius: 4, transition: 'width 0.3s ease' }} />
       </div>
-      <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', width: 60, textAlign: 'right', flexShrink: 0 }}>{minutesToDisplay(value)}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', width: 60, textAlign: 'right', flexShrink: 0 }}>{minutesToDisplay(value)}</span>
       {onClick && <ChevronDown size={12} style={{ color: '#94a3b8', flexShrink: 0, transform: active ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />}
     </div>
   );
 }
 
-const thStyle = { padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#64748b', textAlign: 'left', textTransform: 'uppercase', fontFamily: "'Outfit', sans-serif" };
+const thStyle = { padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#64748b', textAlign: 'left', fontFamily: "'Outfit', sans-serif" };
 const cardStyle = { background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: '20px 24px' };
-const sectionTitle = { fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 600, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.03em', marginBottom: 16, marginTop: 0 };
-const emptyStyle = { padding: 20, textAlign: 'center', color: '#cbd5e1', fontSize: 13 };
-const navBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '5px 10px', fontSize: 13, fontWeight: 500, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#1e293b', cursor: 'pointer', whiteSpace: 'nowrap' };
-const selectStyle = { padding: '5px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
-const labelStyle = { fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.03em' };
+const sectionTitle = { fontFamily: "'Outfit', sans-serif", fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 16, marginTop: 0 };
+const emptyStyle = { padding: 20, textAlign: 'center', color: '#cbd5e1', fontSize: 14 };
+const navBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '5px 10px', fontSize: 14, fontWeight: 500, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#1e293b', cursor: 'pointer', whiteSpace: 'nowrap' };
+const selectStyle = { padding: '5px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
+const labelStyle = { fontSize: 12, fontWeight: 600, color: '#94a3b8' };

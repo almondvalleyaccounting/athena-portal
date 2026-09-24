@@ -68,7 +68,7 @@ export function BucketChart({
       {gridVals.map((v, gi) => (
         <g key={gi}>
           <line x1={PAD.left} x2={W - PAD.right} y1={y(v)} y2={y(v)} stroke="#f1f5f9" strokeWidth="1" />
-          <text x={PAD.left - 8} y={y(v) + 3.5} textAnchor="end" fontSize="10" fill="#94a3b8" fontFamily={OUTFIT}>
+          <text x={PAD.left - 8} y={y(v) + 3.5} textAnchor="end" fontSize="11" fill="#94a3b8" fontFamily={OUTFIT}>
             {moneyCompact(v, currency)}
           </text>
         </g>
@@ -83,7 +83,7 @@ export function BucketChart({
             y1={PAD.top - 6} y2={PAD.top + ih}
             stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3"
           />
-          <text x={PAD.left + slot * forecastFrom + 4} y={PAD.top - 8} fontSize="9.5" fill="#94a3b8" fontFamily={OUTFIT}>
+          <text x={PAD.left + slot * forecastFrom + 4} y={PAD.top - 8} fontSize="10.5" fill="#94a3b8" fontFamily={OUTFIT}>
             forecast
           </text>
         </g>
@@ -129,7 +129,7 @@ export function BucketChart({
       {/* Bucket labels */}
       {points.map((p, i) => (
         (i % labelEvery === 0 || i === n - 1) ? (
-          <text key={i} x={xMid(i)} y={H - 10} textAnchor="middle" fontSize="10" fill="#94a3b8" fontFamily={OUTFIT}>
+          <text key={i} x={xMid(i)} y={H - 10} textAnchor="middle" fontSize="11" fill="#94a3b8" fontFamily={OUTFIT}>
             {p.label}
           </text>
         ) : null
@@ -166,7 +166,7 @@ export function LineChart({ points = [], currency = 'GBP', forecastFrom = null, 
       {gridVals.map((v, gi) => (
         <g key={gi}>
           <line x1={PAD.left} x2={W - PAD.right} y1={y(v)} y2={y(v)} stroke="#f1f5f9" strokeWidth="1" />
-          <text x={PAD.left - 8} y={y(v) + 3.5} textAnchor="end" fontSize="10" fill="#94a3b8" fontFamily={OUTFIT}>
+          <text x={PAD.left - 8} y={y(v) + 3.5} textAnchor="end" fontSize="11" fill="#94a3b8" fontFamily={OUTFIT}>
             {moneyCompact(v, currency)}
           </text>
         </g>
@@ -186,7 +186,7 @@ export function LineChart({ points = [], currency = 'GBP', forecastFrom = null, 
       ))}
       {points.map((p, i) => (
         (i % labelEvery === 0 || i === n - 1) ? (
-          <text key={i} x={x(i)} y={H - 9} textAnchor="middle" fontSize="10" fill="#94a3b8" fontFamily={OUTFIT}>{p.label}</text>
+          <text key={i} x={x(i)} y={H - 9} textAnchor="middle" fontSize="11" fill="#94a3b8" fontFamily={OUTFIT}>{p.label}</text>
         ) : null
       ))}
     </svg>

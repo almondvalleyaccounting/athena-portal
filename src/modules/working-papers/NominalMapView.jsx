@@ -131,13 +131,13 @@ export default function NominalMapView({ entity }) {
   };
 
   if (!entity) {
-    return <p style={{ fontFamily: font, fontSize: 13, color: '#94a3b8' }}>Pick a client first.</p>;
+    return <p style={{ fontFamily: font, fontSize: 14, color: '#94a3b8' }}>Pick a client first.</p>;
   }
 
   if (!realmId) {
     return (
       <div style={{ ...card, padding: '14px 16px', borderColor: '#fed7aa', background: '#fff7ed' }}>
-        <span style={{ fontFamily: font, fontSize: 12.5, color: '#c2410c' }}>
+        <span style={{ fontFamily: font, fontSize: 13.5, color: '#c2410c' }}>
           <strong>{entity.entity_name} has no active QuickBooks connection.</strong> There is no chart of
           accounts to map against, so the QuickBooks leg of this client's papers cannot be prepared.
           Connect the file first (Settings → Connections), then come back.
@@ -151,7 +151,7 @@ export default function NominalMapView({ entity }) {
       <ErrorBar message={error} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12.5, color: '#64748b' }}>
+        <span style={{ fontSize: 13.5, color: '#64748b' }}>
           Mapping <strong style={{ color: '#0f172a' }}>{entity.entity_name}</strong> against{' '}
           {entity.qbo_company || realmId} — {chart.length} account{chart.length === 1 ? '' : 's'} cached
           {chart.length === 0 && ' (pull the chart to begin)'}
@@ -174,7 +174,7 @@ export default function NominalMapView({ entity }) {
               onClick={() => setRole(r.role)}
               title={r.hint}
               style={{
-                padding: '6px 12px', fontSize: 12.5, fontFamily: font, cursor: 'pointer',
+                padding: '6px 12px', fontSize: 13.5, fontFamily: font, cursor: 'pointer',
                 borderRadius: 8, border: `1px solid ${active ? '#0e7fe0' : '#e5e7eb'}`,
                 background: active ? '#eff6ff' : '#fff',
                 color: active ? '#0e7fe0' : '#475569', fontWeight: active ? 600 : 400,
@@ -190,14 +190,14 @@ export default function NominalMapView({ entity }) {
         </button>
       </div>
 
-      <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12, maxWidth: 760, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12, maxWidth: 760, lineHeight: 1.55 }}>
         {NOMINAL_ROLES.find((r) => r.role === role)?.hint}
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 14, alignItems: 'start' }}>
         {/* Mapped */}
         <div style={card}>
-          <div style={{ padding: '10px 12px', borderBottom: '1px solid #e5e7eb', fontSize: 12.5, fontWeight: 600, color: '#0f172a' }}>
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid #e5e7eb', fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>
             Mapped to {NOMINAL_ROLES.find((r) => r.role === role)?.label}
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -216,7 +216,7 @@ export default function NominalMapView({ entity }) {
                 <tr key={m.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                   <td style={td}>
                     {m.qbo_account_name || m.qbo_account_id}
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>
                       id {m.qbo_account_id} · added {dateTime(m.created_at)}
                     </div>
                   </td>
@@ -281,7 +281,7 @@ export default function NominalMapView({ entity }) {
                     >
                       <td style={td}>
                         {a.fully_qualified || a.name}
-                        <div style={{ fontSize: 11, color: '#94a3b8', display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <div style={{ fontSize: 12, color: '#94a3b8', display: 'flex', gap: 6, alignItems: 'center' }}>
                           <Pill>{a.account_type || 'unknown type'}</Pill>
                           {a.account_sub_type && <span>{a.account_sub_type}</span>}
                           {already && <span style={{ color: '#15803d', fontWeight: 600 }}>mapped</span>}

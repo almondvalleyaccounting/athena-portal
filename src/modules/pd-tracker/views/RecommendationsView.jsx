@@ -162,7 +162,7 @@ export default function RecommendationsView() {
                   <div style={{ fontFamily: SERIF, fontSize: 18, color: '#0f172a' }}>{g.skill.name}</div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <Pill bg="#f1f5f9" fg="#475569">{g.skill.category}</Pill>
-                    <span style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontFamily: FONT, fontSize: 13, color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       Level <strong style={{ color: '#0f172a' }}>{g.current}</strong>
                       <ArrowRight size={12} />
                       <strong style={{ color: '#0e7fe0' }}>{g.target}</strong>
@@ -176,12 +176,12 @@ export default function RecommendationsView() {
               </div>
 
               <div style={{ marginTop: 8, padding: 14, background: '#f8fafc', borderRadius: 10 }}>
-                <div style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#0e7fe0', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0e7fe0', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <BookOpen size={12} /> Suggested next steps
                 </div>
                 <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {suggestionsFor(g.skill.name).map((s, i) => (
-                    <li key={i} style={{ fontFamily: FONT, fontSize: 13, color: '#1e293b', lineHeight: 1.5, display: 'flex', gap: 8 }}>
+                    <li key={i} style={{ fontFamily: FONT, fontSize: 14, color: '#1e293b', lineHeight: 1.5, display: 'flex', gap: 8 }}>
                       <span style={{ color: '#0e7fe0' }}>→</span>
                       <span>{s}</span>
                     </li>

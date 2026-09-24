@@ -80,7 +80,7 @@ export default function AuthorisationsView() {
     <div>
       <ErrorBar message={error} />
 
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 860, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 860, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
         Schemes HMRC still shows us as agent for, with no active client behind them. Each one is either an
         authorisation to hand back, or a client record that needs correcting. Closing a row records that
         someone dealt with it — add a note saying which, because the two outcomes look identical afterwards.
@@ -103,20 +103,20 @@ export default function AuthorisationsView() {
                 active={reason} onClick={setReason} colour={REASON_COLOUR[k]} />
         ))}
         <div style={{ flex: 1 }} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b', fontFamily: font, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#64748b', fontFamily: font, cursor: 'pointer' }}>
           <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} />
           Show closed ({rows.length - openRows.length})
         </label>
       </div>
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading authorisation reviews…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading authorisation reviews…</div>
       ) : (
         <div style={card}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
                   <th style={th}>Scheme</th>
                   <th style={th}>Why</th>
                   <th style={thNum}>Last known debt</th>
@@ -137,7 +137,7 @@ export default function AuthorisationsView() {
                   <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                     <td style={td}>
                       <div style={{ fontWeight: 500, color: '#0f172a' }}>{r.hmrc_name}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
+                      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>
                         {r.paye_ref} · {r.service?.toUpperCase()}
                       </div>
                     </td>
@@ -147,7 +147,7 @@ export default function AuthorisationsView() {
                       </Pill>
                       {r.entity_id && (
                         <a href={`/clients/${r.entity_id}`} target="_blank" rel="noreferrer"
-                           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#0e7fe0', textDecoration: 'none', marginLeft: 6 }}>
+                           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0e7fe0', textDecoration: 'none', marginLeft: 6 }}>
                           {r.entity_name} <ExternalLink size={10} />
                         </a>
                       )}
@@ -155,15 +155,15 @@ export default function AuthorisationsView() {
                     <td style={{ ...tdNum, color: Number(r.last_known_debt) > 0 ? '#b91c1c' : '#cbd5e1', fontWeight: Number(r.last_known_debt) > 0 ? 600 : 400 }}>
                       {Number(r.last_known_debt) > 0 ? fmtGbp(r.last_known_debt) : '—'}
                     </td>
-                    <td style={{ ...td, fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}
+                    <td style={{ ...td, fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' }}
                         title={`First flagged ${shortDate(r.first_flagged)}, last seen on the agent list ${shortDate(r.last_seen_on_list)}`}>
                       {ageLabel(r.days_outstanding)} ago
                     </td>
                     <td style={{ ...td, minWidth: 200 }}>
                       {showClosed ? (
-                        <div style={{ fontSize: 12, color: '#64748b' }}>
+                        <div style={{ fontSize: 13, color: '#64748b' }}>
                           {shortDate(r.removed_at)}{r.removed_by ? ` · ${r.removed_by}` : ''}
-                          {r.note && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{r.note}</div>}
+                          {r.note && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{r.note}</div>}
                         </div>
                       ) : (
                         <input
@@ -201,7 +201,7 @@ export default function AuthorisationsView() {
 function btn(colour, bg, border) {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px',
-    fontSize: 12, fontFamily: font, borderRadius: 7, cursor: 'pointer',
+    fontSize: 13, fontFamily: font, borderRadius: 7, cursor: 'pointer',
     color: colour, background: bg, border: `1px solid ${border}`,
   };
 }

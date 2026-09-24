@@ -77,11 +77,11 @@ export default function OwnerCompView() {
         {/* By owner */}
         {Object.keys(byOwner).length > 0 && (
           <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: 8 }}>By owner (annualised)</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 8 }}>By owner (annualised)</div>
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, Object.keys(byOwner).length)}, 1fr)`, gap: 10 }}>
               {Object.entries(byOwner).map(([owner, b]) => (
                 <div key={owner} style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>{owner}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>{owner}</div>
                   <Row label="Salary (loaded)" v={fmtGBP(b.salary)} />
                   <Row label="Dividend" v={fmtGBP(b.dividend)} />
                   <Row label="Other" v={fmtGBP(b.other)} />
@@ -97,7 +97,7 @@ export default function OwnerCompView() {
       {/* Controls */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 0 10px', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Owner</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Owner</label>
           <select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)}
             style={{ ...inputStyle, width: 'auto' }}>
             <option value="all">All</option>
@@ -115,9 +115,9 @@ export default function OwnerCompView() {
 
       {/* Table */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+            <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
               <th style={th}>Owner</th>
               <th style={th}>Type</th>
               <th style={{ ...th, textAlign: 'right' }}>Monthly £</th>
@@ -220,7 +220,7 @@ function BlurNumber({ value, onChange, placeholder }) {
 function Summary({ label, value }) {
   return (
     <div style={{ background: '#f8fafc', borderRadius: 8, padding: '12px 14px' }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
     </div>
   );
@@ -228,7 +228,7 @@ function Summary({ label, value }) {
 
 function Row({ label, v, bold }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
       <span style={{ color: '#64748b' }}>{label}</span>
       <span style={{ color: '#0f172a', fontWeight: bold ? 700 : 500, fontVariantNumeric: 'tabular-nums' }}>{v}</span>
     </div>
@@ -237,8 +237,8 @@ function Row({ label, v, bold }) {
 
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
 const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: '0 0 4px' };
-const help = { fontSize: 12, color: '#94a3b8', marginBottom: 14, lineHeight: 1.55 };
+const help = { fontSize: 13, color: '#94a3b8', marginBottom: 14, lineHeight: 1.55 };
 const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600 };
 const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
-const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
-const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
+const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };

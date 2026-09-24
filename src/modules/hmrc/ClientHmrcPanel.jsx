@@ -81,11 +81,11 @@ function SchemeCard({ scheme, profile, entityId, onSaved }) {
         padding: '10px 14px', fontFamily: font, marginBottom: 10,
       }}>
         <CheckCircle size={15} style={{ color: '#059669', flexShrink: 0 }} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#166534' }}>PAYE clear with HMRC</span>
-        <span style={{ fontSize: 12, color: '#4d7c5f' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#166534' }}>PAYE clear with HMRC</span>
+        <span style={{ fontSize: 13, color: '#4d7c5f' }}>
           Nothing owed on {scheme.paye_ref} as at {shortDate(scheme.scraped_at)}
         </span>
-        {scheme.claiming_ea && <Pill colour="#7c3aed" bg="#faf5ff" style={{ fontSize: 10 }}>Employment Allowance</Pill>}
+        {scheme.claiming_ea && <Pill colour="#7c3aed" bg="#faf5ff" style={{ fontSize: 11 }}>Employment Allowance</Pill>}
         <div style={{ flex: 1 }} />
         {/* "Clear" is the answer most likely to be doubted — it is the one people
             want to re-check before telling a client they owe nothing. */}
@@ -106,9 +106,9 @@ function SchemeCard({ scheme, profile, entityId, onSaved }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', marginBottom: 10 }}>
         <Landmark size={16} style={{ color: tier.colour, flexShrink: 0 }} />
-        <span style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a' }}>Owes HMRC</span>
+        <span style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a' }}>Owes HMRC</span>
         <Pill colour={tier.colour} bg="#fff" title={tier.hint}>{tier.label}</Pill>
-        <span style={{ fontSize: 11.5, color: '#64748b' }}>
+        <span style={{ fontSize: 12.5, color: '#64748b' }}>
           PAYE {scheme.paye_ref} · scraped {dateTime(scheme.scraped_at)}
         </span>
         <div style={{ flex: 1 }} />
@@ -161,7 +161,7 @@ function SchemeCard({ scheme, profile, entityId, onSaved }) {
           value={scheme.review_notes}
           onSave={(v) => save({ review_notes: v })}
         />
-        {saving && <span style={{ fontSize: 11, color: '#94a3b8' }}>Saving…</span>}
+        {saving && <span style={{ fontSize: 12, color: '#94a3b8' }}>Saving…</span>}
       </div>
     </div>
   );
@@ -184,14 +184,14 @@ function NoteInput({ value, onSave }) {
 function Figure({ label, value, sub, colour, big }) {
   return (
     <div>
-      <div style={{ fontSize: 9.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: big ? 22 : 16, fontWeight: 700, color: colour, marginTop: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 1 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 1 }}>{sub}</div>}
     </div>
   );
 }
 
 const linkStyle = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 12, fontWeight: 600, color: '#0e7fe0', textDecoration: 'none',
+  fontSize: 13, fontWeight: 600, color: '#0e7fe0', textDecoration: 'none',
 };

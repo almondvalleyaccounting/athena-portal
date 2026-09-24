@@ -219,7 +219,7 @@ export default function ReportsPage() {
       <p
         style={{
           fontFamily: "'Outfit', sans-serif",
-          fontSize: '14px',
+          fontSize: '14.5px',
           color: '#64748b',
           marginBottom: '32px',
         }}
@@ -245,7 +245,7 @@ export default function ReportsPage() {
             ? <CheckCircle size={16} style={{ color: '#22c55e' }} />
             : <AlertCircle size={16} style={{ color: '#ef4444' }} />
           }
-          <span style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', fontWeight: 500, color: flash.type === 'success' ? '#166534' : '#991b1b', flex: 1 }}>
+          <span style={{ fontFamily: "'Outfit', sans-serif", fontSize: '14px', fontWeight: 500, color: flash.type === 'success' ? '#166534' : '#991b1b', flex: 1 }}>
             {flash.message}
           </span>
           <button onClick={() => setFlash(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}>
@@ -317,7 +317,7 @@ export default function ReportsPage() {
               backgroundColor: '#ffffff',
               cursor: 'pointer',
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '13px',
+              fontSize: '14px',
               fontWeight: 600,
               color: '#38bdf8',
               transition: 'all 0.2s ease',
@@ -371,7 +371,7 @@ export default function ReportsPage() {
           <p
             style={{
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '12px',
+              fontSize: '13px',
               color: '#94a3b8',
               marginBottom: '16px',
               padding: '8px 12px',
@@ -393,7 +393,7 @@ export default function ReportsPage() {
               onClick={() => setBasis(opt)}
               style={{
                 fontFamily: "'Outfit', sans-serif",
-                fontSize: '13px',
+                fontSize: '14px',
                 fontWeight: 600,
                 padding: '8px 20px',
                 borderRadius: '10px',
@@ -420,7 +420,7 @@ export default function ReportsPage() {
             onClick={toggleAll}
             style={{
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '12px',
+              fontSize: '13px',
               fontWeight: 600,
               color: '#38bdf8',
               background: 'none',
@@ -468,7 +468,7 @@ export default function ReportsPage() {
                 <span
                   style={{
                     fontFamily: "'Outfit', sans-serif",
-                    fontSize: '14px',
+                    fontSize: '14.5px',
                     fontWeight: 500,
                     color: '#0f172a',
                     flex: 1,
@@ -485,7 +485,7 @@ export default function ReportsPage() {
                         alignItems: 'center',
                         gap: '3px',
                         fontFamily: "'Outfit', sans-serif",
-                        fontSize: '10px',
+                        fontSize: '11px',
                         fontWeight: 600,
                         color: '#d97706',
                         backgroundColor: '#fef3c7',
@@ -501,7 +501,7 @@ export default function ReportsPage() {
                 <span
                   style={{
                     fontFamily: "'Outfit', sans-serif",
-                    fontSize: '11px',
+                    fontSize: '12px',
                     color: '#94a3b8',
                     flexShrink: 0,
                   }}
@@ -540,7 +540,7 @@ export default function ReportsPage() {
             <span
               style={{
                 fontFamily: "'Outfit', sans-serif",
-                fontSize: '14px',
+                fontSize: '14.5px',
                 fontWeight: 600,
                 color: '#0369a1',
               }}
@@ -562,7 +562,7 @@ export default function ReportsPage() {
               backgroundColor: canRun ? '#38bdf8' : '#e5e7eb',
               color: canRun ? '#ffffff' : '#94a3b8',
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '14px',
+              fontSize: '14.5px',
               fontWeight: 600,
               borderRadius: '10px',
               padding: '14px',
@@ -604,7 +604,7 @@ export default function ReportsPage() {
                 <span
                   style={{
                     fontFamily: "'Outfit', sans-serif",
-                    fontSize: '14px',
+                    fontSize: '14.5px',
                     fontWeight: 500,
                     color: '#0f172a',
                   }}
@@ -628,7 +628,7 @@ export default function ReportsPage() {
           alignItems: 'center',
           gap: '6px',
           fontFamily: "'Outfit', sans-serif",
-          fontSize: '13px',
+          fontSize: '14px',
           fontWeight: 500,
           color: '#38bdf8',
           textDecoration: 'none',
@@ -658,7 +658,7 @@ function StatusBadge({ status, message }) {
         alignItems: 'center',
         gap: '4px',
         fontFamily: "'Outfit', sans-serif",
-        fontSize: '12px',
+        fontSize: '13px',
         fontWeight: 600,
         color: cfg.color,
       }}
@@ -679,11 +679,9 @@ function StatusBadge({ status, message }) {
 const labelStyle = {
   display: 'block',
   fontFamily: "'Outfit', sans-serif",
-  fontSize: '12px',
+  fontSize: '13px',
   fontWeight: 600,
   color: '#94a3b8',
-  textTransform: 'uppercase',
-  letterSpacing: '0.03em',
   marginBottom: '8px',
 };
 
@@ -692,7 +690,7 @@ const inputStyle = {
   border: '1px solid #e5e7eb',
   borderRadius: '10px',
   padding: '10px 14px',
-  fontSize: '14px',
+  fontSize: '14.5px',
   fontFamily: "'Outfit', sans-serif",
   outline: 'none',
   boxSizing: 'border-box',

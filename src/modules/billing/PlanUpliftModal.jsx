@@ -130,7 +130,7 @@ export default function PlanUpliftModal({ rows, selectedKeys, onClose, onApplied
               </div>
             )}
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, fontSize: 12, color: '#475569', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, fontSize: 13, color: '#475569', cursor: 'pointer' }}>
               <input type="checkbox" checked={roundUp} onChange={(e) => setRoundUp(e.target.checked)} />
               Round up to nearest £0.50
             </label>
@@ -155,7 +155,7 @@ export default function PlanUpliftModal({ rows, selectedKeys, onClose, onApplied
 
           {/* Preview table */}
           <div style={{ padding: 0, maxHeight: 520, overflow: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
                 <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
                   <Th>Client</Th>
@@ -193,17 +193,17 @@ export default function PlanUpliftModal({ rows, selectedKeys, onClose, onApplied
 
 const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: font };
 const modalStyle = { background: '#fff', borderRadius: 12, width: 1000, maxWidth: '95vw', maxHeight: '90vh', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column' };
-const inputStyle = { padding: '6px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', width: '100%', boxSizing: 'border-box' };
-const btnPrimary = { padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnGhost = { padding: '8px 14px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const inputStyle = { padding: '6px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', width: '100%', boxSizing: 'border-box' };
+const btnPrimary = { padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnGhost = { padding: '8px 14px', fontSize: 14, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 
-const Label = ({ children }) => <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>{children}</div>;
-const Th = ({ children, align }) => <th style={{ padding: '8px 12px', fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: align || 'left' }}>{children}</th>;
+const Label = ({ children }) => <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5 }}>{children}</div>;
+const Th = ({ children, align }) => <th style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textAlign: align || 'left' }}>{children}</th>;
 const Td = ({ children, align, style }) => <td style={{ padding: '6px 12px', verticalAlign: 'middle', textAlign: align || 'left', ...style }}>{children}</td>;
 
 function Radio({ label, value, checked, onChange }) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 13, color: '#1e293b', cursor: 'pointer' }}>
+    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 14, color: '#1e293b', cursor: 'pointer' }}>
       <input type="radio" checked={checked} onChange={() => onChange(value)} />
       {label}
     </label>
@@ -213,7 +213,7 @@ function Radio({ label, value, checked, onChange }) {
 function Stat({ label, value, tone }) {
   const fg = tone === 'green' ? '#15803d' : tone === 'slate' ? '#475569' : '#0f172a';
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
       <span style={{ color: '#64748b' }}>{label}</span>
       <span style={{ fontWeight: 600, color: fg, fontFamily: 'monospace' }}>{value}</span>
     </div>

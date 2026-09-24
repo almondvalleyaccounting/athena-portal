@@ -93,7 +93,7 @@ export default function ReportsTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {error && (
-        <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '10px 14px' }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '10px 14px' }}>
           {error}
         </div>
       )}
@@ -126,7 +126,7 @@ export default function ReportsTab({
           <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
             No saved reports
           </div>
-          <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#64748b', maxWidth: '480px', margin: '0 auto 18px', lineHeight: 1.6 }}>
+          <p style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#64748b', maxWidth: '480px', margin: '0 auto 18px', lineHeight: 1.6 }}>
             A report is a set of rows you care about — turnover, profit, occupancy, whatever matters
             for this client — at a grain you choose. Build it once and it is there every month.
             Save it against the sector and every client in that sector gets it too.
@@ -191,7 +191,7 @@ function ReportEditor({ draft, setDraft, kpi, busy, canScopeWide, hasSector, onC
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 22px', borderBottom: '1px solid #e5e7eb' }}>
           <FileBarChart size={17} style={{ color: '#38bdf8' }} />
-          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
             {draft.id ? 'Edit report' : 'New report'}
           </span>
           <button onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
@@ -251,7 +251,7 @@ function ReportEditor({ draft, setDraft, kpi, busy, canScopeWide, hasSector, onC
             <div style={lblText}>Rows, in order</div>
             <div style={{ marginTop: 6 }}>
               {rows.length === 0 && (
-                <div style={{ fontSize: 12.5, color: '#94a3b8', padding: '8px 0' }}>
+                <div style={{ fontSize: 13.5, color: '#94a3b8', padding: '8px 0' }}>
                   Nothing chosen yet — pick from below.
                 </div>
               )}
@@ -261,7 +261,7 @@ function ReportEditor({ draft, setDraft, kpi, busy, canScopeWide, hasSector, onC
                   borderBottom: '1px solid #f1f5f9',
                 }}>
                   <GripVertical size={13} style={{ color: '#cbd5e1' }} />
-                  <span style={{ fontSize: 13, color: '#0f172a' }}>{r.label || r.key}</span>
+                  <span style={{ fontSize: 14, color: '#0f172a' }}>{r.label || r.key}</span>
                   <span style={{ ...chip, marginLeft: 6 }}>{r.source === 'kpi' ? 'KPI' : 'accounts'}</span>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
                     <button onClick={() => moveRow(i, -1)} disabled={i === 0} style={tinyBtn}>↑</button>
@@ -273,7 +273,7 @@ function ReportEditor({ draft, setDraft, kpi, busy, canScopeWide, hasSector, onC
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>From the accounts</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>From the accounts</div>
               <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10 }}>
                 {FIN_ROWS.map((f) => (
                   <button key={f.key} onClick={() => addRow('financial', f.key, f.label)} style={pill}>
@@ -281,9 +281,9 @@ function ReportEditor({ draft, setDraft, kpi, busy, canScopeWide, hasSector, onC
                   </button>
                 ))}
               </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>KPIs</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>KPIs</div>
               <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                {kpi.definitions.length === 0 && <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>none on this client</span>}
+                {kpi.definitions.length === 0 && <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>none on this client</span>}
                 {kpi.definitions.map((d) => (
                   <button key={d.id} onClick={() => addRow('kpi', d.key, d.label)} style={pill}>
                     {d.label}
@@ -307,28 +307,28 @@ function ReportEditor({ draft, setDraft, kpi, busy, canScopeWide, hasSector, onC
 }
 
 /* ─── Styles ───────────────────────────────────────────────────── */
-const lbl = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, fontWeight: 600, color: '#475569' };
-const lblText = { fontSize: 12, fontWeight: 600, color: '#475569' };
-const hint = { fontSize: 11.5, fontWeight: 400, color: '#94a3b8', lineHeight: 1.5 };
+const lbl = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600, color: '#475569' };
+const lblText = { fontSize: 13, fontWeight: 600, color: '#475569' };
+const hint = { fontSize: 12.5, fontWeight: 400, color: '#94a3b8', lineHeight: 1.5 };
 const chip = {
-  fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 999,
+  fontSize: 11.5, fontWeight: 600, padding: '2px 7px', borderRadius: 999,
   border: '1px solid #e5e7eb', backgroundColor: '#f8fafc', color: '#64748b',
 };
 const pill = {
-  fontSize: 11.5, padding: '4px 10px', borderRadius: 999, border: '1px solid #e5e7eb',
+  fontSize: 12.5, padding: '4px 10px', borderRadius: 999, border: '1px solid #e5e7eb',
   backgroundColor: '#f8fafc', color: '#334155', cursor: 'pointer', fontFamily: OUTFIT,
 };
 const tinyBtn = {
   border: '1px solid #e5e7eb', borderRadius: 6, padding: '2px 6px', background: '#fff',
-  color: '#64748b', fontSize: 11, cursor: 'pointer', fontFamily: OUTFIT, lineHeight: 1.4,
+  color: '#64748b', fontSize: 12, cursor: 'pointer', fontFamily: OUTFIT, lineHeight: 1.4,
 };
 const smallBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #e5e7eb',
   borderRadius: 8, padding: '7px 13px', background: '#fff', color: '#475569',
-  fontFamily: OUTFIT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+  fontFamily: OUTFIT, fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
 };
 const primaryBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 17px',
   border: 'none', borderRadius: 10, backgroundColor: '#0f172a', color: '#fff',
-  fontFamily: OUTFIT, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+  fontFamily: OUTFIT, fontSize: 14, fontWeight: 700, cursor: 'pointer',
 };

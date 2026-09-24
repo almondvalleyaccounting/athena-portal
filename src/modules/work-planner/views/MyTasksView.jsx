@@ -118,12 +118,12 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
           marginBottom: 12, border: '1px solid #fcd34d', background: '#fffbeb',
           borderRadius: 10, padding: '10px 14px', fontFamily: "'Outfit', sans-serif",
         }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>
             Needs rescheduling — {stranded.length} task{stranded.length === 1 ? '' : 's'} slipped past their planned date
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {stranded.map((m) => (
-              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5 }}>
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5 }}>
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#0f172a' }}>
                   <strong>{m.title}</strong>
                   {m.entity_id && entityMap[m.entity_id] && <span style={{ color: '#64748b' }}> · {clientName(m.entity_id, entityMap)}</span>}
@@ -135,11 +135,11 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                     if (e.target.value) updateScheduledTask(m.id, { planned_date: e.target.value });
                   }}
                   title="Pick a new planned date"
-                  style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #fcd34d', borderRadius: 6, fontFamily: "'Outfit', sans-serif", background: '#fff' }}
+                  style={{ fontSize: 13, padding: '3px 6px', border: '1px solid #fcd34d', borderRadius: 6, fontFamily: "'Outfit', sans-serif", background: '#fff' }}
                 />
                 <button
                   onClick={() => updateScheduledTask(m.id, { planned_date: formatISO(addDays(now, 1)) })}
-                  style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: '#0f172a', cursor: 'pointer', fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap' }}
+                  style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: '#0f172a', cursor: 'pointer', fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap' }}
                 >
                   Tomorrow
                 </button>
@@ -149,7 +149,7 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
         </div>
       )}
       {items.length === 0 && (
-        <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 13, fontFamily: "'Outfit', sans-serif" }}>
+        <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 14, fontFamily: "'Outfit', sans-serif" }}>
           No tasks match your filters.
         </div>
       )}
@@ -181,16 +181,16 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
               <div style={{ flex: 1, minWidth: 0, display: compact ? 'flex' : 'block', alignItems: 'center', gap: compact ? 8 : 0 }}>
                 <div
                   onClick={(e) => onAction(e, task)}
-                  style={{ fontSize: compact ? 12 : 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                  style={{ fontSize: compact ? 13 : 14, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                 >
                   {task.title}
                   {task._source === 'quick' && (
-                    <span style={{ padding: '1px 5px', fontSize: 9, borderRadius: 3, background: '#dbeafe', color: '#0e7fe0', fontWeight: 500 }}>
+                    <span style={{ padding: '1px 5px', fontSize: 10, borderRadius: 3, background: '#dbeafe', color: '#0e7fe0', fontWeight: 500 }}>
                       quick
                     </span>
                   )}
                   {task.recurring && (
-                    <span style={{ padding: '1px 5px', fontSize: 9, borderRadius: 3, background: '#dbeafe', color: '#0e7fe0', fontWeight: 500 }}>
+                    <span style={{ padding: '1px 5px', fontSize: 10, borderRadius: 3, background: '#dbeafe', color: '#0e7fe0', fontWeight: 500 }}>
                       {task.recurrence}
                     </span>
                   )}
@@ -199,13 +199,13 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                   )}
                 </div>
 
-                <div style={{ fontSize: compact ? 10 : 11, color: '#64748b', marginTop: compact ? 0 : 1, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: compact ? 11 : 12, color: '#64748b', marginTop: compact ? 0 : 1, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                   {task.entity_id && <span>{clientName(task.entity_id, entityMap)}</span>}
                   {task.service && <span style={{ color: '#94a3b8' }}>{task.service}</span>}
                   {st && (
                     <span style={{
                       display: 'inline-flex', alignItems: 'center', gap: 2,
-                      padding: '1px 6px', borderRadius: 10, fontSize: 10, fontWeight: 500,
+                      padding: '1px 6px', borderRadius: 10, fontSize: 11, fontWeight: 500,
                       background: st.colour + '14', color: st.colour,
                     }}>
                       <span style={{ width: 4, height: 4, borderRadius: '50%', background: st.colour }} />
@@ -214,11 +214,11 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                   )}
                   {task._source === 'quick' && task.due_date && <DueBadge date={task.due_date} />}
                   {task._source === 'scheduled' && task._date && (
-                    <span style={{ fontSize: 10, color: '#64748b' }}>Due: {formatDateShort(task._date)}</span>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>Due: {formatDateShort(task._date)}</span>
                   )}
-                  {task.duration && <span style={{ fontSize: 10, color: '#94a3b8' }}>{durFmt(task.duration)}</span>}
+                  {task.duration && <span style={{ fontSize: 11, color: '#94a3b8' }}>{durFmt(task.duration)}</span>}
                   {nc > 0 && (
-                    <span style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3, fontSize: 9, color: '#64748b', fontWeight: 600 }}>
+                    <span style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3, fontSize: 10, color: '#64748b', fontWeight: 600 }}>
                       {nc} note{nc !== 1 ? 's' : ''}
                     </span>
                   )}
@@ -230,9 +230,9 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                   return notes.length > 0 ? (
                     <div style={{ marginTop: 4, borderLeft: '2px solid #e5e7eb', paddingLeft: 6 }}>
                       {notes.map((n) => (
-                        <div key={n.id} style={{ fontSize: 11, color: '#1e293b', lineHeight: 1.4, marginBottom: 2 }}>
+                        <div key={n.id} style={{ fontSize: 12, color: '#1e293b', lineHeight: 1.4, marginBottom: 2 }}>
                           <span>{n.note}</span>
-                          <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 9 }}>
+                          <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 10 }}>
                             {(n.created_by_name || '').split(' ')[0]} &middot; {timeAgo(n.created_at)}
                           </span>
                         </div>
@@ -256,7 +256,7 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                       }}
                       placeholder="Progress note..."
                       style={{
-                        flex: 1, padding: '4px 8px', fontSize: 12,
+                        flex: 1, padding: '4px 8px', fontSize: 13,
                         fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
                         borderRadius: 6, outline: 'none',
                       }}
@@ -268,7 +268,7 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                       }}
                       style={{
                         border: 'none', background: '#0e7fe0', color: '#fff',
-                        fontSize: 11, fontWeight: 600, padding: '4px 10px',
+                        fontSize: 12, fontWeight: 600, padding: '4px 10px',
                         borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
                       }}
                     >
@@ -280,7 +280,7 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                     onClick={() => { setNoteInput(task.id); setNoteText(''); }}
                     style={{
                       border: '1px solid #e5e7eb', background: '#f8fafc', color: '#64748b',
-                      fontSize: 11, fontWeight: 500, cursor: 'pointer',
+                      fontSize: 12, fontWeight: 500, cursor: 'pointer',
                       padding: '3px 10px', marginTop: 4, borderRadius: 6,
                       fontFamily: "'Outfit', sans-serif",
                       transition: 'all 0.15s',
@@ -299,7 +299,7 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                   onClick={(e) => onAction(e, task)}
                   title="Actions"
                   style={{
-                    padding: compact ? '2px 6px' : '3px 8px', fontSize: compact ? 9 : 10, fontWeight: 500,
+                    padding: compact ? '2px 6px' : '3px 8px', fontSize: compact ? 10 : 11, fontWeight: 500,
                     border: '1px solid #0e7fe0', borderRadius: compact ? 3 : 4,
                     background: '#dbeafe', color: '#0e7fe0', cursor: 'pointer',
                     fontFamily: "'Outfit', sans-serif",

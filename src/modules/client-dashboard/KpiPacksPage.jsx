@@ -186,7 +186,7 @@ export default function KpiPacksPage() {
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
           KPI Packs
         </h1>
-        <p style={{ fontSize: 14, color: '#64748b' }}>
+        <p style={{ fontSize: 14.5, color: '#64748b' }}>
           You need the KPI packs permission to edit these. A pack edit reaches every client in the
           sector, which is why it is held separately from entering one client's figures.
         </p>
@@ -202,7 +202,7 @@ export default function KpiPacksPage() {
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', margin: 0 }}>
             KPI Packs
           </h1>
-          <p style={{ fontSize: 13.5, color: '#64748b', margin: '4px 0 0', maxWidth: 780, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 14.5, color: '#64748b', margin: '4px 0 0', maxWidth: 780, lineHeight: 1.6 }}>
             The KPIs a sector gets. Define occupancy once and every nursery has it; fix the formula
             here and every nursery is fixed. A client can hide one of these for itself, but cannot
             change it — that is what keeps the packs worth having.
@@ -212,7 +212,7 @@ export default function KpiPacksPage() {
 
       {msg && (
         <div style={{
-          marginBottom: 16, padding: '10px 14px', borderRadius: 10, fontSize: 13.5,
+          marginBottom: 16, padding: '10px 14px', borderRadius: 10, fontSize: 14.5,
           backgroundColor: msg.tone === 'error' ? '#fef2f2' : '#f0fdf4',
           border: `1px solid ${msg.tone === 'error' ? '#fecaca' : '#bbf7d0'}`,
           color: msg.tone === 'error' ? '#991b1b' : '#166534',
@@ -221,14 +221,14 @@ export default function KpiPacksPage() {
         </div>
       )}
 
-      {loading && <p style={{ fontSize: 14, color: '#94a3b8' }}>Loading…</p>}
+      {loading && <p style={{ fontSize: 14.5, color: '#94a3b8' }}>Loading…</p>}
 
       {!loading && (
         <div style={{ display: 'flex', gap: 22, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           {/* Sector list */}
           <div style={{ width: 250, flexShrink: 0 }}>
             <div style={{ ...cardStyle, padding: '14px 16px' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>
                 Sectors
               </div>
               {sectors.map((s) => (
@@ -243,8 +243,8 @@ export default function KpiPacksPage() {
                     fontFamily: OUTFIT,
                   }}
                 >
-                  <div style={{ fontSize: 13.5, fontWeight: s.id === sectorId ? 700 : 500, color: '#0f172a' }}>{s.label}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                  <div style={{ fontSize: 14.5, fontWeight: s.id === sectorId ? 700 : 500, color: '#0f172a' }}>{s.label}</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>
                     {s.definition_count} KPI{s.definition_count === 1 ? '' : 's'} · {s.client_count} client{s.client_count === 1 ? '' : 's'}
                   </div>
                 </button>
@@ -254,7 +254,7 @@ export default function KpiPacksPage() {
                   value={newSector} onChange={(e) => setNewSector(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addSector()}
                   placeholder="New sector…"
-                  style={{ ...inputStyle, flex: 1, padding: '7px 9px', fontSize: 12.5 }}
+                  style={{ ...inputStyle, flex: 1, padding: '7px 9px', fontSize: 13.5 }}
                 />
                 <button onClick={addSector} disabled={busy || !newSector.trim()} style={iconAdd}>
                   <Plus size={14} />
@@ -266,7 +266,7 @@ export default function KpiPacksPage() {
           {/* The pack */}
           <div style={{ flex: 1, minWidth: 420 }}>
             {!sector && (
-              <div style={{ ...cardStyle, color: '#64748b', fontSize: 14 }}>
+              <div style={{ ...cardStyle, color: '#64748b', fontSize: 14.5 }}>
                 Add a sector to start a pack.
               </div>
             )}
@@ -276,7 +276,7 @@ export default function KpiPacksPage() {
                 <div style={{ ...cardStyle, marginBottom: 14 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{sector.label}</span>
-                    <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                    <span style={{ fontSize: 13, color: '#94a3b8' }}>
                       {sector.client_count} client{sector.client_count === 1 ? '' : 's'} on this pack
                     </span>
                     <button
@@ -288,7 +288,7 @@ export default function KpiPacksPage() {
                   </div>
 
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
-                    <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 6 }}>
+                    <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 6 }}>
                       Breakdowns — a KPI can be split by one of these. Each client then lists its own
                       (a nursery lists its rooms).
                     </div>
@@ -300,7 +300,7 @@ export default function KpiPacksPage() {
                         value={newDimension} onChange={(e) => setNewDimension(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && addDimension()}
                         placeholder="Add a breakdown…"
-                        style={{ ...inputStyle, padding: '6px 9px', fontSize: 12.5, width: 170 }}
+                        style={{ ...inputStyle, padding: '6px 9px', fontSize: 13.5, width: 170 }}
                       />
                       <button onClick={addDimension} disabled={busy || !newDimension.trim()} style={iconAdd}>
                         <Plus size={14} />
@@ -310,7 +310,7 @@ export default function KpiPacksPage() {
                 </div>
 
                 {definitions.length === 0 && (
-                  <div style={{ ...cardStyle, color: '#64748b', fontSize: 14 }}>
+                  <div style={{ ...cardStyle, color: '#64748b', fontSize: 14.5 }}>
                     No KPIs in this pack yet.
                   </div>
                 )}
@@ -351,8 +351,8 @@ function DefinitionRow({ def, dimensions, knownKeys, busy, onEdit, onDelete }) {
   return (
     <div style={{ ...cardStyle, padding: '12px 16px', marginBottom: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{def.label}</span>
-        <code style={{ fontSize: 11.5, color: '#64748b', backgroundColor: '#f8fafc', padding: '2px 7px', borderRadius: 6 }}>
+        <span style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a' }}>{def.label}</span>
+        <code style={{ fontSize: 12.5, color: '#64748b', backgroundColor: '#f8fafc', padding: '2px 7px', borderRadius: 6 }}>
           {def.key}
         </code>
         {def.show_on_overview && <span style={{ ...chip, color: '#0369a1', backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }}>on Overview</span>}
@@ -364,10 +364,10 @@ function DefinitionRow({ def, dimensions, knownKeys, busy, onEdit, onDelete }) {
           </button>
         </div>
       </div>
-      <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>
+      <div style={{ fontSize: 13, color: '#64748b', marginTop: 5 }}>
         {def.kind === 'calculated' ? (
           <>
-            <code style={{ fontSize: 12, color: check?.ok === false ? '#b91c1c' : '#0369a1' }}>{def.formula}</code>
+            <code style={{ fontSize: 13, color: check?.ok === false ? '#b91c1c' : '#0369a1' }}>{def.formula}</code>
             {check && !check.ok && (
               <span style={{ color: '#b91c1c', fontWeight: 600 }}> — {check.error}</span>
             )}
@@ -378,7 +378,7 @@ function DefinitionRow({ def, dimensions, knownKeys, busy, onEdit, onDelete }) {
             <span style={{ color: '#94a3b8' }}> when showing quarters or years</span></>
         )}
       </div>
-      {def.hint && <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 3 }}>{def.hint}</div>}
+      {def.hint && <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 3 }}>{def.hint}</div>}
     </div>
   );
 }
@@ -400,7 +400,7 @@ function DefinitionModal({ draft, setDraft, dimensions, knownKeys, definitions, 
         maxHeight: '88vh', overflowY: 'auto', fontFamily: OUTFIT,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 22px', borderBottom: '1px solid #e5e7eb' }}>
-          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
             {draft.id ? 'Edit KPI' : 'New KPI'}
           </span>
           <button onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
@@ -438,8 +438,8 @@ function DefinitionModal({ draft, setDraft, dimensions, knownKeys, definitions, 
                     border: `1px solid ${draft.kind === o.k ? '#7dd3fc' : '#e5e7eb'}`,
                     backgroundColor: draft.kind === o.k ? '#f0f9ff' : '#fff', fontFamily: OUTFIT,
                   }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{o.t}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>{o.h}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{o.t}</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.4 }}>{o.h}</div>
                 </button>
               ))}
             </div>
@@ -508,8 +508,8 @@ function DefinitionModal({ draft, setDraft, dimensions, knownKeys, definitions, 
               onChange={(e) => set({ show_on_overview: e.target.checked })}
               style={{ width: 16, height: 16, marginTop: 2, accentColor: '#0f172a', cursor: 'pointer' }} />
             <span>
-              <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>Show on the Overview</span>
-              <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8' }}>
+              <span style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>Show on the Overview</span>
+              <span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8' }}>
                 As a tile beside revenue and profit, and with its own trend chart.
               </span>
             </span>
@@ -533,14 +533,14 @@ function DefinitionModal({ draft, setDraft, dimensions, knownKeys, definitions, 
 function KeyPalette({ definitions, onPick }) {
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>KPIs in this pack</div>
+      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>KPIs in this pack</div>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
-        {definitions.length === 0 && <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>none yet</span>}
+        {definitions.length === 0 && <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>none yet</span>}
         {definitions.map((d) => (
           <button key={d.id} type="button" onClick={() => onPick(d.key)} style={pill} title={d.label}>{d.key}</button>
         ))}
       </div>
-      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>From the accounts</div>
+      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>From the accounts</div>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
         {FINANCIAL_KEYS.map((f) => (
           <button key={f.key} type="button" onClick={() => onPick(f.key)} style={pill} title={f.label}>{f.key}</button>
@@ -551,26 +551,26 @@ function KeyPalette({ definitions, onPick }) {
 }
 
 /* ─── Styles ───────────────────────────────────────────────────── */
-const lbl = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, fontWeight: 600, color: '#475569' };
-const lblText = { fontSize: 12, fontWeight: 600, color: '#475569' };
-const hint = { fontSize: 11.5, fontWeight: 400, color: '#94a3b8', lineHeight: 1.5 };
+const lbl = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600, color: '#475569' };
+const lblText = { fontSize: 13, fontWeight: 600, color: '#475569' };
+const hint = { fontSize: 12.5, fontWeight: 400, color: '#94a3b8', lineHeight: 1.5 };
 const chip = {
-  fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+  fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
   border: '1px solid #e5e7eb', backgroundColor: '#f8fafc', color: '#64748b',
 };
 const pill = {
-  fontSize: 11, fontFamily: 'ui-monospace, monospace', padding: '3px 8px', borderRadius: 6,
+  fontSize: 12, fontFamily: 'ui-monospace, monospace', padding: '3px 8px', borderRadius: 6,
   border: '1px solid #e5e7eb', backgroundColor: '#f8fafc', color: '#334155', cursor: 'pointer',
 };
 const smallBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #e5e7eb',
   borderRadius: 8, padding: '6px 12px', background: '#fff', color: '#475569',
-  fontFamily: OUTFIT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+  fontFamily: OUTFIT, fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
 };
 const primaryBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 17px',
   border: 'none', borderRadius: 10, backgroundColor: '#0f172a', color: '#fff',
-  fontFamily: OUTFIT, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+  fontFamily: OUTFIT, fontSize: 14, fontWeight: 700, cursor: 'pointer',
 };
 const iconAdd = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

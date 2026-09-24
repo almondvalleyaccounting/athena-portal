@@ -321,7 +321,7 @@ export default function TimesheetView() {
 
         {/* Week navigation */}
         <button onClick={() => setAnchor((p) => addDays(p, -7))} style={navBtn}><ChevronLeft size={16} /></button>
-        <span style={{ fontSize: 14, fontWeight: 500, minWidth: 190, textAlign: 'center' }}>
+        <span style={{ fontSize: 14.5, fontWeight: 500, minWidth: 190, textAlign: 'center' }}>
           {formatWeekTitle(weekStart)}
         </span>
         <button onClick={() => setAnchor((p) => addDays(p, 7))} style={navBtn}><ChevronRight size={16} /></button>
@@ -343,7 +343,7 @@ export default function TimesheetView() {
       </div>
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading timesheet...</div>
+        <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading timesheet...</div>
       ) : (
         <>
           {/* Locked-period banner */}
@@ -351,7 +351,7 @@ export default function TimesheetView() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
               background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8,
-              padding: '8px 14px', marginBottom: 12, fontSize: 12.5, color: '#92400e',
+              padding: '8px 14px', marginBottom: 12, fontSize: 13.5, color: '#92400e',
             }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
                 <rect x="5" y="11" width="14" height="9" rx="2" stroke="#d97706" strokeWidth="2"/>
@@ -363,7 +363,7 @@ export default function TimesheetView() {
 
           {/* Grid */}
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
                   <th style={{ ...thStyle, width: 180, textAlign: 'left' }}>Client</th>
@@ -373,7 +373,7 @@ export default function TimesheetView() {
                     return (
                       <th key={i} style={{ ...thStyle, width: 90, textAlign: 'center', color: isToday ? '#0e7fe0' : '#64748b', fontWeight: isToday ? 700 : 600 }}>
                         <div>{DAY_NAMES[i]}</div>
-                        <div style={{ fontSize: 10, fontWeight: 400 }}>{d.getDate()}</div>
+                        <div style={{ fontSize: 11, fontWeight: 400 }}>{d.getDate()}</div>
                       </th>
                     );
                   })}
@@ -384,7 +384,7 @@ export default function TimesheetView() {
               <tbody>
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={11} style={{ padding: 32, textAlign: 'center', color: '#cbd5e1', fontSize: 13 }}>
+                    <td colSpan={11} style={{ padding: 32, textAlign: 'center', color: '#cbd5e1', fontSize: 14 }}>
                       No timesheet data for this week.
                     </td>
                   </tr>
@@ -396,7 +396,7 @@ export default function TimesheetView() {
                     <tr key={row.key} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={tdStyle}>
                         <span onClick={() => row.entityId && (window.location.href = `/clients/${row.entityId}`)} style={{ fontWeight: 500, color: row.entityId ? '#0e7fe0' : '#0f172a', cursor: row.entityId ? 'pointer' : 'default' }}>{clientName}</span>
-                        {row.isManual && <span style={{ fontSize: 9, color: '#94a3b8', marginLeft: 6 }}>manual</span>}
+                        {row.isManual && <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 6 }}>manual</span>}
                       </td>
                       <td style={tdStyle}><span style={{ color: '#64748b' }}>{row.service || '—'}</span></td>
                       {row.days.map((day, di) => {
@@ -448,7 +448,7 @@ export default function TimesheetView() {
                                   }}
                                 />
                               ) : isScheduled ? (
-                                <span style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>planned</span>
+                                <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>planned</span>
                               ) : null}
                             </td>
                           );
@@ -458,7 +458,7 @@ export default function TimesheetView() {
                             {total > 0 ? (
                               <span style={{ fontWeight: 500, color: '#0f172a' }}>{minutesToDisplay(total)}</span>
                             ) : isScheduled ? (
-                              <span style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>planned</span>
+                              <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>planned</span>
                             ) : null}
                           </td>
                         );
@@ -495,7 +495,7 @@ export default function TimesheetView() {
                   {dayTotals.map((t, i) => (
                     <td key={i} style={{ ...tdStyle, textAlign: 'center', fontWeight: 600, color: '#0f172a' }}>{minutesToDisplay(t)}</td>
                   ))}
-                  <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: '#0e7fe0', fontSize: 14 }}>
+                  <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: '#0e7fe0', fontSize: 14.5 }}>
                     {minutesToDisplay(weekTotal)}
                   </td>
                 </tr>
@@ -510,7 +510,7 @@ export default function TimesheetView() {
                 onClick={() => setAddingRow(true)}
                 disabled={weekLocked}
                 title={weekLocked ? 'This week falls in a locked period' : undefined}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: weekLocked ? '#cbd5e1' : '#64748b', background: 'none', border: 'none', cursor: weekLocked ? 'not-allowed' : 'pointer', padding: '6px 0', fontFamily: "'Outfit', sans-serif" }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: weekLocked ? '#cbd5e1' : '#64748b', background: 'none', border: 'none', cursor: weekLocked ? 'not-allowed' : 'pointer', padding: '6px 0', fontFamily: "'Outfit', sans-serif" }}
               >
                 <Plus size={14} /> Add manual row
               </button>
@@ -524,8 +524,8 @@ export default function TimesheetView() {
                   <option value="">— Select service —</option>
                   {SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
-                <button onClick={handleAddRow} disabled={!newRowClient && !newRowService} style={{ ...navBtn, fontSize: 12, opacity: (!newRowClient && !newRowService) ? 0.4 : 1 }}>Add</button>
-                <button onClick={() => { setAddingRow(false); setNewRowClient(''); setNewRowService(''); }} style={{ ...navBtn, fontSize: 12, color: '#94a3b8' }}>Cancel</button>
+                <button onClick={handleAddRow} disabled={!newRowClient && !newRowService} style={{ ...navBtn, fontSize: 13, opacity: (!newRowClient && !newRowService) ? 0.4 : 1 }}>Add</button>
+                <button onClick={() => { setAddingRow(false); setNewRowClient(''); setNewRowService(''); }} style={{ ...navBtn, fontSize: 13, color: '#94a3b8' }}>Cancel</button>
               </div>
             )}
           </div>
@@ -535,14 +535,14 @@ export default function TimesheetView() {
   );
 }
 
-const thStyle = { padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#64748b', borderBottom: '2px solid #e5e7eb', fontFamily: "'Outfit', sans-serif", textTransform: 'uppercase', letterSpacing: '0.03em' };
-const tdStyle = { padding: '8px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif" };
-const navBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '5px 10px', fontSize: 13, fontWeight: 500, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#1e293b', cursor: 'pointer', whiteSpace: 'nowrap' };
-const selectStyle = { padding: '5px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
-const labelStyle = { fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.03em' };
+const thStyle = { padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#64748b', borderBottom: '2px solid #e5e7eb', fontFamily: "'Outfit', sans-serif" };
+const tdStyle = { padding: '8px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif" };
+const navBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '5px 10px', fontSize: 14, fontWeight: 500, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#1e293b', cursor: 'pointer', whiteSpace: 'nowrap' };
+const selectStyle = { padding: '5px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
+const labelStyle = { fontSize: 12, fontWeight: 600, color: '#94a3b8' };
 const sepStyle = { width: 1, height: 20, background: '#e5e7eb' };
 const cellInput = {
-  width: 50, padding: '3px 4px', fontSize: 12, textAlign: 'center',
+  width: 50, padding: '3px 4px', fontSize: 13, textAlign: 'center',
   border: '1px solid #e5e7eb', borderRadius: 4, outline: 'none',
   fontFamily: "'Outfit', sans-serif",
 };

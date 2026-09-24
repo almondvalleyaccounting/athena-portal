@@ -538,7 +538,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
                 : 'bg-amber-50 border-amber-200';
               return (
                 <div className={`rounded-lg p-3 text-xs border ${tone}`}>
-                  <h3 className="font-semibold text-gray-500 uppercase mb-1">QuickBooks customer</h3>
+                  <h3 className="font-semibold text-gray-500 mb-1">QuickBooks customer</h3>
                   {!t ? (
                     <p className="text-gray-400">Checking QuickBooks…</p>
                   ) : t.mode === 'missing' ? (
@@ -626,7 +626,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
             {/* Client details — MANDATORY. Email + billing address are written
                 to the QBO customer and the recurring/setup documents. */}
             <div className={`rounded-lg p-3 text-xs border ${contactReady ? 'bg-gray-50 border-gray-200' : 'bg-amber-50 border-amber-200'}`}>
-              <h3 className="font-semibold text-gray-500 uppercase mb-2">Client details (required)</h3>
+              <h3 className="font-semibold text-gray-500 mb-2">Client details (required)</h3>
 
               {/* Email */}
               <div className="mb-2">
@@ -687,7 +687,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
 
             {/* Payment terms — invoice due-date offset (default 14 days). */}
             <div className="bg-gray-50 rounded-lg p-3 text-xs flex items-center gap-2">
-              <h3 className="font-semibold text-gray-500 uppercase">Payment terms</h3>
+              <h3 className="font-semibold text-gray-500">Payment terms</h3>
               <span className="text-gray-600">Due in</span>
               <input
                 type="number"
@@ -702,7 +702,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
             {/* Setup invoice */}
             {setup && (
               <div className="bg-gray-50 rounded-lg p-3 text-xs">
-                <h3 className="font-semibold text-gray-500 uppercase mb-1">One-off setup invoice</h3>
+                <h3 className="font-semibold text-gray-500 mb-1">One-off setup invoice</h3>
                 <div className="space-y-0.5 mb-2">
                   {setup.lines.map((l, i) => (
                     <div key={i} className="flex justify-between text-gray-700">
@@ -740,7 +740,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
             {/* Recurring template */}
             {rec && (
               <div className="bg-gray-50 rounded-lg p-3 text-xs">
-                <h3 className="font-semibold text-gray-500 uppercase mb-1">Recurring template</h3>
+                <h3 className="font-semibold text-gray-500 mb-1">Recurring template</h3>
                 <p className="text-gray-700 mb-2">
                   {rec.action === 'overwrite' ? (
                     <span className="text-amber-700 font-medium">Overwriting existing template</span>
@@ -834,7 +834,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
         {/* Quote Summary */}
         <div className="p-4 space-y-3">
           <div className="bg-gray-50 rounded-lg p-3">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Quote Summary</h3>
+            <h3 className="text-xs font-semibold text-gray-500 mb-2">Quote Summary</h3>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
               <span className="text-gray-400">Client</span>
               <span className="text-gray-700 font-medium">{clientName}</span>
@@ -853,7 +853,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
               allowed (non-blocking) but counted in the footer so it's
               visible they need follow-up from the client detail page. */}
           <div className="bg-gray-50 rounded-lg p-3">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
+            <h3 className="text-xs font-semibold text-gray-500 mb-2">
               Services & fee earner allocation ({recurring.length})
             </h3>
             <div className="space-y-2 max-h-72 overflow-auto">
@@ -906,7 +906,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
 
           {/* QBO Options */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase">QuickBooks Export</p>
+            <p className="text-xs font-semibold text-gray-500">QuickBooks Export</p>
             {qboConnected && (
               <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
                 <input

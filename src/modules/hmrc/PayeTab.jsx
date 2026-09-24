@@ -137,7 +137,7 @@ export default function PayeTab({ clients = [] }) {
               end={s.to === ''}
               title={disabled ? 'Pick a client above to see their PAYE account' : ''}
               style={({ isActive }) => ({
-                padding: '5px 12px', fontSize: 12, textDecoration: 'none', borderRadius: 999,
+                padding: '5px 12px', fontSize: 13, textDecoration: 'none', borderRadius: 999,
                 fontFamily: font,
                 fontWeight: isActive ? 600 : 500,
                 color: disabled ? '#cbd5e1' : isActive ? '#0f172a' : '#64748b',
@@ -154,7 +154,7 @@ export default function PayeTab({ clients = [] }) {
         {/* Only shown when it is a real choice. */}
         {mine.length > 1 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 10 }}>
-            <span style={{ fontSize: 11, color: '#c2410c', fontWeight: 600 }}>
+            <span style={{ fontSize: 12, color: '#c2410c', fontWeight: 600 }}>
               {mine.length} schemes —
             </span>
             {mine.map((s) => (
@@ -162,7 +162,7 @@ export default function PayeTab({ clients = [] }) {
                 key={s.paye_ref}
                 onClick={() => pickScheme(s.paye_ref)}
                 style={{
-                  padding: '4px 9px', fontSize: 11, fontFamily: font, borderRadius: 999, cursor: 'pointer',
+                  padding: '4px 9px', fontSize: 12, fontFamily: font, borderRadius: 999, cursor: 'pointer',
                   background: s.paye_ref === payeRef ? '#eff6ff' : '#fff',
                   border: `1px solid ${s.paye_ref === payeRef ? '#bfdbfe' : '#e5e7eb'}`,
                   color: '#0f172a', fontWeight: s.paye_ref === payeRef ? 600 : 400,
@@ -178,11 +178,11 @@ export default function PayeTab({ clients = [] }) {
         )}
 
         {scheme && mine.length === 1 && (
-          <span style={{ fontSize: 11.5, color: '#94a3b8', marginLeft: 8 }}>
+          <span style={{ fontSize: 12.5, color: '#94a3b8', marginLeft: 8 }}>
             {scheme.paye_ref}
             {scheme.chase_tier && (
               <Pill colour={TIERS[scheme.chase_tier].colour} bg={TIERS[scheme.chase_tier].bg}
-                    title={TIERS[scheme.chase_tier].hint} style={{ fontSize: 9.5, marginLeft: 6 }}>
+                    title={TIERS[scheme.chase_tier].hint} style={{ fontSize: 10.5, marginLeft: 6 }}>
                 {TIERS[scheme.chase_tier].short}
               </Pill>
             )}
@@ -195,13 +195,13 @@ export default function PayeTab({ clients = [] }) {
       {SUBS.find((s) => (s.to || '') === sub)?.needsClient && !entityId ? (
         <div style={{
           background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
-          padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 13,
+          padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 14,
         }}>
           Pick a client in the selector above to see their PAYE {sub === 'payments' ? 'payments' : 'account'},
           {' '}or use <b>Chasing</b> for every scheme at once.
         </div>
       ) : loading && entityId ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading PAYE schemes…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading PAYE schemes…</div>
       ) : (
         <Routes>
           <Route index element={<ClientStatementView payeRef={payeRef} scheme={scheme} />} />

@@ -212,13 +212,13 @@ export function AgedSection({ title, data, currency, sameLabel, palette = null, 
   return (
     <div style={cardStyle || undefined}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '4px' }}>
-        <span style={{ fontFamily: t.font, fontSize: '15px', fontWeight: 700, color: t.strong }}>{title}</span>
+        <span style={{ fontFamily: t.font, fontSize: '15.5px', fontWeight: 700, color: t.strong }}>{title}</span>
         <span style={{ fontFamily: t.font, fontSize: '18px', fontWeight: 700, color: t.strong, marginLeft: 'auto' }}>
           {money(data.buckets?.total, currency)}
         </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-        <span style={{ fontFamily: t.font, fontSize: '11.5px', color: t.faint }}>
+        <span style={{ fontFamily: t.font, fontSize: '12.5px', color: t.faint }}>
           as at {shortDate(data.period?.end)}
         </span>
       </div>
@@ -232,14 +232,14 @@ export function AgedSection({ title, data, currency, sameLabel, palette = null, 
             ['3 months ago', sc.three_months?.total, sc.three_months?.date],
           ].map(([label, val, date]) => (
             <div key={label} style={tile}>
-              <div style={{ fontFamily: t.font, fontSize: '11px', color: t.faint, marginBottom: '2px' }}>{label}</div>
+              <div style={{ fontFamily: t.font, fontSize: '12px', color: t.faint, marginBottom: '2px' }}>{label}</div>
               <div style={{ fontFamily: t.font, fontSize: '16px', fontWeight: 700, color: t.strong }}>
                 {val == null ? '—' : money(val, currency)}
               </div>
-              <div style={{ fontFamily: t.font, fontSize: '10.5px', color: t.border }}>{date ? shortDate(date) : ''}</div>
+              <div style={{ fontFamily: t.font, fontSize: '11.5px', color: t.border }}>{date ? shortDate(date) : ''}</div>
             </div>
           ))}
-          <div style={{ gridColumn: '1 / -1', fontFamily: t.font, fontSize: '11px', color: t.faint, marginTop: '-4px' }}>
+          <div style={{ gridColumn: '1 / -1', fontFamily: t.font, fontSize: '12px', color: t.faint, marginTop: '-4px' }}>
             {sameLabel} on the current file ({sc.names}) — their combined balance at each date. Names on the file now only.
           </div>
         </div>
@@ -249,7 +249,7 @@ export function AgedSection({ title, data, currency, sameLabel, palette = null, 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '16px' }}>
         {BUCKET_DEFS.map(([key, label]) => (
           <div key={key} style={tile}>
-            <div style={{ fontFamily: t.font, fontSize: '11px', color: t.faint, marginBottom: '2px' }}>{label}</div>
+            <div style={{ fontFamily: t.font, fontSize: '12px', color: t.faint, marginBottom: '2px' }}>{label}</div>
             <div style={{ fontFamily: t.font, fontSize: '16px', fontWeight: 700, color: key === 'b91_plus' && Math.abs(data.buckets?.[key] || 0) > 0.005 ? t.negative : t.strong }}>
               {money(data.buckets?.[key], currency)}
             </div>

@@ -348,7 +348,7 @@ export default function QboMappingPage() {
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
             QuickBooks ↔ Athena mapping
           </h1>
-          <p style={{ fontSize: 13, color: '#64748b', maxWidth: 720 }}>
+          <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720 }}>
             Link each QuickBooks customer to the Athena entity it represents.
             Use <b>Ignore</b> to sweep away QBO noise (internal references, dormant records).
           </p>
@@ -360,7 +360,7 @@ export default function QboMappingPage() {
       {autoAcceptable.length > 0 && (
         <div style={autoBannerStyle}>
           <Zap size={14} style={{ color: '#0e7fe0' }} />
-          <span style={{ fontSize: 13, color: '#0c4a6e', flex: 1 }}>
+          <span style={{ fontSize: 14, color: '#0c4a6e', flex: 1 }}>
             <b>{autoAcceptable.length}</b> unmapped QBO customer(s) have a{' '}
             <b>{Math.round(AUTO_ACCEPT_THRESHOLD * 100)}%+</b> name match to an Athena entity.
           </span>
@@ -436,7 +436,7 @@ export default function QboMappingPage() {
       {/* Bulk action bar — visible when rows selected */}
       {selectedIds.length > 0 && (
         <div style={bulkBarStyle}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#0f172a' }}>
+          <span style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>
             {selectedIds.length} selected
           </span>
           <div style={{ flex: 1 }} />
@@ -466,12 +466,12 @@ export default function QboMappingPage() {
       )}
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : filtered.length === 0 ? (
         <EmptyState filter={filter} total={rows.length} />
       ) : (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 32 }} />
               <col style={{ width: '30%' }} />
@@ -531,7 +531,7 @@ export default function QboMappingPage() {
                       </div>
                       {r.needs_review && r.previous_qbo_customer_name && (
                         <div style={{
-                          fontSize: 10, color: '#3730a3', marginTop: 2,
+                          fontSize: 11, color: '#3730a3', marginTop: 2,
                           display: 'inline-block', padding: '1px 6px', borderRadius: 4,
                           background: '#eef2ff', border: '1px solid #c7d2fe',
                         }}
@@ -539,7 +539,7 @@ export default function QboMappingPage() {
                           renamed — was: {r.previous_qbo_customer_name}
                         </div>
                       )}
-                      <div style={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 10 }}>
+                      <div style={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 11 }}>
                         QBO #{r.qbo_customer_id}
                       </div>
                     </Td>
@@ -558,7 +558,7 @@ export default function QboMappingPage() {
                           {rowSuggestions.length > 1 && (
                             <details style={{ display: 'inline', position: 'relative' }}>
                               <summary style={{
-                                fontSize: 10, color: '#64748b', cursor: 'pointer',
+                                fontSize: 11, color: '#64748b', cursor: 'pointer',
                                 listStyle: 'none', padding: '2px 4px',
                               }}>+{rowSuggestions.length - 1}</summary>
                               <div style={{
@@ -581,9 +581,9 @@ export default function QboMappingPage() {
                           )}
                         </div>
                       ) : isUnmapped ? (
-                        <span style={{ fontSize: 10, color: '#94a3b8' }}>No close match</span>
+                        <span style={{ fontSize: 11, color: '#94a3b8' }}>No close match</span>
                       ) : (
-                        <span style={{ fontSize: 11, color: '#cbd5e1' }}>—</span>
+                        <span style={{ fontSize: 12, color: '#cbd5e1' }}>—</span>
                       )}
                     </Td>
                     <Td>
@@ -602,7 +602,7 @@ export default function QboMappingPage() {
                           disabled={saving === r.qbo_customer_id}
                           title={isIgnored ? 'Restore' : 'Ignore — exclude from billing'}
                           style={{
-                            fontSize: 11, padding: '3px 10px', borderRadius: 6,
+                            fontSize: 12, padding: '3px 10px', borderRadius: 6,
                             border: '1px solid ' + (isIgnored ? '#cbd5e1' : '#fca5a5'),
                             background: isIgnored ? '#f8fafc' : '#fff',
                             color: isIgnored ? '#475569' : '#991b1b',
@@ -613,7 +613,7 @@ export default function QboMappingPage() {
                         </button>
                         <button onClick={() => remove(r.qbo_customer_id)}
                           title="Delete this mapping row"
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 14, padding: '0 4px' }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 14.5, padding: '0 4px' }}
                           onMouseEnter={(e) => { e.currentTarget.style.color = '#991b1b'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.color = '#cbd5e1'; }}
                         >✕</button>
@@ -653,7 +653,7 @@ function FilterPill({ label, count, active, tone, onClick }) {
   const s = active ? t.active : t.idle;
   return (
     <button onClick={onClick} style={{
-      fontSize: 12, fontWeight: active ? 600 : 500,
+      fontSize: 13, fontWeight: active ? 600 : 500,
       padding: '5px 12px', borderRadius: 999,
       background: s.bg, color: s.fg, border: `1px solid ${s.border}`,
       cursor: 'pointer', fontFamily: font,
@@ -666,10 +666,10 @@ function FilterPill({ label, count, active, tone, onClick }) {
 function EmptyState({ filter, total }) {
   return (
     <div style={{ padding: 60, textAlign: 'center' }}>
-      <p style={{ fontSize: 15, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>
+      <p style={{ fontSize: 15.5, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>
         {total === 0 ? 'No QBO customers tracked yet' : 'Nothing to show here'}
       </p>
-      <p style={{ fontSize: 13, color: '#cbd5e1' }}>
+      <p style={{ fontSize: 14, color: '#cbd5e1' }}>
         {total === 0
           ? 'QBO customers appear after the next Pull from QBO, or add one manually.'
           : filter === 'unmapped' ? 'All QBO customers are resolved. Nice.'
@@ -683,21 +683,21 @@ function EmptyState({ filter, total }) {
 
 // ─── Styles ────────────────────────────────────────────────
 const Th = ({ children }) => (
-  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>
     {children}
   </th>
 );
 const Td = ({ children, style }) => <td style={{ padding: '8px 12px', verticalAlign: 'middle', ...style }}>{children}</td>;
 
-const selectStyle = { padding: '6px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
-const btnPrimary = { padding: '8px 14px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font };
-const btnSecondary = { padding: '6px 12px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#1e293b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnGhost = { padding: '6px 12px', fontSize: 12, fontWeight: 500, background: 'none', color: '#64748b', border: 'none', cursor: 'pointer', fontFamily: font };
-const btnAutoAccept = { padding: '7px 14px', fontSize: 12, fontWeight: 600, background: '#0e7fe0', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const selectStyle = { padding: '6px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
+const btnPrimary = { padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font };
+const btnSecondary = { padding: '6px 12px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#1e293b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnGhost = { padding: '6px 12px', fontSize: 13, fontWeight: 500, background: 'none', color: '#64748b', border: 'none', cursor: 'pointer', fontFamily: font };
+const btnAutoAccept = { padding: '7px 14px', fontSize: 13, fontWeight: 600, background: '#0e7fe0', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 
 const backLinkStyle = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 12, fontWeight: 500, color: '#64748b',
+  fontSize: 13, fontWeight: 500, color: '#64748b',
   background: 'none', border: 'none', cursor: 'pointer',
   marginBottom: 12, padding: 0, fontFamily: font,
 };
@@ -732,7 +732,7 @@ function suggestionChip(score) {
 
   return {
     display: 'inline-flex', alignItems: 'center', gap: 3,
-    fontSize: 11, padding: '3px 8px', borderRadius: 999,
+    fontSize: 12, padding: '3px 8px', borderRadius: 999,
     background: `hsl(201, ${bgSat}%, ${bgLight}%)`,
     border: `${borderWidth}px solid hsl(201, 70%, ${borderLight}%)`,
     color: textColor,

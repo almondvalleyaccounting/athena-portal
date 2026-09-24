@@ -30,7 +30,7 @@ export default function DataImportModule() {
         <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 500, color: '#0f172a', marginBottom: 10 }}>
           Access required
         </h2>
-        <p style={{ fontSize: 14, color: '#64748b' }}>
+        <p style={{ fontSize: 14.5, color: '#64748b' }}>
           You need the <code>can_import_data</code> permission to use this module.
         </p>
       </div>
@@ -64,7 +64,7 @@ export default function DataImportModule() {
                 onClick={() => navigate(tab.path)}
                 style={{
                   padding: '10px 18px',
-                  fontSize: 13, fontWeight: active ? 600 : 500,
+                  fontSize: 14, fontWeight: active ? 600 : 500,
                   color: active ? '#0e7fe0' : '#64748b',
                   background: 'none', border: 'none', cursor: 'pointer',
                   borderBottom: active ? '2px solid #0e7fe0' : '2px solid transparent',

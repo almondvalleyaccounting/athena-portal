@@ -126,7 +126,7 @@ export default function FeeEngineGapsPage() {
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Fee engine gaps
       </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 820, marginBottom: 14, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 820, marginBottom: 14, lineHeight: 1.55 }}>
         Active clients with live work scheduled in BrightManager but <b>no fee mapped in the fee engine</b>.
         These are the jobs being done that were never set up as a recurring fee. Work each one: set up a
         fee (raise a quote), or mark it one-off / not a client to clear it from the list. Confidential —
@@ -136,7 +136,7 @@ export default function FeeEngineGapsPage() {
       <BillingTabs active="gaps" />
 
       {error && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 12 }}>
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginBottom: 12 }}>
           {error}
         </div>
       )}
@@ -164,13 +164,13 @@ export default function FeeEngineGapsPage() {
       </div>
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading fee-engine gaps…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading fee-engine gaps…</div>
       ) : (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
                   <th style={th}>Client</th>
                   <th style={th}>Tier</th>
                   <th style={th}>Services</th>
@@ -199,24 +199,24 @@ export default function FeeEngineGapsPage() {
                             <AlertTriangle size={12} style={{ color: tm.colour, flexShrink: 0 }} />
                           )}
                           <span style={{ fontWeight: 500, color: '#0f172a' }}>{r.entity_name}</span>
-                          <span style={{ fontSize: 10, color: '#94a3b8' }}>{TYPE_LABEL[r.entity_type] || r.entity_type}</span>
+                          <span style={{ fontSize: 11, color: '#94a3b8' }}>{TYPE_LABEL[r.entity_type] || r.entity_type}</span>
                         </div>
                       </td>
                       <td style={td}>
-                        <span title={tm.hint} style={{ fontSize: 11, fontWeight: 600, color: tm.colour, background: tm.bg, border: `1px solid ${tm.colour}22`, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+                        <span title={tm.hint} style={{ fontSize: 12, fontWeight: 600, color: tm.colour, background: tm.bg, border: `1px solid ${tm.colour}22`, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>
                           {tm.label}
                         </span>
                       </td>
-                      <td style={{ ...td, color: '#475569', fontSize: 12, maxWidth: 260 }}>
+                      <td style={{ ...td, color: '#475569', fontSize: 13, maxWidth: 260 }}>
                         {services.join(', ') || '—'}
                       </td>
-                      <td style={{ ...td, textAlign: 'center', fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>
+                      <td style={{ ...td, textAlign: 'center', fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' }}>
                         {r.planned_tasks} job{r.planned_tasks === 1 ? '' : 's'}
                         {r.overdue_tasks > 0 && (
                           <span style={{ color: '#b91c1c', fontWeight: 600 }}> · {r.overdue_tasks} late</span>
                         )}
                       </td>
-                      <td style={{ ...td, color: '#64748b', fontSize: 12, whiteSpace: 'nowrap' }}>{shortDate(r.next_deadline)}</td>
+                      <td style={{ ...td, color: '#64748b', fontSize: 13, whiteSpace: 'nowrap' }}>{shortDate(r.next_deadline)}</td>
                       <td style={td}>
                         <select
                           value={r.review_status || 'pending'}
@@ -232,12 +232,12 @@ export default function FeeEngineGapsPage() {
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: 10 }}>
                           <a href={`/manage/quotes/new?entity=${r.entity_id}`}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0e7fe0', textDecoration: 'none' }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#0e7fe0', textDecoration: 'none' }}
                             title="Set up a fee — raise a quote for this client">
                             <FilePlus2 size={12} /> Quote
                           </a>
                           <a href={`/clients/${r.entity_id}`} target="_blank" rel="noreferrer"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#64748b', textDecoration: 'none' }}>
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#64748b', textDecoration: 'none' }}>
                             Client <ExternalLink size={11} />
                           </a>
                         </div>
@@ -272,7 +272,7 @@ function TierTab({ value, label, active, onClick }) {
   const isActive = active === value;
   return (
     <button onClick={() => onClick(value)} style={{
-      padding: '6px 12px', fontSize: 12, fontWeight: isActive ? 600 : 500,
+      padding: '6px 12px', fontSize: 13, fontWeight: isActive ? 600 : 500,
       color: isActive ? '#0f172a' : '#64748b',
       background: isActive ? '#f1f5f9' : '#fff',
       border: `1px solid ${isActive ? '#cbd5e1' : '#e5e7eb'}`, borderRadius: 999,
@@ -285,7 +285,7 @@ function FilterTab({ value, label, active, onClick }) {
   const isActive = active === value;
   return (
     <button onClick={() => onClick(value)} style={{
-      padding: '7px 14px', fontSize: 12, fontWeight: isActive ? 600 : 400,
+      padding: '7px 14px', fontSize: 13, fontWeight: isActive ? 600 : 400,
       color: isActive ? '#0f172a' : '#94a3b8',
       background: 'none', border: 'none',
       borderBottom: isActive ? '2px solid #0e7fe0' : '2px solid transparent',
@@ -297,13 +297,13 @@ function FilterTab({ value, label, active, onClick }) {
 function Stat({ label, value, colour, big, hint }) {
   return (
     <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px', borderLeft: `3px solid ${colour}` }} title={hint || ''}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: big ? 24 : 18, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
-      {hint && <div style={{ fontSize: 10, color: '#cbd5e1', marginTop: 2 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>{hint}</div>}
     </div>
   );
 }
 
 const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' };
 const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
-const inputStyle = { width: '100%', padding: '6px 9px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: font, boxSizing: 'border-box', background: '#fff' };
+const inputStyle = { width: '100%', padding: '6px 9px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: font, boxSizing: 'border-box', background: '#fff' };

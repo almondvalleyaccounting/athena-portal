@@ -30,13 +30,12 @@ const VIA_LABEL = {
 };
 
 const th = {
-  padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#64748b',
-  textAlign: 'left', textTransform: 'uppercase', letterSpacing: 0.4,
-  borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
+  padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#64748b',
+  textAlign: 'left', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
 };
-const td = { padding: '7px 10px', fontSize: 12.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
+const td = { padding: '7px 10px', fontSize: 13.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
 const selStyle = {
-  padding: '4px 8px', fontSize: 12, fontFamily: font, color: '#334155',
+  padding: '4px 8px', fontSize: 13, fontFamily: font, color: '#334155',
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer',
 };
 
@@ -50,10 +49,10 @@ function fmtDateTime(iso) {
 
 function PrefChip({ status }) {
   const m = PREF_META[status];
-  if (!m) return <span style={{ color: '#94a3b8', fontSize: 12 }}>—</span>;
+  if (!m) return <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>;
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', fontSize: 11, fontWeight: 600,
+      display: 'inline-block', padding: '2px 8px', fontSize: 12, fontWeight: 600,
       background: m.bg, color: m.color, border: `1px solid ${m.border}`, borderRadius: 999,
     }}>{m.label}</span>
   );
@@ -157,21 +156,21 @@ export default function PreferencesView() {
 
   const SummaryChip = ({ label, value, tone }) => (
     <div style={{ ...card, padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 96 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{label}</span>
       <span style={{ fontSize: 20, fontWeight: 700, color: tone }}>{value}</span>
     </div>
   );
 
   return (
     <div style={{ fontFamily: font, height: '100%', overflowY: 'auto', paddingRight: 2 }}>
-      <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 14px', maxWidth: 720 }}>
+      <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 14px', maxWidth: 720 }}>
         Consent ledger for client communications. Responses arrive from opt-in
         links, email replies, or staff. New communication types appear here
         automatically once added. Former clients are hidden.
       </p>
 
       {error && (
-        <div style={{ ...card, padding: '10px 14px', marginBottom: 12, background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c', fontSize: 12.5 }}>
+        <div style={{ ...card, padding: '10px 14px', marginBottom: 12, background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c', fontSize: 13.5 }}>
           {error}
         </div>
       )}
@@ -199,7 +198,7 @@ export default function PreferencesView() {
           placeholder="Search client…"
           style={{ ...selStyle, minWidth: 200, cursor: 'text' }}
         />
-        <span style={{ fontSize: 12, color: '#94a3b8' }}>{visible.length} shown</span>
+        <span style={{ fontSize: 13, color: '#94a3b8' }}>{visible.length} shown</span>
       </div>
 
       <div style={{ ...card, overflow: 'hidden' }}>

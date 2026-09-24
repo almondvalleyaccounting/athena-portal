@@ -306,7 +306,7 @@ export default function AdminPage() {
     border: '1px solid #e5e7eb',
     borderRadius: '10px',
     padding: '10px 14px',
-    fontSize: '13px',
+    fontSize: '14px',
     fontFamily: "'Outfit', sans-serif",
     outline: 'none',
     boxSizing: 'border-box',
@@ -330,7 +330,7 @@ export default function AdminPage() {
           onClick={() => { setShowInvite(!showInvite); setInviteError(''); setInviteSuccess(''); }}
           style={{
             fontFamily: "'Outfit', sans-serif",
-            fontSize: '13px',
+            fontSize: '14px',
             fontWeight: 600,
             color: '#ffffff',
             backgroundColor: '#0f172a',
@@ -347,7 +347,7 @@ export default function AdminPage() {
       <p
         style={{
           fontFamily: "'Outfit', sans-serif",
-          fontSize: '14px',
+          fontSize: '14.5px',
           color: '#64748b',
           marginBottom: '24px',
         }}
@@ -369,7 +369,7 @@ export default function AdminPage() {
           <h3
             style={{
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '15px',
+              fontSize: '15.5px',
               fontWeight: 600,
               color: '#0f172a',
               marginBottom: '16px',
@@ -379,7 +379,7 @@ export default function AdminPage() {
           </h3>
           <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 180px' }}>
-              <label style={{ fontFamily: "'Outfit', sans-serif", fontSize: '12px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
+              <label style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
                 Full name
               </label>
               <input
@@ -393,7 +393,7 @@ export default function AdminPage() {
               />
             </div>
             <div style={{ flex: '1 1 220px' }}>
-              <label style={{ fontFamily: "'Outfit', sans-serif", fontSize: '12px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
+              <label style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
                 Email
               </label>
               <input
@@ -408,7 +408,7 @@ export default function AdminPage() {
               />
             </div>
             <div style={{ flex: '1 1 160px' }}>
-              <label style={{ fontFamily: "'Outfit', sans-serif", fontSize: '12px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
+              <label style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
                 Temporary password
               </label>
               <input
@@ -429,7 +429,7 @@ export default function AdminPage() {
               disabled={inviting}
               style={{
                 fontFamily: "'Outfit', sans-serif",
-                fontSize: '13px',
+                fontSize: '14px',
                 fontWeight: 600,
                 color: '#ffffff',
                 backgroundColor: inviting ? '#94a3b8' : '#38bdf8',
@@ -443,12 +443,12 @@ export default function AdminPage() {
               {inviting ? 'Creating...' : 'Create user'}
             </button>
             {inviteError && (
-              <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', color: '#ef4444' }}>
+              <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '14px', color: '#ef4444' }}>
                 {inviteError}
               </p>
             )}
             {inviteSuccess && (
-              <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', color: '#22c55e' }}>
+              <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '14px', color: '#22c55e' }}>
                 {inviteSuccess}
               </p>
             )}
@@ -467,16 +467,16 @@ export default function AdminPage() {
               padding: '16px 20px',
             }}
           >
-            <h3 style={{ fontFamily: font, fontSize: '14px', fontWeight: 600, color: '#92400e', marginBottom: '8px' }}>
+            <h3 style={{ fontFamily: font, fontSize: '14.5px', fontWeight: 600, color: '#92400e', marginBottom: '8px' }}>
               Accounts without profiles ({unlinkedUsers.length})
             </h3>
-            <p style={{ fontFamily: font, fontSize: '13px', color: '#a16207', marginBottom: '12px' }}>
+            <p style={{ fontFamily: font, fontSize: '14px', color: '#a16207', marginBottom: '12px' }}>
               These users have login accounts but no staff profile. They see "Access pending" when they sign in.
               Client portal sign-ins are excluded — manage those on{' '}
               <button
                 onClick={() => navigate('/admin/portal-clients')}
                 style={{
-                  fontFamily: font, fontSize: '13px', fontWeight: 600, color: '#0e7fe0',
+                  fontFamily: font, fontSize: '14px', fontWeight: 600, color: '#0e7fe0',
                   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                   textDecoration: 'underline',
                 }}
@@ -501,10 +501,10 @@ export default function AdminPage() {
                 }}
               >
                 <div>
-                  <span style={{ fontFamily: font, fontSize: '14px', fontWeight: 500, color: '#0f172a' }}>
+                  <span style={{ fontFamily: font, fontSize: '14.5px', fontWeight: 500, color: '#0f172a' }}>
                     {authUser.email}
                   </span>
-                  <span style={{ fontFamily: font, fontSize: '12px', color: '#94a3b8', marginLeft: '8px' }}>
+                  <span style={{ fontFamily: font, fontSize: '13px', color: '#94a3b8', marginLeft: '8px' }}>
                     Created {new Date(authUser.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </span>
                 </div>
@@ -515,7 +515,7 @@ export default function AdminPage() {
                       onChange={(e) => setCreateForm({ full_name: e.target.value })}
                       placeholder="Full name"
                       style={{
-                        fontFamily: font, fontSize: '13px', padding: '8px 12px',
+                        fontFamily: font, fontSize: '14px', padding: '8px 12px',
                         border: '1px solid #e5e7eb', borderRadius: '8px', outline: 'none', width: '180px',
                       }}
                       onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
@@ -525,7 +525,7 @@ export default function AdminPage() {
                       onClick={() => handleCreateProfile(authUser)}
                       disabled={!createForm.full_name.trim() || saving === 'create'}
                       style={{
-                        fontFamily: font, fontSize: '12px', fontWeight: 600, color: '#fff',
+                        fontFamily: font, fontSize: '13px', fontWeight: 600, color: '#fff',
                         backgroundColor: !createForm.full_name.trim() ? '#94a3b8' : '#0f172a',
                         border: 'none', borderRadius: '8px', padding: '8px 14px',
                         cursor: !createForm.full_name.trim() ? 'not-allowed' : 'pointer',
@@ -536,7 +536,7 @@ export default function AdminPage() {
                     <button
                       onClick={() => { setShowCreateFor(null); setCreateForm({ full_name: '' }); }}
                       style={{
-                        fontFamily: font, fontSize: '12px', color: '#64748b',
+                        fontFamily: font, fontSize: '13px', color: '#64748b',
                         background: 'none', border: '1px solid #e5e7eb', borderRadius: '8px',
                         padding: '8px 12px', cursor: 'pointer',
                       }}
@@ -548,7 +548,7 @@ export default function AdminPage() {
                   <button
                     onClick={() => setShowCreateFor(authUser.id)}
                     style={{
-                      fontFamily: font, fontSize: '12px', fontWeight: 600, color: '#fff',
+                      fontFamily: font, fontSize: '13px', fontWeight: 600, color: '#fff',
                       backgroundColor: '#38bdf8', border: 'none', borderRadius: '8px',
                       padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
                     }}
@@ -565,7 +565,7 @@ export default function AdminPage() {
 
       {/* Permissions grid */}
       {loading ? (
-        <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '14px', color: '#94a3b8' }}>
+        <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '14.5px', color: '#94a3b8' }}>
           Loading users...
         </p>
       ) : (
@@ -576,7 +576,7 @@ export default function AdminPage() {
               borderCollapse: 'separate',
               borderSpacing: 0,
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '13px',
+              fontSize: '14px',
             }}
           >
             <thead>
@@ -671,7 +671,7 @@ export default function AdminPage() {
                           onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
                           placeholder="Name"
                           style={{
-                            fontFamily: font, fontSize: '13px', padding: '4px 8px',
+                            fontFamily: font, fontSize: '14px', padding: '4px 8px',
                             border: '1px solid #e5e7eb', borderRadius: '6px', outline: 'none', width: '100%',
                           }}
                           onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
@@ -682,7 +682,7 @@ export default function AdminPage() {
                           onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
                           placeholder="Email"
                           style={{
-                            fontFamily: font, fontSize: '11px', padding: '4px 8px',
+                            fontFamily: font, fontSize: '12px', padding: '4px 8px',
                             border: '1px solid #e5e7eb', borderRadius: '6px', outline: 'none', width: '100%',
                           }}
                           onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
@@ -718,7 +718,7 @@ export default function AdminPage() {
                           <div style={{ fontWeight: 500, color: '#0f172a' }}>
                             {displayName(user)}
                           </div>
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          <div style={{ fontSize: '12px', color: '#94a3b8' }}>
                             {user.email}
                           </div>
                         </div>
@@ -896,7 +896,7 @@ export function ColourPicker({ colour, onChange }) {
           </div>
           <label style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0',
-            borderTop: '1px solid #f1f5f9', fontSize: 11, color: '#64748b',
+            borderTop: '1px solid #f1f5f9', fontSize: 12, color: '#64748b',
             fontFamily: "'Outfit', sans-serif", fontWeight: 500, cursor: 'pointer',
           }}>
             <input
@@ -911,7 +911,7 @@ export function ColourPicker({ colour, onChange }) {
             <button
               onClick={() => { onChange(null); setOpen(false); }}
               style={{
-                width: '100%', fontSize: 11, color: '#94a3b8', background: 'none',
+                width: '100%', fontSize: 12, color: '#94a3b8', background: 'none',
                 border: 'none', cursor: 'pointer', padding: '4px 0',
                 fontFamily: "'Outfit', sans-serif", fontWeight: 500,
               }}
@@ -952,7 +952,7 @@ export function WorkingDaysEditor({ value, onChange }) {
             title={DAY_FULL[day]}
             style={{
               width: 22, height: 22, borderRadius: 4, border: 'none',
-              fontSize: 10, fontWeight: 600, cursor: 'pointer',
+              fontSize: 11, fontWeight: 600, cursor: 'pointer',
               fontFamily: "'Outfit', sans-serif",
               background: isActive ? '#0f172a' : '#f1f5f9',
               color: isActive ? '#fff' : '#94a3b8',

@@ -115,20 +115,20 @@ export default function BillingServiceMappingPage() {
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Service → fee earner mapping
       </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 760, marginBottom: 14 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 760, marginBottom: 14 }}>
         Tell Athena who earns the revenue from each billing service. Map to a capacity-planner service (resolved per-client) or pin to a specific fee earner. Anything unmapped falls back to the Accounts Submission assignee for that client.
       </p>
 
       <BillingTabs active="mapping" />
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-            <div style={{ fontSize: 13, color: '#475569' }}>
+            <div style={{ fontSize: 14, color: '#475569' }}>
               <strong style={{ color: '#0f172a' }}>{stats.mapped}</strong> of <strong style={{ color: '#0f172a' }}>{stats.total}</strong> services mapped
-              {saving && <span style={{ marginLeft: 12, fontSize: 11, color: '#94a3b8' }}>Saving…</span>}
+              {saving && <span style={{ marginLeft: 12, fontSize: 12, color: '#94a3b8' }}>Saving…</span>}
             </div>
             <div style={{ flex: 1 }} />
             <SearchInput value={search} onChange={setSearch} placeholder="Search service…" style={{ minWidth: 240 }} />
@@ -143,7 +143,7 @@ export default function BillingServiceMappingPage() {
             />
           ) : (
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
                     <Th>Service</Th>
@@ -200,6 +200,6 @@ export default function BillingServiceMappingPage() {
   );
 }
 
-const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</th>;
+const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{children}</th>;
 const Td = ({ children, align, style }) => <td style={{ padding: '8px 12px', verticalAlign: 'middle', textAlign: align || 'left', ...style }}>{children}</td>;
-const selectStyle = { width: '100%', padding: '5px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none' };
+const selectStyle = { width: '100%', padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none' };

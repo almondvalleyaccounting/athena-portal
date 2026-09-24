@@ -79,18 +79,16 @@ function SectionLabel({ children, note, action }) {
       <h2
         style={{
           fontFamily: FONT,
-          fontSize: '12px',
+          fontSize: '13px',
           fontWeight: 600,
-          textTransform: 'uppercase',
           color: '#94a3b8',
-          letterSpacing: '0.04em',
-        }}
+          }}
       >
         {children}
       </h2>
       <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '10px', minWidth: 0 }}>
         {note && (
-          <span style={{ fontFamily: FONT, fontSize: '11px', color: '#cbd5e1' }}>{note}</span>
+          <span style={{ fontFamily: FONT, fontSize: '12px', color: '#cbd5e1' }}>{note}</span>
         )}
         {action}
       </span>
@@ -138,7 +136,7 @@ function AttentionCard({ accent, icon: Icon, title, subtitle, onClick }) {
         <p
           style={{
             fontFamily: FONT,
-            fontSize: '13px',
+            fontSize: '14px',
             fontWeight: 500,
             color: '#0f172a',
             marginBottom: subtitle ? '2px' : 0,
@@ -147,7 +145,7 @@ function AttentionCard({ accent, icon: Icon, title, subtitle, onClick }) {
           {title}
         </p>
         {subtitle && (
-          <p style={{ fontFamily: FONT, fontSize: '11px', color: '#94a3b8' }}>{subtitle}</p>
+          <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>{subtitle}</p>
         )}
       </div>
     </div>
@@ -189,7 +187,7 @@ function AttentionRow({ accent, icon: Icon, title, subtitle, onClick, action }) 
       <p
         style={{
           fontFamily: FONT,
-          fontSize: '13px',
+          fontSize: '14px',
           color: '#0f172a',
           flex: 1,
           minWidth: 0,
@@ -202,7 +200,7 @@ function AttentionRow({ accent, icon: Icon, title, subtitle, onClick, action }) 
       >
         <span style={{ fontWeight: 500 }}>{title}</span>
         {subtitle && (
-          <span style={{ fontSize: '12px', color: '#94a3b8' }}> · {subtitle}</span>
+          <span style={{ fontSize: '13px', color: '#94a3b8' }}> · {subtitle}</span>
         )}
       </p>
       {action && (
@@ -215,7 +213,7 @@ function AttentionRow({ accent, icon: Icon, title, subtitle, onClick, action }) 
           title="Create a chase task in the Work Planner, assigned to the job owner"
           style={{
             fontFamily: FONT,
-            fontSize: '11px',
+            fontSize: '12px',
             fontWeight: 600,
             padding: '3px 9px',
             borderRadius: '6px',
@@ -250,7 +248,7 @@ function YoYChip({ current, prior }) {
       title="vs the same fiscal period last year"
       style={{
         fontFamily: FONT,
-        fontSize: '11px',
+        fontSize: '12px',
         fontWeight: 600,
         color: palette.color,
         backgroundColor: palette.bg,
@@ -292,11 +290,9 @@ function StatCard({ label, value, sub, chip, onClick }) {
       <p
         style={{
           fontFamily: FONT,
-          fontSize: '11px',
+          fontSize: '12px',
           fontWeight: 500,
           color: '#94a3b8',
-          textTransform: 'uppercase',
-          letterSpacing: '0.03em',
           marginBottom: '5px',
         }}
       >
@@ -309,7 +305,7 @@ function StatCard({ label, value, sub, chip, onClick }) {
         {chip}
       </div>
       {sub && (
-        <p style={{ fontFamily: FONT, fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
+        <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8', marginTop: '3px' }}>
           {sub}
         </p>
       )}
@@ -334,7 +330,7 @@ function DeltaChip({ delta }) {
       title="change since the last deadline-digest snapshot"
       style={{
         fontFamily: FONT,
-        fontSize: '11px',
+        fontSize: '12px',
         fontWeight: 600,
         color: palette.color,
         backgroundColor: palette.bg,
@@ -377,11 +373,9 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, delta, row
       <p
         style={{
           fontFamily: FONT,
-          fontSize: '11px',
+          fontSize: '12px',
           fontWeight: 500,
           color: '#94a3b8',
-          textTransform: 'uppercase',
-          letterSpacing: '0.03em',
           marginBottom: '6px',
         }}
       >
@@ -391,12 +385,12 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, delta, row
         <span style={{ fontFamily: FONT, fontSize: '25px', fontWeight: 700, color: bigColor }}>
           {big}
         </span>
-        <span style={{ fontFamily: FONT, fontSize: '12px', color: '#64748b' }}>{unit}</span>
+        <span style={{ fontFamily: FONT, fontSize: '13px', color: '#64748b' }}>{unit}</span>
         {pill && (
           <span
             style={{
               fontFamily: FONT,
-              fontSize: '11px',
+              fontSize: '12px',
               fontWeight: 600,
               color: '#b91c1c',
               backgroundColor: '#fef2f2',
@@ -420,7 +414,7 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, delta, row
         <p
           style={{
             fontFamily: FONT,
-            fontSize: '11px',
+            fontSize: '12px',
             color: '#64748b',
             marginTop: '10px',
             paddingTop: '8px',
@@ -437,11 +431,11 @@ function DeadlineCard({ title, big, bigColor = '#0f172a', unit, pill, delta, row
 function DeadlineRow({ label, value, delta }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontFamily: FONT, fontSize: '12px', color: '#64748b' }}>{label}</span>
+      <span style={{ fontFamily: FONT, fontSize: '13px', color: '#64748b' }}>{label}</span>
       <span
         style={{
           fontFamily: FONT,
-          fontSize: '12px',
+          fontSize: '13px',
           fontWeight: 600,
           color: '#0f172a',
           display: 'inline-flex',
@@ -462,7 +456,7 @@ function ServiceChip({ service, count, active, onClick }) {
       onClick={onClick}
       style={{
         fontFamily: FONT,
-        fontSize: '11px',
+        fontSize: '12px',
         color: active ? '#0c4a6e' : '#475569',
         backgroundColor: active ? '#e0f2fe' : '#f8fafc',
         border: `1px solid ${active ? '#7dd3fc' : '#e5e7eb'}`,
@@ -486,7 +480,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
   const backlog = shown.filter((j) => daysLate(j.bm_deadline) >= 180);
   const th = {
     fontFamily: FONT,
-    fontSize: '11px',
+    fontSize: '12px',
     fontWeight: 600,
     color: '#475569',
     textAlign: 'left',
@@ -496,7 +490,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
   };
   const td = {
     fontFamily: FONT,
-    fontSize: '12px',
+    fontSize: '13px',
     color: '#334155',
     padding: '5px 10px',
     borderTop: '1px solid #f1f5f9',
@@ -541,7 +535,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
             onClick={() => onWontHappen(backlog)}
             title="Bulk-triage jobs 180+ days late: excludes them from every count and files the BrightManager cleanup on Sophie's admin list"
             style={{
-              marginLeft: 'auto', fontFamily: FONT, fontSize: '11px', fontWeight: 600,
+              marginLeft: 'auto', fontFamily: FONT, fontSize: '12px', fontWeight: 600,
               padding: '4px 10px', borderRadius: '7px', border: '1px solid #fcd34d',
               background: '#fef3c7', color: '#92400e', cursor: 'pointer', whiteSpace: 'nowrap',
             }}
@@ -606,7 +600,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
                       onClick={(e) => { e.stopPropagation(); onWontHappen([j]); }}
                       title="This job is never going to be done — exclude it from every count and file the BrightManager cleanup on Sophie's admin list"
                       style={{
-                        fontFamily: FONT, fontSize: '11px', fontWeight: 600,
+                        fontFamily: FONT, fontSize: '12px', fontWeight: 600,
                         padding: '2px 7px', borderRadius: '6px', border: '1px solid #e5e7eb',
                         background: '#fff', color: '#64748b', cursor: 'pointer', whiteSpace: 'nowrap',
                       }}
@@ -622,7 +616,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
       </div>
       {typeof total === 'number' && total > jobs.length && (
         <div style={{
-          padding: '6px 12px', fontFamily: FONT, fontSize: '11px', color: '#92400e',
+          padding: '6px 12px', fontFamily: FONT, fontSize: '12px', color: '#92400e',
           background: '#fffbeb', borderTop: '1px solid #fcd34d',
         }}>
           Showing the first {jobs.length} of {total} late jobs — the headline count is exact; use the
@@ -663,11 +657,9 @@ function OpsStat({ label, value, detail, tone = 'default', onClick }) {
       <p
         style={{
           fontFamily: FONT,
-          fontSize: '10px',
+          fontSize: '11px',
           fontWeight: 500,
           color: '#94a3b8',
-          textTransform: 'uppercase',
-          letterSpacing: '0.03em',
           marginBottom: '3px',
         }}
       >
@@ -677,7 +669,7 @@ function OpsStat({ label, value, detail, tone = 'default', onClick }) {
         {value}
         {detail && (
           <span
-            style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginLeft: '6px' }}
+            style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8', marginLeft: '6px' }}
           >
             {detail}
           </span>
@@ -722,7 +714,7 @@ function ChRefreshLine({ run }) {
       }}
     >
       <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: dot, flexShrink: 0 }} />
-      <p style={{ fontFamily: FONT, fontSize: '12px', color: '#475569', margin: 0 }}>{text}</p>
+      <p style={{ fontFamily: FONT, fontSize: '13px', color: '#475569', margin: 0 }}>{text}</p>
     </div>
   );
 }
@@ -1030,7 +1022,7 @@ function SummaryChip({ children }) {
     <span
       style={{
         fontFamily: FONT,
-        fontSize: '11px',
+        fontSize: '12px',
         fontWeight: 500,
         color: '#475569',
         backgroundColor: '#f8fafc',
@@ -1081,7 +1073,7 @@ function AttentionSummaryCard({ items, segments, onExpand }) {
         <p
           style={{
             fontFamily: FONT,
-            fontSize: '13px',
+            fontSize: '14px',
             fontWeight: 500,
             color: '#0f172a',
             marginBottom: '2px',
@@ -1093,7 +1085,7 @@ function AttentionSummaryCard({ items, segments, onExpand }) {
           {segments.length} area{segments.length === 1 ? '' : 's'} need{segments.length === 1 ? 's' : ''} your
           attention
         </p>
-        <p style={{ fontFamily: FONT, fontSize: '11px', color: '#94a3b8' }}>
+        <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>
           {segments.join(' · ')}
         </p>
       </div>
@@ -1242,7 +1234,7 @@ export default function HomeScreen() {
                 alignItems: 'center',
                 gap: '4px',
                 fontFamily: FONT,
-                fontSize: '11px',
+                fontSize: '12px',
                 fontWeight: 600,
                 color: '#38bdf8',
                 background: 'none',
@@ -1267,7 +1259,7 @@ export default function HomeScreen() {
         Needs attention
       </SectionLabel>
       {loading ? (
-        <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>Checking…</p>
+        <p style={{ fontFamily: FONT, fontSize: '13px', color: '#94a3b8' }}>Checking…</p>
       ) : attentionItems.length === 0 ? (
         <div
           style={{
@@ -1282,7 +1274,7 @@ export default function HomeScreen() {
           }}
         >
           <CheckCircle size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
-          <p style={{ fontFamily: FONT, fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+          <p style={{ fontFamily: FONT, fontSize: '14px', fontWeight: 500, color: '#0f172a' }}>
             Nothing needs your attention right now.
           </p>
         </div>
@@ -1308,10 +1300,8 @@ export default function HomeScreen() {
                 <p
                   style={{
                     fontFamily: FONT,
-                    fontSize: '10px',
+                    fontSize: '11px',
                     fontWeight: 600,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
                     color: '#94a3b8',
                     margin: '0 0 4px 2px',
                   }}
@@ -1364,7 +1354,7 @@ export default function HomeScreen() {
           key={key}
           onClick={() => setPulsePeriod(key)}
           style={{
-            fontFamily: FONT, fontSize: '11px', fontWeight: 600, padding: '3px 10px',
+            fontFamily: FONT, fontSize: '12px', fontWeight: 600, padding: '3px 10px',
             border: 'none', cursor: 'pointer',
             backgroundColor: pulsePeriod === key ? '#0f172a' : '#ffffff',
             color: pulsePeriod === key ? '#ffffff' : '#64748b',
@@ -1389,7 +1379,7 @@ export default function HomeScreen() {
         Practice pulse
       </SectionLabel>
       {pulseLoading ? (
-        <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>
+        <p style={{ fontFamily: FONT, fontSize: '13px', color: '#94a3b8' }}>
           Pulling the numbers from QuickBooks…
         </p>
       ) : pulseError === 'reconnect' || pulseError === 'no-connection' ? (
@@ -1601,7 +1591,7 @@ export default function HomeScreen() {
         >
           {getGreeting()}, {firstName}
         </h1>
-        <span style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>
+        <span style={{ fontFamily: FONT, fontSize: '13px', color: '#94a3b8' }}>
           {formatDate()}
         </span>
       </div>
@@ -1627,7 +1617,7 @@ export default function HomeScreen() {
                 <span
                   style={{
                     fontFamily: FONT,
-                    fontSize: '13px',
+                    fontSize: '14px',
                     fontWeight: 500,
                     color: '#1e293b',
                   }}

@@ -20,10 +20,10 @@ export default function LocationFilter({ entities, groups, assignments, value, o
 
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Scope</span>
+      <span style={{ fontSize: 12, color: colors.muted, fontWeight: 600 }}>Scope</span>
       <select value={sel} onChange={handle} style={{
         padding: '7px 10px', borderRadius: 8, border: `1px solid ${colors.border}`,
-        fontSize: 12, fontFamily: fontStack, background: '#fff', minWidth: 200,
+        fontSize: 13, fontFamily: fontStack, background: '#fff', minWidth: 200,
       }}>
         <option value="all">All locations</option>
         {groups.length > 0 && <option disabled>──── Groups ────</option>}

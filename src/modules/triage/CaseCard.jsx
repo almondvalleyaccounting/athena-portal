@@ -38,12 +38,12 @@ export default function CaseCard({
 
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontSize: compact ? 12.5 : 13.5, fontWeight: 600, color: '#0f172a', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: compact ? 13.5 : 14.5, fontWeight: 600, color: '#0f172a', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {caseHeadline(c)}
       </span>
       {badge && <span style={chip(badgeTone)}>{badgeText}</span>}
       {resolved && <CheckCircle2 size={13} color="#16a34a" />}
-      <span style={{ fontSize: 10.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>{daysOpen(c.created_at)}d</span>
+      <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>{daysOpen(c.created_at)}d</span>
       {!resolved && onResolve && (
         <button
           onPointerDown={(e) => e.stopPropagation()}
@@ -76,14 +76,14 @@ export default function CaseCard({
     <div ref={setNodeRef} {...(listeners || {})} {...(attributes || {})} onClick={() => onOpen(c)} style={frame}>
       {header}
       {c.title && (
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: '#334155', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#334155', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {c.title}
         </div>
       )}
-      <div style={{ fontSize: 12, color: '#64748b', marginTop: 3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+      <div style={{ fontSize: 13, color: '#64748b', marginTop: 3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
         {c.description}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11, color: '#94a3b8', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 12, color: '#94a3b8', flexWrap: 'wrap' }}>
         {nextAct ? (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#475569', minWidth: 0 }}>
             <NextIcon size={11} style={{ flexShrink: 0 }} />

@@ -39,7 +39,7 @@ export default function ApplicationDrawer({ app, vacancy, staffMap, staffList, p
         <div style={{ padding: '16px 20px 0', borderBottom: '1px solid #f1f5f9' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <span style={{
-              fontSize: 10.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+              fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
               background: stage.tone.bg, color: stage.tone.fg, border: `1px solid ${stage.tone.border}`,
               textTransform: 'uppercase', letterSpacing: 0.4,
             }}>{stage.label}</span>
@@ -55,7 +55,7 @@ export default function ApplicationDrawer({ app, vacancy, staffMap, staffList, p
               <button key={t.key} onClick={() => setTab(t.key)}
                 style={{
                   padding: '8px 10px', marginBottom: -1, background: 'none', border: 'none', cursor: 'pointer', fontFamily: font,
-                  fontSize: 12.5, fontWeight: tab === t.key ? 700 : 500, whiteSpace: 'nowrap',
+                  fontSize: 13.5, fontWeight: tab === t.key ? 700 : 500, whiteSpace: 'nowrap',
                   color: tab === t.key ? '#0f172a' : '#94a3b8',
                   borderBottom: `2px solid ${tab === t.key ? '#0e7fe0' : 'transparent'}`,
                 }}>{t.label}</button>
@@ -68,7 +68,7 @@ export default function ApplicationDrawer({ app, vacancy, staffMap, staffList, p
             <OverviewTab app={app} c={c} staffMap={staffMap} staffList={staffList} profileId={profileId} onPatch={onPatch} />
           )}
           {tab !== 'overview' && !c && (
-            <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px' }}>
+            <div style={{ fontSize: 13.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px' }}>
               You don't have permission to see this applicant's details, so this tab is unavailable.
             </div>
           )}
@@ -105,7 +105,7 @@ function OverviewTab({ app, c, staffMap, staffList, profileId, onPatch }) {
   return (
     <div>
       {!c && (
-        <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', marginBottom: 14 }}>
+        <div style={{ fontSize: 13.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', marginBottom: 14 }}>
           You don't have permission to see this applicant's contact details.
         </div>
       )}
@@ -160,22 +160,22 @@ function OverviewTab({ app, c, staffMap, staffList, profileId, onPatch }) {
       {app.cover_note && (
         <div style={{ marginTop: 16 }}>
           <label style={fieldLabel}>Cover note</label>
-          <div style={{ fontSize: 12.5, color: '#334155', whiteSpace: 'pre-wrap', background: '#f8fafc', borderRadius: 8, padding: '8px 10px' }}>{app.cover_note}</div>
+          <div style={{ fontSize: 13.5, color: '#334155', whiteSpace: 'pre-wrap', background: '#f8fafc', borderRadius: 8, padding: '8px 10px' }}>{app.cover_note}</div>
         </div>
       )}
 
-      <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 14 }}>
+      <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 14 }}>
         Applied {fmtDate(app.applied_at)}{app.source ? ` · via ${app.source}` : ''}
       </div>
 
       <div style={{ marginTop: 18 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Notes</div>
-        {notes === null && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Loading…</div>}
-        {notes !== null && notes.length === 0 && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>No notes yet.</div>}
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8 }}>Notes</div>
+        {notes === null && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Loading…</div>}
+        {notes !== null && notes.length === 0 && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>No notes yet.</div>}
         {(notes || []).map((n) => (
-          <div key={n.id} style={{ padding: '7px 0', borderBottom: '1px solid #f8fafc', fontSize: 12.5, color: '#334155' }}>
+          <div key={n.id} style={{ padding: '7px 0', borderBottom: '1px solid #f8fafc', fontSize: 13.5, color: '#334155' }}>
             <div style={{ whiteSpace: 'pre-wrap' }}>{n.body}</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
               {n.author_id ? (staffMap[n.author_id] || 'staff') : 'Athena'} · {fmtNoteTime(n.created_at)}
             </div>
           </div>
@@ -195,7 +195,7 @@ function OverviewTab({ app, c, staffMap, staffList, profileId, onPatch }) {
 
 function ContactRow({ icon: Icon, href, external, children }) {
   const inner = (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, color: href ? '#0e7fe0' : '#334155' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 14, color: href ? '#0e7fe0' : '#334155' }}>
       <Icon size={13} color="#94a3b8" /> {children}
       {external && <ExternalLink size={11} />}
     </span>
@@ -208,7 +208,7 @@ function StageBtn({ s, active, onClick }) {
   return (
     <button onClick={onClick}
       style={{
-        padding: '6px 11px', fontSize: 12, fontWeight: 600, fontFamily: font, borderRadius: 8, cursor: 'pointer',
+        padding: '6px 11px', fontSize: 13, fontWeight: 600, fontFamily: font, borderRadius: 8, cursor: 'pointer',
         background: active ? s.tone.bg : '#fff',
         color: active ? s.tone.fg : '#64748b',
         border: `1px solid ${active ? s.tone.border : '#e5e7eb'}`,

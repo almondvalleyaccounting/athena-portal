@@ -33,7 +33,7 @@ export default function ContractPanel({ app, profileId }) {
     finally { setSaving(false); }
   }
 
-  if (contract === undefined) return <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Loading…</div>;
+  if (contract === undefined) return <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Loading…</div>;
   const st = contract ? STATUS_MAP[contract.status] : null;
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
 
@@ -41,9 +41,9 @@ export default function ContractPanel({ app, profileId }) {
     <div>
       {st && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: st.tone.bg, color: st.tone.fg, border: `1px solid ${st.tone.border}`, textTransform: 'uppercase' }}>{st.label}</span>
-          {contract.sent_at && <span style={{ fontSize: 11.5, color: '#94a3b8' }}>Sent {fmtDate(contract.sent_at)}</span>}
-          {contract.signed_at && <span style={{ fontSize: 11.5, color: '#94a3b8' }}>· Signed {fmtDate(contract.signed_at)}</span>}
+          <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: st.tone.bg, color: st.tone.fg, border: `1px solid ${st.tone.border}`, textTransform: 'uppercase' }}>{st.label}</span>
+          {contract.sent_at && <span style={{ fontSize: 12.5, color: '#94a3b8' }}>Sent {fmtDate(contract.sent_at)}</span>}
+          {contract.signed_at && <span style={{ fontSize: 12.5, color: '#94a3b8' }}>· Signed {fmtDate(contract.signed_at)}</span>}
         </div>
       )}
 
@@ -54,7 +54,7 @@ export default function ContractPanel({ app, profileId }) {
         <textarea value={f.notes} onChange={set('notes')} rows={2} style={{ ...input, resize: 'vertical' }} />
       </div>
 
-      {error && <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 8 }}>{error}</div>}
+      {error && <div style={{ fontSize: 13, color: '#b91c1c', marginTop: 8 }}>{error}</div>}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <button onClick={() => save()} disabled={saving} style={btn('primary')}>{contract ? 'Save' : 'Create contract record'}</button>
@@ -64,7 +64,7 @@ export default function ContractPanel({ app, profileId }) {
           <button onClick={() => save({ status: 'declined' })} style={{ ...btn('secondary'), color: '#b91c1c', borderColor: '#fecaca' }}>Declined</button>
         </>}
       </div>
-      <p style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 12 }}>
+      <p style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 12 }}>
         E-signature isn't wired in yet — record the document link and track its status here. Full e-sign can reuse the client-portal document flow in a later pass.
       </p>
     </div>

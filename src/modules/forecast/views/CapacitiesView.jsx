@@ -98,13 +98,13 @@ export default function CapacitiesView({
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
         <H2>
-          Capacities <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span>
+          Capacities <span style={{ fontSize: 14, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span>
         </H2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {onFilterChange && (
             <LocationFilter entities={entities} groups={groups} assignments={assignments} value={filter} onChange={onFilterChange} />
           )}
-          <div style={{ display: 'flex', gap: 4, fontSize: 11 }}>
+          <div style={{ display: 'flex', gap: 4, fontSize: 12 }}>
             {['monthly', 'quarterly', 'annual'].map(g => (
               <button key={g} onClick={() => setGranularity(g)}
                 style={{
@@ -136,12 +136,12 @@ export default function CapacitiesView({
 
       {/* Per-location capacity table */}
       <H2 style={{ fontSize: 16 }}>Capacity by location</H2>
-      <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 8px' }}>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 8px' }}>
         Required sq ft uses Scottish Care Inspectorate space-per-child guidance:
         0-2 3.7 m² · 2-3 2.8 m² · 3-5 2.3 m² · after-school 1.86 m². Sq ft margin = surplus over the legal minimum.
       </p>
       <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff', marginBottom: 22 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
           <thead>
             <tr style={{ background: colors.bgSoft }}>
               <th style={th}>Location</th>
@@ -166,7 +166,7 @@ export default function CapacitiesView({
               return (
                 <tr key={r.entity.id} style={{ borderBottom: `1px solid ${colors.borderSoft}` }}>
                   <td style={td}><strong>{r.entity.label}</strong></td>
-                  <td style={td}><span style={{ fontSize: 10, color: colors.muted }}>{r.entity.config?.lease_or_buy || '—'}</span></td>
+                  <td style={td}><span style={{ fontSize: 11, color: colors.muted }}>{r.entity.config?.lease_or_buy || '—'}</span></td>
                   <td style={tdR}>{r.entity.config?.opening_month_offset ?? 0}</td>
                   <td style={tdR}>{r.cap.babies || '—'}</td>
                   <td style={tdR}>{r.cap.twos || '—'}</td>
@@ -204,13 +204,13 @@ export default function CapacitiesView({
 
       {/* Per-period × per-location ratio compliance matrix */}
       <H2 style={{ fontSize: 16 }}>Ratio compliance by location</H2>
-      <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 8px' }}>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 8px' }}>
         Practitioners <strong>provided ÷ required</strong> at end of period. Required = sum of <code>ceil(children / band ratio)</code>.
         Provided = sum of headcount for roles flagged as ratio-counting in the staff drivers (default: senior qualified, qualified, setting manager).
         Anything below <strong>1.00×</strong> is a Care Inspectorate breach.
       </p>
       <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff', marginBottom: 22 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
           <thead>
             <tr style={{ background: colors.bgSoft }}>
               <th style={{ ...th, position: 'sticky', left: 0, background: colors.bgSoft, minWidth: 180 }}>Location</th>
@@ -237,7 +237,7 @@ export default function CapacitiesView({
                     return (
                       <td key={g.label} style={{ ...tdR, color: tone, fontWeight: x < 1.0 ? 700 : 400 }}>
                         {x.toFixed(2)}×
-                        <span style={{ display: 'block', fontSize: 9, color: colors.muted, fontWeight: 400 }}>{prov ?? 0} / {req ?? 0}</span>
+                        <span style={{ display: 'block', fontSize: 10, color: colors.muted, fontWeight: 400 }}>{prov ?? 0} / {req ?? 0}</span>
                       </td>
                     );
                   })}
@@ -260,7 +260,7 @@ export default function CapacitiesView({
                     return (
                       <td key={g.label} style={{ ...tdR, color: tone }}>
                         {x.toFixed(2)}×
-                        <span style={{ display: 'block', fontSize: 9, color: colors.muted, fontWeight: 400 }}>{groupProv?.amount_p ?? 0} / {groupReq?.amount_p ?? 0}</span>
+                        <span style={{ display: 'block', fontSize: 10, color: colors.muted, fontWeight: 400 }}>{groupProv?.amount_p ?? 0} / {groupReq?.amount_p ?? 0}</span>
                       </td>
                     );
                   })}
@@ -273,11 +273,11 @@ export default function CapacitiesView({
 
       {/* Per-period effective children matrix */}
       <H2 style={{ fontSize: 16 }}>Effective children — utilisation ramp</H2>
-      <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 8px' }}>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 8px' }}>
         End-of-period effective children = capacity × engine occupancy at the period's last month — the same occupancy the P&L is computed from, including August school-leaver dips.
       </p>
       <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
           <thead>
             <tr style={{ background: colors.bgSoft }}>
               <th style={{ ...th, position: 'sticky', left: 0, background: colors.bgSoft, minWidth: 200 }}>Location</th>
@@ -292,7 +292,7 @@ export default function CapacitiesView({
                 <tr key={e.id} style={tr}>
                   <td style={td}>
                     <strong>{e.label}</strong>
-                    <span style={{ display: 'block', fontSize: 10, color: colors.muted }}>capacity {totalCap}</span>
+                    <span style={{ display: 'block', fontSize: 11, color: colors.muted }}>capacity {totalCap}</span>
                   </td>
                   {periodMatrix.map((pm, i) => {
                     const eff = pm.perEntity[ei];
@@ -306,7 +306,7 @@ export default function CapacitiesView({
                         {eff > 0 ? (
                           <>
                             {eff.toFixed(1)}
-                            <div style={{ fontSize: 9, color: colors.muted }}>{occPct.toFixed(0)}%</div>
+                            <div style={{ fontSize: 10, color: colors.muted }}>{occPct.toFixed(0)}%</div>
                           </>
                         ) : '—'}
                       </td>
@@ -324,7 +324,7 @@ export default function CapacitiesView({
                   return (
                     <td key={i} style={tdR}>
                       {total.toFixed(1)}
-                      <div style={{ fontSize: 9, color: colors.muted, fontWeight: 400 }}>{occPct.toFixed(0)}%</div>
+                      <div style={{ fontSize: 10, color: colors.muted, fontWeight: 400 }}>{occPct.toFixed(0)}%</div>
                     </td>
                   );
                 })}

@@ -212,7 +212,7 @@ export default function DebtView({ entityId = '' }) {
           disabled={filtered.length === 0}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
-            fontSize: 12, fontFamily: font, color: '#475569', background: '#fff',
+            fontSize: 13, fontFamily: font, color: '#475569', background: '#fff',
             border: '1px solid #e5e7eb', borderRadius: 8,
             cursor: filtered.length ? 'pointer' : 'default', opacity: filtered.length ? 1 : 0.5,
           }}
@@ -222,13 +222,13 @@ export default function DebtView({ entityId = '' }) {
       </div>
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading HMRC positions…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading HMRC positions…</div>
       ) : (
         <div style={card}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
                   <th style={th}>Client</th>
                   <th style={th}>PAYE ref</th>
                   <th style={thNum}>Owed</th>
@@ -265,7 +265,7 @@ export default function DebtView({ entityId = '' }) {
                             onClick={() => openStatement(r)}
                             style={{
                               background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                              fontFamily: font, fontSize: 13, fontWeight: 500, color: '#0f172a', textAlign: 'left',
+                              fontFamily: font, fontSize: 14, fontWeight: 500, color: '#0f172a', textAlign: 'left',
                             }}
                             title="Open this scheme's statement — month by month, with the balance at any date"
                           >
@@ -273,17 +273,17 @@ export default function DebtView({ entityId = '' }) {
                           </button>
                         </div>
                         {r.entity_name && r.hmrc_name && r.entity_name !== r.hmrc_name && (
-                          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>HMRC: {r.hmrc_name}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>HMRC: {r.hmrc_name}</div>
                         )}
                       </td>
-                      <td style={{ ...td, fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>{r.paye_ref}</td>
+                      <td style={{ ...td, fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' }}>{r.paye_ref}</td>
                       <td style={{ ...tdNum, fontWeight: r.total_debt > 0 ? 600 : 400, color: r.total_debt > 0 ? '#b91c1c' : '#94a3b8' }}>
                         {r.total_debt > 0 ? fmtGbpDetailed(r.total_debt) : '—'}
                       </td>
                       <td style={{ ...tdNum, color: r.accruing_interest > 0 ? '#c2410c' : '#cbd5e1' }}>
                         {r.accruing_interest > 0 ? fmtGbpDetailed(r.accruing_interest) : '—'}
                       </td>
-                      <td style={{ ...td, fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>
+                      <td style={{ ...td, fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' }}>
                         {r.oldest_due_date ? (
                           <span title={`Oldest unpaid charge was due ${shortDate(r.oldest_due_date)} (${r.oldest_overdue_year})`}>
                             {ageLabel(r.days_oldest_overdue)}
@@ -291,7 +291,7 @@ export default function DebtView({ entityId = '' }) {
                           </span>
                         ) : '—'}
                       </td>
-                      <td style={{ ...td, textAlign: 'center', fontSize: 12, color: '#64748b' }}>
+                      <td style={{ ...td, textAlign: 'center', fontSize: 13, color: '#64748b' }}>
                         {r.overdue_items || '—'}
                         {r.penalty_items > 0 && (
                           <span style={{ color: '#b91c1c', fontWeight: 600 }} title={`${r.penalty_items} penalty charge(s)`}>
@@ -301,9 +301,9 @@ export default function DebtView({ entityId = '' }) {
                       </td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: 3 }}>
-                          {r.payment_plan && <Pill colour="#0369a1" bg="#f0f9ff" title="Time-to-pay arrangement in place" style={{ fontSize: 10 }}>Plan</Pill>}
-                          {r.variable_dd && <Pill colour="#059669" bg="#f0fdf4" title="Paying by variable direct debit" style={{ fontSize: 10 }}>DD</Pill>}
-                          {r.claiming_ea && <Pill colour="#7c3aed" bg="#faf5ff" title="Employment Allowance claimed" style={{ fontSize: 10 }}>EA</Pill>}
+                          {r.payment_plan && <Pill colour="#0369a1" bg="#f0f9ff" title="Time-to-pay arrangement in place" style={{ fontSize: 11 }}>Plan</Pill>}
+                          {r.variable_dd && <Pill colour="#059669" bg="#f0fdf4" title="Paying by variable direct debit" style={{ fontSize: 11 }}>DD</Pill>}
+                          {r.claiming_ea && <Pill colour="#7c3aed" bg="#faf5ff" title="Employment Allowance claimed" style={{ fontSize: 11 }}>EA</Pill>}
                         </div>
                       </td>
                       <td style={td}>
@@ -330,7 +330,7 @@ export default function DebtView({ entityId = '' }) {
                           title="HMRC's own overdue items, monthly position and credits for this scheme"
                           style={{
                             background: 'none', border: 'none', padding: 0, marginRight: 10, cursor: 'pointer',
-                            fontFamily: font, fontSize: 12, color: '#64748b',
+                            fontFamily: font, fontSize: 13, color: '#64748b',
                           }}
                         >
                           HMRC detail
@@ -340,7 +340,7 @@ export default function DebtView({ entityId = '' }) {
                             href={`/clients/${r.entity_id}`}
                             target="_blank"
                             rel="noreferrer"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#64748b', textDecoration: 'none' }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#64748b', textDecoration: 'none' }}
                           >
                             Client <ExternalLink size={11} />
                           </a>

@@ -36,7 +36,7 @@ export default function OfferPanel({ app, profileId }) {
     finally { setSaving(false); }
   }
 
-  if (offer === undefined) return <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Loading…</div>;
+  if (offer === undefined) return <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Loading…</div>;
   const st = offer ? STATUS_MAP[offer.status] : null;
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
 
@@ -44,9 +44,9 @@ export default function OfferPanel({ app, profileId }) {
     <div>
       {st && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: st.tone.bg, color: st.tone.fg, border: `1px solid ${st.tone.border}`, textTransform: 'uppercase' }}>{st.label}</span>
-          {offer.sent_at && <span style={{ fontSize: 11.5, color: '#94a3b8' }}>Sent {fmtDate(offer.sent_at)}</span>}
-          {offer.responded_at && <span style={{ fontSize: 11.5, color: '#94a3b8' }}>· Responded {fmtDate(offer.responded_at)}</span>}
+          <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: st.tone.bg, color: st.tone.fg, border: `1px solid ${st.tone.border}`, textTransform: 'uppercase' }}>{st.label}</span>
+          {offer.sent_at && <span style={{ fontSize: 12.5, color: '#94a3b8' }}>Sent {fmtDate(offer.sent_at)}</span>}
+          {offer.responded_at && <span style={{ fontSize: 12.5, color: '#94a3b8' }}>· Responded {fmtDate(offer.responded_at)}</span>}
         </div>
       )}
 
@@ -75,7 +75,7 @@ export default function OfferPanel({ app, profileId }) {
         <textarea value={f.notes} onChange={set('notes')} rows={2} style={{ ...input, resize: 'vertical' }} />
       </div>
 
-      {error && <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 8 }}>{error}</div>}
+      {error && <div style={{ fontSize: 13, color: '#b91c1c', marginTop: 8 }}>{error}</div>}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <button onClick={() => save()} disabled={saving} style={btn('primary')}>{offer ? 'Save' : 'Create draft offer'}</button>
@@ -85,7 +85,7 @@ export default function OfferPanel({ app, profileId }) {
           <button onClick={() => save({ status: 'declined', responded_at: new Date().toISOString() })} style={{ ...btn('secondary'), color: '#b91c1c', borderColor: '#fecaca' }}>Declined</button>
         </>}
       </div>
-      <p style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 12 }}>
+      <p style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 12 }}>
         Tip: send the offer wording from the Comms tab (there's an “Offer” email template), then track its status here.
       </p>
     </div>

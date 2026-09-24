@@ -260,17 +260,17 @@ function Header() {
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', margin: 0 }}>
             Practice Planning
           </h1>
-          <p style={{ fontSize: 12, color: '#64748b', margin: '4px 0 0' }}>
+          <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0' }}>
             24-month forecast · {scenarios.length} scenario{scenarios.length !== 1 ? 's' : ''}
           </p>
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Scenario</label>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Scenario</label>
           <select
             value={scenario?.id || ''}
             onChange={(e) => setActive(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: "'Outfit', sans-serif", background: '#fff', minWidth: 200 }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: "'Outfit', sans-serif", background: '#fff', minWidth: 200 }}
           >
             {scenarios.map((s) => (
               <option key={s.id} value={s.id}>{s.name}{s.is_active ? ' ★' : ''}</option>
@@ -287,7 +287,7 @@ function Header() {
             <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 500, color: '#0f172a', margin: '0 0 10px' }}>
               {duplicate ? 'Duplicate scenario' : 'New scenario'}
             </h2>
-            <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 14 }}>
               {duplicate
                 ? 'Creates a new scenario with all of the current one\'s lines and assumptions. Edit the copy to model a variant.'
                 : 'New scenario will be seeded with your current staff list and last-12-months QBO overheads.'}
@@ -343,7 +343,7 @@ function Tabs() {
           to={t.to}
           end={t.end}
           style={({ isActive }) => ({
-            padding: '10px 14px', fontSize: 13, fontWeight: isActive ? 600 : 400,
+            padding: '10px 14px', fontSize: 14, fontWeight: isActive ? 600 : 400,
             color: isActive ? '#0f172a' : '#94a3b8',
             borderBottom: isActive ? '2px solid #0e7fe0' : '2px solid transparent',
             textDecoration: 'none', fontFamily: "'Outfit', sans-serif",
@@ -357,6 +357,6 @@ function Tabs() {
   );
 }
 
-const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
-const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
-const modalInput = { width: '100%', padding: '10px 12px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 14, boxSizing: 'border-box', fontFamily: "'Outfit', sans-serif" };
+const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const modalInput = { width: '100%', padding: '10px 12px', fontSize: 14.5, border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 14, boxSizing: 'border-box', fontFamily: "'Outfit', sans-serif" };

@@ -95,7 +95,7 @@ export default function StaffView() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
           <h3 style={h3}>Capacity vs forecast demand</h3>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Target hrs / fee earner / yr</label>
+            <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>Target hrs / fee earner / yr</label>
             <input type="number" step="50" value={scenario?.target_chargeable_hours_pa || 1400}
               onChange={(e) => updateScenario({ target_chargeable_hours_pa: parseFloat(e.target.value) || 1400 })}
               style={{ ...inputStyle, width: 90, textAlign: 'right' }} />
@@ -107,7 +107,7 @@ export default function StaffView() {
           Months where forecast revenue exceeds capacity are shaded — if that becomes persistent, it's your signal to hire.
         </p>
         {blendedRatePerHr == null ? (
-          <div style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', padding: '8px 12px', borderRadius: 8 }}>
+          <div style={{ fontSize: 13, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', padding: '8px 12px', borderRadius: 8 }}>
             <AlertTriangle size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
             Blended rate will be derived from LTM timesheets once staff start logging time. Using £100/hr placeholder for now.
           </div>
@@ -130,7 +130,7 @@ export default function StaffView() {
             })}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#64748b', marginTop: 6 }}>
+        <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#64748b', marginTop: 6 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, background: '#0e7fe0' }} />Forecast demand</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 2, background: '#0f172a' }} />Capacity ceiling</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, background: '#dc2626' }} />Over capacity</span>
@@ -144,9 +144,9 @@ export default function StaffView() {
 
       {/* Table */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+            <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
               <th style={th}>Name</th>
               <th style={th}>Role</th>
               <th style={{ ...th, textAlign: 'right' }}>Annual salary</th>
@@ -170,7 +170,7 @@ export default function StaffView() {
                 <tr key={line.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                   <td style={td}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {line.staff_id ? <User size={12} style={{ color: '#94a3b8' }} /> : <span style={{ fontSize: 10, color: '#f59e0b', fontWeight: 600 }}>NEW</span>}
+                      {line.staff_id ? <User size={12} style={{ color: '#94a3b8' }} /> : <span style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600 }}>NEW</span>}
                       <BlurInput value={line.name} onChange={(v) => upsertStaff({ ...line, name: v })} />
                     </div>
                   </td>
@@ -222,9 +222,9 @@ export default function StaffView() {
 function Stat({ label, value, sub, colour, bold }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 14px', borderLeft: `3px solid ${colour}` }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: bold ? 20 : 18, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#64748b' }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: '#64748b' }}>{sub}</div>}
     </div>
   );
 }
@@ -232,7 +232,7 @@ function Stat({ label, value, sub, colour, bold }) {
 function Field({ label, children }) {
   return (
     <div>
-      <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>{label}</label>
+      <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>{label}</label>
       {children}
     </div>
   );
@@ -249,7 +249,7 @@ function SliderField({ label, min, max, step, suffix, value, onChange }) {
           <input type="number" step={step} value={value || 0}
             onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
             style={{ ...inputStyle, width: 50, textAlign: 'right', padding: '6px 4px' }} />
-          <span style={{ fontSize: 12, color: '#64748b' }}>{suffix}</span>
+          <span style={{ fontSize: 13, color: '#64748b' }}>{suffix}</span>
         </div>
       </div>
     </Field>
@@ -283,8 +283,8 @@ function BlurNumber({ value, onChange, placeholder }) {
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
 const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: '0 0 4px' };
-const help = { fontSize: 12, color: '#94a3b8', marginBottom: 14 };
+const help = { fontSize: 13, color: '#94a3b8', marginBottom: 14 };
 const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600 };
 const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
-const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
-const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
+const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };

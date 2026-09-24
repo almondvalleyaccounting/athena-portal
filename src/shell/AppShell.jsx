@@ -199,7 +199,7 @@ export default function AppShell() {
         <p
           style={{
             fontFamily: "'Outfit', sans-serif",
-            fontSize: '14px',
+            fontSize: '14.5px',
             color: '#94a3b8',
           }}
         >
@@ -217,7 +217,7 @@ export default function AppShell() {
   if (mfaState === 'checking') {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#fafafa' }}>
-        <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 14, color: '#94a3b8' }}>Loading...</p>
+        <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 14.5, color: '#94a3b8' }}>Loading...</p>
       </div>
     );
   }
@@ -235,14 +235,14 @@ export default function AppShell() {
             <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 500, color: '#0f172a', margin: '8px 0 6px' }}>
               Set up two-factor authentication
             </h2>
-            <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, marginBottom: 24 }}>
+            <p style={{ fontSize: 14, color: '#64748b', lineHeight: 1.5, marginBottom: 24 }}>
               Athena now holds live client data, so two-factor authentication is required before you can continue.
               Use Google Authenticator, Authy, 1Password, or any TOTP app on your phone — it takes about a minute.
             </p>
             <SecurityPage onEnrolled={recheckMfa} embedded />
             <button
               onClick={handleLogout}
-              style={{ marginTop: 20, background: 'none', border: 'none', color: '#94a3b8', fontSize: 12, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+              style={{ marginTop: 20, background: 'none', border: 'none', color: '#94a3b8', fontSize: 13, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
             >
               Sign out
             </button>
@@ -292,7 +292,7 @@ export default function AppShell() {
           <p
             style={{
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '14px',
+              fontSize: '14.5px',
               color: '#64748b',
               marginBottom: '24px',
               lineHeight: '1.6',
@@ -305,7 +305,7 @@ export default function AppShell() {
             onClick={handleLogout}
             style={{
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '13px',
+              fontSize: '14px',
               fontWeight: 600,
               color: '#64748b',
               background: 'none',

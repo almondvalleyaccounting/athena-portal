@@ -175,7 +175,7 @@ export default function BugReportPage() {
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
           <Bug size={24} style={{ color: '#0e7fe0' }} /> Bug Reports
         </h1>
-        <p style={{ fontSize: 13.5, color: '#64748b', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 14.5, color: '#64748b', lineHeight: 1.5 }}>
           Found something in Athena that's broken or wrong? Report it here. The more you tell us,
           the faster it gets fixed — the questions below are what Claude needs to reproduce and fix it.
         </p>
@@ -318,7 +318,7 @@ function ReportForm({ profile, entities, onSaved, canTriage, staffList }) {
               <div style={{ position: 'absolute', zIndex: 5, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
                 {entMatches.map((e) => (
                   <div key={e.id} onClick={() => { setF((p) => ({ ...p, entity_id: e.id })); setEntityQuery(''); }}
-                    style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}
+                    style={{ padding: '8px 12px', fontSize: 14, cursor: 'pointer' }}
                     onMouseEnter={(ev) => (ev.currentTarget.style.background = '#f1f5f9')} onMouseLeave={(ev) => (ev.currentTarget.style.background = '#fff')}>
                     {e.name}
                   </div>
@@ -378,7 +378,7 @@ function ReportForm({ profile, entities, onSaved, canTriage, staffList }) {
         <button onClick={submit} disabled={!canSubmit} style={{ ...btnPrimary, opacity: canSubmit ? 1 : 0.4 }}>
           {saving ? 'Submitting…' : <><Plus size={15} /> Submit bug report</>}
         </button>
-        {!canSubmit && !saving && <span style={{ fontSize: 12, color: '#94a3b8' }}>Summary, what actually happened, and impact are required.</span>}
+        {!canSubmit && !saving && <span style={{ fontSize: 13, color: '#94a3b8' }}>Summary, what actually happened, and impact are required.</span>}
       </div>
     </div>
   );
@@ -387,11 +387,11 @@ function ReportForm({ profile, entities, onSaved, canTriage, staffList }) {
 /* ─── Reporter's list / generic list ─────────────────────────────────── */
 function BugList({ bugs, loading, entityMap, staffList, canTriage, onPatch, onDelete, profile, emptyMsg }) {
   const [expandedId, setExpandedId] = useState(null);
-  if (loading) return <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: 40 }}>Loading…</p>;
+  if (loading) return <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 14, padding: 40 }}>Loading…</p>;
   if (bugs.length === 0) return (
     <div style={{ textAlign: 'center', padding: 60, background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb' }}>
       <Bug size={32} style={{ color: '#e5e7eb', marginBottom: 12 }} />
-      <p style={{ fontSize: 14, color: '#94a3b8' }}>{emptyMsg || 'No bugs.'}</p>
+      <p style={{ fontSize: 14.5, color: '#94a3b8' }}>{emptyMsg || 'No bugs.'}</p>
     </div>
   );
   return (
@@ -429,7 +429,7 @@ function TriageBoard({ bugs, loading, entityMap, staffList, onPatch, onDelete, p
   const thisWeek = useMemo(() => bugs.filter((b) => b.target === 'this_week' && ['accepted', 'in_progress'].includes(b.status)), [bugs]);
   const newCount = lanes.grouped.new?.length || 0;
 
-  if (loading) return <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: 40 }}>Loading…</p>;
+  if (loading) return <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 14, padding: 40 }}>Loading…</p>;
 
   return (
     <div>
@@ -437,8 +437,8 @@ function TriageBoard({ bugs, loading, entityMap, staffList, onPatch, onDelete, p
       <div style={{ background: 'linear-gradient(135deg,#0f172a,#1e293b)', borderRadius: 14, padding: '18px 22px', marginBottom: 20, color: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 3 }}>Friday review</div>
-            <div style={{ fontSize: 12.5, color: '#cbd5e1' }}>
+            <div style={{ fontSize: 15.5, fontWeight: 600, marginBottom: 3 }}>Friday review</div>
+            <div style={{ fontSize: 13.5, color: '#cbd5e1' }}>
               {newCount} new to triage · {thisWeek.length} accepted for this week · {(lanes.grouped.fixed?.length || 0)} awaiting verify
             </div>
           </div>
@@ -471,8 +471,8 @@ function TriageBoard({ bugs, loading, entityMap, staffList, onPatch, onDelete, p
           <div key={s} style={{ marginBottom: 22 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: cfg.colour }} />
-              <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.3 }}>{cfg.lane}</h3>
-              <span style={{ fontSize: 11, color: '#94a3b8' }}>{arr.length}</span>
+              <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{cfg.lane}</h3>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{arr.length}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {arr.map((b) => (
@@ -488,7 +488,7 @@ function TriageBoard({ bugs, loading, entityMap, staffList, onPatch, onDelete, p
       {/* Closed */}
       {lanes.closed.length > 0 && (
         <div style={{ marginTop: 8 }}>
-          <button onClick={() => setShowClosed((v) => !v)} style={{ ...linkBtn, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+          <button onClick={() => setShowClosed((v) => !v)} style={{ ...linkBtn, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
             {showClosed ? <ChevronDown size={14} /> : <ChevronRight size={14} />} {lanes.closed.length} closed (verified / rejected)
           </button>
           {showClosed && (
@@ -505,7 +505,7 @@ function TriageBoard({ bugs, loading, entityMap, staffList, onPatch, onDelete, p
 
       {bugs.length === 0 && (
         <div style={{ textAlign: 'center', padding: 60, background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb' }}>
-          <p style={{ fontSize: 14, color: '#94a3b8' }}>No bugs reported. 🎉</p>
+          <p style={{ fontSize: 14.5, color: '#94a3b8' }}>No bugs reported. 🎉</p>
         </div>
       )}
     </div>
@@ -531,25 +531,25 @@ function BugCard({ bug, entityMap, staffList, canTriage, expanded, onToggle, onP
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', borderLeft: `3px solid ${cfg.colour}` }}>
       <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer' }}>
         {expanded ? <ChevronDown size={15} style={{ color: '#94a3b8', flexShrink: 0 }} /> : <ChevronRight size={15} style={{ color: '#cbd5e1', flexShrink: 0 }} />}
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', flexShrink: 0 }}>BUG-{bug.seq}</span>
-        {p && <span title={p.label} style={{ fontSize: 12, flexShrink: 0 }}>{p.icon}</span>}
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', flexShrink: 0 }}>BUG-{bug.seq}</span>
+        {p && <span title={p.label} style={{ fontSize: 13, flexShrink: 0 }}>{p.icon}</span>}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bug.title}</div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 14.5, fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bug.title}</div>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {bug.module && <span style={{ background: '#f1f5f9', padding: '1px 6px', borderRadius: 4 }}>{bug.module}</span>}
             {entityName && <span>{entityName}</span>}
             <span>{bug.reported_by_name}</span>
             <span>{daysSince(bug.created_at)}d old</span>
           </div>
         </div>
-        <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 6, background: cfg.bg, color: cfg.colour, flexShrink: 0 }}>{cfg.label}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 6, background: cfg.bg, color: cfg.colour, flexShrink: 0 }}>{cfg.label}</span>
       </div>
 
       {expanded && (
         <div style={{ padding: '4px 16px 16px', borderTop: '1px solid #f1f5f9' }}>
           {/* Reporter-supplied structured detail */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px', padding: '14px 0', fontSize: 12.5 }}>
-            <Field label="Where">{bug.module || '—'}{bug.page_url ? <div style={{ fontSize: 11, color: '#94a3b8', wordBreak: 'break-all' }}>{bug.page_url}</div> : null}</Field>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px', padding: '14px 0', fontSize: 13.5 }}>
+            <Field label="Where">{bug.module || '—'}{bug.page_url ? <div style={{ fontSize: 12, color: '#94a3b8', wordBreak: 'break-all' }}>{bug.page_url}</div> : null}</Field>
             <Field label="Client / record">{[entityName, bug.record_ref].filter(Boolean).join(' · ') || '—'}</Field>
             <Field label="Frequency">{FREQUENCY.find((x) => x.id === bug.frequency)?.label || '—'}</Field>
             <Field label="Impact">{IMPACT.find((x) => x.id === bug.impact)?.label || '—'}</Field>
@@ -566,7 +566,7 @@ function BugCard({ bug, entityMap, staffList, canTriage, expanded, onToggle, onP
           )}
           {bug.context?.userAgent && (
             <Detail label="Environment">
-              <span style={{ fontSize: 11, color: '#64748b' }}>{bug.context.viewport} · {bug.context.userAgent}</span>
+              <span style={{ fontSize: 12, color: '#64748b' }}>{bug.context.viewport} · {bug.context.userAgent}</span>
             </Detail>
           )}
 
@@ -578,8 +578,8 @@ function BugCard({ bug, entityMap, staffList, canTriage, expanded, onToggle, onP
               {bug.status === 'fixed' && bug.reported_by === profile?.id && (
                 <button onClick={() => onPatch(bug.id, { status: 'verified' })} style={{ ...btnPrimary, background: '#16a34a' }}><Check size={14} /> Confirm it's fixed</button>
               )}
-              {bug.reject_reason && <span style={{ fontSize: 12, color: '#64748b' }}>Closed: {REJECT_REASONS.find((r) => r.id === bug.reject_reason)?.label}</span>}
-              {bug.resolution_notes && <span style={{ fontSize: 12, color: '#64748b' }}>{bug.resolution_notes}</span>}
+              {bug.reject_reason && <span style={{ fontSize: 13, color: '#64748b' }}>Closed: {REJECT_REASONS.find((r) => r.id === bug.reject_reason)?.label}</span>}
+              {bug.resolution_notes && <span style={{ fontSize: 13, color: '#64748b' }}>{bug.resolution_notes}</span>}
             </div>
           )}
         </div>
@@ -648,13 +648,13 @@ function TriageControls({ bug, suggested, staffList, entityName, onPatch, onDele
         <div style={{ flex: 1, minWidth: 240 }}>
           <label style={miniLabel}>Triage notes</label>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== bug.triage_notes && onPatch(bug.id, { triage_notes: notes })}
-            rows={2} placeholder="Context for the fix, root-cause guess, links…" style={{ ...textarea, fontSize: 12 }} />
+            rows={2} placeholder="Context for the fix, root-cause guess, links…" style={{ ...textarea, fontSize: 13 }} />
         </div>
         {['fixed', 'verified'].includes(bug.status) && (
           <div style={{ flex: 1, minWidth: 240 }}>
             <label style={miniLabel}>Resolution notes</label>
             <textarea value={resolution} onChange={(e) => setResolution(e.target.value)} onBlur={() => resolution !== bug.resolution_notes && onPatch(bug.id, { resolution_notes: resolution })}
-              rows={2} placeholder="What was fixed / commit ref" style={{ ...textarea, fontSize: 12 }} />
+              rows={2} placeholder="What was fixed / commit ref" style={{ ...textarea, fontSize: 13 }} />
           </div>
         )}
       </div>
@@ -684,7 +684,7 @@ function RejectControl({ bug, onPatch }) {
 function Section({ n, title, required, children, style }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', ...style }}>
-      <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#334155', marginBottom: 8 }}>
+      <label style={{ display: 'block', fontSize: 13.5, fontWeight: 600, color: '#334155', marginBottom: 8 }}>
         <span style={{ color: '#cbd5e1', fontWeight: 700, marginRight: 6 }}>{n}</span>{title}
         {required && <span style={{ color: '#dc2626', marginLeft: 4 }}>*</span>}
       </label>
@@ -701,7 +701,7 @@ function ChoiceRow({ options, value, onChange, colouredBy }) {
         const c = colouredBy ? o[colouredBy] : '#0e7fe0';
         return (
           <button key={o.id} onClick={() => onChange(o.id)} title={o.hint} style={{
-            padding: '7px 12px', fontSize: 12, fontWeight: active ? 600 : 400,
+            padding: '7px 12px', fontSize: 13, fontWeight: active ? 600 : 400,
             border: `1px solid ${active ? c : '#e5e7eb'}`, borderRadius: 8, cursor: 'pointer',
             background: active ? `${c}12` : '#fff', color: active ? c : '#475569',
             fontFamily: "'Outfit', sans-serif",
@@ -713,13 +713,13 @@ function ChoiceRow({ options, value, onChange, colouredBy }) {
 }
 
 function Field({ label, children }) {
-  return <div><div style={{ fontSize: 10, textTransform: 'uppercase', fontWeight: 600, color: '#94a3b8', marginBottom: 2 }}>{label}</div><div style={{ color: '#1e293b' }}>{children}</div></div>;
+  return <div><div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 2 }}>{label}</div><div style={{ color: '#1e293b' }}>{children}</div></div>;
 }
 function Detail({ label, children }) {
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ fontSize: 10, textTransform: 'uppercase', fontWeight: 600, color: '#94a3b8', marginBottom: 3 }}>{label}</div>
-      <div style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{children}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{children}</div>
     </div>
   );
 }
@@ -731,7 +731,7 @@ function CopyButton({ getText, label, dark }) {
   };
   return (
     <button onClick={copy} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', fontSize: 12, fontWeight: 600,
+      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', fontSize: 13, fontWeight: 600,
       borderRadius: 9, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
       background: dark ? 'rgba(255,255,255,0.12)' : '#fff', color: dark ? '#fff' : '#0f172a',
       border: dark ? '1px solid rgba(255,255,255,0.25)' : '1px solid #e5e7eb',
@@ -743,17 +743,17 @@ function CopyButton({ getText, label, dark }) {
 
 /* ─── Styles ─────────────────────────────────────────────────────────── */
 const tabBtn = (active) => ({
-  padding: '9px 14px', fontSize: 13, fontWeight: active ? 600 : 400,
+  padding: '9px 14px', fontSize: 14, fontWeight: active ? 600 : 400,
   color: active ? '#0f172a' : '#94a3b8', background: 'none', border: 'none',
   borderBottom: active ? '2px solid #0e7fe0' : '2px solid transparent',
   cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
 });
-const input = { width: '100%', padding: '9px 12px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box' };
+const input = { width: '100%', padding: '9px 12px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box' };
 const textarea = { ...input, resize: 'vertical', lineHeight: 1.5 };
-const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
-const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
-const btnSmall = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', fontSize: 12, fontWeight: 600, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
-const linkBtn = { background: 'none', border: 'none', color: '#0e7fe0', fontSize: 12, cursor: 'pointer', fontFamily: "'Outfit', sans-serif", padding: 0 };
-const chip = { display: 'inline-flex', alignItems: 'center', gap: 5, background: '#eff6ff', color: '#0e7fe0', fontSize: 12.5, fontWeight: 500, padding: '5px 10px', borderRadius: 7 };
-const miniLabel = { display: 'block', fontSize: 10, textTransform: 'uppercase', fontWeight: 600, color: '#94a3b8', marginBottom: 3 };
-const miniSelect = { fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 8px', outline: 'none', fontFamily: "'Outfit', sans-serif", background: '#fff' };
+const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', fontSize: 14, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const btnSmall = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', fontSize: 13, fontWeight: 600, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const linkBtn = { background: 'none', border: 'none', color: '#0e7fe0', fontSize: 13, cursor: 'pointer', fontFamily: "'Outfit', sans-serif", padding: 0 };
+const chip = { display: 'inline-flex', alignItems: 'center', gap: 5, background: '#eff6ff', color: '#0e7fe0', fontSize: 13.5, fontWeight: 500, padding: '5px 10px', borderRadius: 7 };
+const miniLabel = { display: 'block', fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 3 };
+const miniSelect = { fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 8px', outline: 'none', fontFamily: "'Outfit', sans-serif", background: '#fff' };

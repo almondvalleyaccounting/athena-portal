@@ -82,7 +82,7 @@ export default function ActivityBell() {
             position: 'absolute', top: 2, right: 2,
             width: 16, height: 16, borderRadius: '50%',
             background: '#0e7fe0', color: '#fff',
-            fontSize: 9, fontWeight: 700, display: 'flex',
+            fontSize: 10, fontWeight: 700, display: 'flex',
             alignItems: 'center', justifyContent: 'center',
             fontFamily: "'Outfit', sans-serif",
           }}>
@@ -100,14 +100,14 @@ export default function ActivityBell() {
           zIndex: 200, fontFamily: "'Outfit', sans-serif",
         }}>
           <div style={{
-            padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#0f172a',
+            padding: '12px 16px', fontSize: 14, fontWeight: 600, color: '#0f172a',
             borderBottom: '1px solid #f1f5f9',
           }}>
             Notifications
           </div>
 
           {items.length === 0 ? (
-            <div style={{ padding: '20px 16px', fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>
+            <div style={{ padding: '20px 16px', fontSize: 14, color: '#94a3b8', textAlign: 'center' }}>
               Nothing for you right now
             </div>
           ) : (
@@ -128,10 +128,10 @@ export default function ActivityBell() {
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#0e7fe0', flexShrink: 0, marginTop: 5 }} />
                   )}
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 12, fontWeight: n.read_at ? 400 : 600, color: '#0f172a', marginBottom: 2 }}>
+                    <div style={{ fontSize: 13, fontWeight: n.read_at ? 400 : 600, color: '#0f172a', marginBottom: 2 }}>
                       {n.title}
                     </div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{timeAgo(n.created_at)}</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>{timeAgo(n.created_at)}</div>
                   </div>
                 </div>
               </div>

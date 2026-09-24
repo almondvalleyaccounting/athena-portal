@@ -31,10 +31,10 @@ function Shell({ children }) {
       <div style={{ maxWidth: 560, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, justifyContent: 'center' }}>
           <img src="/ava-logo.jpg" alt="Almond Valley Accounting" style={{ width: 44, height: 44, borderRadius: 8 }} />
-          <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.08em', color: '#1a1a2e' }}>ALMOND VALLEY ACCOUNTING</span>
+          <span style={{ fontSize: 14.5, fontWeight: 600, letterSpacing: '0.08em', color: '#1a1a2e' }}>ALMOND VALLEY ACCOUNTING</span>
         </div>
         {children}
-        <div style={{ marginTop: 32, textAlign: 'center', fontSize: 11, color: '#94a3b8' }}>
+        <div style={{ marginTop: 32, textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>
           If you have any questions, reply to the email we sent you or contact us at
           {' '}
           <a href="mailto:accounts@almondvalleyaccounting.co.uk" style={{ color: '#64748b' }}>
@@ -77,7 +77,7 @@ function SummaryTable({ quote }) {
   const bold = (k) => k.startsWith('Monthly') || k === 'Annual total (inc VAT)';
   return (
     <>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 16 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, marginTop: 16 }}>
         <tbody>
           {rows.map(([k, v], i) => (
             <tr key={k} style={{ borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
@@ -88,7 +88,7 @@ function SummaryTable({ quote }) {
         </tbody>
       </table>
       {monthlyGross > 0 && (
-        <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5, marginTop: 10 }}>
+        <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, marginTop: 10 }}>
           Collected in <strong>12 equal monthly instalments</strong> by Direct Debit:
           12 × {formatGBP(monthlyGross)} = {formatGBP(annualGross)}, the annual total including VAT.
           No interest, credit charge or instalment fee is added for paying monthly.
@@ -104,15 +104,15 @@ function GroupSummaryTable({ group }) {
   const companies = group.companies || [];
   return (
     <div style={{ marginTop: 16 }}>
-      <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8 }}>
+      <div style={{ fontSize: 14, color: '#64748b', marginBottom: 8 }}>
         {group.name} · {group.company_count} {group.company_count === 1 ? 'company' : 'companies'}
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
         <thead>
           <tr style={{ background: '#f8fafc' }}>
-            <th style={{ textAlign: 'left', padding: '8px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Company</th>
-            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Monthly DD (inc VAT)</th>
-            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Annual (net)</th>
+            <th style={{ textAlign: 'left', padding: '8px 12px', color: '#94a3b8', fontSize: 12, fontWeight: 600 }}>Company</th>
+            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#94a3b8', fontSize: 12, fontWeight: 600 }}>Monthly DD (inc VAT)</th>
+            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#94a3b8', fontSize: 12, fontWeight: 600 }}>Annual (net)</th>
           </tr>
         </thead>
         <tbody>
@@ -130,14 +130,14 @@ function GroupSummaryTable({ group }) {
           </tr>
         </tbody>
       </table>
-      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5, marginTop: 10 }}>
+      <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, marginTop: 10 }}>
         Collected in <strong>12 equal monthly instalments</strong> by Direct Debit:
         12 × {formatGBP(money(group.monthly_gross))} = {formatGBP(money(money(group.monthly_gross) * 12))} a year
         including VAT ({formatGBP(money(group.annual_total))} net plus VAT at 20%).
         No interest, credit charge or instalment fee is added for paying monthly.
       </div>
       {group.valid_until && (
-        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Valid until {formatDateGB(group.valid_until)}</div>
+        <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 8 }}>Valid until {formatDateGB(group.valid_until)}</div>
       )}
     </div>
   );
@@ -242,7 +242,7 @@ export default function AcceptQuotePage() {
   const companyCount = group?.company_count || 0;
 
   if (phase === 'loading') {
-    return <Shell><Card><div style={{ textAlign: 'center', color: '#64748b', fontSize: 14 }}>Loading your quote…</div></Card></Shell>;
+    return <Shell><Card><div style={{ textAlign: 'center', color: '#64748b', fontSize: 14.5 }}>Loading your quote…</div></Card></Shell>;
   }
 
   if (phase === 'verify_error') {
@@ -250,7 +250,7 @@ export default function AcceptQuotePage() {
       <Shell>
         <Card>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 500, color: '#0f172a', margin: 0 }}>Link unavailable</h1>
-          <p style={{ fontSize: 14, color: '#64748b', marginTop: 12, lineHeight: 1.6 }}>{errorMsg}</p>
+          <p style={{ fontSize: 14.5, color: '#64748b', marginTop: 12, lineHeight: 1.6 }}>{errorMsg}</p>
         </Card>
       </Shell>
     );
@@ -261,7 +261,7 @@ export default function AcceptQuotePage() {
       <Shell>
         <Card>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 500, color: '#0f172a', margin: 0 }}>{group ? 'Group quote already accepted' : 'Quote already accepted'}</h1>
-          <p style={{ fontSize: 14, color: '#64748b', marginTop: 12, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 14.5, color: '#64748b', marginTop: 12, lineHeight: 1.6 }}>
             {group ? 'This group quote' : 'This quote'} was accepted on {formatDateGB(acceptedAt) || 'a previous date'}. Our team has been notified and will be in touch with next steps.
           </p>
           {renderSummary()}
@@ -277,7 +277,7 @@ export default function AcceptQuotePage() {
           <div style={{ textAlign: 'center', padding: '8px 0 20px' }}>
             <div style={{ width: 48, height: 48, margin: '0 auto 16px', borderRadius: '50%', background: '#38bdf815', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>✓</div>
             <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', margin: 0 }}>Thank you</h1>
-            <p style={{ fontSize: 14, color: '#64748b', marginTop: 12, lineHeight: 1.6 }}>
+            <p style={{ fontSize: 14.5, color: '#64748b', marginTop: 12, lineHeight: 1.6 }}>
               Your acceptance has been recorded on {formatDateGB(acceptedAt)}. We will be in touch shortly to finalise the engagement.
             </p>
           </div>
@@ -292,7 +292,7 @@ export default function AcceptQuotePage() {
     <Shell>
       <Card>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', margin: 0 }}>{group ? 'Your group quote' : 'Your quote'}</h1>
-        <p style={{ fontSize: 14, color: '#64748b', marginTop: 8, marginBottom: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 14.5, color: '#64748b', marginTop: 8, marginBottom: 0, lineHeight: 1.6 }}>
           {group
             ? <>This is the summary of the group quote sent to {recipientEmail ? <strong style={{ color: '#0f172a' }}>{recipientEmail}</strong> : 'you'}, covering {companyCount} {companyCount === 1 ? 'company' : 'companies'}. The full PDF is attached to the email. Accepting confirms the quote for every company in the group.</>
             : <>This is the summary of the quote sent to {recipientEmail ? <strong style={{ color: '#0f172a' }}>{recipientEmail}</strong> : 'you'}. The full PDF is attached to the email. Click accept to confirm and we will begin the engagement.</>}
@@ -308,7 +308,7 @@ export default function AcceptQuotePage() {
               color: '#ffffff',
               border: 'none',
               padding: '14px 18px',
-              fontSize: 14,
+              fontSize: 14.5,
               fontWeight: 600,
               borderRadius: 10,
               cursor: phase === 'accepting' ? 'default' : 'pointer',
@@ -323,11 +323,11 @@ export default function AcceptQuotePage() {
                 : 'Accept this quote'}
           </button>
           {phase === 'accept_error' && (
-            <div style={{ marginTop: 12, padding: 10, background: '#fef2f2', color: '#b91c1c', fontSize: 12, borderRadius: 8 }}>
+            <div style={{ marginTop: 12, padding: 10, background: '#fef2f2', color: '#b91c1c', fontSize: 13, borderRadius: 8 }}>
               {errorMsg}
             </div>
           )}
-          <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 10, textAlign: 'center' }}>
+          <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 10, textAlign: 'center' }}>
             By accepting you agree to the services and fees set out in the attached quote PDF.
           </p>
         </div>

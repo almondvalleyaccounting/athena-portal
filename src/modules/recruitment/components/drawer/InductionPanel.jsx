@@ -32,17 +32,17 @@ export default function InductionPanel({ app, staffMap, profileId }) {
     catch (e) { setError(e.message); listInduction(app.id).then(setItems); }
   }
 
-  if (items === null) return <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Loading…</div>;
+  if (items === null) return <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Loading…</div>;
 
   if (items.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: '20px 8px' }}>
         <Sparkles size={22} color="#0e7fe0" style={{ marginBottom: 8 }} />
-        <div style={{ fontSize: 13, color: '#334155', marginBottom: 4 }}>No induction started yet.</div>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>
+        <div style={{ fontSize: 14, color: '#334155', marginBottom: 4 }}>No induction started yet.</div>
+        <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 14 }}>
           Kick off the new-starter checklist when this candidate has accepted.
         </div>
-        {error && <div style={{ fontSize: 12, color: '#b91c1c', marginBottom: 10 }}>{error}</div>}
+        {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 10 }}>{error}</div>}
         <button onClick={start} disabled={busy} style={btn('primary')}>{busy ? 'Starting…' : 'Start induction'}</button>
       </div>
     );
@@ -56,18 +56,18 @@ export default function InductionPanel({ app, staffMap, profileId }) {
         <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden' }}>
           <div style={{ width: `${(done / items.length) * 100}%`, height: '100%', background: '#16a34a' }} />
         </div>
-        <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>{done}/{items.length}</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>{done}/{items.length}</span>
       </div>
-      {error && <div style={{ fontSize: 12, color: '#b91c1c', marginBottom: 10 }}>{error}</div>}
+      {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 10 }}>{error}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {items.map((item) => (
           <button key={item.id} onClick={() => toggle(item)}
             style={{ display: 'flex', alignItems: 'flex-start', gap: 9, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: '7px 4px', borderBottom: '1px solid #f8fafc', fontFamily: "'Outfit', sans-serif" }}>
             {item.done ? <CheckCircle2 size={16} color="#16a34a" style={{ flexShrink: 0, marginTop: 1 }} /> : <Circle size={16} color="#cbd5e1" style={{ flexShrink: 0, marginTop: 1 }} />}
             <span style={{ flex: 1 }}>
-              <span style={{ fontSize: 13, color: item.done ? '#94a3b8' : '#0f172a', textDecoration: item.done ? 'line-through' : 'none' }}>{item.label}</span>
+              <span style={{ fontSize: 14, color: item.done ? '#94a3b8' : '#0f172a', textDecoration: item.done ? 'line-through' : 'none' }}>{item.label}</span>
               {item.done && item.done_by && (
-                <span style={{ display: 'block', fontSize: 10.5, color: '#cbd5e1', marginTop: 1 }}>
+                <span style={{ display: 'block', fontSize: 11.5, color: '#cbd5e1', marginTop: 1 }}>
                   {staffMap[item.done_by] || 'staff'}{item.done_at ? ` · ${fmtDateShort(item.done_at)}` : ''}
                 </span>
               )}

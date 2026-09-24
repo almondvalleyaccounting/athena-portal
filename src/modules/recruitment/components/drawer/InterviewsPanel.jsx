@@ -45,10 +45,10 @@ export default function InterviewsPanel({ app, vacancyTitle, staffList, staffMap
 
   return (
     <div>
-      {error && <div style={{ fontSize: 12, color: '#b91c1c', marginBottom: 10 }}>{error}</div>}
-      {items === null && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Loading…</div>}
+      {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 10 }}>{error}</div>}
+      {items === null && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Loading…</div>}
       {items !== null && items.length === 0 && !adding && (
-        <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 10 }}>No interviews scheduled.</div>
+        <div style={{ fontSize: 13.5, color: '#94a3b8', marginBottom: 10 }}>No interviews scheduled.</div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -58,19 +58,19 @@ export default function InterviewsPanel({ app, vacancyTitle, staffList, staffMap
             <div key={iv.id} style={{ ...card, padding: '11px 13px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <CalendarDays size={14} color="#0e7fe0" />
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{KIND_MAP[iv.kind]}</span>
-                <span style={{ fontSize: 12, color: '#64748b' }}>{iv.scheduled_at ? fmtNoteTime(iv.scheduled_at) : 'Unscheduled'} · {iv.duration_mins}m</span>
-                <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: st.tone.bg, color: st.tone.fg, border: `1px solid ${st.tone.border}` }}>{st.label}</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{KIND_MAP[iv.kind]}</span>
+                <span style={{ fontSize: 13, color: '#64748b' }}>{iv.scheduled_at ? fmtNoteTime(iv.scheduled_at) : 'Unscheduled'} · {iv.duration_mins}m</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: st.tone.bg, color: st.tone.fg, border: `1px solid ${st.tone.border}` }}>{st.label}</span>
               </div>
-              {iv.location && <div style={{ fontSize: 12, color: '#475569', marginTop: 5 }}>{iv.location}</div>}
+              {iv.location && <div style={{ fontSize: 13, color: '#475569', marginTop: 5 }}>{iv.location}</div>}
               {(iv.interviewers || []).length > 0 && (
-                <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>
+                <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4 }}>
                   With: {iv.interviewers.map((id) => staffMap[id]).filter(Boolean).join(', ')}
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                 <select value={iv.status} onChange={(e) => patch(iv.id, { status: e.target.value })}
-                  style={{ ...input, width: 'auto', padding: '4px 8px', fontSize: 12 }}>
+                  style={{ ...input, width: 'auto', padding: '4px 8px', fontSize: 13 }}>
                   {INTERVIEW_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
                 <span style={{ display: 'inline-flex', gap: 1 }}>
@@ -91,7 +91,7 @@ export default function InterviewsPanel({ app, vacancyTitle, staffList, staffMap
                 </button>
               </div>
               <textarea value={iv.feedback || ''} onChange={(e) => patch(iv.id, { feedback: e.target.value })}
-                rows={2} placeholder="Feedback…" style={{ ...input, marginTop: 8, resize: 'vertical', fontSize: 12.5 }} />
+                rows={2} placeholder="Feedback…" style={{ ...input, marginTop: 8, resize: 'vertical', fontSize: 13.5 }} />
             </div>
           );
         })}
@@ -149,7 +149,7 @@ function InterviewForm({ staffList, onCancel, onSave }) {
           {staffList.map((s) => (
             <button key={s.id} onClick={() => toggleInterviewer(s.id)}
               style={{
-                padding: '4px 10px', fontSize: 12, fontFamily: font, borderRadius: 999, cursor: 'pointer',
+                padding: '4px 10px', fontSize: 13, fontFamily: font, borderRadius: 999, cursor: 'pointer',
                 background: interviewers.includes(s.id) ? '#dbeafe' : '#fff',
                 color: interviewers.includes(s.id) ? '#0c4a6e' : '#64748b',
                 border: `1px solid ${interviewers.includes(s.id) ? '#93c5fd' : '#e5e7eb'}`,

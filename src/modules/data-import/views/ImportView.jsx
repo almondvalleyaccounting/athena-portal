@@ -46,8 +46,7 @@ export default function ImportView() {
           return (
             <div key={sys.id} style={{ marginBottom: 20 }}>
               <p style={{
-                fontSize: 10, fontWeight: 700, color: '#94a3b8',
-                textTransform: 'uppercase', letterSpacing: '0.08em',
+                fontSize: 11, fontWeight: 700, color: '#94a3b8',
                 marginBottom: 8, paddingLeft: 6,
               }}>{sys.label}</p>
               {sysSources.map((src) => {
@@ -66,7 +65,7 @@ export default function ImportView() {
                       cursor: coming ? 'not-allowed' : 'pointer',
                       marginBottom: 2, fontFamily: font,
                       color: coming ? '#cbd5e1' : active ? '#0f172a' : '#475569',
-                      fontSize: 13, fontWeight: active ? 600 : 400,
+                      fontSize: 14, fontWeight: active ? 600 : 400,
                     }}
                   >
                     <span style={{
@@ -78,7 +77,7 @@ export default function ImportView() {
                     <span style={{ flex: 1 }}>{src.name}</span>
                     {sessionDone[src.key] && <Check size={12} style={{ color: '#15803d' }} />}
                     {coming && (
-                      <span style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>Coming soon</span>
+                      <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>Coming soon</span>
                     )}
                   </button>
                 );
@@ -92,7 +91,7 @@ export default function ImportView() {
       <div style={{ flex: 1, padding: '24px 32px' }}>
         {!source ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300 }}>
-            <p style={{ fontSize: 14, color: '#94a3b8' }}>Select a source from the left to begin</p>
+            <p style={{ fontSize: 14.5, color: '#94a3b8' }}>Select a source from the left to begin</p>
           </div>
         ) : (
           <RunPanel
@@ -498,7 +497,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
         </h2>
         {source.tables.length > 0 && (
           <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>Populates:</span>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>Populates:</span>
             {source.tables.map((t) => (
               <span key={t} style={pill}>{t}</span>
             ))}
@@ -622,8 +621,8 @@ function UploadZone({ source, file, preview, onFilePicked, onClear, onValidate, 
           borderRadius: 8, marginBottom: 12,
         }}>
           <Check size={14} style={{ color: '#15803d' }} />
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#065f46' }}>{file.name}</span>
-          <span style={{ fontSize: 12, color: '#64748b' }}>
+          <span style={{ fontSize: 14, fontWeight: 500, color: '#065f46' }}>{file.name}</span>
+          <span style={{ fontSize: 13, color: '#64748b' }}>
             · {preview.rowCount !== null ? `${preview.rowCount.toLocaleString()} rows detected` : 'XLSX preview not parsed'} {preview.columnCount !== null ? `· ${preview.columnCount} columns` : ''}
           </span>
           <button onClick={onClear} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer' }}>
@@ -656,10 +655,10 @@ function UploadZone({ source, file, preview, onFilePicked, onClear, onValidate, 
         }}
       >
         <Upload size={28} style={{ color: '#94a3b8', marginBottom: 10 }} />
-        <p style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', marginBottom: 4 }}>
+        <p style={{ fontSize: 14.5, fontWeight: 500, color: '#1e293b', marginBottom: 4 }}>
           Drop {source.accepts.toUpperCase()} file here
         </p>
-        <p style={{ fontSize: 12, color: '#94a3b8' }}>or click to browse</p>
+        <p style={{ fontSize: 13, color: '#94a3b8' }}>or click to browse</p>
         <input
           ref={inputRef}
           type="file"
@@ -787,7 +786,7 @@ function ValidationReport({ validation, staff, onRecheck, rechecking }) {
 
       {notes?.length > 0 && (
         <div style={{ ...banner('slate'), marginBottom: 10 }}>
-          {notes.map((n, i) => <div key={i} style={{ fontSize: 12 }}>{n}</div>)}
+          {notes.map((n, i) => <div key={i} style={{ fontSize: 13 }}>{n}</div>)}
         </div>
       )}
 
@@ -795,11 +794,11 @@ function ValidationReport({ validation, staff, onRecheck, rechecking }) {
       {rollups && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
               Needs attention · grouped by cause
             </p>
             {onRecheck && (
-              <button onClick={onRecheck} disabled={rechecking} style={{ ...btnGhost, fontSize: 12 }}>
+              <button onClick={onRecheck} disabled={rechecking} style={{ ...btnGhost, fontSize: 13 }}>
                 <RefreshCw size={12} style={{ marginRight: 4 }} />
                 {rechecking ? 'Re-checking…' : 'Re-check after fixes'}
               </button>
@@ -826,7 +825,7 @@ function ValidationReport({ validation, staff, onRecheck, rechecking }) {
           {rollups.unmappedAssignees.length === 0
             && rollups.missingRules.length === 0
             && rollups.unknownClients.length === 0 && (
-              <div style={{ padding: 14, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, fontSize: 13, color: '#065f46' }}>
+              <div style={{ padding: 14, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, fontSize: 14, color: '#065f46' }}>
                 ✓ Nothing to fix — every task will import cleanly.
               </div>
             )}
@@ -835,7 +834,7 @@ function ValidationReport({ validation, staff, onRecheck, rechecking }) {
 
       {warnings.length > 0 && (
         <details style={{ marginBottom: 8 }}>
-          <summary style={{ cursor: 'pointer', fontSize: 12, color: '#64748b', padding: 6 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 13, color: '#64748b', padding: 6 }}>
             Show all {warnings.length.toLocaleString()} per-row messages (audit log)
           </summary>
           <IssueTable issues={warnings} kind="warning" />
@@ -844,11 +843,11 @@ function ValidationReport({ validation, staff, onRecheck, rechecking }) {
 
       {skippedRows.length > 0 && (
         <details open={skippedRows.length <= 10}>
-          <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#1e293b', padding: 6 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#1e293b', padding: 6 }}>
             Skipped — will not be imported ({skippedRows.length})
           </summary>
           {skippedRows.some((s) => s.field === 'bm_client_id' && s.name) && (
-            <p style={{ fontSize: 11.5, color: '#64748b', padding: '0 6px 6px', margin: 0 }}>
+            <p style={{ fontSize: 12.5, color: '#64748b', padding: '0 6px 6px', margin: 0 }}>
               A row with no Internal Reference goes onto the admin task list when you approve this
               import — nothing about that client comes across until the reference exists in
               BrightManager, and the task clears itself once it does.
@@ -875,7 +874,7 @@ function RollupFrame({ title, tone, summary, search, onSearchChange, searchPlace
     <div style={{ border: `1px solid ${t.border}`, background: t.bg, borderRadius: 8, marginBottom: 10 }}>
       <div style={{ padding: '10px 14px', borderBottom: `1px solid ${t.border}` }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-          <p style={{ fontSize: 13, fontWeight: 600, color: t.head, flex: 1 }}>{title}</p>
+          <p style={{ fontSize: 14, fontWeight: 600, color: t.head, flex: 1 }}>{title}</p>
           {search !== undefined && (
             <input
               value={search}
@@ -885,7 +884,7 @@ function RollupFrame({ title, tone, summary, search, onSearchChange, searchPlace
             />
           )}
         </div>
-        {summary && <p style={{ fontSize: 11, color: t.head, opacity: 0.75, marginTop: 2 }}>{summary}</p>}
+        {summary && <p style={{ fontSize: 12, color: t.head, opacity: 0.75, marginTop: 2 }}>{summary}</p>}
       </div>
       {/* Cap body height so tall rollups don't dominate — the list
           scrolls inside the panel, but the panel stays compact. */}
@@ -936,7 +935,7 @@ function AssigneeRollupPanel({ groups, staff, onChanged }) {
         />
       ))}
       {filtered.length === 0 && (
-        <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>No matches.</div>
+        <div style={{ padding: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>No matches.</div>
       )}
     </RollupFrame>
   );
@@ -980,19 +979,19 @@ function AssigneeRow({ group, staff, isResolved, onResolved }) {
     <div style={rollupRowStyle(isResolved)}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px' }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, color: isResolved ? '#15803d' : '#0f172a', fontWeight: 500 }}>
+          <div style={{ fontSize: 14, color: isResolved ? '#15803d' : '#0f172a', fontWeight: 500 }}>
             {isResolved && <Check size={12} style={{ display: 'inline', marginRight: 4, color: '#15803d' }} />}
             {group.key}
           </div>
           {sampleTask && !isResolved && (
-            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>
               e.g. {sampleTask}
             </div>
           )}
         </div>
-        <span style={{ fontSize: 11, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
+        <span style={{ fontSize: 12, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
         {!isResolved && (
-          <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
+          <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
             {open ? 'Cancel' : 'Map to Athena staff →'}
           </button>
         )}
@@ -1007,10 +1006,10 @@ function AssigneeRow({ group, staff, isResolved, onResolved }) {
             <option disabled>──────────</option>
             <option value="alias-only">Record alias only (not yet in Athena)</option>
           </select>
-          <button onClick={save} disabled={!pick || saving} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+          <button onClick={save} disabled={!pick || saving} style={{ ...btnPrimary, fontSize: 12, padding: '6px 10px' }}>
             {saving ? 'Saving…' : 'Save mapping'}
           </button>
-          <span style={{ fontSize: 11, color: '#64748b' }}>Then hit <b>Re-check after fixes</b>.</span>
+          <span style={{ fontSize: 12, color: '#64748b' }}>Then hit <b>Re-check after fixes</b>.</span>
         </div>
       )}
     </div>
@@ -1042,7 +1041,7 @@ function RuleRollupPanel({ groups, onChanged }) {
         />
       ))}
       {filtered.length === 0 && (
-        <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>No matches.</div>
+        <div style={{ padding: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>No matches.</div>
       )}
     </RollupFrame>
   );
@@ -1161,13 +1160,13 @@ function RuleRow({ group, isResolved, onResolved }) {
   return (
     <div style={rollupRowStyle(isResolved)}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px' }}>
-        <span style={{ flex: 1, fontSize: 13, color: isResolved ? '#15803d' : '#0f172a', fontWeight: 500 }}>
+        <span style={{ flex: 1, fontSize: 14, color: isResolved ? '#15803d' : '#0f172a', fontWeight: 500 }}>
           {isResolved && <Check size={12} style={{ display: 'inline', marginRight: 4, color: '#15803d' }} />}
           {group.key}
         </span>
-        <span style={{ fontSize: 11, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
+        <span style={{ fontSize: 12, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
         {!isResolved && (
-          <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
+          <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
             {open ? 'Cancel' : 'Add scheduling rule →'}
           </button>
         )}
@@ -1195,10 +1194,10 @@ function RuleRow({ group, isResolved, onResolved }) {
             </label>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-            <button onClick={save} disabled={saving || !prefix.trim()} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+            <button onClick={save} disabled={saving || !prefix.trim()} style={{ ...btnPrimary, fontSize: 12, padding: '6px 10px' }}>
               {saving ? 'Saving…' : 'Save rule'}
             </button>
-            <span style={{ fontSize: 11, color: '#64748b' }}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>
               Default assignee inherited from BM. Edit later in Workflow → Rules.
             </span>
           </div>
@@ -1257,7 +1256,7 @@ function UnknownClientsPanel({ groups, onChanged }) {
         />
       ))}
       {filtered.length === 0 && (
-        <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>No matches.</div>
+        <div style={{ padding: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>No matches.</div>
       )}
     </RollupFrame>
   );
@@ -1324,22 +1323,22 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
   return (
     <div style={{ borderBottom: '1px solid rgba(252,165,165,0.3)', background: isResolved ? 'rgba(220,252,231,0.4)' : 'transparent' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px' }}>
-        <span style={{ flex: '0 0 110px', fontSize: 13, color: '#0f172a', fontFamily: 'monospace' }}>{group.key}</span>
-        <span style={{ flex: 1, fontSize: 12, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ flex: '0 0 110px', fontSize: 14, color: '#0f172a', fontFamily: 'monospace' }}>{group.key}</span>
+        <span style={{ flex: 1, fontSize: 13, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {sampleName ? sampleName : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>name not in tasks CSV</span>}
         </span>
-        <span style={{ fontSize: 11, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
+        <span style={{ fontSize: 12, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
         {isResolved ? (
-          <span style={{ fontSize: 11, color: '#065f46', fontWeight: 600 }}>{resolvedLabel}</span>
+          <span style={{ fontSize: 12, color: '#065f46', fontWeight: 600 }}>{resolvedLabel}</span>
         ) : (
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setMode(mode === 'create' ? null : 'create')} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
+            <button onClick={() => setMode(mode === 'create' ? null : 'create')} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
               {mode === 'create' ? 'Cancel' : 'Create prospect'}
             </button>
-            <button onClick={() => setMode(mode === 'map' ? null : 'map')} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
+            <button onClick={() => setMode(mode === 'map' ? null : 'map')} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
               {mode === 'map' ? 'Cancel' : 'Map to existing'}
             </button>
-            <button onClick={() => setMode(mode === 'ignore' ? null : 'ignore')} style={{ ...btnGhost, fontSize: 11, padding: '4px 10px' }}>
+            <button onClick={() => setMode(mode === 'ignore' ? null : 'ignore')} style={{ ...btnGhost, fontSize: 12, padding: '4px 10px' }}>
               {mode === 'ignore' ? 'Cancel' : 'Ignore'}
             </button>
           </div>
@@ -1361,14 +1360,14 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
             </label>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-            <button onClick={submit} disabled={saving || !name.trim()} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+            <button onClick={submit} disabled={saving || !name.trim()} style={{ ...btnPrimary, fontSize: 12, padding: '6px 10px' }}>
               {saving ? 'Creating…' : 'Create prospect'}
             </button>
-            <span style={{ fontSize: 11, color: '#64748b' }}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>
               Status <strong>prospect</strong>, source <strong>brightmanager</strong>, linked to BM ID <strong>{group.key}</strong>.
             </span>
           </div>
-          {err && <p style={{ fontSize: 11, color: '#991b1b', marginTop: 6 }}>{err}</p>}
+          {err && <p style={{ fontSize: 12, color: '#991b1b', marginTop: 6 }}>{err}</p>}
         </div>
       )}
 
@@ -1376,14 +1375,14 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
         <div style={{ padding: '10px 14px', borderTop: '1px dashed #e5e7eb', background: '#fff' }}>
           <EntityPicker value={picked} onChange={setPicked} initialQuery={sampleName} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-            <button onClick={submit} disabled={saving || !picked} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+            <button onClick={submit} disabled={saving || !picked} style={{ ...btnPrimary, fontSize: 12, padding: '6px 10px' }}>
               {saving ? 'Mapping…' : picked ? `Map to "${picked.name}"` : 'Pick an entity'}
             </button>
-            <span style={{ fontSize: 11, color: '#64748b' }}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>
               Sets <strong>bm_client_id = {group.key}</strong> on the chosen entity. Fails if another entity already owns this BM ID.
             </span>
           </div>
-          {err && <p style={{ fontSize: 11, color: '#991b1b', marginTop: 6 }}>{err}</p>}
+          {err && <p style={{ fontSize: 12, color: '#991b1b', marginTop: 6 }}>{err}</p>}
         </div>
       )}
 
@@ -1394,14 +1393,14 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
             <input value={reason} onChange={(e) => setReason(e.target.value)} style={selectStyle} placeholder="e.g. dormant in BM, never engaged" />
           </label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-            <button onClick={submit} disabled={saving} style={{ ...btnPrimary, fontSize: 11, padding: '6px 10px' }}>
+            <button onClick={submit} disabled={saving} style={{ ...btnPrimary, fontSize: 12, padding: '6px 10px' }}>
               {saving ? 'Saving…' : 'Ignore this reference'}
             </button>
-            <span style={{ fontSize: 11, color: '#64748b' }}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>
               {group.key} will be hidden from this panel on future imports. Tasks with this reference still import unattached. Unignore from Admin → Data Import → Settings.
             </span>
           </div>
-          {err && <p style={{ fontSize: 11, color: '#991b1b', marginTop: 6 }}>{err}</p>}
+          {err && <p style={{ fontSize: 12, color: '#991b1b', marginTop: 6 }}>{err}</p>}
         </div>
       )}
     </div>
@@ -1440,7 +1439,7 @@ function DuplicateBmRefPanel({ skipped }) {
 
   return (
     <div style={{ marginTop: 12 }}>
-      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
+      <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
         Needs attention · duplicate Internal References
       </p>
       <RollupFrame
@@ -1450,8 +1449,8 @@ function DuplicateBmRefPanel({ skipped }) {
       >
         {grouped.map((r) => (
           <div key={r.bm_client_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid rgba(252,165,165,0.3)' }}>
-            <span style={{ flex: '0 0 110px', fontSize: 13, color: '#0f172a', fontFamily: 'monospace' }}>{r.bm_client_id}</span>
-            <span style={{ flex: 1, fontSize: 12, color: '#475569' }}>
+            <span style={{ flex: '0 0 110px', fontSize: 14, color: '#0f172a', fontFamily: 'monospace' }}>{r.bm_client_id}</span>
+            <span style={{ flex: 1, fontSize: 13, color: '#475569' }}>
               {r.names.length > 0 ? `Used by: ${r.names.join(' · ')}` : 'Multiple rows in this upload share this reference.'}
             </span>
           </div>
@@ -1482,7 +1481,7 @@ function DuplicateNamePanel({ duplicateNames }) {
 
   return (
     <div style={{ marginTop: 12 }}>
-      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
+      <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
         Heads-up · same client name on multiple references
       </p>
       <RollupFrame
@@ -1492,8 +1491,8 @@ function DuplicateNamePanel({ duplicateNames }) {
       >
         {entries.map(([name, bmIds]) => (
           <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid rgba(252,211,77,0.4)' }}>
-            <span style={{ flex: 1, fontSize: 13, color: '#0f172a' }}>{name}</span>
-            <span style={{ fontSize: 11, color: '#475569', fontFamily: 'monospace' }}>
+            <span style={{ flex: 1, fontSize: 14, color: '#0f172a' }}>{name}</span>
+            <span style={{ fontSize: 12, color: '#475569', fontFamily: 'monospace' }}>
               {Array.isArray(bmIds) ? bmIds.join(' · ') : String(bmIds)}
             </span>
           </div>
@@ -1530,7 +1529,7 @@ function DuplicateCompanyPanel({ skipped }) {
 
   return (
     <div style={{ marginTop: 12 }}>
-      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
+      <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
         Needs attention · duplicate company numbers
       </p>
       <RollupFrame
@@ -1590,22 +1589,22 @@ function DuplicateCompanyRow({ row }) {
     <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(252,211,77,0.4)', background: resolved ? 'rgba(220,252,231,0.4)' : 'transparent' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div>
-          <p style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>
             Incoming BM row
           </p>
-          <p style={{ fontSize: 13, color: '#0f172a', fontFamily: 'monospace' }}>{row.incoming_bm_client_id}</p>
-          <p style={{ fontSize: 12, color: '#475569' }}>company_number <strong>{row.company_number}</strong></p>
+          <p style={{ fontSize: 14, color: '#0f172a', fontFamily: 'monospace' }}>{row.incoming_bm_client_id}</p>
+          <p style={{ fontSize: 13, color: '#475569' }}>company_number <strong>{row.company_number}</strong></p>
         </div>
         <div>
-          <p style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>
             Existing entity
           </p>
-          {loading && <p style={{ fontSize: 12, color: '#94a3b8' }}>Looking up…</p>}
-          {!loading && !existing && <p style={{ fontSize: 12, color: '#94a3b8' }}>Not found in entities (refreshed since import?)</p>}
+          {loading && <p style={{ fontSize: 13, color: '#94a3b8' }}>Looking up…</p>}
+          {!loading && !existing && <p style={{ fontSize: 13, color: '#94a3b8' }}>Not found in entities (refreshed since import?)</p>}
           {existing && (
             <>
-              <p style={{ fontSize: 13, color: '#0f172a' }}>{existing.name}</p>
-              <p style={{ fontSize: 12, color: '#475569' }}>
+              <p style={{ fontSize: 14, color: '#0f172a' }}>{existing.name}</p>
+              <p style={{ fontSize: 13, color: '#475569' }}>
                 bm_client_id <strong>{existing.bm_client_id || '—'}</strong> · status <strong>{existing.entity_status}</strong>
               </p>
             </>
@@ -1614,30 +1613,30 @@ function DuplicateCompanyRow({ row }) {
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
         {resolved === 'cleared' && (
-          <span style={{ fontSize: 11, color: '#065f46', fontWeight: 600 }}>
+          <span style={{ fontSize: 12, color: '#065f46', fontWeight: 600 }}>
             ✓ Company number cleared — re-run BM Clients import to attach to {row.incoming_bm_client_id}
           </span>
         )}
         {resolved === 'ignored' && (
-          <span style={{ fontSize: 11, color: '#065f46', fontWeight: 600 }}>
+          <span style={{ fontSize: 12, color: '#065f46', fontWeight: 600 }}>
             ✓ Incoming BM ID ignored on future imports
           </span>
         )}
         {!resolved && (
           <>
-            <button onClick={clearCompany} disabled={saving || !existing} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>
+            <button onClick={clearCompany} disabled={saving || !existing} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
               {saving ? 'Working…' : `Clear ${row.company_number} from existing`}
             </button>
-            <button onClick={ignoreRef} disabled={saving} style={{ ...btnGhost, fontSize: 11, padding: '4px 10px' }}>
+            <button onClick={ignoreRef} disabled={saving} style={{ ...btnGhost, fontSize: 12, padding: '4px 10px' }}>
               Ignore {row.incoming_bm_client_id}
             </button>
-            <span style={{ fontSize: 11, color: '#64748b' }}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>
               Pick "Clear" if the BM record is authoritative for this company; "Ignore" if the incoming BM row is the wrong one.
             </span>
           </>
         )}
       </div>
-      {err && <p style={{ fontSize: 11, color: '#991b1b', marginTop: 6 }}>{err}</p>}
+      {err && <p style={{ fontSize: 12, color: '#991b1b', marginTop: 6 }}>{err}</p>}
     </div>
   );
 }
@@ -1670,10 +1669,10 @@ function EntityPicker({ value, onChange, initialQuery = '' }) {
       />
       <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 6, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
         {loading && results.length === 0 && (
-          <div style={{ padding: 10, fontSize: 11, color: '#94a3b8' }}>Searching…</div>
+          <div style={{ padding: 10, fontSize: 12, color: '#94a3b8' }}>Searching…</div>
         )}
         {!loading && results.length === 0 && (
-          <div style={{ padding: 10, fontSize: 11, color: '#94a3b8' }}>No matches.</div>
+          <div style={{ padding: 10, fontSize: 12, color: '#94a3b8' }}>No matches.</div>
         )}
         {results.map((r) => {
           const selected = value?.id === r.id;
@@ -1688,10 +1687,10 @@ function EntityPicker({ value, onChange, initialQuery = '' }) {
                 border: 'none', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', fontFamily: font,
               }}
             >
-              <span style={{ flex: 1, fontSize: 12, color: '#0f172a' }}>{r.name}</span>
-              <span style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>{r.bm_client_id || '—'}</span>
-              <span style={{ fontSize: 10, color: '#64748b' }}>{r.company_number || ''}</span>
-              <span style={{ fontSize: 10, color: r.entity_status === 'prospect' ? '#92400e' : '#475569', textTransform: 'capitalize' }}>{r.entity_status}</span>
+              <span style={{ flex: 1, fontSize: 13, color: '#0f172a' }}>{r.name}</span>
+              <span style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>{r.bm_client_id || '—'}</span>
+              <span style={{ fontSize: 11, color: '#64748b' }}>{r.company_number || ''}</span>
+              <span style={{ fontSize: 11, color: r.entity_status === 'prospect' ? '#92400e' : '#475569', textTransform: 'capitalize' }}>{r.entity_status}</span>
             </button>
           );
         })}
@@ -1702,9 +1701,8 @@ function EntityPicker({ value, onChange, initialQuery = '' }) {
 
 const miniLabel = {
   display: 'flex', flexDirection: 'column', gap: 3,
-  fontSize: 10, fontWeight: 600, color: '#94a3b8',
-  textTransform: 'uppercase', letterSpacing: '0.04em',
-};
+  fontSize: 11, fontWeight: 600, color: '#94a3b8',
+  };
 
 function rollupRowStyle(done) {
   return {
@@ -1714,7 +1712,7 @@ function rollupRowStyle(done) {
 }
 
 const selectStyle = {
-  fontSize: 12, padding: '5px 8px', border: '1px solid #e5e7eb', borderRadius: 6,
+  fontSize: 13, padding: '5px 8px', border: '1px solid #e5e7eb', borderRadius: 6,
   background: '#fff', color: '#1e293b', outline: 'none', fontFamily: font,
 };
 
@@ -1724,7 +1722,7 @@ function IssueTable({ issues, kind }) {
   const fieldColor = kind === 'skipped' ? '#991b1b' : '#b45309';
   return (
     <div style={{ paddingLeft: 8, paddingRight: 8 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: font }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: font }}>
         <thead>
           <tr style={{ background: '#f8fafc' }}>
             <th style={ithRow}>Row</th>
@@ -1747,7 +1745,7 @@ function IssueTable({ issues, kind }) {
         </tbody>
       </table>
       {issues.length > limit && (
-        <button onClick={() => setLimit(limit + 100)} style={{ ...btnGhost, fontSize: 11, marginTop: 6 }}>
+        <button onClick={() => setLimit(limit + 100)} style={{ ...btnGhost, fontSize: 12, marginTop: 6 }}>
           Show {Math.min(100, issues.length - limit)} more of {issues.length - limit}
         </button>
       )}
@@ -1774,12 +1772,12 @@ function AgentColumnsPanel({ columns }) {
       background: '#fff', border: `1px solid ${found ? '#86efac' : '#fcd34d'}`,
       borderRadius: 12, padding: '14px 18px', marginTop: 14,
     }}>
-      <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
+      <div style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
         Agent authorisation columns — {found ? `${columns.length} found` : 'none found'}
       </div>
       {found ? (
         <>
-          <div style={{ fontSize: 12.5, color: '#475569', marginBottom: 10, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 13.5, color: '#475569', marginBottom: 10, lineHeight: 1.5 }}>
             These will be read into each client&apos;s record and drive the BrightManager column on
             Onboarding → Cross-check. A tax not listed here keeps whatever it already had, rather than
             being set to &quot;not authorised&quot;.
@@ -1787,7 +1785,7 @@ function AgentColumnsPanel({ columns }) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {columns.map((c) => (
               <span key={c.tax} style={{
-                fontSize: 12.5, padding: '5px 10px', borderRadius: 8,
+                fontSize: 13.5, padding: '5px 10px', borderRadius: 8,
                 border: '1px solid #e5e7eb', background: '#f8fafc', color: '#334155',
               }}>
                 <strong>{TAX_NAMES[c.tax] || c.tax}</strong> ← &ldquo;{c.header}&rdquo;
@@ -1796,7 +1794,7 @@ function AgentColumnsPanel({ columns }) {
           </div>
         </>
       ) : (
-        <div style={{ fontSize: 12.5, color: '#92400e', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 13.5, color: '#92400e', lineHeight: 1.5 }}>
           No column in this file names both an authorisation and a tax, so nothing about &quot;are we the
           agent&quot; will be imported and Onboarding → Cross-check will keep reading &quot;no data&quot;
           for BrightManager. If BM does export those fields, re-export with them included — the columns
@@ -1827,10 +1825,10 @@ function PeoplePanel({ summary, rowCount }) {
         background: '#fff', border: '1px solid #fcd34d', borderRadius: 12,
         padding: '14px 18px', marginTop: 14,
       }}>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
           Person references — none found
         </div>
-        <div style={{ fontSize: 12.5, color: '#92400e', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 13.5, color: '#92400e', lineHeight: 1.5 }}>
           This export has no &quot;Person Internal Reference&quot; column, so contacts can&apos;t be
           identified across clients. Athena falls back to the old behaviour: one person record per
           client, meaning the same human appears once for every client they act for. Re-export from
@@ -1843,8 +1841,8 @@ function PeoplePanel({ summary, rowCount }) {
   const Stat = ({ label, value, note }) => (
     <div style={{ minWidth: 130 }}>
       <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>{value}</div>
-      <div style={{ fontSize: 12, color: '#334155', fontWeight: 600 }}>{label}</div>
-      {note ? <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{note}</div> : null}
+      <div style={{ fontSize: 13, color: '#334155', fontWeight: 600 }}>{label}</div>
+      {note ? <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{note}</div> : null}
     </div>
   );
 
@@ -1853,7 +1851,7 @@ function PeoplePanel({ summary, rowCount }) {
       background: '#fff', border: '1px solid #86efac', borderRadius: 12,
       padding: '14px 18px', marginTop: 14,
     }}>
-      <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>
+      <div style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>
         People in this upload
       </div>
       <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -1866,7 +1864,7 @@ function PeoplePanel({ summary, rowCount }) {
         />
         <Stat label="Secondary contacts" value={secondary} note="previously not imported at all" />
       </div>
-      <div style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.5 }}>
+      <div style={{ fontSize: 13.5, color: '#475569', lineHeight: 1.5 }}>
         A person is identified by their reference <em>and</em> their date of birth, not by the
         reference alone — BrightManager gives two people one reference in a handful of cases, and it
         gives the same person one reference across every client they act for. Nothing is merged by
@@ -1890,7 +1888,7 @@ function PersonRefCollisionPanel({ collisions }) {
   if (!collisions || collisions.length === 0) return null;
   return (
     <div style={{ marginTop: 12 }}>
-      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
+      <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
         Needs attention in BrightManager · one person reference, two people
       </p>
       <RollupFrame
@@ -1901,10 +1899,10 @@ function PersonRefCollisionPanel({ collisions }) {
         {collisions.map((c) => (
           <div key={c.person_ref} style={{ padding: '8px 14px', borderBottom: '1px solid rgba(252,211,77,0.4)' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-              <span style={{ flex: '0 0 110px', fontSize: 13, color: '#0f172a', fontFamily: 'monospace' }}>
+              <span style={{ flex: '0 0 110px', fontSize: 14, color: '#0f172a', fontFamily: 'monospace' }}>
                 {c.person_ref}
               </span>
-              <span style={{ flex: 1, fontSize: 12, color: '#475569' }}>
+              <span style={{ flex: 1, fontSize: 13, color: '#475569' }}>
                 {c.people.map((p) => (
                   <span key={`${p.name}-${p.dob || ''}`} style={{ marginRight: 14 }}>
                     <strong style={{ color: '#0f172a' }}>{p.name}</strong>
@@ -1947,15 +1945,15 @@ function ArchiveCandidatesPanel({ candidates, presentCount, selection, setSelect
       borderRadius: 10, padding: 16, marginBottom: 16,
     }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-        <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+        <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
           Clients no longer in BrightManager — {candidates.length}
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setAll(true)} style={{ ...btnGhost, fontSize: 11 }}>Select all</button>
-          <button onClick={() => setAll(false)} style={{ ...btnGhost, fontSize: 11 }}>Deselect all</button>
+          <button onClick={() => setAll(true)} style={{ ...btnGhost, fontSize: 12 }}>Select all</button>
+          <button onClick={() => setAll(false)} style={{ ...btnGhost, fontSize: 12 }}>Deselect all</button>
         </div>
       </div>
-      <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 10 }}>
         These active clients aren't in this export, so they look archived in BrightManager.
         Ticked ones will be set to <strong>archived</strong> when you approve. Untick any you want to keep active.
       </p>
@@ -1981,11 +1979,11 @@ function ArchiveCandidatesPanel({ candidates, presentCount, selection, setSelect
               background: checked ? 'transparent' : '#f8fafc',
             }}>
               <input type="checkbox" checked={checked} onChange={(e) => setOne(c.bm_client_id, e.target.checked)} />
-              <span style={{ flex: 1, fontSize: 13, color: checked ? '#0f172a' : '#94a3b8' }}>
+              <span style={{ flex: 1, fontSize: 14, color: checked ? '#0f172a' : '#94a3b8' }}>
                 {c.name}
               </span>
-              <span style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>{c.bm_client_id}</span>
-              <span style={{ fontSize: 11, color: '#94a3b8', width: 96, textAlign: 'right' }}>
+              <span style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>{c.bm_client_id}</span>
+              <span style={{ fontSize: 12, color: '#94a3b8', width: 96, textAlign: 'right' }}>
                 last seen {fmtDate(c.updated_at)}
               </span>
             </label>
@@ -1993,7 +1991,7 @@ function ArchiveCandidatesPanel({ candidates, presentCount, selection, setSelect
         })}
       </div>
 
-      <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
+      <p style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>
         {selectedCount} of {candidates.length} will be archived · {candidates.length - selectedCount} kept active.
         Archiving is reversible — flip status back on the client record if needed.
       </p>
@@ -2045,16 +2043,16 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
       background: '#fef3c7', border: '1px solid #fcd34d',
       borderRadius: 10, padding: 16, marginBottom: 16,
     }}>
-      <p style={{ fontSize: 13, fontWeight: 600, color: '#78350f', marginBottom: 4 }}>
+      <p style={{ fontSize: 14, fontWeight: 600, color: '#78350f', marginBottom: 4 }}>
         ⚡ Prospect conversions — {totalMembers} BM row(s) matched to {groups.length} Athena prospect(s)
       </p>
-      <p style={{ fontSize: 12, color: '#92400e', marginBottom: 12 }}>
+      <p style={{ fontSize: 13, color: '#92400e', marginBottom: 12 }}>
         These Athena prospects match incoming BrightManager clients. BrightManager becomes the source of truth on conversion.
       </p>
 
       {contestedGroups.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <p style={{ fontSize: 11, fontWeight: 600, color: '#78350f', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+          <p style={{ fontSize: 12, fontWeight: 600, color: '#78350f', marginBottom: 6 }}>
             Contested — pick one winner per prospect
           </p>
           {contestedGroups.map((g) => {
@@ -2065,14 +2063,14 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
                 border: '1px solid #fcd34d', marginBottom: 8,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
                     Athena prospect: {g.prospect_name}
                   </span>
                   <span style={{ flex: 1 }} />
                   {chosen ? (
-                    <button onClick={() => clearGroup(g)} style={{ ...btnGhost, fontSize: 11 }}>Clear</button>
+                    <button onClick={() => clearGroup(g)} style={{ ...btnGhost, fontSize: 12 }}>Clear</button>
                   ) : (
-                    <button onClick={() => rejectAllInGroup(g)} style={{ ...btnGhost, fontSize: 11 }}>
+                    <button onClick={() => rejectAllInGroup(g)} style={{ ...btnGhost, fontSize: 12 }}>
                       Skip all — keep as prospect
                     </button>
                   )}
@@ -2092,8 +2090,8 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
                         checked={!!isWinner}
                         onChange={() => pickWinner(g, m.bm_client_id)}
                       />
-                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#78350f', width: 90 }}>{m.bm_client_id}</span>
-                      <span style={{ flex: 1, fontSize: 12, color: '#1e293b' }}>
+                      <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#78350f', width: 90 }}>{m.bm_client_id}</span>
+                      <span style={{ flex: 1, fontSize: 13, color: '#1e293b' }}>
                         {m.bm_name || '—'}
                         <span style={{ color: '#94a3b8', marginLeft: 6 }}>
                           ({m.tier === 3 ? `${Math.round((m.score || 0) * 100)}% name` : `tier ${m.tier}`})
@@ -2102,7 +2100,7 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
                     </label>
                   );
                 })}
-                <p style={{ fontSize: 11, color: '#92400e', marginTop: 6 }}>
+                <p style={{ fontSize: 12, color: '#92400e', marginTop: 6 }}>
                   Others in this group will create new entities (prospect not converted for them).
                 </p>
               </div>
@@ -2113,7 +2111,7 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
 
       {simpleGroups.length > 0 && (
         <div>
-          <p style={{ fontSize: 11, fontWeight: 600, color: '#78350f', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+          <p style={{ fontSize: 12, fontWeight: 600, color: '#78350f', marginBottom: 6 }}>
             Matches — confirm or skip
           </p>
           {simpleGroups.map((g) => {
@@ -2126,8 +2124,8 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
 
             return (
               <div key={m.bm_client_id} style={convRow}>
-                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#78350f', width: 90 }}>{m.bm_client_id}</span>
-                <div style={{ flex: 1, fontSize: 12, color: '#1e293b', lineHeight: 1.4 }}>
+                <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#78350f', width: 90 }}>{m.bm_client_id}</span>
+                <div style={{ flex: 1, fontSize: 13, color: '#1e293b', lineHeight: 1.4 }}>
                   <div><b>BM:</b> {m.bm_name || '—'}</div>
                   <div><b>Athena:</b> {m.prospect_name}
                     <span style={{ color: '#94a3b8', marginLeft: 6 }}>
@@ -2135,13 +2133,13 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
                     </span>
                   </div>
                 </div>
-                {confirmed && <span style={{ fontSize: 11, color: '#15803d', marginRight: 6 }}>✓ Convert</span>}
-                {rejected && <span style={{ fontSize: 11, color: '#991b1b', marginRight: 6 }}>✗ Skip — new entity</span>}
-                {!decided && preConfirmed && <span style={{ fontSize: 11, color: '#15803d', marginRight: 6 }}>✓ Convert (pre-confirmed)</span>}
+                {confirmed && <span style={{ fontSize: 12, color: '#15803d', marginRight: 6 }}>✓ Convert</span>}
+                {rejected && <span style={{ fontSize: 12, color: '#991b1b', marginRight: 6 }}>✗ Skip — new entity</span>}
+                {!decided && preConfirmed && <span style={{ fontSize: 12, color: '#15803d', marginRight: 6 }}>✓ Convert (pre-confirmed)</span>}
                 {!decided && !preConfirmed && (
                   <>
-                    <button onClick={() => setOne(m.bm_client_id, m.prospect_id)} style={{ ...btnSecondary, fontSize: 11, padding: '4px 10px' }}>Confirm</button>
-                    <button onClick={() => setOne(m.bm_client_id, 'reject')} style={{ ...btnGhost, fontSize: 11 }}>Skip</button>
+                    <button onClick={() => setOne(m.bm_client_id, m.prospect_id)} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>Confirm</button>
+                    <button onClick={() => setOne(m.bm_client_id, 'reject')} style={{ ...btnGhost, fontSize: 12 }}>Skip</button>
                   </>
                 )}
                 {(decided || preConfirmed) && (
@@ -2149,7 +2147,7 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
                     if (confirmed) setOne(m.bm_client_id, 'reject');
                     else if (rejected) setOne(m.bm_client_id, m.prospect_id);
                     else if (preConfirmed && !decided) setOne(m.bm_client_id, 'reject');
-                  }} style={{ ...btnGhost, fontSize: 11 }}>
+                  }} style={{ ...btnGhost, fontSize: 12 }}>
                     {confirmed ? 'Reject' : rejected ? 'Undo' : 'Reject'}
                   </button>
                 )}
@@ -2200,13 +2198,13 @@ function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) 
     }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
         <div>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>Task types to import</h3>
-          <p style={{ fontSize: 12, color: '#64748b' }}>
+          <h3 style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>Task types to import</h3>
+          <p style={{ fontSize: 13, color: '#64748b' }}>
             Uncheck any type you never want in Athena. Your choices are remembered and pre-applied next time.
           </p>
         </div>
         {totalExcluded > 0 && (
-          <span style={{ fontSize: 12, color: '#b45309', fontWeight: 600 }}>
+          <span style={{ fontSize: 13, color: '#b45309', fontWeight: 600 }}>
             {totalExcluded} row{totalExcluded === 1 ? '' : 's'} will be excluded
           </span>
         )}
@@ -2229,10 +2227,10 @@ function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) 
                 onChange={() => onToggle(b.prefix)}
               />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: isExcluded ? '#991b1b' : '#0f172a', textDecoration: isExcluded ? 'line-through' : 'none' }}>
+                <div style={{ fontSize: 14, fontWeight: 500, color: isExcluded ? '#991b1b' : '#0f172a', textDecoration: isExcluded ? 'line-through' : 'none' }}>
                   {b.label}
                 </div>
-                <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>
+                <div style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'monospace' }}>
                   {b.prefix} — {b.count} row{b.count === 1 ? '' : 's'}
                 </div>
               </div>
@@ -2242,7 +2240,7 @@ function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) 
       </div>
 
       {(buckets.other > 0 || buckets.nst > 0) && (
-        <div style={{ marginTop: 10, fontSize: 11, color: '#94a3b8' }}>
+        <div style={{ marginTop: 10, fontSize: 12, color: '#94a3b8' }}>
           {buckets.other > 0 && <span>{buckets.other} row{buckets.other === 1 ? '' : 's'} don't match any rule — always imported. </span>}
           {buckets.nst > 0 && <span>{buckets.nst} NST row{buckets.nst === 1 ? '' : 's'} routed to quick tasks.</span>}
         </div>
@@ -2262,12 +2260,12 @@ function ApprovePanel({ validation, tier3Pending, contestedUnresolved, archiveCo
     <div style={{
       marginTop: 18, padding: 18, borderTop: '2px solid #e5e7eb',
     }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+      <p style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 10 }}>
         Ready to import
       </p>
       <div style={{
         background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 10,
-        padding: 16, marginBottom: 14, fontSize: 13,
+        padding: 16, marginBottom: 14, fontSize: 14,
       }}>
         <p style={{ fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>Import summary</p>
         {Object.entries(validation.rowCounts).map(([t, n]) => (
@@ -2290,13 +2288,13 @@ function ApprovePanel({ validation, tier3Pending, contestedUnresolved, archiveCo
           onClick={onApprove}
           disabled={blocked}
           title={blockReason}
-          style={{ ...btnPrimary, flex: 1, justifyContent: 'center', padding: 14, fontSize: 14, opacity: blocked ? 0.5 : 1, cursor: blocked ? 'not-allowed' : 'pointer' }}
+          style={{ ...btnPrimary, flex: 1, justifyContent: 'center', padding: 14, fontSize: 14.5, opacity: blocked ? 0.5 : 1, cursor: blocked ? 'not-allowed' : 'pointer' }}
         >
           Approve and import to Supabase
         </button>
         <button
           onClick={onCancel}
-          style={{ ...btnSecondary, padding: 14, fontSize: 14, color: '#991b1b', borderColor: '#fca5a5' }}
+          style={{ ...btnSecondary, padding: 14, fontSize: 14.5, color: '#991b1b', borderColor: '#fca5a5' }}
         >
           Cancel import
         </button>
@@ -2313,7 +2311,7 @@ function ConfirmPrompt({ archiveCount = 0, onCancel, onConfirm }) {
       borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12,
     }}>
       <AlertTriangle size={16} style={{ color: '#d97706' }} />
-      <span style={{ flex: 1, fontSize: 13, color: '#78350f' }}>
+      <span style={{ flex: 1, fontSize: 14, color: '#78350f' }}>
         This will write to the live database. This action cannot be undone.
         {archiveCount > 0 && <> <strong>{archiveCount} client{archiveCount === 1 ? '' : 's'} will be archived.</strong></>}
       </span>
@@ -2328,9 +2326,9 @@ function ProgressView({ validation }) {
     <div style={{
       padding: 20, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
     }}>
-      <p style={{ fontSize: 14, fontWeight: 500, color: '#0f172a', marginBottom: 12 }}>Writing to Supabase…</p>
+      <p style={{ fontSize: 14.5, fontWeight: 500, color: '#0f172a', marginBottom: 12 }}>Writing to Supabase…</p>
       {Object.entries(validation.rowCounts).map(([t, n]) => (
-        <div key={t} style={{ display: 'flex', gap: 12, fontSize: 13, padding: '4px 0' }}>
+        <div key={t} style={{ display: 'flex', gap: 12, fontSize: 14, padding: '4px 0' }}>
           <span style={{ width: 140, color: '#475569' }}>{t}</span>
           <span style={{ color: '#94a3b8' }}>{Number(n).toLocaleString()} rows · pending</span>
         </div>
@@ -2348,11 +2346,11 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
     <div style={{
       padding: 20, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10,
     }}>
-      <p style={{ fontSize: 14, fontWeight: 600, color: '#065f46', marginBottom: 4 }}>
+      <p style={{ fontSize: 14.5, fontWeight: 600, color: '#065f46', marginBottom: 4 }}>
         Import {hasRealWrite ? 'complete' : 'logged'}.
       </p>
-      <p style={{ fontSize: 12, color: '#047857', marginBottom: 14 }}>
-        Run ID: <code style={{ fontSize: 11 }}>{run.id}</code>
+      <p style={{ fontSize: 13, color: '#047857', marginBottom: 14 }}>
+        Run ID: <code style={{ fontSize: 12 }}>{run.id}</code>
       </p>
       {hasRealWrite && source.key === 'bm_clients' ? (
         <>
@@ -2371,7 +2369,7 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
             <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>tidy-ups fixed at source (closed)</span><span style={resultNum}>{wr.tidy_ups.closed.toLocaleString()}</span></div>
           )}
           {(wr.tidy_ups?.raised > 0 || wr.tidy_ups?.closed > 0) && (
-            <p style={{ fontSize: 11.5, color: '#047857', marginTop: 2, marginBottom: 8, paddingLeft: 18 }}>
+            <p style={{ fontSize: 12.5, color: '#047857', marginTop: 2, marginBottom: 8, paddingLeft: 18 }}>
               On the admin task list under <strong>BM Data Errors</strong>. Each one closes itself
               once an import stops reporting it, so fixing it in BrightManager is the whole job.
             </p>
@@ -2381,10 +2379,10 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
           <DuplicateNamePanel duplicateNames={extractWarning(wr.warnings, 'duplicate_names')} />
           {wr.errors?.length > 0 && (
             <details style={{ marginTop: 10 }}>
-              <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#991b1b' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#991b1b' }}>
                 Row-level errors ({wr.errors.length})
               </summary>
-              <div style={{ fontSize: 11, color: '#991b1b', paddingLeft: 14, paddingTop: 6 }}>
+              <div style={{ fontSize: 12, color: '#991b1b', paddingLeft: 14, paddingTop: 6 }}>
                 {wr.errors.slice(0, 20).map((e, i) => (
                   <div key={i}>• {e.bm_client_id || '—'}: {e.message}</div>
                 ))}
@@ -2414,24 +2412,24 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
           )}
           {wr.flags && (
             <div style={{ marginTop: 10, padding: 10, background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#78350f', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#78350f', marginBottom: 6 }}>
                 Reconciliation flags raised
               </p>
               {Object.entries(wr.flags).filter(([, n]) => n > 0).length === 0 ? (
-                <p style={{ fontSize: 12, color: '#92400e' }}>None — clean import.</p>
+                <p style={{ fontSize: 13, color: '#92400e' }}>None — clean import.</p>
               ) : Object.entries(wr.flags).filter(([, n]) => n > 0).map(([k, n]) => (
-                <div key={k} style={{ fontSize: 12, color: '#78350f', padding: '2px 0' }}>
-                  • <code style={{ fontSize: 11 }}>{k}</code>: <b>{n}</b>
+                <div key={k} style={{ fontSize: 13, color: '#78350f', padding: '2px 0' }}>
+                  • <code style={{ fontSize: 12 }}>{k}</code>: <b>{n}</b>
                 </div>
               ))}
             </div>
           )}
           {wr.errors?.length > 0 && (
             <details style={{ marginTop: 10 }}>
-              <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#991b1b' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#991b1b' }}>
                 Row-level errors ({wr.errors.length})
               </summary>
-              <div style={{ fontSize: 11, color: '#991b1b', paddingLeft: 14, paddingTop: 6 }}>
+              <div style={{ fontSize: 12, color: '#991b1b', paddingLeft: 14, paddingTop: 6 }}>
                 {wr.errors.slice(0, 20).map((e, i) => (
                   <div key={i}>• {e.bm_task_id || '—'}: {e.message}</div>
                 ))}
@@ -2496,7 +2494,7 @@ function buildStubValidation(source, preview) {
 function StatCell({ label, value }) {
   return (
     <div style={{ padding: '14px 18px', borderRight: '1px solid #e5e7eb' }}>
-      <p style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{label}</p>
+      <p style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>{label}</p>
       <p style={{ fontSize: 18, fontWeight: 600, color: '#0f172a' }}>{value}</p>
     </div>
   );
@@ -2513,32 +2511,32 @@ function banner(tone) {
     display: 'flex', alignItems: 'center', gap: 8,
     padding: '10px 14px', borderRadius: 8,
     background: t.bg, border: `1px solid ${t.border}`,
-    color: t.color, fontSize: 13, marginBottom: 14,
+    color: t.color, fontSize: 14, marginBottom: 14,
   };
 }
 
 const pill = {
-  fontSize: 11, padding: '2px 8px', borderRadius: 999,
+  fontSize: 12, padding: '2px 8px', borderRadius: 999,
   background: '#f1f5f9', color: '#475569',
 };
 const pillBig = {
-  fontSize: 12, padding: '4px 10px', borderRadius: 999,
+  fontSize: 13, padding: '4px 10px', borderRadius: 999,
   background: '#f0f9ff', color: '#0e7fe0', fontWeight: 500,
 };
 const btnPrimary = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 13, fontWeight: 600, padding: '8px 14px',
+  fontSize: 14, fontWeight: 600, padding: '8px 14px',
   background: '#0f172a', border: 'none', borderRadius: 8,
   color: '#fff', cursor: 'pointer', fontFamily: font,
 };
 const btnSecondary = {
-  fontSize: 13, fontWeight: 500, padding: '8px 14px',
+  fontSize: 14, fontWeight: 500, padding: '8px 14px',
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
   color: '#1e293b', cursor: 'pointer', fontFamily: font,
 };
 const btnGhost = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 12, padding: '6px 10px',
+  fontSize: 13, padding: '6px 10px',
   background: 'none', border: 'none',
   color: '#64748b', cursor: 'pointer', fontFamily: font,
 };
@@ -2547,7 +2545,7 @@ const convRow = {
   padding: '6px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.5)',
   marginBottom: 4,
 };
-const resultRow = { display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, padding: '3px 0' };
+const resultRow = { display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, padding: '3px 0' };
 const resultNum = { color: '#065f46', fontFamily: 'monospace' };
-const ithRow = { textAlign: 'left', padding: '6px 8px', fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' };
-const itdRow = { padding: '6px 8px', fontSize: 12, verticalAlign: 'top' };
+const ithRow = { textAlign: 'left', padding: '6px 8px', fontSize: 11, fontWeight: 600, color: '#94a3b8' };
+const itdRow = { padding: '6px 8px', fontSize: 13, verticalAlign: 'top' };

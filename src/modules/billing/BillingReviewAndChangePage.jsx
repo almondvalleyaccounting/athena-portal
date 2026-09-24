@@ -475,7 +475,7 @@ export default function BillingReviewAndChangePage() {
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Review and Change
       </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
         Client × service grid of ex-VAT monthly amounts. Edit cells, apply inflation, or apply a floor. Changes stage as pending — push them to QBO from the Uplift Review screen.
       </p>
 
@@ -496,9 +496,9 @@ export default function BillingReviewAndChangePage() {
           excludedCount={matrix.entityList.filter((e) => e.excluded).length}
         />
         {sortBy.type !== 'client' && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: '#dbeafe', color: '#0c4a6e', borderRadius: 999, fontSize: 12, fontWeight: 500 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: '#dbeafe', color: '#0c4a6e', borderRadius: 999, fontSize: 13, fontWeight: 500 }}>
             Sorted by <strong>{sortBy.type === 'total' ? 'Total' : sortBy.serviceId}</strong> ({sortBy.dir})
-            <button onClick={() => setSortBy({ type: 'client', dir: 'asc' })} title="Reset to A–Z" style={{ background: 'transparent', border: 'none', color: '#0c4a6e', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+            <button onClick={() => setSortBy({ type: 'client', dir: 'asc' })} title="Reset to A–Z" style={{ background: 'transparent', border: 'none', color: '#0c4a6e', cursor: 'pointer', fontSize: 14.5, lineHeight: 1, padding: 0 }}>×</button>
           </span>
         )}
         <div style={{ flex: 1 }} />
@@ -525,7 +525,7 @@ export default function BillingReviewAndChangePage() {
       </div>
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : matrix.entityList.length === 0 ? (
         <EmptyState
           icon="—"
@@ -553,7 +553,7 @@ export default function BillingReviewAndChangePage() {
               <Tile group="Annual" label="New"     value={fmtGbp(columnTotals.totalPending * 12)} tone={grandDelta > 0 ? 'green' : 'slate'} />
               <Tile group="Annual" label="Δ"       value={`${grandDelta >= 0 ? '+' : ''}${fmtGbp(grandDelta * 12)}`} tone={grandDelta > 0 ? 'green' : grandDelta < 0 ? 'red' : 'slate'} />
             </div>
-            <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8' }}>
+            <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
               {matrix.entityList.length} client{matrix.entityList.length === 1 ? '' : 's'}
               {matrix.entityList.filter((e) => e.excluded).length > 0 && (
                 <> · <span style={{ color: '#b91c1c' }}>{matrix.entityList.filter((e) => e.excluded).length} excluded from raises</span></>
@@ -565,7 +565,7 @@ export default function BillingReviewAndChangePage() {
 
           {/* Matrix */}
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', maxHeight: '72vh' }}>
-            <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12, minWidth: '100%' }}>
+            <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 13, minWidth: '100%' }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
                   <th
@@ -621,7 +621,7 @@ export default function BillingReviewAndChangePage() {
                   <th style={{ ...stickyTh, left: 220, top: HEADER_ROW_1, zIndex: 5, fontWeight: 500, background: '#f1f5f9', height: HEADER_ROW_2 }}>
                     <div style={{ fontFamily: 'monospace', color: '#64748b' }}>{fmtGbp(columnTotals.totalCurrent)}</div>
                     <div style={{ fontFamily: 'monospace', color: grandDelta > 0 ? '#15803d' : grandDelta < 0 ? '#b91c1c' : '#0f172a', fontWeight: 700 }}>{fmtGbp(columnTotals.totalPending)}</div>
-                    <div style={{ fontFamily: 'monospace', fontSize: 10, color: grandDelta > 0 ? '#15803d' : grandDelta < 0 ? '#b91c1c' : '#94a3b8' }}>{grandDelta > 0 ? '+' : ''}{fmtGbp(grandDelta)}</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 11, color: grandDelta > 0 ? '#15803d' : grandDelta < 0 ? '#b91c1c' : '#94a3b8' }}>{grandDelta > 0 ? '+' : ''}{fmtGbp(grandDelta)}</div>
                   </th>
                   {matrix.services.map((sid) => {
                     const t = columnTotals.perService[sid];
@@ -630,7 +630,7 @@ export default function BillingReviewAndChangePage() {
                       <th key={sid} style={{ ...stickyTh, top: HEADER_ROW_1, zIndex: 3, fontWeight: 500, height: HEADER_ROW_2 }}>
                         <div style={{ fontFamily: 'monospace', color: '#64748b' }}>{fmtGbp(t.current)}</div>
                         <div style={{ fontFamily: 'monospace', color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#0f172a', fontWeight: 600 }}>{fmtGbp(t.pending)}</div>
-                        <div style={{ fontFamily: 'monospace', fontSize: 10, color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#94a3b8' }}>{d > 0 ? '+' : ''}{fmtGbp(d)}</div>
+                        <div style={{ fontFamily: 'monospace', fontSize: 11, color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#94a3b8' }}>{d > 0 ? '+' : ''}{fmtGbp(d)}</div>
                       </th>
                     );
                   })}
@@ -678,7 +678,7 @@ export default function BillingReviewAndChangePage() {
                           <div style={{ fontFamily: 'monospace', color: hasChange ? '#94a3b8' : '#0f172a', textDecoration: hasChange ? 'line-through' : 'none' }}>{fmtGbp(t.current)}</div>
                           {hasChange && (
                             <div style={{ fontFamily: 'monospace', color: d > 0 ? '#15803d' : '#b91c1c', fontWeight: 700 }}>
-                              {fmtGbp(t.pending)} <span style={{ fontSize: 9, fontWeight: 500 }}>({d > 0 ? '+' : ''}{fmtGbp(d)})</span>
+                              {fmtGbp(t.pending)} <span style={{ fontSize: 10, fontWeight: 500 }}>({d > 0 ? '+' : ''}{fmtGbp(d)})</span>
                             </div>
                           )}
                         </td>
@@ -768,7 +768,7 @@ function Cell({ cell, isEditing, focused, onEdit, onSave, onCancel, onClearPendi
             if (e.key === 'Enter') e.target.blur();
             if (e.key === 'Escape') onCancel();
           }}
-          style={{ width: '100%', height: '100%', padding: '4px 6px', border: '1px solid #0e7fe0', borderRadius: 4, fontSize: 12, fontFamily: 'monospace', textAlign: 'right', outline: 'none', boxSizing: 'border-box' }}
+          style={{ width: '100%', height: '100%', padding: '4px 6px', border: '1px solid #0e7fe0', borderRadius: 4, fontSize: 13, fontFamily: 'monospace', textAlign: 'right', outline: 'none', boxSizing: 'border-box' }}
         />
       </td>
     );
@@ -833,7 +833,7 @@ function ExcludedToggle({ value, onChange, excludedCount }) {
             key={o.v}
             onClick={() => onChange(o.v)}
             style={{
-              padding: '6px 12px', fontSize: 12, fontWeight: active ? 600 : 500,
+              padding: '6px 12px', fontSize: 13, fontWeight: active ? 600 : 500,
               background: active ? (isExcluded ? '#b91c1c' : '#0f172a') : '#fff',
               color: active ? '#fff' : (isExcluded ? '#b91c1c' : '#475569'),
               border: 'none', borderLeft: i > 0 ? '1px solid #e5e7eb' : 'none',
@@ -861,7 +861,7 @@ function ScopeToggle({ value, onChange }) {
             key={o.v}
             onClick={() => onChange(o.v)}
             style={{
-              padding: '6px 12px', fontSize: 12, fontWeight: active ? 600 : 500,
+              padding: '6px 12px', fontSize: 13, fontWeight: active ? 600 : 500,
               background: active ? '#0f172a' : '#fff', color: active ? '#fff' : '#475569',
               border: 'none', borderLeft: i > 0 ? '1px solid #e5e7eb' : 'none',
               cursor: 'pointer', fontFamily: font,
@@ -908,7 +908,7 @@ function ApplyUpliftModal({ services, defaultServiceId, onClose, onApplyInflatio
             <option value="">All in-scope services</option>
             {services.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 13 }}>
             <input type="checkbox" checked={roundUp} onChange={(e) => setRoundUp(e.target.checked)} />
             Round up to nearest £0.50
           </label>
@@ -921,7 +921,7 @@ function ApplyUpliftModal({ services, defaultServiceId, onClose, onApplyInflatio
           </select>
           <Label style={{ marginTop: 10 }}>Floor £/month</Label>
           <input type="number" step="0.5" value={floor} onChange={(e) => setFloor(Number(e.target.value))} style={inputStyle} />
-          <p style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>Cells below the floor will be staged to the floor value. Cells already at or above are untouched.</p>
+          <p style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>Cells below the floor will be staged to the floor value. Cells already at or above are untouched.</p>
         </>
       )}
 
@@ -986,7 +986,7 @@ function AddServiceModal({ services, entities, qboItems, defaults, onClose, onAp
         ))}
       </select>
       {selectedItem?.description && (
-        <p style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{selectedItem.description}</p>
+        <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{selectedItem.description}</p>
       )}
 
       <Label style={{ marginTop: 10 }}>Cadence</Label>
@@ -1005,7 +1005,7 @@ function AddServiceModal({ services, entities, qboItems, defaults, onClose, onAp
       <Label style={{ marginTop: 10 }}>Reason / note</Label>
       <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} style={inputStyle} />
 
-      <p style={{ fontSize: 11, color: '#64748b', marginTop: 10 }}>
+      <p style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>
         Stages as a pending uplift. Push from <strong>Push uplifts</strong> to land on the QBO recurring template.
       </p>
 
@@ -1037,7 +1037,7 @@ function StratTab({ label, active, onClick }) {
     <button
       onClick={onClick}
       style={{
-        flex: 1, padding: '6px 10px', fontSize: 12, fontWeight: active ? 600 : 500,
+        flex: 1, padding: '6px 10px', fontSize: 13, fontWeight: active ? 600 : 500,
         background: active ? '#fff' : 'transparent',
         color: active ? '#0f172a' : '#64748b',
         border: active ? '1px solid #e5e7eb' : '1px solid transparent',
@@ -1069,8 +1069,8 @@ function Tile({ group, label, value, tone }) {
   const fg = tone === 'green' ? '#15803d' : tone === 'red' ? '#b91c1c' : tone === 'slate' ? '#475569' : '#0f172a';
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 14px' }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group}</div>
-      <div style={{ fontSize: 11, fontWeight: 500, color: '#64748b', marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{group}</div>
+      <div style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginTop: 2 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 700, color: fg, fontFamily: 'monospace', marginTop: 4 }}>{value}</div>
     </div>
   );
@@ -1080,13 +1080,13 @@ function Stat({ label, value, tone }) {
   const fg = tone === 'green' ? '#15803d' : tone === 'red' ? '#b91c1c' : tone === 'slate' ? '#475569' : '#0f172a';
   return (
     <div>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 600, color: fg, fontFamily: 'monospace' }}>{value}</div>
     </div>
   );
 }
 
-const Label = ({ children, style }) => <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5, ...style }}>{children}</div>;
+const Label = ({ children, style }) => <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5, ...style }}>{children}</div>;
 
 // Sticky layering reference:
 //   z 5 : corner cells (sticky-top AND sticky-left) — always on top
@@ -1098,18 +1098,18 @@ const Label = ({ children, style }) => <div style={{ fontSize: 10, fontWeight: 6
 const HEADER_ROW_1 = 32; // first thead row height in px (top headings)
 const HEADER_ROW_2 = 56; // second thead row height in px (3-line totals)
 
-const stickyTh = { position: 'sticky', padding: '4px 8px', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #f1f5f9', textAlign: 'right', top: 0, height: HEADER_ROW_1, boxSizing: 'border-box' };
-const stickyTd = { position: 'sticky', padding: '6px 8px', borderRight: '1px solid #f1f5f9', verticalAlign: 'middle', fontSize: 13, zIndex: 2 };
-const cellTd = { padding: '6px 8px', textAlign: 'right', verticalAlign: 'middle', borderRight: '1px solid #f1f5f9', fontSize: 13, minWidth: 60 };
+const stickyTh = { position: 'sticky', padding: '4px 8px', fontSize: 12, fontWeight: 600, color: '#64748b', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #f1f5f9', textAlign: 'right', top: 0, height: HEADER_ROW_1, boxSizing: 'border-box' };
+const stickyTd = { position: 'sticky', padding: '6px 8px', borderRight: '1px solid #f1f5f9', verticalAlign: 'middle', fontSize: 14, zIndex: 2 };
+const cellTd = { padding: '6px 8px', textAlign: 'right', verticalAlign: 'middle', borderRight: '1px solid #f1f5f9', fontSize: 14, minWidth: 60 };
 
-const backLinkStyle = { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 12, padding: 0, fontFamily: font };
-const btnAction = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnGhost = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#64748b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnPrimary = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const clearBtnStyle = { width: 16, height: 16, padding: 0, fontSize: 14, lineHeight: 1, background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' };
+const backLinkStyle = { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 12, padding: 0, fontFamily: font };
+const btnAction = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnGhost = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#64748b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnPrimary = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const clearBtnStyle = { width: 16, height: 16, padding: 0, fontSize: 14.5, lineHeight: 1, background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' };
 
 const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: font };
 const modalStyle = { background: '#fff', borderRadius: 12, width: 460, maxWidth: '95vw', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' };
-const inputStyle = { padding: '6px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', width: '100%', boxSizing: 'border-box' };
-const modalBtnPrimary = { padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const modalBtnGhost = { padding: '8px 14px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const inputStyle = { padding: '6px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', width: '100%', boxSizing: 'border-box' };
+const modalBtnPrimary = { padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const modalBtnGhost = { padding: '8px 14px', fontSize: 14, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };

@@ -319,7 +319,7 @@ export default function AllocationsView() {
   }, []);
 
   if (loading) {
-    return <div style={{ padding: 24, color: '#94a3b8', fontSize: 14 }}>Loading allocations…</div>;
+    return <div style={{ padding: 24, color: '#94a3b8', fontSize: 14.5 }}>Loading allocations…</div>;
   }
 
   return (
@@ -340,7 +340,7 @@ export default function AllocationsView() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{
-            padding: '5px 10px', fontSize: 12, border: '1px solid #cbd5e1',
+            padding: '5px 10px', fontSize: 13, border: '1px solid #cbd5e1',
             borderRadius: 6, fontFamily: "'Outfit', sans-serif", width: 180,
           }}
         />
@@ -351,7 +351,7 @@ export default function AllocationsView() {
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
               style={{
-                padding: '5px 8px', fontSize: 12, border: '1px solid #cbd5e1',
+                padding: '5px 8px', fontSize: 13, border: '1px solid #cbd5e1',
                 borderRadius: 6, fontFamily: "'Outfit', sans-serif", background: '#fff',
               }}
               title="Filter by client type"
@@ -362,11 +362,11 @@ export default function AllocationsView() {
               <option value="partnership">Partnership</option>
               <option value="llp">LLP</option>
             </select>
-            <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <label style={{ fontSize: 13, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
               <input type="checkbox" checked={showOnlyGaps} onChange={(e) => setShowOnlyGaps(e.target.checked)} />
               Only gaps
             </label>
-            <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <label style={{ fontSize: 13, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
               <input type="checkbox" checked={includeProspects} onChange={(e) => setIncludeProspects(e.target.checked)} />
               Include prospects
             </label>
@@ -384,7 +384,7 @@ export default function AllocationsView() {
               onClick={() => setProposalsOpen(true)}
               title="Click to review all proposed changes"
               style={{
-                fontSize: 12, color: '#92400e', background: '#fef3c7',
+                fontSize: 13, color: '#92400e', background: '#fef3c7',
                 border: '1px solid #fde68a', padding: '4px 10px', borderRadius: 12,
                 fontFamily: "'Outfit', sans-serif", cursor: 'pointer', fontWeight: 500,
               }}
@@ -396,7 +396,7 @@ export default function AllocationsView() {
                 onClick={handleClearResolved}
                 title="Discard drafts where BM's current assignee already matches your proposal"
                 style={{
-                  fontSize: 12, fontWeight: 500, padding: '5px 12px', borderRadius: 6,
+                  fontSize: 13, fontWeight: 500, padding: '5px 12px', borderRadius: 6,
                   border: '1px solid #16a34a', background: '#dcfce7', color: '#166534',
                   cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
                 }}
@@ -483,7 +483,7 @@ export default function AllocationsView() {
 
 function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList, staffMap, editing, setEditing, onSaveDraft, onDiscardDraft, onSaveReviewer, sortStack, onToggleSort, colFilter, onSetColFilter, groupMap, groupFragmentation, onOpenGroup }) {
   if (!entities.length) {
-    return <div style={{ color: '#94a3b8', fontSize: 13 }}>No clients match your filters.</div>;
+    return <div style={{ color: '#94a3b8', fontSize: 14 }}>No clients match your filters.</div>;
   }
   const sortedStaff = staffList
     .filter((s) => s.is_active !== false)
@@ -527,8 +527,7 @@ function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList
           <div key={`rev-${r.id}`} style={{
             width: SERVICE_COL_W, minWidth: SERVICE_COL_W, padding: '0 10px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 11, fontWeight: 700, color: '#4338ca', textTransform: 'uppercase',
-            letterSpacing: 0.4, height: ROW_H,
+            fontSize: 12, fontWeight: 700, color: '#4338ca', height: ROW_H,
             background: '#eef2ff', borderRight: '1px solid #e0e7ff',
             borderBottom: '1px solid #c7d2fe',
           }} title="Reviewer (separate role from fee earner). Imported from BM Monitor columns; manual edits stick across re-imports.">
@@ -550,7 +549,7 @@ function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList
             style={{
               width: GROUP_COL_W, minWidth: GROUP_COL_W, padding: '0 10px',
               display: 'flex', alignItems: 'center', gap: 6, height: ROW_H,
-              fontSize: 12, color: '#0f172a',
+              fontSize: 13, color: '#0f172a',
               borderRight: '1px solid #e5e7eb', background: '#fff',
               position: 'sticky', left: 0, zIndex: 2,
               cursor: group ? 'pointer' : 'default',
@@ -563,7 +562,7 @@ function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList
                   fontWeight: 500,
                 }}>{group.label_person_name}</span>
                 <span style={{
-                  fontSize: 10, fontWeight: 700,
+                  fontSize: 11, fontWeight: 700,
                   color: '#fff', background: fragColour,
                   borderRadius: 10, padding: '1px 6px', minWidth: 18, textAlign: 'center',
                 }}>{frag.count}</span>
@@ -575,7 +574,7 @@ function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList
           <div style={{
             width: CLIENT_COL_W, minWidth: CLIENT_COL_W, padding: '0 10px',
             display: 'flex', alignItems: 'center', height: ROW_H,
-            fontSize: 13, color: '#0f172a', fontWeight: 500,
+            fontSize: 14, color: '#0f172a', fontWeight: 500,
             borderRight: '1px solid #e5e7eb', background: '#fff',
             position: 'sticky', left: GROUP_COL_W, zIndex: 2,
           }}>
@@ -680,7 +679,7 @@ function Cell({ entityId, serviceId, draft, inferred, staffList, staffMap, isEdi
           borderRight: '1px solid #f1f5f9',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           padding: '0 8px', background: '#f8fafc',
-          color: '#cbd5e1', fontSize: 11, fontStyle: 'italic',
+          color: '#cbd5e1', fontSize: 12, fontStyle: 'italic',
           cursor: 'default', userSelect: 'none',
         }}
       >
@@ -715,7 +714,7 @@ function Cell({ entityId, serviceId, draft, inferred, staffList, staffMap, isEdi
       }}
     >
       <span style={{
-        fontSize: 12, fontWeight: 600, overflow: 'hidden',
+        fontSize: 13, fontWeight: 600, overflow: 'hidden',
         textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         fontStyle: isBm ? 'italic' : 'normal',
         display: 'flex', flexDirection: 'column', minWidth: 0,
@@ -725,7 +724,7 @@ function Cell({ entityId, serviceId, draft, inferred, staffList, staffMap, isEdi
         </span>
         {proposedDiffersFromBm && (
           <span style={{
-            fontSize: 9, fontWeight: 500, fontStyle: 'italic',
+            fontSize: 10, fontWeight: 500, fontStyle: 'italic',
             textDecoration: 'line-through', opacity: 0.7,
           }}>
             was: {bmName}
@@ -735,14 +734,14 @@ function Cell({ entityId, serviceId, draft, inferred, staffList, staffMap, isEdi
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         {isBm && !isFallback && (
           <span title="BM-inferred" style={{
-            fontSize: 8, fontWeight: 700, letterSpacing: 0.4,
+            fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
             background: 'rgba(255,255,255,0.25)', color: '#fff',
             borderRadius: 3, padding: '1px 3px',
           }}>BM</span>
         )}
         {isBm && isFallback && (
           <span title="Fallback: same as submitter" style={{
-            fontSize: 8, fontWeight: 700, letterSpacing: 0.4,
+            fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
             background: 'rgba(255,255,255,0.25)', color: '#fff',
             borderRadius: 3, padding: '1px 3px',
           }}>BM*</span>
@@ -753,7 +752,7 @@ function Cell({ entityId, serviceId, draft, inferred, staffList, staffMap, isEdi
             title="Discard reallocation proposal"
             style={{
               border: 'none', background: '#f59e0b', color: '#fff',
-              borderRadius: 3, padding: '0 4px', fontSize: 10, cursor: 'pointer',
+              borderRadius: 3, padding: '0 4px', fontSize: 11, cursor: 'pointer',
               fontFamily: "'Outfit', sans-serif",
             }}
           >×</button>
@@ -780,7 +779,7 @@ function CellEditor({ entityId, serviceId, initialFeeEarnerId, staffList, onCanc
           if (e.key === 'Enter') onSave({ entityId, serviceId, feeEarnerId });
           else if (e.key === 'Escape') onCancel();
         }}
-        style={{ flex: 1, fontSize: 11, padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: 4, fontFamily: "'Outfit', sans-serif" }}
+        style={{ flex: 1, fontSize: 12, padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: 4, fontFamily: "'Outfit', sans-serif" }}
       >
         <option value="">— fee earner —</option>
         {staffList.filter((s) => s.is_active !== false).map((s) => (
@@ -790,11 +789,11 @@ function CellEditor({ entityId, serviceId, initialFeeEarnerId, staffList, onCanc
       <button
         onClick={() => onSave({ entityId, serviceId, feeEarnerId })}
         title="Save as reallocation proposal"
-        style={{ border: 'none', background: '#0f172a', color: '#fff', borderRadius: 3, padding: '2px 6px', fontSize: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+        style={{ border: 'none', background: '#0f172a', color: '#fff', borderRadius: 3, padding: '2px 6px', fontSize: 11, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
       >✓</button>
       <button
         onClick={onCancel}
-        style={{ border: '1px solid #cbd5e1', background: '#fff', color: '#64748b', borderRadius: 3, padding: '2px 5px', fontSize: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+        style={{ border: '1px solid #cbd5e1', background: '#fff', color: '#64748b', borderRadius: 3, padding: '2px 5px', fontSize: 11, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
       >×</button>
     </div>
   );
@@ -866,7 +865,7 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
                 key={k}
                 onClick={() => setFilter(k)}
                 style={{
-                  padding: '4px 10px', fontSize: 12, fontWeight: 500,
+                  padding: '4px 10px', fontSize: 13, fontWeight: 500,
                   border: 'none', borderRadius: 4, cursor: 'pointer',
                   background: filter === k ? '#fff' : 'transparent',
                   color: filter === k ? '#0f172a' : '#64748b',
@@ -881,7 +880,7 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
             <button
               onClick={() => { onClearResolved(); }}
               style={{
-                fontSize: 12, fontWeight: 500, padding: '5px 12px', borderRadius: 6,
+                fontSize: 13, fontWeight: 500, padding: '5px 12px', borderRadius: 6,
                 border: '1px solid #16a34a', background: '#dcfce7', color: '#166534', cursor: 'pointer',
                 fontFamily: "'Outfit', sans-serif",
               }}
@@ -890,7 +889,7 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
           <button
             onClick={onClose}
             style={{
-              fontSize: 13, padding: '5px 10px', borderRadius: 6,
+              fontSize: 14, padding: '5px 10px', borderRadius: 6,
               border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: 'pointer',
               fontFamily: "'Outfit', sans-serif",
             }}
@@ -900,11 +899,11 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
         {/* Body */}
         <div style={{ overflow: 'auto', flex: 1 }}>
           {rows.length === 0 ? (
-            <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+            <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
               No proposals match this filter.
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
                 <tr>
                   <th style={modalTh}>Client</th>
@@ -925,16 +924,14 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
                     <td style={modalTd}>
                       {r.resolved ? (
                         <span style={{
-                          fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
                           background: '#dcfce7', color: '#166534', border: '1px solid #86efac',
-                          textTransform: 'uppercase', letterSpacing: 0.4,
-                        }}>Resolved</span>
+                          }}>Resolved</span>
                       ) : (
                         <span style={{
-                          fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
                           background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a',
-                          textTransform: 'uppercase', letterSpacing: 0.4,
-                        }}>Active</span>
+                          }}>Active</span>
                       )}
                     </td>
                     <td style={{ ...modalTd, textAlign: 'right' }}>
@@ -942,7 +939,7 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
                         onClick={() => onDiscardDraft(r.id)}
                         title="Discard this proposal"
                         style={{
-                          fontSize: 11, padding: '3px 8px', borderRadius: 4,
+                          fontSize: 12, padding: '3px 8px', borderRadius: 4,
                           border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', cursor: 'pointer',
                           fontFamily: "'Outfit', sans-serif",
                         }}
@@ -960,9 +957,8 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
 }
 
 const modalTh = {
-  padding: '8px 12px', textAlign: 'left', fontWeight: 600, fontSize: 11,
-  color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4,
-  borderBottom: '1px solid #e5e7eb',
+  padding: '8px 12px', textAlign: 'left', fontWeight: 600, fontSize: 12,
+  color: '#64748b', borderBottom: '1px solid #e5e7eb',
 };
 const modalTd = { padding: '7px 12px', verticalAlign: 'middle' };
 
@@ -999,7 +995,7 @@ function ReviewerCell({ entityId, serviceId, reviewerRow, staffList, staffMap, i
       style={{
         width: SERVICE_COL_W, minWidth: SERVICE_COL_W, height: ROW_H,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '0 8px', fontSize: 12, fontWeight: 500,
+        padding: '0 8px', fontSize: 13, fontWeight: 500,
         background: bg, color: reviewerId ? '#0f172a' : '#cbd5e1',
         cursor: 'pointer', borderRight: '1px solid #f1f5f9',
         position: 'relative',
@@ -1012,13 +1008,13 @@ function ReviewerCell({ entityId, serviceId, reviewerRow, staffList, staffMap, i
           </span>
           {source === 'manual' && (
             <span title="Manual override (BM imports won't change this)" style={{
-              position: 'absolute', top: 2, right: 3, fontSize: 9, fontWeight: 700,
+              position: 'absolute', top: 2, right: 3, fontSize: 10, fontWeight: 700,
               color: '#4338ca',
             }}>✎</span>
           )}
         </>
       ) : (
-        <span style={{ fontSize: 11, fontStyle: 'italic' }}>—</span>
+        <span style={{ fontSize: 12, fontStyle: 'italic' }}>—</span>
       )}
     </div>
   );
@@ -1041,7 +1037,7 @@ function ReviewerEditor({ entityId, serviceId, initialReviewerId, staffList, onC
           if (e.key === 'Enter') onSave({ entityId, serviceId, reviewerId });
           else if (e.key === 'Escape') onCancel();
         }}
-        style={{ flex: 1, fontSize: 11, padding: '2px 4px', border: '1px solid #c7d2fe', borderRadius: 4, fontFamily: "'Outfit', sans-serif" }}
+        style={{ flex: 1, fontSize: 12, padding: '2px 4px', border: '1px solid #c7d2fe', borderRadius: 4, fontFamily: "'Outfit', sans-serif" }}
       >
         <option value="">— reviewer —</option>
         {staffList.filter((s) => s.is_active !== false).map((s) => (
@@ -1051,11 +1047,11 @@ function ReviewerEditor({ entityId, serviceId, initialReviewerId, staffList, onC
       <button
         onClick={() => onSave({ entityId, serviceId, reviewerId })}
         title="Save reviewer"
-        style={{ border: 'none', background: '#4338ca', color: '#fff', borderRadius: 3, padding: '2px 6px', fontSize: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+        style={{ border: 'none', background: '#4338ca', color: '#fff', borderRadius: 3, padding: '2px 6px', fontSize: 11, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
       >✓</button>
       <button
         onClick={onCancel}
-        style={{ border: '1px solid #c7d2fe', background: '#fff', color: '#64748b', borderRadius: 3, padding: '2px 5px', fontSize: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+        style={{ border: '1px solid #c7d2fe', background: '#fff', color: '#64748b', borderRadius: 3, padding: '2px 5px', fontSize: 11, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
       >×</button>
     </div>
   );
@@ -1111,7 +1107,7 @@ function StaffMatrix({ entities, inferred, drafts, staffList }) {
             <div style={{
               width: CLIENT_COL_W, minWidth: CLIENT_COL_W, height: ROW_H,
               padding: '0 10px', display: 'flex', alignItems: 'center', gap: 8,
-              fontSize: 13, color: '#0f172a', fontWeight: 500,
+              fontSize: 14, color: '#0f172a', fontWeight: 500,
               borderRight: '1px solid #e5e7eb',
             }}>
               <span style={{
@@ -1123,7 +1119,7 @@ function StaffMatrix({ entities, inferred, drafts, staffList }) {
               <div key={sv.id} style={{
                 width: SERVICE_COL_W, minWidth: SERVICE_COL_W, height: ROW_H,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, color: c[sv.id] ? '#0f172a' : '#cbd5e1',
+                fontSize: 14, color: c[sv.id] ? '#0f172a' : '#cbd5e1',
                 borderRight: '1px solid #f1f5f9',
               }}>
                 {c[sv.id] || 0}
@@ -1132,7 +1128,7 @@ function StaffMatrix({ entities, inferred, drafts, staffList }) {
             <div style={{
               width: 120, minWidth: 120, height: ROW_H,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 13, fontWeight: 600, color: '#0f172a',
+              fontSize: 14, fontWeight: 600, color: '#0f172a',
             }}>{total}</div>
           </div>
         );
@@ -1147,13 +1143,13 @@ function StaffMatrix({ entities, inferred, drafts, staffList }) {
             <div style={{
               width: CLIENT_COL_W, minWidth: CLIENT_COL_W, height: ROW_H,
               padding: '0 10px', display: 'flex', alignItems: 'center',
-              fontSize: 13, color: '#b91c1c', fontWeight: 600,
+              fontSize: 14, color: '#b91c1c', fontWeight: 600,
             }}>Unassigned</div>
             {ALLOCATION_SERVICES.map((sv) => (
               <div key={sv.id} style={{
                 width: SERVICE_COL_W, minWidth: SERVICE_COL_W, height: ROW_H,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, color: '#b91c1c',
+                fontSize: 14, color: '#b91c1c',
               }}>
                 {c[sv.id] || 0}
               </div>
@@ -1161,7 +1157,7 @@ function StaffMatrix({ entities, inferred, drafts, staffList }) {
             <div style={{
               width: 120, minWidth: 120, height: ROW_H,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 13, fontWeight: 700, color: '#b91c1c',
+              fontSize: 14, fontWeight: 700, color: '#b91c1c',
             }}>{total}</div>
           </div>
         );
@@ -1176,9 +1172,8 @@ function headerCellStyle(width, align = 'center') {
   return {
     width, minWidth: width, height: 32,
     display: 'flex', alignItems: 'center', justifyContent: align === 'left' ? 'flex-start' : 'center',
-    padding: '0 10px', fontSize: 11, fontWeight: 600,
-    color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5,
-    borderBottom: '1px solid #e5e7eb', background: '#f8fafc',
+    padding: '0 10px', fontSize: 12, fontWeight: 600,
+    color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#f8fafc',
   };
 }
 
@@ -1188,7 +1183,7 @@ function sortIndicator(sortStack, key) {
   const { dir } = sortStack[idx];
   return (
     <span title={`Sort priority ${idx + 1} (${dir})`} style={{
-      fontSize: 9, fontWeight: 700, marginLeft: 4,
+      fontSize: 10, fontWeight: 700, marginLeft: 4,
       background: '#0f172a', color: '#fff', borderRadius: 3, padding: '1px 4px',
     }}>
       {idx + 1}{dir === 'asc' ? ' ↑' : ' ↓'}
@@ -1230,9 +1225,8 @@ function SortableServiceHeader({ service, sortStack, onToggleSort, colFilter, on
         style={{
           flex: 1,
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-          padding: '0 6px', fontSize: 11, fontWeight: 600,
-          color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5,
-          cursor: 'pointer', userSelect: 'none',
+          padding: '0 6px', fontSize: 12, fontWeight: 600,
+          color: '#64748b', cursor: 'pointer', userSelect: 'none',
         }}
       >
         <span>{service.label}</span>
@@ -1245,7 +1239,7 @@ function SortableServiceHeader({ service, sortStack, onToggleSort, colFilter, on
         title={`Filter ${service.label} by fee earner`}
         style={{
           margin: '0 6px 4px', padding: '2px 4px',
-          fontSize: 11, fontFamily: "'Outfit', sans-serif",
+          fontSize: 12, fontFamily: "'Outfit', sans-serif",
           border: '1px solid #cbd5e1', borderRadius: 4,
           background: filterValue ? '#fef3c7' : '#fff',
         }}
@@ -1269,7 +1263,7 @@ function csvCell(v) {
 
 function pillStyle(active) {
   return {
-    padding: '4px 10px', fontSize: 12, fontWeight: 500,
+    padding: '4px 10px', fontSize: 13, fontWeight: 500,
     border: 'none', borderRadius: 4,
     background: active ? '#0f172a' : 'transparent',
     color: active ? '#fff' : '#64748b',
@@ -1280,14 +1274,14 @@ function pillStyle(active) {
 function btnStyle(variant) {
   if (variant === 'primary') {
     return {
-      padding: '5px 12px', fontSize: 12, fontWeight: 500,
+      padding: '5px 12px', fontSize: 13, fontWeight: 500,
       border: '1px solid #0f172a', borderRadius: 6,
       background: '#0f172a', color: '#fff', cursor: 'pointer',
       fontFamily: "'Outfit', sans-serif",
     };
   }
   return {
-    padding: '5px 12px', fontSize: 12, fontWeight: 500,
+    padding: '5px 12px', fontSize: 13, fontWeight: 500,
     border: '1px solid #cbd5e1', borderRadius: 6,
     background: '#fff', color: '#64748b', cursor: 'pointer',
     fontFamily: "'Outfit', sans-serif",

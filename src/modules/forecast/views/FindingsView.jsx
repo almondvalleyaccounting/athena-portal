@@ -30,7 +30,7 @@ export default function FindingsView({ findings = [], outputs = [], forecast, pe
       {findings.length === 0 ? (
         <div style={{
           padding: 16, background: '#ecfdf5', color: '#065f46',
-          borderRadius: 8, fontSize: 13, border: '1px solid #a7f3d0', marginBottom: 24,
+          borderRadius: 8, fontSize: 14, border: '1px solid #a7f3d0', marginBottom: 24,
         }}>
           ✓ No findings — module-level integrity OK.
         </div>
@@ -46,11 +46,11 @@ export default function FindingsView({ findings = [], outputs = [], forecast, pe
       <div style={{ marginTop: 24 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
           <H2>Checks &amp; balances ({passed}/{checks.length} tying)</H2>
-          <span style={{ fontSize: 11, color: colors.muted }}>
+          <span style={{ fontSize: 12, color: colors.muted }}>
             {passed} pass · {failed} fail{noData > 0 ? ` · ${noData} no data` : ''}
           </span>
         </div>
-        <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 12px' }}>
+        <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 12px' }}>
           Each check re-derives a summary number from one source and ties it back against another.
           Tolerance: £1. Failures usually point to a stale recompute or a sign convention bug.
         </p>
@@ -64,13 +64,13 @@ function Group({ title, rows, color }) {
   if (rows.length === 0) return null;
   return (
     <div style={{ marginBottom: 18 }}>
-      <h3 style={{ fontFamily: fontStack, fontSize: 13, fontWeight: 600, color, margin: '0 0 6px' }}>
+      <h3 style={{ fontFamily: fontStack, fontSize: 14, fontWeight: 600, color, margin: '0 0 6px' }}>
         {title} ({rows.length})
       </h3>
-      <ul style={{ paddingLeft: 18, margin: 0, fontSize: 13, color: colors.inkSoft }}>
+      <ul style={{ paddingLeft: 18, margin: 0, fontSize: 14, color: colors.inkSoft }}>
         {rows.slice(0, 50).map((f, i) => (
           <li key={i}>
-            <code style={{ fontSize: 11, color: colors.muted }}>{f.code}</code>{' '}
+            <code style={{ fontSize: 12, color: colors.muted }}>{f.code}</code>{' '}
             {f.period != null && <span style={{ color: colors.muted }}>t={f.period}</span>}{' '}
             {f.message}
           </li>
@@ -89,7 +89,7 @@ function CheckTable({ checks }) {
 
   return (
     <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff', overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack, fontSize: 12 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack, fontSize: 13 }}>
         <colgroup>
           <col style={{ width: '38%' }} />
           <col style={{ width: '20%' }} />
@@ -113,8 +113,8 @@ function CheckTable({ checks }) {
             return [
               <tr key={`hdr-${cat}`} style={{ background: '#f1f5f9' }}>
                 <td colSpan={5} style={{
-                  padding: '5px 10px', fontSize: 10, fontWeight: 700,
-                  textTransform: 'uppercase', letterSpacing: 0.5, color: colors.muted,
+                  padding: '5px 10px', fontSize: 11, fontWeight: 700,
+                  color: colors.muted,
                 }}>{cat}</td>
               </tr>,
               ...rows.map((c, i) => <CheckRow key={`${cat}-${i}`} c={c} />),
@@ -137,15 +137,15 @@ function CheckRow({ c }) {
     <tr style={{ borderBottom: `1px dotted ${colors.borderSoft}`, background: c.status === 'fail' ? '#fffbfb' : '#fff' }}>
       <td style={td}>
         <strong>{c.label}</strong>
-        {c.detail && <div style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>{c.detail}</div>}
+        {c.detail && <div style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{c.detail}</div>}
       </td>
       <td style={tdR}>
         <div>{fmtVal(c.a, c.unit)}</div>
-        {c.aSource && <div style={{ fontSize: 10, color: colors.muted }}>{c.aSource}</div>}
+        {c.aSource && <div style={{ fontSize: 11, color: colors.muted }}>{c.aSource}</div>}
       </td>
       <td style={tdR}>
         <div>{fmtVal(c.b, c.unit)}</div>
-        {c.bSource && <div style={{ fontSize: 10, color: colors.muted }}>{c.bSource}</div>}
+        {c.bSource && <div style={{ fontSize: 11, color: colors.muted }}>{c.bSource}</div>}
       </td>
       <td style={{ ...tdR, color: c.status === 'fail' ? '#991b1b' : colors.inkSoft }}>
         {c.status === 'no_data' ? '—' : fmtDiff(c.a, c.b, c.unit)}
@@ -153,9 +153,8 @@ function CheckRow({ c }) {
       <td style={{ ...td, textAlign: 'center' }}>
         <span style={{
           display: 'inline-block', padding: '2px 8px', borderRadius: 999,
-          background: tag.bg, color: tag.fg, fontSize: 10, fontWeight: 700,
-          letterSpacing: 0.4, textTransform: 'uppercase',
-        }}>
+          background: tag.bg, color: tag.fg, fontSize: 11, fontWeight: 700,
+          }}>
           {tag.icon} {c.status === 'no_data' ? 'no data' : c.status}
         </span>
       </td>
@@ -496,7 +495,7 @@ function buildChecks(outputs, forecast, periods, entities) {
   return checks;
 }
 
-const th  = { padding: '8px 10px', textAlign: 'left', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, color: colors.muted, borderBottom: `1px solid ${colors.border}` };
+const th  = { padding: '8px 10px', textAlign: 'left', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, color: colors.muted, borderBottom: `1px solid ${colors.border}` };
 const thR = { ...th, textAlign: 'right' };
 const td  = { padding: '8px 10px', verticalAlign: 'top', color: colors.ink };
 const tdR = { ...td, textAlign: 'right', fontFamily: 'ui-monospace, monospace' };

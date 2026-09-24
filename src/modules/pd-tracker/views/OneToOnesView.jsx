@@ -310,7 +310,7 @@ export default function OneToOnesView() {
             title="Private notes only you can see"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none',
-              fontFamily: FONT, fontSize: 12.5, fontWeight: 600,
+              fontFamily: FONT, fontSize: 13.5, fontWeight: 600,
               color: prepNotes.length ? '#0e7fe0' : '#64748b',
               border: '1px solid ' + (prepNotes.length ? '#bfdbfe' : '#e5e7eb'),
               background: prepNotes.length ? '#eff6ff' : '#fff',
@@ -358,9 +358,9 @@ export default function OneToOnesView() {
                     cursor: 'pointer', flexShrink: 0,
                   }} />
                   <OwnerChip staff={staff} ownerId={a.owner_id || selectedStaffId} />
-                  <span style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', flex: 1 }}>{a.action}</span>
+                  <span style={{ fontFamily: FONT, fontSize: 14, color: '#0f172a', flex: 1 }}>{a.action}</span>
                   {a.due_date && (
-                    <span style={{ fontFamily: FONT, fontSize: 11, color: overdue ? '#dc2626' : '#94a3b8' }}>
+                    <span style={{ fontFamily: FONT, fontSize: 12, color: overdue ? '#dc2626' : '#94a3b8' }}>
                       {new Date(a.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                     </span>
                   )}
@@ -380,7 +380,7 @@ export default function OneToOnesView() {
             <Lock size={13} color="#475569" />
             <div style={{ fontFamily: SERIF, fontSize: 17, color: '#0f172a' }}>Your private agenda ({prepNotes.length})</div>
           </div>
-          <p style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', margin: '0 0 12px' }}>
+          <p style={{ fontFamily: FONT, fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>
             Prep notes only you can see. Tick the ones you cover — they move to &ldquo;discussed&rdquo; against this meeting.
             Nothing here is copied into the shared record.
           </p>
@@ -400,9 +400,9 @@ export default function OneToOnesView() {
                     <Pill bg={n.kind === 'work' ? '#eff6ff' : '#f5f3ff'} fg={n.kind === 'work' ? '#0e7fe0' : '#7c3aed'}>
                       {kind?.label || n.kind}
                     </Pill>
-                    <span style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', marginLeft: 8, whiteSpace: 'pre-wrap' }}>{n.body}</span>
+                    <span style={{ fontFamily: FONT, fontSize: 14, color: '#0f172a', marginLeft: 8, whiteSpace: 'pre-wrap' }}>{n.body}</span>
                     {n.link_label && (
-                      <span style={{ fontFamily: FONT, fontSize: 11.5, color: '#94a3b8', display: 'block', marginTop: 2 }}>
+                      <span style={{ fontFamily: FONT, fontSize: 12.5, color: '#94a3b8', display: 'block', marginTop: 2 }}>
                         re: {n.link_label}
                       </span>
                     )}
@@ -466,7 +466,7 @@ export default function OneToOnesView() {
 
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={lblStyle}>Actions agreed</label>
-              <p style={{ fontFamily: FONT, fontSize: 11, color: '#94a3b8', margin: '-2px 0 8px' }}>
+              <p style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8', margin: '-2px 0 8px' }}>
                 Pick who owns each one, and write the action itself rather than who's doing it
                 (&ldquo;Send the Excel course list&rdquo;, not &ldquo;Sophie to send…&rdquo;).
                 Actions stay in here — nothing is copied to the work planner, which the whole team can see.
@@ -534,7 +534,7 @@ export default function OneToOnesView() {
                   </div>
                 ))}
                 <button onClick={() => setDraft({ ...draft, newActions: [...draft.newActions, { action: '', due_date: '', owner_id: selectedStaffId }] })} style={{
-                  fontFamily: FONT, fontSize: 12, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer',
+                  fontFamily: FONT, fontSize: 13, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer',
                   textAlign: 'left', padding: '4px 0',
                 }}>
                   + Add another action
@@ -571,7 +571,7 @@ export default function OneToOnesView() {
                       <div style={{ fontFamily: SERIF, fontSize: 16, color: '#0f172a' }}>
                         {new Date(m.meeting_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
                       </div>
-                      <div style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                      <div style={{ fontFamily: FONT, fontSize: 13, color: '#64748b', marginTop: 2 }}>
                         {mgr ? `with ${mgr.name}` : 'no manager set'}
                         {m.duration_mins && ` · ${m.duration_mins} mins`}
                         {meetingActions.length > 0 && ` · ${meetingActions.length} action${meetingActions.length === 1 ? '' : 's'}`}
@@ -624,10 +624,10 @@ export default function OneToOnesView() {
                                 {a.status === 'done' && <Check size={11} strokeWidth={3} />}
                               </button>
                               <OwnerChip staff={staff} ownerId={a.owner_id || m.staff_id} />
-                              <span style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', textDecoration: a.status === 'done' ? 'line-through' : 'none', opacity: a.status === 'done' ? 0.6 : 1 }}>
+                              <span style={{ fontFamily: FONT, fontSize: 14, color: '#0f172a', textDecoration: a.status === 'done' ? 'line-through' : 'none', opacity: a.status === 'done' ? 0.6 : 1 }}>
                                 {a.action}
                               </span>
-                              {a.due_date && <span style={{ fontFamily: FONT, fontSize: 11, color: '#94a3b8' }}>{new Date(a.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
+                              {a.due_date && <span style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8' }}>{new Date(a.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
                             </div>
                           ))}
                         </div>
@@ -672,9 +672,8 @@ function PointsEditor({ section, rows, onChange }) {
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{
         background: section.bg, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8,
-        fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#0f172a',
-        textTransform: 'uppercase', letterSpacing: '0.04em',
-      }}>
+        fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0f172a',
+        }}>
         {section.label}
         <span style={{ marginLeft: 'auto', fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: '#475569' }}>
           {rows.length} point{rows.length === 1 ? '' : 's'}
@@ -697,7 +696,7 @@ function PointsEditor({ section, rows, onChange }) {
               <Textarea
                 value={r.detail} placeholder="Detail (optional) — opens under the headline, and prints in full on the PDF"
                 onChange={(e) => set(idx, { detail: e.target.value })}
-                style={{ minHeight: 54, fontSize: 13 }}
+                style={{ minHeight: 54, fontSize: 14 }}
               />
             </div>
             <button onClick={() => removeAt(idx)} title="Remove this point" style={{ ...iconLink, marginTop: 8 }}>
@@ -706,7 +705,7 @@ function PointsEditor({ section, rows, onChange }) {
           </div>
         ))}
         <button onClick={add} style={{
-          fontFamily: FONT, fontSize: 12, color: '#0e7fe0', background: 'none', border: 'none',
+          fontFamily: FONT, fontSize: 13, color: '#0e7fe0', background: 'none', border: 'none',
           cursor: 'pointer', textAlign: 'left', padding: '2px 0',
         }}>
           + Add {rows.length ? 'another point' : 'a point'}
@@ -742,9 +741,8 @@ function PointsTile({ section, rows }) {
     <div style={{ background: section.bg, padding: 12, borderRadius: 10 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 7 }}>
         <div style={{
-          fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#0f172a',
-          textTransform: 'uppercase', letterSpacing: '0.04em',
-        }}>
+          fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0f172a',
+          }}>
           {section.label}
         </div>
         {withDetail.length > 0 && (
@@ -752,7 +750,7 @@ function PointsTile({ section, rows }) {
             onClick={toggleAll}
             style={{
               marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-              fontFamily: FONT, fontSize: 11, fontWeight: 600, color: '#475569', whiteSpace: 'nowrap',
+              fontFamily: FONT, fontSize: 12, fontWeight: 600, color: '#475569', whiteSpace: 'nowrap',
             }}
           >
             {allOpen ? 'Hide detail' : `Show detail (${withDetail.length})`}
@@ -766,8 +764,8 @@ function PointsTile({ section, rows }) {
           return (
             <div key={r.id || idx}>
               <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
-                <span style={{ color: '#64748b', fontSize: 13, lineHeight: 1.5 }}>•</span>
-                <span style={{ fontFamily: FONT, fontSize: 13, color: '#1e293b', lineHeight: 1.5, flex: 1 }}>
+                <span style={{ color: '#64748b', fontSize: 14, lineHeight: 1.5 }}>•</span>
+                <span style={{ fontFamily: FONT, fontSize: 14, color: '#1e293b', lineHeight: 1.5, flex: 1 }}>
                   {r.headline}
                 </span>
                 {detail && (
@@ -778,7 +776,7 @@ function PointsTile({ section, rows }) {
                       flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3,
                       background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(15,23,42,0.1)',
                       borderRadius: 7, padding: '1px 6px', cursor: 'pointer',
-                      fontFamily: FONT, fontSize: 10.5, fontWeight: 600, color: '#475569', lineHeight: 1.6,
+                      fontFamily: FONT, fontSize: 11.5, fontWeight: 600, color: '#475569', lineHeight: 1.6,
                     }}
                   >
                     {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />} detail
@@ -789,7 +787,7 @@ function PointsTile({ section, rows }) {
                 <div style={{
                   margin: '5px 0 2px 14px', padding: '8px 10px', background: 'rgba(255,255,255,0.75)',
                   border: '1px solid rgba(15,23,42,0.08)', borderRadius: 8,
-                  fontFamily: FONT, fontSize: 12.5, color: '#475569', lineHeight: 1.55, whiteSpace: 'pre-wrap',
+                  fontFamily: FONT, fontSize: 13.5, color: '#475569', lineHeight: 1.55, whiteSpace: 'pre-wrap',
                 }}>
                   {detail}
                 </div>
@@ -826,7 +824,7 @@ function OwnerChip({ staff, ownerId }) {
     <span
       title={name}
       style={{
-        fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#475569',
+        fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#475569',
         background: '#f1f5f9', border: '1px solid #e5e7eb', borderRadius: 999,
         padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0,
       }}
@@ -842,7 +840,7 @@ function CommentThread({ meeting, comments, onAdd }) {
     <div style={{ marginTop: 4, borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
       <div style={lblStyle}>360° feedback &amp; comments</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
-        {comments.length === 0 && <div style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8' }}>No comments yet — the individual, their manager, or anyone with access can add one.</div>}
+        {comments.length === 0 && <div style={{ fontFamily: FONT, fontSize: 13, color: '#94a3b8' }}>No comments yet — the individual, their manager, or anyone with access can add one.</div>}
         {comments.map((c) => {
           const isSubject = c.author_id === meeting.staff_id;
           return (
@@ -852,13 +850,13 @@ function CommentThread({ meeting, comments, onAdd }) {
               border: '1px solid ' + (isSubject ? '#e5e7eb' : '#dbeafe'),
               borderRadius: 10, padding: '8px 12px',
             }}>
-              <div style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, color: isSubject ? '#475569' : '#0e7fe0', marginBottom: 2 }}>
+              <div style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: isSubject ? '#475569' : '#0e7fe0', marginBottom: 2 }}>
                 {c.author?.name || 'Someone'}{isSubject ? ' · self' : ''}
                 <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 6 }}>
                   {new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </span>
               </div>
-              <div style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{c.body}</div>
+              <div style={{ fontFamily: FONT, fontSize: 14, color: '#0f172a', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{c.body}</div>
             </div>
           );
         })}
@@ -875,19 +873,17 @@ function CommentThread({ meeting, comments, onAdd }) {
 function Field({ label, value, bg }) {
   return (
     <div style={{ background: bg, padding: 12, borderRadius: 10 }}>
-      <div style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontFamily: FONT, fontSize: 13, color: '#1e293b', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{value}</div>
+      <div style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontFamily: FONT, fontSize: 14, color: '#1e293b', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{value}</div>
     </div>
   );
 }
 
 const lblStyle = {
-  display: 'block', fontFamily: FONT, fontSize: 11, fontWeight: 600,
-  color: '#475569', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em',
-};
+  display: 'block', fontFamily: FONT, fontSize: 12, fontWeight: 600,
+  color: '#475569', marginBottom: 6, };
 const kickerStyle = {
-  fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
-  textTransform: 'uppercase', color: '#94a3b8', marginBottom: 6,
+  fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 6,
 };
 const bigNum = { fontFamily: SERIF, fontSize: 30, fontWeight: 500, color: '#0f172a', lineHeight: 1 };
 const iconLink = {
@@ -895,5 +891,5 @@ const iconLink = {
 };
 const reorderBtn = {
   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-  fontSize: 9, lineHeight: 1, height: 11,
+  fontSize: 10, lineHeight: 1, height: 11,
 };

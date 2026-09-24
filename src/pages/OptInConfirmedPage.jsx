@@ -39,8 +39,8 @@ export default function OptInConfirmedPage() {
         border: '1px solid #e5e7eb', borderRadius: 10, color: '#222',
       }}>
         <h1 style={{ fontSize: 18, margin: '0 0 6px' }}>Almond Valley Accounting</h1>
-        <h2 style={{ fontSize: 15, margin: '0 0 16px', color: '#555', fontWeight: 'normal' }}>{m.heading}</h2>
-        <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0 }}>{m.body}</p>
+        <h2 style={{ fontSize: 15.5, margin: '0 0 16px', color: '#555', fontWeight: 'normal' }}>{m.heading}</h2>
+        <p style={{ fontSize: 14.5, lineHeight: 1.6, margin: 0 }}>{m.body}</p>
       </div>
     </div>
   );

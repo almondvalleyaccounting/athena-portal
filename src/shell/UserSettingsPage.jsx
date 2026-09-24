@@ -72,7 +72,7 @@ export default function UserSettingsPage() {
   };
 
   const labelStyle = {
-    fontFamily: font, fontSize: 12, fontWeight: 600, color: '#64748b',
+    fontFamily: font, fontSize: 13, fontWeight: 600, color: '#64748b',
     display: 'block', marginBottom: 6,
   };
 
@@ -89,7 +89,7 @@ export default function UserSettingsPage() {
       >
         My Settings
       </h1>
-      <p style={{ fontFamily: font, fontSize: 14, color: '#64748b', marginBottom: 24 }}>
+      <p style={{ fontFamily: font, fontSize: 14.5, color: '#64748b', marginBottom: 24 }}>
         Your own profile — how your name and colour appear across Athena.
       </p>
 
@@ -113,7 +113,7 @@ export default function UserSettingsPage() {
             placeholder="Your name"
             style={{
               width: '100%', maxWidth: 360, border: '1px solid #e5e7eb', borderRadius: 10,
-              padding: '10px 14px', fontSize: 13, fontFamily: font, outline: 'none',
+              padding: '10px 14px', fontSize: 14, fontFamily: font, outline: 'none',
               boxSizing: 'border-box', transition: 'border-color 0.2s ease',
             }}
             onFocus={(e) => (e.target.style.borderColor = '#0e7fe0')}
@@ -130,11 +130,11 @@ export default function UserSettingsPage() {
             disabled
             style={{
               width: '100%', maxWidth: 360, border: '1px solid #e5e7eb', borderRadius: 10,
-              padding: '10px 14px', fontSize: 13, fontFamily: font, outline: 'none',
+              padding: '10px 14px', fontSize: 14, fontFamily: font, outline: 'none',
               boxSizing: 'border-box', background: '#f8fafc', color: '#94a3b8',
             }}
           />
-          <p style={{ fontFamily: font, fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+          <p style={{ fontFamily: font, fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
             Ask an admin on Staff &amp; Permissions to change your sign-in email.
           </p>
         </div>
@@ -147,7 +147,7 @@ export default function UserSettingsPage() {
               colour={colour}
               onChange={(c) => { setColour(c); markDirty(); }}
             />
-            <span style={{ fontFamily: font, fontSize: 12, color: '#94a3b8' }}>
+            <span style={{ fontFamily: font, fontSize: 13, color: '#94a3b8' }}>
               Used for your avatar and planner entries.
             </span>
           </div>
@@ -170,7 +170,7 @@ export default function UserSettingsPage() {
             onClick={save}
             disabled={saving || !dirty}
             style={{
-              fontFamily: font, fontSize: 13, fontWeight: 600, color: '#fff',
+              fontFamily: font, fontSize: 14, fontWeight: 600, color: '#fff',
               backgroundColor: saving || !dirty ? '#94a3b8' : '#0e7fe0',
               border: 'none', borderRadius: 10, padding: '10px 24px',
               cursor: saving ? 'wait' : dirty ? 'pointer' : 'default',
@@ -181,7 +181,7 @@ export default function UserSettingsPage() {
           </button>
           {msg && (
             <p style={{
-              fontFamily: font, fontSize: 13,
+              fontFamily: font, fontSize: 14,
               color: msg.tone === 'success' ? '#16a34a' : '#ef4444',
             }}>
               {msg.text}
@@ -190,7 +190,7 @@ export default function UserSettingsPage() {
         </div>
       </div>
 
-      <p style={{ fontFamily: font, fontSize: 12, color: '#94a3b8', marginTop: 16 }}>
+      <p style={{ fontFamily: font, fontSize: 13, color: '#94a3b8', marginTop: 16 }}>
         Password and two-factor settings live under Security &amp; 2FA in the avatar menu.
         Module permissions are managed by admins on Staff &amp; Permissions.
       </p>

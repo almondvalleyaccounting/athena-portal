@@ -59,7 +59,7 @@ export default function CustomiseTargets({ staffId, roleCategories, overrides, a
 
   return (
     <div style={{ marginTop: 16, border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 16 }}>
-      <div style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+      <div style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 10 }}>
         Customise this role for the individual
       </div>
 
@@ -71,10 +71,10 @@ export default function CustomiseTargets({ staffId, roleCategories, overrides, a
           const overridden = ov && (ov.included === false || ov.target_level != null);
           return (
             <div key={c.category} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px', border: '1px solid #f1f5f9', borderRadius: 8, opacity: included ? 1 : 0.55 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, fontFamily: FONT, fontSize: 13, color: '#0f172a', fontWeight: 500 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, fontFamily: FONT, fontSize: 14, color: '#0f172a', fontWeight: 500 }}>
                 <input type="checkbox" checked={included} disabled={!canEdit} onChange={(e) => setInclude(c.category, e.target.checked)} />
                 {c.category}
-                <span style={{ fontSize: 11, color: '#94a3b8' }}>role target {c.target_level}</span>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>role target {c.target_level}</span>
               </label>
               {included && targetSelect(effTarget, (v) => setTarget(c.category, v))}
               {overridden && canEdit && <button onClick={() => reset(c.category)} style={ghost}>Reset</button>}
@@ -84,8 +84,8 @@ export default function CustomiseTargets({ staffId, roleCategories, overrides, a
 
         {extraOverrides.map((o) => (
           <div key={o.category} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px', border: '1px solid #dbeafe', borderRadius: 8, background: '#f0f7ff' }}>
-            <span style={{ flex: 1, fontFamily: FONT, fontSize: 13, color: '#0f172a', fontWeight: 500 }}>
-              {o.category} <span style={{ fontSize: 11, color: '#0e7fe0' }}>added</span>
+            <span style={{ flex: 1, fontFamily: FONT, fontSize: 14, color: '#0f172a', fontWeight: 500 }}>
+              {o.category} <span style={{ fontSize: 12, color: '#0e7fe0' }}>added</span>
             </span>
             {targetSelect(o.target_level ?? 3, (v) => setTarget(o.category, v))}
             {canEdit && <button onClick={() => reset(o.category)} style={ghost}>Remove</button>}
@@ -96,14 +96,14 @@ export default function CustomiseTargets({ staffId, roleCategories, overrides, a
       {canEdit && availableCats.length > 0 && (
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 12, padding: 12, background: '#f8fafc', borderRadius: 10 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 600, color: '#64748b' }}>Add extra category</span>
+            <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, color: '#64748b' }}>Add extra category</span>
             <Select value={addCat} onChange={(e) => setAddCat(e.target.value)} style={{ minWidth: 190 }}>
               <option value="">— Select —</option>
               {availableCats.map((c) => <option key={c} value={c}>{c}</option>)}
             </Select>
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 600, color: '#64748b' }}>Target</span>
+            <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, color: '#64748b' }}>Target</span>
             {targetSelect(addTgt, setAddTgt)}
           </label>
           <button onClick={addExtra} disabled={!addCat} style={primary}>Add</button>
@@ -113,5 +113,5 @@ export default function CustomiseTargets({ staffId, roleCategories, overrides, a
   );
 }
 
-const ghost = { fontSize: 11, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#64748b' };
-const primary = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
+const ghost = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#64748b' };
+const primary = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };

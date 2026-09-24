@@ -82,7 +82,7 @@ export default function RefreshButton({ entityId, services = ALL, compact = fals
         title="Queue a re-scrape of this client at HMRC. It runs next time somebody is signed in to the agent portal."
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 5,
-          fontSize: compact ? 11.5 : 12, fontWeight: 600, fontFamily: font,
+          fontSize: compact ? 12.5 : 13, fontWeight: 600, fontFamily: font,
           color: '#0e7fe0', background: '#fff', border: '1px solid #bfdbfe',
           borderRadius: 7, padding: compact ? '4px 8px' : '6px 11px',
           cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
@@ -95,7 +95,7 @@ export default function RefreshButton({ entityId, services = ALL, compact = fals
       {(waiting.length > 0 || running.length > 0) && (
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 8, flexWrap: 'wrap' }}>
           <Clock size={11} style={{ color: '#c2410c' }} />
-          <span style={{ fontSize: 11.5, color: '#c2410c' }}>
+          <span style={{ fontSize: 12.5, color: '#c2410c' }}>
             {running.length > 0
               ? `${running.map((r) => LABEL[r.service] || r.service).join(', ')} running now`
               : `Waiting for a signed-in HMRC session: ${waiting.map((r) => LABEL[r.service] || r.service).join(', ')}`}
@@ -103,7 +103,7 @@ export default function RefreshButton({ entityId, services = ALL, compact = fals
           {waiting.map((r) => (
             <button key={r.id} onClick={() => drop(r.id)} title={`Requested ${dateTime(r.requested_at)}`}
               style={{
-                display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontFamily: font,
+                display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11.5, fontFamily: font,
                 color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: 0,
               }}>
               <X size={9} /> cancel {LABEL[r.service] || r.service}
@@ -113,7 +113,7 @@ export default function RefreshButton({ entityId, services = ALL, compact = fals
       )}
 
       {error && (
-        <div style={{ fontSize: 11.5, color: '#b91c1c', marginTop: 5 }}>{error}</div>
+        <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 5 }}>{error}</div>
       )}
 
       {result && <Outcome rows={result} />}
@@ -138,23 +138,23 @@ function Outcome({ rows }) {
   return (
     <div style={{ marginTop: 7, display: 'flex', flexDirection: 'column', gap: 3 }}>
       {queued.length > 0 && (
-        <div style={{ fontSize: 11.5, color: '#166534', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ fontSize: 12.5, color: '#166534', display: 'flex', alignItems: 'center', gap: 4 }}>
           <Check size={11} /> Queued {queued.join(', ')} — runs next time somebody signs in to HMRC.
         </div>
       )}
       {already.length > 0 && (
-        <div style={{ fontSize: 11.5, color: '#64748b' }}>
+        <div style={{ fontSize: 12.5, color: '#64748b' }}>
           {already.join(', ')} {already.length === 1 ? 'was' : 'were'} already waiting — not asked twice.
         </div>
       )}
       {missing.length > 0 && (
-        <div style={{ fontSize: 11.5, color: '#94a3b8' }}>
+        <div style={{ fontSize: 12.5, color: '#94a3b8' }}>
           No reference held for {missing.join(', ')}, so there is nothing to ask about.
         </div>
       )}
       {second.map((r) => (
-        <div key={r.reference} style={{ fontSize: 11.5, color: '#c2410c' }}>
-          <Pill colour="#c2410c" bg="#fff7ed" style={{ fontSize: 9.5 }}>Two PAYE schemes</Pill>{' '}
+        <div key={r.reference} style={{ fontSize: 12.5, color: '#c2410c' }}>
+          <Pill colour="#c2410c" bg="#fff7ed" style={{ fontSize: 10.5 }}>Two PAYE schemes</Pill>{' '}
           {/* Naming BOTH references matters: the tax cards on this page show one
               scheme and the queue picked the other, so "second scheme" on its own
               reads as though the wrong one was refreshed. */}

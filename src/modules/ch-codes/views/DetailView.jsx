@@ -15,7 +15,7 @@ import {
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
 const btnGhost = {
-  padding: '8px 14px', fontSize: 13, fontWeight: 600, fontFamily: font,
+  padding: '8px 14px', fontSize: 14, fontWeight: 600, fontFamily: font,
   background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer',
 };
 const isEmail = (e) => typeof e === 'string' && e.includes('@');
@@ -81,7 +81,7 @@ export default function DetailView() {
   return (
     <div style={{ padding: '24px 28px', fontFamily: font, maxWidth: 900 }}>
       <button onClick={() => navigate('/onboarding/ch-codes')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: font }}>
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: font }}>
         <ArrowLeft size={14} /> Back to pipeline
       </button>
 
@@ -99,7 +99,7 @@ export default function DetailView() {
           >
             {req.person?.name || 'Unknown'}
           </h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
             {req.entity_id ? (
               <span onClick={() => navigate(`/clients/${req.entity_id}`)} title="Open this client's page"
                 style={{ color: '#0e7fe0', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>
@@ -110,11 +110,11 @@ export default function DetailView() {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ ...chipStyle(meta.tone), fontSize: 12 }}>{meta.short} · {meta.label}</span>
+          <span style={{ ...chipStyle(meta.tone), fontSize: 13 }}>{meta.short} · {meta.label}</span>
           {req.entity_id && (
             <button
               onClick={() => navigate(`/clients/${req.entity_id}`)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: font, fontSize: 12.5, fontWeight: 600, padding: '6px 12px', borderRadius: 9, background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe', cursor: 'pointer' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: font, fontSize: 13.5, fontWeight: 600, padding: '6px 12px', borderRadius: 9, background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe', cursor: 'pointer' }}
             >
               Open client page →
             </button>
@@ -122,7 +122,7 @@ export default function DetailView() {
         </div>
       </div>
 
-      {error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ color: tones.danger.fg, fontSize: 14, marginBottom: 12 }}>{error}</div>}
 
       {!terminal && (
         <PersonEmail
@@ -130,30 +130,30 @@ export default function DetailView() {
         />
       )}
       {isEscalated(req) && (
-        <div style={{ background: tones.danger.bg, color: tones.danger.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
+        <div style={{ background: tones.danger.bg, color: tones.danger.fg, borderRadius: 10, padding: '10px 14px', fontSize: 14, marginBottom: 16 }}>
           🚨 Escalated{req.escalated_at ? ` on ${new Date(req.escalated_at).toLocaleDateString('en-GB')}` : ''} — this stays on the record until it is removed deliberately.
         </div>
       )}
       {(req.called_at || req.escalation_status === 'call_needed') && (
-        <div style={{ background: tones.accent.bg, color: tones.accent.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
+        <div style={{ background: tones.accent.bg, color: tones.accent.fg, borderRadius: 10, padding: '10px 14px', fontSize: 14, marginBottom: 16 }}>
           📞 {req.called_at ? `Called ${new Date(req.called_at).toLocaleString('en-GB')}` : `Call flagged for ${req.person?.name}`}
           {callOutcomeMeta(req.last_call_outcome) ? ` — ${callOutcomeMeta(req.last_call_outcome).label}` : ''}
           {req.last_call_note ? `. ${req.last_call_note}` : '.'}
         </div>
       )}
       {req.stage === 's5_entered' && req.bm_code_mismatch && (
-        <div style={{ background: tones.danger.bg, color: tones.danger.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
+        <div style={{ background: tones.danger.bg, color: tones.danger.fg, borderRadius: 10, padding: '10px 14px', fontSize: 14, marginBottom: 16 }}>
           ⚠️ BM shows a different personal code ({req.bm_code_mismatch}) — reconcile before submitting.
         </div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div style={card}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Actions</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 12 }}>Actions</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {req.stage === 's1_offer' && (
               <>
-                <div style={{ fontSize: 13, color: '#64748b' }}>Queue the offer/reminders from the pipeline. When the client responds, record their decision.</div>
+                <div style={{ fontSize: 14, color: '#64748b' }}>Queue the offer/reminders from the pipeline. When the client responds, record their decision.</div>
                 <Btn onClick={() => run(() => advanceStage(req, 's2_decision', { actorId }))} disabled={busy}>Record decision →</Btn>
               </>
             )}
@@ -169,14 +169,14 @@ export default function DetailView() {
             )}
             {req.stage === 's3b_us' && (
               <>
-                {req.billing_item_id && <div style={{ fontSize: 12.5, color: tones.accent.fg }}>£20+VAT ID-check invoice raised.</div>}
+                {req.billing_item_id && <div style={{ fontSize: 13.5, color: tones.accent.fg }}>£20+VAT ID-check invoice raised.</div>}
                 <Btn onClick={() => run(() => recordIdPoaReceived(req, { actorId }))} disabled={busy}>ID &amp; POA received &amp; verified (Stage 4)</Btn>
               </>
             )}
             {req.stage === 's4_code' && (
               <div style={{ display: 'flex', gap: 6 }}>
                 <input value={codeInput} onChange={(e) => setCodeInput(e.target.value)} placeholder="FT5-15ED-7JY5"
-                  style={{ flex: 1, padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }} />
+                  style={{ flex: 1, padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }} />
                 <button style={btnGhost} disabled={busy || !codeInput.trim()}
                   onClick={() => run(async () => { await recordCodeReceived(req, codeInput, { actorId }); setCodeInput(''); })}>Save code</button>
               </div>
@@ -198,13 +198,13 @@ export default function DetailView() {
             )}
             {req.stage === 's6_submitted' && (
               <>
-                <div style={{ fontSize: 13, color: tones.success.fg }}>✅ Filed{req.submitted_at ? ` on ${new Date(req.submitted_at).toLocaleDateString('en-GB')}` : ''}.</div>
+                <div style={{ fontSize: 14, color: tones.success.fg }}>✅ Filed{req.submitted_at ? ` on ${new Date(req.submitted_at).toLocaleDateString('en-GB')}` : ''}.</div>
                 <button style={btnGhost} onClick={() => run(() => reopenRequest(req, { actorId }))} disabled={busy}>Reopen</button>
               </>
             )}
             {req.stage === 's7_rejected' && (
               <>
-                <div style={{ fontSize: 13, color: tones.danger.fg }}>Rejected / exited{req.rejected_reason ? `: ${req.rejected_reason}` : ''}.</div>
+                <div style={{ fontSize: 14, color: tones.danger.fg }}>Rejected / exited{req.rejected_reason ? `: ${req.rejected_reason}` : ''}.</div>
                 <button style={btnGhost} onClick={() => run(() => reopenRequest(req, { actorId }))} disabled={busy}>Reopen</button>
               </>
             )}
@@ -214,15 +214,15 @@ export default function DetailView() {
               <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 6, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                   <input type="datetime-local" value={callAt} onChange={(e) => setCallAt(e.target.value)}
-                    style={{ padding: '6px 8px', fontSize: 12, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }} />
+                    style={{ padding: '6px 8px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }} />
                   <select value={callOutcome} onChange={(e) => setCallOutcome(e.target.value)}
-                    style={{ padding: '6px 8px', fontSize: 12, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff' }}>
+                    style={{ padding: '6px 8px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff' }}>
                     {CALL_OUTCOMES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
                 <textarea value={callNote} onChange={(e) => setCallNote(e.target.value)} rows={2}
                   placeholder="What happened on the call? (optional)"
-                  style={{ width: '100%', padding: '7px 9px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
+                  style={{ width: '100%', padding: '7px 9px', fontSize: 13.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                   <button style={btnGhost} disabled={busy || !callAt}
                     onClick={() => run(async () => {
@@ -260,17 +260,17 @@ export default function DetailView() {
         </div>
 
         <div style={card}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Log a client reply / note</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 12 }}>Log a client reply / note</div>
           <textarea value={replyInput} onChange={(e) => setReplyInput(e.target.value)}
             placeholder="Paste or summarise what the client said in an email/call…" rows={3}
-            style={{ width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
+            style={{ width: '100%', padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <button style={btnGhost} disabled={busy || !replyInput.trim()}
               onClick={() => run(async () => { await recordClientReply(req.id, replyInput, { actorId }); setReplyInput(''); })}>Log as client reply</button>
           </div>
           <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 12, paddingTop: 12 }}>
             <textarea value={noteInput} onChange={(e) => setNoteInput(e.target.value)} placeholder="Internal note…" rows={2}
-              style={{ width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
+              style={{ width: '100%', padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
             <button style={{ ...btnGhost, marginTop: 8 }} disabled={busy || !noteInput.trim()}
               onClick={() => run(async () => { await addNote(req.id, noteInput, { actorId }); setNoteInput(''); })}>Add note</button>
           </div>
@@ -278,21 +278,21 @@ export default function DetailView() {
       </div>
 
       <div style={{ ...card, marginTop: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Calls</div>
-        {(req.calls || []).length === 0 && <div style={{ fontSize: 13, color: '#94a3b8' }}>No calls logged yet.</div>}
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 12 }}>Calls</div>
+        {(req.calls || []).length === 0 && <div style={{ fontSize: 14, color: '#94a3b8' }}>No calls logged yet.</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {(req.calls || []).map((c) => {
             const oc = callOutcomeMeta(c.outcome);
             return (
-              <div key={c.id} style={{ display: 'flex', gap: 10, fontSize: 13 }}>
+              <div key={c.id} style={{ display: 'flex', gap: 10, fontSize: 14 }}>
                 <PhoneCall size={13} color={tones.accent.fg} style={{ marginTop: 3, flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ color: '#1e293b', fontWeight: 600 }}>{new Date(c.called_at).toLocaleString('en-GB')}</span>
-                    {oc && <span style={{ ...chipStyle(oc.tone), fontSize: 11 }}>{oc.label}</span>}
+                    {oc && <span style={{ ...chipStyle(oc.tone), fontSize: 12 }}>{oc.label}</span>}
                   </div>
                   {c.note && <div style={{ color: '#475569', marginTop: 3 }}>{c.note}</div>}
-                  <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
+                  <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>
                     Logged {new Date(c.created_at).toLocaleDateString('en-GB')}{c.author?.name ? ` · ${c.author.name}` : ''}
                   </div>
                 </div>
@@ -303,15 +303,15 @@ export default function DetailView() {
       </div>
 
       <div style={{ ...card, marginTop: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Activity</div>
-        {req.activity.length === 0 && <div style={{ fontSize: 13, color: '#94a3b8' }}>Nothing logged yet.</div>}
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 12 }}>Activity</div>
+        {req.activity.length === 0 && <div style={{ fontSize: 14, color: '#94a3b8' }}>Nothing logged yet.</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {req.activity.map((a) => (
-            <div key={a.id} style={{ display: 'flex', gap: 10, fontSize: 13 }}>
+            <div key={a.id} style={{ display: 'flex', gap: 10, fontSize: 14 }}>
               <div style={{ width: 6, height: 6, borderRadius: 999, background: ACTIVITY_TONE[a.kind] || '#94a3b8', marginTop: 6, flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ color: '#1e293b' }}>{a.body}</div>
-                <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
+                <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>
                   {new Date(a.created_at).toLocaleString('en-GB')}{a.author?.name ? ` · ${a.author.name}` : ''}
                 </div>
               </div>

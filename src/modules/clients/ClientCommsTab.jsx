@@ -24,7 +24,7 @@ function EmailBody({ html, text }) {
 
   if (!html) {
     return (
-      <pre style={{ margin: 0, padding: '10px 14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: font, fontSize: 13, color: '#1e293b' }}>
+      <pre style={{ margin: 0, padding: '10px 14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: font, fontSize: 14, color: '#1e293b' }}>
         {text || '(no content)'}
       </pre>
     );
@@ -47,7 +47,7 @@ function DirectionChip({ direction }) {
   const Icon = inbound ? ArrowDownLeft : ArrowUpRight;
   return (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 600,
+      display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11.5, fontWeight: 600,
       padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap',
       background: inbound ? '#eff6ff' : '#f1f5f9', color: inbound ? ACCENT : '#475569',
       border: `1px solid ${inbound ? '#bfdbfe' : '#e2e8f0'}`,
@@ -73,18 +73,18 @@ function EmailItem({ item }) {
         <ChannelIcon kind="email" />
         <DirectionChip direction={item.direction} />
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {item.subject || '(no subject)'}
           </div>
-          <div style={{ fontSize: 11.5, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: 12.5, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {who}{!open && item.snippet ? ` — ${decodeEntities(item.snippet)}` : ''}
           </div>
         </div>
-        <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtTime(item.occurred_at)}</span>
+        <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtTime(item.occurred_at)}</span>
       </div>
       {open && (
         <div style={{ borderTop: '1px solid #f1f5f9' }}>
-          <div style={{ padding: '6px 14px', fontSize: 11, color: '#94a3b8', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ padding: '6px 14px', fontSize: 12, color: '#94a3b8', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <span>From: {item.from_email || '—'}</span>
             <span>To: {(item.to_emails || []).join(', ') || '—'}</span>
             {item.cc_emails?.length ? <span>Cc: {item.cc_emails.join(', ')}</span> : null}
@@ -105,10 +105,10 @@ function SmsItem({ item }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
         <ChannelIcon kind={item.kind} />
         <DirectionChip direction={item.direction} />
-        <span style={{ fontSize: 12, color: '#334155' }}>{label} · {counterpart || '—'}</span>
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtTime(item.created_at)}</span>
+        <span style={{ fontSize: 13, color: '#334155' }}>{label} · {counterpart || '—'}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtTime(item.created_at)}</span>
       </div>
-      <div style={{ fontSize: 13, color: '#1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.body}</div>
+      <div style={{ fontSize: 14, color: '#1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.body}</div>
     </div>
   );
 }
@@ -162,10 +162,10 @@ export default function ClientCommsTab({ entityId }) {
     return items;
   }, [emails, sms]);
 
-  if (loading) return <div style={{ padding: 24, fontFamily: font, color: '#64748b', fontSize: 13 }}>Loading communications…</div>;
+  if (loading) return <div style={{ padding: 24, fontFamily: font, color: '#64748b', fontSize: 14 }}>Loading communications…</div>;
   if (error) {
     return (
-      <div style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 12, padding: '12px 16px', fontFamily: font, fontSize: 13, color: '#b91c1c' }}>
+      <div style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 12, padding: '12px 16px', fontFamily: font, fontSize: 14, color: '#b91c1c' }}>
         Could not load communications: {error}
       </div>
     );
@@ -173,8 +173,8 @@ export default function ClientCommsTab({ entityId }) {
   if (!timeline.length) {
     return (
       <div style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 12, textAlign: 'center', padding: '44px 24px', fontFamily: font }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>No communications yet</div>
-        <div style={{ fontSize: 13, color: '#64748b', maxWidth: 460, margin: '0 auto' }}>
+        <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>No communications yet</div>
+        <div style={{ fontSize: 14, color: '#64748b', maxWidth: 460, margin: '0 auto' }}>
           Emails to or from this client's known addresses, plus any SMS/WhatsApp, will appear here.
         </div>
       </div>
@@ -183,7 +183,7 @@ export default function ClientCommsTab({ entityId }) {
 
   return (
     <div style={{ fontFamily: font }}>
-      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>
+      <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}>
         {timeline.length} item{timeline.length === 1 ? '' : 's'} · emails matched to this client across all connected mailboxes, merged with SMS/WhatsApp
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

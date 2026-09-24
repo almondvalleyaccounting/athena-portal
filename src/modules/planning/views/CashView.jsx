@@ -129,20 +129,20 @@ export default function CashView() {
   const safe = fc.safeDraw;
   const safeColour = safe > 0 ? GREEN : RED;
 
-  if (err && !bsRows?.length) return <div style={{ color: RED, fontSize: 13 }}>Cash page failed to load: {err}</div>;
-  if (bsRows === null) return <div style={{ color: GREY, fontSize: 13 }}>Fetching the balance sheet from QuickBooks…</div>;
+  if (err && !bsRows?.length) return <div style={{ color: RED, fontSize: 14 }}>Cash page failed to load: {err}</div>;
+  if (bsRows === null) return <div style={{ color: GREY, fontSize: 14 }}>Fetching the balance sheet from QuickBooks…</div>;
 
   return (
     <div>
       {!modelFed && (
-        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 12.5, color: '#92400e', lineHeight: 1.6 }}>
+        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 13.5, color: '#92400e', lineHeight: 1.6 }}>
           <b>The cash model is missing costs:</b> {grossPayrollMonthly === 0 ? 'no staff salaries are entered (Staff tab)' : ''}
           {grossPayrollMonthly === 0 && overheadNetMonthly === 0 ? ' and ' : ''}
           {overheadNetMonthly === 0 ? 'no overhead lines exist (Overheads tab — seed them from QBO)' : ''}.
           Until they're in, the payroll floor and outgoings below are understated and the safe-draw figure is meaningless.
         </div>
       )}
-      {err && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, color: '#991b1b', marginBottom: 12 }}>{err}</div>}
+      {err && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', fontSize: 13.5, color: '#991b1b', marginBottom: 12 }}>{err}</div>}
 
       {/* Headline */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 8 }}>
@@ -155,16 +155,16 @@ export default function CashView() {
           colour={AMBER} />
         <Kpi label={`Payroll floor (${fc.assumptions.floorMonths} mo)`} value={fmtGBP(fc.floor)} sub={`${fmtGBP(grossPayrollMonthly)}/mo fully-loaded`} />
         <div style={{ background: safe > 0 ? '#f0fdf4' : '#fef2f2', border: `1px solid ${safe > 0 ? '#bbf7d0' : '#fecaca'}`, borderRadius: 12, padding: '14px 16px' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: safeColour, textTransform: 'uppercase', letterSpacing: 0.5 }}>Safe to draw</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: safeColour }}>Safe to draw</div>
           <div style={{ fontSize: 24, fontWeight: 800, color: safeColour, marginTop: 2 }}>{fmtGBP(Math.max(0, safe))}</div>
-          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
             {safe > 0
               ? `Worst headroom ${fmtGBP(fc.headroomMin)} on ${fc.headroomMinDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
               : `Short of the floor by ${fmtGBP(Math.abs(safe))} at the worst point (${fc.headroomMinDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })})`}
           </div>
         </div>
       </div>
-      <p style={{ fontSize: 11.5, color: GREY, margin: '0 0 16px', lineHeight: 1.6 }}>
+      <p style={{ fontSize: 12.5, color: GREY, margin: '0 0 16px', lineHeight: 1.6 }}>
         Safe-to-draw = the minimum, across the next 12 months, of projected cash less unpaid VAT and CT provisions less the
         payroll floor — so taking it today still leaves the floor intact when the VAT quarter and the CT bill land.
       </p>
@@ -185,9 +185,9 @@ export default function CashView() {
           Month by month
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse', minWidth: 640 }}>
+          <table style={{ width: '100%', fontSize: 13.5, borderCollapse: 'collapse', minWidth: 640 }}>
             <thead>
-              <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
                 <th style={{ ...th, textAlign: 'left' }}>Month</th>
                 <th style={th}>Receipts</th>
                 <th style={th}>Payments</th>
@@ -215,7 +215,7 @@ export default function CashView() {
         <h3 style={h3}>The big hits ahead</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
           {fc.events.filter((e) => (e.label.startsWith('VAT') || e.label.startsWith('CT'))).slice(0, 6).map((e, i) => (
-            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#f8fafc', borderRadius: 8, padding: '8px 12px', fontSize: 12.5 }}>
+            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#f8fafc', borderRadius: 8, padding: '8px 12px', fontSize: 13.5 }}>
               <AlertTriangle size={14} style={{ color: AMBER }} />
               <span style={{ color: '#334155', flex: 1 }}>{e.label}</span>
               <span style={{ color: '#64748b' }}>{e.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
@@ -223,7 +223,7 @@ export default function CashView() {
             </div>
           ))}
           {fc.events.filter((e) => e.label.startsWith('VAT') || e.label.startsWith('CT')).length === 0 && (
-            <div style={{ fontSize: 12.5, color: GREY }}>No VAT or CT payments scheduled inside the horizon.</div>
+            <div style={{ fontSize: 13.5, color: GREY }}>No VAT or CT payments scheduled inside the horizon.</div>
           )}
         </div>
       </div>
@@ -246,7 +246,7 @@ export default function CashView() {
                   <button style={btnDark} onClick={async () => { await updateScenario(edit); setEdit(null); }}>Save</button>
                 </div>}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10, fontSize: 12.5 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10, fontSize: 13.5 }}>
             <AssumptionRow label="Debtor days on non-DD fees" value={edit ? edit.cash_debtor_days : fc.assumptions.debtorDays}
               edit={edit && ((v) => setEdit({ ...edit, cash_debtor_days: Number(v) }))} suffix="days" />
             <AssumptionRow label="Payroll floor" value={edit ? edit.cash_floor_months : fc.assumptions.floorMonths}
@@ -258,7 +258,7 @@ export default function CashView() {
             <AssumptionRow label="Firm year-end month (1–12)" value={edit ? edit.fiscal_year_end_month : fc.assumptions.yeMonth}
               edit={edit && ((v) => setEdit({ ...edit, fiscal_year_end_month: Number(v) }))} suffix="" />
           </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 10, fontSize: 11.5, color: GREY }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 10, fontSize: 12.5, color: GREY }}>
             <Info size={13} style={{ flexShrink: 0, marginTop: 1 }} />
             <span>
               VAT quarters Mar/Jun/Sep/Dec, paid a month and 7 days later. Net VAT ≈ {fmtGBP(fc.assumptions.monthlyNetVat)}/mo.
@@ -274,7 +274,7 @@ export default function CashView() {
               <RefreshCw size={12} style={pulling ? { animation: 'spin 1s linear infinite' } : undefined} /> {pulling ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
-          <div style={{ fontSize: 12.5, color: '#475569', marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ fontSize: 13.5, color: '#475569', marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
             {bs.cashAccounts.map((a, i) => (
               <Row key={i} label={a.name} value={fmtGBP(a.amount)} icon={<CheckCircle2 size={13} style={{ color: GREEN }} />} />
             ))}
@@ -286,7 +286,7 @@ export default function CashView() {
             ))}
             {bs.debtors !== 0 && <Row label="Trade debtors" value={fmtGBP(bs.debtors)} icon={<Info size={13} style={{ color: GREY }} />} />}
             {bs.unclassified.length > 0 && (
-              <div style={{ fontSize: 11.5, color: AMBER, marginTop: 6 }}>
+              <div style={{ fontSize: 12.5, color: AMBER, marginTop: 6 }}>
                 Unclassified liabilities (not in the model): {bs.unclassified.map((u) => `${u.name} ${fmtGBP(u.amount)}`).join(' · ')}
               </div>
             )}
@@ -300,9 +300,9 @@ export default function CashView() {
 function Kpi({ label, value, sub, colour }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', borderLeft: colour ? `3px solid ${colour}` : undefined }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: 21, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }
@@ -321,9 +321,9 @@ function AssumptionRow({ label, value, edit, suffix }) {
       <span style={{ flex: 1, color: '#475569' }}>{label}</span>
       {edit
         ? <input type="number" value={value} onChange={(e) => edit(e.target.value)}
-            style={{ width: 70, padding: '4px 8px', fontSize: 12.5, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, textAlign: 'right' }} />
+            style={{ width: 70, padding: '4px 8px', fontSize: 13.5, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, textAlign: 'right' }} />
         : <b style={{ fontVariantNumeric: 'tabular-nums' }}>{Math.round(Number(value) * 100) / 100}</b>}
-      <span style={{ color: '#94a3b8', fontSize: 11, width: 44 }}>{suffix}</span>
+      <span style={{ color: '#94a3b8', fontSize: 12, width: 44 }}>{suffix}</span>
     </div>
   );
 }
@@ -354,12 +354,12 @@ function WeeklyChart({ weeks, floor }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${weeks.length}, 1fr)`, gap: 4, marginTop: 4 }}>
         {weeks.map((w) => (
-          <div key={w.index} style={{ fontSize: 9, color: '#94a3b8', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          <div key={w.index} style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}>
             {w.start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 11.5, color: '#64748b' }}>
+      <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 12.5, color: '#64748b' }}>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#0e7fe0', borderRadius: 2, marginRight: 5 }} />Closing cash</span>
         <span><span style={{ display: 'inline-block', width: 14, borderTop: '2px dashed #d97706', marginRight: 5, verticalAlign: 'middle' }} />Ring-fence (VAT + CT + floor)</span>
       </div>
@@ -369,8 +369,8 @@ function WeeklyChart({ weeks, floor }) {
 
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
 const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: 0 };
-const sub = { fontSize: 12, color: '#64748b', margin: '6px 0 0', lineHeight: 1.6 };
+const sub = { fontSize: 13, color: '#64748b', margin: '6px 0 0', lineHeight: 1.6 };
 const th = { padding: '9px 12px', textAlign: 'right', fontWeight: 600 };
 const td = { padding: '7px 12px', textAlign: 'right', color: '#0f172a', fontVariantNumeric: 'tabular-nums' };
-const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', fontSize: 12, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontFamily: font };
-const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', fontSize: 12, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 7, cursor: 'pointer', fontFamily: font };
+const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontFamily: font };
+const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 7, cursor: 'pointer', fontFamily: font };

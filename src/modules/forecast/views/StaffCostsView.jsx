@@ -126,13 +126,13 @@ export default function StaffCostsView({
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
         <H2>
-          Staff costs <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span>
+          Staff costs <span style={{ fontSize: 14, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span>
         </H2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {onFilterChange && (
             <LocationFilter entities={entities} groups={groups} assignments={assignments} value={filter} onChange={onFilterChange} />
           )}
-          <div style={{ display: 'flex', gap: 4, fontSize: 11 }}>
+          <div style={{ display: 'flex', gap: 4, fontSize: 12 }}>
             {['monthly', 'quarterly', 'annual'].map(g => (
               <button key={g} onClick={() => setGranularity(g)}
                 style={{
@@ -147,13 +147,13 @@ export default function StaffCostsView({
         </div>
       </div>
 
-      <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 10px' }}>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 10px' }}>
         Headcount = end-of-period snapshot. Cost = sum over the period. Cost per headcount is annualised.
         Direct staff (senior qualified / qualified / apprentices) is split by the mix % drivers in <em>Inputs → Drivers → staff</em>.
       </p>
 
       <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
           <thead>
             {/* Group header row */}
             <tr style={{ background: colors.bgSoft }}>
@@ -315,11 +315,11 @@ function RateAnalysisBox({ staffDrivers, outputs = [], entityIds = null, periods
   return (
     <div style={analysisBox}>
       <div style={analysisHeader}>Rate analysis — hourly rates and on-costs (per role)</div>
-      <p style={{ fontSize: 11, color: colors.muted, margin: '4px 12px 8px' }}>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '4px 12px 8px' }}>
         Hourly rate = annual salary ÷ {hoursPerYear} hours/year. RLW (Real Living Wage) and NMW (National Minimum Wage) shown for compliance.
         On-costs are the marginal cost on top of gross hourly rate.
       </p>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack, tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack, tableLayout: 'fixed' }}>
         <colgroup>
           <col style={{ width: '22%' }} />
           <col style={{ width: '9%' }} />
@@ -360,8 +360,8 @@ function RateAnalysisBox({ staffDrivers, outputs = [], entityIds = null, periods
                 <td style={{ ...tdR, fontWeight: isBlended ? 700 : 500 }}>{fmtFte(fte)}</td>
                 <td style={{ ...tdR, color: belowNmw ? colors.red : (belowRlw ? colors.amber : colors.ink) }}>
                   {fmtRate(hourly)}
-                  {belowNmw && <span style={{ display: 'block', fontSize: 9, color: colors.red }}>below NMW</span>}
-                  {!belowNmw && belowRlw && <span style={{ display: 'block', fontSize: 9, color: colors.amber }}>below RLW</span>}
+                  {belowNmw && <span style={{ display: 'block', fontSize: 10, color: colors.red }}>below NMW</span>}
+                  {!belowNmw && belowRlw && <span style={{ display: 'block', fontSize: 10, color: colors.amber }}>below RLW</span>}
                 </td>
                 <td style={{ ...tdR, color: colors.muted, fontWeight: 400 }}>{fmtRate(rlw)}</td>
                 <td style={{ ...tdR, color: colors.muted, fontWeight: 400 }}>{fmtRate(nmw)}</td>
@@ -444,13 +444,13 @@ function StaffCostsBreakdownBox({ staffDrivers, outputs, grouped, entityIds }) {
   return (
     <div style={analysisBox}>
       <div style={analysisHeader}>Staff costs decomposition — per period</div>
-      <p style={{ fontSize: 11, color: colors.muted, margin: '4px 12px 8px' }}>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '4px 12px 8px' }}>
         Gross wages → loaded with employer NI ({(niPct * 100).toFixed(1)}%) and pension ({(penPct * 100).toFixed(1)}%) →
         Employment Allowance offsets NI up to £{(eaAnnual / 100).toLocaleString('en-GB')} per annum →
         agency / vacancy cover ({(vacPct * 100).toFixed(0)}% × {(agencyPct * 100).toFixed(0)}% premium) sits on top.
         Total to employer is what hits the P&L.
       </p>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack, tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack, tableLayout: 'fixed' }}>
         <colgroup>
           <col style={{ width: '12%' }} />
           <col style={{ width: '11%' }} />
@@ -493,14 +493,13 @@ function StaffCostsBreakdownBox({ staffDrivers, outputs, grouped, entityIds }) {
 }
 
 const analysisBox = { marginTop: 16, border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff', overflowX: 'auto' };
-const analysisHeader = { padding: '8px 12px', background: colors.bgSoft, borderBottom: `1px solid ${colors.border}`, fontSize: 11, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 };
+const analysisHeader = { padding: '8px 12px', background: colors.bgSoft, borderBottom: `1px solid ${colors.border}`, fontSize: 12, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 };
 
 function SectionLabel({ label, colSpan }) {
   return (
     <tr style={{ background: '#f1f5f9' }}>
       <td colSpan={colSpan} style={{
-        padding: '5px 10px', fontWeight: 700, fontSize: 10, textTransform: 'uppercase',
-        letterSpacing: 0.5, color: colors.muted,
+        padding: '5px 10px', fontWeight: 700, fontSize: 11, color: colors.muted,
       }}>{label}</td>
     </tr>
   );

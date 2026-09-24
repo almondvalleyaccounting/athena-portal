@@ -128,14 +128,14 @@ export default function StandardFeesPage() {
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Standard fees
       </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 760, marginBottom: 14 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 760, marginBottom: 14 }}>
         The practice price book: each task maps to an Athena product with a standard net fee. The QBO product comes from the Products ↔ QBO mapping. Confidential — visible to fee admins only.
       </p>
 
       <BillingTabs active="standard-fees" />
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : (
         <>
           {/* Add-task card */}
@@ -173,7 +173,7 @@ export default function StandardFeesPage() {
               onClick={addTask}
               disabled={saving || !newTask.task_name.trim() || !newTask.service_id}
               style={{
-                padding: '7px 16px', fontSize: 13, fontWeight: 600, fontFamily: font,
+                padding: '7px 16px', fontSize: 14, fontWeight: 600, fontFamily: font,
                 background: (!newTask.task_name.trim() || !newTask.service_id) ? '#e2e8f0' : '#0e7fe0',
                 color: (!newTask.task_name.trim() || !newTask.service_id) ? '#94a3b8' : '#fff',
                 border: 'none', borderRadius: 8, cursor: (!newTask.task_name.trim() || !newTask.service_id) ? 'default' : 'pointer',
@@ -184,12 +184,12 @@ export default function StandardFeesPage() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-            <div style={{ fontSize: 13, color: '#475569' }}>
+            <div style={{ fontSize: 14, color: '#475569' }}>
               <strong style={{ color: '#0f172a' }}>{rows.filter((r) => r.active !== false).length}</strong> active standard fees
-              {saving && <span style={{ marginLeft: 12, fontSize: 11, color: '#94a3b8' }}>Saving…</span>}
-              {error && <span style={{ marginLeft: 12, fontSize: 11, color: '#dc2626' }}>{error}</span>}
+              {saving && <span style={{ marginLeft: 12, fontSize: 12, color: '#94a3b8' }}>Saving…</span>}
+              {error && <span style={{ marginLeft: 12, fontSize: 12, color: '#dc2626' }}>{error}</span>}
             </div>
-            <label style={{ fontSize: 12, color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            <label style={{ fontSize: 13, color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
               <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
               Show deactivated
             </label>
@@ -206,7 +206,7 @@ export default function StandardFeesPage() {
             />
           ) : (
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
                     <Th>Task</Th>
@@ -249,13 +249,13 @@ export default function StandardFeesPage() {
                           {qbo ? (
                             <span style={{ color: '#0f172a' }}>
                               {qbo.name}
-                              {qbo.unit_price != null && <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 11 }}>{fmtGbp(Number(qbo.unit_price))}</span>}
+                              {qbo.unit_price != null && <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 12 }}>{fmtGbp(Number(qbo.unit_price))}</span>}
                             </span>
                           ) : (
                             <button
                               onClick={() => navigate('/manage/billing/products')}
                               title={`${serviceLabel(r.service_id)} has no QBO product mapped yet`}
-                              style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, fontFamily: font, color: '#b45309', cursor: 'pointer', textDecoration: 'underline' }}
+                              style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, fontFamily: font, color: '#b45309', cursor: 'pointer', textDecoration: 'underline' }}
                             >
                               not mapped — fix
                             </button>
@@ -286,7 +286,7 @@ export default function StandardFeesPage() {
                             onClick={() => updateRow(r.id, { active: !inactive ? false : true })}
                             disabled={saving}
                             style={{
-                              padding: '4px 10px', fontSize: 11, fontWeight: 600, fontFamily: font,
+                              padding: '4px 10px', fontSize: 12, fontWeight: 600, fontFamily: font,
                               background: 'none', borderRadius: 6, cursor: 'pointer',
                               border: inactive ? '1px solid #0e7fe0' : '1px solid #e5e7eb',
                               color: inactive ? '#0e7fe0' : '#dc2626',
@@ -310,10 +310,10 @@ export default function StandardFeesPage() {
 
 const Field = ({ label, children }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-    <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+    <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{label}</span>
     {children}
   </div>
 );
-const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</th>;
+const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{children}</th>;
 const Td = ({ children, align, style }) => <td style={{ padding: '8px 12px', verticalAlign: 'middle', textAlign: align || 'left', ...style }}>{children}</td>;
-const inputStyle = { padding: '6px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none' };
+const inputStyle = { padding: '6px 8px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none' };

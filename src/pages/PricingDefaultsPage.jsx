@@ -6,7 +6,7 @@ import { useAuth } from '../shell/AppShell';
 import { useFeeEngine } from '../contexts/FeeEngineContext';
 
 const SectionHeader = ({ title }) => (
-  <h3 className="text-xs font-semibold text-ocean-600 uppercase tracking-wider mt-8 mb-3 border-b border-gray-100 pb-1">{title}</h3>
+  <h3 className="text-xs font-semibold text-ocean-600 mt-8 mb-3 border-b border-gray-100 pb-1">{title}</h3>
 );
 
 const Row = ({ label, children }) => (
@@ -220,7 +220,7 @@ export default function PricingDefaultsPage() {
         <Row label="Payroll client count"><Inp value={D.payroll.payroll_client_count} onChange={v => set('payroll.payroll_client_count', v)} className="w-20" disabled={!canEdit} /></Row>
         <Row label="Markup %"><Inp value={D.payroll.markup_pct} onChange={v => set('payroll.markup_pct', v)} suffix="%" className="w-20" disabled={!canEdit} /></Row>
         {D.payroll.brightpay_annual > 0 && D.payroll.payroll_client_count > 0 && (
-          <p className="text-[10px] text-gray-400 mb-1">Calc flat fee: {fmt(Math.ceil((D.payroll.brightpay_annual / D.payroll.payroll_client_count) * (1 + D.payroll.markup_pct / 100)))}/mo</p>
+          <p className="text-[11px] text-gray-400 mb-1">Calc flat fee: {fmt(Math.ceil((D.payroll.brightpay_annual / D.payroll.payroll_client_count) * (1 + D.payroll.markup_pct / 100)))}/mo</p>
         )}
         <Row label="Monthly employee rate"><Inp value={D.payroll.monthly_ee_rate} onChange={v => set('payroll.monthly_ee_rate', v)} prefix="£" className="w-20" disabled={!canEdit} /></Row>
         <Row label="Weekly employee rate"><Inp value={D.payroll.weekly_ee_rate} onChange={v => set('payroll.weekly_ee_rate', v)} prefix="£" className="w-20" disabled={!canEdit} /></Row>
@@ -310,7 +310,7 @@ export default function PricingDefaultsPage() {
               <div key={h.id} className="flex items-center justify-between px-3 py-2 border-b border-gray-50 last:border-0 text-xs">
                 <div>
                   <span className="font-mono text-ocean-600 font-medium">v{h.version}</span>
-                  {h.id === dbId && <span className="ml-2 text-green-600 text-[10px] font-medium">CURRENT</span>}
+                  {h.id === dbId && <span className="ml-2 text-green-600 text-[11px] font-medium">CURRENT</span>}
                 </div>
                 <span className="text-gray-400">{new Date(h.created_at).toLocaleDateString('en-GB')}</span>
               </div>

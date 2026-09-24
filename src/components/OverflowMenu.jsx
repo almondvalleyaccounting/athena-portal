@@ -55,7 +55,7 @@ export default function OverflowMenu({ items, size = 24 }) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 width: '100%', textAlign: 'left',
-                padding: '7px 10px', fontSize: 12, fontWeight: 500,
+                padding: '7px 10px', fontSize: 13, fontWeight: 500,
                 background: 'transparent', border: 'none', borderRadius: 6,
                 color: it.disabled ? '#cbd5e1' : (it.danger ? '#b91c1c' : '#1e293b'),
                 cursor: it.disabled ? 'not-allowed' : 'pointer',

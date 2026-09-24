@@ -101,11 +101,11 @@ export default function ChasersPanel() {
       >
         {open ? <ChevronDown size={15} color="#94a3b8" /> : <ChevronRight size={15} color="#94a3b8" />}
         <Mail size={15} color="#64748b" />
-        <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>Automated chasers</span>
+        <span style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>Automated chasers</span>
         <span style={chipStyle(cfg.sending_enabled ? 'success' : 'neutral')}>
           {cfg.sending_enabled ? 'ARMED' : 'OFF'}
         </span>
-        <span style={{ fontSize: 12, color: '#94a3b8' }}>
+        <span style={{ fontSize: 13, color: '#94a3b8' }}>
           clients nudged after {cfg.first_chase_after_days}d, then every {cfg.chase_every_days}d, max {cfg.max_chases} — owners get a daily digest
         </span>
       </div>
@@ -115,32 +115,32 @@ export default function ChasersPanel() {
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
             <button
               onClick={dryRun} disabled={busy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: tones.info.bg, color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 8, cursor: 'pointer' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font, background: tones.info.bg, color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 8, cursor: 'pointer' }}
             >
               <Play size={13} /> {busy ? 'Working…' : 'Preview today’s run (dry)'}
             </button>
             <input
               value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="test@… for sample send"
-              style={{ padding: '7px 10px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, minWidth: 200 }}
+              style={{ padding: '7px 10px', fontSize: 13.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, minWidth: 200 }}
             />
             <button
               onClick={testSend} disabled={busy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: tones.warning.bg, color: tones.warning.fg, border: `1px solid ${tones.warning.border}`, borderRadius: 8, cursor: 'pointer' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font, background: tones.warning.bg, color: tones.warning.fg, border: `1px solid ${tones.warning.border}`, borderRadius: 8, cursor: 'pointer' }}
             >
               <FlaskConical size={13} /> Send samples to me
             </button>
             <button
               onClick={toggleSending}
-              style={{ marginLeft: 'auto', padding: '7px 14px', fontSize: 12.5, fontWeight: 700, fontFamily: font, borderRadius: 8, cursor: 'pointer', background: cfg.sending_enabled ? tones.danger.bg : tones.success.solid, color: cfg.sending_enabled ? tones.danger.fg : '#fff', border: cfg.sending_enabled ? `1px solid ${tones.danger.border}` : 'none' }}
+              style={{ marginLeft: 'auto', padding: '7px 14px', fontSize: 13.5, fontWeight: 700, fontFamily: font, borderRadius: 8, cursor: 'pointer', background: cfg.sending_enabled ? tones.danger.bg : tones.success.solid, color: cfg.sending_enabled ? tones.danger.fg : '#fff', border: cfg.sending_enabled ? `1px solid ${tones.danger.border}` : 'none' }}
             >
               {cfg.sending_enabled ? 'Disarm chasers' : 'Arm chasers'}
             </button>
           </div>
 
-          {msg && <div style={{ fontSize: 12.5, color: tones[msg.tone].fg, marginBottom: 8 }}>{msg.text}</div>}
+          {msg && <div style={{ fontSize: 13.5, color: tones[msg.tone].fg, marginBottom: 8 }}>{msg.text}</div>}
 
           {plan && (plan.client_chases?.length > 0 || plan.digests?.length > 0) && (
-            <div style={{ fontSize: 12.5, color: '#334155', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 13.5, color: '#334155', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {plan.client_chases?.map((c, i) => (
                 <label key={c.onboarding_id || i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', cursor: c.onboarding_id && c.to ? 'pointer' : 'default' }}>
                   {c.onboarding_id && c.to && (
@@ -162,7 +162,7 @@ export default function ChasersPanel() {
               {Object.values(selected).some(Boolean) && (
                 <button
                   onClick={sendSelected} disabled={busy}
-                  style={{ alignSelf: 'flex-start', padding: '7px 14px', fontSize: 12.5, fontWeight: 700, fontFamily: font, background: tones.success.solid, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+                  style={{ alignSelf: 'flex-start', padding: '7px 14px', fontSize: 13.5, fontWeight: 700, fontFamily: font, background: tones.success.solid, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
                 >
                   {busy ? 'Sending…' : `Send ${Object.values(selected).filter(Boolean).length} selected now`}
                 </button>

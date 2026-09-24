@@ -59,8 +59,8 @@ function localNowValue() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const fieldStyle = { width: '100%', padding: '9px 11px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box' };
-const fieldLabel = { display: 'block', fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, margin: '12px 0 5px' };
+const fieldStyle = { width: '100%', padding: '9px 11px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box' };
+const fieldLabel = { display: 'block', fontSize: 12.5, fontWeight: 700, color: '#64748b', margin: '12px 0 5px' };
 
 function CallLogModal({ group, onConfirm, onCancel, busy }) {
   const [dt, setDt] = useState(localNowValue);
@@ -72,9 +72,9 @@ function CallLogModal({ group, onConfirm, onCancel, busy }) {
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, width: 400, maxWidth: '92vw', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <PhoneCall size={16} color={tones.accent.solid} />
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Log a call</div>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Log a call</div>
         </div>
-        <p style={{ margin: '0 0 2px', fontSize: 13, color: '#64748b' }}>When did you call {name}, and what happened?</p>
+        <p style={{ margin: '0 0 2px', fontSize: 14, color: '#64748b' }}>When did you call {name}, and what happened?</p>
 
         <label style={fieldLabel}>When</label>
         <input autoFocus type="datetime-local" value={dt} onChange={(e) => setDt(e.target.value)} style={fieldStyle} />
@@ -90,9 +90,9 @@ function CallLogModal({ group, onConfirm, onCancel, busy }) {
           style={{ ...fieldStyle, resize: 'vertical' }} />
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-          <button onClick={onCancel} disabled={busy} style={{ padding: '8px 14px', fontSize: 13, fontWeight: 600, fontFamily: font, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 9, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={onCancel} disabled={busy} style={{ padding: '8px 14px', fontSize: 14, fontWeight: 600, fontFamily: font, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 9, cursor: 'pointer' }}>Cancel</button>
           <button onClick={() => dt && onConfirm({ calledAt: new Date(dt).toISOString(), outcome, note })} disabled={!dt || busy}
-            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, fontFamily: font, background: (!dt || busy) ? '#e5e7eb' : tones.accent.solid, color: (!dt || busy) ? '#94a3b8' : '#fff', border: 'none', borderRadius: 9, cursor: (!dt || busy) ? 'not-allowed' : 'pointer' }}>
+            style={{ padding: '8px 16px', fontSize: 14, fontWeight: 700, fontFamily: font, background: (!dt || busy) ? '#e5e7eb' : tones.accent.solid, color: (!dt || busy) ? '#94a3b8' : '#fff', border: 'none', borderRadius: 9, cursor: (!dt || busy) ? 'not-allowed' : 'pointer' }}>
             {busy ? 'Saving…' : 'Log call'}
           </button>
         </div>
@@ -111,7 +111,7 @@ function EmailCounter({ value, onSave }) {
         onChange={(e) => setDraft(e.target.value)} onClick={(e) => e.stopPropagation()}
         onBlur={() => { setEditing(false); if (String(value ?? 0) !== draft) onSave(draft); }}
         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setDraft(String(value ?? 0)); setEditing(false); } }}
-        style={{ width: 52, padding: '3px 6px', fontSize: 12, fontFamily: font, border: '1px solid #93c5fd', borderRadius: 7 }} />
+        style={{ width: 52, padding: '3px 6px', fontSize: 13, fontFamily: font, border: '1px solid #93c5fd', borderRadius: 7 }} />
     );
   }
   // Colour the counter by how many emails have gone: 0 grey, 1 blue, 2 amber, 3+ red.
@@ -119,7 +119,7 @@ function EmailCounter({ value, onSave }) {
   const t = n >= 3 ? tones.danger : n === 2 ? tones.warning : n === 1 ? tones.info : { bg: '#f8fafc', border: '#e5e7eb', fg: '#475569' };
   return (
     <button onClick={(e) => { e.stopPropagation(); setEditing(true); }} title="Emails sent this stage — click to set"
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: t.bg, border: `1px solid ${t.border}`, borderRadius: 999, padding: '3px 9px', fontSize: 12, fontWeight: 700, color: t.fg, cursor: 'pointer', fontFamily: font }}>
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: t.bg, border: `1px solid ${t.border}`, borderRadius: 999, padding: '3px 9px', fontSize: 13, fontWeight: 700, color: t.fg, cursor: 'pointer', fontFamily: font }}>
       <Mail size={12} /> {n}/3
     </button>
   );
@@ -169,7 +169,7 @@ function Btn({ icon: Icon, label, onClick, disabled, tone = 'info', solid = fals
   return (
     <button onClick={(e) => { e.stopPropagation(); onClick(); }} disabled={disabled} title={title}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: font, fontSize: 12, fontWeight: 600,
+        display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: font, fontSize: 13, fontWeight: 600,
         padding: '5px 10px', borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer',
         background: solid ? (disabled ? '#e5e7eb' : t.solid) : '#fff',
         color: solid ? '#fff' : (disabled ? '#cbd5e1' : t.fg),
@@ -425,7 +425,7 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
           <span style={{ display: 'inline-flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
             <input value={codeDraft[group.key] || ''} onChange={(e) => setCodeDraft((d) => ({ ...d, [group.key]: e.target.value }))}
               placeholder="FT5-15ED-7JY5"
-              style={{ padding: '5px 9px', fontSize: 12, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, width: 130 }} />
+              style={{ padding: '5px 9px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, width: 130 }} />
             <Btn icon={Check} label="Save code" tone="success" solid disabled={busy || !(codeDraft[group.key] || '').trim()}
               onClick={() => actGroup(group, (row) => recordCodeReceived(row, codeDraft[group.key], { actorId }), `Code saved for ${first.person?.name || 'client'} (Stage 5).`).then(() => setCodeDraft((d) => ({ ...d, [group.key]: '' })))} />
           </span>
@@ -443,7 +443,7 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
         )}
         {stage === 's6_submitted' && (
           <>
-            <span style={{ fontSize: 12, color: tones.success.fg, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 13, color: tones.success.fg, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Check size={13} /> Filed{rep.submitted_at ? ` ${new Date(rep.submitted_at).toLocaleDateString('en-GB')}` : ''}
             </span>
             <Btn icon={RotateCcw} label="Reopen" tone="neutral" disabled={busy} onClick={() => actGroup(group, (row) => reopenRequest(row, { actorId }))} />
@@ -451,7 +451,7 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
         )}
         {stage === 's7_rejected' && (
           <>
-            <span style={{ fontSize: 12, color: tones.danger.fg, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 13, color: tones.danger.fg, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Ban size={12} /> {rep.rejected_reason || 'Rejected / exited'}
             </span>
             <Btn icon={RotateCcw} label="Reopen" tone="neutral" disabled={busy} onClick={() => actGroup(group, (row) => reopenRequest(row, { actorId }))} />
@@ -493,8 +493,8 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
         <div onClick={() => navigate(`/onboarding/ch-codes/${first.id}`)}
           style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '9px 14px', cursor: 'pointer', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 150, flex: '1 1 150px' }}>
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{first.person?.name || '—'}</span>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}> · {entityLabel}</span>
+            <span style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>{first.person?.name || '—'}</span>
+            <span style={{ fontSize: 13, color: '#94a3b8' }}> · {entityLabel}</span>
           </div>
           {badges}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -510,14 +510,14 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
         style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px', cursor: 'pointer' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ minWidth: 180 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{first.person?.name || '—'}</div>
-            <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{entityLabel}</div>
+            <div style={{ fontSize: 15.5, fontWeight: 600, color: '#0f172a' }}>{first.person?.name || '—'}</div>
+            <div style={{ fontSize: 13.5, color: '#94a3b8', marginTop: 2 }}>{entityLabel}</div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>{badges}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
           {chasing && <EmailCounter value={rep.emails_sent} onSave={(v) => actGroup(group, (row) => setEmailsSent(row.id, v))} />}
-          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
+          <span style={{ marginLeft: 'auto', fontSize: 13, color: '#64748b' }}>
             {age != null ? `${age}d in stage` : ''}
           </span>
         </div>
@@ -533,7 +533,7 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Companies House personal codes</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
             Every director &amp; PSC by stage — from the first offer through to the Confirmation Statement filing
           </p>
         </div>
@@ -552,14 +552,14 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
         ].map(([label, val, t], i) => (
           <div key={label} style={{ flex: '1 1 110px', minWidth: 104, padding: '10px 14px', borderLeft: i ? '1px solid #f1f5f9' : 'none' }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: t.fg }}>{val}</div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{label}</div>
           </div>
         ))}
       </div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontSize: 11.5, color: '#94a3b8' }}>Across the {summary.total} people being chased (Stages 1, 3a, 3b, 4) — 3 emails triggers a call.</span>
+        <span style={{ fontSize: 12.5, color: '#94a3b8' }}>Across the {summary.total} people being chased (Stages 1, 3a, 3b, 4) — 3 emails triggers a call.</span>
         {totalQueued > 0 && (
-          <button onClick={() => navigate('/onboarding/ch-codes/queue')} style={{ ...chipStyle('info'), display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, border: 'none', cursor: 'pointer', marginLeft: 'auto' }}>
+          <button onClick={() => navigate('/onboarding/ch-codes/queue')} style={{ ...chipStyle('info'), display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, border: 'none', cursor: 'pointer', marginLeft: 'auto' }}>
             <Send size={11} /> {totalQueued} email{totalQueued === 1 ? '' : 's'} queued — review &amp; send
           </button>
         )}
@@ -578,20 +578,20 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
           {collapsed.size < CH_STAGES.length ? <><ChevronRight size={13} /> Collapse all</> : <><ChevronDown size={13} /> Expand all</>}
         </button>
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search person or company…"
-          style={{ marginLeft: 'auto', padding: '7px 12px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, minWidth: 220, background: '#fff' }} />
+          style={{ marginLeft: 'auto', padding: '7px 12px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, minWidth: 220, background: '#fff' }} />
       </div>
 
       {flash && (
-        <div style={{ background: tones.success.bg, color: tones.success.fg, borderRadius: 10, padding: '9px 14px', fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ background: tones.success.bg, color: tones.success.fg, borderRadius: 10, padding: '9px 14px', fontSize: 14, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Check size={14} /> {flash}
-          {totalQueued > 0 && <button onClick={() => navigate('/onboarding/ch-codes/queue')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: tones.success.fg, fontWeight: 700, fontSize: 12, cursor: 'pointer', textDecoration: 'underline', fontFamily: font }}>Go to queue →</button>}
+          {totalQueued > 0 && <button onClick={() => navigate('/onboarding/ch-codes/queue')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: tones.success.fg, fontWeight: 700, fontSize: 13, cursor: 'pointer', textDecoration: 'underline', fontFamily: font }}>Go to queue →</button>}
         </div>
       )}
-      {error && <div style={{ color: '#b91c1c', fontSize: 13, marginBottom: 12 }}>Failed: {error}</div>}
-      {!rows && !error && <div style={{ color: '#64748b', fontSize: 13 }}>Loading…</div>}
+      {error && <div style={{ color: '#b91c1c', fontSize: 14, marginBottom: 12 }}>Failed: {error}</div>}
+      {!rows && !error && <div style={{ color: '#64748b', fontSize: 14 }}>Loading…</div>}
 
       {rows && filtered.length === 0 && (
-        <div style={{ background: '#fff', border: '1px dashed #cbd5e1', borderRadius: 12, padding: '40px 20px', textAlign: 'center', color: '#64748b', fontSize: 14 }}>
+        <div style={{ background: '#fff', border: '1px dashed #cbd5e1', borderRadius: 12, padding: '40px 20px', textAlign: 'center', color: '#64748b', fontSize: 14.5 }}>
           Nothing here.
         </div>
       )}
@@ -612,12 +612,12 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
                 >
                   {isCollapsed ? <ChevronRight size={15} color="#94a3b8" /> : <ChevronDown size={15} color="#94a3b8" />}
                   <span style={{ width: 9, height: 9, borderRadius: 999, background: t.solid, flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.4 }}>{g.short}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{g.label}</span>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{groups.length}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.4 }}>{g.short}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{g.label}</span>
+                  <span style={{ fontSize: 13, color: '#94a3b8' }}>{groups.length}</span>
                 </button>
                 {!isCollapsed && (groups.length === 0 ? (
-                  <div style={{ fontSize: 12.5, color: '#cbd5e1', padding: '2px 2px 12px' }}>Nobody at this stage.</div>
+                  <div style={{ fontSize: 13.5, color: '#cbd5e1', padding: '2px 2px 12px' }}>Nobody at this stage.</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 6 : 12 }}>
                     {groups.map((group) => <Tile key={group.key} group={group} />)}

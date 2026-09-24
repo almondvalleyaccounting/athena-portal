@@ -223,7 +223,7 @@ export default function WaitingView() {
           {ZOOMS.map((z) => (
             <button key={z.id} onClick={() => setZoom(z.id)}
               style={{
-                padding: '6px 14px', fontSize: 12, fontWeight: 600,
+                padding: '6px 14px', fontSize: 13, fontWeight: 600,
                 border: 'none', borderRadius: 6, cursor: 'pointer',
                 background: zoom === z.id ? '#fff' : 'transparent',
                 color: zoom === z.id ? '#0f172a' : '#64748b',
@@ -238,7 +238,7 @@ export default function WaitingView() {
           <button onClick={() => nav(-1)} style={navBtn}><ChevronLeft size={14} /></button>
           <button onClick={() => setAnchor(startOfWeek(new Date()))} style={todayBtn}>Today</button>
           <button onClick={() => nav(1)} style={navBtn}><ChevronRight size={14} /></button>
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#475569', marginLeft: 6 }}>
+          <span style={{ fontSize: 14, fontWeight: 500, color: '#475569', marginLeft: 6 }}>
             {fmt(rangeStart)} — {fmt(rangeEnd)}
           </span>
         </div>
@@ -268,7 +268,7 @@ export default function WaitingView() {
             disabled={planning}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '6px 12px', fontSize: 12, fontWeight: 600,
+              padding: '6px 12px', fontSize: 13, fontWeight: 600,
               border: 'none', borderRadius: 6,
               background: '#0f172a', color: '#fff',
               cursor: planning ? 'wait' : 'pointer', fontFamily: font,
@@ -285,7 +285,7 @@ export default function WaitingView() {
         <div style={{
           padding: '8px 12px', borderRadius: 8, marginBottom: 10,
           background: '#eff6ff', border: '1px solid #bfdbfe',
-          color: '#1e3a8a', fontSize: 12,
+          color: '#1e3a8a', fontSize: 13,
         }}>
           Planner cycle <code>{plannerResult.cycleId.slice(0, 8)}</code> — scanned {plannerResult.total},
           drafted <b>{plannerResult.planned}</b>, skipped {plannerResult.noMatch} (no rule),
@@ -303,9 +303,9 @@ export default function WaitingView() {
       {/* Grid */}
       <div style={{ flex: 1, overflow: 'auto', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 }}>
         {loading ? (
-          <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading…</div>
+          <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading…</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 2 }}>
                 <th style={{ ...gridTh, width: 180, textAlign: 'left' }}>Assignee</th>
@@ -318,10 +318,10 @@ export default function WaitingView() {
               {assigneesShown.length === 0 ? (
                 <tr>
                   <td colSpan={columns.length + 1} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
                       No {statusFilter === 'all' ? '' : statusFilter + ' '}tasks in this range.
                     </div>
-                    <div style={{ fontSize: 12 }}>
+                    <div style={{ fontSize: 13 }}>
                       {statusFilter !== 'all' && (
                         <>Try <button onClick={() => setStatusFilter('all')} style={{ ...btnLink }}>show all</button> · </>
                       )}
@@ -349,8 +349,8 @@ export default function WaitingView() {
                 return (
                   <tr key={aKey} style={{ borderTop: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '8px 10px', verticalAlign: 'top' }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{a.name}</div>
-                      <div style={{ fontSize: 10, color: overCap ? '#dc2626' : '#94a3b8', marginTop: 2 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{a.name}</div>
+                      <div style={{ fontSize: 11, color: overCap ? '#dc2626' : '#94a3b8', marginTop: 2 }}>
                         {totalHours.toFixed(1)}h / {capHours.toFixed(0)}h cap
                       </div>
                       {draftCount > 0 && a.id && (
@@ -360,7 +360,7 @@ export default function WaitingView() {
                           style={{
                             marginTop: 4,
                             display: 'inline-flex', alignItems: 'center', gap: 3,
-                            fontSize: 10, padding: '2px 8px', borderRadius: 6,
+                            fontSize: 11, padding: '2px 8px', borderRadius: 6,
                             background: '#dbeafe', color: '#0e7fe0', border: '1px solid #bfdbfe',
                             cursor: approving === a.id ? 'wait' : 'pointer', fontFamily: font,
                           }}>
@@ -453,7 +453,7 @@ function TaskCard({ task, entityName, ruleColour, compact, onDragStart, onDragEn
       style={{
         padding: compact ? '2px 6px' : '4px 7px',
         marginBottom: 2,
-        fontSize: 10,
+        fontSize: 11,
         borderRadius: 4,
         borderLeft: `3px ${isDraft ? 'dashed' : 'solid'} ${effortColour}`,
         background: bg,
@@ -463,7 +463,7 @@ function TaskCard({ task, entityName, ruleColour, compact, onDragStart, onDragEn
         opacity: dragging ? 0.5 : 1,
         userSelect: 'none',
       }}>
-      {hasOverride && <span title="Manually overridden" style={{ fontSize: 8, marginRight: 3 }}>📌</span>}
+      {hasOverride && <span title="Manually overridden" style={{ fontSize: 9, marginRight: 3 }}>📌</span>}
       <span style={{ fontWeight: isCommitted ? 500 : 600 }}>{entityName || task.bm_task_name}</span>
       <span style={{ opacity: 0.75, marginLeft: 4 }}>· {formatMins(remainingMins)}</span>
     </div>
@@ -537,14 +537,14 @@ function StaffFilter({ staff, value, onChange, profileId }) {
       <button onClick={() => setOpen((o) => !o)} style={selStyle}>{label} ▾</button>
       {open && (
         <div style={{ position: 'absolute', top: '100%', right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 20, padding: 8, minWidth: 220, maxHeight: 320, overflow: 'auto' }}>
-          <button onClick={() => onChange([])} style={{ ...btnGhost, fontSize: 11, marginBottom: 4 }}>Clear / All</button>
+          <button onClick={() => onChange([])} style={{ ...btnGhost, fontSize: 12, marginBottom: 4 }}>Clear / All</button>
           {profileId && (
-            <button onClick={() => onChange([profileId])} style={{ ...btnGhost, fontSize: 11, marginBottom: 4 }}>Just me</button>
+            <button onClick={() => onChange([profileId])} style={{ ...btnGhost, fontSize: 12, marginBottom: 4 }}>Just me</button>
           )}
           {staff.map((s) => {
             const checked = value.includes(s.id);
             return (
-              <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 2px', cursor: 'pointer', fontSize: 12 }}>
+              <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 2px', cursor: 'pointer', fontSize: 13 }}>
                 <input type="checkbox" checked={checked} onChange={() => {
                   if (checked) onChange(value.filter((v) => v !== s.id));
                   else onChange([...value, s.id]);
@@ -584,7 +584,7 @@ function findColumn(dateISO, columns) {
   return -1;
 }
 
-const gridTh = { padding: '8px 6px', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #e5e7eb' };
+const gridTh = { padding: '8px 6px', fontSize: 11, fontWeight: 600, color: '#64748b', borderBottom: '1px solid #e5e7eb' };
 
 const navBtn = {
   width: 28, height: 28, border: '1px solid #e5e7eb', background: '#fff',
@@ -592,12 +592,12 @@ const navBtn = {
   color: '#475569', fontFamily: font,
 };
 const todayBtn = {
-  padding: '6px 10px', fontSize: 12, fontWeight: 500,
+  padding: '6px 10px', fontSize: 13, fontWeight: 500,
   border: '1px solid #e5e7eb', background: '#fff', borderRadius: 6,
   cursor: 'pointer', color: '#475569', fontFamily: font,
 };
 const selStyle = {
-  padding: '6px 10px', fontSize: 12, fontFamily: font,
+  padding: '6px 10px', fontSize: 13, fontFamily: font,
   border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
   color: '#0f172a', cursor: 'pointer',
 };
@@ -608,12 +608,12 @@ const btnGhost = {
 };
 const btnLink = {
   background: 'none', border: 'none', padding: 0,
-  color: '#0e7fe0', cursor: 'pointer', fontSize: 12,
+  color: '#0e7fe0', cursor: 'pointer', fontSize: 13,
   fontFamily: font, textDecoration: 'underline',
 };
 const banner = {
   display: 'flex', alignItems: 'center', gap: 8,
   padding: '8px 12px', borderRadius: 8,
   background: '#fee2e2', border: '1px solid #fca5a5',
-  color: '#991b1b', fontSize: 13,
+  color: '#991b1b', fontSize: 14,
 };

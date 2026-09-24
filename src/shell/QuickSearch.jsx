@@ -110,7 +110,7 @@ export default function QuickSearch() {
           onFocus={() => { if (query.length >= 2) setOpen(true); }}
           placeholder="Search name, company no., UTR, VAT, email…"
           style={{
-            width: '100%', padding: '7px 60px 7px 32px', fontSize: 13,
+            width: '100%', padding: '7px 60px 7px 32px', fontSize: 14,
             fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
             borderRadius: 10, outline: 'none', background: '#fafafa',
             transition: 'border-color 0.2s, background 0.2s',
@@ -138,7 +138,7 @@ export default function QuickSearch() {
         ) : (
           <span style={{
             position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-            fontSize: 10, fontWeight: 600, color: '#94a3b8', background: '#f1f5f9',
+            fontSize: 11, fontWeight: 600, color: '#94a3b8', background: '#f1f5f9',
             padding: '2px 6px', borderRadius: 4, fontFamily: "'Outfit', sans-serif",
             pointerEvents: 'none',
           }}>
@@ -155,11 +155,11 @@ export default function QuickSearch() {
           zIndex: 200, fontFamily: "'Outfit', sans-serif",
         }}>
           {loading && (
-            <div style={{ padding: '12px 16px', fontSize: 12, color: '#94a3b8' }}>Searching...</div>
+            <div style={{ padding: '12px 16px', fontSize: 13, color: '#94a3b8' }}>Searching...</div>
           )}
 
           {!loading && !hasResults && (
-            <div style={{ padding: '16px', fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>No results found</div>
+            <div style={{ padding: '16px', fontSize: 14, color: '#94a3b8', textAlign: 'center' }}>No results found</div>
           )}
 
           {results.clients.length > 0 && (
@@ -168,7 +168,7 @@ export default function QuickSearch() {
               {results.clients.map((c) => (
                 <div key={c.id} onClick={() => handleSelect(`/clients/${c.id}`)} style={resultRow}>
                   <span style={{ fontWeight: 500, color: '#0f172a' }}>{c.name}</span>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{c.matched || c.type?.replace('_', ' ')}</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{c.matched || c.type?.replace('_', ' ')}</span>
                 </div>
               ))}
             </div>
@@ -180,7 +180,7 @@ export default function QuickSearch() {
               {results.tasks.map((t) => (
                 <div key={t.id} onClick={() => handleSelect('/planner')} style={resultRow}>
                   <span style={{ fontWeight: 500, color: '#0f172a' }}>{t.title}</span>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{t.service}</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{t.service}</span>
                 </div>
               ))}
             </div>
@@ -192,7 +192,7 @@ export default function QuickSearch() {
               {results.quotes.map((q) => (
                 <div key={q.id} onClick={() => handleSelect(`/manage/quotes/${q.id}`)} style={resultRow}>
                   <span style={{ fontWeight: 500, color: '#0f172a' }}>{q.quote_ref}</span>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{q.relationship_group} · {q.status}</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{q.relationship_group} · {q.status}</span>
                 </div>
               ))}
             </div>
@@ -219,8 +219,7 @@ function matchedOn(c, q, compact, vat) {
 }
 
 const sectionHeader = {
-  padding: '8px 16px 4px', fontSize: 10, fontWeight: 600, color: '#94a3b8',
-  textTransform: 'uppercase', letterSpacing: '0.03em',
+  padding: '8px 16px 4px', fontSize: 11, fontWeight: 600, color: '#94a3b8',
   borderBottom: '1px solid #f1f5f9',
 };
 

@@ -217,13 +217,13 @@ export default function ExportModal({
       <div onClick={(e) => e.stopPropagation()} style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
-            <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
+            <div style={{ fontSize: 12, color: colors.muted, fontWeight: 600 }}>
               Export pack
             </div>
             <h2 style={{ fontFamily: serifStack, fontSize: 22, fontWeight: 500, color: colors.ink, margin: '4px 0 0' }}>
-              {forecast?.name} <span style={{ color: colors.muted, fontSize: 14 }}>· {scenario?.name}</span>
+              {forecast?.name} <span style={{ color: colors.muted, fontSize: 14.5 }}>· {scenario?.name}</span>
             </h2>
-            <p style={{ margin: '4px 0 0', fontSize: 12, color: colors.muted }}>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: colors.muted }}>
               Scope: {scopeLabel}
             </p>
           </div>
@@ -235,7 +235,7 @@ export default function ExportModal({
           <div style={{ display: 'flex', gap: 6 }}>
             {['monthly', 'quarterly', 'annual'].map(g => (
               <button key={g} onClick={() => setGranularity(g)} style={{
-                ...btnOutline, padding: '7px 14px', fontSize: 12, textTransform: 'capitalize',
+                ...btnOutline, padding: '7px 14px', fontSize: 13, textTransform: 'capitalize',
                 background: granularity === g ? colors.ink : '#fff',
                 color: granularity === g ? '#fff' : colors.ink,
                 borderColor: granularity === g ? colors.ink : colors.border,
@@ -249,7 +249,7 @@ export default function ExportModal({
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {Array.from({ length: horizonYears }, (_, i) => i + 1).map(y => (
               <button key={y} onClick={() => setYear(y)} style={{
-                ...btnOutline, padding: '7px 12px', fontSize: 12,
+                ...btnOutline, padding: '7px 12px', fontSize: 13,
                 background: year === y ? colors.accent : '#fff',
                 color: year === y ? '#fff' : colors.ink,
                 borderColor: year === y ? colors.accent : colors.border,
@@ -261,26 +261,26 @@ export default function ExportModal({
         {/* Cover-page options (PDF only) */}
         <Group label="Cover page (PDF)" hint="Notes appear under the headline KPIs on the cover">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-            <label style={{ fontSize: 11, color: colors.muted }}>
+            <label style={{ fontSize: 12, color: colors.muted }}>
               Prepared for
               <input
                 value={preparedFor}
                 onChange={(e) => setPreparedFor(e.target.value)}
                 placeholder="e.g. Marc Kelly"
-                style={{ display: 'block', marginTop: 4, width: '100%', padding: '6px 8px', fontSize: 12, border: `1px solid ${colors.border}`, borderRadius: 6, fontFamily: fontStack, boxSizing: 'border-box' }}
+                style={{ display: 'block', marginTop: 4, width: '100%', padding: '6px 8px', fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 6, fontFamily: fontStack, boxSizing: 'border-box' }}
               />
             </label>
-            <label style={{ fontSize: 11, color: colors.muted }}>
+            <label style={{ fontSize: 12, color: colors.muted }}>
               Prepared by
               <input
                 value={preparedBy}
                 onChange={(e) => setPreparedBy(e.target.value)}
                 placeholder="e.g. Almond Valley Accounting"
-                style={{ display: 'block', marginTop: 4, width: '100%', padding: '6px 8px', fontSize: 12, border: `1px solid ${colors.border}`, borderRadius: 6, fontFamily: fontStack, boxSizing: 'border-box' }}
+                style={{ display: 'block', marginTop: 4, width: '100%', padding: '6px 8px', fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 6, fontFamily: fontStack, boxSizing: 'border-box' }}
               />
             </label>
           </div>
-          <label style={{ fontSize: 11, color: colors.muted }}>
+          <label style={{ fontSize: 12, color: colors.muted }}>
             Notes
             <textarea
               value={notes}
@@ -289,14 +289,14 @@ export default function ExportModal({
               rows={5}
               style={{
                 display: 'block', marginTop: 4, width: '100%',
-                padding: '8px 10px', fontSize: 12,
+                padding: '8px 10px', fontSize: 13,
                 border: `1px solid ${colors.border}`, borderRadius: 6,
                 fontFamily: fontStack, boxSizing: 'border-box',
                 resize: 'vertical', minHeight: 80,
               }}
             />
           </label>
-          <div style={{ marginTop: 4, fontSize: 10, color: colors.muted, textAlign: 'right' }}>
+          <div style={{ marginTop: 4, fontSize: 11, color: colors.muted, textAlign: 'right' }}>
             {notes.length}/2000 characters
           </div>
         </Group>
@@ -323,12 +323,12 @@ export default function ExportModal({
         </div>
 
         {error && (
-          <div style={{ marginTop: 12, padding: 10, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#991b1b', fontSize: 12 }}>
+          <div style={{ marginTop: 12, padding: 10, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#991b1b', fontSize: 13 }}>
             {error}
           </div>
         )}
 
-        <p style={{ fontSize: 11, color: colors.muted, marginTop: 14 }}>
+        <p style={{ fontSize: 12, color: colors.muted, marginTop: 14 }}>
           Numbers tie to the on-screen P&amp;L / BS / CF including any active location filter.
           PDF is A4 landscape with one page per section. Excel uses one sheet per statement with frozen headers.
         </p>
@@ -340,7 +340,7 @@ export default function ExportModal({
 function Group({ label, hint, children }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: colors.muted, marginBottom: 6 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: colors.muted, marginBottom: 6 }}>
         {label} {hint && <span style={{ fontWeight: 400, marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>· {hint}</span>}
       </div>
       {children}
@@ -351,7 +351,7 @@ function Group({ label, hint, children }) {
 function Panel({ title, children }) {
   return (
     <div style={{ border: `1px solid ${colors.border}`, borderRadius: 10, padding: 14, background: colors.bgSoft }}>
-      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: colors.muted, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: colors.muted, marginBottom: 8 }}>
         {title}
       </div>
       {children}
@@ -364,11 +364,11 @@ function Check({ checked, onChange, label, hint }) {
     <label style={{
       display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
       borderRadius: 6, background: checked ? '#fff' : 'transparent',
-      cursor: 'pointer', fontSize: 12, color: colors.ink, border: `1px solid ${checked ? colors.border : 'transparent'}`,
+      cursor: 'pointer', fontSize: 13, color: colors.ink, border: `1px solid ${checked ? colors.border : 'transparent'}`,
     }}>
       <input type="checkbox" checked={checked} onChange={onChange} />
       <span>{label}</span>
-      {hint && <span style={{ marginLeft: 'auto', fontSize: 10, color: colors.muted }}>{hint}</span>}
+      {hint && <span style={{ marginLeft: 'auto', fontSize: 11, color: colors.muted }}>{hint}</span>}
     </label>
   );
 }

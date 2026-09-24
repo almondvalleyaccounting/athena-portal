@@ -105,7 +105,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                 </h2>
                 <Pill colour={tier.colour} bg={tier.bg} title={tier.hint}>{tier.label}</Pill>
               </div>
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+              <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
                 {/* HMRC's name for the scheme often differs from ours — showing
                     both saves a second lookup when you ring them. */}
                 {scheme.entity_name && scheme.hmrc_name !== scheme.entity_name && (
@@ -114,7 +114,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                 PAYE ref <b>{scheme.paye_ref}</b>
                 {scheme.accounts_office_ref && <> · Accounts Office <b>{scheme.accounts_office_ref}</b></>}
               </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
                 Scraped {dateTime(scheme.scraped_at)} · tax year {scheme.tax_year || '—'}
               </div>
             </div>
@@ -124,7 +124,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                   href={`/clients/${scheme.entity_id}`}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0e7fe0', textDecoration: 'none' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#0e7fe0', textDecoration: 'none' }}
                 >
                   Client <ExternalLink size={11} />
                 </a>
@@ -143,7 +143,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
         {/* Body */}
         <div style={{ overflowY: 'auto', padding: '16px 20px 40px', flex: 1 }}>
           {error && (
-            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 12 }}>
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginBottom: 12 }}>
               {error}
             </div>
           )}
@@ -173,7 +173,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
           </div>
 
           {loading ? (
-            <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading scheme detail…</div>
+            <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading scheme detail…</div>
           ) : (
             <>
               <Block
@@ -209,7 +209,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                           onClick={() => setYear(y)}
                           title={owing ? 'This year still has unpaid months' : 'Nothing outstanding in this year'}
                           style={{
-                            padding: '3px 9px', fontSize: 11, fontFamily: font, borderRadius: 999,
+                            padding: '3px 9px', fontSize: 12, fontFamily: font, borderRadius: 999,
                             cursor: 'pointer', whiteSpace: 'nowrap',
                             fontWeight: y === shownYear ? 600 : 500,
                             color: y === shownYear ? '#0f172a' : owing ? '#b91c1c' : '#94a3b8',
@@ -240,7 +240,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                         <tr key={m.id} style={{ borderTop: '1px solid #f1f5f9', background: m.overdue ? '#fef2f2' : undefined }}>
                           <td style={td}>
                             <span style={{ fontWeight: 500 }}>{MONTH_NAMES[m.tax_month] || `M${m.tax_month}`}</span>
-                            <span style={{ color: '#94a3b8', fontSize: 11, marginLeft: 6 }}>month {m.tax_month}</span>
+                            <span style={{ color: '#94a3b8', fontSize: 12, marginLeft: 6 }}>month {m.tax_month}</span>
                           </td>
                           <td style={tdNum}>{fmtGbpDetailed(m.charges)}</td>
                           <td style={{ ...tdNum, color: m.credits > 0 ? '#059669' : '#cbd5e1' }}>
@@ -253,7 +253,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                         </tr>
                       ))}
                       <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f8fafc' }}>
-                        <td style={{ ...td, fontWeight: 600, fontSize: 12 }}>{shownYear} total</td>
+                        <td style={{ ...td, fontWeight: 600, fontSize: 13 }}>{shownYear} total</td>
                         <td style={{ ...tdNum, fontWeight: 600 }}>{fmtGbpDetailed(yearTotal.charges)}</td>
                         <td style={{ ...tdNum, fontWeight: 600, color: yearTotal.credits > 0 ? '#059669' : '#cbd5e1' }}>
                           {yearTotal.credits > 0 ? `-${fmtGbpDetailed(yearTotal.credits)}` : '—'}
@@ -287,7 +287,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                       {paymentRows.map((p) => (
                         <tr key={p.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                           <td style={{ ...td, whiteSpace: 'nowrap' }}>{p.received_on_text}</td>
-                          <td style={{ ...td, fontSize: 12, color: '#475569' }}>
+                          <td style={{ ...td, fontSize: 13, color: '#475569' }}>
                             {/* An unallocated payment is worth spotting: it is
                                 sitting on the scheme not reducing any bill. */}
                             {p.allocated_to
@@ -324,8 +324,8 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                     <tbody>
                       {creditRows.map((c) => (
                         <tr key={c.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                          <td style={{ ...td, fontSize: 12 }}>{c.credit_type}</td>
-                          <td style={{ ...td, fontSize: 12, color: '#475569' }}>{c.allocated_to || '—'}</td>
+                          <td style={{ ...td, fontSize: 13 }}>{c.credit_type}</td>
+                          <td style={{ ...td, fontSize: 13, color: '#475569' }}>{c.allocated_to || '—'}</td>
                           <td style={{ ...tdNum, color: '#059669' }}>{fmtGbpDetailed(c.amount)}</td>
                         </tr>
                       ))}
@@ -356,9 +356,9 @@ function OverdueTable({ rows }) {
       <tbody>
         {rows.map((o) => (
           <tr key={o.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-            <td style={{ ...td, fontSize: 12, color: '#475569' }}>{o.period}</td>
-            <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 12 }}>{o.due_date_text}</td>
-            <td style={{ ...td, fontSize: 12 }}>
+            <td style={{ ...td, fontSize: 13, color: '#475569' }}>{o.period}</td>
+            <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 13 }}>{o.due_date_text}</td>
+            <td style={{ ...td, fontSize: 13 }}>
               {o.charge_type === 'Penalty'
                 ? <span style={{ color: '#b91c1c', fontWeight: 600 }}>{o.charge_type}</span>
                 : <span style={{ color: '#64748b' }}>{o.charge_type || '—'}</span>}
@@ -378,10 +378,10 @@ function Block({ title, subtitle, aside, children }) {
   return (
     <div style={{ marginBottom: 22 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{title}</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{title}</div>
         {aside}
       </div>
-      {subtitle && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, marginBottom: 8 }}>{subtitle}</div>}
+      {subtitle && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, marginBottom: 8 }}>{subtitle}</div>}
       {children && <div style={{ ...card, marginTop: 6 }}>{children}</div>}
     </div>
   );
@@ -390,14 +390,13 @@ function Block({ title, subtitle, aside, children }) {
 function Figure({ label, value, colour, big }) {
   return (
     <div style={{ background: '#f8fafc', borderRadius: 8, padding: '9px 11px', borderLeft: `3px solid ${colour}` }}>
-      <div style={{ fontSize: 9, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
-      <div style={{ fontSize: big ? 20 : 15, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
+      <div style={{ fontSize: big ? 20 : 15.5, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
     </div>
   );
 }
 
-const tableStyle = { width: '100%', fontSize: 13, borderCollapse: 'collapse' };
+const tableStyle = { width: '100%', fontSize: 14, borderCollapse: 'collapse' };
 const headRow = {
-  background: '#f8fafc', fontSize: 10, textTransform: 'uppercase',
-  letterSpacing: 0.5, color: '#64748b',
+  background: '#f8fafc', fontSize: 11, color: '#64748b',
 };

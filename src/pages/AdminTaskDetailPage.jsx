@@ -20,7 +20,7 @@ export default function AdminTaskDetailPage() {
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '28px 24px 48px', fontFamily: font }}>
       <button onClick={() => navigate('/planner/tasks')}
-        style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 13, marginBottom: 16, padding: 0 }}>
+        style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 14, marginBottom: 16, padding: 0 }}>
         <ChevronLeft size={16} /> Back to Admin tasks
       </button>
 

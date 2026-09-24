@@ -51,7 +51,7 @@ export default function RadarChart({
     return (
       <div style={{
         height: size, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#94a3b8', fontFamily: "'Outfit', sans-serif", fontSize: 13,
+        color: '#94a3b8', fontFamily: "'Outfit', sans-serif", fontSize: 14,
       }}>
         Need at least 3 skills to draw a radar chart.
       </div>
@@ -140,7 +140,7 @@ export default function RadarChart({
               dominantBaseline="middle"
               style={{
                 fontFamily: "'Outfit', sans-serif",
-                fontSize: 11,
+                fontSize: 12,
                 fill: '#475569',
               }}
             >
@@ -151,7 +151,7 @@ export default function RadarChart({
       </svg>
 
       {showLegend && (
-        <div style={{ display: 'flex', gap: 20, fontFamily: "'Outfit', sans-serif", fontSize: 12, color: '#475569' }}>
+        <div style={{ display: 'flex', gap: 20, fontFamily: "'Outfit', sans-serif", fontSize: 13, color: '#475569' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 14, height: 3, background: '#0f172a', display: 'inline-block', borderRadius: 2 }} />
             Current level

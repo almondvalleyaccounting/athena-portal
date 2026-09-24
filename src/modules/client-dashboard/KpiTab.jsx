@@ -54,7 +54,7 @@ export default function KpiTab({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {kpi.error && (
         <div style={{
-          fontFamily: OUTFIT, fontSize: '12.5px', color: '#b91c1c', background: '#fef2f2',
+          fontFamily: OUTFIT, fontSize: '13.5px', color: '#b91c1c', background: '#fef2f2',
           border: '1px solid #fecaca', borderRadius: '10px', padding: '10px 14px',
           display: 'flex', gap: '10px', alignItems: 'center',
         }}>
@@ -83,10 +83,10 @@ export default function KpiTab({
       {nothing && (
         <div style={{ ...cardStyle, textAlign: 'center', padding: '44px 24px' }}>
           <Sigma size={26} style={{ color: '#cbd5e1', marginBottom: '10px' }} />
-          <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
+          <div style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
             No KPIs for {clientName || 'this client'} yet
           </div>
-          <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#64748b', maxWidth: '460px', margin: '0 auto 16px', lineHeight: 1.6 }}>
+          <p style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#64748b', maxWidth: '460px', margin: '0 auto 16px', lineHeight: 1.6 }}>
             {hasSector
               ? 'This client is on a sector pack, but the pack has no active KPIs. Add some in KPI Packs.'
               : 'Put this client in a sector to get its pack — a nursery gets children, places and occupancy — or add a KPI just for them.'}
@@ -128,8 +128,8 @@ function Figures({ model, buckets, currency }) {
 
       <div style={{ ...cardStyle, padding: '16px 0 6px' }}>
         <div style={{ padding: '0 20px 12px', display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>KPIs</span>
-          <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>KPIs</span>
+          <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8' }}>
             Click a row with a breakdown to open it
           </span>
         </div>
@@ -157,12 +157,12 @@ function Figures({ model, buckets, currency }) {
                         {hasDims && <span style={{ color: '#94a3b8', marginRight: '6px' }}>{open ? '▾' : '▸'}</span>}
                         {d.label}
                         {d.kind === 'calculated' && (
-                          <span title={d.formula} style={{ marginLeft: '7px', fontFamily: OUTFIT, fontSize: '10.5px', color: '#0369a1', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '999px', padding: '1px 7px' }}>
+                          <span title={d.formula} style={{ marginLeft: '7px', fontFamily: OUTFIT, fontSize: '11.5px', color: '#0369a1', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '999px', padding: '1px 7px' }}>
                             ƒ
                           </span>
                         )}
                         {r.error && (
-                          <span title={r.error} style={{ marginLeft: '7px', fontFamily: OUTFIT, fontSize: '10.5px', color: '#b45309' }}>
+                          <span title={r.error} style={{ marginLeft: '7px', fontFamily: OUTFIT, fontSize: '11.5px', color: '#b45309' }}>
                             problem
                           </span>
                         )}
@@ -204,11 +204,11 @@ function Figures({ model, buckets, currency }) {
         if (!points.some((p) => p.value != null)) return null;
         return (
           <div key={d.id} style={cardStyle}>
-            <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '2px' }}>
+            <div style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a', marginBottom: '2px' }}>
               {d.label}
             </div>
             {d.hint && (
-              <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginBottom: '8px' }}>{d.hint}</div>
+              <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', marginBottom: '8px' }}>{d.hint}</div>
             )}
             <LineChart points={points} currency={currency} height={180} colour="#0284c7" />
           </div>
@@ -225,11 +225,11 @@ function KpiTile({ row, index, bucket, currency }) {
   const diff = (value != null && prev != null) ? value - prev : null;
   return (
     <div style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px', padding: '14px 16px' }} title={d.hint || ''}>
-      <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#0369a1', marginBottom: '4px' }}>{d.label}</div>
+      <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#0369a1', marginBottom: '4px' }}>{d.label}</div>
       <div style={{ fontFamily: OUTFIT, fontSize: '22px', fontWeight: 700, color: '#0f172a' }}>
         {formatKpi(value, d.unit, d.decimals, currency)}
       </div>
-      <div style={{ minHeight: '16px', marginTop: '2px', fontFamily: OUTFIT, fontSize: '11.5px', color: '#64748b' }}>
+      <div style={{ minHeight: '16px', marginTop: '2px', fontFamily: OUTFIT, fontSize: '12.5px', color: '#64748b' }}>
         {diff != null && Math.abs(diff) > 0.0005 && (
           <span style={{ fontWeight: 600, color: diff > 0 ? '#166534' : '#991b1b' }}>
             {diff > 0 ? '▲' : '▼'} {formatKpi(Math.abs(diff), d.unit, d.decimals, currency)}{' '}
@@ -292,7 +292,7 @@ function EntryGrid({ kpi, buckets }) {
 
   if (!kpi.entryDefinitions.length) {
     return (
-      <div style={{ ...cardStyle, fontFamily: OUTFIT, fontSize: '13px', color: '#64748b' }}>
+      <div style={{ ...cardStyle, fontFamily: OUTFIT, fontSize: '14px', color: '#64748b' }}>
         Every KPI on this client is calculated, so there is nothing to type in.
       </div>
     );
@@ -301,14 +301,14 @@ function EntryGrid({ kpi, buckets }) {
   return (
     <div style={{ ...cardStyle, padding: '16px 0 6px' }}>
       <div style={{ padding: '0 20px 12px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>Enter figures</span>
-        <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>
+        <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>Enter figures</span>
+        <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8' }}>
           Monthly, whatever the Figures tab is showing. Tab across; each cell saves as you leave it.
         </span>
         <select
           value={monthsBack}
           onChange={(e) => setMonthsBack(Number(e.target.value))}
-          style={{ ...inputStyle, marginLeft: 'auto', padding: '6px 9px', fontSize: '12.5px' }}
+          style={{ ...inputStyle, marginLeft: 'auto', padding: '6px 9px', fontSize: '13.5px' }}
         >
           <option value={6}>Last 6 months</option>
           <option value={12}>Last 12 months</option>
@@ -330,8 +330,7 @@ function EntryGrid({ kpi, buckets }) {
                 return (
                   <tr key={r.key}>
                     <td colSpan={months.length + 1} style={{
-                      fontFamily: OUTFIT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em',
-                      textTransform: 'uppercase', color: '#94a3b8', padding: '14px 20px 4px',
+                      fontFamily: OUTFIT, fontSize: '12px', fontWeight: 700, color: '#94a3b8', padding: '14px 20px 4px',
                     }} title={r.hint || ''}>
                       {r.label}
                     </td>
@@ -370,7 +369,7 @@ function EntryGrid({ kpi, buckets }) {
         </table>
       </div>
 
-      <p style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', padding: '10px 20px 6px', margin: 0 }}>
+      <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', padding: '10px 20px 6px', margin: 0 }}>
         Leave a cell blank for "not known" — that is different from zero, and the figures above will
         show "—" rather than pretending it is nil.
       </p>
@@ -403,7 +402,7 @@ function Cell({ value, onCommit, automated, overridden }) {
         border: `1px solid ${overridden ? '#fde68a' : automated ? '#bae6fd' : '#e5e7eb'}`,
         backgroundColor: overridden ? '#fffbeb' : automated ? '#f0f9ff' : '#ffffff',
         borderRadius: '7px', padding: '6px 8px', textAlign: 'right',
-        fontFamily: OUTFIT, fontSize: '12.5px', fontVariantNumeric: 'tabular-nums', outline: 'none',
+        fontFamily: OUTFIT, fontSize: '13.5px', fontVariantNumeric: 'tabular-nums', outline: 'none',
       }}
     />
   );
@@ -432,13 +431,13 @@ function Setup({ kpi, model, canManagePacks }) {
             ))}
           </select>
           {sector && (
-            <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#64748b' }}>
+            <span style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#64748b' }}>
               {sector.definition_count} KPI{sector.definition_count === 1 ? '' : 's'} ·
               {' '}{sector.client_count} client{sector.client_count === 1 ? '' : 's'} on this pack
             </span>
           )}
           {canManagePacks && (
-            <a href="/admin/kpi-packs" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '5px', fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: '#0369a1', textDecoration: 'none' }}>
+            <a href="/admin/kpi-packs" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '5px', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#0369a1', textDecoration: 'none' }}>
               <ExternalLink size={13} /> Edit packs
             </a>
           )}
@@ -456,13 +455,13 @@ function Setup({ kpi, model, canManagePacks }) {
               hint={`The pack says these KPIs break down by ${dim.label.toLowerCase()}. These are this client's own.`}
             />
             {vals.length === 0 && (
-              <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#b45309', margin: '8px 0 12px' }}>
+              <p style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#b45309', margin: '8px 0 12px' }}>
                 None yet — the KPIs that break down by {dim.label.toLowerCase()} have nowhere to put a figure until you add at least one.
               </p>
             )}
             {vals.map((v) => (
               <div key={v.id} style={rowStyle}>
-                <span style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#0f172a' }}>{v.label}</span>
+                <span style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#0f172a' }}>{v.label}</span>
                 <button
                   onClick={() => {
                     if (window.confirm(`Remove ${v.label}? Any figures entered against it go too.`)) kpi.removeDimensionValue(v.id);
@@ -512,9 +511,9 @@ function Setup({ kpi, model, canManagePacks }) {
             const d = r.definition;
             return (
               <div key={d.id} style={rowStyle}>
-                <span style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#0f172a' }}>
+                <span style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#0f172a' }}>
                   {d.label}
-                  <span style={{ color: '#94a3b8', fontSize: '11.5px' }}>
+                  <span style={{ color: '#94a3b8', fontSize: '12.5px' }}>
                     {' · '}{d.kind === 'calculated' ? d.formula : `${d.aggregation} of the months`}
                     {d.dimension_label ? ` · by ${d.dimension_label.toLowerCase()}` : ''}
                     {d.origin === 'pack' ? ' · from the pack' : ' · just this client'}
@@ -535,12 +534,12 @@ function Setup({ kpi, model, canManagePacks }) {
             there would be no way to find one again. */}
         {kpi.hiddenOverrides.length > 0 && (
           <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
-            <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginBottom: '6px' }}>
+            <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', marginBottom: '6px' }}>
               Hidden for this client
             </div>
             {kpi.hiddenOverrides.map((h) => (
               <div key={h.definition_id} style={rowStyle}>
-                <span style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8' }}>{h.label}</span>
+                <span style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#94a3b8' }}>{h.label}</span>
                 <button
                   onClick={() => kpi.setHidden(h.definition_id, false)}
                   disabled={kpi.busy}
@@ -561,18 +560,18 @@ function Setup({ kpi, model, canManagePacks }) {
 function SectionHead({ title, hint }) {
   return (
     <div>
-      <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>{title}</div>
-      {hint && <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginTop: '2px' }}>{hint}</div>}
+      <div style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>{title}</div>
+      {hint && <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', marginTop: '2px' }}>{hint}</div>}
     </div>
   );
 }
 
 const th = {
-  fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', fontWeight: 700,
+  fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', fontWeight: 700,
   textAlign: 'right', padding: '7px 14px', whiteSpace: 'nowrap', borderBottom: '1px solid #e5e7eb',
 };
 const td = {
-  fontFamily: OUTFIT, fontSize: '12.5px', textAlign: 'right', padding: '7px 14px',
+  fontFamily: OUTFIT, fontSize: '13.5px', textAlign: 'right', padding: '7px 14px',
   whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', borderBottom: '1px solid #f8fafc',
 };
 const rowStyle = {
@@ -583,10 +582,10 @@ const iconBtn = { border: 'none', background: 'none', cursor: 'pointer', padding
 const addBtn = {
   display: 'inline-flex', alignItems: 'center', gap: '5px', border: '1px solid #e5e7eb',
   borderRadius: '10px', padding: '8px 14px', background: '#fff', color: '#0369a1',
-  fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+  fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, cursor: 'pointer',
 };
 const primaryBtn = {
   display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '10px 20px',
   border: 'none', borderRadius: '10px', backgroundColor: '#0f172a', color: '#fff',
-  fontFamily: OUTFIT, fontSize: '13.5px', fontWeight: 700, cursor: 'pointer',
+  fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700, cursor: 'pointer',
 };

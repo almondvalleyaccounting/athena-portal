@@ -43,7 +43,7 @@ const MARK = {
 function Dot({ cell }) {
   if (!cell) {
     // Not a service for this client — a faint dash, so the eye skips it.
-    return <span style={{ color: '#e2e8f0', fontSize: 12 }}>–</span>;
+    return <span style={{ color: '#e2e8f0', fontSize: 13 }}>–</span>;
   }
   const m = MARK[cell.state] || MARK.nodata;
   return (
@@ -51,7 +51,7 @@ function Dot({ cell }) {
       title={cell.title}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        width: 20, height: 20, borderRadius: 6, fontSize: 11.5, fontWeight: 700,
+        width: 20, height: 20, borderRadius: 6, fontSize: 12.5, fontWeight: 700,
         background: m.bg, color: m.fg, border: `1px solid ${m.border}`,
         cursor: cell.title ? 'help' : 'default',
       }}
@@ -192,13 +192,13 @@ function Tile({ label, count, tone, active, onClick, hint }) {
       }}
     >
       <span style={{ fontSize: 19, fontWeight: 700, color: count ? t.fg : '#cbd5e1', lineHeight: 1.1 }}>{count}</span>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{label}</span>
     </button>
   );
 }
 
 const detailsSummaryStyle = {
-  fontSize: 12.5, fontWeight: 600, color: '#64748b', cursor: 'pointer',
+  fontSize: 13.5, fontWeight: 600, color: '#64748b', cursor: 'pointer',
   padding: '10px 16px', userSelect: 'none',
 };
 
@@ -209,9 +209,9 @@ function TaxDetail({ entityId }) {
     listCrossCheckTaxes(entityId).then(setRows).catch((e) => setError(e.message));
   }, [entityId]);
 
-  if (error) return <div style={{ fontSize: 12.5, color: tones.danger.fg }}>{error}</div>;
-  if (!rows) return <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Loading…</div>;
-  if (!rows.length) return <div style={{ fontSize: 12.5, color: '#94a3b8' }}>No tax authorisations to compare.</div>;
+  if (error) return <div style={{ fontSize: 13.5, color: tones.danger.fg }}>{error}</div>;
+  if (!rows) return <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Loading…</div>;
+  if (!rows.length) return <div style={{ fontSize: 13.5, color: '#94a3b8' }}>No tax authorisations to compare.</div>;
 
   const tone = (v) => ({
     authorised: 'success', bm_wrong: 'accent', not_authorised: 'danger',
@@ -220,7 +220,7 @@ function TaxDetail({ entityId }) {
   }[v] || 'neutral');
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
       <thead>
         <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
           <th style={{ padding: '4px 8px', fontWeight: 600 }}>Tax</th>
@@ -302,8 +302,8 @@ function DirectorSa({ companyId }) {
     setSaving(null);
   }
 
-  if (error) return <div style={{ fontSize: 12.5, color: tones.danger.fg }}>{error}</div>;
-  if (!rows) return <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Loading directors…</div>;
+  if (error) return <div style={{ fontSize: 13.5, color: tones.danger.fg }}>{error}</div>;
+  if (!rows) return <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Loading directors…</div>;
   if (!rows.length) return null;
 
   const tone = (v) => ({
@@ -312,10 +312,10 @@ function DirectorSa({ companyId }) {
 
   return (
     <div style={{ marginTop: 14 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 6 }}>
         Directors&apos; Self Assessment
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
         <thead>
           <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
             <th style={{ padding: '4px 8px', fontWeight: 600 }}>Director</th>
@@ -330,7 +330,7 @@ function DirectorSa({ companyId }) {
               <td style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 600 }}>
                 {d.director_name || '—'}
                 {d.director_entity_name && (
-                  <div style={{ fontSize: 11, fontWeight: 400, color: '#94a3b8', marginTop: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 400, color: '#94a3b8', marginTop: 1 }}>
                     also a client: {d.director_entity_name}
                   </div>
                 )}
@@ -339,7 +339,7 @@ function DirectorSa({ companyId }) {
                 {d.utr ? (
                   <>
                     <span style={{ fontFamily: 'monospace', color: '#334155' }}>{d.utr}</span>
-                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{d.utr_source}</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>{d.utr_source}</div>
                   </>
                 ) : (
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -347,13 +347,13 @@ function DirectorSa({ companyId }) {
                       value={draft[d.person_id] || ''}
                       onChange={(e) => setDraft((x) => ({ ...x, [d.person_id]: e.target.value }))}
                       placeholder="10-digit UTR"
-                      style={{ padding: '4px 8px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, width: 130 }}
+                      style={{ padding: '4px 8px', fontSize: 13.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, width: 130 }}
                     />
                     <button
                       onClick={() => save(d.person_id)}
                       disabled={saving === d.person_id || !(draft[d.person_id] || '').trim()}
                       style={{
-                        padding: '4px 10px', fontSize: 12, fontWeight: 600, fontFamily: font,
+                        padding: '4px 10px', fontSize: 13, fontWeight: 600, fontFamily: font,
                         background: tones.info.bg, color: tones.info.fg,
                         border: `1px solid ${tones.info.border}`, borderRadius: 6, cursor: 'pointer',
                       }}
@@ -428,14 +428,14 @@ export default function CrossCheckView() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Cross-check</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
             Where the onboarding board disagrees with BrightManager, HMRC, BrightPay, TaxCalc and QuickBooks.
           </p>
         </div>
         <ViewTabs active="Cross-check" />
       </div>
 
-      {error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 10 }}>{error}</div>}
+      {error && <div style={{ color: tones.danger.fg, fontSize: 14, marginBottom: 10 }}>{error}</div>}
 
       {/* One row of numbers. Each is a filter; the hover carries the meaning. */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'stretch' }}>
@@ -454,14 +454,14 @@ export default function CrossCheckView() {
               hint="Every active client" />
         <input
           value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search client…"
-          style={{ marginLeft: 'auto', padding: '6px 12px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 10, minWidth: 200, alignSelf: 'center' }}
+          style={{ marginLeft: 'auto', padding: '6px 12px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 10, minWidth: 200, alignSelf: 'center' }}
         />
       </div>
 
       {/* The single caveat that changes how the marks read, one line. */}
       {partial.length > 0 && (
         <div
-          style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}
+          style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}
           title={saCover
             ? `The Self Assessment run only keeps clients HMRC flags as having a statement, so the scrape reached ${saCover.hmrc_clients} of ${saCover.we_do_clients} registered clients. Publishing the whole client list (already built — needs one live scrape run) closes this. Until then absence proves nothing, so those marks read ~ instead of ✕.`
             : undefined}
@@ -471,9 +471,9 @@ export default function CrossCheckView() {
       )}
 
       {!rows ? (
-        <div style={{ fontSize: 13, color: '#94a3b8' }}>Loading…</div>
+        <div style={{ fontSize: 14, color: '#94a3b8' }}>Loading…</div>
       ) : filtered.length === 0 ? (
-        <div style={{ ...card, padding: '28px 20px', textAlign: 'center', fontSize: 13.5, color: '#64748b' }}>
+        <div style={{ ...card, padding: '28px 20px', textAlign: 'center', fontSize: 14.5, color: '#64748b' }}>
           Nothing here — every check that can be answered for these clients answers yes.
         </div>
       ) : (
@@ -482,13 +482,13 @@ export default function CrossCheckView() {
             <thead>
               <tr style={{ background: '#fbfcfd', borderBottom: '1px solid #e5e7eb' }}>
                 <th style={{ padding: '9px 6px 9px 14px', width: 24 }} />
-                <th style={{ padding: '9px 8px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.4px' }}>Client</th>
+                <th style={{ padding: '9px 8px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#64748b' }}>Client</th>
                 {CELLS.map((c) => (
-                  <th key={c.key} style={{ padding: '9px 4px', width: 44, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                  <th key={c.key} style={{ padding: '9px 4px', width: 44, textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#64748b' }}>
                     {c.label}
                   </th>
                 ))}
-                <th style={{ padding: '9px 14px 9px 8px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.4px' }}>Verdict</th>
+                <th style={{ padding: '9px 14px 9px 8px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#64748b' }}>Verdict</th>
               </tr>
             </thead>
             <tbody>
@@ -508,14 +508,14 @@ export default function CrossCheckView() {
                         <span
                           onClick={(e) => { e.stopPropagation(); navigate(r.onboarding_id ? `/onboarding/${r.onboarding_id}` : `/clients/${r.entity_id}`); }}
                           title={r.has_onboarding ? `On the board · ${r.onboarding_status} — click to open` : 'No onboarding record — click to open the client'}
-                          style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}
+                          style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}
                         >
                           {r.entity_name}
                         </span>
                         {r.wrongly_closed && (
                           <span
                             title="Marked complete without an engagement letter or an HMRC authorisation"
-                            style={{ marginLeft: 6, fontSize: 11 }}
+                            style={{ marginLeft: 6, fontSize: 12 }}
                           >
                             ⚠
                           </span>
@@ -543,7 +543,7 @@ export default function CrossCheckView() {
               })}
             </tbody>
           </table>
-          <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
+          <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12.5, color: '#94a3b8' }}>
             ✓ verified · ✕ mismatch · ○ in progress · ~ unverified while the scrape is partial · ? no feed · – not a service
             &nbsp;— hover a mark for the story, click a row for the evidence
           </div>
@@ -557,12 +557,12 @@ export default function CrossCheckView() {
             {conflicts.length} HMRC account{conflicts.length === 1 ? '' : 's'} tied to a client by something weaker than a reference
           </summary>
           <div style={{ padding: '0 16px 14px' }}>
-            <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 8, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 13.5, color: '#64748b', marginBottom: 8, lineHeight: 1.5 }}>
               SA, CT and VAT resolve on the UTR or VRN, so they cannot drift. A PAYE account has no UTR, so these
               links rest on a name or a tidied-up reference — and authorisation for the wrong account would look
               like authorisation.
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
               <tbody>
                 {conflicts.map((c) => (
                   <tr key={`${c.tax}-${c.hmrc_key}`} style={{ borderTop: '1px solid #f1f5f9' }}>
@@ -586,14 +586,14 @@ export default function CrossCheckView() {
             {orphans.length} BrightPay payroll{orphans.length === 1 ? '' : 's'} matching no client
           </summary>
           <div style={{ padding: '0 16px 14px' }}>
-            <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 8, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 13.5, color: '#64748b', marginBottom: 8, lineHeight: 1.5 }}>
               We run these payrolls but the employer name matches nothing on the client list — a client recorded
               under a different name, or a payroll nobody is billed for.
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {orphans.map((o) => (
                 <span key={o.employer_id} style={{
-                  fontSize: 12.5, padding: '5px 10px', borderRadius: 8,
+                  fontSize: 13.5, padding: '5px 10px', borderRadius: 8,
                   border: '1px solid #e5e7eb', color: '#334155', background: '#fff',
                 }}>
                   {o.employer_name}

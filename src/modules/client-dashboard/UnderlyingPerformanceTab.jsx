@@ -268,7 +268,7 @@ export default function UnderlyingPerformanceTab({
           ? <div style={{ ...cardStyle, textAlign: 'center', padding: '48px' }}>
               <Loader size={22} style={{ color: '#7dd3fc', animation: 'spin 1s linear infinite' }} />
             </div>
-          : <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px', fontFamily: OUTFIT, fontSize: '13px', color: '#64748b' }}>
+          : <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px', fontFamily: OUTFIT, fontSize: '14px', color: '#64748b' }}>
               {empty?.needsReconnect
                 ? `${empty.selectedName || 'This client'} needs to reconnect QuickBooks.`
                 : 'Pull from QuickBooks to build the underlying view.'}
@@ -318,10 +318,10 @@ export default function UnderlyingPerformanceTab({
       <div style={cardStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
           <TrendingUp size={18} style={{ color: '#38bdf8' }} />
-          <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>
             From reported to underlying profit
           </span>
-          <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', marginLeft: 'auto' }}>
             {spanDates(calc.bucket)}
           </span>
         </div>
@@ -354,7 +354,7 @@ export default function UnderlyingPerformanceTab({
           busy={cfgLoading || busy}
         />
         {calc.owner.length === 0 && (
-          <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', margin: '6px 0 12px' }}>
+          <p style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#94a3b8', margin: '6px 0 12px' }}>
             No nominal codes tagged yet. Add owner-related codes below to strip them from the result.
           </p>
         )}
@@ -362,10 +362,10 @@ export default function UnderlyingPerformanceTab({
           <div style={{ marginBottom: '12px' }}>
             {calc.owner.map((o) => (
               <div key={o.id} style={rowStyle}>
-                <span style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#0f172a' }}>
-                  {o.label}{o.income && <span style={{ color: '#b45309', fontSize: '11px' }}> · income</span>}
+                <span style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#0f172a' }}>
+                  {o.label}{o.income && <span style={{ color: '#b45309', fontSize: '12px' }}> · income</span>}
                 </span>
-                <span style={{ marginLeft: 'auto', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#334155', fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ marginLeft: 'auto', fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: '#334155', fontVariantNumeric: 'tabular-nums' }}>
                   {money(o.amount, currency)}
                 </span>
                 <button onClick={() => removeOwnerAccount(o.id)} title="Remove" style={iconBtn}>
@@ -377,7 +377,7 @@ export default function UnderlyingPerformanceTab({
         )}
         <AddAccount accounts={accounts} loading={accountsLoading} exclude={ownerIdSet} onAdd={addOwnerAccount} />
         {dismissedRows.length > 0 && (
-          <p style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', margin: '10px 0 0' }}>
+          <p style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', margin: '10px 0 0' }}>
             {dismissedRows.length} suggested code{dismissedRows.length === 1 ? '' : 's'} marked as not personal.{' '}
             <button onClick={restoreDismissed} disabled={busy} style={linkBtn}>Show them again</button>
           </p>
@@ -422,18 +422,18 @@ function PeriodBar({
       border: '1px solid #e5e7eb', borderRadius: '12px',
     }}>
       <div style={{ minWidth: 200, flex: 1 }}>
-        <div style={{ fontFamily: OUTFIT, fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>
           Reporting on
         </div>
-        <div style={{ fontFamily: OUTFIT, fontSize: 14.5, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: 15, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>
           {span?.label || '—'}
         </div>
-        <div style={{ fontFamily: OUTFIT, fontSize: 12.5, color: '#475569' }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: 13.5, color: '#475569' }}>
           {spanDates(span)}
         </div>
       </div>
 
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontFamily: OUTFIT, fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontFamily: OUTFIT, fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>
         Period
         <select
           // With one bucket in the period there is no "all" to combine, so the
@@ -457,7 +457,7 @@ function PeriodBar({
 
       <div style={{ flexBasis: '100%', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
         <Info size={14} style={{ color: '#94a3b8', flexShrink: 0, marginTop: 2 }} />
-        <span style={{ fontFamily: OUTFIT, fontSize: 12, color: '#64748b', lineHeight: 1.55 }}>
+        <span style={{ fontFamily: OUTFIT, fontSize: 13, color: '#64748b', lineHeight: 1.55 }}>
           {basis === 'calendar'
             ? 'Calendar years end 31 December.'
             : `Fiscal years end in ${yearEnd}, so FY26 is the year ending in ${yearEnd} 2026.`}
@@ -474,7 +474,7 @@ function PeriodBar({
           padding: '9px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 9,
         }}>
           <Info size={14} style={{ color: '#b45309', flexShrink: 0, marginTop: 2 }} />
-          <span style={{ fontFamily: OUTFIT, fontSize: 12, color: '#92400e', lineHeight: 1.55 }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: 13, color: '#92400e', lineHeight: 1.55 }}>
             This is short of the filter. At the <strong>{unitWord(grain, 1)}</strong> grain only the
             most recent {options.length} {unitWord(grain, options.length)} are built, so nothing
             before {shortDate(options[0]?.start)} is available here — not the whole of
@@ -492,10 +492,10 @@ function PartsTable({ parts, total, currency, grain, basis }) {
   const unit = `${basis === 'calendar' ? 'Calendar' : 'Fiscal'} ${unitWord(grain, 1)}`;
   return (
     <div style={cardStyle}>
-      <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+      <div style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
         The {parts.length} {unitWord(grain, parts.length)} behind that total
       </div>
-      <p style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#64748b', margin: '0 0 12px', lineHeight: 1.55 }}>
+      <p style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: '#64748b', margin: '0 0 12px', lineHeight: 1.55 }}>
         The total is not these rows added up on the margin line — income and profit are summed
         across every month and the margin worked out once from those, because an average of five
         margins is not the margin of five years.
@@ -536,11 +536,10 @@ function PartsTable({ parts, total, currency, grain, basis }) {
 }
 
 const pTh = {
-  fontFamily: OUTFIT, fontSize: 11, color: '#94a3b8', fontWeight: 700, textAlign: 'left',
+  fontFamily: OUTFIT, fontSize: 12, color: '#94a3b8', fontWeight: 700, textAlign: 'left',
   padding: '8px 10px', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
-  textTransform: 'uppercase', letterSpacing: '0.04em',
-};
-const pTd = { fontFamily: OUTFIT, fontSize: 13, color: '#334155', padding: '9px 10px', borderBottom: '1px solid #f1f5f9' };
+  };
+const pTd = { fontFamily: OUTFIT, fontSize: 14, color: '#334155', padding: '9px 10px', borderBottom: '1px solid #f1f5f9' };
 const pNum = { ...pTd, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 };
 const pTotal = { borderTop: '2px solid #e5e7eb', borderBottom: 'none', color: '#0f172a' };
 
@@ -593,14 +592,14 @@ function SuggestionCard({ suggestions, currency, busy, onConfirm, onDismiss }) {
     <div style={{ ...cardStyle, borderColor: '#fcd34d', backgroundColor: '#fffbeb' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <Sparkles size={17} style={{ color: '#b45309' }} />
-        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+        <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>
           Suggested director personal items
         </span>
-        <span style={{ fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: '#b45309', marginLeft: 'auto' }}>
+        <span style={{ fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#b45309', marginLeft: 'auto' }}>
           {suggestions.length} to review
         </span>
       </div>
-      <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#92400e', margin: '4px 0 10px', display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
+      <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#92400e', margin: '4px 0 10px', display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
         <Info size={13} style={{ flexShrink: 0, marginTop: '1px' }} />
         These nominal codes look like the owner taking money out rather than costs of trading. Nothing is
         adjusted until you confirm — tick what should come out of underlying profit.
@@ -619,21 +618,21 @@ function SuggestionCard({ suggestions, currency, busy, onConfirm, onDismiss }) {
                 style={{ width: '16px', height: '16px', marginTop: '2px', accentColor: '#0369a1', cursor: 'pointer', flexShrink: 0 }}
               />
               <span style={{ minWidth: 0 }}>
-                <span style={{ fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+                <span style={{ fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>
                   {acctLabel(s.acct_num, s.account_name)}
                 </span>
                 <span style={{
-                  fontFamily: OUTFIT, fontSize: '10.5px', fontWeight: 700, marginLeft: '8px',
+                  fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 700, marginLeft: '8px',
                   padding: '2px 6px', borderRadius: '5px', backgroundColor: '#fef3c7', color: '#92400e',
                   whiteSpace: 'nowrap',
                 }}>{s.rule_label}</span>
-                {s.income && <span style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#b45309', marginLeft: '6px' }}>· income</span>}
-                <span style={{ display: 'block', fontFamily: OUTFIT, fontSize: '12px', color: '#78716c', marginTop: '2px' }}>
+                {s.income && <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#b45309', marginLeft: '6px' }}>· income</span>}
+                <span style={{ display: 'block', fontFamily: OUTFIT, fontSize: '13px', color: '#78716c', marginTop: '2px' }}>
                   {s.why}
                 </span>
               </span>
               <span style={{
-                marginLeft: 'auto', paddingLeft: '10px', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600,
+                marginLeft: 'auto', paddingLeft: '10px', fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600,
                 color: Math.abs(s.amount) > 0.005 ? '#334155' : '#a8a29e', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
               }}>
                 {money(s.amount, currency)}
@@ -662,7 +661,7 @@ function SuggestionCard({ suggestions, currency, busy, onConfirm, onDismiss }) {
           </button>
         )}
         {picked.length > 0 && (
-          <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#92400e', marginLeft: 'auto' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#92400e', marginLeft: 'auto' }}>
             Adds {money(impact, currency)} back to underlying profit
           </span>
         )}
@@ -678,7 +677,7 @@ function Tile({ label, value, text, currency, accent, delta }) {
       backgroundColor: accent ? '#f0f9ff' : '#ffffff',
       border: `1px solid ${accent ? '#7dd3fc' : '#e5e7eb'}`, borderRadius: '12px', padding: '14px 16px',
     }}>
-      <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>{label}</div>
+      <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', marginBottom: '4px' }}>{label}</div>
       <div style={{ fontFamily: OUTFIT, fontSize: '22px', fontWeight: 700, color: (value ?? 0) < 0 ? '#991b1b' : accent ? '#0369a1' : '#0f172a' }}>
         {text != null ? text : money(value, currency)}
       </div>
@@ -691,11 +690,11 @@ function Tile({ label, value, text, currency, accent, delta }) {
 function MoneyDelta({ now, prev, currency, label = 'vs prior period' }) {
   if (now == null || prev == null) return null;
   const diff = now - prev;
-  if (Math.abs(diff) < 0.005) return <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>unchanged {label}</span>;
+  if (Math.abs(diff) < 0.005) return <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8' }}>unchanged {label}</span>;
   const up = diff > 0;
   const Icon = up ? ArrowUpRight : ArrowDownRight;
   return (
-    <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 600, color: up ? '#166534' : '#991b1b', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+    <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', fontWeight: 600, color: up ? '#166534' : '#991b1b', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
       <Icon size={12} /> {money(Math.abs(diff), currency)} {label}
     </span>
   );
@@ -705,11 +704,11 @@ function MoneyDelta({ now, prev, currency, label = 'vs prior period' }) {
 function PpDelta({ now, prev, label = 'vs prior period' }) {
   if (now == null || prev == null) return null;
   const diff = now - prev;
-  if (Math.abs(diff) < 0.05) return <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>unchanged {label}</span>;
+  if (Math.abs(diff) < 0.05) return <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8' }}>unchanged {label}</span>;
   const up = diff > 0;
   const Icon = up ? ArrowUpRight : ArrowDownRight;
   return (
-    <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 600, color: up ? '#166534' : '#991b1b', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+    <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', fontWeight: 600, color: up ? '#166534' : '#991b1b', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
       <Icon size={12} /> {Math.abs(diff).toFixed(1)} pp {label}
     </span>
   );
@@ -743,10 +742,10 @@ function SectionHead({ title, hint, busy }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>{title}</span>
+        <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>{title}</span>
         {busy && <Loader size={13} style={{ color: '#7dd3fc', animation: 'spin 1s linear infinite' }} />}
       </div>
-      <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', margin: '4px 0 10px', display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
+      <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', margin: '4px 0 10px', display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
         <Info size={13} style={{ flexShrink: 0, marginTop: '1px' }} /> {hint}
       </p>
     </div>
@@ -808,7 +807,7 @@ function NominalPicker({ accounts, value, onChange, placeholder = 'Search nomina
   })();
 
   const trigger = {
-    ...inputStyle, width: '100%', fontSize: '13px', padding: '8px 10px', cursor: 'pointer',
+    ...inputStyle, width: '100%', fontSize: '14px', padding: '8px 10px', cursor: 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
     color: selected ? '#0f172a' : '#94a3b8', backgroundColor: '#ffffff',
   };
@@ -832,18 +831,17 @@ function NominalPicker({ accounts, value, onChange, placeholder = 'Search nomina
             <div style={{ padding: '8px' }}>
               <input
                 autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type to search…"
-                style={{ ...inputStyle, width: '100%', fontSize: '13px', padding: '7px 10px' }}
+                style={{ ...inputStyle, width: '100%', fontSize: '14px', padding: '7px 10px' }}
               />
             </div>
             <div style={{ maxHeight: '280px', overflowY: 'auto', paddingBottom: '6px' }}>
               {groups.length === 0 && (
-                <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', padding: '8px 14px' }}>No matches.</div>
+                <div style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: '#94a3b8', padding: '8px 14px' }}>No matches.</div>
               )}
               {groups.map((g) => (
                 <div key={g.cat}>
                   <div style={{
-                    fontFamily: OUTFIT, fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.04em',
-                    textTransform: 'uppercase', color: '#94a3b8', padding: '8px 14px 4px',
+                    fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 700, color: '#94a3b8', padding: '8px 14px 4px',
                     position: 'sticky', top: 0, backgroundColor: '#f8fafc',
                   }}>{g.label}</div>
                   {g.items.map((a) => (
@@ -852,7 +850,7 @@ function NominalPicker({ accounts, value, onChange, placeholder = 'Search nomina
                       style={{
                         display: 'block', width: '100%', textAlign: 'left', border: 'none',
                         background: a.id === value ? '#f0f9ff' : 'transparent', cursor: 'pointer',
-                        fontFamily: OUTFIT, fontSize: '13px', color: '#334155',
+                        fontFamily: OUTFIT, fontSize: '14px', color: '#334155',
                         padding: `7px 14px 7px ${a.is_sub ? '28px' : '14px'}`,
                       }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; }}
@@ -874,7 +872,7 @@ function NominalPicker({ accounts, value, onChange, placeholder = 'Search nomina
 
 function OneoffList({ items, currency, onRemove }) {
   if (!items.length) return (
-    <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', margin: '6px 0 12px' }}>
+    <p style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#94a3b8', margin: '6px 0 12px' }}>
       No one-off adjustments yet.
     </p>
   );
@@ -883,16 +881,16 @@ function OneoffList({ items, currency, onRemove }) {
       {items.map((e) => (
         <div key={e.id} style={{ ...rowStyle, opacity: e.in_period ? 1 : 0.5 }}>
           <span style={{
-            fontFamily: OUTFIT, fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px',
+            fontFamily: OUTFIT, fontSize: '12px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px',
             backgroundColor: e.kind === 'cost' ? '#fef2f2' : '#f0fdf4',
             color: e.kind === 'cost' ? '#991b1b' : '#166534',
           }}>{e.kind === 'cost' ? 'Cost' : 'Income'}</span>
-          <span style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#0f172a' }}>{shortDate(e.entry_date)}</span>
-          <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#64748b' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#0f172a' }}>{shortDate(e.entry_date)}</span>
+          <span style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: '#64748b' }}>
             {e.account_name ? acctLabel(e.acct_num, e.account_name) : ''}{e.note ? ` · ${e.note}` : ''}
             {!e.in_period && <span style={{ color: '#b45309' }}> · outside selected period</span>}
           </span>
-          <span style={{ marginLeft: 'auto', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#334155', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ marginLeft: 'auto', fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: '#334155', fontVariantNumeric: 'tabular-nums' }}>
             {money(e.amount, currency)}
           </span>
           <button onClick={() => onRemove(e.id)} title="Remove" style={iconBtn}>
@@ -911,7 +909,7 @@ function AddOneoff({ accounts, onAdd }) {
   const [accountId, setAccountId] = useState('');
   const [note, setNote] = useState('');
   const canAdd = date && amount && !isNaN(Number(amount)) && accountId;
-  const inp = { ...inputStyle, fontSize: '13px', padding: '8px 10px' };
+  const inp = { ...inputStyle, fontSize: '14px', padding: '8px 10px' };
   return (
     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
       <select value={kind} onChange={(e) => setKind(e.target.value)} style={{ ...inp, appearance: 'auto', flex: '0 0 110px' }}>
@@ -938,5 +936,5 @@ function AddOneoff({ accounts, onAdd }) {
 const addBtn = {
   display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
   border: '1px solid #7dd3fc', borderRadius: '10px', backgroundColor: '#f0f9ff',
-  fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#0369a1',
+  fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: '#0369a1',
 };

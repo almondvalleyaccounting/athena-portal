@@ -145,14 +145,14 @@ export default function BillingAddNewPage() {
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Add new
       </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 760, marginBottom: 14 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 760, marginBottom: 14 }}>
         BrightManager clients with services switched on but no QuickBooks customer (and therefore no billing in Athena). Pick a client, set fee amounts per service (or leave at £0 to price later), add an internal note, and send it to Import / Review for approval. The service description is what appears on the client's invoice; notes stay internal.
       </p>
 
       <BillingTabs active="addnew" />
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : candidates.length === 0 ? (
         <EmptyState
           icon="✓"
@@ -183,7 +183,7 @@ export default function BillingAddNewPage() {
             />
           ) : (
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
                     <Th>Client</Th>
@@ -202,11 +202,11 @@ export default function BillingAddNewPage() {
                         </a>
                       </Td>
                       <Td style={{ color: '#64748b', textTransform: 'capitalize' }}>{c.type?.replace('_', ' ')}</Td>
-                      <Td style={{ color: '#64748b', fontFamily: 'monospace', fontSize: 11 }}>{c.bm_client_id || '—'}</Td>
+                      <Td style={{ color: '#64748b', fontFamily: 'monospace', fontSize: 12 }}>{c.bm_client_id || '—'}</Td>
                       <Td>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                           {c.services.map((sid) => (
-                            <span key={sid} style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#f1f5f9', color: '#475569' }}>
+                            <span key={sid} style={{ fontSize: 11, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#f1f5f9', color: '#475569' }}>
                               {SERVICE_BY_ID[sid]?.label || sid}
                             </span>
                           ))}
@@ -216,7 +216,7 @@ export default function BillingAddNewPage() {
                         <button
                           onClick={() => setAdding(c)}
                           disabled={saving}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, padding: '5px 10px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, padding: '5px 10px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
                         >
                           <Plus size={12} /> Add billing
                         </button>
@@ -317,11 +317,11 @@ function AddBillingModal({ candidate, qboItems, onClose, onApply, saving }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18 }}>×</button>
         </div>
         <div style={{ padding: 18 }}>
-          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 10 }}>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
             {candidate.type?.replace('_', ' ')} · BM Ref {candidate.bm_client_id || '—'}. Services pre-populated from the capacity planner — edit or remove any line. Amounts can be left at £0 and set at approval — every line goes to <strong>Import / Review</strong> before it's billed.
           </div>
 
-          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <Th>Service</Th>
@@ -372,7 +372,7 @@ function AddBillingModal({ candidate, qboItems, onClose, onApply, saving }) {
             </tbody>
           </table>
 
-          <button onClick={addLine} style={{ marginTop: 8, fontSize: 11, fontWeight: 500, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: font, padding: 0 }}>
+          <button onClick={addLine} style={{ marginTop: 8, fontSize: 12, fontWeight: 500, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: font, padding: 0 }}>
             + add another line
           </button>
 
@@ -383,7 +383,7 @@ function AddBillingModal({ candidate, qboItems, onClose, onApply, saving }) {
           </div>
 
           <div style={{ marginTop: 14 }}>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
               Notes <span style={{ fontWeight: 400, color: '#94a3b8' }}>(internal only — not shown on the invoice; visible to you at approval)</span>
             </label>
             <textarea
@@ -391,7 +391,7 @@ function AddBillingModal({ candidate, qboItems, onClose, onApply, saving }) {
               onChange={(e) => setComment(e.target.value)}
               rows={2}
               placeholder="Why this bill is being raised — e.g. new client onboarded, amount to be confirmed at approval"
-              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', resize: 'vertical' }}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', resize: 'vertical' }}
             />
           </div>
 
@@ -415,7 +415,7 @@ function Stat({ label, value, tone }) {
   const t = tones[tone] || tones.neutral;
   return (
     <div>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 700, color: t.fg, fontFamily: 'monospace', marginTop: 2 }}>{value}</div>
     </div>
   );
@@ -426,7 +426,7 @@ function Pill({ label, count, active, tone, onClick }) {
   const isMaster = !tone;
   return (
     <button onClick={onClick} style={{
-      fontSize: 12, fontWeight: active ? 600 : 500,
+      fontSize: 13, fontWeight: active ? 600 : 500,
       padding: '5px 12px', borderRadius: 999,
       background: active ? (isMaster ? '#0f172a' : t.bg) : '#fff',
       color: active && isMaster ? '#fff' : t.fg,
@@ -438,12 +438,12 @@ function Pill({ label, count, active, tone, onClick }) {
   );
 }
 
-const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</th>;
+const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{children}</th>;
 const Td = ({ children, align, style }) => <td style={{ padding: '8px 12px', verticalAlign: 'middle', textAlign: align || 'left', ...style }}>{children}</td>;
 
 const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: font };
 const modalStyle = { background: '#fff', borderRadius: 12, width: 720, maxWidth: '95vw', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' };
-const inlineInput = { padding: '4px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', width: '100%', boxSizing: 'border-box' };
-const modalBtnPrimary = { padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const modalBtnGhost = { padding: '8px 14px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const inlineInput = { padding: '4px 8px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', width: '100%', boxSizing: 'border-box' };
+const modalBtnPrimary = { padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const modalBtnGhost = { padding: '8px 14px', fontSize: 14, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const iconBtnSmall = { width: 22, height: 22, padding: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, color: '#b91c1c', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };

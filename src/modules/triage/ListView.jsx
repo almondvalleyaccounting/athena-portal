@@ -54,8 +54,8 @@ export default function ListView({ cases, actionsByCase, staffMap, staffList, on
     else { setSortKey(key); setAsc(true); }
   }
 
-  const th = { textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#f8fafc', cursor: 'pointer', userSelect: 'none' };
-  const td = { padding: '8px 10px', fontSize: 12.5, color: '#334155', borderBottom: '1px solid #f1f5f9', verticalAlign: 'top' };
+  const th = { textAlign: 'left', padding: '8px 10px', fontSize: 12, fontWeight: 700, color: '#64748b', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#f8fafc', cursor: 'pointer', userSelect: 'none' };
+  const td = { padding: '8px 10px', fontSize: 13.5, color: '#334155', borderBottom: '1px solid #f1f5f9', verticalAlign: 'top' };
 
   return (
     <div>
@@ -75,7 +75,7 @@ export default function ListView({ cases, actionsByCase, staffMap, staffList, on
           <option value="__none">No owner</option>
           {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 'auto' }}>{rows.length} case{rows.length === 1 ? '' : 's'}</span>
+        <span style={{ fontSize: 13, color: '#94a3b8', marginLeft: 'auto' }}>{rows.length} case{rows.length === 1 ? '' : 's'}</span>
       </div>
 
       <div style={{ ...card, overflow: 'auto', maxHeight: 'calc(100vh - 260px)' }}>

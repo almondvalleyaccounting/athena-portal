@@ -159,7 +159,7 @@ export default function PricingView() {
           opinion, not data. Say so once, loudly, rather than letting a
           column of "no time data" whisper it. */}
       {rows.length > 10 && timeCoveredClients < rows.length * 0.1 && (
-        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 12.5, color: '#92400e', lineHeight: 1.6 }}>
+        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 13.5, color: '#92400e', lineHeight: 1.6 }}>
           <b>Margins are blind right now:</b> the last twelve months hold time entries for only {timeCoveredClients} of {rows.length} clients,
           so the margin and £/hr columns are empty for nearly everyone. The uplift workflow works regardless — but pricing decisions can't
           be cost-informed until either the team logs time in Athena, or we cost clients from planned effort per service instead
@@ -185,7 +185,7 @@ export default function PricingView() {
         <Field label="Reason">
           <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} style={{ ...input, width: 220 }} />
         </Field>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#475569', paddingBottom: 8, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#475569', paddingBottom: 8, cursor: 'pointer' }}>
           <input type="checkbox" checked={roundUp} onChange={(e) => setRoundUp(e.target.checked)} />
           Round up to £0.50
         </label>
@@ -193,7 +193,7 @@ export default function PricingView() {
 
       {/* Impact + action */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', margin: '14px 0', flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 13, color: '#475569' }}>
+        <div style={{ fontSize: 14, color: '#475569' }}>
           <b>{selected.size}</b> client{selected.size !== 1 ? 's' : ''} selected
           {selected.size > 0 && (
             <> · {fmtGBP(impact.curr)}/mo → <b style={{ color: GREEN }}>{fmtGBP(impact.next)}/mo</b>
@@ -209,7 +209,7 @@ export default function PricingView() {
         </button>
       </div>
       {msg && (
-        <div style={{ fontSize: 12.5, padding: '8px 12px', borderRadius: 8, marginBottom: 12, background: msg.tone === 'ok' ? '#f0fdf4' : '#fef2f2', border: `1px solid ${msg.tone === 'ok' ? '#bbf7d0' : '#fecaca'}`, color: msg.tone === 'ok' ? '#166534' : '#991b1b' }}>
+        <div style={{ fontSize: 13.5, padding: '8px 12px', borderRadius: 8, marginBottom: 12, background: msg.tone === 'ok' ? '#f0fdf4' : '#fef2f2', border: `1px solid ${msg.tone === 'ok' ? '#bbf7d0' : '#fecaca'}`, color: msg.tone === 'ok' ? '#166534' : '#991b1b' }}>
           {msg.text}
         </div>
       )}
@@ -232,9 +232,9 @@ export default function PricingView() {
       {/* Client table */}
       <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse', minWidth: 860 }}>
+          <table style={{ width: '100%', fontSize: 13.5, borderCollapse: 'collapse', minWidth: 860 }}>
             <thead>
-              <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
                 <th style={{ ...th, width: 34 }} />
                 <th style={{ ...th, textAlign: 'left' }}>Client</th>
                 <th style={th}>Monthly fee</th>
@@ -262,8 +262,8 @@ export default function PricingView() {
                     <td style={{ ...td, textAlign: 'left' }}>
                       {r.entity_name}
                       {r.template_linked
-                        ? <span style={{ marginLeft: 6, fontSize: 8.5, fontWeight: 800, color: '#fff', background: GREEN, padding: '1px 5px', borderRadius: 4 }}>CONTRACTED</span>
-                        : <span style={{ marginLeft: 6, fontSize: 8.5, fontWeight: 800, color: '#fff', background: AMBER, padding: '1px 5px', borderRadius: 4 }}>ESTIMATE</span>}
+                        ? <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: '#fff', background: GREEN, padding: '1px 5px', borderRadius: 4 }}>CONTRACTED</span>
+                        : <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: '#fff', background: AMBER, padding: '1px 5px', borderRadius: 4 }}>ESTIMATE</span>}
                     </td>
                     <td style={td}>{fmtGBP(r.monthly_net)}</td>
                     <td style={{ ...td, color: GREEN, fontWeight: 600 }}>{selected.has(r.id) ? fmtGBP(proposedRow) : '—'}</td>
@@ -277,12 +277,12 @@ export default function PricingView() {
                     </td>
                     <td style={{ ...td, textAlign: 'center' }}>
                       {r.hasPending
-                        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 700, color: GREEN }}><CheckCircle2 size={12} /> staged</span>
+                        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: GREEN }}><CheckCircle2 size={12} /> staged</span>
                         : r.marginPct != null && r.marginPct < 0 && r.hoursLtm > 0
-                          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 700, color: RED }}><AlertTriangle size={12} /> below cost</span>
+                          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, color: RED }}><AlertTriangle size={12} /> below cost</span>
                           : (r.monthsSinceUplift == null || r.monthsSinceUplift >= 12)
-                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 600, color: AMBER }}><Clock size={12} /> due</span>
-                            : <span style={{ fontSize: 10.5, color: GREY }}>ok</span>}
+                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 600, color: AMBER }}><Clock size={12} /> due</span>
+                            : <span style={{ fontSize: 11.5, color: GREY }}>ok</span>}
                     </td>
                   </tr>
                 );
@@ -295,7 +295,7 @@ export default function PricingView() {
         </div>
       </div>
 
-      <p style={{ fontSize: 11.5, color: GREY, marginTop: 10, lineHeight: 1.6 }}>
+      <p style={{ fontSize: 12.5, color: GREY, marginTop: 10, lineHeight: 1.6 }}>
         Margin = annual fee less cost-to-serve from the last twelve months of timesheets at fully-loaded staff rates
         (same maths as the Profitability tab). "No time data" means no hours were logged against the client — the fee
         may still be fine. Clients already staged are locked here until the round is released or rejected in Billing.
@@ -307,7 +307,7 @@ export default function PricingView() {
 function Field({ label, children }) {
   return (
     <div>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>{label}</div>
       {children}
     </div>
   );
@@ -316,7 +316,7 @@ function Field({ label, children }) {
 function FilterChip({ label, active, onClick, colour }) {
   return (
     <button onClick={onClick} style={{
-      padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 999, cursor: 'pointer', fontFamily: font,
+      padding: '5px 12px', fontSize: 13, fontWeight: 600, borderRadius: 999, cursor: 'pointer', fontFamily: font,
       background: active ? (colour || '#0f172a') : '#fff',
       color: active ? '#fff' : (colour || '#475569'),
       border: `1px solid ${active ? (colour || '#0f172a') : '#e5e7eb'}`,
@@ -326,9 +326,9 @@ function FilterChip({ label, active, onClick, colour }) {
 
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
 const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: 0 };
-const sub = { fontSize: 12, color: '#64748b', margin: '6px 0 0', lineHeight: 1.6 };
+const sub = { fontSize: 13, color: '#64748b', margin: '6px 0 0', lineHeight: 1.6 };
 const th = { padding: '9px 12px', textAlign: 'right', fontWeight: 600 };
 const td = { padding: '7px 12px', textAlign: 'right', color: '#0f172a', fontVariantNumeric: 'tabular-nums' };
-const input = { padding: '7px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 7, background: '#fff', color: '#0f172a', outline: 'none', boxSizing: 'border-box' };
-const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font };
-const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: font };
+const input = { padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 7, background: '#fff', color: '#0f172a', outline: 'none', boxSizing: 'border-box' };
+const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font };
+const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: font };

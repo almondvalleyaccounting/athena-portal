@@ -77,7 +77,7 @@ function Pill({ tone, children }) {
   return (
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: 999,
-      fontSize: 11, fontWeight: 600, background: t.bg, color: t.fg,
+      fontSize: 12, fontWeight: 600, background: t.bg, color: t.fg,
       whiteSpace: 'nowrap',
     }}>
       {children}
@@ -92,12 +92,12 @@ function Field({ icon: Icon, label, children }) {
       <Icon size={15} color="#94a3b8" style={{ flexShrink: 0, marginTop: 2 }} />
       <div>
         <div style={{
-          fontSize: 11, fontWeight: 700, color: '#94a3b8',
-          textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2,
+          fontSize: 12, fontWeight: 700, color: '#94a3b8',
+          marginBottom: 2,
         }}>
           {label}
         </div>
-        <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.55 }}>{children}</div>
+        <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.55 }}>{children}</div>
       </div>
     </div>
   );
@@ -105,7 +105,7 @@ function Field({ icon: Icon, label, children }) {
 
 const btn = (primary) => ({
   display: 'inline-flex', alignItems: 'center', gap: 5,
-  padding: '5px 11px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '5px 11px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   color: primary ? '#fff' : '#0f172a',
   background: primary ? '#0f172a' : '#fff',
   border: `1px solid ${primary ? '#0f172a' : '#e2e8f0'}`,
@@ -113,7 +113,7 @@ const btn = (primary) => ({
 });
 
 const inputStyle = {
-  fontFamily: mono, fontSize: 13, padding: '5px 8px',
+  fontFamily: mono, fontSize: 14, padding: '5px 8px',
   border: '1px solid #cbd5e1', borderRadius: 6, color: '#0f172a',
 };
 
@@ -154,18 +154,18 @@ function SettingControl({ jobKey, setting, onSave, busy }) {
           }} />
         </button>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
             {setting.label}
             {clientFacing && (
               <span style={{ marginLeft: 8 }}><Pill tone="amber">client-facing</Pill></span>
             )}
           </div>
           {setting.help && (
-            <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.5, marginTop: 1 }}>
+            <div style={{ fontSize: 13.5, color: '#64748b', lineHeight: 1.5, marginTop: 1 }}>
               {setting.help}
             </div>
           )}
-          <div style={{ fontSize: 11, color: '#b6c2d1', fontFamily: mono, marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: '#b6c2d1', fontFamily: mono, marginTop: 2 }}>
             {setting.binding}
           </div>
         </div>
@@ -183,7 +183,7 @@ function SettingControl({ jobKey, setting, onSave, busy }) {
 
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 3 }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 3 }}>
         {setting.label}
       </div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -206,17 +206,17 @@ function SettingControl({ jobKey, setting, onSave, busy }) {
           </>
         )}
         {setting.value_type === 'int' && (setting.min_value != null || setting.max_value != null) && (
-          <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+          <span style={{ fontSize: 12.5, color: '#94a3b8' }}>
             {setting.min_value}–{setting.max_value}
           </span>
         )}
       </div>
       {setting.help && (
-        <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.5, marginTop: 3 }}>
+        <div style={{ fontSize: 13.5, color: '#64748b', lineHeight: 1.5, marginTop: 3 }}>
           {setting.help}
         </div>
       )}
-      <div style={{ fontSize: 11, color: '#b6c2d1', fontFamily: mono, marginTop: 2 }}>
+      <div style={{ fontSize: 12, color: '#b6c2d1', fontFamily: mono, marginTop: 2 }}>
         {setting.binding}
       </div>
     </div>
@@ -246,11 +246,11 @@ function ScheduleEditor({ job, onSaveSchedule, onToggleActive, busy }) {
   if (!editing) {
     return (
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, color: '#334155' }}>
+        <span style={{ fontSize: 14, color: '#334155' }}>
           {job.cron_expression ? describeCron(job.cron_expression) : (job.external_schedule || 'No schedule recorded')}
         </span>
         {job.cron_expression && (
-          <code style={{ fontFamily: mono, fontSize: 12, background: '#eef2f7', padding: '1px 5px', borderRadius: 4 }}>
+          <code style={{ fontFamily: mono, fontSize: 13, background: '#eef2f7', padding: '1px 5px', borderRadius: 4 }}>
             {job.cron_expression}
           </code>
         )}
@@ -285,16 +285,16 @@ function ScheduleEditor({ job, onSaveSchedule, onToggleActive, busy }) {
           <X size={13} /> Cancel
         </button>
       </div>
-      <div style={{ fontSize: 12.5, color: valid ? '#334155' : '#b91c1c', marginTop: 6 }}>
+      <div style={{ fontSize: 13.5, color: valid ? '#334155' : '#b91c1c', marginTop: 6 }}>
         {valid ? describeCron(draft) : 'Five fields, separated by spaces — minute hour day-of-month month day-of-week.'}
       </div>
       {valid && preview.length > 0 && (
-        <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
+        <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>
           Would next run {preview.map((p) => `${formatLondon(p)} (${formatUtcTime(p)})`).join(' · ')}
         </div>
       )}
       {job.source === 'external' && (
-        <div style={{ fontSize: 12.5, color: '#92400e', marginTop: 6 }}>
+        <div style={{ fontSize: 13.5, color: '#92400e', marginTop: 6 }}>
           Athena only records the intended cadence for this one — the scheduler on the
           machine that runs it has to be pointed at the same time separately.
         </div>
@@ -316,8 +316,7 @@ function TextBlock({ label, hint, value, placeholder, onSave, busy, monoFont }) 
         onClick={() => setOpen((o) => !o)}
         style={{
           background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-          fontFamily: font, fontSize: 11, fontWeight: 700, color: '#94a3b8',
-          textTransform: 'uppercase', letterSpacing: 0.5,
+          fontFamily: font, fontSize: 12, fontWeight: 700, color: '#94a3b8',
           display: 'flex', alignItems: 'center', gap: 5,
         }}
       >
@@ -328,7 +327,7 @@ function TextBlock({ label, hint, value, placeholder, onSave, busy, monoFont }) 
       {open && (
         <div style={{ marginTop: 6 }}>
           {hint && (
-            <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 5, lineHeight: 1.5 }}>{hint}</div>
+            <div style={{ fontSize: 13.5, color: '#64748b', marginBottom: 5, lineHeight: 1.5 }}>{hint}</div>
           )}
           <textarea
             value={draft}
@@ -495,7 +494,7 @@ export default function SchedulesPage() {
         <h1 style={{ fontFamily: serif, fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
           Scheduled Jobs
         </h1>
-        <p style={{ fontSize: 14, color: '#64748b' }}>
+        <p style={{ fontSize: 14.5, color: '#64748b' }}>
           You need the Portal admin permission to view the schedule.
         </p>
       </div>
@@ -507,7 +506,7 @@ export default function SchedulesPage() {
       {notice && (
         <div style={{
           position: 'fixed', bottom: 22, right: 22, zIndex: 50, maxWidth: 420,
-          padding: '11px 16px', borderRadius: 9, fontSize: 13, fontWeight: 500,
+          padding: '11px 16px', borderRadius: 9, fontSize: 14, fontWeight: 500,
           background: notice.tone === 'red' ? '#991b1b' : '#0f172a', color: '#fff',
           boxShadow: '0 8px 24px rgba(15,23,42,.22)',
         }}>
@@ -520,7 +519,7 @@ export default function SchedulesPage() {
           <h1 style={{ fontFamily: serif, fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
             Scheduled Jobs
           </h1>
-          <p style={{ fontSize: 14, color: '#64748b', maxWidth: 780, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 14.5, color: '#64748b', maxWidth: 780, lineHeight: 1.6 }}>
             Everything Athena runs on a timer — what it does, where it gets its data,
             when it next fires, and the settings it obeys. Open a row to change a
             switch, a threshold or the schedule itself; changes take effect on the next
@@ -528,7 +527,7 @@ export default function SchedulesPage() {
             at 09:00 London through the summer.
           </p>
         </div>
-        <button onClick={load} style={{ ...btn(false), padding: '8px 14px', fontSize: 13, flexShrink: 0 }}>
+        <button onClick={load} style={{ ...btn(false), padding: '8px 14px', fontSize: 14, flexShrink: 0 }}>
           <RefreshCw size={14} /> Refresh
         </button>
       </div>
@@ -541,7 +540,7 @@ export default function SchedulesPage() {
         {counts.failed > 0 && <Pill tone="red">{counts.failed} last run failed</Pill>}
       </div>
       {nextUp && (
-        <p style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>
+        <p style={{ fontSize: 14, color: '#64748b', marginBottom: 24 }}>
           Next up: <strong style={{ color: '#0f172a' }}>{nextUp.title}</strong>
           {' '}{relativeTo(nextUp.next, now)} — {formatLondon(nextUp.next)}
         </p>
@@ -550,20 +549,20 @@ export default function SchedulesPage() {
       {error && (
         <div style={{
           background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8,
-          padding: '12px 16px', fontSize: 13, color: '#991b1b', marginBottom: 20,
+          padding: '12px 16px', fontSize: 14, color: '#991b1b', marginBottom: 20,
         }}>
           Couldn&rsquo;t load the schedule: {error}
         </div>
       )}
 
-      {loading && <p style={{ fontSize: 14, color: '#64748b' }}>Loading&hellip;</p>}
+      {loading && <p style={{ fontSize: 14.5, color: '#64748b' }}>Loading&hellip;</p>}
 
       {!loading && grouped.map(([category, catRows]) => (
         <section key={category} style={{ marginBottom: 32 }}>
           <h2 style={{ fontFamily: serif, fontSize: 19, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
             {category}
           </h2>
-          <p style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 12 }}>
+          <p style={{ fontSize: 13.5, color: '#94a3b8', marginBottom: 12 }}>
             {CATEGORY_BLURB[category] || ''}
           </p>
 
@@ -586,9 +585,9 @@ export default function SchedulesPage() {
                     <Chevron size={16} color="#94a3b8" />
 
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{job.title}</div>
+                      <div style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>{job.title}</div>
                       <div style={{
-                        fontSize: 11.5, color: '#94a3b8', fontFamily: mono,
+                        fontSize: 12.5, color: '#94a3b8', fontFamily: mono,
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
                         {job.job_key}
@@ -596,9 +595,9 @@ export default function SchedulesPage() {
                     </div>
 
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, color: '#334155' }}>{job.scheduleText}</div>
+                      <div style={{ fontSize: 14, color: '#334155' }}>{job.scheduleText}</div>
                       {job.cron_expression && (
-                        <div style={{ fontSize: 11.5, color: '#94a3b8', fontFamily: mono }}>
+                        <div style={{ fontSize: 12.5, color: '#94a3b8', fontFamily: mono }}>
                           {job.cron_expression}
                         </div>
                       )}
@@ -607,15 +606,15 @@ export default function SchedulesPage() {
                     <div>
                       {job.next ? (
                         <>
-                          <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 500 }}>
+                          <div style={{ fontSize: 14, color: '#0f172a', fontWeight: 500 }}>
                             {relativeTo(job.next, now)}
                           </div>
-                          <div style={{ fontSize: 11.5, color: '#94a3b8' }}>
+                          <div style={{ fontSize: 12.5, color: '#94a3b8' }}>
                             {formatLondon(job.next)} · {formatUtcTime(job.next)}
                           </div>
                         </>
                       ) : (
-                        <span style={{ fontSize: 13, color: '#94a3b8' }}>—</span>
+                        <span style={{ fontSize: 14, color: '#94a3b8' }}>—</span>
                       )}
                     </div>
 
@@ -623,7 +622,7 @@ export default function SchedulesPage() {
                       <Pill tone={job.state.tone}>{job.state.label}</Pill>
                       {job.lastRun && (
                         <span style={{
-                          fontSize: 11.5,
+                          fontSize: 12.5,
                           color: job.last_run_status === 'failed' ? '#b91c1c' : '#94a3b8',
                         }}>
                           {job.last_run_status === 'failed' && <AlertTriangle size={10} style={{ marginRight: 3 }} />}
@@ -635,7 +634,7 @@ export default function SchedulesPage() {
 
                   {open && (
                     <div style={{ padding: '4px 16px 20px 50px', background: '#f8fafc' }}>
-                      <p style={{ fontSize: 13.5, color: '#0f172a', lineHeight: 1.6, marginBottom: 16, maxWidth: 760 }}>
+                      <p style={{ fontSize: 14.5, color: '#0f172a', lineHeight: 1.6, marginBottom: 16, maxWidth: 760 }}>
                         {job.purpose || 'No description written yet.'}
                       </p>
 
@@ -660,13 +659,13 @@ export default function SchedulesPage() {
                       {/* Settings — each one writes the config column the job reads. */}
                       <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, marginTop: 4, maxWidth: 760 }}>
                         <div style={{
-                          fontSize: 11, fontWeight: 700, color: '#94a3b8',
-                          textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10,
+                          fontSize: 12, fontWeight: 700, color: '#94a3b8',
+                          marginBottom: 10,
                         }}>
                           Settings
                         </div>
                         {job.settingList.length === 0 ? (
-                          <p style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.5 }}>
+                          <p style={{ fontSize: 13.5, color: '#94a3b8', lineHeight: 1.5 }}>
                             Nothing to configure — this job has no switch of its own, so it
                             does its work every time it fires.
                             {job.gate_label ? ` Gate: ${job.gate_label.replace(/\.$/, '')}.` : ''}
@@ -709,7 +708,7 @@ export default function SchedulesPage() {
                       {(job.command || job.last_run_message) && (
                         <div style={{
                           borderTop: '1px solid #e2e8f0', paddingTop: 10, marginTop: 14,
-                          fontSize: 11.5, color: '#94a3b8', fontFamily: mono,
+                          fontSize: 12.5, color: '#94a3b8', fontFamily: mono,
                         }}>
                           {job.command && <div>{job.command}</div>}
                           {job.last_run_message && (
@@ -740,7 +739,7 @@ export default function SchedulesPage() {
             {changes.map((c, i) => (
               <div key={`${c.changed_at}-${i}`} style={{
                 padding: '10px 16px', borderTop: i === 0 ? 'none' : '1px solid #f1f5f9',
-                fontSize: 12.5, color: '#334155', display: 'flex', gap: 10, flexWrap: 'wrap',
+                fontSize: 13.5, color: '#334155', display: 'flex', gap: 10, flexWrap: 'wrap',
               }}>
                 <span style={{ color: '#94a3b8', minWidth: 130 }}>{formatLondon(new Date(c.changed_at))}</span>
                 <span style={{ fontWeight: 600 }}>{c.title}</span>
@@ -761,7 +760,7 @@ export default function SchedulesPage() {
       )}
 
       {!loading && !error && (
-        <p style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6, maxWidth: 780 }}>
+        <p style={{ fontSize: 13.5, color: '#94a3b8', lineHeight: 1.6, maxWidth: 780 }}>
           Settings here are not copies: each one writes the config column the job already
           reads, and only columns with a registered binding can be written at all.
           Schedules change <code style={{ fontFamily: mono }}>cron.job</code> directly. An

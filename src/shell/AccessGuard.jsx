@@ -17,12 +17,12 @@ export default function AccessGuard({ profile, children }) {
           <Lock size={20} color="#64748b" />
         </div>
         <h1 style={{ margin: '0 0 6px', fontSize: 19, fontWeight: 700, color: '#0f172a' }}>You don&rsquo;t have access to this page</h1>
-        <p style={{ margin: '0 0 18px', fontSize: 13.5, color: '#64748b', lineHeight: 1.5 }}>
+        <p style={{ margin: '0 0 18px', fontSize: 14.5, color: '#64748b', lineHeight: 1.5 }}>
           It isn&rsquo;t switched on for your login. If you need it, ask an admin to turn it on in Settings › Staff &amp; Permissions.
         </p>
         <button
           onClick={() => navigate('/home')}
-          style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+          style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
         >
           Back to Home
         </button>

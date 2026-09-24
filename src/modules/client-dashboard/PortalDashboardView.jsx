@@ -146,7 +146,7 @@ export default function PortalDashboardView({
           background: `linear-gradient(120deg, ${t.navyDark}, ${t.navy} 60%, ${t.teal})`,
           padding: '22px 22px 18px', color: '#fff', marginBottom: 14,
         }}>
-          <div style={{ fontSize: 12.5, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.65)', fontWeight: 600 }}>
+          <div style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.65)', fontWeight: 600 }}>
             Your numbers
           </div>
           <div style={{ fontSize: 'clamp(19px, 4.2vw, 24px)', fontWeight: 700, margin: '5px 0 4px' }}>
@@ -157,7 +157,7 @@ export default function PortalDashboardView({
               figures. The line that used to precede it only told them what the
               page already is. */}
           {payload?.pulled_at && (
-            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.55 }}>
+            <div style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.55 }}>
               Last checked {shortDate(payload.pulled_at)}.
             </div>
           )}
@@ -168,7 +168,7 @@ export default function PortalDashboardView({
               onChange={(e) => setEntityId(e.target.value)}
               style={{
                 marginTop: 12, border: 'none', borderRadius: 9, padding: '8px 12px',
-                fontSize: 13, background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer',
+                fontSize: 14, background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer',
               }}
             >
               {grants.map((g) => (
@@ -189,7 +189,7 @@ export default function PortalDashboardView({
               onClick={() => ui.setTab(x.key)}
               style={{
                 padding: '9px 14px', border: 'none', background: 'none', cursor: 'pointer',
-                fontSize: 13, fontWeight: active === x.key ? 700 : 500,
+                fontSize: 14, fontWeight: active === x.key ? 700 : 500,
                 color: active === x.key ? t.navy : t.muted,
                 borderBottom: `2px solid ${active === x.key ? t.teal : 'transparent'}`,
                 marginBottom: -1,
@@ -237,7 +237,7 @@ export default function PortalDashboardView({
                     max={payload?.limits?.latest} min={payload?.limits?.earliest}
                     style={dateInput}
                   />
-                  <span style={{ color: t.faint, fontSize: 12 }}>to</span>
+                  <span style={{ color: t.faint, fontSize: 13 }}>to</span>
                   <input
                     type="date" value={ui.customPeriod.end}
                     onChange={(e) => ui.setCustomPeriod({ ...ui.customPeriod, end: e.target.value })}
@@ -286,7 +286,7 @@ export default function PortalDashboardView({
       )}
 
       {error && (
-        <div style={{ fontSize: 13.5, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '10px 14px' }}>
+        <div style={{ fontSize: 14.5, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '10px 14px' }}>
           {error}{' '}
           {onRetry && (
             <button onClick={onRetry} style={{ border: 'none', background: 'none', color: '#b91c1c', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>
@@ -421,7 +421,7 @@ function Overview({ payload, ui }) {
   return (
     <>
       <Card>
-        <div style={{ fontSize: 14.5, color: t.text, lineHeight: 1.65 }}>
+        <div style={{ fontSize: 15, color: t.text, lineHeight: 1.65 }}>
           In <strong>{latest.label}</strong> you turned over{' '}
           <strong>{money(cur.income, currency)}</strong> and {profitWord}{' '}
           <strong>{money(Math.abs(cur.net_income ?? 0), currency)}</strong>
@@ -527,7 +527,7 @@ function ProfitAndLoss({ payload, ui, currency, loading }) {
       <div style={{ padding: '16px 18px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <CardTitle>Profit &amp; loss</CardTitle>
-          <span style={{ fontSize: 11.5, color: t.faint, marginLeft: 'auto' }}>
+          <span style={{ fontSize: 12.5, color: t.faint, marginLeft: 'auto' }}>
             {shortDate(p?.start)} → {shortDate(p?.end)}
             {merged && cmpRange && ` vs ${shortDate(cmpRange.start)} → ${shortDate(cmpRange.end)}`}
             {' '}· {currency}
@@ -538,7 +538,7 @@ function ProfitAndLoss({ payload, ui, currency, loading }) {
           {merged && ' Both columns cover the same length of time, so they compare line for line.'}
         </Muted>
         {merged && !cmpPl?.report && (
-          <div style={{ fontSize: 12, color: t.amberText, marginTop: 8 }}>
+          <div style={{ fontSize: 13, color: t.amberText, marginTop: 8 }}>
             {loading ? 'Fetching the comparative period…' : "We couldn't fetch the earlier period, so the second column is empty."}
           </div>
         )}
@@ -615,7 +615,7 @@ function BalanceSheet({ payload, ui, currency, loading }) {
         <div style={{ padding: '16px 18px 6px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
             <CardTitle>Balance sheet</CardTitle>
-            <span style={{ fontSize: 11.5, color: t.faint, marginLeft: 'auto' }}>
+            <span style={{ fontSize: 12.5, color: t.faint, marginLeft: 'auto' }}>
               as at {shortDate(bs.period?.end)}
               {merged && cmpDate && ` vs ${shortDate(cmpDate)}`}
               {' '}· {currency}
@@ -630,7 +630,7 @@ function BalanceSheet({ payload, ui, currency, loading }) {
             {' '}Tap a heading to open it up and see the accounts inside.
           </Muted>
           {merged && !cmpSheet?.report && (
-            <div style={{ fontSize: 12, color: t.amberText, marginTop: 8 }}>
+            <div style={{ fontSize: 13, color: t.amberText, marginTop: 8 }}>
               {loading ? 'Fetching the earlier date…' : "We couldn't fetch the earlier date, so the second column is empty."}
             </div>
           )}
@@ -818,13 +818,13 @@ function Projection({ payload, ui }) {
 function DatePicker({ label, presets, value, onChange, custom, hint }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 11.5, color: t.faint, fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 12.5, color: t.faint, fontWeight: 600 }}>{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         style={{
           border: `1px solid ${t.border}`, borderRadius: 9, padding: '7px 11px',
-          fontSize: 12.5, background: t.card, color: t.text, cursor: 'pointer',
+          fontSize: 13.5, background: t.card, color: t.text, cursor: 'pointer',
           fontFamily: 'inherit',
         }}
       >
@@ -832,7 +832,7 @@ function DatePicker({ label, presets, value, onChange, custom, hint }) {
       </select>
       {value === 'custom' && custom}
       {hint && value !== 'custom' && (
-        <span style={{ fontSize: 11.5, color: t.faint }}>{hint}</span>
+        <span style={{ fontSize: 12.5, color: t.faint }}>{hint}</span>
       )}
     </div>
   );
@@ -840,7 +840,7 @@ function DatePicker({ label, presets, value, onChange, custom, hint }) {
 
 const dateInput = {
   border: `1px solid ${t.border}`, borderRadius: 9, padding: '6px 9px',
-  fontSize: 12.5, background: t.card, color: t.text, fontFamily: 'inherit',
+  fontSize: 13.5, background: t.card, color: t.text, fontFamily: 'inherit',
 };
 
 function Pills({ options, value, onChange }) {
@@ -854,7 +854,7 @@ function Pills({ options, value, onChange }) {
             padding: '7px 14px', border: 'none', cursor: 'pointer',
             background: value === o.key ? t.navy : '#fff',
             color: value === o.key ? '#fff' : t.muted,
-            fontSize: 12.5, fontWeight: value === o.key ? 700 : 500,
+            fontSize: 13.5, fontWeight: value === o.key ? 700 : 500,
           }}
         >
           {o.label}
@@ -871,16 +871,16 @@ const Card = ({ children, pad = true }) => (
 );
 
 const CardTitle = ({ children }) => (
-  <div style={{ fontSize: 14.5, fontWeight: 700, color: t.navy }}>{children}</div>
+  <div style={{ fontSize: 15, fontWeight: 700, color: t.navy }}>{children}</div>
 );
 
 const Muted = ({ children, small }) => (
-  <div style={{ fontSize: small ? 12 : 13.5, color: t.faint, marginTop: small ? 2 : 0 }}>{children}</div>
+  <div style={{ fontSize: small ? 13 : 14.5, color: t.faint, marginTop: small ? 2 : 0 }}>{children}</div>
 );
 
 const Note = ({ children }) => (
   <div style={{
-    fontSize: 12.5, color: t.tealText, background: t.tealSoft,
+    fontSize: 13.5, color: t.tealText, background: t.tealSoft,
     border: '1px solid #bae6fd', borderRadius: 12, padding: '11px 15px',
     marginBottom: 12, lineHeight: 1.6,
   }}>
@@ -899,11 +899,11 @@ function Tile({ label, value, prev, currency, sub, goodWhenDown }) {
   const good = diff == null ? null : (goodWhenDown ? diff < 0 : diff > 0);
   return (
     <div style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: 14, padding: '13px 15px' }}>
-      <div style={{ fontSize: 11.5, color: t.faint, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 12.5, color: t.faint, marginBottom: 3 }}>{label}</div>
       <div style={{ fontSize: 19, fontWeight: 700, color: (value ?? 0) < 0 ? '#b91c1c' : t.navy }}>
         {money(value, currency)}
       </div>
-      <div style={{ minHeight: 15, fontSize: 11, color: t.faint, marginTop: 2 }}>
+      <div style={{ minHeight: 15, fontSize: 12, color: t.faint, marginTop: 2 }}>
         {diff != null && Math.abs(diff) > 0.005 && (
           <span style={{ color: good ? t.successText : '#b91c1c', fontWeight: 600 }}>
             {diff > 0 ? '▲' : '▼'} {moneyCompact(Math.abs(diff), currency)}{' '}
@@ -927,11 +927,11 @@ function KpiTile({ row, currency, sub }) {
   const dp = row.definition.decimals;
   return (
     <div style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: 14, padding: '13px 15px' }}>
-      <div style={{ fontSize: 11.5, color: t.faint, marginBottom: 3 }}>{row.definition.label}</div>
+      <div style={{ fontSize: 12.5, color: t.faint, marginBottom: 3 }}>{row.definition.label}</div>
       <div style={{ fontSize: 19, fontWeight: 700, color: t.navy }}>
         {formatKpi(value, unit, dp, currency)}
       </div>
-      <div style={{ minHeight: 15, fontSize: 11, color: t.faint, marginTop: 2 }}>
+      <div style={{ minHeight: 15, fontSize: 12, color: t.faint, marginTop: 2 }}>
         {diff != null && Math.abs(diff) > 0.0000001 && (
           <span style={{ color: diff > 0 ? t.successText : '#b91c1c', fontWeight: 600 }}>
             {diff > 0 ? '▲' : '▼'} {formatKpi(Math.abs(diff), unit, dp, currency)}{' '}
@@ -944,7 +944,7 @@ function KpiTile({ row, currency, sub }) {
 }
 
 const Legend = ({ forecast }) => (
-  <div style={{ fontSize: 11, color: t.faint, marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+  <div style={{ fontSize: 12, color: t.faint, marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
     <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#bae6fd', borderRadius: 2, marginRight: 4, verticalAlign: -1 }} />turnover</span>
     <span><span style={{ display: 'inline-block', width: 10, height: 2, background: '#0f172a', margin: '0 4px 0 0', verticalAlign: 3 }} />profit</span>
     {forecast && <span style={{ fontStyle: 'italic' }}>hatched bars and the dashed line are projected</span>}
@@ -981,7 +981,7 @@ function ScrollTable({ columns, rows, currency, status = [] }) {
               }}>
                 {r.label}
                 {r.hint && (
-                  <div style={{ fontSize: 10.5, fontWeight: 400, color: t.faint, whiteSpace: 'normal' }}>{r.hint}</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 400, color: t.faint, whiteSpace: 'normal' }}>{r.hint}</div>
                 )}
               </td>
               {r.values.map((v, i) => (
@@ -1004,10 +1004,10 @@ function ScrollTable({ columns, rows, currency, status = [] }) {
 }
 
 const pth = {
-  fontSize: 11, color: t.faint, fontWeight: 700, textAlign: 'right',
+  fontSize: 12, color: t.faint, fontWeight: 700, textAlign: 'right',
   padding: '7px 12px', whiteSpace: 'nowrap', borderBottom: `1px solid ${t.border}`,
 };
 const ptd = {
-  fontSize: 12.5, textAlign: 'right', padding: '8px 12px', whiteSpace: 'nowrap',
+  fontSize: 13.5, textAlign: 'right', padding: '8px 12px', whiteSpace: 'nowrap',
   fontVariantNumeric: 'tabular-nums', borderBottom: '1px solid #f6f8f9',
 };

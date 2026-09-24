@@ -3,17 +3,17 @@ import { STATUSES, TIME_OPTIONS } from '../lib/constants';
 import { formatDateFull } from '../lib/helpers';
 
 const labelStyle = {
-  display: 'block', fontSize: 9, fontWeight: 600, color: '#94a3b8',
-  textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 3,
+  display: 'block', fontSize: 10, fontWeight: 600, color: '#94a3b8',
+  marginBottom: 3,
   fontFamily: "'Outfit', sans-serif",
 };
 const selectStyle = {
-  padding: '7px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+  padding: '7px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif",
   border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff',
   color: '#0f172a', outline: 'none', width: '100%',
 };
 const btnBase = {
-  padding: '5px 12px', fontSize: 11, fontWeight: 500,
+  padding: '5px 12px', fontSize: 12, fontWeight: 500,
   fontFamily: "'Outfit', sans-serif", borderRadius: 8, cursor: 'pointer',
   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
 };
@@ -56,7 +56,7 @@ export default function InstanceModal({ instance, master, staffList, progressNot
         <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 600, marginBottom: 4 }}>
           Edit Instance
         </h3>
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
           {instance.title} &#8212; {formatDateFull(instance._date)}
         </div>
 
@@ -99,10 +99,10 @@ export default function InstanceModal({ instance, master, staffList, progressNot
             <label style={labelStyle}>Progress Notes</label>
             <div style={{ borderLeft: '2px solid #e5e7eb', paddingLeft: 8, maxHeight: 120, overflowY: 'auto' }}>
               {progressNotes.map((n) => (
-                <div key={n.id} style={{ fontSize: 11, color: '#1e293b', lineHeight: 1.5, marginBottom: 4 }}>
+                <div key={n.id} style={{ fontSize: 12, color: '#1e293b', lineHeight: 1.5, marginBottom: 4 }}>
                   <span>{n.note}</span>
-                  {n.is_completion && <span style={{ color: '#059669', marginLeft: 4, fontSize: 9 }}>(completion)</span>}
-                  <div style={{ fontSize: 9, color: '#94a3b8' }}>
+                  {n.is_completion && <span style={{ color: '#059669', marginLeft: 4, fontSize: 10 }}>(completion)</span>}
+                  <div style={{ fontSize: 10, color: '#94a3b8' }}>
                     {(n.created_by_name || '').split(' ')[0]} &middot; {new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} {new Date(n.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>

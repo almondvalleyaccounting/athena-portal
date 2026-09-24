@@ -56,7 +56,7 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
 
   const inputStyle = isSmall
     ? {
-        padding: '3px 8px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+        padding: '3px 8px', fontSize: 13, fontFamily: "'Outfit', sans-serif",
         border: `1px solid ${hasValue ? '#0e7fe0' : '#e5e7eb'}`, borderRadius: 6,
         background: hasValue ? '#eff6ff' : '#fff',
         color: hasValue ? '#0e7fe0' : '#1e293b',
@@ -64,7 +64,7 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
         outline: 'none', width: 130, transition: 'border-color 0.15s, background 0.15s',
       }
     : {
-        padding: '7px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+        padding: '7px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif",
         border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff',
         color: '#0f172a', outline: 'none', width: '100%',
       };
@@ -153,13 +153,13 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
               >
                 {entity.name}
                 {metaOf && metaOf(entity) && (
-                  <div style={{ fontSize: 9.5, color: '#94a3b8', fontWeight: 400 }}>{metaOf(entity)}</div>
+                  <div style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 400 }}>{metaOf(entity)}</div>
                 )}
               </div>
             ))}
 
             {filtered.length === 0 && !query.trim() && (
-              <div style={{ padding: '6px 9px', fontSize: 10, color: '#94a3b8' }}>
+              <div style={{ padding: '6px 9px', fontSize: 11, color: '#94a3b8' }}>
                 No clients {letter ? `starting with "${letter}"` : 'found'}
               </div>
             )}
@@ -184,7 +184,7 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
                 }
               }}
               style={{
-                padding: '6px 9px', fontSize: 10, cursor: 'pointer',
+                padding: '6px 9px', fontSize: 11, cursor: 'pointer',
                 color: '#0e7fe0', fontWeight: 600,
                 borderTop: '1px solid #f1f5f9',
                 display: 'flex', alignItems: 'center', gap: 4,
@@ -203,7 +203,7 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
 
 function optionStyle(isActive) {
   return {
-    padding: '4px 9px', fontSize: 10, cursor: 'pointer',
+    padding: '4px 9px', fontSize: 11, cursor: 'pointer',
     color: isActive ? '#0e7fe0' : '#1e293b',
     fontWeight: isActive ? 600 : 400,
     background: isActive ? '#dbeafe' : 'transparent',
@@ -225,7 +225,7 @@ function letterBtn(active, enabled) {
   return {
     minWidth: 22, height: 22,
     padding: '0 5px',
-    fontSize: 10, fontWeight: active ? 700 : 500,
+    fontSize: 11, fontWeight: active ? 700 : 500,
     fontFamily: "'Outfit', sans-serif",
     border: 'none', borderRadius: 4,
     background: active ? '#0e7fe0' : enabled ? '#f1f5f9' : 'transparent',

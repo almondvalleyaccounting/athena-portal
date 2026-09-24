@@ -157,7 +157,7 @@ export default function DashboardAccessPage() {
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
           Client Dashboard Access
         </h1>
-        <p style={{ fontSize: 14, color: '#64748b' }}>
+        <p style={{ fontSize: 14.5, color: '#64748b' }}>
           You need the Portal admin permission to give clients access to their dashboards.
         </p>
       </div>
@@ -172,7 +172,7 @@ export default function DashboardAccessPage() {
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', margin: 0 }}>
             Client Dashboard Access
           </h1>
-          <p style={{ fontSize: 13.5, color: '#64748b', margin: '4px 0 0', maxWidth: 760, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 14.5, color: '#64748b', margin: '4px 0 0', maxWidth: 760, lineHeight: 1.6 }}>
             Which client-portal logins can see a client dashboard, and which parts of it. One grant is
             one person and one client — nobody here can see anything beyond the clients listed against
             their own email.
@@ -183,7 +183,7 @@ export default function DashboardAccessPage() {
           style={{
             marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7,
             padding: '10px 18px', border: 'none', borderRadius: 10, backgroundColor: '#0f172a',
-            color: '#fff', fontFamily: font, fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+            color: '#fff', fontFamily: font, fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
           }}
         >
           <Plus size={15} /> Give access
@@ -192,7 +192,7 @@ export default function DashboardAccessPage() {
 
       {msg && (
         <div style={{
-          marginTop: 16, padding: '10px 14px', borderRadius: 10, fontSize: 13.5,
+          marginTop: 16, padding: '10px 14px', borderRadius: 10, fontSize: 14.5,
           backgroundColor: msg.tone === 'error' ? '#fef2f2' : '#f0fdf4',
           border: `1px solid ${msg.tone === 'error' ? '#fecaca' : '#bbf7d0'}`,
           color: msg.tone === 'error' ? '#991b1b' : '#166534',
@@ -206,7 +206,7 @@ export default function DashboardAccessPage() {
         padding: '11px 15px', backgroundColor: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 11,
       }}>
         <Info size={15} style={{ color: '#94a3b8', flexShrink: 0, marginTop: 1 }} />
-        <span style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.6 }}>
+        <span style={{ fontSize: 13.5, color: '#64748b', lineHeight: 1.6 }}>
           Giving access also issues a portal invite if the person hasn't one, so they can actually sign
           in — but it tells them nothing. <strong>Send link</strong> does that: the portal address and
           the email address to use, with no code and no link that signs anyone in, blind-copied to
@@ -216,12 +216,12 @@ export default function DashboardAccessPage() {
         </span>
       </div>
 
-      {loading && <p style={{ fontSize: 14, color: '#94a3b8', marginTop: 24 }}>Loading…</p>}
+      {loading && <p style={{ fontSize: 14.5, color: '#94a3b8', marginTop: 24 }}>Loading…</p>}
 
       {!loading && live.length === 0 && (
         <div style={{
           marginTop: 24, padding: '44px 24px', textAlign: 'center',
-          border: '1px dashed #cbd5e1', borderRadius: 14, color: '#64748b', fontSize: 14,
+          border: '1px dashed #cbd5e1', borderRadius: 14, color: '#64748b', fontSize: 14.5,
         }}>
           No client has dashboard access yet.
         </div>
@@ -256,7 +256,7 @@ export default function DashboardAccessPage() {
         <div style={{ marginTop: 26 }}>
           <button
             onClick={() => setShowRevoked((x) => !x)}
-            style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: font, fontSize: 13, fontWeight: 600, color: '#64748b' }}
+            style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: font, fontSize: 14, fontWeight: 600, color: '#64748b' }}
           >
             {showRevoked ? '▾' : '▸'} Previously removed ({revoked.length})
           </button>
@@ -312,13 +312,13 @@ function AccessTable({ rows, busy, onToggle, action, readOnly }) {
             <tr key={r.id}>
               <td style={td}>
                 <div style={{ fontWeight: 600, color: '#0f172a' }}>{r.email}</div>
-                <div style={{ fontSize: 11.5, color: personStatus(r).tone }}>
+                <div style={{ fontSize: 12.5, color: personStatus(r).tone }}>
                   {personStatus(r).text}
                 </div>
               </td>
               <td style={td}>
                 <div style={{ color: '#0f172a' }}>{r.entity_name}</div>
-                <div style={{ fontSize: 11.5, color: r.realm_id ? '#94a3b8' : '#b45309' }}>
+                <div style={{ fontSize: 12.5, color: r.realm_id ? '#94a3b8' : '#b45309' }}>
                   {r.realm_id ? (r.company_name || 'QuickBooks connected') : 'no live QuickBooks connection'}
                 </div>
               </td>
@@ -340,7 +340,7 @@ function AccessTable({ rows, busy, onToggle, action, readOnly }) {
               ))}
               <td style={{ ...td, whiteSpace: 'nowrap' }}>
                 {fmtDate(r.granted_at)}
-                {r.granted_by_name && <div style={{ fontSize: 11.5, color: '#94a3b8' }}>by {r.granted_by_name}</div>}
+                {r.granted_by_name && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>by {r.granted_by_name}</div>}
               </td>
               <td style={{ ...td, whiteSpace: 'nowrap', color: r.last_viewed_at ? '#334155' : '#cbd5e1' }}>
                 {r.last_viewed_at ? fmtDate(r.last_viewed_at) : 'never'}
@@ -434,7 +434,7 @@ function GrantModal({ clients, existing, onClose, onDone, onError }) {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 22px', borderBottom: '1px solid #e5e7eb' }}>
           <BarChart3 size={17} style={{ color: '#38bdf8' }} />
-          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Give dashboard access</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Give dashboard access</span>
           <button onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
             <X size={18} style={{ color: '#94a3b8' }} />
           </button>
@@ -466,7 +466,7 @@ function GrantModal({ clients, existing, onClose, onDone, onError }) {
                     style={{
                       border: '1px solid #e5e7eb', borderRadius: 999, padding: '4px 11px',
                       background: email === c.email ? '#f0f9ff' : '#fff', cursor: 'pointer',
-                      fontFamily: font, fontSize: 11.5, color: '#334155',
+                      fontFamily: font, fontSize: 12.5, color: '#334155',
                     }}
                   >
                     {c.name || c.email}
@@ -483,7 +483,7 @@ function GrantModal({ clients, existing, onClose, onDone, onError }) {
           </label>
 
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>
               What they can see
             </div>
             {SECTIONS.map((s) => (
@@ -494,8 +494,8 @@ function GrantModal({ clients, existing, onClose, onDone, onError }) {
                   style={{ width: 16, height: 16, marginTop: 2, cursor: 'pointer', accentColor: '#0f172a' }}
                 />
                 <span>
-                  <span style={{ fontSize: 13.5, color: '#0f172a', fontWeight: 600 }}>{s.label}</span>
-                  <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', lineHeight: 1.5 }}>{s.hint}</span>
+                  <span style={{ fontSize: 14.5, color: '#0f172a', fontWeight: 600 }}>{s.label}</span>
+                  <span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8', lineHeight: 1.5 }}>{s.hint}</span>
                 </span>
               </label>
             ))}
@@ -517,7 +517,7 @@ function GrantModal({ clients, existing, onClose, onDone, onError }) {
             style={{
               padding: '10px 20px', border: 'none', borderRadius: 10,
               backgroundColor: valid && !saving ? '#0f172a' : '#cbd5e1', color: '#fff',
-              fontFamily: font, fontSize: 13.5, fontWeight: 700,
+              fontFamily: font, fontSize: 14.5, fontWeight: 700,
               cursor: valid && !saving ? 'pointer' : 'not-allowed',
             }}
           >
@@ -532,25 +532,25 @@ function GrantModal({ clients, existing, onClose, onDone, onError }) {
 /* ─── Styles ───────────────────────────────────────────────────── */
 const th = {
   textAlign: 'left', padding: '10px 14px', fontWeight: 600, color: '#0f172a',
-  borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap', fontSize: 12.5,
+  borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap', fontSize: 13.5,
   backgroundColor: '#f8fafc',
 };
-const td = { padding: '11px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 13, color: '#334155' };
-const fieldLabel = { display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 600, color: '#475569' };
-const hint = { fontSize: 11.5, color: '#94a3b8', fontWeight: 400, lineHeight: 1.5 };
+const td = { padding: '11px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 14, color: '#334155' };
+const fieldLabel = { display: 'flex', flexDirection: 'column', gap: 5, fontSize: 13, fontWeight: 600, color: '#475569' };
+const hint = { fontSize: 12.5, color: '#94a3b8', fontWeight: 400, lineHeight: 1.5 };
 const input = {
   border: '1px solid #e5e7eb', borderRadius: 10, padding: '9px 12px',
-  fontSize: 13.5, fontFamily: font, outline: 'none', boxSizing: 'border-box', width: '100%',
+  fontSize: 14.5, fontFamily: font, outline: 'none', boxSizing: 'border-box', width: '100%',
 };
 const dangerBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #fecaca',
   borderRadius: 8, padding: '6px 12px', background: '#fff', color: '#b91c1c',
-  fontFamily: font, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+  fontFamily: font, fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
 };
 const linkishBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #e5e7eb',
   borderRadius: 8, padding: '6px 12px', background: '#fff', color: '#475569',
-  fontFamily: font, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+  fontFamily: font, fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
 };
 // Nudged, not shouted: the one row action that is outstanding work rather than
 // something you might want. Reverts to the plain style once they have been told.

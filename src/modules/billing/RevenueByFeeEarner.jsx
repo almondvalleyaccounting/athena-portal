@@ -131,20 +131,20 @@ export default function RevenueByFeeEarner() {
     return { monthly: m, annual: a, totalAnnual: m * 12 + a };
   }, [rows]);
 
-  if (loading) return <p style={{ fontSize: 12, color: '#94a3b8', padding: 12 }}>Loading fee-earner revenue…</p>;
+  if (loading) return <p style={{ fontSize: 13, color: '#94a3b8', padding: 12 }}>Loading fee-earner revenue…</p>;
   if (rows.length === 0) return null;
 
   const unassignedRow = rows.find((r) => r.id === 'unassigned');
 
   return (
     <div style={{ marginBottom: 16, fontFamily: font }}>
-      <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0c4a6e', margin: '0 0 4px 0' }}>Revenue by fee earner</h3>
-      <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 8px 0' }}>
+      <h3 style={{ fontSize: 14.5, fontWeight: 700, color: '#0c4a6e', margin: '0 0 4px 0' }}>Revenue by fee earner</h3>
+      <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 8px 0' }}>
         Follows your fee-earner allocations (same source as the Fee Earner Book). Lines with no
         allocation fall back to capacity-planner inference and are counted as “inferred”.
       </p>
       {unassignedRow && unassignedRow.totalAnnual > 0 && (
-        <div style={{ fontSize: 11, color: '#92400e', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '6px 10px', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: '#92400e', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '6px 10px', marginBottom: 8 }}>
           <strong>{fmtGbp(unassignedRow.totalAnnual)}/year</strong> couldn't be assigned to a fee earner.
           {unmappedSample.length > 0 && (
             <span> Unmapped services: {unmappedSample.join(', ')}{unmappedSample.length === 5 ? '…' : ''}. Configure them on the Mapping tab.</span>
@@ -152,7 +152,7 @@ export default function RevenueByFeeEarner() {
         </div>
       )}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', padding: '8px 14px', background: '#f8fafc', fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', padding: '8px 14px', background: '#f8fafc', fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>
           <span>Fee earner</span>
           <span style={{ textAlign: 'right' }}>Monthly £</span>
           <span style={{ textAlign: 'right' }}>Annual £</span>
@@ -162,14 +162,14 @@ export default function RevenueByFeeEarner() {
           <div key={r.id} style={{
             display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr',
             padding: '8px 14px', borderTop: '1px solid #f1f5f9',
-            fontSize: 13, color: '#0f172a',
+            fontSize: 14, color: '#0f172a',
             background: r.id === 'unassigned' ? '#fffbeb' : '#fff',
           }}>
             <span style={{ fontWeight: 500, color: r.id === 'unassigned' ? '#92400e' : '#0f172a' }}>
               {r.name}
               {r.inferredAnnualised > 0 && r.id !== 'unassigned' && (
                 <span
-                  style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: '#92400e', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 4, padding: '1px 5px' }}
+                  style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: '#92400e', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 4, padding: '1px 5px' }}
                   title={`${fmtGbp(r.inferredAnnualised)}/yr of this attribution is inferred (no allocation set) — set allocations on the client page to make it deliberate`}
                 >
                   {fmtGbp(r.inferredAnnualised)}/yr inferred
@@ -181,7 +181,7 @@ export default function RevenueByFeeEarner() {
             <span style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{fmtGbp(r.totalAnnual)}</span>
           </div>
         ))}
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', padding: '8px 14px', borderTop: '2px solid #e5e7eb', fontSize: 13, color: '#0f172a', background: '#f8fafc' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', padding: '8px 14px', borderTop: '2px solid #e5e7eb', fontSize: 14, color: '#0f172a', background: '#f8fafc' }}>
           <span style={{ fontWeight: 700 }}>Total</span>
           <span style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#0e7fe0' }}>{fmtGbp(totals.monthly)}</span>
           <span style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#0f766e' }}>{fmtGbp(totals.annual)}</span>

@@ -102,14 +102,14 @@ export default function BillingSourcesPage() {
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Billing sources
       </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
         See which clients are billed from a QBO recurring template versus billed manually each month. Manual-monthly is a process risk — those clients should have a template.
       </p>
 
       <BillingTabs active="sources" />
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 14 }}>
@@ -148,12 +148,12 @@ export default function BillingSourcesPage() {
             <Pill label="Manual" count={counts.manual} active={filter === 'manual'} tone="danger" onClick={() => setFilter('manual')} />
             <Pill label="Other" count={counts.other} active={filter === 'other'} tone="neutral" onClick={() => setFilter('other')} />
             {activeBand && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: '#dbeafe', color: '#0c4a6e', borderRadius: 999, fontSize: 12, fontWeight: 500 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: '#dbeafe', color: '#0c4a6e', borderRadius: 999, fontSize: 13, fontWeight: 500 }}>
                 Band: <strong>{activeBand.label}</strong>
                 <button
                   onClick={() => { searchParams.delete('band'); setSearchParams(searchParams, { replace: true }); }}
                   title="Clear band filter"
-                  style={{ background: 'transparent', border: 'none', color: '#0c4a6e', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}
+                  style={{ background: 'transparent', border: 'none', color: '#0c4a6e', cursor: 'pointer', fontSize: 14.5, lineHeight: 1, padding: 0 }}
                 >×</button>
               </span>
             )}
@@ -174,7 +174,7 @@ export default function BillingSourcesPage() {
             />
           ) : (
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
                     <Th>Client</Th>
@@ -205,7 +205,7 @@ export default function BillingSourcesPage() {
                             href={`https://app.qbo.intuit.com/app/customerdetail?nameId=${r.qboCustomerId}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#0e7fe0', textDecoration: 'none' }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0e7fe0', textDecoration: 'none' }}
                             title="Open this customer in QuickBooks Online"
                           >
                             Open in QBO <ExternalLink size={11} />
@@ -242,10 +242,10 @@ function Tile({ tone, label, value, hint, icon, onClick, active, alarm }) {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
         {icon && <span style={{ color: t.fg }}>{icon}</span>}
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{label}</span>
       </div>
       <div style={{ fontSize: 28, fontWeight: 700, color: t.fg, fontFamily: 'monospace', lineHeight: 1 }}>{value}</div>
-      {hint && <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{hint}</div>}
     </button>
   );
 }
@@ -255,9 +255,8 @@ function SourceChip({ tone, label, title }) {
   return (
     <span title={title} style={{
       display: 'inline-block',
-      fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
-      background: t.bg, color: t.fg, textTransform: 'uppercase', letterSpacing: '0.04em',
-    }}>{label}</span>
+      fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+      background: t.bg, color: t.fg, }}>{label}</span>
   );
 }
 
@@ -266,7 +265,7 @@ function Pill({ label, count, active, tone, onClick }) {
   const isMaster = !tone;
   return (
     <button onClick={onClick} style={{
-      fontSize: 12, fontWeight: active ? 600 : 500,
+      fontSize: 13, fontWeight: active ? 600 : 500,
       padding: '5px 12px', borderRadius: 999,
       background: active ? (isMaster ? '#0f172a' : t.bg) : '#fff',
       color: active && isMaster ? '#fff' : t.fg,
@@ -278,5 +277,5 @@ function Pill({ label, count, active, tone, onClick }) {
   );
 }
 
-const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</th>;
+const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{children}</th>;
 const Td = ({ children, align, style }) => <td style={{ padding: '8px 12px', verticalAlign: 'middle', textAlign: align || 'left', ...style }}>{children}</td>;

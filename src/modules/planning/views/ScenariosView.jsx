@@ -119,18 +119,18 @@ export default function ScenariosView() {
         <h3 style={h3}>Scenario comparison</h3>
         <p style={help}>Side-by-side view of every saved scenario. Click a column to make it the active scenario driving the rest of the dashboard.</p>
 
-        {loading && <div style={{ color: '#94a3b8', fontSize: 13 }}>Loading…</div>}
+        {loading && <div style={{ color: '#94a3b8', fontSize: 14 }}>Loading…</div>}
 
         {!loading && scenarios.length > 0 && (
           <div style={{ overflowX: 'auto', marginTop: 8 }}>
-            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', minWidth: Math.max(600, 180 + scenarios.length * 160) }}>
+            <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse', minWidth: Math.max(600, 180 + scenarios.length * 160) }}>
               <thead>
                 <tr>
                   <th style={{ ...th, width: 200 }}></th>
                   {scenarios.map((s) => (
                     <th key={s.id} style={{ ...th, textAlign: 'center', background: s.is_active ? '#eff6ff' : '#fff' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600, color: '#0f172a', fontSize: 13 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600, color: '#0f172a', fontSize: 14 }}>
                           {s.is_active && <Star size={12} style={{ color: '#f59e0b', fill: '#f59e0b' }} />}
                           {s.name}
                         </div>
@@ -226,17 +226,17 @@ export default function ScenariosView() {
           </div>
           {goalSeekResult && (
             <div style={{ background: goalSeekResult.already ? '#f0fdf4' : '#eff6ff', border: `1px solid ${goalSeekResult.already ? '#bbf7d0' : '#bfdbfe'}`, padding: '10px 14px', borderRadius: 8 }}>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>Current Y2 profit</div>
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 2 }}>Current Y2 profit</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>{fmtGBP(goalSeekResult.base)}</div>
               {goalSeekResult.already ? (
-                <div style={{ fontSize: 13, color: '#059669', fontWeight: 600 }}>✓ Already at or above target</div>
+                <div style={{ fontSize: 14, color: '#059669', fontWeight: 600 }}>✓ Already at or above target</div>
               ) : (
                 <div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>To hit target, set</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>To hit target, set</div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: '#0e7fe0' }}>
                     {goalLever.includes('mrr') ? fmtGBP(goalSeekResult.leverValue) + '/mo' : `${goalSeekResult.leverValue.toFixed(2)}%`}
                   </div>
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
                     Currently {goalLever.includes('mrr') ? fmtGBP(goalSeekResult.currentLever) : `${goalSeekResult.currentLever.toFixed(2)}%`}
                   </div>
                 </div>
@@ -258,7 +258,7 @@ export default function ScenariosView() {
               const downPct = Math.abs(t.downDelta) / tornadoMax;
               const upPct = Math.abs(t.upDelta) / tornadoMax;
               return (
-                <div key={t.label} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr 100px', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                <div key={t.label} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr 100px', alignItems: 'center', gap: 8, fontSize: 13 }}>
                   <div style={{ fontWeight: 500, color: '#0f172a' }}>{t.label}</div>
                   <div style={{ position: 'relative', height: 14, display: 'flex', justifyContent: 'flex-end' }}>
                     <div style={{ width: `${downPct * 100}%`, height: 14, background: t.downDelta < 0 ? '#dc2626' : '#059669', opacity: 0.7 }} />
@@ -266,14 +266,14 @@ export default function ScenariosView() {
                   <div style={{ position: 'relative', height: 14 }}>
                     <div style={{ width: `${upPct * 100}%`, height: 14, background: t.upDelta > 0 ? '#059669' : '#dc2626', opacity: 0.7 }} />
                   </div>
-                  <div style={{ fontSize: 11, color: '#64748b', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  <div style={{ fontSize: 12, color: '#64748b', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                     {fmtGBPSigned(t.absImpact)}
                   </div>
                 </div>
               );
             })}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr 100px', gap: 8, fontSize: 10, color: '#94a3b8', marginTop: 6 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr 100px', gap: 8, fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
             <div />
             <div style={{ textAlign: 'right' }}>−10%</div>
             <div>+10%</div>
@@ -320,7 +320,7 @@ export default function ScenariosView() {
 function GroupRow({ label }) {
   return (
     <tr>
-      <td colSpan={99} style={{ padding: '12px 12px 4px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.7, borderTop: '1px solid #e5e7eb' }}>
+      <td colSpan={99} style={{ padding: '12px 12px 4px', fontSize: 11, fontWeight: 700, color: '#94a3b8', borderTop: '1px solid #e5e7eb' }}>
         {label}
       </td>
     </tr>
@@ -330,7 +330,7 @@ function GroupRow({ label }) {
 function Row({ label, scenarios, render, bold, highlight }) {
   return (
     <tr style={{ borderTop: '1px solid #f1f5f9' }}>
-      <td style={{ ...td, color: '#64748b', fontSize: 12 }}>{label}</td>
+      <td style={{ ...td, color: '#64748b', fontSize: 13 }}>{label}</td>
       {scenarios.map((s) => (
         <td key={s.id} style={{
           ...td, textAlign: 'center', fontWeight: bold ? 700 : 500,
@@ -362,7 +362,7 @@ function BlurTextarea({ value, onChange }) {
 function Field({ label, children }) {
   return (
     <div>
-      <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>{label}</label>
+      <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>{label}</label>
       {children}
     </div>
   );
@@ -371,10 +371,10 @@ function Field({ label, children }) {
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
 const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: '0 0 4px' };
-const help = { fontSize: 12, color: '#94a3b8', marginBottom: 14 };
-const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' };
+const help = { fontSize: 13, color: '#94a3b8', marginBottom: 14 };
+const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: 12, color: '#64748b' };
 const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
-const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
-const btnSm = { padding: '4px 10px', fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif", background: '#0f172a', color: '#fff', border: 'none' };
-const btnSmOutline = { padding: '4px 8px', fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif", background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', display: 'inline-flex', alignItems: 'center' };
-const labelStyle = { fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4 };
+const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
+const btnSm = { padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif", background: '#0f172a', color: '#fff', border: 'none' };
+const btnSmOutline = { padding: '4px 8px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif", background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', display: 'inline-flex', alignItems: 'center' };
+const labelStyle = { fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 };

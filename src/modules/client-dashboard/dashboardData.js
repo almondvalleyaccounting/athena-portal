@@ -632,7 +632,7 @@ export const inputStyle = {
   border: '1px solid #e5e7eb',
   borderRadius: '10px',
   padding: '10px 14px',
-  fontSize: '14px',
+  fontSize: '14.5px',
   fontFamily: OUTFIT,
   outline: 'none',
   boxSizing: 'border-box',

@@ -120,7 +120,7 @@ export default function HmrcModule() {
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9 }}>
             <Landmark size={22} style={{ color: '#64748b' }} /> HMRC
           </h1>
-          <p style={{ fontSize: 13, color: '#64748b', maxWidth: 780, marginBottom: 14, lineHeight: 1.55 }}>
+          <p style={{ fontSize: 14, color: '#64748b', maxWidth: 780, marginBottom: 14, lineHeight: 1.55 }}>
             What HMRC's own records show for our clients, pulled from the agent services list —
             PAYE, Corporation Tax, VAT and Self Assessment. Start on All taxes, click a balance to
             see what makes it up, click again for the transactions underneath.
@@ -138,7 +138,7 @@ export default function HmrcModule() {
             key={t.to}
             to={`/hmrc/${t.to}${t.tax || t.client || t.to === 'all' ? keep : ''}`}
             style={({ isActive }) => ({
-              padding: '8px 15px', fontSize: 13, textDecoration: 'none',
+              padding: '8px 15px', fontSize: 14, textDecoration: 'none',
               fontWeight: isActive ? 600 : 400,
               color: isActive ? '#0f172a' : '#94a3b8',
               borderBottom: isActive ? '2px solid #0e7fe0' : '2px solid transparent',
@@ -159,11 +159,11 @@ export default function HmrcModule() {
               choose here. It used to live on the Client tab, which is gone. */}
           {entityId && <RefreshButton entityId={entityId} />}
           {chosen ? (
-            <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+            <span style={{ fontSize: 12.5, color: '#94a3b8' }}>
               Showing {chosen.entity_name} across every tax tab until you clear them.
             </span>
           ) : (
-            <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+            <span style={{ fontSize: 12.5, color: '#94a3b8' }}>
               {segment === 'breakdown'
                 ? 'No client picked — Breakdown is one client across all four heads.'
                 : `No client picked — this tab is ranking every client on ${TAX_META[segment]?.label}.`}
@@ -232,14 +232,14 @@ function RunBanner({ runs, stale = [], failed }) {
       borderColor: anyStale ? '#fed7aa' : '#e5e7eb',
       background: anyStale ? '#fff7ed' : '#f8fafc',
     }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 3 }}>
         Last scrape by tax
       </div>
       {runs.map((r) => {
         const d = staleDays(r);
         const isStale = (d ?? 0) > 31;
         return (
-          <div key={r.service} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 11.5, lineHeight: 1.7 }}>
+          <div key={r.service} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 12.5, lineHeight: 1.7 }}>
             <span style={{ minWidth: 96, fontWeight: 600, color: '#0f172a' }}>
               {(r.service || '').replace('-', ' ')}
             </span>
@@ -256,7 +256,7 @@ function RunBanner({ runs, stale = [], failed }) {
         );
       })}
       {anyStale && (
-        <div style={{ fontSize: 10.5, color: '#c2410c', marginTop: 3 }}>
+        <div style={{ fontSize: 11.5, color: '#c2410c', marginTop: 3 }}>
           A tax head is over a month old — the sweep is meant to be monthly.
         </div>
       )}
@@ -272,7 +272,7 @@ function StaleLine({ stale }) {
   const [open, setOpen] = useState(false);
   if (!stale || stale.length === 0) {
     return (
-      <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 5, borderTop: '1px solid #eef2f6', paddingTop: 4 }}>
+      <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 5, borderTop: '1px solid #eef2f6', paddingTop: 4 }}>
         Every client current with the latest scrape of their taxes.
       </div>
     );
@@ -284,7 +284,7 @@ function StaleLine({ stale }) {
         title="These clients' figures come from an earlier scrape — the most recent one produced nothing for them"
         style={{
           background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: font,
-          fontSize: 10.5, fontWeight: 600, color: '#c2410c',
+          fontSize: 11.5, fontWeight: 600, color: '#c2410c',
           textDecoration: 'underline', textDecorationStyle: 'dotted',
         }}
       >
@@ -293,12 +293,12 @@ function StaleLine({ stale }) {
       {open && (
         <div style={{ marginTop: 3 }}>
           {stale.map((s) => (
-            <div key={`${s.entity_id}-${s.tax}`} style={{ fontSize: 10.5, color: '#78350f', lineHeight: 1.6 }}>
+            <div key={`${s.entity_id}-${s.tax}`} style={{ fontSize: 11.5, color: '#78350f', lineHeight: 1.6 }}>
               {s.entity_name}
               <span style={{ color: '#94a3b8' }}> · {(s.tax || '').replace('-', ' ')} · {s.runs_behind} behind</span>
             </div>
           ))}
-          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3, maxWidth: 280, lineHeight: 1.45 }}>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3, maxWidth: 280, lineHeight: 1.45 }}>
             Their last scrape produced no data, so earlier figures are still showing. Either it failed or
             they genuinely have nothing — HMRC gives us no per-client reason.
           </div>

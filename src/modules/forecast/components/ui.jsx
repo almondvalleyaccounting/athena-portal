@@ -21,33 +21,33 @@ export const colors = {
 
 export const btnDark = {
   display: 'inline-flex', alignItems: 'center', gap: 5,
-  padding: '8px 14px', fontSize: 13, fontWeight: 600,
+  padding: '8px 14px', fontSize: 14, fontWeight: 600,
   background: colors.ink, color: '#fff', border: 'none', borderRadius: 8,
   cursor: 'pointer', fontFamily: fontStack,
 };
 export const btnOutline = {
   display: 'inline-flex', alignItems: 'center', gap: 5,
-  padding: '8px 14px', fontSize: 13, fontWeight: 600,
+  padding: '8px 14px', fontSize: 14, fontWeight: 600,
   background: '#fff', color: colors.ink, border: `1px solid ${colors.border}`,
   borderRadius: 8, cursor: 'pointer', fontFamily: fontStack,
 };
-export const btnGhost = { ...btnOutline, padding: '6px 10px', fontSize: 12 };
+export const btnGhost = { ...btnOutline, padding: '6px 10px', fontSize: 13 };
 
 export const inputStyle = {
   padding: '6px 8px', border: `1px solid ${colors.border}`, borderRadius: 6,
-  fontSize: 12, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 13, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   width: '100%', boxSizing: 'border-box',
 };
 
 export const selectStyle = {
   padding: '8px 12px', borderRadius: 8, border: `1px solid ${colors.border}`,
-  fontSize: 13, fontFamily: fontStack, background: '#fff', minWidth: 200,
+  fontSize: 14, fontFamily: fontStack, background: '#fff', minWidth: 200,
 };
 
 export function Pill({ children, color }) {
   return (
     <span style={{
-      padding: '4px 10px', fontSize: 11, color: color || colors.inkSoft,
+      padding: '4px 10px', fontSize: 12, color: color || colors.inkSoft,
       background: '#f1f5f9', borderRadius: 999, fontWeight: 500,
     }}>{children}</span>
   );
@@ -98,9 +98,9 @@ export function KPI({ label, value, hint, color }) {
       padding: 16, background: '#fff', border: `1px solid ${colors.border}`,
       borderRadius: 12, minWidth: 180,
     }}>
-      <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 12, color: colors.muted, fontWeight: 600 }}>{label}</div>
       <div style={{ fontFamily: serifStack, fontSize: 24, fontWeight: 500, color: color || colors.ink, marginTop: 4 }}>{value}</div>
-      {hint && <div style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>{hint}</div>}
     </div>
   );
 }

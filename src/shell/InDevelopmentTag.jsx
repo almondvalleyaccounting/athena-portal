@@ -9,7 +9,7 @@ export default function InDevelopmentTag({ short = false }) {
       title="In development — still being built. Check figures before relying on them."
       style={{
         fontFamily: "'Outfit', sans-serif",
-        fontSize: short ? 9.5 : 10,
+        fontSize: short ? 10.5 : 11,
         fontWeight: 600,
         lineHeight: short ? '14px' : '16px',
         display: 'inline-block',

@@ -141,9 +141,9 @@ export default function RolesView() {
     <div style={{ padding: '28px 32px 80px', maxWidth: 1100, margin: '0 auto', fontFamily: FONT }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
         <h2 style={{ margin: 0, fontFamily: SERIF, fontSize: 22, color: '#0f172a' }}>Role profiles</h2>
-        {busy && <span style={{ fontSize: 11, color: '#0e7fe0' }}>Saving…</span>}
+        {busy && <span style={{ fontSize: 12, color: '#0e7fe0' }}>Saving…</span>}
       </div>
-      <p style={{ fontSize: 13, color: '#64748b', marginTop: 4, marginBottom: 20 }}>
+      <p style={{ fontSize: 14, color: '#64748b', marginTop: 4, marginBottom: 20 }}>
         Build a target skill profile per role. Each role is a set of skill categories with a target level; the Skills graph rolls each category up from the skills underneath.
       </p>
 
@@ -151,7 +151,7 @@ export default function RolesView() {
         {/* Role list */}
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Roles</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8' }}>Roles</div>
             <button onClick={newRole} style={btnPrimarySm}>+ New</button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -160,10 +160,10 @@ export default function RolesView() {
                 style={{
                   textAlign: 'left', border: '1px solid ' + (selectedId === r.id ? '#0f172a' : '#e5e7eb'),
                   background: selectedId === r.id ? '#0f172a' : '#fff', color: selectedId === r.id ? '#fff' : '#0f172a',
-                  borderRadius: 8, padding: '8px 10px', cursor: 'pointer', fontFamily: FONT, fontSize: 13, fontWeight: 500,
+                  borderRadius: 8, padding: '8px 10px', cursor: 'pointer', fontFamily: FONT, fontSize: 14, fontWeight: 500,
                 }}>{r.name}</button>
             ))}
-            {roles.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>No roles yet.</div>}
+            {roles.length === 0 && <div style={{ fontSize: 13, color: '#94a3b8' }}>No roles yet.</div>}
           </div>
         </Card>
 
@@ -173,7 +173,7 @@ export default function RolesView() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, borderBottom: '1px solid #f1f5f9' }}>
               {[['profile', 'Role profile'], ['skills', 'Skills']].map(([id, label]) => (
                 <button key={id} onClick={() => setEditorTab(id)}
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', fontFamily: FONT, fontSize: 13, fontWeight: 600,
+                  style={{ border: 'none', background: 'none', cursor: 'pointer', fontFamily: FONT, fontSize: 14, fontWeight: 600,
                     color: editorTab === id ? '#0e7fe0' : '#64748b', padding: '8px 10px',
                     borderBottom: editorTab === id ? '2px solid #0e7fe0' : '2px solid transparent' }}>{label}</button>
               ))}
@@ -189,21 +189,21 @@ export default function RolesView() {
                 </div>
                 <Field label="Role profile (overview, duties, skills, behaviours)">
                   <textarea value={profileText} onChange={(e) => setProfileText(e.target.value)} rows={18}
-                    style={{ width: '100%', padding: 12, fontFamily: FONT, fontSize: 13, lineHeight: 1.55, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
+                    style={{ width: '100%', padding: 12, fontFamily: FONT, fontSize: 14, lineHeight: 1.55, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
                 </Field>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>Use ## for headings and - for bullets.</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>Use ## for headings and - for bullets.</span>
                   <button onClick={saveMeta} style={btnPrimary}>Save profile</button>
                 </div>
               </div>
             ) : (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Categories &amp; targets</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>Categories &amp; targets</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
                   {cats.map((c) => (
                     <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px', border: '1px solid #f1f5f9', borderRadius: 8 }}>
-                      <span style={{ flex: 1, fontSize: 13, color: '#0f172a', fontWeight: 500 }}>{c.category}</span>
-                      <label style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ flex: 1, fontSize: 14, color: '#0f172a', fontWeight: 500 }}>{c.category}</span>
+                      <label style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
                         Target
                         <Select value={c.target_level} onChange={(e) => setTarget(c, e.target.value)} style={{ minWidth: 120 }}>
                           {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} — {LEVEL_LABELS[n]}</option>)}
@@ -212,7 +212,7 @@ export default function RolesView() {
                       <button onClick={() => removeCategory(c)} style={btnGhost}>Remove</button>
                     </div>
                   ))}
-                  {cats.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>No categories yet — add some below.</div>}
+                  {cats.length === 0 && <div style={{ fontSize: 13, color: '#94a3b8' }}>No categories yet — add some below.</div>}
                 </div>
 
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', padding: 12, background: '#f8fafc', borderRadius: 10, marginBottom: 16 }}>
@@ -230,7 +230,7 @@ export default function RolesView() {
                   <button onClick={addCategory} disabled={!addCat} style={btnPrimary}>Add</button>
                 </div>
 
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Add a skill (creates a new category if needed)</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>Add a skill (creates a new category if needed)</div>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
                   <Field label="Skill name"><input value={newSkillName} onChange={(e) => setNewSkillName(e.target.value)} placeholder="e.g. Chairing client meetings" style={input} /></Field>
                   <Field label="Category">
@@ -253,18 +253,18 @@ export default function RolesView() {
 function Field({ label, children, grow }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: grow ? 1 : 'initial' }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', fontFamily: FONT }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', fontFamily: FONT }}>{label}</span>
       {children}
     </label>
   );
 }
 
-const input = { padding: '7px 10px', fontSize: 13, fontFamily: FONT, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a', outline: 'none' };
-const btnPrimary = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
-const btnPrimarySm = { fontSize: 11, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
-const btnDanger = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 14px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c' };
-const btnGhost = { fontSize: 11, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#64748b' };
+const input = { padding: '7px 10px', fontSize: 14, fontFamily: FONT, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a', outline: 'none' };
+const btnPrimary = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
+const btnPrimarySm = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
+const btnDanger = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 14px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c' };
+const btnGhost = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#64748b' };
 
 function Msg({ children }) {
-  return <div style={{ padding: 24, fontFamily: FONT, color: '#64748b', fontSize: 14, textAlign: 'center' }}>{children}</div>;
+  return <div style={{ padding: 24, fontFamily: FONT, color: '#64748b', fontSize: 14.5, textAlign: 'center' }}>{children}</div>;
 }

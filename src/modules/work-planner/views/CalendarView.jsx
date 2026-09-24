@@ -263,11 +263,11 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
         <div style={{
           padding: '4px 8px', background: '#f1f5f9',
           border: overdueBorder || '1px solid #e5e7eb', borderLeft: overdue ? '3px solid #f59e0b' : '3px solid #94a3b8',
-          borderRadius: 5, fontSize: 12,
+          borderRadius: 5, fontSize: 13,
           boxShadow: isHl ? '0 0 0 2px #dbeafe' : 'none',
         }}>
-          <div style={{ fontWeight: 500, fontSize: 12 }}>{t.title}</div>
-          <div style={{ fontSize: 11, color: '#64748b' }}>
+          <div style={{ fontWeight: 500, fontSize: 13 }}>{t.title}</div>
+          <div style={{ fontSize: 12, color: '#64748b' }}>
             {staffMap[t.assignee_id]?.name?.split(' ')[0] || 'Unassigned'}
           </div>
         </div>
@@ -280,17 +280,17 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
           padding: '4px 8px', background: '#fff',
           border: overdueBorder || '1px solid #e5e7eb',
           borderLeft: overdue ? '3px solid #f59e0b' : `3px solid ${t.assignee_id ? (staffColours?.[t.assignee_id] || teamColour(t.assignee_id)) : '#0e7fe0'}`,
-          borderRadius: 5, fontSize: 12,
+          borderRadius: 5, fontSize: 13,
           boxShadow: isHl ? '0 0 0 2px #dbeafe' : overdue ? '0 0 0 1px #f59e0b' : 'none',
         }}>
           <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 3 }}>
             <StatusIcon status={t.status} size={9} />
             {t.title}
           </div>
-          <div style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 3 }}>
+          <div style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 3 }}>
             {staffMap[t.assignee_id]?.name?.split(' ')[0] || 'Unassigned'} &middot; {durFmt(t.duration)}
             {(notesMap[`master:${t.id}`] || []).length > 0 && (
-              <span style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3, fontSize: 8, color: '#64748b', fontWeight: 600 }}>
+              <span style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3, fontSize: 9, color: '#64748b', fontWeight: 600 }}>
                 {(notesMap[`master:${t.id}`] || []).length}&#128221;
               </span>
             )}
@@ -305,7 +305,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
       <div style={{
         ...(height ? { position: 'absolute', left: 1, right: 1, top: 0, height } : {}),
         padding: '1px 4px', borderRadius: 3,
-        fontSize: 11, fontWeight: 500, color: '#fff', background: bg,
+        fontSize: 12, fontWeight: 500, color: '#fff', background: bg,
         overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
         zIndex: isHl ? 5 : 1,
         boxShadow: overdue ? '0 0 0 2px #f59e0b' : isHl ? '0 0 0 2px #0e7fe0' : '0 1px 2px rgba(0,0,0,0.04)',
@@ -337,8 +337,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
       }}
     >
       <div style={{
-        padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#94a3b8',
-        textTransform: 'uppercase', letterSpacing: '0.4px',
+        padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#94a3b8',
         borderBottom: '1px solid #e5e7eb',
       }}>
         Unplanned ({unplannedMasters.length})
@@ -358,15 +357,14 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
           </DraggableTile>
         ))}
         {unplannedMasters.length === 0 && (
-          <div style={{ padding: 8, fontSize: 11, color: '#cbd5e1', textAlign: 'center' }}>All planned</div>
+          <div style={{ padding: 8, fontSize: 12, color: '#cbd5e1', textAlign: 'center' }}>All planned</div>
         )}
       </div>
 
       {quickUnplanned.length > 0 && (
         <>
           <div style={{
-            padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#94a3b8',
-            textTransform: 'uppercase', letterSpacing: '0.4px',
+            padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#94a3b8',
             borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb',
           }}>
             Quick ({quickUnplanned.length})
@@ -410,7 +408,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', height: '100%' }}>
               {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
                 <div key={d} style={{
-                  padding: 4, fontSize: 12, fontWeight: 600, color: '#94a3b8',
+                  padding: 4, fontSize: 13, fontWeight: 600, color: '#94a3b8',
                   textAlign: 'center', borderBottom: '1px solid #e5e7eb', background: '#fff',
                   fontFamily: "'Outfit', sans-serif",
                 }}>
@@ -436,7 +434,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                     }}
                   >
                     <div style={{
-                      fontSize: 13, fontWeight: isToday ? 700 : 500, marginBottom: 2,
+                      fontSize: 14, fontWeight: isToday ? 700 : 500, marginBottom: 2,
                       color: isToday ? '#0e7fe0' : '#64748b',
                     }}>
                       {d.getDate()}
@@ -447,7 +445,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                         onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
                         style={{
                           padding: '2px 4px', marginBottom: 1, borderRadius: 3,
-                          fontSize: 10, fontWeight: 500, color: '#fff',
+                          fontSize: 11, fontWeight: 500, color: '#fff',
                           background: tileColour(t, colourMode, staffColours, statusColours),
                           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                           cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2,
@@ -460,7 +458,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                     {qs.slice(0, 1).map((t) => (
                       <div key={t.id} style={{
                         padding: '2px 4px', marginBottom: 1, borderRadius: 3,
-                        fontSize: 10, fontWeight: 500, color: '#fff',
+                        fontSize: 11, fontWeight: 500, color: '#fff',
                         background: '#64748b', opacity: 0.7,
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                       }}>
@@ -468,7 +466,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                       </div>
                     ))}
                     {(evs.length + qs.length) > 3 && (
-                      <div style={{ fontSize: 10, color: '#94a3b8' }}>+{evs.length + qs.length - 3}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>+{evs.length + qs.length - 3}</div>
                     )}
                   </DroppableCell>
                 );
@@ -504,7 +502,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
             {/* Day headers */}
             {days.map((d, i) => (
               <div key={i} style={{
-                textAlign: 'center', padding: 5, fontSize: 12, fontWeight: 600,
+                textAlign: 'center', padding: 5, fontSize: 13, fontWeight: 600,
                 color: sameDay(d, now) ? '#0e7fe0' : '#64748b',
                 borderBottom: '1px solid #e5e7eb',
                 borderRight: '1px solid #f1f5f9',
@@ -523,7 +521,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
               return (
                 <React.Fragment key={si}>
                   <div style={{
-                    padding: '1px 4px', fontSize: 10, color: isHour ? '#64748b' : '#94a3b8',
+                    padding: '1px 4px', fontSize: 11, color: isHour ? '#64748b' : '#94a3b8',
                     fontWeight: isHour ? 600 : 400,
                     textAlign: 'right', borderRight: '1px solid #e5e7eb',
                     borderBottom: `1px solid ${isHourBottom ? '#e5e7eb' : '#f1f5f9'}`,

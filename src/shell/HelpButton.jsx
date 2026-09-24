@@ -61,7 +61,7 @@ export default function HelpButton() {
           zIndex: 200, fontFamily: "'Outfit', sans-serif",
         }}>
           <div style={{
-            padding: '12px 16px', fontSize: 13, fontWeight: 600, color: '#0f172a',
+            padding: '12px 16px', fontSize: 14, fontWeight: 600, color: '#0f172a',
             borderBottom: '1px solid #f1f5f9',
           }}>
             {content?.title || 'Help'}
@@ -69,12 +69,12 @@ export default function HelpButton() {
 
           <div style={{ padding: '14px 16px' }}>
             {loading ? (
-              <div style={{ fontSize: 12, color: '#94a3b8' }}>Loading…</div>
+              <div style={{ fontSize: 13, color: '#94a3b8' }}>Loading…</div>
             ) : !moduleId ? (
-              <div style={{ fontSize: 12, color: '#94a3b8' }}>No help written for this page yet.</div>
+              <div style={{ fontSize: 13, color: '#94a3b8' }}>No help written for this page yet.</div>
             ) : (
               <>
-                <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                   {content?.body || 'No help written for this page yet.'}
                 </div>
                 {content?.screenshot_url && (

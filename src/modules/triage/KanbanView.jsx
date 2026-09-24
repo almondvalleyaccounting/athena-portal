@@ -26,10 +26,10 @@ function Column({ stage, items, compact, children }) {
         display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', borderRadius: '12px 12px 0 0',
         background: stage.tone.bg, border: `1px solid ${stage.tone.border}`, borderBottom: 'none',
       }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: stage.tone.fg, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: stage.tone.fg }}>
           {stage.label}
         </span>
-        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: stage.tone.fg }}>{items.length}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: stage.tone.fg }}>{items.length}</span>
       </div>
       <div
         ref={setNodeRef}
@@ -40,7 +40,7 @@ function Column({ stage, items, compact, children }) {
         }}
       >
         {items.length === 0 && (
-          <div style={{ fontSize: 12, color: '#cbd5e1', textAlign: 'center', padding: '16px 0' }}>Nothing here</div>
+          <div style={{ fontSize: 13, color: '#cbd5e1', textAlign: 'center', padding: '16px 0' }}>Nothing here</div>
         )}
         {children}
       </div>
@@ -93,7 +93,7 @@ export default function KanbanView({ cases, notesByCase, actionsByCase, staffMap
           </div>
         )}
       </DragOverlay>
-      <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '10px 2px 0' }}>
+      <p style={{ fontSize: 12.5, color: '#94a3b8', margin: '10px 2px 0' }}>
         Drag a case to another column to change its stage. Dropping it on Completed resolves it.
       </p>
     </DndContext>

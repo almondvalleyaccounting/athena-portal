@@ -68,12 +68,12 @@ export default function DealView({
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
-        <H2>Exit valuation <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span></H2>
+        <H2>Exit valuation <span style={{ fontSize: 14, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span></H2>
         <FilterBar entities={entities} groups={groups} assignments={assignments} filter={filter} onFilterChange={onFilterChange} />
       </div>
 
       {usingScoped && (
-        <div style={{ padding: '8px 12px', fontSize: 12, color: '#7c2d12', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, marginBottom: 12 }}>
+        <div style={{ padding: '8px 12px', fontSize: 13, color: '#7c2d12', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, marginBottom: 12 }}>
           Filter active. EV / IRR / MOIC below are <strong>group-level</strong> (exit deal mechanics live at the group). Scoped LTM EBITDA shown for reference.
         </div>
       )}
@@ -92,12 +92,12 @@ export default function DealView({
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 12 }}>
         <H2>Football field — equity proceeds (net)</H2>
-        <p style={{ fontSize: 11, color: colors.muted, margin: 0 }}>
+        <p style={{ fontSize: 12, color: colors.muted, margin: 0 }}>
           Multiples range and column count are <strong>editable</strong> in <em>Inputs → Drivers → exit_valuation</em>.
         </p>
       </div>
       <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff' }}>
-        <table style={{ borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack, width: '100%' }}>
+        <table style={{ borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack, width: '100%' }}>
           <thead>
             <tr style={{ background: colors.bgSoft }}>
               <th style={{ ...th, position: 'sticky', left: 0, background: colors.bgSoft }}>EBITDA \ Multiple</th>
@@ -124,7 +124,7 @@ export default function DealView({
         </table>
       </div>
 
-      <p style={{ fontSize: 11, color: colors.muted, marginTop: 8 }}>
+      <p style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>
         Net of net debt ({fmtP(nd, { compact: true })}), transaction costs ({fmtP(tx, { compact: true })}) and exit tax ({fmtP(xtax, { compact: true })}).
         Sector context: UK childcare groups have historically traded at 1–6× EBITDA depending on scale and quality.
       </p>
@@ -154,9 +154,9 @@ function ClickableKPI({ label, value, hint, color, onClick }) {
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.accent; e.currentTarget.style.boxShadow = '0 1px 4px rgba(14,127,224,0.15)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.boxShadow = 'none'; }}
     >
-      <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 12, color: colors.muted, fontWeight: 600 }}>{label}</div>
       <div style={{ fontFamily: serifStack, fontSize: 24, fontWeight: 500, color: color || colors.ink, marginTop: 4 }}>{value}</div>
-      {hint && <div style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>{hint}</div>}
     </div>
   );
 }
@@ -278,7 +278,7 @@ function DealExplainModal({ kpiKey, exit, outputs, forecast, onClose }) {
       <div onClick={(e) => e.stopPropagation()} style={modalCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
+            <div style={{ fontSize: 12, color: colors.muted, fontWeight: 600 }}>
               Deal explainer
             </div>
             <h2 style={{ fontFamily: serifStack, fontSize: 22, fontWeight: 500, color: colors.ink, margin: '4px 0 0' }}>
@@ -288,11 +288,11 @@ function DealExplainModal({ kpiKey, exit, outputs, forecast, onClose }) {
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', fontSize: 28, color: colors.muted, cursor: 'pointer', lineHeight: 1, fontFamily: fontStack }}>×</button>
         </div>
 
-        <div style={{ padding: '8px 12px', background: colors.bgSoft, borderRadius: 6, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.ink, marginTop: 14 }}>
+        <div style={{ padding: '8px 12px', background: colors.bgSoft, borderRadius: 6, fontFamily: 'ui-monospace, monospace', fontSize: 13, color: colors.ink, marginTop: 14 }}>
           {cfg.formula}
         </div>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack, marginTop: 14 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack, marginTop: 14 }}>
           <tbody>
             {cfg.steps.map((s, i) => (
               <tr key={i} style={{

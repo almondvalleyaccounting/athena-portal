@@ -315,11 +315,11 @@ export default function ProjectionTab({
       }}>
         <TrendingUp size={17} style={{ color: '#38bdf8', flexShrink: 0 }} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: OUTFIT, fontSize: '13.5px', fontWeight: 700, color: '#0f172a' }}>
+          <div style={{ fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700, color: '#0f172a' }}>
             {scenarioMeta?.forecast?.name || 'Linked scenario'}
             {scenarioMeta?.scenario?.name && scenarioMeta.scenario.name !== 'Base' && ` · ${scenarioMeta.scenario.name}`}
           </div>
-          <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>
+          <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8' }}>
             {scenarioMeta?.forecast
               ? `${scenarioMeta.forecast.vertical_pack} · opens ${shortDate(scenarioMeta.forecast.opening_period)} · ${scenarioMeta.forecast.horizon_months} months`
               : 'Loading scenario…'}
@@ -327,14 +327,14 @@ export default function ProjectionTab({
           </div>
         </div>
 
-        <label style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '3px', marginLeft: 'auto' }}>
+        <label style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '3px', marginLeft: 'auto' }}>
           Actuals to the end of
           <input
             type="month"
             value={cutoff}
             max={forecastEndKey || undefined}
             onChange={(e) => e.target.value && saveLink({ actuals_through: monthEnd(e.target.value) })}
-            style={{ ...inputStyle, padding: '6px 9px', fontSize: '12.5px' }}
+            style={{ ...inputStyle, padding: '6px 9px', fontSize: '13.5px' }}
           />
         </label>
 
@@ -342,7 +342,7 @@ export default function ProjectionTab({
           {scenarioMeta?.forecast?.id && (
             <a
               href={`/forecast?forecast=${scenarioMeta.forecast.id}`}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: '#0369a1', textDecoration: 'none' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#0369a1', textDecoration: 'none' }}
             >
               <ExternalLink size={13} /> Open in Client Forecast
             </a>
@@ -353,7 +353,7 @@ export default function ProjectionTab({
       </div>
 
       {error && (
-        <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '10px 14px' }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '10px 14px' }}>
           {error}
         </div>
       )}
@@ -364,7 +364,7 @@ export default function ProjectionTab({
           background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px',
         }}>
           <AlertTriangle size={16} style={{ color: '#b45309', flexShrink: 0, marginTop: '1px' }} />
-          <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#92400e' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: '#92400e' }}>
             This scenario has no calculated output yet. Open it in Client Forecast and run a recompute,
             then come back — the forecast columns will fill in.
           </span>
@@ -491,7 +491,7 @@ function CreateCard({ clientName, onStart }) {
       <div style={{ fontFamily: OUTFIT, fontSize: '18px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
         No projection for {clientName || 'this client'} yet
       </div>
-      <p style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: '#64748b', maxWidth: '520px', margin: '0 auto 20px', lineHeight: 1.6 }}>
+      <p style={{ fontFamily: OUTFIT, fontSize: '14.5px', color: '#64748b', maxWidth: '520px', margin: '0 auto 20px', lineHeight: 1.6 }}>
         A projection puts this client's QuickBooks actuals and a Client Forecast scenario on one
         timeline — actuals up to a month you choose, forecast from there. Link an existing scenario,
         or start a new one in the Client Forecast module and link it back here.
@@ -501,7 +501,7 @@ function CreateCard({ clientName, onStart }) {
         style={{
           display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 24px',
           border: 'none', borderRadius: '11px', backgroundColor: '#0f172a', color: '#ffffff',
-          cursor: 'pointer', fontFamily: OUTFIT, fontSize: '14px', fontWeight: 700,
+          cursor: 'pointer', fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700,
         }}
       >
         <Plus size={16} /> Create projection
@@ -604,7 +604,7 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 22px', borderBottom: '1px solid #e5e7eb' }}>
           <Link2 size={17} style={{ color: '#38bdf8' }} />
-          <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
             Choose a forecast scenario
           </span>
           <button onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
@@ -624,7 +624,7 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
 
         {mode === 'new' && (
           <div style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {err && <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#b91c1c' }}>{err}</div>}
+            {err && <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#b91c1c' }}>{err}</div>}
             <label style={pickLabel}>
               Name
               <input
@@ -662,7 +662,7 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
                 />
               </label>
             </div>
-            <p style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', margin: 0, lineHeight: 1.6 }}>
+            <p style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', margin: 0, lineHeight: 1.6 }}>
               This creates an empty scenario and links it here. It has no figures until you build it in
               Client Forecast — nothing is guessed from the actuals, because a projection a client can
               see should be one somebody decided on.
@@ -673,7 +673,7 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
               style={{
                 alignSelf: 'flex-start', padding: '10px 20px', border: 'none', borderRadius: '10px',
                 backgroundColor: creating ? '#cbd5e1' : '#0f172a', color: '#fff',
-                fontFamily: OUTFIT, fontSize: '13.5px', fontWeight: 700,
+                fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700,
                 cursor: creating ? 'wait' : 'pointer',
               }}
             >
@@ -683,11 +683,11 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
         )}
 
         <div style={{ padding: '14px 22px', overflowY: 'auto', flex: 1, display: mode === 'link' ? 'block' : 'none' }}>
-          {err && <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#b91c1c', marginBottom: '10px' }}>{err}</div>}
-          {rows === null && <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8' }}>Loading scenarios…</div>}
+          {err && <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#b91c1c', marginBottom: '10px' }}>{err}</div>}
+          {rows === null && <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#94a3b8' }}>Loading scenarios…</div>}
 
           {rows?.length === 0 && (
-            <div style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: '#64748b', lineHeight: 1.6 }}>
+            <div style={{ fontFamily: OUTFIT, fontSize: '14.5px', color: '#64748b', lineHeight: 1.6 }}>
               {all
                 ? 'No forecast scenarios exist yet.'
                 : `No forecasts are linked to ${clientName || 'this client'} yet.`}
@@ -696,7 +696,7 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
                 <a href="/forecast" style={{
                   display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px',
                   border: 'none', borderRadius: '10px', backgroundColor: '#0f172a', color: '#fff',
-                  fontFamily: OUTFIT, fontSize: '13px', fontWeight: 700, textDecoration: 'none',
+                  fontFamily: OUTFIT, fontSize: '14px', fontWeight: 700, textDecoration: 'none',
                 }}>
                   <ExternalLink size={14} /> Open Client Forecast
                 </a>
@@ -724,11 +724,11 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
                   backgroundColor: isCurrent ? '#f0f9ff' : '#ffffff',
                 }}
               >
-                <div style={{ fontFamily: OUTFIT, fontSize: '13.5px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <div style={{ fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '7px' }}>
                   {r.forecast_name}
                   {isCurrent && <Check size={14} style={{ color: '#0284c7' }} />}
                 </div>
-                <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#64748b', marginTop: '3px' }}>
+                <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#64748b', marginTop: '3px' }}>
                   {r.version_name} · {r.scenario_name} · {r.vertical_pack} · opens {shortDate(r.opening_period)} · {r.horizon_months}m
                   {empty
                     ? <span style={{ color: '#b45309', fontWeight: 600 }}> · no output yet</span>
@@ -753,8 +753,8 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
 function ChartHead({ title, cutoff }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
-      <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>{title}</span>
-      <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginLeft: 'auto' }}>
+      <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>{title}</span>
+      <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', marginLeft: 'auto' }}>
         actuals to {cutoff}
       </span>
     </div>
@@ -768,8 +768,8 @@ function StatementTable({ title, buckets, status = [], groups = [], grandRow, cu
   return (
     <div style={{ ...cardStyle, padding: '16px 0 6px' }}>
       <div style={{ padding: '0 20px 12px', display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>{title}</span>
-        <span style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginLeft: 'auto', display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>{title}</span>
+        <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: 'auto', display: 'flex', gap: '12px', alignItems: 'center' }}>
           <span><span style={{ display: 'inline-block', width: '9px', height: '9px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', marginRight: '4px', verticalAlign: '-1px' }} /> actual</span>
           <span><span style={{ display: 'inline-block', width: '9px', height: '9px', border: '1px solid #bae6fd', backgroundColor: STATUS_BG.forecast, marginRight: '4px', verticalAlign: '-1px' }} /> forecast</span>
         </span>
@@ -794,8 +794,7 @@ function StatementTable({ title, buckets, status = [], groups = [], grandRow, cu
                 {g.label && (
                   <tr>
                     <td colSpan={buckets.length + 1} style={{
-                      fontFamily: OUTFIT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em',
-                      textTransform: 'uppercase', color: '#94a3b8', padding: '14px 20px 5px',
+                      fontFamily: OUTFIT, fontSize: '12px', fontWeight: 700, color: '#94a3b8', padding: '14px 20px 5px',
                     }}>
                       {g.label}
                     </td>
@@ -849,7 +848,7 @@ function StatementTable({ title, buckets, status = [], groups = [], grandRow, cu
       </div>
 
       {note && (
-        <p style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', padding: '10px 20px 6px', margin: 0 }}>
+        <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', padding: '10px 20px 6px', margin: 0 }}>
           {note}
         </p>
       )}
@@ -868,7 +867,7 @@ function MappingPanel({ forecastLines, actualLines, currency, busy, onSet, onCle
   return (
     <div style={{ ...cardStyle, padding: '16px 0 10px' }}>
       <div style={{ padding: '0 20px 12px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+        <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>
           Where each line lands
         </span>
         <Segmented
@@ -888,7 +887,7 @@ function MappingPanel({ forecastLines, actualLines, currency, busy, onSet, onCle
         )}
       </div>
 
-      <p style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', padding: '0 20px 10px', margin: 0, lineHeight: 1.55 }}>
+      <p style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', padding: '0 20px 10px', margin: 0, lineHeight: 1.55 }}>
         Every source line and the statement row it feeds. Lines marked <em>default</em> follow the built-in
         rules; change one and the choice is remembered for this client only. Totals the engine derives
         (revenue_total, EBITDA, net assets) are deliberately excluded — the dashboard recomputes those from
@@ -908,7 +907,7 @@ function MappingPanel({ forecastLines, actualLines, currency, busy, onSet, onCle
           <tbody>
             {shown.map((l) => (
               <tr key={`${l.source}:${l.key}`}>
-                <td style={{ ...td, textAlign: 'left', paddingLeft: '20px', fontFamily: side === 'forecast' ? 'ui-monospace, monospace' : OUTFIT, fontSize: '12px' }}>
+                <td style={{ ...td, textAlign: 'left', paddingLeft: '20px', fontFamily: side === 'forecast' ? 'ui-monospace, monospace' : OUTFIT, fontSize: '13px' }}>
                   {l.label}
                 </td>
                 <td style={{ ...td, color: '#64748b' }}>{moneyCompact(l.total, currency)}</td>
@@ -918,7 +917,7 @@ function MappingPanel({ forecastLines, actualLines, currency, busy, onSet, onCle
                     disabled={busy}
                     onChange={(e) => onSet(l.source, l.key, e.target.value)}
                     style={{
-                      ...inputStyle, padding: '5px 8px', fontSize: '12px',
+                      ...inputStyle, padding: '5px 8px', fontSize: '13px',
                       color: l.category.startsWith('unmapped_') ? '#b45309' : '#334155',
                       borderColor: l.category.startsWith('unmapped_') ? '#fde68a' : '#e5e7eb',
                     }}
@@ -932,7 +931,7 @@ function MappingPanel({ forecastLines, actualLines, currency, busy, onSet, onCle
                 </td>
                 <td style={{ ...td, textAlign: 'left' }}>
                   {l.isDefault
-                    ? <span style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#cbd5e1' }}>default</span>
+                    ? <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#cbd5e1' }}>default</span>
                     : <button onClick={() => onClear(l.source, l.key)} disabled={busy} style={linkBtn}>reset</button>}
                 </td>
               </tr>
@@ -953,22 +952,22 @@ function MappingPanel({ forecastLines, actualLines, currency, busy, onSet, onCle
 
 /* ─── Styles ───────────────────────────────────────────────────── */
 const th = {
-  fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', fontWeight: 700,
+  fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', fontWeight: 700,
   textAlign: 'right', padding: '7px 14px', whiteSpace: 'nowrap',
   borderBottom: '1px solid #e5e7eb',
 };
 const td = {
-  fontFamily: OUTFIT, fontSize: '12.5px', textAlign: 'right', padding: '7px 14px',
+  fontFamily: OUTFIT, fontSize: '13.5px', textAlign: 'right', padding: '7px 14px',
   whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', borderBottom: '1px solid #f8fafc',
 };
 const totalCell = { fontWeight: 700, color: '#0f172a', borderTop: '1px solid #e5e7eb' };
-const grandCell = { fontWeight: 700, fontSize: '13.5px', borderTop: '2px solid #0f172a', backgroundColor: '#f8fafc' };
+const grandCell = { fontWeight: 700, fontSize: '14.5px', borderTop: '2px solid #0f172a', backgroundColor: '#f8fafc' };
 const linkBtn = {
   border: 'none', background: 'none', padding: 0, cursor: 'pointer',
-  fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: '#0369a1', textDecoration: 'underline',
+  fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#0369a1', textDecoration: 'underline',
 };
 const pickLabel = {
   display: 'flex', flexDirection: 'column', gap: '4px',
-  fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: '#475569',
+  fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#475569',
 };
-const pickHint = { fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 400, color: '#94a3b8', lineHeight: 1.5 };
+const pickHint = { fontFamily: OUTFIT, fontSize: '12.5px', fontWeight: 400, color: '#94a3b8', lineHeight: 1.5 };

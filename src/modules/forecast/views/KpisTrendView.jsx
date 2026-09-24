@@ -23,13 +23,13 @@ export default function KpisTrendView({
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
         <H2>
-          KPI trends <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span>
+          KPI trends <span style={{ fontSize: 14, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span>
         </H2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {onFilterChange && (
             <LocationFilter entities={entities} groups={groups} assignments={assignments} value={filter} onChange={onFilterChange} />
           )}
-          <div style={{ display: 'flex', gap: 4, fontSize: 11 }}>
+          <div style={{ display: 'flex', gap: 4, fontSize: 12 }}>
             {['monthly', 'quarterly', 'annual'].map(g => (
               <button key={g} onClick={() => setGranularity(g)}
                 style={{
@@ -102,7 +102,7 @@ function ChartCard({ title, subtitle, lines, grouped, unitFmt = 'gbp', reference
       <div style={cardStyle}>
         <div style={cardHeader}>{title}</div>
         <div style={cardSubtitle}>{subtitle}</div>
-        <div style={{ padding: 24, color: colors.muted, fontSize: 12, textAlign: 'center' }}>No data — recompute the forecast.</div>
+        <div style={{ padding: 24, color: colors.muted, fontSize: 13, textAlign: 'center' }}>No data — recompute the forecast.</div>
       </div>
     );
   }
@@ -130,7 +130,7 @@ function ChartCard({ title, subtitle, lines, grouped, unitFmt = 'gbp', reference
         {tickValues.map((tv, i) => (
           <g key={i}>
             <line x1={pad.left} x2={W - pad.right} y1={y(tv)} y2={y(tv)} stroke={colors.borderSoft} strokeWidth="1" />
-            <text x={pad.left - 6} y={y(tv) + 3} textAnchor="end" fontSize="9" fill={colors.muted}>{fmtAxis(tv)}</text>
+            <text x={pad.left - 6} y={y(tv) + 3} textAnchor="end" fontSize="10" fill={colors.muted}>{fmtAxis(tv)}</text>
           </g>
         ))}
         {/* Reference line */}
@@ -138,7 +138,7 @@ function ChartCard({ title, subtitle, lines, grouped, unitFmt = 'gbp', reference
           <g>
             <line x1={pad.left} x2={W - pad.right} y1={y(referenceLine)} y2={y(referenceLine)} stroke="#dc2626" strokeWidth="1" strokeDasharray="3 3" />
             {referenceLabel && (
-              <text x={W - pad.right - 4} y={y(referenceLine) - 3} textAnchor="end" fontSize="9" fill="#dc2626">{referenceLabel}</text>
+              <text x={W - pad.right - 4} y={y(referenceLine) - 3} textAnchor="end" fontSize="10" fill="#dc2626">{referenceLabel}</text>
             )}
           </g>
         )}
@@ -155,11 +155,11 @@ function ChartCard({ title, subtitle, lines, grouped, unitFmt = 'gbp', reference
           const skip = Math.max(1, Math.ceil(grouped.length / 8));
           if (i % skip !== 0 && i !== grouped.length - 1) return null;
           return (
-            <text key={i} x={x(i)} y={H - 6} textAnchor="middle" fontSize="9" fill={colors.muted}>{g.label}</text>
+            <text key={i} x={x(i)} y={H - 6} textAnchor="middle" fontSize="10" fill={colors.muted}>{g.label}</text>
           );
         })}
       </svg>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '4px 10px 10px', fontSize: 11 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '4px 10px 10px', fontSize: 12 }}>
         {lines.map((l, i) => {
           const last = [...l.values].reverse().find(v => v != null);
           return (
@@ -297,4 +297,4 @@ function formatValue(v, fmt, axis = false) {
 
 const cardStyle = { background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, overflow: 'hidden' };
 const cardHeader = { padding: '10px 12px 2px', fontFamily: serifStack, fontSize: 16, fontWeight: 500, color: colors.ink };
-const cardSubtitle = { padding: '0 12px 8px', fontSize: 11, color: colors.muted };
+const cardSubtitle = { padding: '0 12px 8px', fontSize: 12, color: colors.muted };

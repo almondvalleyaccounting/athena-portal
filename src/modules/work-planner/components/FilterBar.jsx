@@ -7,19 +7,18 @@ import { teamColour } from '../lib/helpers';
 
 const sepStyle = { width: 1, height: 20, background: '#e5e7eb', margin: '0 4px' };
 const labelStyle = {
-  fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase',
-  letterSpacing: '0.4px', fontSize: 11, fontFamily: "'Outfit', sans-serif",
+  fontWeight: 600, color: '#94a3b8', fontSize: 12, fontFamily: "'Outfit', sans-serif",
 };
 const btnStyle = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '4px 10px', fontSize: 12, fontWeight: 500,
+  padding: '4px 10px', fontSize: 13, fontWeight: 500,
   fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
   borderRadius: 8, background: '#fff', color: '#1e293b',
   cursor: 'pointer', whiteSpace: 'nowrap',
 };
 const btnActiveStyle = { ...btnStyle, background: '#dbeafe', borderColor: '#0e7fe0', color: '#0e7fe0' };
 const selectStyle = {
-  padding: '3px 8px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+  padding: '3px 8px', fontSize: 13, fontFamily: "'Outfit', sans-serif",
   border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
   color: '#1e293b', outline: 'none',
 };
@@ -63,7 +62,7 @@ export default function FilterBar({
         display: 'flex', alignItems: 'center', gap: 5,
         padding: '6px 16px', background: '#fff',
         borderBottom: '1px solid #e5e7eb', flexWrap: 'wrap',
-        fontSize: 12, fontFamily: "'Outfit', sans-serif",
+        fontSize: 13, fontFamily: "'Outfit', sans-serif",
       }}
     >
       {/* Staff avatar buttons */}
@@ -107,7 +106,7 @@ export default function FilterBar({
         <>
           <div style={sepStyle} />
           <button style={btnStyle} onClick={() => onCalNav(-1)}>&#8592;</button>
-          <span style={{ fontSize: 13, fontWeight: 500, minWidth: 120, textAlign: 'center' }}>
+          <span style={{ fontSize: 14, fontWeight: 500, minWidth: 120, textAlign: 'center' }}>
             {calTitle}
           </span>
           <button style={btnStyle} onClick={() => onCalNav(1)}>&#8594;</button>
@@ -205,7 +204,7 @@ export default function FilterBar({
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search tasks..."
             style={{
-              padding: '4px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+              padding: '4px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif",
               border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none',
               width: 160, transition: 'border-color 0.15s',
             }}

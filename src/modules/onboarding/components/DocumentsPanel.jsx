@@ -22,7 +22,7 @@ function Extraction({ doc, onRetry, busy }) {
     const expired = x.expiry_date && !isNaN(Date.parse(x.expiry_date)) && Date.parse(x.expiry_date) < Date.now();
     const fieldsTip = (x.fields || []).map((f) => `${f.label}: ${f.value}`).join('\n');
     return (
-      <div title={fieldsTip || undefined} style={{ margin: '2px 0 6px 4px', fontSize: 11.5, color: '#64748b', lineHeight: 1.5 }}>
+      <div title={fieldsTip || undefined} style={{ margin: '2px 0 6px 4px', fontSize: 12.5, color: '#64748b', lineHeight: 1.5 }}>
         <span style={{ ...chipStyle('accent'), marginRight: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
           <Sparkles size={9} /> {DOC_TYPE_LABEL[doc.doc_type] || doc.doc_type}
         </span>
@@ -38,10 +38,10 @@ function Extraction({ doc, onRetry, busy }) {
   }
   if (doc.extract_status === 'error' || doc.extract_status === 'unsupported') {
     return (
-      <div style={{ margin: '2px 0 6px 4px', fontSize: 11.5, color: '#94a3b8' }}>
+      <div style={{ margin: '2px 0 6px 4px', fontSize: 12.5, color: '#94a3b8' }}>
         {doc.extract_status === 'unsupported' ? 'AI can’t read this file type — review manually.' : `AI read failed: ${doc.extract_error || 'unknown'}`}
         {doc.extract_status === 'error' && (
-          <button onClick={onRetry} disabled={busy} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#0e7fe0', fontSize: 11.5, cursor: 'pointer', fontFamily: font, padding: 0 }}>
+          <button onClick={onRetry} disabled={busy} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#0e7fe0', fontSize: 12.5, cursor: 'pointer', fontFamily: font, padding: 0 }}>
             retry
           </button>
         )}
@@ -49,9 +49,9 @@ function Extraction({ doc, onRetry, busy }) {
     );
   }
   return (
-    <div style={{ margin: '2px 0 6px 4px', fontSize: 11.5, color: '#cbd5e1' }}>
+    <div style={{ margin: '2px 0 6px 4px', fontSize: 12.5, color: '#cbd5e1' }}>
       AI reading…
-      <button onClick={onRetry} disabled={busy} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#94a3b8', fontSize: 11.5, cursor: 'pointer', fontFamily: font, padding: 0 }}>
+      <button onClick={onRetry} disabled={busy} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#94a3b8', fontSize: 12.5, cursor: 'pointer', fontFamily: font, padding: 0 }}>
         run now
       </button>
     </div>
@@ -126,25 +126,25 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <FileText size={14} color="#64748b" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>
           Documents{documents.length ? ` (${documents.length})` : ''}
         </span>
         <label
           title="Upload a document from our side (interview PDF, something received by email/post) — the AI reads it automatically"
-          style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#0e7fe0', cursor: 'pointer' }}
+          style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600, color: '#0e7fe0', cursor: 'pointer' }}
         >
           <Upload size={12} /> {busy ? 'Uploading…' : 'Upload'}
           <input type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={handleStaffUpload} disabled={busy} style={{ display: 'none' }} />
         </label>
         {folderLink && (
-          <a href={folderLink} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#0e7fe0', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <a href={folderLink} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: '#0e7fe0', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <FolderOpen size={12} /> Drive folder
           </a>
         )}
       </div>
 
       {documents.length === 0 && (
-        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>
+        <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}>
           Nothing uploaded yet — client uploads from the portal land here.
         </div>
       )}
@@ -152,11 +152,11 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: documents.length ? 12 : 0 }}>
         {documents.map((d) => (
           <div key={d.id}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#334155' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#334155' }}>
               <button
                 onClick={() => open(d)}
                 title="Open (signed link, 1h)"
-                style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', color: '#0e7fe0', cursor: 'pointer', padding: 0, fontFamily: font, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', color: '#0e7fe0', cursor: 'pointer', padding: 0, fontFamily: font, fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
               >
                 {d.original_name}
               </button>
@@ -172,14 +172,14 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
         ))}
       </div>
 
-      {msg && <div style={{ fontSize: 12, color: tones[msg.tone].fg, marginBottom: 8 }}>{msg.text}</div>}
+      {msg && <div style={{ fontSize: 13, color: tones[msg.tone].fg, marginBottom: 8 }}>{msg.text}</div>}
 
       {drive === null && (
         <button
           type="button"
           onClick={() => startDriveConnect(`/onboarding/${onboarding.id}`)
             .catch((err) => setMsg({ tone: 'danger', text: err.message || 'Could not start the Google Drive connection.' }))}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, fontFamily: font, background: tones.info.bg, color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 8, padding: '7px 14px', cursor: 'pointer' }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13.5, fontWeight: 600, fontFamily: font, background: tones.info.bg, color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 8, padding: '7px 14px', cursor: 'pointer' }}
         >
           <HardDriveUpload size={13} /> Connect Google Drive
         </button>
@@ -187,12 +187,12 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
       {drive && pending.length > 0 && (
         <button
           onClick={saveToDrive} disabled={busy}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, fontFamily: font, background: '#F5C518', color: '#1E4560', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', opacity: busy ? 0.7 : 1 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13.5, fontWeight: 700, fontFamily: font, background: '#F5C518', color: '#1E4560', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', opacity: busy ? 0.7 : 1 }}
         >
           <HardDriveUpload size={13} /> {busy ? 'Saving…' : `Save ${pending.length} to Drive`}
         </button>
       )}
-      {drive && <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 8 }}>Drive connected as {drive.account_email}</div>}
+      {drive && <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 8 }}>Drive connected as {drive.account_email}</div>}
     </div>
   );
 }

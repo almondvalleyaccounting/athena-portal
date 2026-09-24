@@ -40,7 +40,7 @@ export default function TaxCalcView() {
         <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 500, color: '#0f172a', margin: 0 }}>
           TaxCalc import
         </h2>
-        <p style={{ fontSize: 13, color: '#64748b', margin: '8px 0 20px' }}>
+        <p style={{ fontSize: 14, color: '#64748b', margin: '8px 0 20px' }}>
           Upload a TaxCalc / POA report (.xlsx or .csv) of personal-tax payments due — e.g. July
           payments on account. Only rows with a payment-on-account amount import, and each is matched
           to a client by <strong>UTR + surname</strong>. Unmatched rows still import; you match or
@@ -51,7 +51,7 @@ export default function TaxCalcView() {
         {error && (
           <div style={{
             padding: '9px 12px', background: '#fef2f2', border: '1px solid #fecaca',
-            borderRadius: 8, fontSize: 12.5, color: '#b91c1c', marginBottom: 12,
+            borderRadius: 8, fontSize: 13.5, color: '#b91c1c', marginBottom: 12,
           }}>
             {error}
           </div>
@@ -61,7 +61,7 @@ export default function TaxCalcView() {
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px',
             background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8,
-            fontSize: 12.5, color: '#166534', marginBottom: 12,
+            fontSize: 13.5, color: '#166534', marginBottom: 12,
           }}>
             <span style={{ flex: 1 }}>
               Batch saved —{' '}
@@ -69,7 +69,7 @@ export default function TaxCalcView() {
                 onClick={() => navigate('/comms/reminders')}
                 style={{
                   background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                  fontFamily: font, fontSize: 12.5, fontWeight: 600, color: '#166534',
+                  fontFamily: font, fontSize: 13.5, fontWeight: 600, color: '#166534',
                   textDecoration: 'underline',
                 }}
               >
@@ -80,7 +80,7 @@ export default function TaxCalcView() {
         )}
 
         {entities === null && !error && (
-          <div style={{ fontSize: 13, color: '#94a3b8' }}>Loading clients…</div>
+          <div style={{ fontSize: 14, color: '#94a3b8' }}>Loading clients…</div>
         )}
         {entities !== null && (
           <TaxBatchUpload

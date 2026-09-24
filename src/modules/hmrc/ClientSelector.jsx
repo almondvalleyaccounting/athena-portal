@@ -53,7 +53,7 @@ export default function ClientSelector({ clients, entityId, onPick, taxKey }) {
         onClick={() => { setOpen((v) => !v); setQ(''); }}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 11px',
-          fontSize: 12.5, fontFamily: font, borderRadius: 8, cursor: 'pointer',
+          fontSize: 13.5, fontFamily: font, borderRadius: 8, cursor: 'pointer',
           background: chosen ? '#eff6ff' : '#fff',
           border: `1px solid ${chosen ? '#bfdbfe' : '#e5e7eb'}`,
           color: chosen ? '#0f172a' : '#64748b',
@@ -92,13 +92,13 @@ export default function ClientSelector({ clients, entityId, onPick, taxKey }) {
             onChange={(e) => setQ(e.target.value)}
             placeholder="Client name…"
             style={{
-              width: '100%', padding: '9px 12px', fontSize: 12.5, fontFamily: font,
+              width: '100%', padding: '9px 12px', fontSize: 13.5, fontFamily: font,
               border: 'none', borderBottom: '1px solid #f1f5f9', outline: 'none', boxSizing: 'border-box',
             }}
           />
           <div style={{ maxHeight: 320, overflowY: 'auto' }}>
             {shown.length === 0 && (
-              <div style={{ padding: '12px 14px', fontSize: 12, color: '#94a3b8' }}>No clients match.</div>
+              <div style={{ padding: '12px 14px', fontSize: 13, color: '#94a3b8' }}>No clients match.</div>
             )}
             {shown.map((c) => {
               const here = n(c[key]);
@@ -110,7 +110,7 @@ export default function ClientSelector({ clients, entityId, onPick, taxKey }) {
                     display: 'flex', width: '100%', alignItems: 'center', gap: 8, textAlign: 'left',
                     padding: '7px 12px', background: c.entity_id === entityId ? '#f1f5f9' : 'none',
                     border: 'none', borderBottom: '1px solid #f8fafc', cursor: 'pointer',
-                    fontFamily: font, fontSize: 12.5,
+                    fontFamily: font, fontSize: 13.5,
                   }}
                 >
                   <span style={{ fontWeight: 500, color: '#0f172a', flex: 1 }}>{c.entity_name}</span>
@@ -121,13 +121,13 @@ export default function ClientSelector({ clients, entityId, onPick, taxKey }) {
                     </span>
                   )}
                   {(c.taxes_owing || 0) > 1 && (
-                    <span style={{ fontSize: 10, color: '#c2410c', fontWeight: 600 }}>{c.taxes_owing} taxes</span>
+                    <span style={{ fontSize: 11, color: '#c2410c', fontWeight: 600 }}>{c.taxes_owing} taxes</span>
                   )}
                 </button>
               );
             })}
           </div>
-          <div style={{ padding: '6px 12px', fontSize: 10.5, color: '#94a3b8', background: '#f8fafc', lineHeight: 1.5 }}>
+          <div style={{ padding: '6px 12px', fontSize: 11.5, color: '#94a3b8', background: '#f8fafc', lineHeight: 1.5 }}>
             Balances shown are {keyLabel}. The client stays selected as you move between the
             {' '}{TAX_ORDER.length} tax tabs and Breakdown.
           </div>

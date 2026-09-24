@@ -22,15 +22,14 @@ export function SectionTitle({ kicker, title, hint }) {
     <div style={{ marginBottom: 16 }}>
       {kicker && (
         <div style={{
-          fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: '0.08em',
-          textTransform: 'uppercase', color: '#0e7fe0', marginBottom: 4,
+          fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0e7fe0', marginBottom: 4,
         }}>{kicker}</div>
       )}
       <h2 style={{
         fontFamily: SERIF, fontSize: 22, fontWeight: 500, color: '#0f172a', margin: 0,
       }}>{title}</h2>
       {hint && (
-        <p style={{ fontFamily: FONT, fontSize: 13, color: '#64748b', margin: '6px 0 0' }}>{hint}</p>
+        <p style={{ fontFamily: FONT, fontSize: 14, color: '#64748b', margin: '6px 0 0' }}>{hint}</p>
       )}
     </div>
   );
@@ -41,10 +40,9 @@ export function Stat({ label, value, sub, accent = '#0f172a' }) {
     <div style={{
       background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: 18,
     }}>
-      <div style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
-        textTransform: 'uppercase', color: '#94a3b8', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 6 }}>{label}</div>
       <div style={{ fontFamily: SERIF, fontSize: 30, fontWeight: 500, color: accent, lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', marginTop: 6 }}>{sub}</div>}
+      {sub && <div style={{ fontFamily: FONT, fontSize: 13, color: '#64748b', marginTop: 6 }}>{sub}</div>}
     </div>
   );
 }
@@ -65,7 +63,7 @@ export function Button({ children, onClick, variant = 'primary', disabled, style
         background: disabled ? '#e5e7eb' : v.bg,
         color: disabled ? '#94a3b8' : v.fg,
         fontFamily: FONT,
-        fontSize: 13,
+        fontSize: 14,
         fontWeight: 600,
         border: v.border || 'none',
         borderRadius: 10,
@@ -86,7 +84,7 @@ export function Input(props) {
         border: '1px solid #e5e7eb',
         borderRadius: 10,
         padding: '10px 12px',
-        fontSize: 14,
+        fontSize: 14.5,
         fontFamily: FONT,
         outline: 'none',
         width: '100%',
@@ -106,7 +104,7 @@ export function Textarea(props) {
         border: '1px solid #e5e7eb',
         borderRadius: 10,
         padding: '10px 12px',
-        fontSize: 14,
+        fontSize: 14.5,
         fontFamily: FONT,
         outline: 'none',
         width: '100%',
@@ -126,7 +124,7 @@ export function Select(props) {
         border: '1px solid #e5e7eb',
         borderRadius: 10,
         padding: '10px 12px',
-        fontSize: 14,
+        fontSize: 14.5,
         fontFamily: FONT,
         outline: 'none',
         background: '#fff',
@@ -141,9 +139,7 @@ export function Pill({ children, bg = '#f1f5f9', fg = '#475569' }) {
   return (
     <span style={{
       display: 'inline-block',
-      fontFamily: FONT, fontSize: 11, fontWeight: 600, letterSpacing: '0.04em',
-      textTransform: 'uppercase',
-      background: bg, color: fg,
+      fontFamily: FONT, fontSize: 12, fontWeight: 600, background: bg, color: fg,
       padding: '3px 10px', borderRadius: 999,
     }}>{children}</span>
   );
@@ -170,8 +166,8 @@ export function EmptyState({ icon, title, hint }) {
       border: '1px dashed #e5e7eb', borderRadius: 14, background: '#fafafa',
     }}>
       {icon && <div style={{ marginBottom: 12, color: '#cbd5e1' }}>{icon}</div>}
-      <p style={{ fontFamily: FONT, fontSize: 15, fontWeight: 500, color: '#94a3b8', margin: 0 }}>{title}</p>
-      {hint && <p style={{ fontFamily: FONT, fontSize: 13, color: '#cbd5e1', margin: '6px 0 0' }}>{hint}</p>}
+      <p style={{ fontFamily: FONT, fontSize: 15.5, fontWeight: 500, color: '#94a3b8', margin: 0 }}>{title}</p>
+      {hint && <p style={{ fontFamily: FONT, fontSize: 14, color: '#cbd5e1', margin: '6px 0 0' }}>{hint}</p>}
     </div>
   );
 }

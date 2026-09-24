@@ -88,7 +88,7 @@ export default function HistoryView() {
             <option value="all">All time</option>
           </select>
         </Filter>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#475569', cursor: 'pointer', marginLeft: 'auto' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#475569', cursor: 'pointer', marginLeft: 'auto' }}>
           <input
             type="checkbox"
             checked={hideCancelled}
@@ -101,13 +101,13 @@ export default function HistoryView() {
       {(() => {
         const visible = hideCancelled ? rows.filter((r) => r.status !== 'cancelled') : rows;
         const hiddenCount = rows.length - visible.length;
-        if (loading) return <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading history…</p>;
+        if (loading) return <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading history…</p>;
         if (visible.length === 0) return (
           <div style={{ padding: 60, textAlign: 'center' }}>
-            <p style={{ fontSize: 15, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>
+            <p style={{ fontSize: 15.5, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>
               {rows.length === 0 ? 'No imports yet' : 'No imports to show'}
             </p>
-            <p style={{ fontSize: 13, color: '#cbd5e1' }}>
+            <p style={{ fontSize: 14, color: '#cbd5e1' }}>
               {rows.length === 0
                 ? 'Import records will appear here after your first run.'
                 : hiddenCount > 0
@@ -119,11 +119,11 @@ export default function HistoryView() {
         return (
         <>
         {hiddenCount > 0 && (
-          <p style={{ fontSize: 12, color: '#94a3b8', padding: '0 4px 8px' }}>
+          <p style={{ fontSize: 13, color: '#94a3b8', padding: '0 4px 8px' }}>
             {hiddenCount} cancelled run(s) hidden
           </p>
         )}
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
           <thead>
             <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
               <Th>Source</Th>
@@ -154,7 +154,7 @@ export default function HistoryView() {
                 <React.Fragment key={r.id}>
                   <tr onClick={() => setExpanded(isOpen ? null : r.id)} style={{ cursor: 'pointer', borderTop: '1px solid #f1f5f9' }}>
                     <Td>{src ? `${getSystemLabel(src.system)} — ${src.name}` : r.source_key}</Td>
-                    <Td style={{ color: '#64748b', fontFamily: 'monospace', fontSize: 11 }}>{r.file_name}</Td>
+                    <Td style={{ color: '#64748b', fontFamily: 'monospace', fontSize: 12 }}>{r.file_name}</Td>
                     <Td>{formatDateTime(r.triggered_at)}</Td>
                     <Td>{names[r.triggered_by] || '—'}</Td>
                     <Td style={{ fontFamily: 'monospace', color: '#64748b' }}>
@@ -162,7 +162,7 @@ export default function HistoryView() {
                     </Td>
                     <Td style={{ fontFamily: 'monospace' }}>{writtenDisplay}</Td>
                     <Td>
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: sc.bg, color: sc.fg, textTransform: 'capitalize' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: sc.bg, color: sc.fg, textTransform: 'capitalize' }}>
                         {r.status}
                       </span>
                     </Td>
@@ -170,7 +170,7 @@ export default function HistoryView() {
                   {isOpen && (
                     <tr style={{ background: '#fafafa' }}>
                       <td colSpan={7} style={{ padding: 16, borderTop: '1px solid #f1f5f9' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, fontSize: 12 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, fontSize: 13 }}>
                           <DetailBlock label="Row counts">
                             {Object.keys(r.row_counts || {}).length === 0 ? <span style={{ color: '#cbd5e1' }}>none</span> :
                               Object.entries(r.row_counts).map(([t, n]) => (
@@ -186,7 +186,7 @@ export default function HistoryView() {
                             ) : <span style={{ color: '#cbd5e1' }}>not approved</span>}
                           </DetailBlock>
                           <DetailBlock label="File">
-                            <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#64748b', wordBreak: 'break-all' }}>
+                            <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#64748b', wordBreak: 'break-all' }}>
                               {r.file_hash?.slice(0, 16)}…
                             </div>
                             <div style={{ color: '#94a3b8' }}>{r.file_size ? `${(r.file_size / 1024).toFixed(1)} KB` : ''}</div>
@@ -213,7 +213,7 @@ export default function HistoryView() {
                                 disabled={cancelling === r.id}
                                 onClick={(e) => { e.stopPropagation(); handleCancel(r); }}
                                 style={{
-                                  fontSize: 12, fontWeight: 500, padding: '6px 12px',
+                                  fontSize: 13, fontWeight: 500, padding: '6px 12px',
                                   background: '#fff', border: '1px solid #fca5a5', borderRadius: 6,
                                   color: '#991b1b', cursor: 'pointer',
                                   fontFamily: "'Outfit', sans-serif",
@@ -222,7 +222,7 @@ export default function HistoryView() {
                               >
                                 {cancelling === r.id ? 'Cancelling…' : 'Cancel this run'}
                               </button>
-                              <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+                              <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
                                 This run never completed. Cancelling releases any source lock and hides it from the Status view.
                               </p>
                             </DetailBlock>
@@ -246,7 +246,7 @@ export default function HistoryView() {
 function Filter({ label, children }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{label}</span>
       {children}
     </div>
   );
@@ -254,11 +254,11 @@ function Filter({ label, children }) {
 function DetailBlock({ label, children, wide }) {
   return (
     <div style={{ gridColumn: wide ? '1 / -1' : 'auto' }}>
-      <p style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{label}</p>
+      <p style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>{label}</p>
       <div style={{ color: '#1e293b' }}>{children}</div>
     </div>
   );
 }
-const Th = ({ children }) => <th style={{ padding: '10px 14px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</th>;
+const Th = ({ children }) => <th style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{children}</th>;
 const Td = ({ children, style }) => <td style={{ padding: '10px 14px', ...style }}>{children}</td>;
-const selectStyle = { padding: '5px 10px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
+const selectStyle = { padding: '5px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };

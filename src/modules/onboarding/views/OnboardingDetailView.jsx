@@ -21,7 +21,7 @@ import {
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
 const selectStyle = {
-  padding: '5px 8px', fontSize: 12.5, fontFamily: font, background: '#fff',
+  padding: '5px 8px', fontSize: 13.5, fontFamily: font, background: '#fff',
   border: '1px solid #cbd5e1', borderRadius: 7,
 };
 
@@ -140,8 +140,8 @@ export default function OnboardingDetailView() {
     try { await updateOnboarding(ob.id, patch); } catch (e) { setError(e.message); load(); }
   }
 
-  if (error && !ob) return <div style={{ padding: 28, fontFamily: font, color: tones.danger.fg, fontSize: 13 }}>Failed to load: {error}</div>;
-  if (!ob) return <div style={{ padding: 28, fontFamily: font, color: '#64748b', fontSize: 13 }}>Loading…</div>;
+  if (error && !ob) return <div style={{ padding: 28, fontFamily: font, color: tones.danger.fg, fontSize: 14 }}>Failed to load: {error}</div>;
+  if (!ob) return <div style={{ padding: 28, fontFamily: font, color: '#64748b', fontSize: 14 }}>Loading…</div>;
 
   const notes = ob.activity.filter((a) => a.kind === 'note');
   const log = ob.activity.filter((a) => a.kind !== 'note');
@@ -151,7 +151,7 @@ export default function OnboardingDetailView() {
     <div style={{ padding: '24px 28px', fontFamily: font }}>
       <button
         onClick={() => navigate('/onboarding')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: font }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: font }}
       >
         <ArrowLeft size={14} /> Back to pipeline
       </button>
@@ -169,23 +169,23 @@ export default function OnboardingDetailView() {
             >
               {ob.entity?.name}
             </h1>
-            <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+            <div style={{ fontSize: 14, color: '#64748b', marginTop: 4 }}>
               {ob.template?.name} · started {new Date(ob.started_at).toLocaleDateString('en-GB')}
               {ob.quote_id ? ' · quote linked' : ' · no quote linked'}
               {ob.referred_by?.name ? ` · referred by ${ob.referred_by.name}` : ''}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ fontSize: 12, color: '#64748b' }}>Status</label>
+            <label style={{ fontSize: 13, color: '#64748b' }}>Status</label>
             <select style={selectStyle} value={ob.status} onChange={(e) => handleObStatus(e.target.value)}>
               {ONBOARDING_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
-            <label style={{ fontSize: 12, color: '#64748b' }}>Owner</label>
+            <label style={{ fontSize: 13, color: '#64748b' }}>Owner</label>
             <select style={selectStyle} value={ob.owner_id || ''} onChange={(e) => handleObField({ owner_id: e.target.value || null })}>
               <option value="">—</option>
               {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            <label style={{ fontSize: 12, color: '#64748b' }}>Target</label>
+            <label style={{ fontSize: 13, color: '#64748b' }}>Target</label>
             <DateField
               style={selectStyle} value={ob.target_date || ''} title="Target completion date"
               onCommit={(target_date) => handleObField({ target_date })}
@@ -196,19 +196,19 @@ export default function OnboardingDetailView() {
           <div style={{ flex: 1, height: 8, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }}>
             <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: pct === 100 ? tones.success.solid : '#F5C518' }} />
           </div>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>
             {progress.done}/{progress.total} · {pct}%
           </span>
         </div>
       </div>
 
-      {error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 10 }}>{error}</div>}
+      {error && <div style={{ color: tones.danger.fg, fontSize: 14, marginBottom: 10 }}>{error}</div>}
 
       {ob.status === 'issues' && (
         <div style={{ ...card, borderColor: tones.danger.border, background: tones.danger.bg, padding: '14px 18px', marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <AlertTriangle size={15} color={tones.danger.fg} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: tones.danger.fg, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: tones.danger.fg }}>
               What's the issue?
             </span>
           </div>
@@ -238,7 +238,7 @@ export default function OnboardingDetailView() {
                 try { await addDirectorSa(ob, name.trim(), { actorId: profile?.id }); load(); }
                 catch (e) { setError(e.message); }
               }}
-              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: `1px solid ${tones.info.border}`, borderRadius: 999, color: tones.info.fg, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: font, padding: '5px 12px' }}
+              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: `1px solid ${tones.info.border}`, borderRadius: 999, color: tones.info.fg, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: font, padding: '5px 12px' }}
             >
               <UserPlus size={12} /> Add director SA
             </button>
@@ -253,10 +253,10 @@ export default function OnboardingDetailView() {
             return (
               <div key={groupName} style={{ ...card, padding: '14px 18px', opacity: allNa ? 0.6 : 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>
                     {groupName}
                   </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                  <div style={{ fontSize: 13, color: '#94a3b8' }}>
                     {allNa ? 'not applicable' : `${groupDone}/${groupApplicable}`}
                   </div>
                 </div>
@@ -276,7 +276,7 @@ export default function OnboardingDetailView() {
                           {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         </button>
                         <span style={{
-                          flex: 1, fontSize: 13.5,
+                          flex: 1, fontSize: 14.5,
                           color: na ? '#94a3b8' : '#0f172a',
                           textDecoration: na ? 'line-through' : 'none',
                         }}>
@@ -312,7 +312,7 @@ export default function OnboardingDetailView() {
                         </select>
                       </div>
                       {isOpen && (
-                        <div style={{ margin: '8px 0 4px 34px', fontSize: 12.5, color: '#475569', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ margin: '8px 0 4px 34px', fontSize: 13.5, color: '#475569', display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {step.description && <div>{step.description}</div>}
                           {step.client_label && (
                             <div style={{ color: tones.warning.fg }}>Client sees: “{step.client_label}”</div>
@@ -365,11 +365,11 @@ export default function OnboardingDetailView() {
         <EscalationPanel ob={ob} onChanged={load} />
         {/* Notes — the same thread the pipeline row's comments write to */}
         <div style={{ ...card, padding: '14px 18px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 10 }}>
             Notes
           </div>
           <NotesThread onboardingId={ob.id} notes={notes} onAdded={load} maxHeight={320} />
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, margin: '14px 0 6px' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#94a3b8', margin: '14px 0 6px' }}>
             Background
           </div>
           <textarea
@@ -387,13 +387,13 @@ export default function OnboardingDetailView() {
         <PortalAccessPanel entityId={ob.entity_id} onboardingId={ob.id} entityEmail={ob.entity?.prospect_email || ob.entity?.billing_email} />
         <DocumentsPanel onboarding={ob} documents={ob.documents || []} onChanged={load} />
         <div style={{ ...card, padding: '16px 18px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 10 }}>
             Activity
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 560, overflowY: 'auto' }}>
-            {log.length === 0 && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Nothing yet.</div>}
+            {log.length === 0 && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Nothing yet.</div>}
             {log.map((a) => (
-              <div key={a.id} style={{ fontSize: 12.5 }}>
+              <div key={a.id} style={{ fontSize: 13.5 }}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 2 }}>
                   <span style={chipStyle(a.kind === 'system' ? 'accent' : 'neutral')}>
                     {KIND_LABEL[a.kind] || a.kind}

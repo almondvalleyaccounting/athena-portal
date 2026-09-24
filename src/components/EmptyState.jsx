@@ -19,10 +19,10 @@ export default function EmptyState({ icon, title, body, actions = [] }) {
         <div style={{ fontSize: 32, lineHeight: 1, marginBottom: 10, opacity: 0.7 }}>{icon}</div>
       )}
       {title && (
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>{title}</div>
+        <div style={{ fontSize: 15.5, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>{title}</div>
       )}
       {body && (
-        <div style={{ fontSize: 13, color: '#64748b', maxWidth: 460, margin: '0 auto 14px' }}>{body}</div>
+        <div style={{ fontSize: 14, color: '#64748b', maxWidth: 460, margin: '0 auto 14px' }}>{body}</div>
       )}
       {actions.length > 0 && (
         <div style={{ display: 'inline-flex', gap: 8 }}>
@@ -31,7 +31,7 @@ export default function EmptyState({ icon, title, body, actions = [] }) {
               key={i}
               onClick={a.onClick}
               style={{
-                padding: '7px 14px', fontSize: 13, fontWeight: a.primary ? 600 : 500,
+                padding: '7px 14px', fontSize: 14, fontWeight: a.primary ? 600 : 500,
                 background: a.primary ? '#0f172a' : '#fff',
                 color: a.primary ? '#fff' : '#0f172a',
                 border: a.primary ? 'none' : '1px solid #e5e7eb',

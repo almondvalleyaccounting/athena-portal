@@ -46,7 +46,7 @@ function Key({ children }) {
     <kbd
       style={{
         fontFamily: font,
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: 600,
         color: '#0f172a',
         background: '#f8fafc',
@@ -71,11 +71,9 @@ export function ShortcutsList() {
         <div key={section.title}>
           <div
             style={{
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: 700,
               color: '#475569',
-              textTransform: 'uppercase',
-              letterSpacing: 0.5,
               marginBottom: 8,
             }}
           >
@@ -93,12 +91,12 @@ export function ShortcutsList() {
                   borderBottom: '1px solid #f1f5f9',
                 }}
               >
-                <span style={{ fontSize: 13.5, color: '#334155' }}>{item.label}</span>
+                <span style={{ fontSize: 14.5, color: '#334155' }}>{item.label}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   {item.keys.map((k, j) => (
                     <React.Fragment key={j}>
                       {j > 0 && (
-                        <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>
                           {item.combo ? '+' : 'then'}
                         </span>
                       )}
@@ -110,11 +108,11 @@ export function ShortcutsList() {
             ))}
           </div>
           {section.note && (
-            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>{section.note}</div>
+            <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 6 }}>{section.note}</div>
           )}
         </div>
       ))}
-      <div style={{ fontSize: 12, color: '#94a3b8' }}>
+      <div style={{ fontSize: 13, color: '#94a3b8' }}>
         Shortcuts are paused while you're typing in a text field.
       </div>
     </div>
@@ -161,7 +159,7 @@ export function ShortcutsModal({ onClose }) {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <Keyboard size={16} color="#0e7fe0" />
-          <span style={{ fontFamily: font, fontSize: 15, fontWeight: 600, color: '#0f172a', flex: 1 }}>
+          <span style={{ fontFamily: font, fontSize: 15.5, fontWeight: 600, color: '#0f172a', flex: 1 }}>
             Keyboard shortcuts
           </span>
           <button
@@ -200,7 +198,7 @@ export default function ShortcutsPage() {
       >
         Keyboard shortcuts
       </h1>
-      <p style={{ fontFamily: font, fontSize: 14, color: '#64748b', marginBottom: 24 }}>
+      <p style={{ fontFamily: font, fontSize: 14.5, color: '#64748b', marginBottom: 24 }}>
         Move around Athena without touching the mouse. Press <Key>?</Key> anywhere to bring
         this list up as a popup.
       </p>

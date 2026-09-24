@@ -236,7 +236,7 @@ export default function IdeasPage() {
         <p
           style={{
             fontFamily: "'Outfit', sans-serif",
-            fontSize: '14px',
+            fontSize: '14.5px',
             color: '#64748b',
           }}
         >
@@ -264,7 +264,7 @@ export default function IdeasPage() {
             border: '1px solid #e5e7eb',
             borderRadius: '10px',
             padding: '12px 16px',
-            fontSize: '14px',
+            fontSize: '14.5px',
             fontFamily: "'Outfit', sans-serif",
             outline: 'none',
             transition: 'border-color 0.2s ease',
@@ -283,7 +283,7 @@ export default function IdeasPage() {
               !newIdea.trim() || submitting ? '#e5e7eb' : '#0f172a',
             color: !newIdea.trim() || submitting ? '#94a3b8' : '#ffffff',
             fontFamily: "'Outfit', sans-serif",
-            fontSize: '13px',
+            fontSize: '14px',
             fontWeight: 600,
             border: 'none',
             borderRadius: '10px',
@@ -303,7 +303,7 @@ export default function IdeasPage() {
         <p
           style={{
             fontFamily: "'Outfit', sans-serif",
-            fontSize: '13px',
+            fontSize: '14px',
             color: '#94a3b8',
             textAlign: 'center',
             padding: '40px 0',
@@ -325,7 +325,7 @@ export default function IdeasPage() {
           <p
             style={{
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '15px',
+              fontSize: '15.5px',
               fontWeight: 500,
               color: '#94a3b8',
               marginBottom: '4px',
@@ -336,7 +336,7 @@ export default function IdeasPage() {
           <p
             style={{
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '13px',
+              fontSize: '14px',
               color: '#cbd5e1',
             }}
           >
@@ -390,7 +390,7 @@ export default function IdeasPage() {
                 <span
                   style={{
                     fontFamily: "'Outfit', sans-serif",
-                    fontSize: '13px',
+                    fontSize: '14px',
                     fontWeight: 700,
                     color: '#0f172a',
                   }}
@@ -409,19 +409,19 @@ export default function IdeasPage() {
                       onKeyDown={(e) => { if (e.key === 'Enter') handleEdit(idea); if (e.key === 'Escape') setEditingId(null); }}
                       autoFocus
                       style={{
-                        flex: 1, padding: '6px 10px', fontSize: 14, fontFamily: "'Outfit', sans-serif",
+                        flex: 1, padding: '6px 10px', fontSize: 14.5, fontFamily: "'Outfit', sans-serif",
                         border: '1px solid #38bdf8', borderRadius: 8, outline: 'none',
                       }}
                     />
-                    <button onClick={() => handleEdit(idea)} style={{ fontSize: 12, fontWeight: 600, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Save</button>
-                    <button onClick={() => setEditingId(null)} style={{ fontSize: 12, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Cancel</button>
+                    <button onClick={() => handleEdit(idea)} style={{ fontSize: 13, fontWeight: 600, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Save</button>
+                    <button onClick={() => setEditingId(null)} style={{ fontSize: 13, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Cancel</button>
                   </div>
                 ) : (
                   <p
                     onClick={() => { setEditingId(idea.id); setEditText(idea.text); }}
                     style={{
                       fontFamily: "'Outfit', sans-serif",
-                      fontSize: '14px',
+                      fontSize: '14.5px',
                       fontWeight: 500,
                       color: '#0f172a',
                       lineHeight: '1.5',
@@ -434,7 +434,7 @@ export default function IdeasPage() {
                   </p>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 12, color: '#94a3b8' }}>
+                  <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 13, color: '#94a3b8' }}>
                     {idea.submitted_by_name || 'Unknown'} &middot;{' '}
                     {new Date(idea.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                   </p>
@@ -448,7 +448,7 @@ export default function IdeasPage() {
                 {/* Admin comment editor — shown while rejecting / requesting info */}
                 {canManageStatus && pendingComment?.ideaId === idea.id && (
                   <div style={{ marginTop: 10 }}>
-                    <label style={{ display: 'block', fontFamily: "'Outfit', sans-serif", fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                    <label style={{ display: 'block', fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
                       {COMMENT_STATUSES[pendingComment.status].label}
                     </label>
                     <textarea
@@ -458,7 +458,7 @@ export default function IdeasPage() {
                       rows={3}
                       placeholder={COMMENT_STATUSES[pendingComment.status].placeholder}
                       style={{
-                        width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 13,
+                        width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 14,
                         fontFamily: "'Outfit', sans-serif", border: '1px solid #c4b5fd', borderRadius: 8,
                         outline: 'none', resize: 'vertical',
                       }}
@@ -468,7 +468,7 @@ export default function IdeasPage() {
                         onClick={() => handleSaveComment(idea)}
                         disabled={!commentText.trim() || savingComment}
                         style={{
-                          fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 600,
+                          fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 600,
                           color: '#ffffff', background: !commentText.trim() || savingComment ? '#c7d2fe' : '#4f46e5',
                           border: 'none', borderRadius: 8, padding: '6px 14px',
                           cursor: !commentText.trim() || savingComment ? 'not-allowed' : 'pointer',
@@ -478,7 +478,7 @@ export default function IdeasPage() {
                       </button>
                       <button
                         onClick={() => { setPendingComment(null); setCommentText(''); }}
-                        style={{ fontFamily: "'Outfit', sans-serif", fontSize: 12, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}
+                        style={{ fontFamily: "'Outfit', sans-serif", fontSize: 13, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}
                       >
                         Cancel
                       </button>
@@ -493,12 +493,12 @@ export default function IdeasPage() {
                     background: idea.status === 'rejected' ? '#fef2f2' : idea.status === 'more_info' ? '#f5f3ff' : '#f8fafc',
                     border: `1px solid ${idea.status === 'rejected' ? '#fecaca' : idea.status === 'more_info' ? '#ddd6fe' : '#e5e7eb'}`,
                   }}>
-                    <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: idea.status === 'rejected' ? '#991b1b' : idea.status === 'more_info' ? '#5b21b6' : '#475569', marginBottom: 3 }}>
+                    <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 11, fontWeight: 700, color: idea.status === 'rejected' ? '#991b1b' : idea.status === 'more_info' ? '#5b21b6' : '#475569', marginBottom: 3 }}>
                       {idea.status === 'rejected' ? 'Rejection reason' : idea.status === 'more_info' ? 'Question for submitter' : 'Note'}
                     </div>
-                    <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 13, color: '#0f172a', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>{idea.admin_comment}</p>
+                    <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 14, color: '#0f172a', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>{idea.admin_comment}</p>
                     {idea.admin_comment_by && (
-                      <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                      <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
                         — {idea.admin_comment_by}{idea.admin_comment_at ? ` · ${new Date(idea.admin_comment_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
                       </p>
                     )}
@@ -508,12 +508,12 @@ export default function IdeasPage() {
                 {/* Submitter's reply to an info request */}
                 {idea.submitter_response && (
                   <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: '#f0f9ff', border: '1px solid #bae6fd' }}>
-                    <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#0369a1', marginBottom: 3 }}>
+                    <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 11, fontWeight: 700, color: '#0369a1', marginBottom: 3 }}>
                       Submitter's reply
                     </div>
-                    <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 13, color: '#0f172a', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>{idea.submitter_response}</p>
+                    <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 14, color: '#0f172a', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>{idea.submitter_response}</p>
                     {idea.submitter_response_at && (
-                      <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                      <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
                         {new Date(idea.submitter_response_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                       </p>
                     )}
@@ -531,7 +531,7 @@ export default function IdeasPage() {
                         rows={3}
                         placeholder="Answer the question above…"
                         style={{
-                          width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 13,
+                          width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 14,
                           fontFamily: "'Outfit', sans-serif", border: '1px solid #7dd3fc', borderRadius: 8,
                           outline: 'none', resize: 'vertical',
                         }}
@@ -541,7 +541,7 @@ export default function IdeasPage() {
                           onClick={() => handleSaveReply(idea)}
                           disabled={!replyText.trim() || savingReply}
                           style={{
-                            fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 600, color: '#ffffff',
+                            fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 600, color: '#ffffff',
                             background: !replyText.trim() || savingReply ? '#bae6fd' : '#0284c7',
                             border: 'none', borderRadius: 8, padding: '6px 14px',
                             cursor: !replyText.trim() || savingReply ? 'not-allowed' : 'pointer',
@@ -551,7 +551,7 @@ export default function IdeasPage() {
                         </button>
                         <button
                           onClick={() => { setReplyForId(null); setReplyText(''); }}
-                          style={{ fontFamily: "'Outfit', sans-serif", fontSize: 12, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}
+                          style={{ fontFamily: "'Outfit', sans-serif", fontSize: 13, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}
                         >
                           Cancel
                         </button>
@@ -561,7 +561,7 @@ export default function IdeasPage() {
                     <button
                       onClick={() => { setReplyForId(idea.id); setReplyText(idea.submitter_response || ''); }}
                       style={{
-                        marginTop: 8, fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 600,
+                        marginTop: 8, fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 600,
                         color: '#0369a1', background: 'none', border: 'none', padding: 0, cursor: 'pointer',
                       }}
                     >
@@ -599,9 +599,8 @@ function StatusPill({ idea, canEdit, onChange }) {
   if (!canEdit) {
     return (
       <span style={{
-        fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
-        background: current.bg, color: current.fg, textTransform: 'uppercase', letterSpacing: '0.04em',
-      }}>{current.label}</span>
+        fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+        background: current.bg, color: current.fg, }}>{current.label}</span>
     );
   }
   return (
@@ -610,11 +609,10 @@ function StatusPill({ idea, canEdit, onChange }) {
       onChange={(e) => onChange(e.target.value)}
       onClick={(e) => e.stopPropagation()}
       style={{
-        fontSize: 10, fontWeight: 600, padding: '2px 18px 2px 8px', borderRadius: 999,
+        fontSize: 11, fontWeight: 600, padding: '2px 18px 2px 8px', borderRadius: 999,
         background: current.bg, color: current.fg,
         border: 'none', outline: 'none', cursor: 'pointer',
         fontFamily: "'Outfit', sans-serif",
-        textTransform: 'uppercase', letterSpacing: '0.04em',
         appearance: 'none', WebkitAppearance: 'none',
       }}
     >

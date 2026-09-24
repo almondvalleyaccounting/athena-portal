@@ -78,20 +78,20 @@ export default function TemplateManagerModal({ templates, staffList, onClose, on
         style={{ ...modal, width: 660, maxWidth: '94vw', maxHeight: '84vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <ListChecks size={16} color="#0e7fe0" />
-          <span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', flex: 1 }}>Action plan templates</span>
+          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', flex: 1 }}>Action plan templates</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex' }}>
             <X size={17} />
           </button>
         </div>
-        <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 12px' }}>
+        <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 12px' }}>
           Applying a template to a case adds one planned action per step, with the target date
           offset from the day it's applied and the step's default assignee (or whoever applies it).
         </p>
-        {error && <div style={{ fontSize: 12.5, color: '#b91c1c', marginBottom: 8 }}>{error}</div>}
+        {error && <div style={{ fontSize: 13.5, color: '#b91c1c', marginBottom: 8 }}>{error}</div>}
 
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
           {templates.length === 0 && (
-            <div style={{ fontSize: 12.5, color: '#94a3b8', padding: '10px 0' }}>No templates yet — create one below.</div>
+            <div style={{ fontSize: 13.5, color: '#94a3b8', padding: '10px 0' }}>No templates yet — create one below.</div>
           )}
           {templates.map((t) => {
             const expanded = expandedId === t.id;
@@ -111,21 +111,21 @@ export default function TemplateManagerModal({ templates, staffList, onClose, on
                       onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.name) patchTemplate(t.id, { name: v }); }}
                       style={{
                         border: 'none', outline: 'none', background: 'transparent', fontFamily: font,
-                        fontSize: 13.5, fontWeight: 600, color: '#0f172a', width: '100%', padding: 0,
+                        fontSize: 14.5, fontWeight: 600, color: '#0f172a', width: '100%', padding: 0,
                       }} />
                     <input defaultValue={t.description || ''} placeholder="Description (optional)"
                       onBlur={(e) => { const v = e.target.value.trim(); if (v !== (t.description || '')) patchTemplate(t.id, { description: v || null }); }}
                       style={{
                         border: 'none', outline: 'none', background: 'transparent', fontFamily: font,
-                        fontSize: 11.5, color: '#94a3b8', width: '100%', padding: 0,
+                        fontSize: 12.5, color: '#94a3b8', width: '100%', padding: 0,
                       }} />
                   </div>
-                  <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>
                     {steps.length} step{steps.length === 1 ? '' : 's'}
                   </span>
                   <button onClick={() => patchTemplate(t.id, { active: !t.active })}
                     style={{
-                      fontSize: 10.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: font,
+                      fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: font,
                       background: t.active ? '#f0fdf4' : '#f1f5f9', color: t.active ? '#166534' : '#64748b',
                       border: `1px solid ${t.active ? '#bbf7d0' : '#e2e8f0'}`, whiteSpace: 'nowrap',
                     }}>
@@ -136,7 +136,7 @@ export default function TemplateManagerModal({ templates, staffList, onClose, on
                 {expanded && (
                   <div style={{ padding: '0 12px 10px 34px' }}>
                     {steps.length > 0 && (
-                      <div style={{ display: 'flex', gap: 6, fontSize: 10.5, fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>
+                      <div style={{ display: 'flex', gap: 6, fontSize: 11.5, fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>
                         <span style={{ width: 44 }}>Sort</span>
                         <span style={{ width: 88 }}>Type</span>
                         <span style={{ flex: 1 }}>Title</span>
@@ -171,7 +171,7 @@ export default function TemplateManagerModal({ templates, staffList, onClose, on
                         </button>
                       </div>
                     ))}
-                    <button onClick={() => addStep(t)} style={{ ...btn('ghost'), padding: '4px 9px', fontSize: 11.5, marginTop: 2 }}>
+                    <button onClick={() => addStep(t)} style={{ ...btn('ghost'), padding: '4px 9px', fontSize: 12.5, marginTop: 2 }}>
                       <Plus size={11} /> Add step
                     </button>
                   </div>

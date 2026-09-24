@@ -12,18 +12,18 @@ export const card = {
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden',
 };
 
-export const th = { padding: '9px 12px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap', fontSize: 11.5, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em' };
+export const th = { padding: '9px 12px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap', fontSize: 12.5, color: '#64748b' };
 export const thNum = { ...th, textAlign: 'right' };
-export const td = { padding: '7px 12px', color: '#0f172a', fontSize: 13, verticalAlign: 'middle' };
+export const td = { padding: '7px 12px', color: '#0f172a', fontSize: 14, verticalAlign: 'middle' };
 export const tdNum = { ...td, textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' };
 
 export const inputStyle = {
-  padding: '6px 9px', fontSize: 12.5, border: '1px solid #e5e7eb',
+  padding: '6px 9px', fontSize: 13.5, border: '1px solid #e5e7eb',
   borderRadius: 6, fontFamily: font, boxSizing: 'border-box', background: '#fff',
 };
 
 export const btn = {
-  padding: '6px 13px', fontSize: 12.5, fontWeight: 500, fontFamily: font,
+  padding: '6px 13px', fontSize: 13.5, fontWeight: 500, fontFamily: font,
   border: '1px solid #0f172a', borderRadius: 8, background: '#0f172a',
   color: '#fff', cursor: 'pointer',
 };
@@ -79,7 +79,7 @@ export function Pill({ children, colour = '#475569', bg = '#f1f5f9', title }) {
   return (
     <span title={title} style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: 999,
-      fontSize: 11, fontWeight: 600, color: colour, background: bg,
+      fontSize: 12, fontWeight: 600, color: colour, background: bg,
       fontFamily: font, whiteSpace: 'nowrap',
     }}>{children}</span>
   );
@@ -118,7 +118,7 @@ export function ErrorBar({ message }) {
       ...card, borderColor: '#fecaca', background: '#fef2f2',
       padding: '10px 14px', marginBottom: 12,
     }}>
-      <span style={{ fontFamily: font, fontSize: 12.5, color: '#b91c1c' }}>{message}</span>
+      <span style={{ fontFamily: font, fontSize: 13.5, color: '#b91c1c' }}>{message}</span>
     </div>
   );
 }
@@ -136,7 +136,7 @@ export function NotFedNotice({ leg, why, children }) {
       ...card, borderColor: '#ddd6fe', background: '#faf5ff',
       padding: '11px 14px', marginBottom: 12,
     }}>
-      <div style={{ fontFamily: font, fontSize: 12.5, color: '#5b21b6', lineHeight: 1.55 }}>
+      <div style={{ fontFamily: font, fontSize: 13.5, color: '#5b21b6', lineHeight: 1.55 }}>
         <strong>{leg} is not fed yet.</strong> {why}{' '}
         Every figure from it reads as unknown, never as nil — so this paper is a
         two-way agreement until it is connected, and cannot be signed off as a

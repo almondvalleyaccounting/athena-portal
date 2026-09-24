@@ -55,7 +55,7 @@ export default function StatementView({
           {/* Scope only means something on a lens with locations, which is
               also the only lens that passes a filter handler. */}
           {onFilterChange && (
-            <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span>
+            <span style={{ fontSize: 14, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span>
           )}
         </h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -63,7 +63,7 @@ export default function StatementView({
             <button
               onClick={() => setShowInflation(s => !s)}
               style={{
-                padding: '5px 10px', fontSize: 11, fontFamily: fontStack,
+                padding: '5px 10px', fontSize: 12, fontFamily: fontStack,
                 border: `1px solid ${colors.border}`, borderRadius: 6,
                 background: showInflation ? colors.ink : '#fff',
                 color: showInflation ? '#fff' : colors.inkSoft,
@@ -80,7 +80,7 @@ export default function StatementView({
               value={filter} onChange={onFilterChange}
             />
           )}
-          <div style={{ display: 'flex', gap: 4, fontSize: 11 }}>
+          <div style={{ display: 'flex', gap: 4, fontSize: 12 }}>
             {['monthly', 'quarterly', 'annual'].map(g => (
               <button
                 key={g}
@@ -99,13 +99,13 @@ export default function StatementView({
       </div>
 
       {usingScoped && (
-        <div style={{ padding: '6px 10px', fontSize: 11, color: '#7c2d12', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, marginBottom: 10 }}>
+        <div style={{ padding: '6px 10px', fontSize: 12, color: '#7c2d12', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, marginBottom: 10 }}>
           Scoped to {filterLabel(filter, entities, groups)} — recomputed from upstream entity rows. Inflation, tax and dividend policy inherited from the scenario; central costs (HQ staff, admin, group loans) apportioned by revenue share; opening cash = capital attributed to these locations (central / unallocated pot excluded).
         </div>
       )}
 
       <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
           <thead>
             <tr style={{ background: colors.bgSoft }}>
               <th style={{ ...th, position: 'sticky', left: 0, background: colors.bgSoft, minWidth: 220 }}>Line</th>
@@ -266,19 +266,18 @@ function KpiFooter({ outputs, scopedMap, usingScoped, grouped, showPremisesKpis 
     <>
       <tr style={{ background: '#0f172a' }}>
         <td colSpan={1 + grouped.length} style={{
-          padding: '6px 12px', color: '#e2e8f0', fontSize: 10,
-          fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
-        }}>
+          padding: '6px 12px', color: '#e2e8f0', fontSize: 11,
+          fontWeight: 700, }}>
           KPIs · per-period operational ratios
         </td>
       </tr>
       {KPI_ROWS.map(kr => (
         <tr key={kr.key} style={{ borderBottom: `1px solid ${colors.borderSoft}`, background: '#fafafa' }}>
-          <td style={{ ...td, position: 'sticky', left: 0, background: '#fafafa', color: colors.muted, fontSize: 11 }}>
+          <td style={{ ...td, position: 'sticky', left: 0, background: '#fafafa', color: colors.muted, fontSize: 12 }}>
             {kr.label}
           </td>
           {rows.map((r, i) => (
-            <td key={i} style={{ ...td, textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: colors.inkSoft }}>
+            <td key={i} style={{ ...td, textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.inkSoft }}>
               {kr.get(r)}
             </td>
           ))}
@@ -329,11 +328,11 @@ function BsRatiosPanel({ outputs, scopedMap, usingScoped, grouped }) {
   return (
     <div style={{ marginTop: 16, border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff', overflowX: 'auto' }}>
       <div style={{ padding: '8px 12px', background: colors.bgSoft, borderBottom: `1px solid ${colors.border}` }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: colors.muted }}>
           Balance sheet ratios
         </span>
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
         <thead>
           <tr style={{ background: '#fff' }}>
             <th style={{ ...th, minWidth: 220 }}>Ratio</th>
@@ -345,7 +344,7 @@ function BsRatiosPanel({ outputs, scopedMap, usingScoped, grouped }) {
             <tr key={rr.key} style={{ borderBottom: `1px solid ${colors.borderSoft}` }}>
               <td style={td}>
                 {rr.label}
-                {rr.hint && <span style={{ display: 'block', fontSize: 10, color: colors.muted }}>{rr.hint}</span>}
+                {rr.hint && <span style={{ display: 'block', fontSize: 11, color: colors.muted }}>{rr.hint}</span>}
               </td>
               {rows.map((r, i) => (
                 <td key={i} style={{ ...td, textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>

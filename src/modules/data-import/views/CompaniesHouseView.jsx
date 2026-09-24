@@ -70,7 +70,7 @@ export default function CompaniesHouseView() {
         <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 500, color: '#0f172a', margin: 0 }}>
           Companies House sync
         </h2>
-        <p style={{ fontSize: 13, color: '#64748b', margin: '8px 0 20px' }}>
+        <p style={{ fontSize: 14, color: '#64748b', margin: '8px 0 20px' }}>
           Pulls active officers (directors, secretaries), individual PSCs (shareholders ≥ 25%),
           company status (Active, In Liquidation, proposal to strike off…) and the Confirmation
           Statement due date from Companies House for every limited-company client.
@@ -83,7 +83,7 @@ export default function CompaniesHouseView() {
             onClick={() => runLoop(false)}
             disabled={running}
             style={{
-              fontFamily: font, fontSize: 13, fontWeight: 600,
+              fontFamily: font, fontSize: 14, fontWeight: 600,
               color: '#fff', background: '#0f172a', border: 'none', borderRadius: 10,
               padding: '10px 18px', cursor: running ? 'wait' : 'pointer',
               opacity: running ? 0.6 : 1,
@@ -96,7 +96,7 @@ export default function CompaniesHouseView() {
             disabled={running}
             title="Re-ingest every limited company, including ones already loaded"
             style={{
-              fontFamily: font, fontSize: 13, fontWeight: 500,
+              fontFamily: font, fontSize: 14, fontWeight: 500,
               color: '#64748b', background: '#fff', border: '1px solid #cbd5e1',
               borderRadius: 10, padding: '10px 18px', cursor: running ? 'wait' : 'pointer',
               opacity: running ? 0.6 : 1,
@@ -108,7 +108,7 @@ export default function CompaniesHouseView() {
             <button
               onClick={() => { stopRef.current = true; }}
               style={{
-                fontFamily: font, fontSize: 13,
+                fontFamily: font, fontSize: 14,
                 color: '#b91c1c', background: '#fff', border: '1px solid #fca5a5',
                 borderRadius: 10, padding: '10px 18px', cursor: 'pointer',
               }}
@@ -117,13 +117,13 @@ export default function CompaniesHouseView() {
         </div>
 
         {(running || done > 0 || message) && (
-          <div style={{ marginTop: 20, fontSize: 13, color: '#475569' }}>
+          <div style={{ marginTop: 20, fontSize: 14, color: '#475569' }}>
             <strong>{done}</strong> processed · <strong>{remaining ?? '?'}</strong> remaining{message && ` · ${message}`}
           </div>
         )}
 
         {errors.length > 0 && (
-          <details style={{ marginTop: 16, fontSize: 12, color: '#b91c1c' }}>
+          <details style={{ marginTop: 16, fontSize: 13, color: '#b91c1c' }}>
             <summary style={{ cursor: 'pointer' }}>{errors.length} error{errors.length === 1 ? '' : 's'}</summary>
             <ul style={{ marginTop: 8, paddingLeft: 20 }}>
               {errors.slice(0, 50).map((e, i) => (

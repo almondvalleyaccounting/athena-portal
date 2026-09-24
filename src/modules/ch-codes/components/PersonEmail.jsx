@@ -56,14 +56,14 @@ export default function PersonEmail({ person, requestId, actorId, onSaved, mode 
             if (e.key === 'Escape') { setEditing(false); setErr(null); }
           }}
           style={{
-            width: mode === 'banner' ? 280 : 210, padding: '4px 8px', fontSize: 12.5, fontFamily: font,
+            width: mode === 'banner' ? 280 : 210, padding: '4px 8px', fontSize: 13.5, fontFamily: font,
             border: '1px solid #93c5fd', borderRadius: 7,
           }}
         />
         <button
           onClick={save} disabled={busy || !draft.trim()}
           style={{
-            fontFamily: font, fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 7, cursor: 'pointer',
+            fontFamily: font, fontSize: 13, fontWeight: 600, padding: '4px 10px', borderRadius: 7, cursor: 'pointer',
             background: tones.success.solid, color: '#fff', border: 'none', opacity: busy || !draft.trim() ? 0.5 : 1,
           }}
         >
@@ -71,11 +71,11 @@ export default function PersonEmail({ person, requestId, actorId, onSaved, mode 
         </button>
         <button
           onClick={() => { setEditing(false); setErr(null); }}
-          style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 12, cursor: 'pointer', fontFamily: font }}
+          style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 13, cursor: 'pointer', fontFamily: font }}
         >
           Cancel
         </button>
-        {err && <span style={{ fontSize: 12, color: tones.danger.fg }}>{err}</span>}
+        {err && <span style={{ fontSize: 13, color: tones.danger.fg }}>{err}</span>}
       </span>
     );
   }
@@ -83,11 +83,11 @@ export default function PersonEmail({ person, requestId, actorId, onSaved, mode 
   if (mode === 'banner') {
     if (!have) {
       return (
-        <div style={{ background: tones.warning.bg, color: tones.warning.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ background: tones.warning.bg, color: tones.warning.fg, borderRadius: 10, padding: '10px 14px', fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span>No email on file for {person?.name || 'this person'} — nothing can be chased until we have one.</span>
           <button
             onClick={open}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: font, fontSize: 12, fontWeight: 700, padding: '5px 11px', borderRadius: 8, cursor: 'pointer', background: '#fff', color: tones.warning.fg, border: `1px solid ${tones.warning.border}` }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: font, fontSize: 13, fontWeight: 700, padding: '5px 11px', borderRadius: 8, cursor: 'pointer', background: '#fff', color: tones.warning.fg, border: `1px solid ${tones.warning.border}` }}
           >
             <Mail size={12} /> Add email
           </button>
@@ -95,12 +95,12 @@ export default function PersonEmail({ person, requestId, actorId, onSaved, mode 
       );
     }
     return (
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#475569', marginBottom: 16 }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#475569', marginBottom: 16 }}>
         <Mail size={13} color="#94a3b8" />
         <span>{person.email}</span>
         <button
           onClick={open} title="Change this email"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#0e7fe0', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: font, padding: 0 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: '#0e7fe0', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: font, padding: 0 }}
         >
           <Pencil size={11} /> Edit
         </button>

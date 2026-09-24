@@ -159,7 +159,7 @@ export default function RulesView() {
     <div style={{ padding: '20px 28px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
         <div style={{ flex: 1 }}>
-          <p style={{ fontSize: 13, color: '#475569', maxWidth: 820 }}>
+          <p style={{ fontSize: 14, color: '#475569', maxWidth: 820 }}>
             Rules define <b>when</b> each task type lands. Match is prefix on <code>bm_task_name</code>, highest priority first. <b>Offset</b> is months from <code>bm_deadline</code> (negative = before). Client cadence on the client record shifts ±1 week. A <b>Client exception</b> overrides both.
           </p>
         </div>
@@ -181,9 +181,9 @@ export default function RulesView() {
         </div>
       )}
 
-      {loading ? <p style={{ fontSize: 13, color: '#94a3b8' }}>Loading…</p> : (
+      {loading ? <p style={{ fontSize: 14, color: '#94a3b8' }}>Loading…</p> : (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th style={{ ...th, width: 26 }}></th>
@@ -245,11 +245,11 @@ function Row({ rule, overrideCount, expanded, onToggle, onEdit, onDelete, disabl
       <td style={td}>
         <b>{rule.name}</b>
         {overrideCount > 0 && (
-          <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 7px', borderRadius: 999, background: '#eff6ff', color: '#1e3a8a' }}>
+          <span style={{ marginLeft: 6, fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#eff6ff', color: '#1e3a8a' }}>
             {overrideCount} exception{overrideCount === 1 ? '' : 's'}
           </span>
         )}
-        {rule.notes && <div style={{ color: '#94a3b8', fontSize: 11 }}>{rule.notes}</div>}
+        {rule.notes && <div style={{ color: '#94a3b8', fontSize: 12 }}>{rule.notes}</div>}
       </td>
       <td style={{ ...td, textAlign: 'center' }}>
         <div style={{
@@ -265,18 +265,18 @@ function Row({ rule, overrideCount, expanded, onToggle, onEdit, onDelete, disabl
       <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{Math.round(Number(rule.target_hours) * 60)}m</td>
       <td style={td}>{rule.assignee_source === 'rule_assignee' ? 'Rule-pinned' : 'BM'}</td>
       <td style={{ ...td, textAlign: 'right' }}>
-        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: p.bg, color: p.colour, fontWeight: 600 }}>{p.label}</span>
+        <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: p.bg, color: p.colour, fontWeight: 600 }}>{p.label}</span>
       </td>
       <td style={td}>
         <span style={{
-          fontSize: 11, padding: '2px 8px', borderRadius: 999,
+          fontSize: 12, padding: '2px 8px', borderRadius: 999,
           background: rule.active ? '#dcfce7' : '#fee2e2',
           color: rule.active ? '#15803d' : '#991b1b',
         }}>{rule.active ? 'Active' : 'Off'}</span>
       </td>
       <td style={{ ...td, textAlign: 'right' }}>
-        <button onClick={onEdit} disabled={disabled} style={{ ...btnGhost, fontSize: 11, marginRight: 4, opacity: disabled ? 0.5 : 1 }}>Edit</button>
-        <button onClick={onDelete} disabled={disabled} style={{ ...btnGhost, fontSize: 11, color: '#991b1b', opacity: disabled ? 0.5 : 1 }}>
+        <button onClick={onEdit} disabled={disabled} style={{ ...btnGhost, fontSize: 12, marginRight: 4, opacity: disabled ? 0.5 : 1 }}>Edit</button>
+        <button onClick={onDelete} disabled={disabled} style={{ ...btnGhost, fontSize: 12, color: '#991b1b', opacity: disabled ? 0.5 : 1 }}>
           <Trash2 size={11} />
         </button>
       </td>
@@ -293,7 +293,7 @@ function EditRow({ draft, setDraft, saving, onSave, onCancel, staff, taskNameSug
       <td style={td}></td>
       <td style={td}>
         <input value={draft.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="VAT return" style={inp} />
-        <input value={draft.notes || ''} onChange={(e) => set('notes', e.target.value)} placeholder="Notes (optional)" style={{ ...inp, marginTop: 4, fontSize: 11, color: '#94a3b8' }} />
+        <input value={draft.notes || ''} onChange={(e) => set('notes', e.target.value)} placeholder="Notes (optional)" style={{ ...inp, marginTop: 4, fontSize: 12, color: '#94a3b8' }} />
       </td>
       <td style={{ ...td, textAlign: 'center' }}>
         <input
@@ -308,7 +308,7 @@ function EditRow({ draft, setDraft, saving, onSave, onCancel, staff, taskNameSug
             <button
               type="button"
               onClick={() => set('colour', null)}
-              style={{ ...btnGhost, fontSize: 9, padding: '1px 4px' }}
+              style={{ ...btnGhost, fontSize: 10, padding: '1px 4px' }}
               title="Clear colour"
             >clear</button>
           </div>
@@ -363,16 +363,16 @@ function EditRow({ draft, setDraft, saving, onSave, onCancel, staff, taskNameSug
         </select>
       </td>
       <td style={td}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
           <input type="checkbox" checked={!!draft.active} onChange={(e) => set('active', e.target.checked)} />
           {draft.active ? 'Active' : 'Off'}
         </label>
       </td>
       <td style={{ ...td, textAlign: 'right' }}>
-        <button onClick={onSave} disabled={saving} style={{ ...btnPrimary, fontSize: 11, padding: '4px 10px', marginRight: 4, opacity: saving ? 0.5 : 1 }}>
+        <button onClick={onSave} disabled={saving} style={{ ...btnPrimary, fontSize: 12, padding: '4px 10px', marginRight: 4, opacity: saving ? 0.5 : 1 }}>
           <Save size={11} /> {saving ? 'Saving…' : 'Save'}
         </button>
-        <button onClick={onCancel} disabled={saving} style={{ ...btnGhost, fontSize: 11 }}>
+        <button onClick={onCancel} disabled={saving} style={{ ...btnGhost, fontSize: 12 }}>
           <X size={11} />
         </button>
       </td>
@@ -396,7 +396,7 @@ function OverridesPanel({ rule, overrides, entities, onSave, onDelete }) {
     <tr style={{ background: '#fafafa' }}>
       <td></td>
       <td colSpan={11} style={{ padding: '10px 14px', borderTop: '1px dashed #e5e7eb' }}>
-        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
           Client exceptions — override the rule for specific clients. Blank fields inherit from the rule.
         </div>
         {overrides.length > 0 && (
@@ -420,7 +420,7 @@ function OverridesPanel({ rule, overrides, entities, onSave, onDelete }) {
                   <td style={{ ...ovTd, textAlign: 'right', fontFamily: 'monospace' }}>{o.target_hours != null ? Math.round(Number(o.target_hours) * 60) + 'm' : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
                   <td style={{ ...ovTd, color: '#64748b' }}>{o.notes}</td>
                   <td style={{ ...ovTd, textAlign: 'right' }}>
-                    <button onClick={() => onDelete(o.entity_id)} style={{ ...btnGhost, fontSize: 11, color: '#991b1b' }}>
+                    <button onClick={() => onDelete(o.entity_id)} style={{ ...btnGhost, fontSize: 12, color: '#991b1b' }}>
                       <Trash2 size={11} />
                     </button>
                   </td>
@@ -451,11 +451,11 @@ function OverridesPanel({ rule, overrides, entities, onSave, onDelete }) {
             <input placeholder="Notes" value={draft.notes || ''}
               onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
               style={{ ...inp, flex: 1, minWidth: 120 }} />
-            <button onClick={save} disabled={!newEntityId} style={{ ...btnPrimary, fontSize: 11, padding: '4px 10px' }}>Save</button>
-            <button onClick={() => { setAdding(false); setNewEntityId(''); }} style={{ ...btnGhost, fontSize: 11 }}>Cancel</button>
+            <button onClick={save} disabled={!newEntityId} style={{ ...btnPrimary, fontSize: 12, padding: '4px 10px' }}>Save</button>
+            <button onClick={() => { setAdding(false); setNewEntityId(''); }} style={{ ...btnGhost, fontSize: 12 }}>Cancel</button>
           </div>
         ) : (
-          <button onClick={() => setAdding(true)} style={{ ...btnGhost, fontSize: 11 }}>
+          <button onClick={() => setAdding(true)} style={{ ...btnGhost, fontSize: 12 }}>
             <UserPlus size={12} /> Add client exception
           </button>
         )}
@@ -464,21 +464,21 @@ function OverridesPanel({ rule, overrides, entities, onSave, onDelete }) {
   );
 }
 
-const th = { textAlign: 'left', padding: '10px 12px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' };
-const td = { padding: '10px 12px', fontSize: 12, verticalAlign: 'top', color: '#1e293b' };
-const ovTh = { textAlign: 'left', padding: '4px 8px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' };
-const ovTd = { padding: '5px 8px', fontSize: 12, color: '#1e293b' };
-const inp = { padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 12, fontFamily: font, background: '#fff' };
+const th = { textAlign: 'left', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: '#94a3b8' };
+const td = { padding: '10px 12px', fontSize: 13, verticalAlign: 'top', color: '#1e293b' };
+const ovTh = { textAlign: 'left', padding: '4px 8px', fontSize: 11, fontWeight: 700, color: '#94a3b8' };
+const ovTd = { padding: '5px 8px', fontSize: 13, color: '#1e293b' };
+const inp = { padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 13, fontFamily: font, background: '#fff' };
 
 const btnPrimary = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 13, fontWeight: 600, padding: '8px 14px',
+  fontSize: 14, fontWeight: 600, padding: '8px 14px',
   background: '#0f172a', border: 'none', borderRadius: 8,
   color: '#fff', cursor: 'pointer', fontFamily: font,
 };
 const btnSecondary = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 13, fontWeight: 600, padding: '8px 14px',
+  fontSize: 14, fontWeight: 600, padding: '8px 14px',
   background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8,
   color: '#0f172a', cursor: 'pointer', fontFamily: font,
 };
@@ -491,10 +491,10 @@ const banner = {
   display: 'flex', alignItems: 'center', gap: 8,
   padding: '10px 14px', borderRadius: 8,
   background: '#fee2e2', border: '1px solid #fca5a5',
-  color: '#991b1b', fontSize: 13, marginBottom: 14,
+  color: '#991b1b', fontSize: 14, marginBottom: 14,
 };
 const resultBanner = {
   padding: '10px 14px', borderRadius: 8,
   background: '#eff6ff', border: '1px solid #bfdbfe',
-  color: '#1e3a8a', fontSize: 13, marginBottom: 14,
+  color: '#1e3a8a', fontSize: 14, marginBottom: 14,
 };

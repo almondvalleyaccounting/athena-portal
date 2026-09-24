@@ -182,7 +182,7 @@ export default function GroupsPage() {
                     <div>
                       <span className="text-xs font-medium text-ocean-700">{i + 1}. {c.name}</span>
                       {c.company_number && <span className="text-xs text-ocean-400 ml-2">{c.company_number}</span>}
-                      <span className="text-[10px] text-ocean-400 ml-2 capitalize">{c.type?.replace('_', ' ')}</span>
+                      <span className="text-[11px] text-ocean-400 ml-2 capitalize">{c.type?.replace('_', ' ')}</span>
                     </div>
                     <button onClick={() => handleRemoveClient(c.id)} className="text-ocean-400 hover:text-red-500 text-sm">&times;</button>
                   </div>

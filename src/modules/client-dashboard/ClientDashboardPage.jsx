@@ -565,7 +565,7 @@ export default function ClientDashboardPage() {
   const btnBase = {
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
     border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
-    fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#38bdf8',
+    fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: '#38bdf8',
   };
 
   const periodCurrency = periodData?.pl_range?.currency || periodData?.pnl_chart?.currency || periodData?.bs_period?.currency || 'GBP';
@@ -586,7 +586,7 @@ export default function ClientDashboardPage() {
             <h1 style={{ fontFamily: PLAYFAIR, fontSize: '22px', fontWeight: 500, color: '#0f172a', margin: '0 0 4px' }}>
               Client Dashboard
             </h1>
-            <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
+            <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
               Live QuickBooks figures. Star a client to pin them to your{' '}
               <a href="/portfolio" style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 600 }}>Portfolio</a>.
             </p>
@@ -687,7 +687,7 @@ export default function ClientDashboardPage() {
               {flash.type === 'success'
                 ? <CheckCircle size={16} style={{ color: '#22c55e' }} />
                 : <AlertCircle size={16} style={{ color: '#ef4444' }} />}
-              <span style={{ fontFamily: OUTFIT, fontSize: '13px', fontWeight: 500, flex: 1, color: flash.type === 'success' ? '#166534' : '#991b1b' }}>
+              <span style={{ fontFamily: OUTFIT, fontSize: '14px', fontWeight: 500, flex: 1, color: flash.type === 'success' ? '#166534' : '#991b1b' }}>
                 {flash.message}
               </span>
               <button onClick={() => setFlash(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}>
@@ -699,7 +699,7 @@ export default function ClientDashboardPage() {
           {/* Hard error (auth / network) */}
           {error && (
             <div style={{ ...cardStyle, backgroundColor: '#fef2f2', border: '1px solid #fecaca', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991b1b', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991b1b', fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600 }}>
                 <AlertCircle size={16} /> {error}
               </div>
             </div>
@@ -711,10 +711,10 @@ export default function ClientDashboardPage() {
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
                 <Link2Off size={18} style={{ color: '#d97706', flexShrink: 0, marginTop: '1px' }} />
                 <div>
-                  <div style={{ fontFamily: OUTFIT, fontSize: '14px', fontWeight: 700, color: '#92400e', marginBottom: '2px' }}>
+                  <div style={{ fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700, color: '#92400e', marginBottom: '2px' }}>
                     {selectedName} needs to reconnect QuickBooks
                   </div>
-                  <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#92400e' }}>
+                  <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#92400e' }}>
                     Live pulls are failing because no usable access tokens are stored for this client.
                     Reconnect them (Reports → Connect).
                     {hasCache ? ` Showing cached figures from ${timeAgo(lastPulled)}.` : ''}
@@ -727,7 +727,7 @@ export default function ClientDashboardPage() {
           {/* No client selected */}
           {!realmId && !clientsLoading && (
             <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
-              <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#64748b' }}>
+              <div style={{ fontFamily: OUTFIT, fontSize: '14.5px', color: '#64748b' }}>
                 Select a connected client on the left to see their dashboard, or connect a new QuickBooks file.
               </div>
             </div>
@@ -743,7 +743,7 @@ export default function ClientDashboardPage() {
                     onClick={() => setTab(t.id)}
                     style={{
                       padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',
-                      fontFamily: OUTFIT, fontSize: '13.5px', fontWeight: tab === t.id ? 700 : 500,
+                      fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: tab === t.id ? 700 : 500,
                       color: tab === t.id ? '#0f172a' : '#64748b',
                       borderBottom: tab === t.id ? '2px solid #38bdf8' : '2px solid transparent',
                       marginBottom: '-1px',
@@ -872,7 +872,7 @@ export default function ClientDashboardPage() {
 
               {/* Per-metric errors (partial pull) */}
               {partialErrors && (
-                <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#b45309', marginTop: '14px' }}>
+                <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#b45309', marginTop: '14px' }}>
                   Some figures couldn't be pulled: {Object.entries(partialErrors).map(([k, v]) => `${k} (${v})`).join('; ')}
                 </div>
               )}
@@ -900,7 +900,7 @@ function FilterRail({
   const isPeriod = PERIOD_TABS.has(tab);
 
   const freshness = (
-    <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px' }}>
+    <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px' }}>
       {busy && <Loader size={11} style={{ animation: 'spin 1s linear infinite' }} />}
       {busy ? 'Pulling…' : lastPulled ? `Last pulled ${timeAgo(lastPulled)}` : 'No cached data yet'}
     </div>
@@ -909,7 +909,7 @@ function FilterRail({
   if (!isAsAt && !isPeriod) {
     return (
       <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-        <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', lineHeight: 1.5 }}>
           {tab === 'projection'
             ? 'The projection sets its own timeline — the linked scenario and the actuals cut-off.'
             : tab === 'access'
@@ -937,16 +937,16 @@ function FilterRail({
 
   const optBtn = (active) => ({
     textAlign: 'left', padding: '7px 10px', borderRadius: '8px', cursor: 'pointer',
-    fontFamily: OUTFIT, fontSize: '12.5px', fontWeight: active ? 700 : 500,
+    fontFamily: OUTFIT, fontSize: '13.5px', fontWeight: active ? 700 : 500,
     border: `1px solid ${active ? '#7dd3fc' : '#e5e7eb'}`,
     backgroundColor: active ? '#f0f9ff' : '#ffffff',
     color: active ? '#0369a1' : '#475569',
   });
-  const dateInput = { ...inputStyle, padding: '7px 10px', fontSize: '12.5px', width: '100%' };
+  const dateInput = { ...inputStyle, padding: '7px 10px', fontSize: '13.5px', width: '100%' };
 
   return (
     <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
-      <div style={{ fontFamily: OUTFIT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: '8px' }}>
+      <div style={{ fontFamily: OUTFIT, fontSize: '12px', fontWeight: 700, color: '#94a3b8', marginBottom: '8px' }}>
         {railLabel}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
@@ -960,12 +960,12 @@ function FilterRail({
       {/* Custom entry */}
       {!isAsAt && periodKey === 'custom' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
-          <label style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8' }}>
+          <label style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8' }}>
             From
             <input type="date" value={customPeriod.start} max={customPeriod.end || undefined}
               onChange={(e) => setCustomPeriod((c) => ({ ...c, start: e.target.value }))} style={dateInput} />
           </label>
-          <label style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8' }}>
+          <label style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8' }}>
             To
             <input type="date" value={customPeriod.end} min={customPeriod.start || undefined}
               onChange={(e) => setCustomPeriod((c) => ({ ...c, end: e.target.value }))} style={dateInput} />
@@ -974,7 +974,7 @@ function FilterRail({
       )}
       {isAsAt && asAtKey === 'custom' && (
         <div style={{ marginTop: '8px' }}>
-          <label style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8' }}>
+          <label style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8' }}>
             As at
             <input type="date" value={customAsAt.date}
               onChange={(e) => setCustomAsAt({ date: e.target.value })} style={dateInput} />
@@ -983,7 +983,7 @@ function FilterRail({
       )}
 
       {/* Computed window summary */}
-      <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#64748b', marginTop: '10px', lineHeight: 1.5 }}>
+      <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#64748b', marginTop: '10px', lineHeight: 1.5 }}>
         {isAsAt
           ? `Figures as at ${shortDate(asAt.date)}.`
           : `${shortDate(period.plStart)} → ${shortDate(period.plEnd)}.`}
@@ -1064,25 +1064,25 @@ function PnlTab({ pnlMonthly, compare, cmpPnl, cmpRange, buckets, currency, load
       {bar}
       <div style={cardStyle}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>
             Profit &amp; Loss
           </span>
           {p && (
-            <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
+            <span style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', marginLeft: 'auto' }}>
               {shortDate(p.start)} → {shortDate(p.end)}
               {merged && cmpRange && ` vs ${shortDate(cmpRange.start)} → ${shortDate(cmpRange.end)}`}
               {' '}· {currency}
             </span>
           )}
         </div>
-        <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: 0, marginBottom: '10px' }}>
+        <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', marginTop: 0, marginBottom: '10px' }}>
           Click a summary line (Income, Cost of Sales, Expenses…) to expand it to account level.
           {merged
             ? ' Both columns cover the same length of time, so they are comparable line for line.'
             : bucketed ? ' Columns follow the grain and year basis above.' : ''}
         </p>
         {cmpMissing && (
-          <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#b45309', marginTop: 0, marginBottom: '10px' }}>
+          <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#b45309', marginTop: 0, marginBottom: '10px' }}>
             {loading
               ? 'Pulling the comparative period…'
               : 'The comparative period could not be pulled, so the second column is empty.'}
@@ -1199,16 +1199,16 @@ function BalanceSheetTab({
 
         <div style={cardStyle}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+            <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>
               Balance sheet
             </span>
-            <span style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
+            <span style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', marginLeft: 'auto' }}>
               as at {shortDate(bs.period?.end)}
               {merged && cmpDate && ` vs ${shortDate(cmpDate)}`}
               {' '}· {currency}
             </span>
           </div>
-          <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: 0, marginBottom: '10px' }}>
+          <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', marginTop: 0, marginBottom: '10px' }}>
             {merged
               ? 'Both columns are the position at that date. Click a section to expand it to account level.'
               : bucketed
@@ -1217,7 +1217,7 @@ function BalanceSheetTab({
             {' '}Total liabilities is creditors falling due within one year plus after more than one year.
           </p>
           {cmpMissing && (
-            <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#b45309', marginTop: 0, marginBottom: '10px' }}>
+            <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#b45309', marginTop: 0, marginBottom: '10px' }}>
               {loading
                 ? 'Pulling the comparative date…'
                 : 'The comparative date could not be pulled, so the second column is empty.'}
@@ -1229,7 +1229,7 @@ function BalanceSheetTab({
                 columnKinds={merged ? COMPARATIVE_KINDS : null}
                 dividerAt={merged ? 2 : null}
               />
-            : <p style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+            : <p style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#94a3b8', margin: 0 }}>
                 Loading the comparative columns…
               </p>}
         </div>

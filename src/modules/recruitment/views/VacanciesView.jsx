@@ -66,14 +66,14 @@ export default function VacanciesView() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
         <Briefcase size={20} color="#0e7fe0" />
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Vacancies</h1>
-        <span style={{ fontSize: 13, color: '#64748b' }}>{openCount} open</span>
+        <span style={{ fontSize: 14, color: '#64748b' }}>{openCount} open</span>
         {canManage && (
           <button onClick={() => setAdding(true)} style={{ ...btn('primary'), marginLeft: 'auto' }}>
             <Plus size={14} /> New vacancy
           </button>
         )}
       </div>
-      <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 16px' }}>
+      <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 16px' }}>
         Roles the firm is hiring for. Open one to manage its applicant pipeline.
       </p>
 
@@ -81,7 +81,7 @@ export default function VacanciesView() {
         {FILTERS.map((fl) => (
           <button key={fl.key} onClick={() => setFilter(fl.key)}
             style={{
-              fontSize: 12, fontWeight: filter === fl.key ? 600 : 500, padding: '5px 12px', borderRadius: 999,
+              fontSize: 13, fontWeight: filter === fl.key ? 600 : 500, padding: '5px 12px', borderRadius: 999,
               cursor: 'pointer', fontFamily: font,
               background: filter === fl.key ? '#dbeafe' : '#fff',
               color: filter === fl.key ? '#0c4a6e' : '#64748b',
@@ -90,11 +90,11 @@ export default function VacanciesView() {
         ))}
       </div>
 
-      {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
-      {vacancies === null && <div style={{ ...card, padding: 18, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Loading…</div>}
+      {error && <div style={{ fontSize: 14, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
+      {vacancies === null && <div style={{ ...card, padding: 18, textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>Loading…</div>}
 
       {vacancies !== null && visible.length === 0 && (
-        <div style={{ ...card, padding: '32px 18px', textAlign: 'center', fontSize: 13.5, color: '#94a3b8' }}>
+        <div style={{ ...card, padding: '32px 18px', textAlign: 'center', fontSize: 14.5, color: '#94a3b8' }}>
           {filter === 'active' ? 'No active vacancies.' : 'Nothing here.'}
           {canManage && filter === 'active' && (
             <div style={{ marginTop: 10 }}>
@@ -113,14 +113,14 @@ export default function VacanciesView() {
               style={{ ...card, padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>{v.title}</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{v.title}</span>
                   <span style={{
-                    fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                    fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
                     background: st.tone.bg, color: st.tone.fg, border: `1px solid ${st.tone.border}`,
                     textTransform: 'uppercase', letterSpacing: 0.3,
                   }}>{st.label}</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 5, fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 5, fontSize: 13, color: '#64748b', flexWrap: 'wrap' }}>
                   {v.department && <span>{v.department}</span>}
                   <span>{EMP_MAP[v.employment_type]}</span>
                   {v.location && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><MapPin size={11} /> {v.location}</span>}
@@ -128,7 +128,7 @@ export default function VacanciesView() {
                   {v.hiring_manager_id && staffMap[v.hiring_manager_id] && <span>· {staffMap[v.hiring_manager_id]}</span>}
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#475569', whiteSpace: 'nowrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13.5, color: '#475569', whiteSpace: 'nowrap' }}>
                 <Users size={13} color="#94a3b8" /> {n} in pipeline
               </div>
               <ChevronRight size={18} color="#cbd5e1" />

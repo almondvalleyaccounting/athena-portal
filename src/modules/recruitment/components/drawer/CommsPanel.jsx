@@ -55,7 +55,7 @@ export default function CommsPanel({ app, vacancyTitle, profileId }) {
   const toggle = (val, label, Icon) => (
     <button onClick={() => setChannel(val)}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', fontSize: 12.5, fontWeight: 600,
+        display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', fontSize: 13.5, fontWeight: 600,
         fontFamily: font, borderRadius: 8, cursor: 'pointer',
         background: channel === val ? '#eff6ff' : '#fff', color: channel === val ? '#0c4a6e' : '#64748b',
         border: `1px solid ${channel === val ? '#93c5fd' : '#e5e7eb'}`,
@@ -65,19 +65,19 @@ export default function CommsPanel({ app, vacancyTitle, profileId }) {
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        {messages === null && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Loading…</div>}
-        {messages !== null && messages.length === 0 && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>No messages yet.</div>}
+        {messages === null && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Loading…</div>}
+        {messages !== null && messages.length === 0 && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>No messages yet.</div>}
         {(messages || []).map((m) => (
           <div key={m.id} style={{ padding: '9px 11px', borderRadius: 8, background: '#f8fafc', marginBottom: 8, border: '1px solid #f1f5f9' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
               {m.channel === 'email' ? <Mail size={12} color="#94a3b8" /> : <MessageSquare size={12} color="#94a3b8" />}
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>{m.channel}</span>
-              {m.status === 'failed' && <span style={{ fontSize: 10, color: '#b91c1c', fontWeight: 700 }}>FAILED</span>}
-              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>{fmtNoteTime(m.created_at)}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>{m.channel}</span>
+              {m.status === 'failed' && <span style={{ fontSize: 11, color: '#b91c1c', fontWeight: 700 }}>FAILED</span>}
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{fmtNoteTime(m.created_at)}</span>
             </div>
-            {m.subject && <div style={{ fontSize: 12.5, fontWeight: 600, color: '#0f172a' }}>{m.subject}</div>}
-            <div style={{ fontSize: 12.5, color: '#334155', whiteSpace: 'pre-wrap' }}>{m.body}</div>
-            {m.error && <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>{m.error}</div>}
+            {m.subject && <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{m.subject}</div>}
+            <div style={{ fontSize: 13.5, color: '#334155', whiteSpace: 'pre-wrap' }}>{m.body}</div>
+            {m.error && <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 3 }}>{m.error}</div>}
           </div>
         ))}
       </div>
@@ -111,8 +111,8 @@ export default function CommsPanel({ app, vacancyTitle, profileId }) {
         <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={channel === 'email' ? 7 : 4}
           style={{ ...input, resize: 'vertical' }} placeholder={channel === 'email' ? 'Write your email…' : 'Write your text…'} />
 
-        {error && <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 8 }}>{error}</div>}
-        {okMsg && <div style={{ fontSize: 12, color: '#166534', marginTop: 8 }}>{okMsg}</div>}
+        {error && <div style={{ fontSize: 13, color: '#b91c1c', marginTop: 8 }}>{error}</div>}
+        {okMsg && <div style={{ fontSize: 13, color: '#166534', marginTop: 8 }}>{okMsg}</div>}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
           <button onClick={send} disabled={sending} style={{ ...btn('primary'), opacity: sending ? 0.6 : 1 }}>

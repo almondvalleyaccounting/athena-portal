@@ -136,12 +136,12 @@ export default function AllTaxesView({ clients = [], error = '' }) {
     <div>
       <ErrorBar message={error || loadError} />
 
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 6, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 6, lineHeight: 1.55 }}>
         One HMRC position per client. <b>Net</b> is what they owe once everything HMRC is holding is counted
         against it — cash, CIS credit, overpaid Corporation Tax. <b>Click any figure</b> to open it; the
         client stays selected on every other tab.
       </p>
-      <p style={{ fontSize: 12, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
+      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
         <b>Payable now</b> is lower confidence than it looks smaller. Net assumes every credit can be applied;
         current-year CIS credit cannot be moved until 6 April, and some credit cannot be dated at all. Where
         the two columns differ, that difference is the credit that is stuck.
@@ -156,7 +156,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
         <Chip value="multi"     label="On 2+ taxes"    count={groups.multi.length}     active={view} onClick={setView} colour="#c2410c" />
         <Chip value="all"       label="Every client"   count={groups.all.length}       active={view} onClick={setView} />
         <select value={sort} onChange={(e) => setSort(e.target.value)}
-          style={{ padding: '5px 8px', fontSize: 12, fontFamily: font, color: '#475569',
+          style={{ padding: '5px 8px', fontSize: 13, fontFamily: font, color: '#475569',
                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
           <option value="net_position">Sort: net position</option>
           <option value="payable_now">Sort: payable now</option>
@@ -166,7 +166,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
         </select>
         <button onClick={exportCsv} disabled={filtered.length === 0}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
-                   fontSize: 12, fontFamily: font, color: '#475569', background: '#fff',
+                   fontSize: 13, fontFamily: font, color: '#475569', background: '#fff',
                    border: '1px solid #e5e7eb', borderRadius: 8,
                    cursor: filtered.length ? 'pointer' : 'default', opacity: filtered.length ? 1 : 0.5 }}>
           <Download size={12} /> Export for Excel
@@ -176,19 +176,19 @@ export default function AllTaxesView({ clients = [], error = '' }) {
       <AlphabetFilter items={rows} nameKey="entity_name" selected={letter} onChange={setLetter} />
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading every tax head…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading every tax head…</div>
       ) : (
         <div style={{ ...card, marginTop: 8 }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+            <table style={{ width: '100%', fontSize: 13.5, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, color: '#64748b' }}>
+                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
                   <th style={th}>Client</th>
                   <th style={thNum} title="What HMRC says is due, across all four heads">Owed</th>
                   <th style={thNum} title="Everything HMRC is sitting on — hover a figure for the make-up">Held</th>
                   <th style={{ ...thNum, borderLeft: '1px solid #e5e7eb' }} title="Owed less held. The true economic position.">Net</th>
                   <th style={thNum} title="Owed less only the credit that can be moved today. Excludes current-year CIS credit and credit whose year cannot be read.">Payable now</th>
-                  <th style={{ ...th, borderLeft: '1px solid #e5e7eb', fontSize: 9.5, color: '#94a3b8' }} colSpan={4}>Owed, by head</th>
+                  <th style={{ ...th, borderLeft: '1px solid #e5e7eb', fontSize: 10.5, color: '#94a3b8' }} colSpan={4}>Owed, by head</th>
                   <th style={{ ...th, textAlign: 'center' }}>Taxes</th>
                 </tr>
               </thead>
@@ -212,11 +212,11 @@ export default function AllTaxesView({ clients = [], error = '' }) {
                           <button onClick={() => navigate(`/hmrc/breakdown?entity=${r.entity_id}`)}
                             title={`${r.entity_name} — every tax head, and what each balance is made of`}
                             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                     fontFamily: font, fontSize: 12.5, fontWeight: 500, color: '#0f172a', textAlign: 'left' }}>
+                                     fontFamily: font, fontSize: 13.5, fontWeight: 500, color: '#0f172a', textAlign: 'left' }}>
                             {r.entity_name}
                           </button>
                           {r.vat_credit_not_captured && (
-                            <Pill colour="#b45309" style={{ fontSize: 9 }}
+                            <Pill colour="#b45309" style={{ fontSize: 10 }}
                               title="Registered for VAT but HMRC lists nothing owed. A VAT repayment position is not scraped, so we cannot tell a nil position from a repayment due.">
                               VAT ?
                             </Pill>
@@ -234,7 +234,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
                           onClick={() => navigate(`/hmrc/breakdown?entity=${r.entity_id}`)}
                           title={`${r.entity_name} — owed ${fmtGbpDetailed(r.owed_total)}, held ${fmtGbpDetailed(r.held_total)}`}
                           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                   fontFamily: font, fontSize: 12.5, fontWeight: 700,
+                                   fontFamily: font, fontSize: 13.5, fontWeight: 700,
                                    fontVariantNumeric: 'tabular-nums',
                                    color: net > 0 ? '#b91c1c' : net < 0 ? '#059669' : '#0f172a',
                                    textDecoration: 'underline', textDecorationStyle: 'dotted',
@@ -258,7 +258,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
                             <button onClick={() => openTax(h.tax, r)}
                               title={`${r.entity_name} · ${TAX_META[h.tax].label} — what makes this up`}
                               style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                       fontFamily: font, fontSize: 11.5, fontVariantNumeric: 'tabular-nums',
+                                       fontFamily: font, fontSize: 12.5, fontVariantNumeric: 'tabular-nums',
                                        color: v > 0 ? '#94a3b8' : '#e2e8f0',
                                        textDecoration: v !== 0 ? 'underline' : 'none',
                                        textDecorationStyle: 'dotted', textDecorationColor: '#e2e8f0' }}>
@@ -267,7 +267,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
                           </td>
                         );
                       })}
-                      <td style={{ ...td, textAlign: 'center', fontSize: 11.5, color: '#64748b' }}>
+                      <td style={{ ...td, textAlign: 'center', fontSize: 12.5, color: '#64748b' }}>
                         {r.taxes_owing || 0}
                         <span style={{ color: '#cbd5e1' }}>/{extra.get(r.entity_id)?.taxes_known ?? 0}</span>
                       </td>
@@ -287,7 +287,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
                     </td>
                     <td style={tdNum}>{fmtGbpDetailed(sum('payable_now'))}</td>
                     {HEADS.map((h, i) => (
-                      <td key={h.key} style={{ ...tdNum, fontSize: 11.5, color: '#94a3b8',
+                      <td key={h.key} style={{ ...tdNum, fontSize: 12.5, color: '#94a3b8',
                                                ...(i === 0 ? { borderLeft: '1px solid #e5e7eb' } : {}) }}>
                         {fmtGbpDetailed(sum(h.key))}
                       </td>
@@ -298,7 +298,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
               )}
             </table>
           </div>
-          <div style={{ padding: '10px 14px', fontSize: 11.5, color: '#94a3b8', lineHeight: 1.6, borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ padding: '10px 14px', fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6, borderTop: '1px solid #f1f5f9' }}>
             Owed less held is Net. Payable now applies only the credit that can actually be moved today, so
             where it exceeds Net the difference is credit that is stuck — marked with a dot. A
             <b> VAT ?</b> tag means the client is registered for VAT and HMRC lists nothing owed: a VAT

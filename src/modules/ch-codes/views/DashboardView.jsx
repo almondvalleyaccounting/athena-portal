@@ -94,21 +94,21 @@ export default function DashboardView() {
   const maxWeekly = Math.max(1, ...weekly.map((w) => Math.max(w.emails, w.calls)));
   const fmtWk = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
-  const th = { padding: '8px 10px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.3, textAlign: 'center', borderBottom: '1px solid #e5e7eb' };
-  const td = { padding: '8px 10px', fontSize: 13, color: '#0f172a', textAlign: 'center', borderBottom: '1px solid #f1f5f9' };
+  const th = { padding: '8px 10px', fontSize: 12, fontWeight: 700, color: '#94a3b8', textAlign: 'center', borderBottom: '1px solid #e5e7eb' };
+  const td = { padding: '8px 10px', fontSize: 14, color: '#0f172a', textAlign: 'center', borderBottom: '1px solid #f1f5f9' };
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>CH codes — dashboard</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>Where everyone is, and how much chasing is happening.</p>
+          <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>Where everyone is, and how much chasing is happening.</p>
         </div>
         <ChSubNav active="Dashboard" />
       </div>
 
-      {error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 12 }}>Failed: {error}</div>}
-      {!rows && !error && <div style={{ color: '#64748b', fontSize: 13 }}>Loading…</div>}
+      {error && <div style={{ color: tones.danger.fg, fontSize: 14, marginBottom: 12 }}>Failed: {error}</div>}
+      {!rows && !error && <div style={{ color: '#64748b', fontSize: 14 }}>Loading…</div>}
 
       {rows && (
         <>
@@ -121,7 +121,7 @@ export default function DashboardView() {
               ['Total people', totals.people, 'neutral'],
             ].map(([label, val, tone]) => (
               <div key={label} style={{ ...card, padding: '14px 16px' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>{label}</div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: (tones[tone] || tones.neutral).solid, marginTop: 4 }}>{val}</div>
               </div>
             ))}
@@ -129,7 +129,7 @@ export default function DashboardView() {
 
           {/* Stage × sub-stage matrix */}
           <div style={{ ...card, padding: 0, marginBottom: 18, overflowX: 'auto' }}>
-            <div style={{ padding: '14px 16px', fontSize: 13, fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #f1f5f9' }}>People by stage &amp; sub-stage</div>
+            <div style={{ padding: '14px 16px', fontSize: 14, fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #f1f5f9' }}>People by stage &amp; sub-stage</div>
             <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
               <thead>
                 <tr>
@@ -147,7 +147,7 @@ export default function DashboardView() {
                       <td style={{ ...td, textAlign: 'left' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ width: 8, height: 8, borderRadius: 999, background: t.solid }} />
-                          <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700 }}>{g.short}</span>
+                          <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 700 }}>{g.short}</span>
                           <span style={{ fontWeight: 600 }}>{g.label}</span>
                         </span>
                       </td>
@@ -167,7 +167,7 @@ export default function DashboardView() {
                 </tr>
               </tbody>
             </table>
-            <div style={{ padding: '8px 16px 14px', fontSize: 11.5, color: '#94a3b8' }}>
+            <div style={{ padding: '8px 16px 14px', fontSize: 12.5, color: '#94a3b8' }}>
               Sub-stage (emails 1/2/3 → called → escalated) applies to the chasing stages; the others show a total only.
             </div>
           </div>
@@ -175,13 +175,13 @@ export default function DashboardView() {
           {/* Rolling 4-week emails & calls */}
           <div style={{ ...card }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>Emails &amp; calls — last 4 weeks</div>
-              <div style={{ display: 'flex', gap: 14, fontSize: 12, color: '#64748b' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>Emails &amp; calls — last 4 weeks</div>
+              <div style={{ display: 'flex', gap: 14, fontSize: 13, color: '#64748b' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: tones.info.solid }} /> Emails</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: tones.accent.solid }} /> Calls</span>
               </div>
             </div>
-            <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 16 }}>Weeks run Monday–Sunday (chasing happens Mon–Fri). Counts are activity recorded in Athena.</div>
+            <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 16 }}>Weeks run Monday–Sunday (chasing happens Mon–Fri). Counts are activity recorded in Athena.</div>
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${WEEKS}, 1fr)`, gap: 14, alignItems: 'end' }}>
               {weekly.map((w, i) => {
                 const isCurrent = i === weekly.length - 1;
@@ -189,22 +189,22 @@ export default function DashboardView() {
                   <div key={i} style={{ textAlign: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 8, height: 130 }}>
                       <div title={`${w.emails} emails`} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center' }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: tones.info.fg }}>{w.emails}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: tones.info.fg }}>{w.emails}</span>
                         <div style={{ width: 26, height: `${Math.round((w.emails / maxWeekly) * 104)}px`, background: tones.info.solid, borderRadius: '4px 4px 0 0', minHeight: w.emails ? 3 : 0 }} />
                       </div>
                       <div title={`${w.calls} calls`} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center' }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: tones.accent.fg }}>{w.calls}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: tones.accent.fg }}>{w.calls}</span>
                         <div style={{ width: 26, height: `${Math.round((w.calls / maxWeekly) * 104)}px`, background: tones.accent.solid, borderRadius: '4px 4px 0 0', minHeight: w.calls ? 3 : 0 }} />
                       </div>
                     </div>
-                    <div style={{ marginTop: 8, fontSize: 12, fontWeight: isCurrent ? 700 : 500, color: isCurrent ? '#0f172a' : '#64748b' }}>
+                    <div style={{ marginTop: 8, fontSize: 13, fontWeight: isCurrent ? 700 : 500, color: isCurrent ? '#0f172a' : '#64748b' }}>
                       w/c {fmtWk(w.from)}{isCurrent ? ' (now)' : ''}
                     </div>
                   </div>
                 );
               })}
             </div>
-            <div style={{ display: 'flex', gap: 20, marginTop: 16, paddingTop: 14, borderTop: '1px solid #f1f5f9', fontSize: 13, color: '#475569' }}>
+            <div style={{ display: 'flex', gap: 20, marginTop: 16, paddingTop: 14, borderTop: '1px solid #f1f5f9', fontSize: 14, color: '#475569' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Mail size={14} /> {weekly.reduce((s, w) => s + w.emails, 0)} emails in 4 weeks</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><PhoneCall size={14} /> {weekly.reduce((s, w) => s + w.calls, 0)} calls in 4 weeks</span>
             </div>

@@ -122,14 +122,14 @@ export default function SharingView() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {myGrants.map((g) => (
               <Row key={g.id}>
-                <span style={{ flex: 1, fontSize: 13, color: '#0f172a', fontWeight: 500 }}>{g.grantee?.name}</span>
-                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#eef2ff', color: '#4338ca' }}>{g.role}</span>
+                <span style={{ flex: 1, fontSize: 14, color: '#0f172a', fontWeight: 500 }}>{g.grantee?.name}</span>
+                <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: '#eef2ff', color: '#4338ca' }}>{g.role}</span>
                 <button onClick={() => revoke(g.id)} style={ghost}>Revoke</button>
               </Row>
             ))}
           </div>
         )}
-        <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Mentors/managers can view and edit your CPD (skills, objectives, 1-2-1s).</p>
+        <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Mentors/managers can view and edit your CPD (skills, objectives, 1-2-1s).</p>
       </Card>
 
       {/* Shared with me */}
@@ -139,13 +139,13 @@ export default function SharingView() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {toMe.map((g) => (
               <Row key={g.id}>
-                <span style={{ flex: 1, fontSize: 13, color: '#0f172a', fontWeight: 500 }}>{g.owner?.name}</span>
-                <span style={{ fontSize: 11, color: '#94a3b8' }}>you're their {g.role}</span>
+                <span style={{ flex: 1, fontSize: 14, color: '#0f172a', fontWeight: 500 }}>{g.owner?.name}</span>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>you're their {g.role}</span>
               </Row>
             ))}
           </div>
         )}
-        <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Pick them from the staff dropdown on the Skills and 1-2-1s tabs to view or comment.</p>
+        <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Pick them from the staff dropdown on the Skills and 1-2-1s tabs to view or comment.</p>
       </Card>
 
       {/* Request feedback */}
@@ -161,20 +161,20 @@ export default function SharingView() {
                 </Select>
               </Fld>
             </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Ask these colleagues</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Ask these colleagues</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
               {staff.filter((s) => s.id !== profile.id).map((s) => {
                 const on = reqResponders.includes(s.id);
                 return (
                   <button key={s.id} onClick={() => toggleResponder(s.id)}
-                    style={{ fontSize: 12, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 999, border: '1px solid ' + (on ? '#0f172a' : '#cbd5e1'), background: on ? '#0f172a' : '#fff', color: on ? '#fff' : '#475569' }}>
+                    style={{ fontSize: 13, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 999, border: '1px solid ' + (on ? '#0f172a' : '#cbd5e1'), background: on ? '#0f172a' : '#fff', color: on ? '#fff' : '#475569' }}>
                     {s.name}
                   </button>
                 );
               })}
             </div>
             <textarea value={reqMsg} onChange={(e) => setReqMsg(e.target.value)} placeholder="What would you like feedback on? (optional)"
-              style={{ width: '100%', minHeight: 60, padding: 10, fontFamily: FONT, fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', marginBottom: 10 }} />
+              style={{ width: '100%', minHeight: 60, padding: 10, fontFamily: FONT, fontSize: 14, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', marginBottom: 10 }} />
             <Button variant="primary" onClick={sendRequests} disabled={!reqMeeting || reqResponders.length === 0}>
               Request feedback{reqResponders.length ? ` from ${reqResponders.length}` : ''}
             </Button>
@@ -182,12 +182,12 @@ export default function SharingView() {
         )}
         {myReq.length > 0 && (
           <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Your requests</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Your requests</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {myReq.map((r) => (
                 <Row key={r.id}>
-                  <span style={{ flex: 1, fontSize: 12, color: '#475569' }}>{r.responder?.name} · {fmtDate(r.created_at)}</span>
-                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: r.status === 'answered' ? '#dcfce7' : r.status === 'declined' ? '#fee2e2' : '#f1f5f9', color: r.status === 'answered' ? '#166534' : r.status === 'declined' ? '#b91c1c' : '#64748b' }}>{r.status}</span>
+                  <span style={{ flex: 1, fontSize: 13, color: '#475569' }}>{r.responder?.name} · {fmtDate(r.created_at)}</span>
+                  <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: r.status === 'answered' ? '#dcfce7' : r.status === 'declined' ? '#fee2e2' : '#f1f5f9', color: r.status === 'answered' ? '#166534' : r.status === 'declined' ? '#b91c1c' : '#64748b' }}>{r.status}</span>
                 </Row>
               ))}
             </div>
@@ -203,19 +203,19 @@ function RespondCard({ req, onRespond, onDecline }) {
   const m = req.meeting;
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', padding: 12 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
         {req.subject?.name} asked for your feedback{m ? ` on their 1-2-1 (${fmtDate(m.meeting_date)})` : ''}
       </div>
-      {req.message && <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, fontStyle: 'italic' }}>“{req.message}”</div>}
+      {req.message && <div style={{ fontSize: 13, color: '#64748b', marginTop: 4, fontStyle: 'italic' }}>“{req.message}”</div>}
       {m && (m.what_went_well || m.what_didnt || m.blockers) && (
-        <div style={{ marginTop: 8, padding: 8, background: '#f8fafc', borderRadius: 8, fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
+        <div style={{ marginTop: 8, padding: 8, background: '#f8fafc', borderRadius: 8, fontSize: 13, color: '#475569', lineHeight: 1.5 }}>
           {m.what_went_well && <div><strong>Went well:</strong> {m.what_went_well}</div>}
           {m.what_didnt && <div><strong>Areas to target for improvement:</strong> {m.what_didnt}</div>}
           {m.blockers && <div><strong>Blockers:</strong> {m.blockers}</div>}
         </div>
       )}
       <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Your feedback…"
-        style={{ width: '100%', minHeight: 56, padding: 10, fontFamily: FONT, fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', margin: '10px 0' }} />
+        style={{ width: '100%', minHeight: 56, padding: 10, fontFamily: FONT, fontSize: 14, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', margin: '10px 0' }} />
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button onClick={() => onDecline(req)} style={ghost}>Decline</button>
         <Button variant="primary" onClick={() => onRespond(req, text)} disabled={!text.trim()}>Send feedback</Button>
@@ -226,9 +226,9 @@ function RespondCard({ req, onRespond, onDecline }) {
 
 function H({ children }) { return <div style={{ fontFamily: SERIF, fontSize: 17, color: '#0f172a', marginBottom: 12 }}>{children}</div>; }
 function Fld({ label, children }) {
-  return <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</span>{children}</label>;
+  return <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{label}</span>{children}</label>;
 }
 function Row({ children }) { return <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', border: '1px solid #f1f5f9', borderRadius: 8 }}>{children}</div>; }
-function Empty({ children }) { return <div style={{ fontSize: 12, color: '#94a3b8' }}>{children}</div>; }
-function Msg({ children }) { return <div style={{ padding: 40, fontFamily: FONT, color: '#64748b', fontSize: 14, textAlign: 'center' }}>{children}</div>; }
-const ghost = { fontSize: 11, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#64748b' };
+function Empty({ children }) { return <div style={{ fontSize: 13, color: '#94a3b8' }}>{children}</div>; }
+function Msg({ children }) { return <div style={{ padding: 40, fontFamily: FONT, color: '#64748b', fontSize: 14.5, textAlign: 'center' }}>{children}</div>; }
+const ghost = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#64748b' };

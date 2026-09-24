@@ -15,22 +15,22 @@ export default function InsightsView({ outputs, findings, forecast, periods, ent
     <div>
       <H2>
         AI Insights
-        <span style={{ fontSize: 12, fontWeight: 400, color: colors.muted, marginLeft: 8, fontFamily: fontStack }}>
+        <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, marginLeft: 8, fontFamily: fontStack }}>
           · deterministic rule-based · auto-refreshes on recompute
         </span>
       </H2>
-      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 16px' }}>
+      <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 16px' }}>
         Pattern detection across your forecast. These observations highlight anomalies, sector benchmarks, and lender-relevant ratios.
       </p>
 
       {errs.length > 0 && (
         <div style={{ padding: 14, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, marginBottom: 18 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: colors.red, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: colors.red, marginBottom: 6 }}>
             Reconciliation issues ({errs.length})
           </div>
-          <ul style={{ paddingLeft: 18, margin: 0, fontSize: 12, color: '#991b1b' }}>
+          <ul style={{ paddingLeft: 18, margin: 0, fontSize: 13, color: '#991b1b' }}>
             {errs.slice(0, 5).map((f, i) => (
-              <li key={i}><code style={{ fontSize: 11 }}>{f.code}</code> · t={f.period} · {f.message}</li>
+              <li key={i}><code style={{ fontSize: 12 }}>{f.code}</code> · t={f.period} · {f.message}</li>
             ))}
             {errs.length > 5 && <li style={{ color: colors.muted }}>+ {errs.length - 5} more</li>}
           </ul>
@@ -38,7 +38,7 @@ export default function InsightsView({ outputs, findings, forecast, periods, ent
       )}
 
       {insights.length === 0 ? (
-        <p style={{ color: colors.muted, fontSize: 13, padding: 24, textAlign: 'center', background: colors.bgSoft, borderRadius: 8 }}>
+        <p style={{ color: colors.muted, fontSize: 14, padding: 24, textAlign: 'center', background: colors.bgSoft, borderRadius: 8 }}>
           Recompute the forecast to surface insights.
         </p>
       ) : (
@@ -64,14 +64,14 @@ function InsightCard({ insight }) {
     <div style={{
       padding: 14, background: palette.bg, border: `1px solid ${palette.border}`, borderRadius: 8,
     }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: palette.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: palette.label, marginBottom: 4 }}>
         {insight.category}
       </div>
-      <div style={{ fontSize: 13, color: colors.ink, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 14, color: colors.ink, lineHeight: 1.5 }}>
         {insight.headline}
       </div>
       {insight.detail && (
-        <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
+        <div style={{ fontSize: 13, color: colors.muted, marginTop: 4 }}>
           {insight.detail}
         </div>
       )}

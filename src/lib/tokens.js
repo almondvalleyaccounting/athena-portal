@@ -42,7 +42,7 @@ export function chipStyle(tone) {
   const t = tones[tone] || tones.neutral;
   return {
     display: 'inline-block',
-    fontSize: 10, fontWeight: 700,
+    fontSize: 11, fontWeight: 700,
     padding: '2px 8px', borderRadius: 999,
     background: t.bg, color: t.fg,
   };
@@ -52,7 +52,7 @@ export function chipStyle(tone) {
 export function pillStyle({ tone, active }) {
   const t = tones[tone] || tones.neutral;
   return {
-    fontSize: 12, fontWeight: active ? 600 : 500,
+    fontSize: 13, fontWeight: active ? 600 : 500,
     padding: '5px 12px', borderRadius: 999,
     background: active ? t.bg : '#fff',
     color: t.fg,

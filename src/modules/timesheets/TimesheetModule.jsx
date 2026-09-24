@@ -33,7 +33,7 @@ export default function TimesheetModule() {
             key={tab.id}
             onClick={() => navigate(tab.path)}
             style={{
-              padding: '10px 18px', fontSize: 14, fontWeight: 500,
+              padding: '10px 18px', fontSize: 14.5, fontWeight: 500,
               color: activeTab === tab.id ? '#0e7fe0' : '#64748b',
               cursor: 'pointer', border: 'none', background: 'none',
               borderBottom: activeTab === tab.id ? '2px solid #0e7fe0' : '2px solid transparent',

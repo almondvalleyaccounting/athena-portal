@@ -3,6 +3,11 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
+      // One step up from Tailwind's 12px for the smallest everyday text
+      // (UI audit, Sprint 3: body 13px, labels 11px).
+      fontSize: {
+        xs: ['0.8125rem', { lineHeight: '1.125rem' }],
+      },
       colors: {
         // Scottish Coast primary palette
         ocean: {

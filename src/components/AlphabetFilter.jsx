@@ -69,7 +69,7 @@ function btn(active, enabled) {
   return {
     minWidth: 24, height: 24,
     padding: '0 7px',
-    fontSize: 11, fontWeight: active ? 700 : 500,
+    fontSize: 12, fontWeight: active ? 700 : 500,
     fontFamily: "'Outfit', sans-serif",
     border: 'none', borderRadius: 5,
     background: active ? '#0e7fe0' : enabled ? '#f1f5f9' : 'transparent',

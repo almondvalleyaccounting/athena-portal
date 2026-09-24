@@ -54,7 +54,7 @@ export default function CompletedView() {
               width: 20, height: 20, borderRadius: '50%',
               background: '#cbd5e1', display: 'inline-flex',
               alignItems: 'center', justifyContent: 'center',
-              fontSize: 8, fontWeight: 600, color: '#fff',
+              fontSize: 9, fontWeight: 600, color: '#fff',
             }}>
               ?
             </div>
@@ -62,26 +62,26 @@ export default function CompletedView() {
 
           <div style={{ flex: 1 }}>
             <div style={{
-              fontSize: 12, fontWeight: 500, color: '#64748b',
+              fontSize: 13, fontWeight: 500, color: '#64748b',
               textDecoration: task.not_required ? 'none' : 'line-through',
             }}>
               {task.title}
               {task.not_required && (
-                <span style={{ fontSize: 9, color: '#94a3b8', fontStyle: 'italic', marginLeft: 4 }}>
+                <span style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic', marginLeft: 4 }}>
                   not required
                 </span>
               )}
             </div>
-            <div style={{ fontSize: 10, color: '#94a3b8' }}>
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>
               {task.entity_id ? clientName(task.entity_id, entityMap) + ' \u00B7 ' : ''}
               {task.service || ''}
               {' \u00B7 '}
               {task.source_type === 'quick' ? 'Quick' : 'Scheduled'}
             </div>
             {(completionNoteMap[task.source_id] || []).map((n) => (
-              <div key={n.id} style={{ fontSize: 10, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>
+              <div key={n.id} style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>
                 &ldquo;{n.note}&rdquo;
-                <span style={{ color: '#94a3b8', marginLeft: 4, fontSize: 9 }}>
+                <span style={{ color: '#94a3b8', marginLeft: 4, fontSize: 10 }}>
                   &mdash; {(n.created_by_name || '').split(' ')[0]}
                 </span>
               </div>
@@ -89,12 +89,12 @@ export default function CompletedView() {
           </div>
 
           {task.completion_mins ? (
-            <div style={{ fontSize: 10, color: '#0e7fe0', fontWeight: 500 }}>
+            <div style={{ fontSize: 11, color: '#0e7fe0', fontWeight: 500 }}>
               {durFmt(task.completion_mins)}
             </div>
           ) : null}
 
-          <div style={{ fontSize: 9, color: '#94a3b8' }}>
+          <div style={{ fontSize: 10, color: '#94a3b8' }}>
             {task.completed_at ? formatDateShort(task.completed_at) : ''}
           </div>
 
@@ -116,7 +116,7 @@ export default function CompletedView() {
       ))}
 
       {list.length === 0 && (
-        <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 11 }}>
+        <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 12 }}>
           No completed tasks.
         </div>
       )}

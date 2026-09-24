@@ -59,11 +59,11 @@ export default function QueueView() {
             {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </button>
           <div style={{ flex: '1 1 200px', minWidth: 180 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{item.request?.person?.name || '—'}</div>
-            <div style={{ fontSize: 12, color: '#94a3b8' }}>{item.request?.entity?.name || ''} · {item.to_email}</div>
+            <div style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>{item.request?.person?.name || '—'}</div>
+            <div style={{ fontSize: 13, color: '#94a3b8' }}>{item.request?.entity?.name || ''} · {item.to_email}</div>
           </div>
           <span style={chipStyle(tone)}>{QUEUE_KINDS[item.kind] || item.kind}</span>
-          <div style={{ flex: '2 1 220px', fontSize: 12.5, color: '#475569', minWidth: 160 }}>{item.subject}</div>
+          <div style={{ flex: '2 1 220px', fontSize: 13.5, color: '#475569', minWidth: 160 }}>{item.subject}</div>
           {sent ? (
             item.status === 'failed'
               ? <span style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={10} /> failed</span>
@@ -73,7 +73,7 @@ export default function QueueView() {
               onClick={() => remove(item.id)}
               disabled={busyId === item.id}
               title="Remove from queue"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fff', border: `1px solid ${tones.danger.border}`, color: tones.danger.fg, borderRadius: 8, padding: '5px 9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fff', border: `1px solid ${tones.danger.border}`, color: tones.danger.fg, borderRadius: 8, padding: '5px 9px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
             >
               <Trash2 size={12} /> Remove
             </button>
@@ -81,7 +81,7 @@ export default function QueueView() {
         </div>
         {open && (
           <div style={{ padding: '0 16px 14px 44px' }}>
-            {item.error && <div style={{ color: tones.danger.fg, fontSize: 12, marginBottom: 8 }}>Error: {item.error}</div>}
+            {item.error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 8 }}>Error: {item.error}</div>}
             <iframe
               title={`preview-${item.id}`}
               srcDoc={item.html}
@@ -98,23 +98,23 @@ export default function QueueView() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Email queue</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
             Review everything queued from the tiles, then send it all in one go. Nothing leaves until you press Send.
           </p>
         </div>
         <ChSubNav active="Queue" queuedCount={totalQueued} />
       </div>
 
-      {error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 12 }}>Failed: {error}</div>}
+      {error && <div style={{ color: tones.danger.fg, fontSize: 14, marginBottom: 12 }}>Failed: {error}</div>}
       {result && (
-        <div style={{ background: result.failed ? tones.warning.bg : tones.success.bg, color: result.failed ? tones.warning.fg : tones.success.fg, borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>
+        <div style={{ background: result.failed ? tones.warning.bg : tones.success.bg, color: result.failed ? tones.warning.fg : tones.success.fg, borderRadius: 10, padding: '10px 14px', fontSize: 14, marginBottom: 14 }}>
           Sent {result.sent} email{result.sent === 1 ? '' : 's'}{result.failed ? `, ${result.failed} failed (see below)` : ''}.
         </div>
       )}
 
       <div style={{ ...card, marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: totalQueued ? '1px solid #f1f5f9' : 'none' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
             Queued {totalQueued > 0 && <span style={{ color: '#94a3b8', fontWeight: 500 }}>· {totalQueued}</span>}
           </div>
           {totalQueued > 0 && (
@@ -125,9 +125,9 @@ export default function QueueView() {
             </Btn>
           )}
         </div>
-        {!queued && !error && <div style={{ padding: 16, color: '#64748b', fontSize: 13 }}>Loading…</div>}
+        {!queued && !error && <div style={{ padding: 16, color: '#64748b', fontSize: 14 }}>Loading…</div>}
         {queued && totalQueued === 0 && (
-          <div style={{ padding: '32px 20px', textAlign: 'center', color: '#64748b', fontSize: 14 }}>
+          <div style={{ padding: '32px 20px', textAlign: 'center', color: '#64748b', fontSize: 14.5 }}>
             Nothing queued. Queue offers and reminders from the tiles on the Pipeline tab.
           </div>
         )}
@@ -136,7 +136,7 @@ export default function QueueView() {
 
       {recent.length > 0 && (
         <div style={card}>
-          <div style={{ padding: '14px 16px', fontSize: 13, fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #f1f5f9' }}>Recently sent</div>
+          <div style={{ padding: '14px 16px', fontSize: 14, fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #f1f5f9' }}>Recently sent</div>
           {recent.map((item) => <Row key={item.id} item={item} sent />)}
         </div>
       )}

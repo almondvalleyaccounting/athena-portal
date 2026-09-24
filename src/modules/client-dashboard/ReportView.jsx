@@ -103,11 +103,11 @@ export default function ReportView({
   const chartRow = rows[0];
 
   const th = {
-    fontFamily: t.font, fontSize: '11px', color: t.faint, fontWeight: 700,
+    fontFamily: t.font, fontSize: '12px', color: t.faint, fontWeight: 700,
     textAlign: 'right', padding: '7px 14px', whiteSpace: 'nowrap', borderBottom: `1px solid ${t.border}`,
   };
   const td = {
-    fontFamily: t.font, fontSize: '12.5px', textAlign: 'right', padding: '7px 14px',
+    fontFamily: t.font, fontSize: '13.5px', textAlign: 'right', padding: '7px 14px',
     whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', borderBottom: `1px solid ${t.rowBorder}`,
   };
 
@@ -116,20 +116,20 @@ export default function ReportView({
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
           <span style={{ fontFamily: t.font, fontSize: '16px', fontWeight: 700, color: t.strong }}>{report.name}</span>
-          <span style={{ fontFamily: t.font, fontSize: '11.5px', color: t.faint }}>
+          <span style={{ fontFamily: t.font, fontSize: '12.5px', color: t.faint }}>
             {clientName} · {windowLabel(report.grain, report.basis, buckets)}
             {report.view === 'underlying' && ' · underlying'}
             {!report.entity_id && (report.sector_id ? ' · sector report' : ' · practice-wide report')}
           </span>
         </div>
         {report.description && (
-          <p style={{ fontFamily: t.font, fontSize: '12.5px', color: t.text, margin: '6px 0 0' }}>{report.description}</p>
+          <p style={{ fontFamily: t.font, fontSize: '13.5px', color: t.text, margin: '6px 0 0' }}>{report.description}</p>
         )}
       </div>
 
       {report.chart !== 'none' && chartRow && (
         <div style={card}>
-          <div style={{ fontFamily: t.font, fontSize: '14px', fontWeight: 700, color: t.strong, marginBottom: '8px' }}>
+          <div style={{ fontFamily: t.font, fontSize: '14.5px', fontWeight: 700, color: t.strong, marginBottom: '8px' }}>
             {chartRow.label}
           </div>
           {report.chart === 'bars_line' && rows.length > 1 ? (
@@ -166,7 +166,7 @@ export default function ReportView({
                 <tr key={r.key}>
                   <td style={{ ...td, textAlign: 'left', position: 'sticky', left: 0, backgroundColor: t.surface, fontWeight: 600, color: r.missing ? t.warn : t.strong, paddingLeft: '20px' }}>
                     {r.label}
-                    {r.missing && <span style={{ fontWeight: 400, fontSize: '11px' }}> · no longer exists on this client</span>}
+                    {r.missing && <span style={{ fontWeight: 400, fontSize: '12px' }}> · no longer exists on this client</span>}
                   </td>
                   {r.values.map((v, i) => (
                     <td key={i} style={td}>

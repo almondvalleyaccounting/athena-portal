@@ -159,12 +159,12 @@ export default function OverviewTab({
           backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px',
         }}>
           <Info size={15} style={{ color: '#b45309', flexShrink: 0, marginTop: '1px' }} />
-          <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#92400e' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: '#92400e' }}>
             Nothing is tagged as an owner cost for this client yet, so underlying and reported are identical.
             Tag the codes on the{' '}
             <button
               onClick={() => goTab && goTab('underlying')}
-              style={{ border: 'none', background: 'none', padding: 0, color: '#92400e', fontFamily: OUTFIT, fontSize: '12.5px', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}
+              style={{ border: 'none', background: 'none', padding: 0, color: '#92400e', fontFamily: OUTFIT, fontSize: '13.5px', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}
             >
               Underlying Performance
             </button>{' '}
@@ -223,13 +223,13 @@ export default function OverviewTab({
                   padding: '14px 16px', cursor: goKpis ? 'pointer' : 'default',
                 }}
               >
-                <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#0369a1', marginBottom: '4px' }}>
+                <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#0369a1', marginBottom: '4px' }}>
                   {d.label}
                 </div>
                 <div style={{ fontFamily: OUTFIT, fontSize: '22px', fontWeight: 700, color: '#0f172a' }}>
                   {formatKpi(last, d.unit, d.decimals, currency)}
                 </div>
-                <div style={{ minHeight: '16px', marginTop: '2px', fontFamily: OUTFIT, fontSize: '11.5px', color: '#64748b' }}>
+                <div style={{ minHeight: '16px', marginTop: '2px', fontFamily: OUTFIT, fontSize: '12.5px', color: '#64748b' }}>
                   {diff != null && Math.abs(diff) > 0.0005 && (
                     <span style={{ fontWeight: 600, color: diff > 0 ? '#166534' : '#991b1b' }}>
                       {diff > 0 ? '▲' : '▼'} {formatKpi(Math.abs(diff), d.unit, d.decimals, currency)}{' '}
@@ -247,10 +247,10 @@ export default function OverviewTab({
       {chartPoints.length > 0 && (
         <div style={cardStyle}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+            <span style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a' }}>
               Revenue &amp; {isU ? 'underlying' : 'net'} profit — {windowLabel(grain, basis, chartRows)}
             </span>
-            <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginLeft: 'auto' }}>
+            <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', marginLeft: 'auto' }}>
               <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: '#bae6fd', borderRadius: '2px', marginRight: '4px', verticalAlign: '-1px' }} />
               revenue
               <span style={{ display: 'inline-block', width: '10px', height: '2px', backgroundColor: '#0f172a', margin: '0 4px 0 12px', verticalAlign: '3px' }} />
@@ -271,7 +271,7 @@ export default function OverviewTab({
           display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
           padding: '12px 16px', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px',
         }}>
-          <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#0369a1' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: '#0369a1' }}>
             {bucketLabel}: reported {money(latest.net_income, currency)}
             {latest.owner_add_back ? ` · owner costs ${money(latest.owner_add_back, currency)}` : ''}
             {latest.oneoff_cost ? ` · one-off costs ${money(latest.oneoff_cost, currency)}` : ''}
@@ -281,7 +281,7 @@ export default function OverviewTab({
           </span>
           <button
             onClick={() => goTab && goTab('underlying')}
-            style={{ marginLeft: 'auto', border: 'none', background: 'none', padding: 0, color: '#0369a1', fontFamily: OUTFIT, fontSize: '12px', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}
+            style={{ marginLeft: 'auto', border: 'none', background: 'none', padding: 0, color: '#0369a1', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}
           >
             See the full bridge
           </button>
@@ -290,20 +290,20 @@ export default function OverviewTab({
 
       {/* ── Ratios ── */}
       <div style={cardStyle}>
-        <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '12px' }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a', marginBottom: '12px' }}>
           Key ratios — {bucketLabel}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
           {ratios.map((r) => (
             <div key={r.key} title={r.hint} style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '12px 14px' }}>
-              <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginBottom: '3px' }}>{r.label}</div>
+              <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', marginBottom: '3px' }}>{r.label}</div>
               <div style={{ fontFamily: OUTFIT, fontSize: '19px', fontWeight: 700, color: r.value === null ? '#cbd5e1' : '#0f172a' }}>
                 {formatRatio(r.value, r.format)}
               </div>
             </div>
           ))}
         </div>
-        <p style={{ fontFamily: OUTFIT, fontSize: '11px', color: '#94a3b8', marginTop: '10px', marginBottom: 0 }}>
+        <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginTop: '10px', marginBottom: 0 }}>
           Margins use {bucketLabel} on the {isU ? 'underlying' : 'reported'} view; debtor and creditor days annualise
           over the rolling 12 months to {latest ? shortDate(latest.end) : 'the period end'}; the current ratio is the
           balance sheet at that date. Hover a tile for the formula.

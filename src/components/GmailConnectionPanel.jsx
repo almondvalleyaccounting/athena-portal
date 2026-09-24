@@ -81,14 +81,14 @@ export default function GmailConnectionPanel() {
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '8px 12px', marginBottom: 10,
         background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8,
-        fontSize: 12, fontFamily: font, color: '#166534',
+        fontSize: 13, fontFamily: font, color: '#166534',
       }}>
-        <span style={{ fontSize: 14 }}>✉</span>
+        <span style={{ fontSize: 14.5 }}>✉</span>
         <span>Gmail connected as <strong>{conn.account_email}</strong>. Athena uses this account to send client reminder emails, read replies, create draft emails, and archive processed messages.</span>
         <div style={{ flex: 1 }} />
         <button
           onClick={disconnect}
-          style={{ fontSize: 11, color: '#166534', background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: font }}
+          style={{ fontSize: 12, color: '#166534', background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: font }}
         >
           Disconnect
         </button>
@@ -105,10 +105,10 @@ export default function GmailConnectionPanel() {
       fontFamily: font,
     }}>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#92400e', marginBottom: 2 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#92400e', marginBottom: 2 }}>
           Gmail not connected
         </div>
-        <div style={{ fontSize: 12, color: '#78350f' }}>
+        <div style={{ fontSize: 13, color: '#78350f' }}>
           Sign in once to connect the shared mailbox. Athena uses the connection to send client reminder emails, read replies, create draft emails, and archive processed messages. Changing what the connection is allowed to do means disconnecting and reconnecting.
         </div>
       </div>
@@ -116,7 +116,7 @@ export default function GmailConnectionPanel() {
         type="button"
         onClick={handleConnect}
         style={{
-          padding: '8px 16px', fontSize: 13, fontWeight: 600,
+          padding: '8px 16px', fontSize: 14, fontWeight: 600,
           background: '#0f172a', color: '#fff', borderRadius: 8,
           border: 'none', cursor: 'pointer', fontFamily: font,
         }}

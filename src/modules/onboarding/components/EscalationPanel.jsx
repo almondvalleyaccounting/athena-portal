@@ -34,7 +34,7 @@ export default function EscalationPanel({ ob, onChanged }) {
 
   const btn = (bg, fg, border) => ({
     display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px',
-    fontSize: 12, fontWeight: 600, fontFamily: font, background: bg, color: fg,
+    fontSize: 13, fontWeight: 600, fontFamily: font, background: bg, color: fg,
     border: border ? `1px solid ${border}` : 'none', borderRadius: 8, cursor: 'pointer',
   });
 
@@ -42,13 +42,13 @@ export default function EscalationPanel({ ob, onChanged }) {
     <div style={{ background: '#fff', border: `1px solid ${tones[stage.tone].border}`, borderRadius: 12, padding: '14px 18px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <span style={chipStyle(stage.tone)}>{stage.label}</span>
-        <span style={{ fontSize: 11, color: '#94a3b8' }}>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>
           {ob.escalated_at ? `escalated ${new Date(ob.escalated_at).toLocaleDateString('en-GB')}` : ''}
           {ob.paused_at ? ` · paused ${new Date(ob.paused_at).toLocaleDateString('en-GB')}` : ''}
         </span>
       </div>
-      <div style={{ fontSize: 12.5, color: '#475569', marginBottom: 10, lineHeight: 1.5 }}>{stage.blurb}</div>
-      {msg && <div style={{ fontSize: 12, color: tones[msg.tone].fg, marginBottom: 8 }}>{msg.text}</div>}
+      <div style={{ fontSize: 13.5, color: '#475569', marginBottom: 10, lineHeight: 1.5 }}>{stage.blurb}</div>
+      {msg && <div style={{ fontSize: 13, color: tones[msg.tone].fg, marginBottom: 8 }}>{msg.text}</div>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {ob.escalation_status === 'call_needed' && (
           <button disabled={busy} style={btn(tones.info.bg, tones.info.fg, tones.info.border)} onClick={() => act(async () => {

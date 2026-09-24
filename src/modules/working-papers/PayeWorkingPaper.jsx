@@ -60,7 +60,7 @@ function ThreeWayRow({ label, hint, hmrc, qbo, brightpay, tolerance, indent = fa
     <tr style={{ borderTop: '1px solid #f1f5f9' }}>
       <td style={{ ...td, paddingLeft: indent ? 28 : 12 }}>
         {label}
-        {hint && <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.45 }}>{hint}</div>}
+        {hint && <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>{hint}</div>}
       </td>
       <td style={tdNum}>{money(hmrc)}</td>
       <td style={tdNum}>{money(qbo)}</td>
@@ -221,7 +221,7 @@ export default function PayeWorkingPaper({ entity }) {
   }, [creditsThisYear]);
 
   if (!entity) {
-    return <p style={{ fontFamily: font, fontSize: 13, color: '#94a3b8' }}>Pick a client to prepare their PAYE paper.</p>;
+    return <p style={{ fontFamily: font, fontSize: 14, color: '#94a3b8' }}>Pick a client to prepare their PAYE paper.</p>;
   }
 
   return (
@@ -231,15 +231,15 @@ export default function PayeWorkingPaper({ entity }) {
       {/* ── The paper's header: whose, at what date, on what basis ── */}
       <div style={{ ...card, padding: '12px 14px', marginBottom: 14, display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>Client</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{entity.entity_name}</div>
-          <div style={{ fontSize: 11.5, color: '#64748b' }}>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>Client</div>
+          <div style={{ fontSize: 15.5, fontWeight: 600, color: '#0f172a' }}>{entity.entity_name}</div>
+          <div style={{ fontSize: 12.5, color: '#64748b' }}>
             PAYE ref {entity.paye_ref || '— none held'}
             {entity.qbo_company ? ` · QuickBooks: ${entity.qbo_company}` : ' · no QuickBooks file'}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>
             Accounting year end
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -247,20 +247,20 @@ export default function PayeWorkingPaper({ entity }) {
             <input type="date" value={yearEnd} onChange={(e) => setYearEnd(e.target.value)} style={inputStyle} />
           </div>
           {yearEnd && (
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
               Falls in tax year {impliedTaxYear}
             </div>
           )}
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>
             CIS / tax year
           </div>
           <select value={taxYear} onChange={(e) => setTaxYear(e.target.value)} style={inputStyle}>
             {taxYears.map((y) => <option key={y.tax_year} value={y.tax_year}>{y.tax_year}</option>)}
             {!taxYears.length && <option value="">no HMRC data</option>}
           </select>
-          <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>6 April – 5 April</div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>6 April – 5 April</div>
         </div>
         <div style={{ flex: 1 }} />
         <button onClick={value} disabled={!realmId || !yearEnd || valuing}
@@ -286,14 +286,14 @@ export default function PayeWorkingPaper({ entity }) {
       <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 500, color: '#0f172a', margin: '18px 0 4px' }}>
         PAYE creditor at {yearEnd ? shortDate(yearEnd) : 'the year end'}
       </h3>
-      <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10, maxWidth: 820, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 10, maxWidth: 820, lineHeight: 1.55 }}>
         The balance-sheet question. A tax month belongs to the period containing its start, so this
         includes the month the year end falls in — the payroll run in the final month is charged in a tax
         month that straddles the year end and is a creditor at it.
       </p>
 
       {!yearEnd ? (
-        <div style={{ ...card, padding: '14px 16px', color: '#94a3b8', fontSize: 12.5 }}>
+        <div style={{ ...card, padding: '14px 16px', color: '#94a3b8', fontSize: 13.5 }}>
           Set the accounting year end above. Nothing is shown until then: a creditor figure without a date
           is not a working paper.
         </div>
@@ -354,7 +354,7 @@ export default function PayeWorkingPaper({ entity }) {
           </table>
 
           {balanceAt && (
-            <div style={{ padding: '10px 14px', borderTop: '1px solid #e5e7eb', background: '#f8fafc', fontSize: 11.5, color: '#64748b', lineHeight: 1.6 }}>
+            <div style={{ padding: '10px 14px', borderTop: '1px solid #e5e7eb', background: '#f8fafc', fontSize: 12.5, color: '#64748b', lineHeight: 1.6 }}>
               <strong style={{ color: '#334155' }}>Basis.</strong>{' '}
               {balanceAt.periods_counted} tax month{balanceAt.periods_counted === 1 ? '' : 's'} counted,{' '}
               {shortDate(balanceAt.first_period_start)} to {shortDate(balanceAt.last_period_end)}, last due{' '}
@@ -379,14 +379,14 @@ export default function PayeWorkingPaper({ entity }) {
       <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 500, color: '#0f172a', margin: '26px 0 4px' }}>
         Tax year {taxYear || '—'} · what was charged, and what was set against it
       </h3>
-      <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10, maxWidth: 820, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 10, maxWidth: 820, lineHeight: 1.55 }}>
         On the tax year, not the accounting year, because that is the only period a CIS deduction suffered
         can be offset in. Anything left at 5 April is not carried into the next year — it is repayable, or
         set against corporation tax on request.
       </p>
 
       {!year ? (
-        <div style={{ ...card, padding: '14px 16px', color: '#94a3b8', fontSize: 12.5 }}>
+        <div style={{ ...card, padding: '14px 16px', color: '#94a3b8', fontSize: 13.5 }}>
           {loading ? 'Loading the HMRC leg…' : 'No HMRC PAYE data held for this client in that tax year.'}
         </div>
       ) : (
@@ -431,7 +431,7 @@ export default function PayeWorkingPaper({ entity }) {
                 <tr style={{ borderTop: '1px solid #f1f5f9' }}>
                   <td style={td}>
                     Not itemised — CIS withheld from subcontractors
-                    <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.45 }}>
+                    <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
                       {year.charges_unitemised == null
                         ? `Cannot be derived: HMRC line detail covers ${year.months_with_detail} of the `
                           + `${year.months_present} months held, so this residual would contain a scrape gap.`
@@ -470,7 +470,7 @@ export default function PayeWorkingPaper({ entity }) {
                 <tr style={{ borderTop: '1px solid #f1f5f9' }}>
                   <td style={td}>
                     CIS suffered, credited by HMRC in this year
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>
                       Every CIS credit HMRC recorded in {taxYear}, whichever year it relates to. Analysed below.
                     </div>
                   </td>
@@ -504,7 +504,7 @@ export default function PayeWorkingPaper({ entity }) {
                 </tr>
               </tbody>
             </table>
-            <div style={{ padding: '9px 14px', borderTop: '1px solid #e5e7eb', background: '#f8fafc', fontSize: 11.5, color: '#64748b' }}>
+            <div style={{ padding: '9px 14px', borderTop: '1px solid #e5e7eb', background: '#f8fafc', fontSize: 12.5, color: '#64748b' }}>
               {year.months_present} of 12 tax months held
               {!year.all_months_reconcile && (
                 <> · <strong style={{ color: '#a16207' }}>at least one month's detail does not reconcile in HMRC's own statement</strong></>
@@ -516,10 +516,10 @@ export default function PayeWorkingPaper({ entity }) {
           {/* ── The CIS timing analysis ── */}
           {(cisTiming.rows.length > 0 || Number(year.cis_suffered) !== 0) && (
             <>
-              <h4 style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', margin: '20px 0 4px' }}>
+              <h4 style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', margin: '20px 0 4px' }}>
                 CIS suffered credited in {taxYear} — where it came from
               </h4>
-              <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10, maxWidth: 820, lineHeight: 1.55 }}>
+              <p style={{ fontSize: 13, color: '#64748b', marginBottom: 10, maxWidth: 820, lineHeight: 1.55 }}>
                 HMRC records a CIS credit in the month it processes the EPS and labels it with the month
                 claimed for. The two differ in both directions, so this is the reconciling table between
                 "what HMRC credited this year" and "what this year's payroll actually suffered". A prior-year
@@ -536,14 +536,14 @@ export default function PayeWorkingPaper({ entity }) {
                     <tr style={{ borderTop: '1px solid #f1f5f9' }}>
                       <td style={td}>Claimed for, and credited in, the same tax month</td>
                       <td style={tdNum}>{money(cisTiming.in_period)}</td>
-                      <td style={{ ...td, color: '#64748b', fontSize: 12 }}>
+                      <td style={{ ...td, color: '#64748b', fontSize: 13 }}>
                         Agrees month for month. Nothing to explain.
                       </td>
                     </tr>
                     <tr style={{ borderTop: '1px solid #f1f5f9' }}>
                       <td style={td}>Credited in a different month of the same tax year</td>
                       <td style={tdNum}>{money(cisTiming.within_year)}</td>
-                      <td style={{ ...td, color: '#64748b', fontSize: 12 }}>
+                      <td style={{ ...td, color: '#64748b', fontSize: 13 }}>
                         A timing difference only. Still offsettable — same tax year — so it changes when
                         the liability fell, not how much of it there was.
                       </td>
@@ -551,7 +551,7 @@ export default function PayeWorkingPaper({ entity }) {
                     <tr style={{ borderTop: '1px solid #f1f5f9', background: Number(cisTiming.prior_year) ? '#fefce8' : undefined }}>
                       <td style={td}>Relates to an <strong>earlier tax year</strong></td>
                       <td style={tdNum}>{money(cisTiming.prior_year)}</td>
-                      <td style={{ ...td, color: '#a16207', fontSize: 12 }}>
+                      <td style={{ ...td, color: '#a16207', fontSize: 13 }}>
                         Reduces this year's HMRC bill but arose in an earlier year, so it has no counterpart
                         in this year's payroll. Expect a variance of exactly this amount against BrightPay,
                         and check the earlier year's paper was not left showing a recoverable that has now
@@ -561,7 +561,7 @@ export default function PayeWorkingPaper({ entity }) {
                     <tr style={{ borderTop: '1px solid #f1f5f9' }}>
                       <td style={td}>Label carries no period</td>
                       <td style={tdNum}>{money(cisTiming.unlabelled)}</td>
-                      <td style={{ ...td, color: '#64748b', fontSize: 12 }}>
+                      <td style={{ ...td, color: '#64748b', fontSize: 13 }}>
                         HMRC gave no month. Agree it to the EPS by hand before signing off.
                       </td>
                     </tr>
@@ -573,7 +573,7 @@ export default function PayeWorkingPaper({ entity }) {
                     <tr style={{ borderTop: '1px solid #f1f5f9' }}>
                       <td style={td}>
                         of which arose in {taxYear}
-                        <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                        <div style={{ fontSize: 12, color: '#94a3b8' }}>
                           The figure to agree to this year's payroll and to the CIS suffered nominal.
                         </div>
                       </td>
@@ -586,7 +586,7 @@ export default function PayeWorkingPaper({ entity }) {
 
               {cisTiming.rows.length > 0 && (
                 <details style={{ marginTop: 10 }}>
-                  <summary style={{ cursor: 'pointer', fontSize: 12.5, color: '#0e7fe0', fontFamily: font }}>
+                  <summary style={{ cursor: 'pointer', fontSize: 13.5, color: '#0e7fe0', fontFamily: font }}>
                     Every CIS credit line behind those totals ({cisTiming.rows.length})
                   </summary>
                   <div style={{ ...card, marginTop: 8 }}>
@@ -612,7 +612,7 @@ export default function PayeWorkingPaper({ entity }) {
                             </td>
                             <td style={tdNum}>{c.months_late ?? '—'}</td>
                             <td style={tdNum}>{money(c.amount)}</td>
-                            <td style={{ ...td, fontSize: 11.5, color: '#64748b' }}>{c.line_type}</td>
+                            <td style={{ ...td, fontSize: 12.5, color: '#64748b' }}>{c.line_type}</td>
                           </tr>
                         ))}
                       </tbody>

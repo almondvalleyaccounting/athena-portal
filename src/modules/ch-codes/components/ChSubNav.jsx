@@ -28,7 +28,7 @@ export default function ChSubNav({ active, queuedCount = 0 }) {
           >
             {t.label}
             {t.label === 'Queue' && queuedCount > 0 && (
-              <span style={{ background: '#0e7fe0', color: '#fff', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px', minWidth: 16, textAlign: 'center' }}>
+              <span style={{ background: '#0e7fe0', color: '#fff', borderRadius: 999, fontSize: 11, fontWeight: 700, padding: '1px 6px', minWidth: 16, textAlign: 'center' }}>
                 {queuedCount}
               </span>
             )}

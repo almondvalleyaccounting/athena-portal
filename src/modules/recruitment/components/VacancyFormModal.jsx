@@ -81,7 +81,7 @@ export default function VacancyFormModal({ initial, staffList, onClose, onSave }
   return (
     <div onClick={onClose} style={backdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...modal, width: 560, maxHeight: '90vh', overflowY: 'auto' }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Briefcase size={16} color="#0e7fe0" /> {initial ? 'Edit vacancy' : 'New vacancy'}
         </div>
 
@@ -97,14 +97,14 @@ export default function VacancyFormModal({ initial, staffList, onClose, onSave }
             </select>
             <button type="button" onClick={draftFromProfile} disabled={!f.role_profile_id}
               style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 12px', fontSize: 12.5, fontWeight: 600,
+                display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 12px', fontSize: 13.5, fontWeight: 600,
                 fontFamily: font, borderRadius: 8, cursor: f.role_profile_id ? 'pointer' : 'not-allowed',
                 background: f.role_profile_id ? '#7c3aed' : '#e9d5ff', color: '#fff', border: 'none',
               }}>
               <Sparkles size={13} /> Draft
             </button>
           </div>
-          <div style={{ fontSize: 11.5, color: '#7c3aed', marginTop: 6 }}>
+          <div style={{ fontSize: 12.5, color: '#7c3aed', marginTop: 6 }}>
             {drafted ? 'Drafted from the role profile — edit the description & requirements below as needed.'
               : 'Fills the description & requirements from the central CPD role profile. Fully editable afterwards.'}
           </div>
@@ -175,7 +175,7 @@ export default function VacancyFormModal({ initial, staffList, onClose, onSave }
         <label style={{ ...fieldLabel, marginTop: 12 }}>Requirements</label>
         <textarea value={f.requirements} onChange={set('requirements')} rows={3} style={{ ...input, resize: 'vertical' }} placeholder="Essential / desirable…" />
 
-        {error && <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 10 }}>{error}</div>}
+        {error && <div style={{ fontSize: 13.5, color: '#b91c1c', marginTop: 10 }}>{error}</div>}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
           <button onClick={onClose} style={btn('ghost')}>Cancel</button>

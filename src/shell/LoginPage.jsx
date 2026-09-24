@@ -68,7 +68,7 @@ export function CinematicPanel() {
 
       <p style={{
         position: 'absolute', bottom: 28, fontFamily: "'Outfit', sans-serif",
-        fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.03em',
+        fontSize: 12, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.03em',
       }}>
         Powered by Almond Valley Accounting
       </p>
@@ -136,7 +136,7 @@ export default function LoginPage() {
           ATHENA
         </h1>
         <p style={{
-          fontFamily: "'Outfit', sans-serif", fontSize: 13, color: '#94a3b8',
+          fontFamily: "'Outfit', sans-serif", fontSize: 14, color: '#94a3b8',
           marginBottom: 32,
         }}>
           Sign in to your account
@@ -168,7 +168,7 @@ export default function LoginPage() {
           style={{
             width: '100%', backgroundColor: loading || !email || !password ? '#94a3b8' : '#0f172a',
             color: '#fff', fontFamily: "'Outfit', sans-serif", fontWeight: 600,
-            fontSize: 14, borderRadius: 10, padding: 14, border: 'none',
+            fontSize: 14.5, borderRadius: 10, padding: 14, border: 'none',
             cursor: loading || !email || !password ? 'not-allowed' : 'pointer',
             transition: 'all 0.2s ease', marginBottom: 16,
           }}
@@ -179,13 +179,13 @@ export default function LoginPage() {
         {/* Forgot password */}
         <div style={{ textAlign: 'center' }}>
           {resetSent ? (
-            <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 13, color: '#22c55e' }}>
+            <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 14, color: '#22c55e' }}>
               Reset link sent — check your email.
             </p>
           ) : (
             <button onClick={handleResetPassword} style={{
               background: 'none', border: 'none', fontFamily: "'Outfit', sans-serif",
-              fontSize: 13, color: '#94a3b8', cursor: 'pointer', padding: 0,
+              fontSize: 14, color: '#94a3b8', cursor: 'pointer', padding: 0,
             }}>
               Forgot password?
             </button>
@@ -194,7 +194,7 @@ export default function LoginPage() {
 
         {/* Error */}
         {error && (
-          <p style={{ color: '#ef4444', fontSize: 13, fontFamily: "'Outfit', sans-serif", marginTop: 12, textAlign: 'center' }}>
+          <p style={{ color: '#ef4444', fontSize: 14, fontFamily: "'Outfit', sans-serif", marginTop: 12, textAlign: 'center' }}>
             {error}
           </p>
         )}
@@ -215,7 +215,7 @@ export default function LoginPage() {
 
 const inputStyle = {
   width: '100%', border: '1px solid #e5e7eb', borderRadius: 10,
-  padding: '12px 16px', fontSize: 14, fontFamily: "'Outfit', sans-serif",
+  padding: '12px 16px', fontSize: 14.5, fontFamily: "'Outfit', sans-serif",
   outline: 'none', marginBottom: 12, boxSizing: 'border-box',
   transition: 'border-color 0.2s ease',
 };

@@ -125,7 +125,7 @@ export default function MessagesView({ channel }) {
   const label = channel === 'whatsapp' ? 'WhatsApp' : 'text message';
 
   if (messages === null) {
-    return <div style={{ padding: 30, color: '#64748b', fontSize: 13, fontFamily: font }}>Loading…</div>;
+    return <div style={{ padding: 30, color: '#64748b', fontSize: 14, fontFamily: font }}>Loading…</div>;
   }
 
   return (
@@ -135,7 +135,7 @@ export default function MessagesView({ channel }) {
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => { setNewNumber(''); setActive(null); setDraft(''); }}
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '8px 12px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '8px 12px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
           >
             <Plus size={14} /> New {channel === 'whatsapp' ? 'WhatsApp' : 'text'}
           </button>
@@ -145,7 +145,7 @@ export default function MessagesView({ channel }) {
         </div>
         <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff' }}>
           {conversations.length === 0 && (
-            <div style={{ padding: 24, fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>
+            <div style={{ padding: 24, fontSize: 14, color: '#94a3b8', textAlign: 'center' }}>
               {channel === 'whatsapp'
                 ? 'No WhatsApp messages yet. Inbound messages to the practice number will appear here automatically.'
                 : 'No text messages yet.'}
@@ -158,13 +158,13 @@ export default function MessagesView({ channel }) {
               style={{ padding: '10px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: active === c.number ? '#eff6ff' : '#fff' }}
             >
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                   {displayName(c)}
                 </span>
-                <span style={{ fontSize: 10.5, color: '#94a3b8', flexShrink: 0 }}>{fmtTime(c.last.created_at)}</span>
+                <span style={{ fontSize: 11.5, color: '#94a3b8', flexShrink: 0 }}>{fmtTime(c.last.created_at)}</span>
               </div>
-              {displayName(c) !== c.number && <div style={{ fontSize: 11, color: '#64748b' }}>{c.number}</div>}
-              <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+              {displayName(c) !== c.number && <div style={{ fontSize: 12, color: '#64748b' }}>{c.number}</div>}
+              <div style={{ fontSize: 13, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
                 {c.last.direction === 'out' ? 'You: ' : ''}{maskCodes(c.last.body)}
               </div>
             </div>
@@ -175,7 +175,7 @@ export default function MessagesView({ channel }) {
       {/* ── Thread ── */}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {error && (
-          <div style={{ display: 'flex', gap: 10, padding: '8px 12px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12, color: '#b91c1c' }}>
+          <div style={{ display: 'flex', gap: 10, padding: '8px 12px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#b91c1c' }}>
             <span style={{ flex: 1 }}>{error}</span>
             <button onClick={() => setError(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b91c1c' }}><X size={13} /></button>
           </div>
@@ -183,34 +183,34 @@ export default function MessagesView({ channel }) {
 
         {newNumber !== null ? (
           <div style={{ border: '1px solid #cbd5e1', borderRadius: 10, background: '#fff', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 520 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Phone size={14} /> New {label}
             </div>
             <input
               value={newNumber}
               onChange={(e) => setNewNumber(e.target.value)}
               placeholder="Mobile number — 07… or +44…"
-              style={{ padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7 }}
+              style={{ padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7 }}
             />
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={4}
               placeholder={`Type your ${label}…`}
-              style={{ padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, resize: 'vertical' }}
+              style={{ padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, resize: 'vertical' }}
             />
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={() => doSend(newNumber)}
                 disabled={sending || !draft.trim() || !newNumber.trim()}
-                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, background: sending ? '#94a3b8' : '#0e7fe0', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', fontSize: 14, fontWeight: 600, background: sending ? '#94a3b8' : '#0e7fe0', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
               >
                 <Send size={13} /> {sending ? 'Sending…' : 'Send'}
               </button>
-              <button onClick={() => { setNewNumber(null); setDraft(''); }} style={{ padding: '8px 14px', fontSize: 13, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, cursor: 'pointer', fontFamily: font, color: '#334155' }}>Cancel</button>
+              <button onClick={() => { setNewNumber(null); setDraft(''); }} style={{ padding: '8px 14px', fontSize: 14, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, cursor: 'pointer', fontFamily: font, color: '#334155' }}>Cancel</button>
             </div>
             {channel === 'whatsapp' && (
-              <div style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, padding: '7px 10px' }}>
+              <div style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, padding: '7px 10px' }}>
                 Two WhatsApp caveats: (1) the practice number must be WhatsApp-registered with Telnyx — until then sends fail with a channel error; (2) free-form messages only work within 24h of the client&apos;s last message — outside that window Meta requires a pre-approved template. Starting new conversations is usually better done by SMS.
               </div>
             )}
@@ -219,12 +219,12 @@ export default function MessagesView({ channel }) {
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <MessageSquare size={15} color="#64748b" />
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
+              <span style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a' }}>
                 {displayName(activeConv)}
               </span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>{activeConv.number}</span>
+              <span style={{ fontSize: 13, color: '#94a3b8' }}>{activeConv.number}</span>
               {activeConv.entityId && (
-                <Link to={`/clients/${activeConv.entityId}`} style={{ fontSize: 12, color: '#0e7fe0', textDecoration: 'none', fontWeight: 600 }}>
+                <Link to={`/clients/${activeConv.entityId}`} style={{ fontSize: 13, color: '#0e7fe0', textDecoration: 'none', fontWeight: 600 }}>
                   Client record →
                 </Link>
               )}
@@ -233,7 +233,7 @@ export default function MessagesView({ channel }) {
               {activeConv.msgs.map((m) => (
                 <div key={m.id} style={{ display: 'flex', justifyContent: m.direction === 'out' ? 'flex-end' : 'flex-start' }}>
                   <div style={{
-                    maxWidth: '72%', padding: '8px 12px', borderRadius: 12, fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                    maxWidth: '72%', padding: '8px 12px', borderRadius: 12, fontSize: 14, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     background: m.direction === 'out' ? '#0e7fe0' : '#fff',
                     color: m.direction === 'out' ? '#fff' : '#1e293b',
                     border: m.direction === 'out' ? 'none' : '1px solid #e2e8f0',
@@ -243,12 +243,12 @@ export default function MessagesView({ channel }) {
                       <button
                         type="button"
                         onClick={() => setRevealed((prev) => new Set(prev).add(m.id))}
-                        style={{ display: 'block', marginTop: 4, padding: 0, border: 'none', background: 'none', color: '#0e7fe0', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
+                        style={{ display: 'block', marginTop: 4, padding: 0, border: 'none', background: 'none', color: '#0e7fe0', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
                       >
                         Show code
                       </button>
                     )}
-                    <div style={{ fontSize: 10, marginTop: 4, opacity: 0.75, textAlign: 'right' }}>
+                    <div style={{ fontSize: 11, marginTop: 4, opacity: 0.75, textAlign: 'right' }}>
                       {fmtTime(m.created_at)}
                       {m.direction === 'out' && ` · ${m.status === 'failed' ? `failed${m.error ? ` — ${m.error}` : ''}` : m.status}`}
                     </div>
@@ -263,19 +263,19 @@ export default function MessagesView({ channel }) {
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(activeConv.number, activeConv.entityId); } }}
                 rows={2}
                 placeholder={`Reply by ${label}… (Enter to send)`}
-                style={{ flex: 1, padding: '9px 12px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 10, resize: 'none', lineHeight: 1.4 }}
+                style={{ flex: 1, padding: '9px 12px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 10, resize: 'none', lineHeight: 1.4 }}
               />
               <button
                 onClick={() => doSend(activeConv.number, activeConv.entityId)}
                 disabled={sending || !draft.trim()}
-                style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center', gap: 7, padding: '0 18px', fontSize: 13, fontWeight: 600, background: sending || !draft.trim() ? '#94a3b8' : '#0e7fe0', color: '#fff', border: 'none', borderRadius: 10, cursor: sending ? 'default' : 'pointer', fontFamily: font }}
+                style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center', gap: 7, padding: '0 18px', fontSize: 14, fontWeight: 600, background: sending || !draft.trim() ? '#94a3b8' : '#0e7fe0', color: '#fff', border: 'none', borderRadius: 10, cursor: sending ? 'default' : 'pointer', fontFamily: font }}
               >
                 <Send size={14} /> Send
               </button>
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13, border: '1px dashed #e2e8f0', borderRadius: 10 }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 14, border: '1px dashed #e2e8f0', borderRadius: 10 }}>
             {conversations.length ? 'Pick a conversation' : channel === 'whatsapp'
               ? 'WhatsApp traffic on the practice number will collect here.'
               : 'Texts to and from the practice number will collect here.'}

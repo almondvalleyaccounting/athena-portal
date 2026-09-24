@@ -366,7 +366,7 @@ export default function PnlByBandView({
       <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${colors.border}`, marginBottom: 12 }}>
         {[['report', 'Report'], ['alloc', 'Allocation method']].map(([k, lbl]) => (
           <button key={k} onClick={() => setSubTab(k)} style={{
-            padding: '8px 14px', fontSize: 12, fontWeight: subTab === k ? 600 : 400,
+            padding: '8px 14px', fontSize: 13, fontWeight: subTab === k ? 600 : 400,
             color: subTab === k ? colors.ink : colors.muted, background: 'transparent', border: 'none',
             borderBottom: `2px solid ${subTab === k ? colors.accent : 'transparent'}`,
             cursor: 'pointer', fontFamily: fontStack,
@@ -384,14 +384,14 @@ export default function PnlByBandView({
         />
       ) : (
         <>
-          <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 10px' }}>
+          <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 10px' }}>
             Revenue and room staff attribute by age band. Management who stand in the ratio are
             allocated with them automatically; the rest is indirect and follows the bases set on the
             <strong> Allocation method</strong> tab. Contribution is revenue less room staff only.
           </p>
 
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack }}>
               <thead>
                 <tr>
                   <th style={th}>&nbsp;</th>
@@ -463,7 +463,7 @@ export default function PnlByBandView({
             </table>
           </div>
 
-          <p style={{ fontSize: 11, color: colors.muted, marginTop: 10 }}>
+          <p style={{ fontSize: 12, color: colors.muted, marginTop: 10 }}>
             {Math.abs(revCheck) < 100 && Math.abs(ebitdaCheck) < 100
               ? '✓ Ties to the P&L: revenue and EBITDA agree with the Profit & Loss tab for this scope and period.'
               : `⚠ Tie-out variance vs P&L — revenue ${money(revCheck)}, EBITDA ${money(ebitdaCheck)}.`}
@@ -483,7 +483,7 @@ function AllocationPanel({
   const overrides = Object.keys(basisByLine).length;
   return (
     <div>
-      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 12px' }}>
+      <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 12px' }}>
         Choose how each indirect cost is pushed out to the age bands. With <em>Manual amounts</em>,
         type what each band should carry and the balance stays in Central. Management time that
         stands in the statutory ratio is allocated automatically and can't be overridden — it's
@@ -491,7 +491,7 @@ function AllocationPanel({
       </p>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
-        <span style={{ fontSize: 11, color: colors.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+        <span style={{ fontSize: 12, color: colors.muted, fontWeight: 700 }}>
           Default basis
         </span>
         <select value={defaultBasis} onChange={(e) => setDefault(e.target.value)} style={{ ...selectStyle, minWidth: 180 }}>
@@ -500,13 +500,13 @@ function AllocationPanel({
         {overrides > 0 && (
           <button onClick={resetOverrides} style={{
             background: 'transparent', border: `1px solid ${colors.border}`, borderRadius: 6,
-            padding: '4px 10px', fontSize: 11, color: colors.muted, cursor: 'pointer', fontFamily: fontStack,
+            padding: '4px 10px', fontSize: 12, color: colors.muted, cursor: 'pointer', fontFamily: fontStack,
           }}>reset {overrides} override{overrides !== 1 ? 's' : ''}</button>
         )}
       </div>
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack }}>
           <thead>
             <tr>
               <th style={th}>Cost line</th>
@@ -534,7 +534,7 @@ function AllocationPanel({
                       value={line.explicit ? line.effBasis : '__default__'}
                       onChange={(e) => setLineBasis(line.key, e.target.value)}
                       style={{
-                        padding: '4px 6px', fontSize: 11, fontFamily: fontStack, borderRadius: 6,
+                        padding: '4px 6px', fontSize: 12, fontFamily: fontStack, borderRadius: 6,
                         border: `1px solid ${line.explicit ? colors.accent : colors.border}`, background: '#fff',
                       }}
                     >
@@ -547,14 +547,14 @@ function AllocationPanel({
                   <td key={b} style={tdR}>
                     {line.effBasis === 'manual' && !line.auto ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                        <span style={{ fontSize: 10, color: colors.muted }}>£</span>
+                        <span style={{ fontSize: 11, color: colors.muted }}>£</span>
                         <input
                           value={manualByLine[line.key]?.[b] ?? ''}
                           onChange={(e) => setLineManual(line.key, b, e.target.value)}
                           placeholder="0"
                           inputMode="decimal"
                           style={{ width: 76, padding: '3px 6px', textAlign: 'right', borderRadius: 5,
-                                   border: `1px solid ${colors.border}`, fontSize: 11, fontFamily: fontStack }}
+                                   border: `1px solid ${colors.border}`, fontSize: 12, fontFamily: fontStack }}
                         />
                       </span>
                     ) : (
@@ -566,7 +566,7 @@ function AllocationPanel({
                              color: (line.spread[CENTRAL] || 0) < 0 ? colors.red : colors.ink }}>
                   {money(line.spread[CENTRAL] || 0)}
                   {line.overTyped > 0 && (
-                    <span style={{ display: 'block', fontSize: 10, color: colors.red }}>
+                    <span style={{ display: 'block', fontSize: 11, color: colors.red }}>
                       over by {money(line.overTyped)}
                     </span>
                   )}
@@ -591,7 +591,7 @@ function Row({ label, sub, m, cols, total, strong, negate, indent }) {
     <tr style={{ borderBottom: `1px dotted ${colors.borderSoft}`, background: strong ? colors.bgSoft : '#fff' }}>
       <td style={{ ...td, fontWeight: strong ? 700 : 400, paddingLeft: indent ? 20 : 8 }}>
         {label}
-        {sub && <span style={{ display: 'block', fontSize: 10, color: colors.muted }}>{sub}</span>}
+        {sub && <span style={{ display: 'block', fontSize: 11, color: colors.muted }}>{sub}</span>}
       </td>
       {cols.map(c => {
         const val = v(c);
@@ -626,7 +626,7 @@ function MetricRow({ label, m, cols, fmt, agg, aggValue, hint }) {
     <tr style={{ borderBottom: `1px dotted ${colors.borderSoft}` }}>
       <td style={td}>
         {label}
-        {hint && <span style={{ display: 'block', fontSize: 10, color: colors.muted }}>{hint}</span>}
+        {hint && <span style={{ display: 'block', fontSize: 11, color: colors.muted }}>{hint}</span>}
       </td>
       {cols.map(c => (
         <td key={c} style={{ ...tdR, borderLeft: c === CENTRAL ? `1px solid ${colors.border}` : undefined }}>
@@ -662,7 +662,7 @@ function SectionRow({ label, nCols }) {
   return (
     <tr>
       <td colSpan={nCols} style={{
-        padding: '14px 8px 4px', fontSize: 10, fontWeight: 700, color: colors.muted,
+        padding: '14px 8px 4px', fontSize: 11, fontWeight: 700, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: `1px solid ${colors.border}`,
       }}>{label}</td>
     </tr>
@@ -672,7 +672,7 @@ function SectionRow({ label, nCols }) {
 function PlainRow({ nCols, text }) {
   return (
     <tr>
-      <td colSpan={nCols} style={{ padding: '4px 8px 8px', fontSize: 11, color: colors.muted, fontStyle: 'italic' }}>
+      <td colSpan={nCols} style={{ padding: '4px 8px 8px', fontSize: 12, color: colors.muted, fontStyle: 'italic' }}>
         {text}
       </td>
     </tr>
@@ -680,7 +680,7 @@ function PlainRow({ nCols, text }) {
 }
 
 const th = { padding: '6px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted,
-             borderBottom: `1px solid ${colors.border}`, background: colors.bgSoft, fontSize: 10,
+             borderBottom: `1px solid ${colors.border}`, background: colors.bgSoft, fontSize: 11,
              textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap' };
 const td = { padding: '6px 8px', color: colors.ink, verticalAlign: 'middle' };
 const tdR = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };

@@ -46,10 +46,10 @@ export default function AddApplicationModal({ vacancyTitle, onClose, onAdd }) {
   return (
     <div onClick={onClose} style={backdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...modal, width: 520, maxHeight: '88vh', overflowY: 'auto' }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 8 }}>
           <UserPlus size={16} color="#0e7fe0" /> Add applicant
         </div>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>to {vacancyTitle}</div>
+        <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 14 }}>to {vacancyTitle}</div>
 
         <label style={fieldLabel}>Full name *</label>
         <input value={fullName} onChange={(e) => setFullName(e.target.value)} style={input} placeholder="Jane Smith" autoFocus />
@@ -94,7 +94,7 @@ export default function AddApplicationModal({ vacancyTitle, onClose, onAdd }) {
         <textarea value={coverNote} onChange={(e) => setCoverNote(e.target.value)} rows={3}
           style={{ ...input, resize: 'vertical' }} placeholder="Anything they said when applying…" />
 
-        {error && <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 10 }}>{error}</div>}
+        {error && <div style={{ fontSize: 13.5, color: '#b91c1c', marginTop: 10 }}>{error}</div>}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
           <button onClick={onClose} style={btn('ghost')}>Cancel</button>

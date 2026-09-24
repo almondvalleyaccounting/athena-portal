@@ -131,14 +131,14 @@ export default function ConsolidationTable({ entities, entityTotals, discounts =
                   className="w-14 text-xs text-right font-mono border border-gray-200 rounded px-1 py-0.5"
                 />
               )}
-              <div className="text-[10px] font-mono text-gray-400 mt-0.5">
+              <div className="text-[11px] font-mono text-gray-400 mt-0.5">
                 {entityDiscountAmt[e.id] > 0 ? `\u2212${fmt(entityDiscountAmt[e.id])}` : '\u2014'}
               </div>
             </div>
           ))}
           <div className="text-right">
             <span className="font-mono text-gray-500 text-xs">&nbsp;</span>
-            <div className="text-[10px] font-mono text-gray-400 mt-0.5">
+            <div className="text-[11px] font-mono text-gray-400 mt-0.5">
               {groupDiscountAmt > 0 ? `\u2212${fmt(groupDiscountAmt)}` : '\u2014'}
             </div>
           </div>

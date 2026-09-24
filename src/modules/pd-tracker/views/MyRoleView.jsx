@@ -119,13 +119,13 @@ export default function MyRoleView() {
               <div style={{ fontFamily: SERIF, fontSize: 16, color: '#0f172a', marginBottom: 8 }}>{s.heading}</div>
               <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {baseItems.map((it) => (
-                  <li key={it} style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.5 }}>
+                  <li key={it} style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5 }}>
                     <span>{it}</span>
                     {editing && <button onClick={() => toggleRemove(it)} title="Remove from my role" style={xBtn}>×</button>}
                   </li>
                 ))}
                 {adds.map((it, idx) => (
-                  <li key={'add-' + idx} style={{ fontSize: 13, color: '#166534', lineHeight: 1.5, listStyle: 'none', marginLeft: -18 }}>
+                  <li key={'add-' + idx} style={{ fontSize: 14, color: '#166534', lineHeight: 1.5, listStyle: 'none', marginLeft: -18 }}>
                     <span style={badge}>＋ added</span> {it}
                     {editing && <button onClick={() => removeAddition(s.heading, idx)} title="Remove addition" style={xBtn}>×</button>}
                   </li>
@@ -136,7 +136,7 @@ export default function MyRoleView() {
                   <input value={addText[s.heading] || ''} onChange={(e) => setAddText((p) => ({ ...p, [s.heading]: e.target.value }))}
                     onKeyDown={(e) => { if (e.key === 'Enter') addItem(s.heading); }}
                     placeholder={`Add to ${s.heading.toLowerCase()}…`}
-                    style={{ flex: 1, padding: '6px 10px', fontFamily: FONT, fontSize: 12, border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }} />
+                    style={{ flex: 1, padding: '6px 10px', fontFamily: FONT, fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }} />
                   <button onClick={() => addItem(s.heading)} style={addBtn}>Add</button>
                 </div>
               )}
@@ -146,12 +146,12 @@ export default function MyRoleView() {
 
         {removedItems.length > 0 && (
           <div style={{ marginTop: 8, paddingTop: 14, borderTop: '1px dashed #e5e7eb' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>
               Removed from my role
             </div>
             <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {removedItems.map(({ heading, item }) => (
-                <li key={item} style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5, textDecoration: 'line-through' }}>
+                <li key={item} style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5, textDecoration: 'line-through' }}>
                   <span style={{ textDecoration: 'none', color: '#cbd5e1', marginRight: 6 }}>[{heading}]</span>{item}
                   {editing && <button onClick={() => toggleRemove(item)} title="Restore" style={{ ...xBtn, color: '#0e7fe0', textDecoration: 'none' }}>↩</button>}
                 </li>
@@ -161,7 +161,7 @@ export default function MyRoleView() {
         )}
       </Card>
 
-      <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 12 }}>
+      <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 12 }}>
         The base role profile is maintained centrally. Your changes only affect your own copy — removals move to the bottom, additions are marked.
       </p>
       </>
@@ -172,8 +172,8 @@ export default function MyRoleView() {
   );
 }
 
-const xBtn = { marginLeft: 8, border: 'none', background: 'none', color: '#cbd5e1', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 };
-const badge = { fontSize: 10, fontWeight: 700, color: '#166534', background: '#dcfce7', borderRadius: 999, padding: '1px 7px', marginRight: 4 };
-const addBtn = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '6px 12px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
+const xBtn = { marginLeft: 8, border: 'none', background: 'none', color: '#cbd5e1', cursor: 'pointer', fontSize: 14.5, lineHeight: 1, padding: 0 };
+const badge = { fontSize: 11, fontWeight: 700, color: '#166534', background: '#dcfce7', borderRadius: 999, padding: '1px 7px', marginRight: 4 };
+const addBtn = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '6px 12px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
 
-function Msg({ children }) { return <div style={{ padding: 40, fontFamily: FONT, color: '#64748b', fontSize: 14, textAlign: 'center' }}>{children}</div>; }
+function Msg({ children }) { return <div style={{ padding: 40, fontFamily: FONT, color: '#64748b', fontSize: 14.5, textAlign: 'center' }}>{children}</div>; }

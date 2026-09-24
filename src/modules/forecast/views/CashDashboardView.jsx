@@ -55,7 +55,7 @@ export default function CashDashboardView({ outputs, forecast, periods }) {
 
   if (!data.last) {
     return (
-      <div style={{ fontSize: 13, color: colors.muted }}>
+      <div style={{ fontSize: 14, color: colors.muted }}>
         No outputs yet — add or seed some lines on the Lines &amp; assumptions tab, then recompute.
       </div>
     );
@@ -73,7 +73,7 @@ export default function CashDashboardView({ outputs, forecast, periods }) {
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 14,
           padding: '6px 12px', borderRadius: 999, background: '#eff6ff',
-          border: `1px solid #bfdbfe`, fontSize: 12, color: colors.accent, fontWeight: 600,
+          border: `1px solid #bfdbfe`, fontSize: 13, color: colors.accent, fontWeight: 600,
         }}>
           Forecast from {openingLabel} — every figure below is projected, opening from the last actual balance sheet
         </div>
@@ -104,12 +104,12 @@ export default function CashDashboardView({ outputs, forecast, periods }) {
 
       <Section title="Month by month">
         <div style={{ overflowX: 'auto', background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: colors.bgSoft }}>
                 {['Month', 'Sales', 'Cash in', 'Cash out', 'Net', 'Closing bank'].map((h, i) => (
                   <th key={h} style={{
-                    textAlign: i === 0 ? 'left' : 'right', padding: '8px 12px', fontSize: 11,
+                    textAlign: i === 0 ? 'left' : 'right', padding: '8px 12px', fontSize: 12,
                     fontWeight: 700, color: colors.muted, borderBottom: `1px solid ${colors.border}`,
                   }}>{h}</th>
                 ))}
@@ -162,10 +162,10 @@ function BankChart({ rows, openingPeriod }) {
     <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 12, overflowX: 'auto' }}>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', minWidth: 600, height: H }}>
         <line x1={padL} y1={zeroY} x2={W - padR} y2={zeroY} stroke={colors.border} strokeWidth="1" />
-        <text x={padL - 8} y={zeroY + 4} textAnchor="end" fontSize="10" fill={colors.muted}>£0</text>
-        <text x={padL - 8} y={y(max) + 4} textAnchor="end" fontSize="10" fill={colors.muted}>{fmtP(max, { compact: true })}</text>
+        <text x={padL - 8} y={zeroY + 4} textAnchor="end" fontSize="11" fill={colors.muted}>£0</text>
+        <text x={padL - 8} y={y(max) + 4} textAnchor="end" fontSize="11" fill={colors.muted}>{fmtP(max, { compact: true })}</text>
         {min < 0 && (
-          <text x={padL - 8} y={y(min) + 4} textAnchor="end" fontSize="10" fill={colors.red}>{fmtP(min, { compact: true })}</text>
+          <text x={padL - 8} y={y(min) + 4} textAnchor="end" fontSize="11" fill={colors.red}>{fmtP(min, { compact: true })}</text>
         )}
         {min < 0 && (
           <rect x={padL} y={zeroY} width={W - padL - padR} height={Math.max(0, y(min) - zeroY)}
@@ -179,12 +179,12 @@ function BankChart({ rows, openingPeriod }) {
           </circle>
         ))}
         {ticks.map((r) => (
-          <text key={r.t} x={x(rows.indexOf(r))} y={H - 8} textAnchor="middle" fontSize="10" fill={colors.muted}>
+          <text key={r.t} x={x(rows.indexOf(r))} y={H - 8} textAnchor="middle" fontSize="11" fill={colors.muted}>
             {periodLabel(r.t, openingPeriod)}
           </text>
         ))}
       </svg>
-      <div style={{ fontFamily: serifStack, fontSize: 12, color: colors.muted, marginTop: 4 }}>
+      <div style={{ fontFamily: serifStack, fontSize: 13, color: colors.muted, marginTop: 4 }}>
         Closing bank balance by month
       </div>
     </div>

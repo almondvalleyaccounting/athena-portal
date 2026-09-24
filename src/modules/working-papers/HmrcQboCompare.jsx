@@ -142,7 +142,7 @@ export default function HmrcQboCompare() {
     const on = view === key;
     return (
       <button key={key} onClick={() => setView(key)}
-        style={{ ...btnQuiet, fontSize: 12,
+        style={{ ...btnQuiet, fontSize: 13,
                  borderColor: on ? (colour || '#0f172a') : '#e5e7eb',
                  color: on ? (colour || '#0f172a') : '#475569',
                  fontWeight: on ? 600 : 400 }}>
@@ -155,12 +155,12 @@ export default function HmrcQboCompare() {
     <div>
       <ErrorBar message={error} />
 
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 6, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 6, lineHeight: 1.55 }}>
         What HMRC says, against what the client&rsquo;s ledger says.
         <b> Variance is QuickBooks less HMRC</b> on every row, so positive always means the books are
         carrying more than HMRC agrees.
       </p>
-      <p style={{ fontSize: 12, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
+      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
         <b>PAYE cannot tie and is not asked to.</b> HMRC&rsquo;s PAYE figure is arrears, not a creditor, so a
         month accrued and not yet due reads as a difference by construction — those rows say
         <b> timing</b>, not variance. <b>CIS is an asset</b>, compared to the credit HMRC actually holds
@@ -169,25 +169,25 @@ export default function HmrcQboCompare() {
 
       <div style={{ ...card, padding: 12, marginBottom: 12, display: 'flex',
                     alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12.5, color: '#0f172a' }}>Value the mapped nominals as at</div>
+        <div style={{ fontSize: 13.5, color: '#0f172a' }}>Value the mapped nominals as at</div>
         <input type="date" value={asAt} onChange={(e) => setAsAt(e.target.value)}
-          style={{ fontFamily: font, fontSize: 12.5, padding: '5px 8px',
+          style={{ fontFamily: font, fontSize: 13.5, padding: '5px 8px',
                    border: '1px solid #e5e7eb', borderRadius: 6, color: '#0f172a' }} />
         <button onClick={valueAll} disabled={!!valuing}
-          style={{ ...btn, fontSize: 12.5, opacity: valuing ? 0.6 : 1 }}>
+          style={{ ...btn, fontSize: 13.5, opacity: valuing ? 0.6 : 1 }}>
           {valuing || 'Value every mapped client'}
         </button>
         {dates.length > 1 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-            <span style={{ fontSize: 11.5, color: '#94a3b8' }}>Showing</span>
+            <span style={{ fontSize: 12.5, color: '#94a3b8' }}>Showing</span>
             <select value={asAt} onChange={(e) => setAsAt(e.target.value)}
-              style={{ fontFamily: font, fontSize: 12, padding: '4px 8px',
+              style={{ fontFamily: font, fontSize: 13, padding: '4px 8px',
                        border: '1px solid #e5e7eb', borderRadius: 6, color: '#475569' }}>
               {dates.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
         )}
-        <div style={{ fontSize: 11.5, color: '#94a3b8', flexBasis: '100%', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12.5, color: '#94a3b8', flexBasis: '100%', lineHeight: 1.5 }}>
           Two QuickBooks reports per client and the ledger one runs from 1990, so this is slow and goes
           one client at a time on purpose. Only nominals somebody has already mapped get valued — map
           them on <b>Map the book</b> first. Re-running a date you have already valued re-prices it
@@ -201,24 +201,24 @@ export default function HmrcQboCompare() {
         {chip('timing', 'Timing', '#b45309')}
         {chip('unvalued', 'Not valued', '#94a3b8')}
         {chip('all', 'Everything')}
-        <button onClick={load} style={{ ...btnQuiet, marginLeft: 'auto', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <button onClick={load} style={{ ...btnQuiet, marginLeft: 'auto', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <RefreshCw size={12} /> Reload
         </button>
         <button onClick={exportCsv} disabled={!filtered.length}
-          style={{ ...btnQuiet, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5,
+          style={{ ...btnQuiet, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5,
                    opacity: filtered.length ? 1 : 0.5 }}>
           <Download size={12} /> Export
         </button>
       </div>
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading the comparison…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading the comparison…</div>
       ) : (
         <div style={card}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+            <table style={{ width: '100%', fontSize: 13.5, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
                   <th style={th}>Client</th>
                   <th style={th}>Head</th>
                   <th style={{ ...th, textAlign: 'right' }}>HMRC</th>
@@ -257,10 +257,10 @@ export default function HmrcQboCompare() {
                                         : r.status === 'timing' ? '#b45309' : '#b91c1c' }}>
                         {r.qbo_amount == null ? '—' : money(v)}
                       </td>
-                      <td style={{ ...td, color: '#94a3b8', fontSize: 11.5, whiteSpace: 'normal', maxWidth: 260 }}>
+                      <td style={{ ...td, color: '#94a3b8', fontSize: 12.5, whiteSpace: 'normal', maxWidth: 260 }}>
                         {r.account_names || '—'}
                       </td>
-                      <td style={{ ...td, textAlign: 'center', color: '#94a3b8', fontSize: 11.5 }}>
+                      <td style={{ ...td, textAlign: 'center', color: '#94a3b8', fontSize: 12.5 }}>
                         {r.qbo_as_at || '—'}
                       </td>
                       <td style={td}>
@@ -272,7 +272,7 @@ export default function HmrcQboCompare() {
               </tbody>
             </table>
           </div>
-          <div style={{ padding: '10px 14px', fontSize: 11.5, color: '#94a3b8', lineHeight: 1.6, borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ padding: '10px 14px', fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6, borderTop: '1px solid #f1f5f9' }}>
             <b>Not valued</b> means the client has no nominal mapped for that head, or the mapped
             nominals have not been priced at a date — not that the two agree. A variance is a question,
             not an error: HMRC and a ledger legitimately differ over a payment in transit or an EPS HMRC

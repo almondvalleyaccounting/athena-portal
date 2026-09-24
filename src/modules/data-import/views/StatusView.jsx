@@ -73,8 +73,7 @@ export default function StatusView() {
         return (
           <div key={sys.id} style={{ marginBottom: 28 }}>
             <p style={{
-              fontSize: 11, fontWeight: 700, color: '#94a3b8',
-              textTransform: 'uppercase', letterSpacing: '0.08em',
+              fontSize: 12, fontWeight: 700, color: '#94a3b8',
               marginBottom: 10,
             }}>{sys.label}</p>
             <div style={{
@@ -100,16 +99,16 @@ export default function StatusView() {
         marginTop: 28, padding: '16px 20px',
         background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 10,
       }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>
           Data Import access
         </p>
         {accessStaff.length === 0 ? (
-          <p style={{ fontSize: 13, color: '#64748b' }}>No staff have access yet. Grant <code>can_import_data</code> via Admin → Staff & Permissions.</p>
+          <p style={{ fontSize: 14, color: '#64748b' }}>No staff have access yet. Grant <code>can_import_data</code> via Admin → Staff & Permissions.</p>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {accessStaff.map((s) => (
               <span key={s.id} style={{
-                fontSize: 12, padding: '4px 10px', borderRadius: 999,
+                fontSize: 13, padding: '4px 10px', borderRadius: 999,
                 background: '#fff', border: '1px solid #e5e7eb', color: '#1e293b',
               }}>
                 {s.name}{s.is_portal_admin ? ' · admin' : ''}
@@ -117,7 +116,7 @@ export default function StatusView() {
             ))}
           </div>
         )}
-        <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>
+        <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 8 }}>
           To grant or revoke access, go to <a onClick={() => navigate('/admin/staff')} style={{ color: '#0e7fe0', cursor: 'pointer' }}>Staff & Permissions</a>.
         </p>
       </div>
@@ -135,8 +134,8 @@ export default function StatusView() {
 function StatCell({ label, value, small }) {
   return (
     <div style={{ padding: '16px 20px', borderRight: '1px solid #e5e7eb' }}>
-      <p style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{label}</p>
-      <p style={{ fontSize: small ? 14 : 22, fontWeight: 600, color: '#0f172a' }}>{value}</p>
+      <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{label}</p>
+      <p style={{ fontSize: small ? 14.5 : 22, fontWeight: 600, color: '#0f172a' }}>{value}</p>
     </div>
   );
 }
@@ -157,26 +156,26 @@ function SourceCard({ source, latest, triggeredByName, onPull, onImport }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Icon size={14} style={{ color: '#64748b' }} />
-        <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+        <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
           {getSystemLabel(source.system)} — {source.name}
         </p>
       </div>
 
       {coming ? (
-        <p style={{ fontSize: 12, color: '#94a3b8' }}>Coming soon</p>
+        <p style={{ fontSize: 13, color: '#94a3b8' }}>Coming soon</p>
       ) : neverImported ? (
-        <p style={{ fontSize: 12, color: '#94a3b8' }}>Never imported</p>
+        <p style={{ fontSize: 13, color: '#94a3b8' }}>Never imported</p>
       ) : (
         <>
           <div>
-            <p style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Last imported</p>
-            <p style={{ fontSize: 13, color: '#1e293b' }}>{formatDateTime(latest.triggered_at)}</p>
-            {triggeredByName && <p style={{ fontSize: 11, color: '#94a3b8' }}>by {triggeredByName}</p>}
+            <p style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>Last imported</p>
+            <p style={{ fontSize: 14, color: '#1e293b' }}>{formatDateTime(latest.triggered_at)}</p>
+            {triggeredByName && <p style={{ fontSize: 12, color: '#94a3b8' }}>by {triggeredByName}</p>}
           </div>
           {latest.row_counts && Object.keys(latest.row_counts).length > 0 && (
             <div>
               {Object.entries(latest.row_counts).map(([table, n]) => (
-                <p key={table} style={{ fontSize: 12, color: '#475569' }}>
+                <p key={table} style={{ fontSize: 13, color: '#475569' }}>
                   {Number(n).toLocaleString()} {table}
                 </p>
               ))}
@@ -188,7 +187,7 @@ function SourceCard({ source, latest, triggeredByName, onPull, onImport }) {
       <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 4, paddingTop: 10, display: 'flex', gap: 8 }}>
         {coming ? (
           <span style={{
-            fontSize: 11, padding: '4px 10px', borderRadius: 999,
+            fontSize: 12, padding: '4px 10px', borderRadius: 999,
             background: '#f1f5f9', color: '#94a3b8',
           }}>Coming soon</span>
         ) : (
@@ -228,15 +227,15 @@ function PullModal({ source, onClose, onGoToImport }) {
             <X size={16} />
           </button>
         </div>
-        <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
+        <p style={{ fontSize: 14, color: '#64748b', marginBottom: 12 }}>
           Automated export is not yet configured for this source. Follow these steps:
         </p>
-        <ol style={{ fontSize: 13, color: '#1e293b', paddingLeft: 20, marginBottom: 16 }}>
+        <ol style={{ fontSize: 14, color: '#1e293b', paddingLeft: 20, marginBottom: 16 }}>
           {source.pullSteps.map((step, i) => (
             <li key={i} style={{ marginBottom: 6 }}>{step}</li>
           ))}
         </ol>
-        <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
+        <p style={{ fontSize: 14, color: '#64748b', marginBottom: 16 }}>
           Once you have the file, upload it in the Import tab.
         </p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, borderTop: '1px solid #f1f5f9', paddingTop: 14 }}>
@@ -251,13 +250,13 @@ function PullModal({ source, onClose, onGoToImport }) {
 }
 
 const btnSecondary = {
-  fontSize: 12, fontWeight: 500, padding: '6px 12px',
+  fontSize: 13, fontWeight: 500, padding: '6px 12px',
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
   color: '#1e293b', cursor: 'pointer', fontFamily: font,
 };
 const btnPrimary = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 12, fontWeight: 600, padding: '6px 12px',
+  fontSize: 13, fontWeight: 600, padding: '6px 12px',
   background: '#0f172a', border: 'none', borderRadius: 8,
   color: '#fff', cursor: 'pointer', fontFamily: font,
 };

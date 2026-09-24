@@ -115,7 +115,7 @@ export default function RevenueView() {
             <Zap size={16} style={{ color: '#0e7fe0' }} />
             <h3 style={h3}>Quote pipeline → weighted new MRR</h3>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#0f172a', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#0f172a', cursor: 'pointer' }}>
             <input type="checkbox" checked={!!scenario?.pipeline_mrr_override_enabled}
               onChange={(e) => updateScenario({ pipeline_mrr_override_enabled: e.target.checked })} />
             Use pipeline instead of manual new-MRR assumption
@@ -137,11 +137,11 @@ export default function RevenueView() {
             onChange={(v) => updateScenario({ pipeline_win_rate_accepted_pct: v })} />
         </div>
         {pipelineResult.breakdown.length === 0 ? (
-          <div style={{ color: '#94a3b8', fontSize: 12, padding: '12px 0' }}>No open quotes in pipeline.</div>
+          <div style={{ color: '#94a3b8', fontSize: 13, padding: '12px 0' }}>No open quotes in pipeline.</div>
         ) : (
-          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>
+              <tr style={{ color: '#64748b', fontSize: 11 }}>
                 <th style={{ ...th, padding: '6px 8px' }}>Client</th>
                 <th style={{ ...th, padding: '6px 8px' }}>Status</th>
                 <th style={{ ...th, padding: '6px 8px', textAlign: 'right' }}>Quote £/mo</th>
@@ -154,11 +154,11 @@ export default function RevenueView() {
               {pipelineResult.breakdown.map((q) => (
                 <tr key={q.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                   <td style={{ padding: '6px 8px' }}>{q.entity_name}</td>
-                  <td style={{ padding: '6px 8px', textTransform: 'capitalize', fontSize: 11, color: '#64748b' }}>{q.status}</td>
+                  <td style={{ padding: '6px 8px', textTransform: 'capitalize', fontSize: 12, color: '#64748b' }}>{q.status}</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmtGBP(q.monthly_net)}</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right' }}>{Math.round(q.probability * 100)}%</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#0e7fe0' }}>{fmtGBP(q.weighted_monthly)}</td>
-                  <td style={{ padding: '6px 8px', fontSize: 11, color: '#64748b' }}>{q.expected_live}</td>
+                  <td style={{ padding: '6px 8px', fontSize: 12, color: '#64748b' }}>{q.expected_live}</td>
                 </tr>
               ))}
               <tr style={{ borderTop: '2px solid #e5e7eb', fontWeight: 700 }}>
@@ -190,18 +190,18 @@ export default function RevenueView() {
         </div>
         {churnBuckets.high.slice(0, 5).length > 0 && (
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>Top-5 highest-risk</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Top-5 highest-risk</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {churnBuckets.high.slice(0, 5).map((c) => (
                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca' }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{c.entity_name}</div>
-                    <div style={{ fontSize: 11, color: '#991b1b', marginTop: 2 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>{c.entity_name}</div>
+                    <div style={{ fontSize: 12, color: '#991b1b', marginTop: 2 }}>
                       {c.signals.map((s) => s.label).join(' · ')}
                     </div>
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#dc2626' }}>Score {c.score}</div>
-                  <div style={{ fontSize: 12, color: '#64748b', minWidth: 70, textAlign: 'right' }}>{fmtGBP(c.monthly_fee)}/mo</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#dc2626' }}>Score {c.score}</div>
+                  <div style={{ fontSize: 13, color: '#64748b', minWidth: 70, textAlign: 'right' }}>{fmtGBP(c.monthly_fee)}/mo</div>
                 </div>
               ))}
             </div>
@@ -243,19 +243,19 @@ export default function RevenueView() {
             {needsReview.slice(0, 8).map((c) => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#fff', borderRadius: 8, border: '1px solid #fde68a' }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{c.entity_name}</div>
-                  <div style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>{c.entity_name}</div>
+                  <div style={{ fontSize: 12, color: '#92400e', marginTop: 2 }}>
                     {c.windDown.slice(0, 2).map((w, i) => <span key={i}>"{w.text.slice(0, 80)}{w.text.length > 80 ? '…' : ''}"{i < Math.min(1, c.windDown.length - 1) ? ' · ' : ''}</span>)}
                   </div>
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', minWidth: 80, textAlign: 'right' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', minWidth: 80, textAlign: 'right' }}>
                   {fmtGBP(c.fee)}/mo
                 </div>
                 <button onClick={() => applyOverride(c, { status: 'at_risk' })} style={btnMini}>Flag at risk</button>
                 <button onClick={() => applyOverride(c, { status: 'ending', end_month: defaultEndMonth() })} style={btnMiniDark}>Ending in 6mo</button>
               </div>
             ))}
-            {needsReview.length > 8 && <div style={{ fontSize: 11, color: '#92400e' }}>…and {needsReview.length - 8} more — work through them below.</div>}
+            {needsReview.length > 8 && <div style={{ fontSize: 12, color: '#92400e' }}>…and {needsReview.length - 8} more — work through them below.</div>}
           </div>
         </div>
       )}
@@ -278,7 +278,7 @@ export default function RevenueView() {
         <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb' }}>
           {['all','active','at_risk','ending'].map((f) => (
             <button key={f} onClick={() => setFilter(f)} style={{
-              padding: '6px 12px', fontSize: 12, fontWeight: filter === f ? 600 : 400,
+              padding: '6px 12px', fontSize: 13, fontWeight: filter === f ? 600 : 400,
               color: filter === f ? '#0f172a' : '#94a3b8',
               background: 'none', border: 'none', borderBottom: filter === f ? '2px solid #0e7fe0' : '2px solid transparent',
               cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
@@ -291,9 +291,9 @@ export default function RevenueView() {
 
       {/* Client table */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+            <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
               <th style={th}>Client</th>
               <th style={{ ...th, textAlign: 'right' }}>Monthly £</th>
               <th style={{ ...th, textAlign: 'right' }}>Annual £</th>
@@ -384,7 +384,7 @@ function SeasonalityEditor({ values, onChange }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 11, color: '#64748b', alignSelf: 'center' }}>Presets:</span>
+        <span style={{ fontSize: 12, color: '#64748b', alignSelf: 'center' }}>Presets:</span>
         {presets.map((p) => (
           <button key={p.label} onClick={() => onChange(p.values)} style={btnMini}>{p.label}</button>
         ))}
@@ -397,8 +397,8 @@ function SeasonalityEditor({ values, onChange }) {
             </div>
             <input type="number" min={0} max={3} step={0.05} value={v}
               onChange={(e) => setAt(i, parseFloat(e.target.value) || 0)}
-              style={{ ...inputStyle, fontSize: 11, padding: '4px 6px', textAlign: 'center' }} />
-            <div style={{ fontSize: 10, color: '#94a3b8' }}>{MONTHS_SHORT[i]}</div>
+              style={{ ...inputStyle, fontSize: 12, padding: '4px 6px', textAlign: 'center' }} />
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>{MONTHS_SHORT[i]}</div>
           </div>
         ))}
       </div>
@@ -409,9 +409,9 @@ function SeasonalityEditor({ values, onChange }) {
 function Summary({ label, colour, mo, count, bold }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 14px', borderLeft: `3px solid ${colour}` }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: bold ? 20 : 18, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{fmtGBP(mo * 12)}/yr</div>
-      <div style={{ fontSize: 11, color: '#64748b' }}>{fmtGBP(mo)}/mo · {count} client{count !== 1 ? 's' : ''}</div>
+      <div style={{ fontSize: 12, color: '#64748b' }}>{fmtGBP(mo)}/mo · {count} client{count !== 1 ? 's' : ''}</div>
     </div>
   );
 }
@@ -419,7 +419,7 @@ function Summary({ label, colour, mo, count, bold }) {
 function Field({ label, children }) {
   return (
     <div>
-      <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>{label}</label>
+      <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>{label}</label>
       {children}
     </div>
   );
@@ -436,7 +436,7 @@ function SliderField({ label, min, max, step, suffix, value, onChange }) {
           <input type="number" step={step} value={value || 0}
             onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
             style={{ ...inputStyle, width: 50, textAlign: 'right', padding: '6px 4px' }} />
-          <span style={{ fontSize: 12, color: '#64748b' }}>{suffix}</span>
+          <span style={{ fontSize: 13, color: '#64748b' }}>{suffix}</span>
         </div>
       </div>
     </Field>
@@ -445,9 +445,9 @@ function SliderField({ label, min, max, step, suffix, value, onChange }) {
 
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
 const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: '0 0 4px' };
-const help = { fontSize: 12, color: '#94a3b8', marginBottom: 14 };
+const help = { fontSize: 13, color: '#94a3b8', marginBottom: 14 };
 const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600 };
 const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
-const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
-const btnMini = { padding: '4px 10px', fontSize: 11, fontWeight: 500, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
-const btnMiniDark = { padding: '4px 10px', fontSize: 11, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
+const btnMini = { padding: '4px 10px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const btnMiniDark = { padding: '4px 10px', fontSize: 12, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };

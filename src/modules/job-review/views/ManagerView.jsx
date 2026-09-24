@@ -225,7 +225,7 @@ export default function ManagerView() {
             <Section title="Blockers (answered so far)">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {byReason.map((r) => (
-                  <div key={r.code} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                  <div key={r.code} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}>
                     <span style={{ minWidth: 260, color: '#475569' }}>{r.label}</span>
                     <div style={{ flex: 1, height: 8, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden' }}>
                       <div style={{ width: `${(r.n / stats.total) * 100}%`, height: '100%', background: '#0e7fe0' }} />
@@ -277,7 +277,7 @@ function ProgressBar({ done, total }) {
       <div style={{ width: 120, height: 8, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden' }}>
         <div style={{ width: `${pct}%`, height: '100%', background: complete ? '#16a34a' : '#0e7fe0' }} />
       </div>
-      <span style={{ fontSize: 12, color: complete ? '#16a34a' : '#64748b', fontWeight: 600 }}>{done}/{total}</span>
+      <span style={{ fontSize: 13, color: complete ? '#16a34a' : '#64748b', fontWeight: 600 }}>{done}/{total}</span>
     </div>
   );
 }
@@ -285,7 +285,7 @@ function ProgressBar({ done, total }) {
 function Stat({ label, value, colour = '#0f172a' }) {
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 16px', minWidth: 110, background: '#fff' }}>
-      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 2 }}>{label}</div>
       <div style={{ fontSize: 20, fontWeight: 700, color: colour }}>{value}</div>
     </div>
   );
@@ -294,20 +294,20 @@ function Stat({ label, value, colour = '#0f172a' }) {
 function Section({ title, children }) {
   return (
     <div style={{ marginBottom: 22 }}>
-      <h3 style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: '0 0 8px' }}>{title}</h3>
+      <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', margin: '0 0 8px' }}>{title}</h3>
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, background: '#fff' }}>{children}</div>
     </div>
   );
 }
 
-const table = { width: '100%', borderCollapse: 'collapse', fontSize: 12 };
+const table = { width: '100%', borderCollapse: 'collapse', fontSize: 13 };
 const td = { padding: '7px 10px', verticalAlign: 'middle' };
 function Th({ children }) {
-  return <th style={{ padding: '6px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid #e5e7eb' }}>{children}</th>;
+  return <th style={{ padding: '6px 10px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', borderBottom: '1px solid #e5e7eb' }}>{children}</th>;
 }
-const btnPrimary = { fontSize: 12, fontWeight: 600, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
-const btnSecondary = { fontSize: 12, fontWeight: 500, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#475569' };
+const btnPrimary = { fontSize: 13, fontWeight: 600, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
+const btnSecondary = { fontSize: 13, fontWeight: 500, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#475569' };
 
 function Msg({ children, colour = '#64748b' }) {
-  return <div style={{ padding: 28, fontFamily: font, color: colour, fontSize: 14, textAlign: 'center' }}>{children}</div>;
+  return <div style={{ padding: 28, fontFamily: font, color: colour, fontSize: 14.5, textAlign: 'center' }}>{children}</div>;
 }

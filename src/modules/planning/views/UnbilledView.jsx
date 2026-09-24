@@ -104,7 +104,7 @@ export default function UnbilledView() {
     await load();
   };
 
-  if (loading) return <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading unbilled QBO customers…</div>;
+  if (loading) return <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading unbilled QBO customers…</div>;
 
   return (
     <div>
@@ -135,9 +135,9 @@ export default function UnbilledView() {
 
       {/* Table */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', marginTop: 16 }}>
-        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+            <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
               <th style={th}>Customer</th>
               <th style={th}>QBO name</th>
               <th style={th}>Last seen</th>
@@ -162,8 +162,8 @@ export default function UnbilledView() {
                       <span style={{ fontWeight: 500, color: '#0f172a' }}>{c.entity_name}</span>
                     </div>
                   </td>
-                  <td style={{ ...td, color: '#64748b', fontSize: 12 }}>{c.qbo_customer_name}</td>
-                  <td style={{ ...td, color: '#64748b', fontSize: 12 }}>
+                  <td style={{ ...td, color: '#64748b', fontSize: 13 }}>{c.qbo_customer_name}</td>
+                  <td style={{ ...td, color: '#64748b', fontSize: 13 }}>
                     {c.last_seen ? new Date(c.last_seen).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                   </td>
                   <td style={td}>
@@ -177,7 +177,7 @@ export default function UnbilledView() {
                   </td>
                   <td style={td}>
                     <a href={`/clients/${c.entity_id}`} target="_blank" rel="noreferrer"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0e7fe0', textDecoration: 'none' }}>
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#0e7fe0', textDecoration: 'none' }}>
                       Open client <ExternalLink size={11} />
                     </a>
                   </td>
@@ -204,13 +204,13 @@ function FilterTab({ value, label, count, active, onClick }) {
   const isActive = active === value;
   return (
     <button onClick={() => onClick(value)} style={{
-      padding: '7px 12px', fontSize: 12, fontWeight: isActive ? 600 : 400,
+      padding: '7px 12px', fontSize: 13, fontWeight: isActive ? 600 : 400,
       color: isActive ? '#0f172a' : '#94a3b8',
       background: 'none', border: 'none',
       borderBottom: isActive ? '2px solid #0e7fe0' : '2px solid transparent',
       cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
     }}>
-      {label} <span style={{ color: isActive ? '#0e7fe0' : '#cbd5e1', fontSize: 10, marginLeft: 3 }}>{count}</span>
+      {label} <span style={{ color: isActive ? '#0e7fe0' : '#cbd5e1', fontSize: 11, marginLeft: 3 }}>{count}</span>
     </button>
   );
 }
@@ -218,7 +218,7 @@ function FilterTab({ value, label, count, active, onClick }) {
 function Stat({ label, value, colour, big }) {
   return (
     <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px', borderLeft: `3px solid ${colour}` }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: big ? 22 : 18, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
     </div>
   );
@@ -226,7 +226,7 @@ function Stat({ label, value, colour, big }) {
 
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
 const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: '0 0 4px' };
-const help = { fontSize: 12, color: '#94a3b8', marginBottom: 14, lineHeight: 1.55 };
+const help = { fontSize: 13, color: '#94a3b8', marginBottom: 14, lineHeight: 1.55 };
 const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600 };
 const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
-const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
+const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };

@@ -166,8 +166,8 @@ export default function BaselineView() {
     setPulling(false);
   }
 
-  if (err) return <div style={{ color: RED, fontSize: 13 }}>Baseline failed to load: {err}</div>;
-  if (!health) return <div style={{ color: GREY, fontSize: 13 }}>Checking the baseline…</div>;
+  if (err) return <div style={{ color: RED, fontSize: 14 }}>Baseline failed to load: {err}</div>;
+  if (!health) return <div style={{ color: GREY, fontSize: 14 }}>Checking the baseline…</div>;
 
   const verdict = {
     green: { colour: GREEN, bg: '#f0fdf4', border: '#bbf7d0', icon: CheckCircle2, title: 'The base is sound', sub: 'Recurring base reconciles to the QBO P&L and the data is fresh. The projections on the other tabs stand on this.' },
@@ -183,7 +183,7 @@ export default function BaselineView() {
         <VerdictIcon size={22} style={{ color: verdict.colour, flexShrink: 0, marginTop: 2 }} />
         <div>
           <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 500, color: '#0f172a' }}>{verdict.title}</div>
-          <div style={{ fontSize: 12.5, color: '#475569', marginTop: 2, lineHeight: 1.55 }}>{verdict.sub}</div>
+          <div style={{ fontSize: 13.5, color: '#475569', marginTop: 2, lineHeight: 1.55 }}>{verdict.sub}</div>
         </div>
       </div>
 
@@ -225,12 +225,12 @@ export default function BaselineView() {
           smoothed run-rate is only compared at whole-year scale (see the data-health checks below).
         </p>
         {last3.length === 0 ? (
-          <div style={{ fontSize: 12.5, color: GREY }}>No closed-month P&L data cached — use "Refresh P&L now" below.</div>
+          <div style={{ fontSize: 13.5, color: GREY }}>No closed-month P&L data cached — use "Refresh P&L now" below.</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: 13.5, borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
                   <th style={{ ...th, textAlign: 'left' }}>Month</th>
                   <th style={th}>P&L income</th>
                   <th style={th}>Athena one-offs</th>
@@ -279,14 +279,14 @@ export default function BaselineView() {
               <div key={s.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#f8fafc', borderRadius: 8, padding: '10px 12px' }}>
                 <Icon size={16} style={{ color: colour, flexShrink: 0, marginTop: 1 }} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: 0.4 }}>{s.label}</div>
-                  <div style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.5, marginTop: 2 }}>{s.text}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>{s.label}</div>
+                  <div style={{ fontSize: 13.5, color: '#475569', lineHeight: 1.5, marginTop: 2 }}>{s.text}</div>
                 </div>
                 {s.action && (s.action.href ? (
-                  <a href={s.action.href} style={{ fontSize: 12, fontWeight: 600, color: '#0e7fe0', textDecoration: 'none', whiteSpace: 'nowrap' }}>{s.action.label}</a>
+                  <a href={s.action.href} style={{ fontSize: 13, fontWeight: 600, color: '#0e7fe0', textDecoration: 'none', whiteSpace: 'nowrap' }}>{s.action.label}</a>
                 ) : (
                   <button onClick={s.action.onClick} disabled={pulling}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: '#0e7fe0', background: 'none', border: '1px solid #bfdbfe', borderRadius: 7, padding: '5px 10px', cursor: pulling ? 'default' : 'pointer', whiteSpace: 'nowrap', fontFamily: "'Outfit', sans-serif" }}>
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, color: '#0e7fe0', background: 'none', border: '1px solid #bfdbfe', borderRadius: 7, padding: '5px 10px', cursor: pulling ? 'default' : 'pointer', whiteSpace: 'nowrap', fontFamily: "'Outfit', sans-serif" }}>
                     <RefreshCw size={12} style={pulling ? { animation: 'spin 1s linear infinite' } : undefined} />{s.action.label}
                   </button>
                 ))}
@@ -294,7 +294,7 @@ export default function BaselineView() {
             );
           })}
         </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 12, fontSize: 11.5, color: GREY }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 12, fontSize: 12.5, color: GREY }}>
           <Info size={13} style={{ flexShrink: 0, marginTop: 1 }} />
           <span>
             Oldest row last synced {fmtWhen(health.oldest_sync)}. {health.active_rows} active billing rows across {health.active_clients} clients.
@@ -310,11 +310,11 @@ function Kpi({ label, value, sub, tag, tagColour }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
-        {tag && <span style={{ fontSize: 8.5, fontWeight: 800, color: '#fff', background: tagColour, padding: '1px 6px', borderRadius: 4, letterSpacing: 0.5 }}>{tag}</span>}
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</span>
+        {tag && <span style={{ fontSize: 9.5, fontWeight: 800, color: '#fff', background: tagColour, padding: '1px 6px', borderRadius: 4, letterSpacing: 0.5 }}>{tag}</span>}
       </div>
       <div style={{ fontSize: 21, fontWeight: 700, color: '#0f172a', marginTop: 3 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }
@@ -332,7 +332,7 @@ function CompositionBar({ contracted, inferredMonthly, inferredAnnual }) {
         {seg(inferredMonthly, '#f59e0b', 'Inferred monthly')}
         {seg(inferredAnnual, '#fbbf24', 'Annual work ÷ 12')}
       </div>
-      <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 11.5, color: '#64748b', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12.5, color: '#64748b', flexWrap: 'wrap' }}>
         <LegendDot colour="#059669" label={`Contracted ${fmtGBP(contracted)}/mo`} />
         <LegendDot colour="#f59e0b" label={`Inferred monthly ${fmtGBP(inferredMonthly)}/mo`} />
         <LegendDot colour="#fbbf24" label={`Annual work ÷ 12 ${fmtGBP(inferredAnnual)}/mo`} />
@@ -358,14 +358,14 @@ function IncomeChart({ incomeByMonth, closedMonths, runRate, contracted }) {
       <div style={{ position: 'relative', height: H, borderBottom: '1px solid #e5e7eb' }}>
         {/* Run-rate line */}
         <div style={{ position: 'absolute', left: 0, right: 0, top: H - (runRate / max) * H, borderTop: '2px dashed #0e7fe0', zIndex: 1 }} />
-        <div style={{ position: 'absolute', right: 0, top: H - (runRate / max) * H - 16, fontSize: 10, color: '#0e7fe0', fontWeight: 600 }}>
+        <div style={{ position: 'absolute', right: 0, top: H - (runRate / max) * H - 16, fontSize: 11, color: '#0e7fe0', fontWeight: 600 }}>
           run-rate {fmtGBP(runRate)}
         </div>
         {/* Contracted floor line */}
         {contracted > 0 && (
           <>
             <div style={{ position: 'absolute', left: 0, right: 0, top: H - (contracted / max) * H, borderTop: '2px dashed #059669', zIndex: 1 }} />
-            <div style={{ position: 'absolute', left: 0, top: H - (contracted / max) * H + 3, fontSize: 10, color: '#059669', fontWeight: 600 }}>
+            <div style={{ position: 'absolute', left: 0, top: H - (contracted / max) * H + 3, fontSize: 11, color: '#059669', fontWeight: 600 }}>
               contracted floor {fmtGBP(contracted)}
             </div>
           </>
@@ -379,7 +379,7 @@ function IncomeChart({ incomeByMonth, closedMonths, runRate, contracted }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${keys.length}, 1fr)`, gap: 6, marginTop: 4 }}>
         {keys.map((k) => (
-          <div key={k} style={{ fontSize: 9, color: '#94a3b8', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}>{k.slice(2)}</div>
+          <div key={k} style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}>{k.slice(2)}</div>
         ))}
       </div>
     </div>
@@ -388,6 +388,6 @@ function IncomeChart({ incomeByMonth, closedMonths, runRate, contracted }) {
 
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
 const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: 0 };
-const sub = { fontSize: 12, color: '#64748b', margin: '6px 0 0', lineHeight: 1.6 };
+const sub = { fontSize: 13, color: '#64748b', margin: '6px 0 0', lineHeight: 1.6 };
 const th = { padding: '9px 12px', textAlign: 'right', fontWeight: 600 };
 const td = { padding: '7px 12px', textAlign: 'right', color: '#0f172a', fontVariantNumeric: 'tabular-nums' };

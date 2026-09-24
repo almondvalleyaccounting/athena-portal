@@ -85,7 +85,7 @@ export default function LaSettingsView() {
   return (
     <div>
       <Section
-        title={<span>Local authorities <span style={{ fontSize: 12, fontWeight: 400, color: colors.muted, fontFamily: fontStack }}>· Scotland · {rows.length} councils</span></span>}
+        title={<span>Local authorities <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, fontFamily: fontStack }}>· Scotland · {rows.length} councils</span></span>}
         right={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
@@ -94,23 +94,23 @@ export default function LaSettingsView() {
               style={{ ...inputStyle, width: 180, padding: '7px 10px', fontFamily: fontStack }}
             />
             <select value={year} onChange={(e) => setYear(Number(e.target.value))}
-              style={{ padding: '7px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 12, fontFamily: fontStack, background: '#fff' }}>
+              style={{ padding: '7px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: fontStack, background: '#fff' }}>
               {[2025, 2026, 2027, 2028, 2029].map(y => <option key={y} value={y}>{y}/{(y + 1).toString().slice(2)}</option>)}
             </select>
           </div>
         }
       >
-        <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 10px' }}>
+        <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 10px' }}>
           Central reference data for Scottish local authorities. Edits apply globally across all forecasts. NDR poundage default 0.498 (basic 2025/26 band).
           Funded hourly rates vary by LA and age band — populate as you research each council.
           Top-up = whether the LA permits charging parents above the funded rate for wraparound hours.
         </p>
 
         {loading ? (
-          <p style={{ color: colors.muted, fontSize: 13 }}>Loading…</p>
+          <p style={{ color: colors.muted, fontSize: 14 }}>Loading…</p>
         ) : (
           <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack }}>
               <thead>
                 <tr style={{ background: colors.bgSoft }}>
                   <th style={th}>Council</th>
@@ -129,7 +129,7 @@ export default function LaSettingsView() {
                     <tr key={id} style={{ borderBottom: `1px solid ${colors.borderSoft}` }}>
                       <td style={td}>
                         <strong>{la.council.name}</strong>
-                        <span style={{ fontSize: 10, color: colors.muted, marginLeft: 6, fontFamily: 'ui-monospace, monospace' }}>{la.council.code}</span>
+                        <span style={{ fontSize: 11, color: colors.muted, marginLeft: 6, fontFamily: 'ui-monospace, monospace' }}>{la.council.code}</span>
                       </td>
                       <td style={td}>
                         <input
@@ -177,7 +177,7 @@ export default function LaSettingsView() {
                             checked={la.topup?.topup_allowed === true}
                             onChange={(e) => saveTopup(la, e.target.checked)}
                           />
-                          <span style={{ fontSize: 11 }}>{la.topup?.topup_allowed ? 'Allowed' : '—'}</span>
+                          <span style={{ fontSize: 12 }}>{la.topup?.topup_allowed ? 'Allowed' : '—'}</span>
                         </label>
                       </td>
                     </tr>
@@ -193,9 +193,9 @@ export default function LaSettingsView() {
 }
 
 function SavedFlash() {
-  return <span style={{ marginLeft: 6, fontSize: 10, color: colors.green, fontWeight: 600 }}>✓</span>;
+  return <span style={{ marginLeft: 6, fontSize: 11, color: colors.green, fontWeight: 600 }}>✓</span>;
 }
 
 const th = { padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}` };
 const td = { padding: '6px 10px', color: colors.ink, verticalAlign: 'middle' };
-const cellInput = { padding: '4px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, fontSize: 11, fontFamily: 'ui-monospace, monospace', textAlign: 'right' };
+const cellInput = { padding: '4px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, fontSize: 12, fontFamily: 'ui-monospace, monospace', textAlign: 'right' };

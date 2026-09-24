@@ -18,7 +18,7 @@ function statusMeta(value) {
 function actionBtnStyle(tone) {
   const t = tones[tone] || tones.neutral;
   return {
-    padding: '6px 12px', fontSize: 12, fontWeight: 600, fontFamily: font,
+    padding: '6px 12px', fontSize: 13, fontWeight: 600, fontFamily: font,
     background: t.bg, color: t.fg, border: `1px solid ${t.border}`,
     borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap',
   };
@@ -31,7 +31,7 @@ function ProgressBar({ done, total }) {
       <div style={{ flex: 1, height: 6, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden', minWidth: 80 }}>
         <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: pct === 100 ? tones.success.solid : '#F5C518' }} />
       </div>
-      <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>{done}/{total}</span>
+      <span style={{ fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' }}>{done}/{total}</span>
     </div>
   );
 }
@@ -142,7 +142,7 @@ export default function PipelineView() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Onboarding</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
             New clients and new services, from first contact to fully set up
           </p>
         </div>
@@ -150,7 +150,7 @@ export default function PipelineView() {
           <ViewTabs active="List" />
           <button
             onClick={() => navigate('/onboarding/updates')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, fontFamily: font, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 14, fontWeight: 600, fontFamily: font, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer' }}
           >
             ✨ Latest updates
           </button>
@@ -175,19 +175,19 @@ export default function PipelineView() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search client…"
           style={{
-            marginLeft: 'auto', padding: '7px 12px', fontSize: 13, fontFamily: font,
+            marginLeft: 'auto', padding: '7px 12px', fontSize: 14, fontFamily: font,
             border: '1px solid #cbd5e1', borderRadius: 8, minWidth: 220, background: '#fff',
           }}
         />
       </div>
 
-      {error && <div style={{ color: tones.danger.fg, fontSize: 13 }}>Failed to load: {error}</div>}
-      {!rows && !error && <div style={{ color: '#64748b', fontSize: 13 }}>Loading…</div>}
+      {error && <div style={{ color: tones.danger.fg, fontSize: 14 }}>Failed to load: {error}</div>}
+      {!rows && !error && <div style={{ color: '#64748b', fontSize: 14 }}>Loading…</div>}
 
       {rows && filtered.length === 0 && (
         <div style={{
           background: '#fff', border: '1px dashed #cbd5e1', borderRadius: 12,
-          padding: '40px 20px', textAlign: 'center', color: '#64748b', fontSize: 14,
+          padding: '40px 20px', textAlign: 'center', color: '#64748b', fontSize: 14.5,
         }}>
           No onboardings here yet. Start one with the gold button.
         </div>
@@ -213,8 +213,8 @@ export default function PipelineView() {
               }}
             >
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>{r.entity?.name || '—'}</div>
-                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{r.entity?.name || '—'}</div>
+                <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
                   {r.template?.name || '—'} · {r.owner?.name ? `Owner: ${r.owner.name}` : 'No owner'}
                 </div>
                 {latest && (
@@ -222,7 +222,7 @@ export default function PipelineView() {
                     title={`${latest.author?.name || 'Athena'} · ${fmtNoteTime(latest.created_at)}
 
 ${latest.body}`}
-                    style={{ fontSize: 12, color: '#475569', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    style={{ fontSize: 13, color: '#475569', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                   >
                     <MessageSquare size={10} style={{ verticalAlign: -1, marginRight: 4, color: '#94a3b8' }} />
                     {latest.body}
@@ -239,7 +239,7 @@ ${latest.body}`}
                   {hoverIssue === r.id && (
                     <div style={{
                       position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 20,
-                      width: 260, background: '#0f172a', color: '#fff', fontSize: 12, lineHeight: 1.45,
+                      width: 260, background: '#0f172a', color: '#fff', fontSize: 13, lineHeight: 1.45,
                       padding: '9px 11px', borderRadius: 8, boxShadow: '0 8px 24px rgba(15,23,42,0.28)',
                       whiteSpace: 'normal', fontWeight: 400,
                     }}>
@@ -287,7 +287,7 @@ ${latest.body}`}
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 12, color: '#64748b', textAlign: 'right' }}>
+              <div style={{ fontSize: 13, color: '#64748b', textAlign: 'right' }}>
                 {age != null ? `${age}d in` : ''}
                 {r.target_date ? <div>due {new Date(r.target_date).toLocaleDateString('en-GB')}</div> : null}
               </div>

@@ -242,11 +242,11 @@ export default function TriageBoardPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
         <LifeBuoy size={20} color="#0e7fe0" />
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Triage</h1>
-        <span style={{ fontSize: 13, color: '#64748b' }}>{openCount} open case{openCount === 1 ? '' : 's'}</span>
+        <span style={{ fontSize: 14, color: '#64748b' }}>{openCount} open case{openCount === 1 ? '' : 's'}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <button onClick={() => setManagingTemplates(true)}
             style={{
-              background: 'none', border: 'none', color: '#0e7fe0', fontSize: 12.5, fontWeight: 600,
+              background: 'none', border: 'none', color: '#0e7fe0', fontSize: 13.5, fontWeight: 600,
               fontFamily: font, cursor: 'pointer', padding: '0 4px',
             }}>
             Manage templates
@@ -254,7 +254,7 @@ export default function TriageBoardPage() {
           <button onClick={() => setAdding(true)} style={btn('primary')}><Plus size={13} /> Add to triage</button>
         </div>
       </div>
-      <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 14px' }}>
+      <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 14px' }}>
         Clients with an active problem — strike-off risks, clients on hold, and client issues.
       </p>
 
@@ -263,7 +263,7 @@ export default function TriageBoardPage() {
           {VIEWS.map((v) => (
             <Link key={v.key} to={v.path} title={v.hint}
               style={{
-                padding: '6px 14px', fontSize: 12.5, fontWeight: 600, borderRadius: 7, textDecoration: 'none',
+                padding: '6px 14px', fontSize: 13.5, fontWeight: 600, borderRadius: 7, textDecoration: 'none',
                 background: view === v.key ? '#fff' : 'transparent',
                 color: view === v.key ? '#0f172a' : '#64748b',
                 boxShadow: view === v.key ? '0 1px 2px rgba(15,23,42,0.08)' : 'none',
@@ -277,7 +277,7 @@ export default function TriageBoardPage() {
             {[{ v: false, label: 'Expanded', Icon: Rows2 }, { v: true, label: 'Compact', Icon: Rows3 }].map(({ v, label, Icon }) => (
               <button key={label} onClick={() => setCompact(v)} aria-pressed={compact === v}
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: 12, fontWeight: 600,
+                  display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: 13, fontWeight: 600,
                   fontFamily: font, border: 'none', cursor: 'pointer',
                   background: compact === v ? '#0f172a' : '#fff', color: compact === v ? '#fff' : '#475569',
                 }}>
@@ -286,16 +286,16 @@ export default function TriageBoardPage() {
             ))}
           </div>
         )}
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#64748b', cursor: 'pointer', marginLeft: 'auto' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#64748b', cursor: 'pointer', marginLeft: 'auto' }}>
           <input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)}
             style={{ width: 13, height: 13, accentColor: '#0e7fe0' }} />
           {view === 'kanban' ? `Show all completed (not just the last ${RECENT_COMPLETED_DAYS} days)` : 'Show resolved'}
         </label>
       </div>
 
-      {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ fontSize: 14, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
 
-      {cases === null && <div style={{ ...card, padding: 18, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Loading…</div>}
+      {cases === null && <div style={{ ...card, padding: 18, textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>Loading…</div>}
 
       {cases !== null && view === 'board' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))', gap: 14, alignItems: 'start' }}>
@@ -306,14 +306,14 @@ export default function TriageBoardPage() {
               <div key={cat.key} style={{ ...card, overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', background: cat.tone.bg, borderBottom: `1px solid ${cat.tone.border}` }}>
                   <Icon size={15} color={cat.tone.fg} />
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: cat.tone.fg, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, color: cat.tone.fg }}>
                     {cat.label} ({items.length})
                   </span>
                 </div>
-                {!compact && <div style={{ padding: '10px 10px 6px', fontSize: 11.5, color: '#94a3b8' }}>{cat.hint}</div>}
+                {!compact && <div style={{ padding: '10px 10px 6px', fontSize: 12.5, color: '#94a3b8' }}>{cat.hint}</div>}
                 <div style={{ padding: compact ? 8 : '0 10px 10px', display: 'flex', flexDirection: 'column', gap: compact ? 5 : 8 }}>
                   {items.length === 0 && (
-                    <div style={{ fontSize: 12.5, color: '#cbd5e1', textAlign: 'center', padding: '14px 0' }}>Nothing here</div>
+                    <div style={{ fontSize: 13.5, color: '#cbd5e1', textAlign: 'center', padding: '14px 0' }}>Nothing here</div>
                   )}
                   {items.map((c) => (
                     <CaseCard
@@ -423,7 +423,7 @@ function AddCaseModal({ entityList, staffList, onClose, onAdd }) {
   return (
     <div onClick={onClose} style={backdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...modal, width: 520 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <LifeBuoy size={16} color="#0e7fe0" /> Add a client to triage
         </div>
 
@@ -435,7 +435,7 @@ function AddCaseModal({ entityList, staffList, onClose, onAdd }) {
           {CATEGORIES.map((cat) => (
             <button key={cat.key} onClick={() => setCategory(cat.key)}
               style={{
-                flex: 1, padding: '7px 8px', fontSize: 12, fontWeight: 600, fontFamily: font, borderRadius: 8, cursor: 'pointer',
+                flex: 1, padding: '7px 8px', fontSize: 13, fontWeight: 600, fontFamily: font, borderRadius: 8, cursor: 'pointer',
                 background: category === cat.key ? cat.tone.bg : '#fff',
                 color: category === cat.key ? cat.tone.fg : '#64748b',
                 border: `1px solid ${category === cat.key ? cat.tone.border : '#e5e7eb'}`,
@@ -504,11 +504,11 @@ function CaseDrawer({ c, notes, actions, staffMap, staffList, templates, onClose
         }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{
-            fontSize: 10.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+            fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
             background: cat.tone.bg, color: cat.tone.fg, border: `1px solid ${cat.tone.border}`,
             textTransform: 'uppercase', letterSpacing: 0.4,
           }}>{cat.label}</span>
-          <span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {c.entity?.name || 'Client'}
           </span>
           <button onClick={onOpenClient} title="Open the client record" style={{ ...iconBtn, color: '#0e7fe0', borderColor: '#bae6fd' }}>
@@ -521,7 +521,7 @@ function CaseDrawer({ c, notes, actions, staffMap, staffList, templates, onClose
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
           {c.entity?.company_status && (
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
+            <div style={{ fontSize: 13, color: '#64748b', marginBottom: 10 }}>
               Companies House status:{' '}
               <strong style={{ color: /(strike|liquidat|administrat|dissolv)/i.test(`${c.entity.company_status} ${c.entity.company_status_detail || ''}`) ? '#b91c1c' : '#166534' }}>
                 {c.entity.company_status.replace(/-/g, ' ')}{c.entity.company_status_detail ? ` (${c.entity.company_status_detail.replace(/-/g, ' ')})` : ''}
@@ -529,8 +529,8 @@ function CaseDrawer({ c, notes, actions, staffMap, staffList, templates, onClose
             </div>
           )}
 
-          <div style={{ fontSize: 13.5, color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{c.description}</div>
-          <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 6 }}>
+          <div style={{ fontSize: 14.5, color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{c.description}</div>
+          <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 6 }}>
             Opened {fmtDate(c.created_at)} ({daysOpen(c.created_at)} days ago)
             {c.created_by ? ` by ${staffMap[c.created_by] || 'staff'}` : c.source === 'ch_status' ? ' automatically from Companies House' : ''}
             {c.status === 'resolved' && ` · resolved ${fmtDate(c.resolved_at)}`}
@@ -588,14 +588,14 @@ function CaseDrawer({ c, notes, actions, staffMap, staffList, templates, onClose
           />
 
           <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8 }}>
               Notes
             </div>
-            {notes.length === 0 && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>No notes yet.</div>}
+            {notes.length === 0 && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>No notes yet.</div>}
             {notes.map((n) => (
-              <div key={n.id} style={{ padding: '7px 0', borderBottom: '1px solid #f8fafc', fontSize: 12.5, color: '#334155' }}>
+              <div key={n.id} style={{ padding: '7px 0', borderBottom: '1px solid #f8fafc', fontSize: 13.5, color: '#334155' }}>
                 <div style={{ whiteSpace: 'pre-wrap' }}>{n.body}</div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
                   {n.author_id ? (staffMap[n.author_id] || 'staff') : 'Athena'} · {fmtNoteTime(n.created_at)}
                 </div>
               </div>

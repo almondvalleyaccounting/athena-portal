@@ -338,11 +338,11 @@ export default function LinesView({ forecast, scenario, onChanged }) {
       )}
       {err && (
         <div style={{ padding: 12, background: '#fef2f2', border: `1px solid ${colors.red}`,
-          borderRadius: 8, color: colors.red, fontSize: 13, marginBottom: 16 }}>{err}</div>
+          borderRadius: 8, color: colors.red, fontSize: 14, marginBottom: 16 }}>{err}</div>
       )}
       {note && (
         <div style={{ padding: 12, background: '#f0fdf4', border: `1px solid ${colors.green}`,
-          borderRadius: 8, color: colors.green, fontSize: 13, marginBottom: 16 }}>{note}</div>
+          borderRadius: 8, color: colors.green, fontSize: 14, marginBottom: 16 }}>{note}</div>
       )}
 
       {/* ── 1. Seed ─────────────────────────────────────────────── */}
@@ -357,7 +357,7 @@ export default function LinesView({ forecast, scenario, onChanged }) {
                 ))}
               </select>
               {!realmId && (
-                <div style={{ fontSize: 11, color: colors.amber, marginTop: 4, maxWidth: 260 }}>
+                <div style={{ fontSize: 12, color: colors.amber, marginTop: 4, maxWidth: 260 }}>
                   {forecast.client_name || 'This client'} has no QuickBooks file linked — choose the right
                   company yourself.
                 </div>
@@ -371,7 +371,7 @@ export default function LinesView({ forecast, scenario, onChanged }) {
                     <button key={n} disabled={busy}
                       onClick={() => { setSeedStart(monthsAgoISO(n)); setSeedEnd(endOfLastMonthISO()); }}
                       style={{
-                        padding: '7px 12px', fontSize: 12, fontFamily: fontStack, cursor: 'pointer',
+                        padding: '7px 12px', fontSize: 13, fontFamily: fontStack, cursor: 'pointer',
                         borderRadius: 6, border: `1px solid ${active ? colors.ink : colors.border}`,
                         background: active ? colors.ink : '#fff',
                         color: active ? '#fff' : colors.inkSoft, fontWeight: active ? 600 : 400,
@@ -398,7 +398,7 @@ export default function LinesView({ forecast, scenario, onChanged }) {
               {busy ? 'Pulling…' : 'Pull from QuickBooks'}
             </button>
           </div>
-          <p style={{ fontSize: 12, color: colors.muted, margin: '10px 0 0' }}>
+          <p style={{ fontSize: 13, color: colors.muted, margin: '10px 0 0' }}>
             Every nominal account with activity becomes a line. Re-seeding refreshes the actuals and the
             basis but keeps your renames, categories and adjustments; hand-added lines are never touched.
           </p>
@@ -409,7 +409,7 @@ export default function LinesView({ forecast, scenario, onChanged }) {
                 debtors {fmtP(lastPull.opening.debtors_p)}, creditors {fmtP(lastPull.opening.creditors_p)}
               </button>
               {(lastPull.opening.warnings || []).map((w, i) => (
-                <div key={i} style={{ fontSize: 11, color: colors.amber, marginTop: 6, maxWidth: 720 }}>{w}</div>
+                <div key={i} style={{ fontSize: 12, color: colors.amber, marginTop: 6, maxWidth: 720 }}>{w}</div>
               ))}
             </div>
           )}
@@ -421,8 +421,7 @@ export default function LinesView({ forecast, scenario, onChanged }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
           {ASSUMPTION_GROUPS.map(g => (
             <div key={g.title} style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: colors.inkSoft, marginBottom: 10,
-                textTransform: 'uppercase', letterSpacing: 0.4 }}>{g.title}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkSoft, marginBottom: 10 }}>{g.title}</div>
               {g.keys.map(key => {
                 const d = driverByKey.get(key);
                 if (!d) return null;
@@ -450,12 +449,12 @@ export default function LinesView({ forecast, scenario, onChanged }) {
               </div>
             }>
             {rows.length === 0 ? (
-              <div style={{ fontSize: 13, color: colors.muted, padding: '8px 0' }}>
+              <div style={{ fontSize: 14, color: colors.muted, padding: '8px 0' }}>
                 No {cat.label.toLowerCase()} lines yet.
               </div>
             ) : (
               <div style={{ overflowX: 'auto', background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: colors.bgSoft }}>
                       <Th style={{ minWidth: 200 }}>Line</Th>
@@ -539,13 +538,13 @@ function TimingModal({ line, forecast, onClose, onSave, busy }) {
         <h2 style={{ fontFamily: serifStack, fontSize: 20, fontWeight: 500, color: colors.ink, margin: '0 0 4px' }}>
           Cash timing
         </h2>
-        <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 18px' }}>
+        <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 18px' }}>
           {line.label} — when the cash moves. The P&amp;L is unaffected: this changes
           payment, not the invoice.
         </p>
 
         {line.category === 'payroll' ? (
-          <p style={{ fontSize: 13, color: colors.inkSoft, background: colors.bgSoft, padding: 12, borderRadius: 8 }}>
+          <p style={{ fontSize: 14, color: colors.inkSoft, background: colors.bgSoft, padding: 12, borderRadius: 8 }}>
             Payroll cash follows the wages / PAYE split set in Assumptions — net pay in the
             month, PAYE and NI a month behind. Nothing to set per line.
           </p>
@@ -564,7 +563,7 @@ function TimingModal({ line, forecast, onClose, onSave, busy }) {
                 </select>
                 {form.pay_cadence !== 'monthly' && (
                   <>
-                    <span style={{ fontSize: 12, color: colors.muted }}>first in</span>
+                    <span style={{ fontSize: 13, color: colors.muted }}>first in</span>
                     <select value={form.cadence_offset} onChange={set('cadence_offset')} style={{ ...selectStyle, minWidth: 120 }}>
                       {Array.from({ length: cycle }, (_, i) => (
                         <option key={i} value={i}>{periodLabel(i, forecast.opening_period)}</option>
@@ -576,8 +575,7 @@ function TimingModal({ line, forecast, onClose, onSave, busy }) {
             </Labelled>
 
             <div style={{ borderTop: `1px solid ${colors.border}`, margin: '18px 0 14px' }} />
-            <div style={{ fontSize: 12, fontWeight: 700, color: colors.inkSoft, marginBottom: 10,
-              textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkSoft, marginBottom: 10 }}>
               Part payment
             </div>
 
@@ -623,9 +621,9 @@ function TimingModal({ line, forecast, onClose, onSave, busy }) {
 function Labelled({ label, hint, children }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: colors.ink, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: colors.ink, marginBottom: 4 }}>{label}</div>
       {children}
-      {hint && <div style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>{hint}</div>}
     </div>
   );
 }
@@ -635,7 +633,7 @@ function Labelled({ label, hint, children }) {
 function Field({ label, children }) {
   return (
     <div>
-      <div style={{ fontSize: 11, color: colors.muted, marginBottom: 4, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 12, color: colors.muted, marginBottom: 4, fontWeight: 600 }}>{label}</div>
       {children}
     </div>
   );
@@ -643,7 +641,7 @@ function Field({ label, children }) {
 
 function Th({ children, align = 'left', style }) {
   return (
-    <th style={{ textAlign: align, padding: '8px 10px', fontSize: 11, fontWeight: 700,
+    <th style={{ textAlign: align, padding: '8px 10px', fontSize: 12, fontWeight: 700,
       color: colors.muted, borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap', ...style }}>
       {children}
     </th>
@@ -676,7 +674,7 @@ function DriverRow({ driver, value, onSave, disabled }) {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-      <div style={{ flex: 1, fontSize: 12, color: colors.inkSoft, lineHeight: 1.3 }}>{driver.label}</div>
+      <div style={{ flex: 1, fontSize: 13, color: colors.inkSoft, lineHeight: 1.3 }}>{driver.label}</div>
       {isFlag ? (
         <select value={String(display ?? '0')} onChange={e => onSave(Number(e.target.value))}
           disabled={disabled} style={{ ...inputStyle, width: 80 }}>
@@ -702,7 +700,7 @@ function LineRow({ line, year1, openingPeriod, onSave, onEditTiming, onDelete, d
       <Td>
         <TextCell value={line.label} onSave={v => onSave({ label: v })} disabled={disabled} />
         {line.notes && (
-          <div style={{ fontSize: 10, color: colors.amber, marginTop: 2 }}>{line.notes}</div>
+          <div style={{ fontSize: 11, color: colors.amber, marginTop: 2 }}>{line.notes}</div>
         )}
       </Td>
       <Td>
@@ -743,7 +741,7 @@ function LineRow({ line, year1, openingPeriod, onSave, onEditTiming, onDelete, d
         <button onClick={onEditTiming} disabled={disabled}
           title={timingSummary(line, openingPeriod, { long: true })}
           style={{
-            ...btnGhost, padding: '3px 8px', fontSize: 11, maxWidth: 190,
+            ...btnGhost, padding: '3px 8px', fontSize: 12, maxWidth: 190,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             color: hasCustomTiming(line) ? colors.accent : colors.muted,
             borderColor: hasCustomTiming(line) ? colors.accent : colors.border,

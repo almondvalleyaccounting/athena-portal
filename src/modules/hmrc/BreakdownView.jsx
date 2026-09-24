@@ -87,12 +87,12 @@ export default function BreakdownView({ clients = [] }) {
   if (!entityId) {
     return (
       <div>
-        <p style={{ fontSize: 13, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
+        <p style={{ fontSize: 14, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
           One client, all four tax heads, grouped by tax type — what each balance is actually made of.
         </p>
-        <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 13, lineHeight: 1.6 }}>
+        <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 14, lineHeight: 1.6 }}>
           Pick a client in the selector above, or click a <b>Total</b> on the All taxes tab.
-          <div style={{ marginTop: 6, fontSize: 12 }}>
+          <div style={{ marginTop: 6, fontSize: 13 }}>
             The practice-wide position is what <b>All taxes</b> is for; this page is one client.
           </div>
         </div>
@@ -104,14 +104,14 @@ export default function BreakdownView({ clients = [] }) {
     <div>
       <ErrorBar message={error} />
 
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
         {chosen ? <><b>{chosen.entity_name}</b> — </> : null}
         every tax head, grouped by type: what each balance is made of, how old it is and what has moved.
         The individual charges and payments are one level down, on each head&rsquo;s own tab.
       </p>
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Reading all four heads…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Reading all four heads…</div>
       ) : !data ? null : (
         <>
           <Summary heads={heads} total={total} chosen={chosen} moves={data.moves} entityId={entityId} />
@@ -138,22 +138,22 @@ function Summary({ heads, total, chosen, moves, entityId }) {
   return (
     <div style={{ ...card, padding: '12px 14px', marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: total > 0 ? '#b91c1c' : '#059669' }}>
+        <span style={{ fontSize: 15.5, fontWeight: 700, color: total > 0 ? '#b91c1c' : '#059669' }}>
           {fmtGbpDetailed(total)}
         </span>
-        <span style={{ fontSize: 12.5, color: '#475569' }}>
+        <span style={{ fontSize: 13.5, color: '#475569' }}>
           owed to HMRC across {heads.filter((h) => h.known).length} tax head
           {heads.filter((h) => h.known).length === 1 ? '' : 's'}
         </span>
         {creditHeld > 0 && (
-          <span style={{ fontSize: 12.5, color: '#475569' }}>
+          <span style={{ fontSize: 13.5, color: '#475569' }}>
             · <b style={{ color: '#0369a1' }}>{fmtGbpDetailed(creditHeld)}</b> credit HMRC is holding
           </span>
         )}
         <div style={{ flex: 1 }} />
         {chosen && (
           <a href={`/clients/${entityId}`} target="_blank" rel="noreferrer"
-             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0e7fe0', textDecoration: 'none' }}>
+             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#0e7fe0', textDecoration: 'none' }}>
             Client record <ExternalLink size={11} />
           </a>
         )}
@@ -169,7 +169,7 @@ function Summary({ heads, total, chosen, moves, entityId }) {
           </div>
           <div style={{ display: 'flex', gap: 14, marginTop: 7, flexWrap: 'wrap' }}>
             {positive.map((h) => (
-              <span key={h.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: '#475569' }}>
+              <span key={h.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#475569' }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: h.colour }} />
                 {h.label} <b style={{ color: '#0f172a' }}>{fmtGbpDetailed(h.balance)}</b>
                 <span style={{ color: '#94a3b8' }}>{Math.round((h.balance / span) * 100)}%</span>
@@ -184,8 +184,8 @@ function Summary({ heads, total, chosen, moves, entityId }) {
           rest — and until this existed the only record was somebody's memory. */}
       {(mv('from_another_tax') > 0 || mv('to_another_tax') > 0 || mv('cash_to_client') > 0) && (
         <div style={{ display: 'flex', gap: 16, marginTop: 10, paddingTop: 9, borderTop: '1px solid #f1f5f9',
-                      flexWrap: 'wrap', fontSize: 11.5, color: '#475569' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                      flexWrap: 'wrap', fontSize: 12.5, color: '#475569' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>
             Money that has moved
           </span>
           {mv('paid_by_client') > 0 && <span>Paid by the client <b style={{ color: '#0f172a' }}>{fmtGbpDetailed(mv('paid_by_client'))}</b></span>}
@@ -206,7 +206,7 @@ function HeadCard({ head, total, onOpen }) {
     <div style={{ ...card, borderLeft: `3px solid ${head.colour}` }}>
       <div style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', display: 'flex',
                     alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{head.label}</span>
+        <span style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a' }}>{head.label}</span>
         {head.known ? (
           <>
             <span style={{ fontSize: 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
@@ -214,17 +214,17 @@ function HeadCard({ head, total, onOpen }) {
               {fmtGbpDetailed(head.balance)}
             </span>
             {total > 0 && head.balance > 0 && (
-              <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+              <span style={{ fontSize: 12.5, color: '#94a3b8' }}>
                 {Math.round((head.balance / total) * 100)}% of what they owe
               </span>
             )}
-            {head.reference && <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{head.reference}</span>}
+            {head.reference && <span style={{ fontSize: 12.5, color: '#94a3b8' }}>{head.reference}</span>}
             {head.flags?.map((f) => (
-              <Pill key={f.label} colour={f.colour} bg={f.bg} title={f.hint} style={{ fontSize: 10 }}>{f.label}</Pill>
+              <Pill key={f.label} colour={f.colour} bg={f.bg} title={f.hint} style={{ fontSize: 11 }}>{f.label}</Pill>
             ))}
           </>
         ) : (
-          <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>Not registered, or not scraped</span>
+          <span style={{ fontSize: 13.5, color: '#cbd5e1' }}>Not registered, or not scraped</span>
         )}
         <div style={{ flex: 1 }} />
         {head.known && (
@@ -232,7 +232,7 @@ function HeadCard({ head, total, onOpen }) {
             title={`Open ${head.label} for this client — ${head.detailLabel}`}
             style={{
               background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              fontFamily: font, fontSize: 11.5, fontWeight: 600, color: '#0e7fe0',
+              fontFamily: font, fontSize: 12.5, fontWeight: 600, color: '#0e7fe0',
             }}>
             {head.detailLabel} →
           </button>
@@ -242,7 +242,7 @@ function HeadCard({ head, total, onOpen }) {
       {head.known && (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1.1fr) minmax(260px, 1fr)', gap: 0 }}>
           <Pane title="What the balance is made of">
-            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
               <tbody>
                 {head.parts.map((p) => (
                   <tr key={p.label}>
@@ -273,12 +273,12 @@ function HeadCard({ head, total, onOpen }) {
               </tbody>
             </table>
             {head.note && (
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8, lineHeight: 1.5 }}>{head.note}</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8, lineHeight: 1.5 }}>{head.note}</div>
             )}
           </Pane>
 
           <Pane title="Shape of it" last>
-            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
               <tbody>
                 {head.facts.map((f) => (
                   <tr key={f.label}>
@@ -301,8 +301,7 @@ function HeadCard({ head, total, onOpen }) {
 function Pane({ title, children, last }) {
   return (
     <div style={{ padding: '11px 14px', borderRight: last ? 'none' : '1px solid #f1f5f9', minWidth: 0 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase',
-                    letterSpacing: 0.4, marginBottom: 7 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 7 }}>
         {title}
       </div>
       {children}

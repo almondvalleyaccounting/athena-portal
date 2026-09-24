@@ -371,13 +371,13 @@ export default function ForecastModule() {
       )}
 
       {err && (
-        <div style={{ padding: 12, background: '#fef2f2', color: colors.red, borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
+        <div style={{ padding: 12, background: '#fef2f2', color: colors.red, borderRadius: 8, marginBottom: 12, fontSize: 14 }}>
           {err}
         </div>
       )}
 
       {!forecast && (
-        <div style={{ padding: '60px 24px', textAlign: 'center', color: colors.muted, fontSize: 14 }}>
+        <div style={{ padding: '60px 24px', textAlign: 'center', color: colors.muted, fontSize: 14.5 }}>
           Pick a forecast or create a new one to get started.
         </div>
       )}
@@ -411,7 +411,7 @@ export default function ForecastModule() {
             )}
             {tab === 'lending' && (
               <div>
-                <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 14px', maxWidth: 720 }}>
+                <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 14px', maxWidth: 720 }}>
                   Loans and director's money. Drawdown lands as cash in on the start month;
                   interest hits the P&amp;L and repayments the cashflow, and the outstanding
                   balance carries on the balance sheet.
@@ -540,7 +540,7 @@ function Header({
             </span>
           )}
         </h1>
-        <p style={{ fontSize: 12, color: colors.muted, margin: '4px 0 0' }}>
+        <p style={{ fontSize: 13, color: colors.muted, margin: '4px 0 0' }}>
           {forecast
             ? `${crumbs.join(' › ')} · ${forecast.vertical_pack} · ${forecast.horizon_months} months`
             : 'Multi-location · 3-statement · investor-deck-ready'}
@@ -658,7 +658,7 @@ function ClientPicker({ value, onChange, autoFocus }) {
         style={inputStyle}
       />
       {value?.client_entity_id && (
-        <span style={{ position: 'absolute', right: 8, top: 8, fontSize: 10, color: '#166534', background: '#dcfce7', borderRadius: 999, padding: '1px 7px', fontWeight: 700 }}>
+        <span style={{ position: 'absolute', right: 8, top: 8, fontSize: 11, color: '#166534', background: '#dcfce7', borderRadius: 999, padding: '1px 7px', fontWeight: 700 }}>
           linked
         </span>
       )}
@@ -671,7 +671,7 @@ function ClientPicker({ value, onChange, autoFocus }) {
           {results.map(r => (
             <div key={r.id}
               onMouseDown={(e) => { e.preventDefault(); pick(r); }}
-              style={{ padding: '7px 10px', fontSize: 13, cursor: 'pointer', color: colors.ink }}
+              style={{ padding: '7px 10px', fontSize: 14, cursor: 'pointer', color: colors.ink }}
               onMouseEnter={(e) => e.currentTarget.style.background = '#f0f9ff'}
               onMouseLeave={(e) => e.currentTarget.style.background = ''}
             >
@@ -780,17 +780,17 @@ function CreateForecastModal({ onClose, onCreate, existingGroupClients, busy }) 
               onChange={set('year_end_date')}
               style={inputStyle}
             />
-            <span style={{ fontSize: 10, color: colors.muted }}>
+            <span style={{ fontSize: 11, color: colors.muted }}>
               Optional — drives when the CT bill is paid (year end + 9 months).
             </span>
           </Field>
         </div>
-        <p style={{ fontSize: 11, color: colors.muted, margin: '12px 0 0' }}>
+        <p style={{ fontSize: 12, color: colors.muted, margin: '12px 0 0' }}>
           Start month sets period 0 of the model — every "Opens (months from start)"
           on a location is relative to this. Defaults to the current month; pick any
           past or future month to anchor the forecast.
         </p>
-        <p style={{ fontSize: 11, color: colors.muted, margin: '6px 0 0' }}>
+        <p style={{ fontSize: 12, color: colors.muted, margin: '6px 0 0' }}>
           Group client groups forecasts in the picker (the person or group behind the deal, even if
           they're not an Athena client yet). Client links this forecast to the actual Athena client
           record — pick from the search, or type a name to leave it unlinked. A first version named
@@ -810,7 +810,7 @@ function CreateForecastModal({ onClose, onCreate, existingGroupClients, busy }) 
 function Field({ label, children }) {
   return (
     <label style={{ display: 'block' }}>
-      <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 12, color: colors.muted, fontWeight: 600, marginBottom: 4 }}>{label}</div>
       {children}
     </label>
   );
@@ -828,8 +828,7 @@ function IntegrityBadge({ state, label }) {
   return (
     <div title={title} style={{
       padding: '6px 12px', borderRadius: 999, background: bg, color: fg,
-      fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
-      cursor: 'help',
+      fontSize: 12, fontWeight: 700, cursor: 'help',
     }}>
       {state === 'ok' ? '✓' : '!'} {state === 'ok' ? 'Reconciles' : label}
     </div>
@@ -908,7 +907,7 @@ function EditForecastModal({ forecast, onClose, onSave, existingGroupClients, bu
           </Field>
           <Field label="Accounting year end">
             <input type="date" value={form.year_end_date} onChange={set('year_end_date')} style={inputStyle} />
-            <span style={{ fontSize: 10, color: colors.muted }}>
+            <span style={{ fontSize: 11, color: colors.muted }}>
               Sets when the CT bill falls due — year end + the CT payment lag (9 months).
               Blank = twelve months from the start month.
             </span>
@@ -923,22 +922,22 @@ function EditForecastModal({ forecast, onClose, onSave, existingGroupClients, bu
           </Field>
         </div>
         {horizonShrinking && (
-          <p style={{ fontSize: 11, color: colors.amber, margin: '12px 0 0', background: '#fef3c7', padding: 8, borderRadius: 6 }}>
+          <p style={{ fontSize: 12, color: colors.amber, margin: '12px 0 0', background: '#fef3c7', padding: 8, borderRadius: 6 }}>
             Shrinking horizon will drop output rows beyond month {form.horizon_months - 1}. Recompute after saving to refresh.
           </p>
         )}
         {yearEndChanging && (
-          <p style={{ fontSize: 11, color: colors.amber, margin: '8px 0 0', background: '#fef3c7', padding: 8, borderRadius: 6 }}>
+          <p style={{ fontSize: 12, color: colors.amber, margin: '8px 0 0', background: '#fef3c7', padding: 8, borderRadius: 6 }}>
             Moving the year end moves the corporation tax payment with it. Recompute after saving.
           </p>
         )}
         {startMonthChanging && (
-          <p style={{ fontSize: 11, color: colors.amber, margin: '8px 0 0', background: '#fef3c7', padding: 8, borderRadius: 6 }}>
+          <p style={{ fontSize: 12, color: colors.amber, margin: '8px 0 0', background: '#fef3c7', padding: 8, borderRadius: 6 }}>
             Changing the start month shifts every period in the forecast. "Opens (months from start)"
             on each location stays in months — but the calendar dates will move. Recompute after saving.
           </p>
         )}
-        <p style={{ fontSize: 11, color: colors.muted, margin: '12px 0 0' }}>
+        <p style={{ fontSize: 12, color: colors.muted, margin: '12px 0 0' }}>
           Vertical pack is fixed once a forecast is created.
         </p>
         <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
@@ -960,7 +959,7 @@ function Tabs({ tab, setTab, tabs }) {
           key={t.key}
           onClick={() => setTab(t.key)}
           style={{
-            padding: '10px 14px', fontSize: 13,
+            padding: '10px 14px', fontSize: 14,
             fontWeight: tab === t.key ? 600 : 400,
             color: tab === t.key ? colors.ink : colors.muted,
             background: 'transparent', border: 'none',

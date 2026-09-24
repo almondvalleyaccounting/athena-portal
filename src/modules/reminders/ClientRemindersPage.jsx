@@ -30,21 +30,20 @@ const COMM_TYPE = 'tax_reminders';
 
 // ── tiny style helpers ────────────────────────────────────────────────
 const btnPrimary = (enabled) => ({
-  padding: '8px 16px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '8px 16px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: enabled ? ACCENT : '#e5e7eb', color: enabled ? '#fff' : '#94a3b8',
   border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
 });
 const btnGhost = {
-  padding: '7px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: '#fff', color: '#334155', border: '1px solid #e5e7eb',
   borderRadius: 8, cursor: 'pointer',
 };
 const th = {
-  padding: '8px 8px', fontSize: 11, fontWeight: 600, color: '#64748b',
-  textAlign: 'left', textTransform: 'uppercase', letterSpacing: 0.4,
-  borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
+  padding: '8px 8px', fontSize: 12, fontWeight: 600, color: '#64748b',
+  textAlign: 'left', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
 };
-const td = { padding: '7px 8px', fontSize: 12.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
+const td = { padding: '7px 8px', fontSize: 13.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
 
 const PREF_META = {
   opted_in: { label: 'Opted in', bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
@@ -56,7 +55,7 @@ function PrefChip({ status }) {
   const m = PREF_META[status] || PREF_META.not_asked;
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', fontSize: 11, fontWeight: 600,
+      display: 'inline-block', padding: '2px 8px', fontSize: 12, fontWeight: 600,
       background: m.bg, color: m.color, border: `1px solid ${m.border}`,
       borderRadius: 999, whiteSpace: 'nowrap',
     }}>
@@ -82,11 +81,11 @@ function Banner({ tone = 'error', children, onDismiss }) {
     <div style={{
       display: 'flex', alignItems: 'flex-start', gap: 8, padding: '9px 12px',
       background: t.bg, border: `1px solid ${t.border}`, borderRadius: 8,
-      fontSize: 12.5, color: t.color, fontFamily: font, marginBottom: 10,
+      fontSize: 13.5, color: t.color, fontFamily: font, marginBottom: 10,
     }}>
       <div style={{ flex: 1 }}>{children}</div>
       {onDismiss && (
-        <button onClick={onDismiss} style={{ background: 'none', border: 'none', color: t.color, cursor: 'pointer', fontSize: 13, fontFamily: font, padding: 0 }}>×</button>
+        <button onClick={onDismiss} style={{ background: 'none', border: 'none', color: t.color, cursor: 'pointer', fontSize: 14, fontFamily: font, padding: 0 }}>×</button>
       )}
     </div>
   );
@@ -177,7 +176,7 @@ function ConfirmSendModal({ mode, targets, dueDate, template, profile, alreadySe
     <div style={overlayStyle}>
       <div style={{ ...card, width: 760, maxWidth: '94vw', maxHeight: '88vh', overflowY: 'auto', padding: 20, fontFamily: font }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>
             {isPromo ? 'Queue opt-in invitation' : 'Queue payment reminders'}
           </div>
           <div style={{ flex: 1 }} />
@@ -187,16 +186,16 @@ function ConfirmSendModal({ mode, targets, dueDate, template, profile, alreadySe
         {err && <Banner tone="error" onDismiss={() => setErr(null)}>{err}</Banner>}
         {testState === 'ok' && <Banner tone="ok">Test email sent to {profile?.email}. Note: the opt-in links in a test email still act on the real client's preference — don't click them unless you mean it.</Banner>}
 
-        <div style={{ fontSize: 12.5, color: '#334155', marginBottom: 8 }}>
+        <div style={{ fontSize: 13.5, color: '#334155', marginBottom: 8 }}>
           Subject: <strong>{preview.subject}</strong>
         </div>
 
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
           Recipients ({targets.length})
         </div>
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, maxHeight: 160, overflowY: 'auto', marginBottom: 14 }}>
           {targets.map((t) => (
-            <div key={t.paymentId || t.entityId} style={{ display: 'flex', gap: 10, padding: '5px 10px', fontSize: 12, color: '#1e293b', borderBottom: '1px solid #f1f5f9' }}>
+            <div key={t.paymentId || t.entityId} style={{ display: 'flex', gap: 10, padding: '5px 10px', fontSize: 13, color: '#1e293b', borderBottom: '1px solid #f1f5f9' }}>
               <span style={{ flex: 1, fontWeight: 600 }}>{t.name}</span>
               <span style={{ color: '#64748b' }}>{t.email}</span>
               {!isPromo && <span style={{ minWidth: 80, textAlign: 'right' }}>£{fmtMoney(t.amount)}</span>}
@@ -204,7 +203,7 @@ function ConfirmSendModal({ mode, targets, dueDate, template, profile, alreadySe
           ))}
         </div>
 
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
           Preview {first ? `(as ${first.name} will see it)` : ''}
         </div>
         <div
@@ -221,7 +220,7 @@ function ConfirmSendModal({ mode, targets, dueDate, template, profile, alreadySe
           border: `1px solid ${resend ? '#fde68a' : '#e5e7eb'}`,
         }}>
           <input type="checkbox" checked={resend} onChange={(e) => setResend(e.target.checked)} style={{ marginTop: 2 }} />
-          <span style={{ fontSize: 12.5, color: resend ? '#92400e' : '#475569' }}>
+          <span style={{ fontSize: 13.5, color: resend ? '#92400e' : '#475569' }}>
             <strong>Send again</strong> — queue another copy even if they've already had this
             run's email.
             {repeats.length > 0 && (
@@ -612,7 +611,7 @@ export default function ClientRemindersPage() {
 
   // ── render ──
   if (loading) {
-    return <div style={{ padding: 24, fontFamily: font, fontSize: 13, color: '#64748b' }}>Loading client reminders…</div>;
+    return <div style={{ padding: 24, fontFamily: font, fontSize: 14, color: '#64748b' }}>Loading client reminders…</div>;
   }
 
   return (
@@ -621,7 +620,7 @@ export default function ClientRemindersPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: 0 }}>Client Tax Reminders</h1>
         <span style={{
-          padding: '2px 10px', fontSize: 11, fontWeight: 600, borderRadius: 999,
+          padding: '2px 10px', fontSize: 12, fontWeight: 600, borderRadius: 999,
           background: '#eff6ff', color: ACCENT, border: '1px solid #bfdbfe',
         }}>
           Tax reminders
@@ -629,14 +628,14 @@ export default function ClientRemindersPage() {
         {gmailConn !== 'hidden' && (
           gmailConn ? (
             <span style={{
-              padding: '2px 10px', fontSize: 11, fontWeight: 600, borderRadius: 999,
+              padding: '2px 10px', fontSize: 12, fontWeight: 600, borderRadius: 999,
               background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0',
             }}>
               ✉ Gmail connected — {gmailConn.account_email}
             </span>
           ) : (
             <span style={{
-              padding: '2px 10px', fontSize: 11, fontWeight: 600, borderRadius: 999,
+              padding: '2px 10px', fontSize: 12, fontWeight: 600, borderRadius: 999,
               background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca',
             }}>
               Gmail not connected — sends will fail
@@ -647,7 +646,7 @@ export default function ClientRemindersPage() {
           onClick={toggleAutoQueue}
           title="Every 15 minutes during January & July, auto-fill the queue (opt-in invites for undecided clients, reminders for opted-in). Queue only — you still review and release."
           style={{
-            padding: '2px 10px', fontSize: 11, fontWeight: 600, borderRadius: 999, cursor: 'pointer', fontFamily: font,
+            padding: '2px 10px', fontSize: 12, fontWeight: 600, borderRadius: 999, cursor: 'pointer', fontFamily: font,
             background: autoQueue?.enabled ? '#f0fdf4' : '#f1f5f9',
             color: autoQueue?.enabled ? '#166534' : '#64748b',
             border: `1px solid ${autoQueue?.enabled ? '#bbf7d0' : '#e2e8f0'}`,
@@ -656,7 +655,7 @@ export default function ClientRemindersPage() {
           ⟳ Auto-queue (Jan & Jul): {autoQueue?.enabled ? 'ON' : 'OFF'}
         </button>
       </div>
-      <p style={{ fontSize: 12.5, color: '#64748b', margin: '0 0 16px', maxWidth: 760 }}>
+      <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 16px', maxWidth: 760 }}>
         Personal-tax payment reminders (31 July payments on account, 31 January balancing payments).
         Emails go out from the connected mailbox as normal typed emails — nothing branded. Because they
         include personal tax figures, each client opts in or out of "tax reminders" first; button clicks
@@ -668,12 +667,12 @@ export default function ClientRemindersPage() {
 
       {/* 2 — batch picker + upload */}
       <div style={{ ...card, padding: '12px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Batch</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#64748b' }}>Batch</span>
         {batches.length ? (
           <select
             value={batchId}
             onChange={(e) => setBatchId(e.target.value)}
-            style={{ padding: '6px 10px', fontSize: 12.5, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#0f172a', maxWidth: 380 }}
+            style={{ padding: '6px 10px', fontSize: 13.5, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#0f172a', maxWidth: 380 }}
           >
             {batches.map((b) => (
               <option key={b.id} value={b.id}>
@@ -682,10 +681,10 @@ export default function ClientRemindersPage() {
             ))}
           </select>
         ) : (
-          <span style={{ fontSize: 12.5, color: '#94a3b8' }}>No batches yet.</span>
+          <span style={{ fontSize: 13.5, color: '#94a3b8' }}>No batches yet.</span>
         )}
         {batch && (
-          <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+          <span style={{ fontSize: 12.5, color: '#94a3b8' }}>
             {batch.source_filename ? `from ${batch.source_filename}` : ''}
           </span>
         )}
@@ -714,14 +713,14 @@ export default function ClientRemindersPage() {
       {/* 3 — table */}
       {!batches.length ? (
         <div style={{ ...card, padding: '40px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#334155', marginBottom: 6 }}>No payment batches yet</div>
-          <div style={{ fontSize: 12.5, color: '#64748b' }}>
+          <div style={{ fontSize: 14.5, fontWeight: 600, color: '#334155', marginBottom: 6 }}>No payment batches yet</div>
+          <div style={{ fontSize: 13.5, color: '#64748b' }}>
             Import a TaxCalc report (CSV) of payments on account to get started — use{' '}
             <button
               onClick={() => navigate('/admin/import/taxcalc')}
               style={{
                 background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                fontFamily: font, fontSize: 12.5, fontWeight: 600, color: ACCENT,
+                fontFamily: font, fontSize: 13.5, fontWeight: 600, color: ACCENT,
                 textDecoration: 'underline',
               }}
             >
@@ -730,9 +729,9 @@ export default function ClientRemindersPage() {
           </div>
         </div>
       ) : rows === null ? (
-        <div style={{ ...card, padding: 20, fontSize: 12.5, color: '#64748b' }}>Loading batch…</div>
+        <div style={{ ...card, padding: 20, fontSize: 13.5, color: '#64748b' }}>Loading batch…</div>
       ) : !rows.length ? (
-        <div style={{ ...card, padding: '30px 20px', textAlign: 'center', fontSize: 12.5, color: '#64748b' }}>
+        <div style={{ ...card, padding: '30px 20px', textAlign: 'center', fontSize: 13.5, color: '#64748b' }}>
           This batch has no rows.
         </div>
       ) : (
@@ -743,7 +742,7 @@ export default function ClientRemindersPage() {
               value={filters.q}
               onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
               placeholder="Search name, email or UTR…"
-              style={{ padding: '5px 10px', fontSize: 12.5, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 8, minWidth: 220 }}
+              style={{ padding: '5px 10px', fontSize: 13.5, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 8, minWidth: 220 }}
             />
             {[
               ['match', [['all', 'All matches'], ['matched', 'Matched'], ['unmatched', 'Unmatched'], ['ignored', 'Ignored']]],
@@ -755,12 +754,12 @@ export default function ClientRemindersPage() {
                 key={key}
                 value={filters[key]}
                 onChange={(e) => setFilters((f) => ({ ...f, [key]: e.target.value }))}
-                style={{ padding: '5px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#334155', cursor: 'pointer' }}
+                style={{ padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#334155', cursor: 'pointer' }}
               >
                 {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             ))}
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>{visibleRows.length} of {rows.length}</span>
+            <span style={{ fontSize: 13, color: '#94a3b8' }}>{visibleRows.length} of {rows.length}</span>
             {(filters.q || filters.pref !== 'all' || filters.paid !== 'all' || filters.match !== 'all' || filters.source !== 'all') && (
               <button onClick={() => setFilters({ q: '', pref: 'all', paid: 'all', match: 'all', source: 'all' })} style={btnGhost}>Clear</button>
             )}
@@ -810,7 +809,7 @@ export default function ClientRemindersPage() {
                             <span
                               title={row.status_note || 'Keyed in by hand — not from the TaxCalc export'}
                               style={{
-                                padding: '1px 7px', fontSize: 10.5, fontWeight: 600, borderRadius: 999,
+                                padding: '1px 7px', fontSize: 11.5, fontWeight: 600, borderRadius: 999,
                                 background: '#eff6ff', color: ACCENT, border: '1px solid #bfdbfe',
                               }}
                             >
@@ -823,16 +822,16 @@ export default function ClientRemindersPage() {
                               title="Remove this hand-added row from the batch"
                               style={{
                                 background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                fontFamily: font, fontSize: 12, color: '#cbd5e1', lineHeight: 1,
+                                fontFamily: font, fontSize: 13, color: '#cbd5e1', lineHeight: 1,
                               }}
                             >
                               ×
                             </button>
                           )}
                         </div>
-                        {row.reference_raw && <div style={{ fontSize: 11, color: '#94a3b8' }}>{row.reference_raw}</div>}
+                        {row.reference_raw && <div style={{ fontSize: 12, color: '#94a3b8' }}>{row.reference_raw}</div>}
                         {isManual && row.status_note && (
-                          <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>{row.status_note}</div>
+                          <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>{row.status_note}</div>
                         )}
                       </td>
                       {/* Athena (BM) Client — the matched client picker */}
@@ -850,21 +849,21 @@ export default function ClientRemindersPage() {
                             ].filter(Boolean).join(' · ')}
                           />
                           {!row.entity_id && !rowIgnored && (
-                            <span style={{ fontSize: 10.5, color: '#b91c1c', fontWeight: 600 }}>unmatched</span>
+                            <span style={{ fontSize: 11.5, color: '#b91c1c', fontWeight: 600 }}>unmatched</span>
                           )}
                         </div>
                       </td>
                       {/* Reminder — exclusion reason (persists, changeable) */}
                       <td style={td}>
                         {!rowUtr(row) ? (
-                          <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>—</span>
+                          <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>—</span>
                         ) : (
                           <select
                             value={ignoreReason(row)}
                             onChange={(e) => (e.target.value ? setIgnore(row, e.target.value) : removeIgnore(row))}
                             title="Exclude this UTR from reminders (persists across imports) — or leave 'Reminding' to keep them in the run"
                             style={{
-                              padding: '3px 6px', fontSize: 11, fontFamily: font, borderRadius: 6, cursor: 'pointer',
+                              padding: '3px 6px', fontSize: 12, fontFamily: font, borderRadius: 6, cursor: 'pointer',
                               background: rowIgnored ? '#fef2f2' : '#f0fdf4',
                               color: rowIgnored ? '#b91c1c' : '#166534',
                               border: `1px solid ${rowIgnored ? '#fecaca' : '#bbf7d0'}`,
@@ -881,17 +880,17 @@ export default function ClientRemindersPage() {
                           <span title={email} style={{
                             display: 'inline-block', maxWidth: 180, overflow: 'hidden',
                             textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle',
-                            fontSize: 12, color: '#334155',
+                            fontSize: 13, color: '#334155',
                           }}>{email}</span>
                         ) : ent ? (
                           <span style={{
-                            padding: '2px 8px', fontSize: 11, fontWeight: 600, borderRadius: 999,
+                            padding: '2px 8px', fontSize: 12, fontWeight: 600, borderRadius: 999,
                             background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca',
                           }}>
                             no email
                           </span>
                         ) : (
-                          <span style={{ fontSize: 11.5, color: '#94a3b8' }}>—</span>
+                          <span style={{ fontSize: 12.5, color: '#94a3b8' }}>—</span>
                         )}
                       </td>
                       <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
@@ -904,7 +903,7 @@ export default function ClientRemindersPage() {
                             title="Hand-added amount — edit and press Enter or click away to save"
                             inputMode="decimal"
                             style={{
-                              width: 82, padding: '3px 6px', fontSize: 12.5, fontFamily: font,
+                              width: 82, padding: '3px 6px', fontSize: 13.5, fontFamily: font,
                               textAlign: 'right', color: '#1e293b', background: '#fff',
                               border: '1px solid #bfdbfe', borderRadius: 6,
                               fontVariantNumeric: 'tabular-nums',
@@ -926,7 +925,7 @@ export default function ClientRemindersPage() {
                             onChange={(e) => setPreference(row.entity_id, e.target.value)}
                             title="Set the preference manually — e.g. record a yes/no from an email reply"
                             style={{
-                              padding: '3px 6px', fontSize: 11, fontFamily: font, color: '#64748b',
+                              padding: '3px 6px', fontSize: 12, fontFamily: font, color: '#64748b',
                               border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
                             }}
                           >
@@ -938,7 +937,7 @@ export default function ClientRemindersPage() {
                             <option value="pending">Back to pending</option>
                           </select>
                         ) : (
-                          <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>—</span>
+                          <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>—</span>
                         )}
                       </td>
                       <td style={td}>
@@ -946,7 +945,7 @@ export default function ClientRemindersPage() {
                           onClick={() => cyclePaid(row)}
                           title="Click to toggle paid / unpaid. Paid suppresses reminders because they've paid — use the Reminder column to exclude for other reasons."
                           style={{
-                            padding: '2px 10px', fontSize: 11, fontWeight: 600, fontFamily: font,
+                            padding: '2px 10px', fontSize: 12, fontWeight: 600, fontFamily: font,
                             background: paidMeta.bg, color: paidMeta.color, border: `1px solid ${paidMeta.border}`,
                             borderRadius: 999, cursor: 'pointer',
                           }}
@@ -958,7 +957,7 @@ export default function ClientRemindersPage() {
                         {res && (
                           <div style={{ marginBottom: 4 }}>
                             <span style={{
-                              fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
+                              fontSize: 11.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
                               background: res.ok ? '#f0fdf4' : '#fef2f2',
                               color: res.ok ? '#166534' : '#b91c1c',
                               border: `1px solid ${res.ok ? '#bbf7d0' : '#fecaca'}`,
@@ -969,15 +968,15 @@ export default function ClientRemindersPage() {
                         )}
                         {lastEm ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 11.5, color: '#64748b' }}>
+                            <span style={{ fontSize: 12.5, color: '#64748b' }}>
                               {lastEm.kind === 'promo' ? 'invite' : 'reminder'} {fmtDateTimeShort(lastEm.sent_at)}
                             </span>
-                            {lastEm.clicked_choice === 'in' && <span style={{ fontSize: 11, color: '#166534', fontWeight: 600 }}>✓ clicked in</span>}
-                            {lastEm.clicked_choice === 'out' && <span style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600 }}>✗ clicked out</span>}
-                            {lastEm.reply_seen_at && <span style={{ fontSize: 11, color: ACCENT, fontWeight: 600 }}>↩ replied</span>}
+                            {lastEm.clicked_choice === 'in' && <span style={{ fontSize: 12, color: '#166534', fontWeight: 600 }}>✓ clicked in</span>}
+                            {lastEm.clicked_choice === 'out' && <span style={{ fontSize: 12, color: '#b91c1c', fontWeight: 600 }}>✗ clicked out</span>}
+                            {lastEm.reply_seen_at && <span style={{ fontSize: 12, color: ACCENT, fontWeight: 600 }}>↩ replied</span>}
                           </div>
                         ) : (
-                          <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>never</span>
+                          <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>never</span>
                         )}
                       </td>
                     </tr>
@@ -992,7 +991,7 @@ export default function ClientRemindersPage() {
             display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
             borderTop: '1px solid #e5e7eb', flexWrap: 'wrap',
           }}>
-            <span style={{ fontSize: 12, color: '#64748b' }}>
+            <span style={{ fontSize: 13, color: '#64748b' }}>
               {selected.size ? `${selected.size} selected` : 'Select rows to send emails'}
             </span>
             <div style={{ flex: 1 }} />
@@ -1017,7 +1016,7 @@ export default function ClientRemindersPage() {
       )}
 
       {selected.size > 0 && !inviteTargets.length && !reminderTargets.length && (
-        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 8 }}>
+        <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 8 }}>
           None of the selected rows are eligible — invitations need a matched client with an email who
           hasn't already decided; reminders need an opted-in, unpaid client with an amount.
         </div>

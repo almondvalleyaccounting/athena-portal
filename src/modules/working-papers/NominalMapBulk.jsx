@@ -142,12 +142,12 @@ export default function NominalMapBulk() {
     <div>
       <ErrorBar message={error} />
 
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 6, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 6, lineHeight: 1.55 }}>
         Map the whole book at once. Proposals come from <b>QuickBooks&rsquo; own account typing</b>
-        (<code style={{ fontSize: 11.5 }}>AccountSubType</code>), which QBO sets when a feature is switched
+        (<code style={{ fontSize: 12.5 }}>AccountSubType</code>), which QBO sets when a feature is switched
         on — not from account names, which the per-client screen rightly calls a trap.
       </p>
-      <p style={{ fontSize: 12, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
+      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
         <b>PAYE and net wages are never offered in bulk.</b> Their sub-types hold several different
         creditors per file — pension contributions and attachment orders sit alongside the HMRC
         liability — so accepting them wholesale would post the wrong money to the right-looking account.
@@ -161,7 +161,7 @@ export default function NominalMapBulk() {
           const active = role === r.role;
           return (
             <button key={r.role} onClick={() => setRole(r.role)}
-              style={{ ...(active ? btn : btnQuiet), fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              style={{ ...(active ? btn : btnQuiet), fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {r.label}
               {c.auto ? <Pill colour="#15803d">{c.auto} ready</Pill> : null}
               {c.choose ? <Pill colour="#b45309">{c.choose} to pick</Pill> : null}
@@ -169,24 +169,24 @@ export default function NominalMapBulk() {
             </button>
           );
         })}
-        <button onClick={load} style={{ ...btnQuiet, marginLeft: 'auto', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <button onClick={load} style={{ ...btnQuiet, marginLeft: 'auto', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <RefreshCw size={12} /> Reload
         </button>
       </div>
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading proposals…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading proposals…</div>
       ) : (
         <>
           {isAuto && auto.length > 0 && (
             <div style={{ ...card, padding: 14, marginBottom: 12, display: 'flex',
                           alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 12.5, color: '#0f172a', lineHeight: 1.5, flex: 1, minWidth: 320 }}>
+              <div style={{ fontSize: 13.5, color: '#0f172a', lineHeight: 1.5, flex: 1, minWidth: 320 }}>
                 <b>{auto.length} client{auto.length === 1 ? '' : 's'}</b> have exactly one account typed
-                as <code style={{ fontSize: 11.5 }}>{ROLE_LABEL[role]}</code> by QuickBooks. Nothing is
+                as <code style={{ fontSize: 12.5 }}>{ROLE_LABEL[role]}</code> by QuickBooks. Nothing is
                 being inferred from a name, and each mapping records who accepted it.
               </div>
-              <button onClick={acceptAll} disabled={!!busy} style={{ ...btn, fontSize: 12.5 }}>
+              <button onClick={acceptAll} disabled={!!busy} style={{ ...btn, fontSize: 13.5 }}>
                 <Check size={13} style={{ marginRight: 5 }} />
                 {busy || `Accept all ${auto.length}`}
               </button>
@@ -195,16 +195,16 @@ export default function NominalMapBulk() {
 
           {choose.length > 0 && (
             <div style={{ ...card, marginBottom: 12 }}>
-              <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 12.5, fontWeight: 600, color: '#0f172a' }}>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>
                 {choose.length} need{choose.length === 1 ? 's' : ''} a choice
                 <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 8 }}>
                   {isAuto ? 'more than one account carries this type' : 'shortlisted by type, ranked, you decide'}
                 </span>
               </div>
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
                       <th style={{ ...th, width: 230 }}>Client</th>
                       <th style={th}>Candidates in their QuickBooks</th>
                       <th style={{ ...th, width: 120 }} />
@@ -224,7 +224,7 @@ export default function NominalMapBulk() {
                                 return (
                                   <button key={c.account_id} onClick={() => toggle(r, c.account_id)}
                                     title={c.sub_type}
-                                    style={{ fontFamily: font, fontSize: 11.5, padding: '3px 9px',
+                                    style={{ fontFamily: font, fontSize: 12.5, padding: '3px 9px',
                                              borderRadius: 999, cursor: 'pointer',
                                              border: `1px solid ${on ? '#15803d' : '#e2e8f0'}`,
                                              background: on ? '#f0fdf4' : '#fff',
@@ -239,7 +239,7 @@ export default function NominalMapBulk() {
                           </td>
                           <td style={{ ...td, textAlign: 'right', verticalAlign: 'top' }}>
                             <button onClick={() => acceptPicked(r)} disabled={!!busy || sel.size === 0}
-                              style={{ ...(sel.size ? btn : btnQuiet), fontSize: 11.5,
+                              style={{ ...(sel.size ? btn : btnQuiet), fontSize: 12.5,
                                        opacity: sel.size ? 1 : 0.45,
                                        cursor: sel.size ? 'pointer' : 'default' }}>
                               Map {sel.size || ''}
@@ -256,14 +256,14 @@ export default function NominalMapBulk() {
 
           {isAuto && auto.length > 0 && (
             <div style={card}>
-              <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 12.5, fontWeight: 600, color: '#0f172a' }}>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>
                 Ready to accept
                 <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 8 }}>
                   one typed candidate each — accept individually if you would rather check as you go
                 </span>
               </div>
               <div style={{ overflowX: 'auto', maxHeight: 420, overflowY: 'auto' }}>
-                <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                   <tbody>
                     {auto.map((r) => (
                       <tr key={`${r.entity_id}|${r.role}`} style={{ borderTop: '1px solid #f1f5f9' }}>
@@ -274,7 +274,7 @@ export default function NominalMapBulk() {
                         </td>
                         <td style={{ ...td, textAlign: 'right', width: 120 }}>
                           <button onClick={() => acceptOne(r, r.top_account_id, r.top_account_name)}
-                            disabled={!!busy} style={{ ...btnQuiet, fontSize: 11.5 }}>
+                            disabled={!!busy} style={{ ...btnQuiet, fontSize: 12.5 }}>
                             Map
                           </button>
                         </td>
@@ -287,14 +287,14 @@ export default function NominalMapBulk() {
           )}
 
           {mapped.length > 0 && (
-            <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 12, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 12, lineHeight: 1.6 }}>
               {mapped.length} client{mapped.length === 1 ? '' : 's'} already mapped for this role.
               Change one on the per-client screen, where a mapping can also be removed or its sign flipped.
             </div>
           )}
 
           {forRole.length === 0 && (
-            <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+            <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
               No client&rsquo;s QuickBooks carries an account typed for this role.
             </div>
           )}

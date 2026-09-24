@@ -77,14 +77,14 @@ export default function KanbanView({ dueFilter, onAction }) {
           padding: 10, borderBottom: '1px solid #e5e7eb', background: '#fff',
         }}>
           <div style={{
-            fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+            fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
             fontFamily: "'Outfit', sans-serif",
           }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8' }} />
             Quick Tasks
           </div>
           <span style={{
-            fontSize: 11, color: '#94a3b8', padding: '1px 5px',
+            fontSize: 12, color: '#94a3b8', padding: '1px 5px',
             borderRadius: 6, border: '1px solid #f1f5f9',
           }}>
             {quickFiltered.length}
@@ -107,14 +107,14 @@ export default function KanbanView({ dueFilter, onAction }) {
                   fontFamily: "'Outfit', sans-serif",
                 }}
               >
-                <div style={{ fontSize: 11, fontWeight: 500, marginBottom: 2 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 2 }}>
                   {task.title}
                 </div>
-                <div style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                   {task.assignee_id && <Avatar id={task.assignee_id} staffMap={staffMap} size={18} customColour={staffColours?.[task.assignee_id]} />}
                   {task.entity_id && <span onClick={(e) => { e.stopPropagation(); window.location.href = `/clients/${task.entity_id}`; }} style={{ cursor: 'pointer', color: '#0e7fe0' }} onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'} onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}>{clientName(task.entity_id, entityMap)}</span>}
                 </div>
-                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                   {task.service}
                   {task.due_date && (
                     <>
@@ -127,7 +127,7 @@ export default function KanbanView({ dueFilter, onAction }) {
             );
           })}
           {quickFiltered.length === 0 && (
-            <div style={{ padding: 14, fontSize: 12, color: '#cbd5e1', textAlign: 'center' }}>
+            <div style={{ padding: 14, fontSize: 13, color: '#cbd5e1', textAlign: 'center' }}>
               No quick tasks
             </div>
           )}
@@ -155,14 +155,14 @@ export default function KanbanView({ dueFilter, onAction }) {
               padding: 10, borderBottom: '1px solid #e5e7eb', background: '#fff',
             }}>
               <div style={{
-                fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+                fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
                 fontFamily: "'Outfit', sans-serif",
               }}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: col.colour }} />
                 {col.label}
               </div>
               <span style={{
-                fontSize: 11, color: '#94a3b8', padding: '1px 5px',
+                fontSize: 12, color: '#94a3b8', padding: '1px 5px',
                 borderRadius: 6, border: '1px solid #f1f5f9',
               }}>
                 {items.length}
@@ -197,22 +197,22 @@ export default function KanbanView({ dueFilter, onAction }) {
                       fontFamily: "'Outfit', sans-serif",
                     }}
                   >
-                    <div style={{ fontSize: 11, fontWeight: 500, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                       {inst.title}
                       {inst._hasOverride && (
                         <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
                       )}
                     </div>
-                    <div style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                       {inst.assignee_id && <Avatar id={inst.assignee_id} staffMap={staffMap} size={18} customColour={staffColours?.[inst.assignee_id]} />}
                       {inst.entity_id && <span>{clientName(inst.entity_id, entityMap)}</span>}
                     </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                       {formatDateShort(inst._date)} &middot; {durFmt(inst.duration)}
                       {(notesMap[inst._date ? `scheduled:${inst._masterId}:${formatISO(inst._date)}` : `scheduled:${inst._masterId}`] || []).length > 0 && (
                         <span style={{
                           background: '#f1f5f9', padding: '0 4px', borderRadius: 3,
-                          fontSize: 8, color: '#64748b', fontWeight: 600,
+                          fontSize: 9, color: '#64748b', fontWeight: 600,
                         }}>
                           {(notesMap[inst._date ? `scheduled:${inst._masterId}:${formatISO(inst._date)}` : `scheduled:${inst._masterId}`] || []).length} note{(notesMap[inst._date ? `scheduled:${inst._masterId}:${formatISO(inst._date)}` : `scheduled:${inst._masterId}`] || []).length !== 1 ? 's' : ''}
                         </span>
@@ -223,7 +223,7 @@ export default function KanbanView({ dueFilter, onAction }) {
                       const notes = notesMap[nk] || [];
                       const last = notes.length > 0 ? notes[notes.length - 1] : null;
                       return last ? (
-                        <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, fontStyle: 'italic', lineHeight: 1.3, maxHeight: 28, overflow: 'hidden' }}>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, fontStyle: 'italic', lineHeight: 1.3, maxHeight: 28, overflow: 'hidden' }}>
                           &ldquo;{last.note}&rdquo;
                         </div>
                       ) : null;
@@ -243,7 +243,7 @@ export default function KanbanView({ dueFilter, onAction }) {
                           }}
                           placeholder="Note..."
                           style={{
-                            flex: 1, padding: '2px 5px', fontSize: 10,
+                            flex: 1, padding: '2px 5px', fontSize: 11,
                             fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
                             borderRadius: 3, outline: 'none', minWidth: 0,
                           }}
@@ -256,7 +256,7 @@ export default function KanbanView({ dueFilter, onAction }) {
                           }}
                           style={{
                             border: 'none', background: '#0e7fe0', color: '#fff',
-                            fontSize: 9, fontWeight: 600, padding: '2px 6px',
+                            fontSize: 10, fontWeight: 600, padding: '2px 6px',
                             borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
                           }}
                         >
@@ -268,7 +268,7 @@ export default function KanbanView({ dueFilter, onAction }) {
                         onClick={(e) => { e.stopPropagation(); setNoteInput(inst._key); setNoteText(''); }}
                         style={{
                           border: '1px solid #e5e7eb', background: '#f8fafc', color: '#64748b',
-                          fontSize: 9, fontWeight: 500, cursor: 'pointer',
+                          fontSize: 10, fontWeight: 500, cursor: 'pointer',
                           padding: '2px 7px', marginTop: 3, borderRadius: 4,
                           fontFamily: "'Outfit', sans-serif",
                         }}
@@ -280,7 +280,7 @@ export default function KanbanView({ dueFilter, onAction }) {
                 );
               })}
               {items.length === 0 && (
-                <div style={{ padding: 14, fontSize: 12, color: '#cbd5e1', textAlign: 'center' }} />
+                <div style={{ padding: 14, fontSize: 13, color: '#cbd5e1', textAlign: 'center' }} />
               )}
             </div>
           </div>

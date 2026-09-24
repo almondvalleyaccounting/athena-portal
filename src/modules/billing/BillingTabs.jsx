@@ -113,7 +113,7 @@ export default function BillingTabs({ active }) {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
               padding: '10px 16px',
-              fontSize: 13,
+              fontSize: 14,
               fontWeight: isActive ? 600 : 500,
               background: 'none',
               color: isActive ? '#0f172a' : '#64748b',
@@ -137,7 +137,7 @@ function Badge({ value, tone, active }) {
   const t = tones[tone] || tones.warning;
   return (
     <span style={{
-      fontSize: 10, fontWeight: 700,
+      fontSize: 11, fontWeight: 700,
       padding: '2px 7px', borderRadius: 999,
       background: t.bg, color: t.fg,
       minWidth: 18, textAlign: 'center',

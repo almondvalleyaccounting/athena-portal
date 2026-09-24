@@ -79,17 +79,17 @@ export default function MyReviewView() {
     <div style={{ fontFamily: font, padding: '18px 22px 48px', maxWidth: 1100, margin: '0 auto', background: '#f8fafc', minHeight: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
         <h2 style={{ margin: 0, fontSize: 19, fontWeight: 600, color: '#0f172a' }}>My review — {monthLabel(cycle.period_month)}</h2>
-        <span style={{ fontSize: 13, fontWeight: 600, color: answered === items.length ? '#16a34a' : '#0e7fe0' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: answered === items.length ? '#16a34a' : '#0e7fe0' }}>
           {answered} / {items.length} answered
         </span>
       </div>
       {cycle.period_month.slice(0, 7) < new Date().toISOString().slice(0, 7) && (
-        <p style={{ margin: '0 0 8px', fontSize: 12, color: '#b45309' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 13, color: '#b45309' }}>
           This is the last review that was opened. No review has been opened since {monthLabel(cycle.period_month)}, so the
           "done by" dates below may already have passed.
         </p>
       )}
-      <p style={{ fontSize: 13, color: '#64748b', marginTop: 0, marginBottom: 18, lineHeight: 1.5 }}>
+      <p style={{ fontSize: 14, color: '#64748b', marginTop: 0, marginBottom: 18, lineHeight: 1.5 }}>
         These jobs could have progressed but haven’t. For each, tell us <strong>when you’ll have it done</strong>, <strong>what’s blocking it</strong>, and how confident you are.
         BrightManager stays the record for status — this is just the bit BM can’t hold.
       </p>
@@ -162,10 +162,10 @@ function ItemCard({ item, reasons, nextActions, responder, onSaved, onLocalChang
         }}
       >
         <ChevronDown size={16} style={{ color: '#94a3b8', flexShrink: 0, transition: 'transform 0.15s ease', transform: expanded ? 'rotate(180deg)' : 'rotate(0)' }} />
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{item.client_name}</span>
+        <span style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>{item.client_name}</span>
         <Pill bg="#eef2ff" colour="#4338ca">{item.service === 'Self Assessment' ? 'SA' : 'Accounts'}</Pill>
-        <span style={{ fontSize: 12, color: '#64748b' }}>YE {fmtDate(item.period_end)}</span>
-        <span style={{ fontSize: 12, color: item.days_past > 365 ? '#dc2626' : '#64748b', fontWeight: item.days_past > 365 ? 600 : 400 }}>
+        <span style={{ fontSize: 13, color: '#64748b' }}>YE {fmtDate(item.period_end)}</span>
+        <span style={{ fontSize: 13, color: item.days_past > 365 ? '#dc2626' : '#64748b', fontWeight: item.days_past > 365 ? 600 : 400 }}>
           {item.days_past} days past
         </span>
         <Pill bg="#f1f5f9" colour="#475569">{item.bm_status_snapshot}</Pill>
@@ -174,16 +174,16 @@ function ItemCard({ item, reasons, nextActions, responder, onSaved, onLocalChang
 
         {!expanded && (
           <>
-            {item.done_by && <span style={{ fontSize: 12, color: '#64748b' }}>Done by {fmtDate(item.done_by)}</span>}
+            {item.done_by && <span style={{ fontSize: 13, color: '#64748b' }}>Done by {fmtDate(item.done_by)}</span>}
             {conf && <Pill bg={conf.bg} colour={conf.colour}>{conf.label}</Pill>}
-            {reasonLabel && <span style={{ fontSize: 12, color: '#64748b' }}>{reasonLabel}</span>}
-            {item.needs_help && <span style={{ fontSize: 12, color: '#b91c1c', fontWeight: 600 }}>🙋 Flagged</span>}
+            {reasonLabel && <span style={{ fontSize: 13, color: '#64748b' }}>{reasonLabel}</span>}
+            {item.needs_help && <span style={{ fontSize: 13, color: '#b91c1c', fontWeight: 600 }}>🙋 Flagged</span>}
           </>
         )}
 
         <div style={{ flex: 1 }} />
-        {answered && !dirty && <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✓ Saved</span>}
-        {!answered && !expanded && <span style={{ fontSize: 12, color: '#94a3b8' }}>Not answered yet</span>}
+        {answered && !dirty && <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 600 }}>✓ Saved</span>}
+        {!answered && !expanded && <span style={{ fontSize: 13, color: '#94a3b8' }}>Not answered yet</span>}
       </div>
 
       {expanded && (
@@ -223,7 +223,7 @@ function ItemCard({ item, reasons, nextActions, responder, onSaved, onLocalChang
                       onClick={() => set({ confidence: active ? null : c.key })}
                       title={c.label}
                       style={{
-                        fontSize: 11, fontWeight: 600, fontFamily: font, cursor: 'pointer',
+                        fontSize: 12, fontWeight: 600, fontFamily: font, cursor: 'pointer',
                         padding: '6px 10px', borderRadius: 8,
                         border: '1px solid ' + (active ? c.colour : '#cbd5e1'),
                         background: active ? c.bg : '#fff', color: active ? c.colour : '#94a3b8',
@@ -239,7 +239,7 @@ function ItemCard({ item, reasons, nextActions, responder, onSaved, onLocalChang
                 type="button"
                 onClick={() => set({ needs_help: !item.needs_help })}
                 style={{
-                  fontSize: 12, fontWeight: 600, fontFamily: font, cursor: 'pointer',
+                  fontSize: 13, fontWeight: 600, fontFamily: font, cursor: 'pointer',
                   padding: '7px 12px', borderRadius: 8,
                   border: '1px solid ' + (item.needs_help ? '#b91c1c' : '#cbd5e1'),
                   background: item.needs_help ? '#fee2e2' : '#fff', color: item.needs_help ? '#b91c1c' : '#64748b',
@@ -287,7 +287,7 @@ function ItemCard({ item, reasons, nextActions, responder, onSaved, onLocalChang
               onClick={save}
               disabled={saving || !dirty}
               style={{
-                fontSize: 12, fontWeight: 600, fontFamily: font,
+                fontSize: 13, fontWeight: 600, fontFamily: font,
                 cursor: saving || !dirty ? 'default' : 'pointer',
                 padding: '8px 18px', borderRadius: 8, border: '1px solid #0f172a',
                 background: !dirty ? '#94a3b8' : '#0f172a', borderColor: !dirty ? '#94a3b8' : '#0f172a',
@@ -304,7 +304,7 @@ function ItemCard({ item, reasons, nextActions, responder, onSaved, onLocalChang
 function Field({ label, children, grow }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: grow ? 1 : 'initial' }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{label}</span>
       {children}
     </label>
   );
@@ -312,17 +312,17 @@ function Field({ label, children, grow }) {
 
 function Pill({ children, bg, colour }) {
   return (
-    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: bg, color: colour, whiteSpace: 'nowrap' }}>
+    <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: bg, color: colour, whiteSpace: 'nowrap' }}>
       {children}
     </span>
   );
 }
 
 const inputStyle = {
-  padding: '7px 10px', fontSize: 13, fontFamily: font,
+  padding: '7px 10px', fontSize: 14, fontFamily: font,
   border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a', outline: 'none',
 };
 
 function Msg({ children, colour = '#64748b' }) {
-  return <div style={{ padding: 28, fontFamily: font, color: colour, fontSize: 14, textAlign: 'center' }}>{children}</div>;
+  return <div style={{ padding: 28, fontFamily: font, color: colour, fontSize: 14.5, textAlign: 'center' }}>{children}</div>;
 }

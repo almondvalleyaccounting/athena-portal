@@ -84,7 +84,7 @@ export default function KpiOutstandingPage() {
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', margin: 0 }}>
             KPI entry outstanding
           </h1>
-          <p style={{ fontSize: 13.5, color: '#64748b', margin: '4px 0 0', maxWidth: 760, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 14.5, color: '#64748b', margin: '4px 0 0', maxWidth: 760, lineHeight: 1.6 }}>
             Every client-month with a figure still missing. Only clients that have been put in a
             sector, or given a KPI of their own, appear here — nobody is chased for something they
             were never set up to record.
@@ -92,7 +92,7 @@ export default function KpiOutstandingPage() {
         </div>
         <select
           value={monthsBack} onChange={(e) => setMonthsBack(Number(e.target.value))}
-          style={{ ...inputStyle, marginLeft: 'auto', padding: '8px 11px', fontSize: 13 }}
+          style={{ ...inputStyle, marginLeft: 'auto', padding: '8px 11px', fontSize: 14 }}
         >
           <option value={1}>Last month</option>
           <option value={3}>Last 3 months</option>
@@ -102,20 +102,20 @@ export default function KpiOutstandingPage() {
       </div>
 
       {error && (
-        <div style={{ padding: '10px 14px', borderRadius: 10, fontSize: 13.5, backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', marginBottom: 14 }}>
+        <div style={{ padding: '10px 14px', borderRadius: 10, fontSize: 14.5, backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', marginBottom: 14 }}>
           {error}
         </div>
       )}
 
-      {loading && <p style={{ fontSize: 14, color: '#94a3b8' }}>Loading…</p>}
+      {loading && <p style={{ fontSize: 14.5, color: '#94a3b8' }}>Loading…</p>}
 
       {!loading && !error && grouped.length === 0 && (
         <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
           <Check size={26} style={{ color: '#22c55e', marginBottom: 10 }} />
-          <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 5 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', marginBottom: 5 }}>
             Nothing outstanding
           </div>
-          <p style={{ fontSize: 13.5, color: '#64748b', margin: 0 }}>
+          <p style={{ fontSize: 14.5, color: '#64748b', margin: 0 }}>
             Every tracked client has its figures in for {monthsBack === 1 ? MONTH_LABEL(lastComplete) : 'the period shown'}.
           </p>
         </div>
@@ -126,8 +126,8 @@ export default function KpiOutstandingPage() {
         return (
           <div key={g.month} style={{ marginBottom: 22 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
-              <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>{MONTH_LABEL(g.month)}</span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+              <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{MONTH_LABEL(g.month)}</span>
+              <span style={{ fontSize: 13, color: '#94a3b8' }}>
                 {g.clients.length} client{g.clients.length === 1 ? '' : 's'} · {total} figure{total === 1 ? '' : 's'} missing
               </span>
             </div>
@@ -135,11 +135,11 @@ export default function KpiOutstandingPage() {
             {g.clients.map((c) => (
               <div key={c.entity_id} style={{ ...cardStyle, padding: '12px 16px', marginBottom: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{c.name}</span>
+                  <span style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a' }}>{c.name}</span>
                   {c.sector && <span style={chip}>{c.sector}</span>}
                   <button
                     onClick={() => navigate(`/client-dashboard?entity=${c.entity_id}&tab=kpis`)}
-                    style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 12px', background: '#fff', color: '#0369a1', fontFamily: OUTFIT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
+                    style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 12px', background: '#fff', color: '#0369a1', fontFamily: OUTFIT, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}
                   >
                     Enter them <ArrowRight size={13} />
                   </button>
@@ -162,6 +162,6 @@ export default function KpiOutstandingPage() {
 }
 
 const chip = {
-  fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
+  fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
   border: '1px solid #e5e7eb', backgroundColor: '#f8fafc', color: '#64748b',
 };

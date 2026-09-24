@@ -93,7 +93,7 @@ function ClientPicker({ rows, entityId, onPick, loading }) {
         <button
           onClick={() => setShowOutOfScope((v) => !v)}
           style={{
-            padding: '4px 9px', fontSize: 11.5, fontFamily: font, cursor: 'pointer',
+            padding: '4px 9px', fontSize: 12.5, fontFamily: font, cursor: 'pointer',
             border: '1px solid #e5e7eb', borderRadius: 7, background: '#fff', color: '#475569',
           }}
         >
@@ -128,8 +128,8 @@ function ClientPicker({ rows, entityId, onPick, loading }) {
                   }}
                 >
                   <td style={{ ...td, fontWeight: active ? 600 : 400 }}>{r.entity_name}</td>
-                  <td style={{ ...td, fontSize: 12, color: '#64748b' }}>{r.paye_ref || '—'}</td>
-                  <td style={{ ...td, fontSize: 12, color: '#64748b' }}>
+                  <td style={{ ...td, fontSize: 13, color: '#64748b' }}>{r.paye_ref || '—'}</td>
+                  <td style={{ ...td, fontSize: 13, color: '#64748b' }}>
                     {r.qbo_company || '—'}
                     {r.qbo_connections > 1 && (
                       <> <Pill colour="#b91c1c" bg="#fef2f2">{r.qbo_connections} files</Pill></>
@@ -154,7 +154,7 @@ function Planned({ title, children }) {
       <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
         {title}
       </h3>
-      <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.65 }}>{children}</div>
+      <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.65 }}>{children}</div>
     </div>
   );
 }
@@ -192,7 +192,7 @@ export default function WorkingPapersModule() {
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9 }}>
         <FileSpreadsheet size={22} style={{ color: '#64748b' }} /> Working Papers
       </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 860, marginBottom: 14, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 860, marginBottom: 14, lineHeight: 1.55 }}>
         Reconciliations prepared from independent sources, so a balance is agreed rather than explained by
         the ledger that produced it. PAYE compares HMRC's own account, the client's QuickBooks and the
         payroll behind both.
@@ -204,7 +204,7 @@ export default function WorkingPapersModule() {
             key={t.to}
             to={`/working-papers/${t.to}${keep}`}
             style={({ isActive }) => ({
-              padding: '8px 15px', fontSize: 13, textDecoration: 'none',
+              padding: '8px 15px', fontSize: 14, textDecoration: 'none',
               fontWeight: isActive ? 600 : 400,
               color: isActive ? '#0f172a' : t.status === 'planned' ? '#cbd5e1' : '#94a3b8',
               borderBottom: isActive ? '2px solid #0e7fe0' : '2px solid transparent',

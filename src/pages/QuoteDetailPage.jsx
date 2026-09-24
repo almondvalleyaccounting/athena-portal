@@ -360,7 +360,7 @@ export default function QuoteDetailPage() {
       {/* Group Quote: Consolidation Table */}
       {groupData && groupData.quoteEntities.length > 0 && (
         <div className="mb-4">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
+          <h3 className="text-xs font-semibold text-gray-500 mb-2">
             Group: {groupData.billingGroup?.name || quote.relationship_group} ({groupData.quoteEntities.length} entities)
           </h3>
           <ConsolidationTable
@@ -384,7 +384,7 @@ export default function QuoteDetailPage() {
 
       {/* Client Overview */}
       <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Client Overview</h3>
+        <h3 className="text-xs font-semibold text-gray-500 mb-2">Client Overview</h3>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
           {quote.estimated_turnover > 0 && <><span className="text-gray-400">Estimated Turnover</span><span className="text-gray-700 font-mono">{fmt(quote.estimated_turnover)}</span></>}
           {quote.accounts_detail?.type && <><span className="text-gray-400">Type of Business</span><span className="text-gray-700 capitalize">{quote.accounts_detail.type === 'trading' ? 'Trading Company' : quote.accounts_detail.type === 'dormant' ? 'Dormant Company' : quote.accounts_detail.type === 'property' ? 'Property Company' : quote.accounts_detail.type.replace('_', ' ')}</span></>}
@@ -398,7 +398,7 @@ export default function QuoteDetailPage() {
       {/* Setup Fees */}
       {setup.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">One-Off Setup Fees</h3>
+          <h3 className="text-xs font-semibold text-gray-500 mb-2">One-Off Setup Fees</h3>
           {setup.map((l, i) => (
             <div key={i} className="flex justify-between text-xs py-1 border-b border-gray-50 last:border-0">
               <span className="text-gray-600">{l.description}</span>
@@ -414,7 +414,7 @@ export default function QuoteDetailPage() {
       {/* Recurring Services */}
       {recurring.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Recurring Services</h3>
+          <h3 className="text-xs font-semibold text-gray-500 mb-2">Recurring Services</h3>
           <div className="grid gap-0.5 text-xs text-gray-400 mb-1" style={{ gridTemplateColumns: '2fr 1fr 1fr' }}>
             <span>Service</span><span className="text-right">Annual</span><span className="text-right">Monthly</span>
           </div>
@@ -431,7 +431,7 @@ export default function QuoteDetailPage() {
       {/* Directors */}
       {dirs.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Directors' Tax Returns ({dirs.length})</h3>
+          <h3 className="text-xs font-semibold text-gray-500 mb-2">Directors' Tax Returns ({dirs.length})</h3>
           {dirs.map((d, i) => (
             <div key={i} className="text-xs py-1.5 border-b border-gray-50 last:border-0">
               <div className="flex justify-between">
@@ -453,7 +453,7 @@ export default function QuoteDetailPage() {
       {/* Payroll Detail */}
       {pr && (
         <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Payroll Detail</h3>
+          <h3 className="text-xs font-semibold text-gray-500 mb-2">Payroll Detail</h3>
           <div className="space-y-0.5 text-xs">
             <div className="flex justify-between"><span className="text-gray-400">Flat monthly</span><span className="font-mono">{fmt(pr.flat_monthly)}</span></div>
             {pr.monthly_ee > 0 && <div className="flex justify-between"><span className="text-gray-400">Monthly EE ({pr.monthly_ee})</span><span className="font-mono">{fmt(pr.monthly_ee * pr.monthly_ee_rate)}/mo</span></div>}
@@ -467,7 +467,7 @@ export default function QuoteDetailPage() {
       {/* Bookkeeping Detail */}
       {bk && (
         <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Bookkeeping Detail</h3>
+          <h3 className="text-xs font-semibold text-gray-500 mb-2">Bookkeeping Detail</h3>
           <div className="text-xs text-gray-600">
             {bk.hours_per_month}h/mo x {fmt(bk.rate)}/hr{bk.includes_vat ? ' (inc VAT)' : ''}
             {bk.vat_adj ? ` + adj ${fmt(bk.vat_adj)}` : ''}
@@ -478,7 +478,7 @@ export default function QuoteDetailPage() {
       {/* New sections detail */}
       {(mod || ma || rm || bud || cfo) && (
         <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Additional Services</h3>
+          <h3 className="text-xs font-semibold text-gray-500 mb-2">Additional Services</h3>
           <div className="space-y-1 text-xs">
             {mod && <div className="flex justify-between"><span className="text-gray-400">Modulr</span><span className="font-mono">{fmt(mod.software_monthly)}/mo sw + {mod.payments_per_month} payments + {mod.runs_per_month} runs</span></div>}
             {ma && <div className="flex justify-between"><span className="text-gray-400">Mgmt Accounts</span><span className="font-mono">{ma.sets} sets x {fmt(ma.rate_per_set)}</span></div>}
@@ -492,7 +492,7 @@ export default function QuoteDetailPage() {
       {/* Software Detail */}
       {sw && (
         <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Software</h3>
+          <h3 className="text-xs font-semibold text-gray-500 mb-2">Software</h3>
           <div className="space-y-0.5 text-xs">
             {sw.accounting && <div className="flex justify-between"><span className="text-gray-400">{sw.accounting.name}</span><span className="font-mono">{fmt(sw.accounting.monthly)}/mo</span></div>}
             {sw.dext && <div className="flex justify-between"><span className="text-gray-400">Dext</span><span className="font-mono">{fmt(sw.dext.monthly)}/mo</span></div>}
@@ -538,7 +538,7 @@ export default function QuoteDetailPage() {
       {/* Audit Trail */}
       {audit.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-3">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Audit Trail</h3>
+          <h3 className="text-xs font-semibold text-gray-500 mb-2">Audit Trail</h3>
           <div className="space-y-2">
             {audit.map((a, i) => (
               <div key={i} className="flex items-start gap-2 text-xs">

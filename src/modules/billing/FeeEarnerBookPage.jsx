@@ -184,7 +184,7 @@ export default function FeeEarnerBookPage() {
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
           Fee Earner Book
         </h1>
-        <p style={{ fontSize: 13, color: '#64748b' }}>
+        <p style={{ fontSize: 14, color: '#64748b' }}>
           Practice-wide attribution of live billing and accepted-quote pipeline by fee earner or manager.
         </p>
       </div>
@@ -197,13 +197,13 @@ export default function FeeEarnerBookPage() {
 
       {/* Unallocated warning */}
       {unallocatedCount > 0 && (
-        <div style={{ padding: '10px 14px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, marginBottom: 14, fontSize: 12, color: '#78350f' }}>
+        <div style={{ padding: '10px 14px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, marginBottom: 14, fontSize: 13, color: '#78350f' }}>
           <b>{unallocatedCount}</b> live billing line{unallocatedCount === 1 ? '' : 's'} have no allocation yet — their £ is not counted below. Set allocations on each client's page.
         </div>
       )}
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : rollup.length === 0 ? (
         <EmptyState />
       ) : (
@@ -227,7 +227,7 @@ export default function FeeEarnerBookPage() {
                   onClick={() => setExpanded(isOpen ? null : r.staff_id)}
                 >
                   <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                    <span style={{ display: 'inline-block', width: 14, fontSize: 10, color: '#94a3b8' }}>{isOpen ? '▾' : '▸'}</span>
+                    <span style={{ display: 'inline-block', width: 14, fontSize: 11, color: '#94a3b8' }}>{isOpen ? '▾' : '▸'}</span>
                     {r.staff_name}
                   </span>
                   <span style={numStyle('#0e7fe0')}>{fmt(r.monthly_annualised)}</span>
@@ -239,7 +239,7 @@ export default function FeeEarnerBookPage() {
                 </div>
                 {isOpen && (
                   <div style={{ padding: '6px 16px 12px 32px', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 1fr 1fr', gap: 8, fontSize: 11, color: '#94a3b8', padding: '4px 0', borderBottom: '1px solid #e5e7eb' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 1fr 1fr', gap: 8, fontSize: 12, color: '#94a3b8', padding: '4px 0', borderBottom: '1px solid #e5e7eb' }}>
                       <span>Client · service</span>
                       <span>{mode === 'fee_earner' ? 'Manager' : 'Fee earner'}</span>
                       <span style={{ textAlign: 'right' }}>Monthly × 12</span>
@@ -247,7 +247,7 @@ export default function FeeEarnerBookPage() {
                       <span style={{ textAlign: 'right' }}>One-off</span>
                     </div>
                     {r.rows.map((row, idx) => (
-                      <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 1fr 1fr', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
+                      <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 1fr 1fr', gap: 8, fontSize: 13, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
                         <span
                           style={{ color: '#0f172a', cursor: 'pointer' }}
                           onClick={(e) => { e.stopPropagation(); navigate(`/clients/${row.entity_id}`); }}
@@ -285,7 +285,7 @@ export default function FeeEarnerBookPage() {
 function TogglePill({ active, onClick, children }) {
   return (
     <button onClick={onClick} style={{
-      fontSize: 12, fontWeight: active ? 600 : 500,
+      fontSize: 13, fontWeight: active ? 600 : 500,
       padding: '6px 14px', borderRadius: 999,
       background: active ? '#0f172a' : '#fff',
       color: active ? '#fff' : '#475569',
@@ -298,8 +298,8 @@ function TogglePill({ active, onClick, children }) {
 function EmptyState() {
   return (
     <div style={{ padding: 60, textAlign: 'center' }}>
-      <p style={{ fontSize: 15, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>No allocations yet</p>
-      <p style={{ fontSize: 13, color: '#cbd5e1' }}>
+      <p style={{ fontSize: 15.5, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>No allocations yet</p>
+      <p style={{ fontSize: 14, color: '#cbd5e1' }}>
         Allocate fee earners on the client detail page, or when committing a quote to live billing.
       </p>
     </div>
@@ -308,7 +308,7 @@ function EmptyState() {
 
 const backLinkStyle = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 12, fontWeight: 500, color: '#64748b',
+  fontSize: 13, fontWeight: 500, color: '#64748b',
   background: 'none', border: 'none', cursor: 'pointer',
   marginBottom: 12, padding: 0, fontFamily: font,
 };
@@ -317,13 +317,12 @@ const headerRowStyle = {
   display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 0.6fr 1.1fr',
   gap: 8, padding: '10px 16px', background: '#f8fafc',
   borderBottom: '1px solid #e5e7eb',
-  fontSize: 11, fontWeight: 600, color: '#94a3b8',
-  textTransform: 'uppercase', letterSpacing: '0.05em',
-};
+  fontSize: 12, fontWeight: 600, color: '#94a3b8',
+  };
 const dataRowStyle = {
   display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 0.6fr 1.1fr',
   gap: 8, padding: '10px 16px',
   borderBottom: '1px solid #f1f5f9',
-  fontSize: 13, alignItems: 'center',
+  fontSize: 14, alignItems: 'center',
 };
 const numStyle = (color) => ({ textAlign: 'right', fontFamily: 'monospace', color });

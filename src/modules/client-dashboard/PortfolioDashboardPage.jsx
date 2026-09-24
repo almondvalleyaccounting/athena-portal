@@ -162,7 +162,7 @@ export default function PortfolioDashboardPage() {
           <h1 style={{ fontFamily: PLAYFAIR, fontSize: '28px', fontWeight: 500, color: C.ink, marginBottom: '8px' }}>
             Portfolio
           </h1>
-          <p style={{ fontFamily: OUTFIT, fontSize: '14px', color: C.sub, margin: 0 }}>
+          <p style={{ fontFamily: OUTFIT, fontSize: '14.5px', color: C.sub, margin: 0 }}>
             Your starred clients, each figure against last year or last month. Refreshed from QuickBooks every morning.
             {!loading && cards.length > 0 && flaggedCount > 0 && (
               <span style={{ color: C.redFg, fontWeight: 600 }}> {flaggedCount} need{flaggedCount === 1 ? 's' : ''} attention.</span>
@@ -174,7 +174,7 @@ export default function PortfolioDashboardPage() {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              style={{ fontFamily: OUTFIT, fontSize: '13px', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: '10px', background: '#fff', color: C.ink }}
+              style={{ fontFamily: OUTFIT, fontSize: '14px', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: '10px', background: '#fff', color: C.ink }}
             >
               <option value="attention">Needs attention first</option>
               <option value="starred">Order starred</option>
@@ -188,7 +188,7 @@ export default function PortfolioDashboardPage() {
                 display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
                 border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#fff',
                 cursor: refreshing && !refreshing.finished ? 'default' : 'pointer',
-                fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: '#0369a1',
+                fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: '#0369a1',
               }}
             >
               <RefreshCw size={14} style={refreshing && !refreshing.finished ? { animation: 'spin 1s linear infinite' } : undefined} />
@@ -199,14 +199,14 @@ export default function PortfolioDashboardPage() {
       </div>
 
       {refreshing?.finished && refreshing.failed.length > 0 && (
-        <div style={{ ...cardStyle, padding: '10px 14px', marginBottom: '16px', fontFamily: OUTFIT, fontSize: '13px', color: C.ambFg, backgroundColor: C.ambBg, border: `1px solid ${C.ambBd}` }}>
+        <div style={{ ...cardStyle, padding: '10px 14px', marginBottom: '16px', fontFamily: OUTFIT, fontSize: '14px', color: C.ambFg, backgroundColor: C.ambBg, border: `1px solid ${C.ambBd}` }}>
           Couldn't refresh {refreshing.failed.join(', ')} — open the dashboard to see why (usually an expired QuickBooks connection).
           <button onClick={() => setRefreshing(null)} style={{ marginLeft: '10px', background: 'none', border: 'none', cursor: 'pointer', color: C.ambFg, fontWeight: 600, fontFamily: OUTFIT }}>Dismiss</button>
         </div>
       )}
 
       {loading && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#0369a1', fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#0369a1', fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 600 }}>
           <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Loading your portfolio…
         </div>
       )}
@@ -217,7 +217,7 @@ export default function PortfolioDashboardPage() {
           <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: C.ink, marginBottom: '6px' }}>
             No starred clients yet
           </div>
-          <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: C.sub, maxWidth: '440px', margin: '0 auto 18px' }}>
+          <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: C.sub, maxWidth: '440px', margin: '0 auto 18px' }}>
             Open the Client Dashboard, pick a client and click the star next to their name.
             Starred clients appear here with their key metrics, so you can watch your portfolio at a glance.
           </div>
@@ -226,7 +226,7 @@ export default function PortfolioDashboardPage() {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px',
               border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
-              cursor: 'pointer', fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: C.accent,
+              cursor: 'pointer', fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: C.accent,
             }}
           >
             Open Client Dashboard <ArrowRight size={14} />
@@ -271,7 +271,7 @@ function PortfolioCard({ card, navigate, unstar }) {
             {card.name}
           </div>
           {f.ytdPeriod?.start && (
-            <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: C.faint, marginTop: '2px' }}>
+            <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: C.faint, marginTop: '2px' }}>
               Year to date {shortDate(f.ytdPeriod.start)} – {shortDate(f.ytdPeriod.end)}, against the same dates last year
             </div>
           )}
@@ -287,11 +287,11 @@ function PortfolioCard({ card, navigate, unstar }) {
       </div>
 
       {!card.connected ? (
-        <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: C.faint, display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: C.faint, display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Link2Off size={14} /> No QuickBooks reports connection for this client.
         </div>
       ) : !f.hasFigures ? (
-        <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: C.faint }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: C.faint }}>
           No cached figures yet — use Refresh all, or open the dashboard to pull from QuickBooks
           (reconnect them if the pull fails).
         </div>
@@ -387,7 +387,7 @@ function PortfolioCard({ card, navigate, unstar }) {
             style={{
               marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px',
               background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-              fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600, color: C.accent,
+              fontFamily: OUTFIT, fontSize: '13px', fontWeight: 600, color: C.accent,
             }}
           >
             Open dashboard <ArrowRight size={13} />
@@ -406,7 +406,7 @@ function chip(level) {
     : ['#166534', '#f0fdf4', '#bbf7d0'];
   return {
     display: 'inline-flex', alignItems: 'center', gap: '4px',
-    fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 600, padding: '3px 9px', borderRadius: '7px',
+    fontFamily: OUTFIT, fontSize: '12.5px', fontWeight: 600, padding: '3px 9px', borderRadius: '7px',
     color: s[0], backgroundColor: s[1], border: `1px solid ${s[2]}`,
   };
 }
@@ -419,7 +419,7 @@ function FreshnessChip({ f }) {
       title={`Oldest figure on this card pulled ${new Date(f.oldestPulledAt).toLocaleString('en-GB')}`}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0, marginTop: '2px',
-        fontFamily: OUTFIT, fontSize: '11px', fontWeight: f.stale ? 600 : 400,
+        fontFamily: OUTFIT, fontSize: '12px', fontWeight: f.stale ? 600 : 400,
         color: f.stale ? C.ambFg : '#cbd5e1',
         ...(f.stale ? { backgroundColor: C.ambBg, border: `1px solid ${C.ambBd}`, borderRadius: '7px', padding: '2px 7px' } : {}),
       }}
@@ -432,7 +432,7 @@ function FreshnessChip({ f }) {
 function Column({ title, children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
-      <div style={{ fontFamily: OUTFIT, fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.faint, borderBottom: `1px solid ${C.rule}`, paddingBottom: '4px' }}>
+      <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.faint, borderBottom: `1px solid ${C.rule}`, paddingBottom: '4px' }}>
         {title}
       </div>
       {children}
@@ -444,16 +444,16 @@ function Metric({ label, value, delta, note, negative, tone }) {
   const colour = negative || tone === 'bad' ? C.redFg : tone === 'warn' ? C.ambFg : C.ink;
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: C.faint }}>{label}</div>
+      <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: C.faint }}>{label}</div>
       <div style={{ fontFamily: OUTFIT, fontSize: '16px', fontWeight: 700, color: colour, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {value}
       </div>
       {delta && (
-        <div style={{ fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 600, color: delta.good ? C.good : C.bad }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: '12.5px', fontWeight: 600, color: delta.good ? C.good : C.bad }}>
           {delta.good ? '▲' : '▼'} {delta.text}
         </div>
       )}
-      {note && <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: C.faint }}>{note}</div>}
+      {note && <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: C.faint }}>{note}</div>}
     </div>
   );
 }
@@ -478,7 +478,7 @@ function AgeingBar({ aged, previous, currency }) {
           return w > 0 ? <div key={k} style={{ width: `${w * 100}%`, backgroundColor: colour }} /> : null;
         })}
       </div>
-      <div style={{ fontFamily: OUTFIT, fontSize: '11px', color: aged.over90Share >= 0.25 ? C.redFg : C.faint, marginTop: '3px', fontWeight: aged.over90Share >= 0.25 ? 600 : 400 }}>
+      <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: aged.over90Share >= 0.25 ? C.redFg : C.faint, marginTop: '3px', fontWeight: aged.over90Share >= 0.25 ? 600 : 400 }}>
         {Math.round(aged.over90Share * 100)}% over 90 days
         {prevShare != null && (
           <span style={{ fontWeight: 400, color: C.faint }}> · {Math.round(prevShare * 100)}% on {prevDate}</span>
@@ -503,7 +503,7 @@ function TrendChart({ months, currency }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', fontFamily: OUTFIT, fontSize: '11px', color: C.faint, marginBottom: '4px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', fontFamily: OUTFIT, fontSize: '12px', color: C.faint, marginBottom: '4px' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
           <span style={{ width: '9px', height: '9px', backgroundColor: '#bae6fd', borderRadius: '2px' }} /> Revenue
         </span>
@@ -535,7 +535,7 @@ function TrendChart({ months, currency }) {
           <circle key={i} cx={cx(i)} cy={y(m.net)} r="2.2" fill={m.net < 0 ? C.bad : '#0f766e'} />
         ))}
       </svg>
-      <div style={{ display: 'flex', fontFamily: OUTFIT, fontSize: '10px', color: '#cbd5e1' }}>
+      <div style={{ display: 'flex', fontFamily: OUTFIT, fontSize: '11px', color: '#cbd5e1' }}>
         {months.map((m, i) => (
           <span key={i} style={{ flex: 1, textAlign: 'center' }}>{i % 2 === 0 || months.length <= 6 ? shortMonth(m.label).split(' ')[0] : ''}</span>
         ))}

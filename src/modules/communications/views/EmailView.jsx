@@ -102,16 +102,16 @@ function MessageCard({ msg, mailbox, defaultOpen }) {
         onClick={() => setOpen((o) => !o)}
         style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '10px 14px', cursor: 'pointer', background: open ? '#fff' : '#f8fafc' }}
       >
-        <span style={{ fontWeight: 600, fontSize: 13, color: '#0f172a', whiteSpace: 'nowrap' }}>{from.name}</span>
-        {open && <span style={{ fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>to {msg.to}{msg.cc ? `, cc ${msg.cc}` : ''}</span>}
-        {!open && <span style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{decodeEntities(msg.snippet)}</span>}
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtDate(msg.internalDate)}</span>
+        <span style={{ fontWeight: 600, fontSize: 14, color: '#0f172a', whiteSpace: 'nowrap' }}>{from.name}</span>
+        {open && <span style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>to {msg.to}{msg.cc ? `, cc ${msg.cc}` : ''}</span>}
+        {!open && <span style={{ fontSize: 13, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{decodeEntities(msg.snippet)}</span>}
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtDate(msg.internalDate)}</span>
       </div>
       {open && (
         <div style={{ borderTop: '1px solid #f1f5f9' }}>
           {msg.bodyHtml
             ? <HtmlBody html={msg.bodyHtml} />
-            : <div style={{ padding: 14, fontSize: 13, color: '#1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.bodyText || decodeEntities(msg.snippet)}</div>}
+            : <div style={{ padding: 14, fontSize: 14, color: '#1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.bodyText || decodeEntities(msg.snippet)}</div>}
           {msg.attachments.length > 0 && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '10px 14px', borderTop: '1px solid #f1f5f9' }}>
               {msg.attachments.map((a) => (
@@ -123,7 +123,7 @@ function MessageCard({ msg, mailbox, defaultOpen }) {
                       downloadAttachment({ data: res.data, filename: a.filename, mimeType: a.mimeType });
                     } catch (e) { alert(`Download failed: ${e.message}`); }
                   }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#f8fafc', cursor: 'pointer', fontFamily: font, color: '#334155' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#f8fafc', cursor: 'pointer', fontFamily: font, color: '#334155' }}
                 >
                   <Paperclip size={12} /> {a.filename} <span style={{ color: '#94a3b8' }}>({Math.max(1, Math.round(a.size / 1024))} KB)</span>
                 </button>
@@ -172,7 +172,7 @@ function AddressInput({ value, onChange, contacts, placeholder }) {
         onFocus={() => setFocus(true)}
         onBlur={() => setTimeout(() => setFocus(false), 150)}
         placeholder={placeholder}
-        style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7 }}
+        style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7 }}
       />
       {suggestions.length > 0 && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 8px 24px rgba(15,23,42,.12)', overflow: 'hidden' }}>
@@ -180,13 +180,13 @@ function AddressInput({ value, onChange, contacts, placeholder }) {
             <div
               key={s.email}
               onMouseDown={(e) => { e.preventDefault(); pick(s.email); }}
-              style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 12.5, display: 'flex', gap: 8, alignItems: 'baseline' }}
+              style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 13.5, display: 'flex', gap: 8, alignItems: 'baseline' }}
               onMouseEnter={(e) => { e.currentTarget.style.background = '#eff6ff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
             >
               <span style={{ fontWeight: 600, color: '#0f172a' }}>{s.name || s.email}</span>
               <span style={{ color: '#64748b' }}>{s.email}</span>
-              {s.org && <span style={{ color: '#94a3b8', fontSize: 11 }}>{s.org}</span>}
+              {s.org && <span style={{ color: '#94a3b8', fontSize: 12 }}>{s.org}</span>}
             </div>
           ))}
         </div>
@@ -249,7 +249,7 @@ function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left' }) {
               }
             }}
             placeholder="Search labels… (use / to nest)"
-            style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 12.5, fontFamily: font, border: 'none', borderBottom: '1px solid #e2e8f0', outline: 'none' }}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13.5, fontFamily: font, border: 'none', borderBottom: '1px solid #e2e8f0', outline: 'none' }}
           />
           <div style={{ maxHeight: 260, overflowY: 'auto' }}>
             {filtered.map((l) => {
@@ -259,25 +259,25 @@ function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left' }) {
                 <div
                   key={l.id}
                   onClick={() => pick(l)}
-                  style={{ padding: `6px 10px 6px ${10 + parts.length * 14}px`, fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: 6 }}
+                  style={{ padding: `6px 10px 6px ${10 + parts.length * 14}px`, fontSize: 13.5, cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: 6 }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = '#eff6ff'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
                 >
                   <Tag size={11} color="#94a3b8" />
                   <span style={{ fontWeight: 600, color: '#0f172a' }}>{seg}</span>
-                  {parts.length > 0 && <span style={{ fontSize: 10.5, color: '#94a3b8' }}>{parts.join(' / ')}</span>}
+                  {parts.length > 0 && <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{parts.join(' / ')}</span>}
                 </div>
               );
             })}
             {filtered.length === 0 && !term.trim() && (
-              <div style={{ padding: 12, fontSize: 12, color: '#94a3b8' }}>No labels yet — type to create one.</div>
+              <div style={{ padding: 12, fontSize: 13, color: '#94a3b8' }}>No labels yet — type to create one.</div>
             )}
           </div>
           {term.trim() && !exact && (
             <button
               onClick={create}
               disabled={busy}
-              style={{ width: '100%', padding: '8px 11px', fontSize: 12.5, fontWeight: 600, color: '#0e7fe0', background: '#f8fafc', border: 'none', borderTop: '1px solid #e2e8f0', cursor: 'pointer', textAlign: 'left', fontFamily: font }}
+              style={{ width: '100%', padding: '8px 11px', fontSize: 13.5, fontWeight: 600, color: '#0e7fe0', background: '#f8fafc', border: 'none', borderTop: '1px solid #e2e8f0', cursor: 'pointer', textAlign: 'left', fontFamily: font }}
             >
               {busy ? 'Creating…' : `+ Create “${term.trim()}”`}
             </button>
@@ -1043,7 +1043,7 @@ export default function EmailView() {
   const connectShared = () => startMailboxConnect({ kind: 'shared' }).catch((e) => setError(e.message));
 
   if (mailboxes === null) {
-    return <div style={{ padding: 30, color: '#64748b', fontSize: 13 }}>Loading mailboxes…</div>;
+    return <div style={{ padding: 30, color: '#64748b', fontSize: 14 }}>Loading mailboxes…</div>;
   }
 
   if (!mailboxes.length) {
@@ -1051,13 +1051,13 @@ export default function EmailView() {
       <div style={{ maxWidth: 560, margin: '40px auto', textAlign: 'center', fontFamily: font }}>
         <Mail size={34} color="#94a3b8" style={{ marginBottom: 10 }} />
         <div style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>No mailboxes connected yet</div>
-        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 18 }}>
+        <div style={{ fontSize: 14, color: '#64748b', marginBottom: 18 }}>
           Connect your own inbox to read, reply, forward and archive from Athena.
           {isAdmin ? ' As an admin you can also connect shared mailboxes like info@ or accounts@ — sign into that Google account when prompted.' : ''}
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-          <a href="#" onClick={(e) => { e.preventDefault(); connectPersonal(); }} style={{ padding: '9px 18px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', borderRadius: 8, textDecoration: 'none' }}>Connect my inbox</a>
-          {isAdmin && <a href="#" onClick={(e) => { e.preventDefault(); connectShared(); }} style={{ padding: '9px 18px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 8, textDecoration: 'none' }}>Add a shared mailbox</a>}
+          <a href="#" onClick={(e) => { e.preventDefault(); connectPersonal(); }} style={{ padding: '9px 18px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', borderRadius: 8, textDecoration: 'none' }}>Connect my inbox</a>
+          {isAdmin && <a href="#" onClick={(e) => { e.preventDefault(); connectShared(); }} style={{ padding: '9px 18px', fontSize: 14, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 8, textDecoration: 'none' }}>Add a shared mailbox</a>}
         </div>
       </div>
     );
@@ -1094,7 +1094,7 @@ export default function EmailView() {
             onClick={() => (node.label ? selectLabel(node.label.id) : hasKids && toggleExpanded(node.full))}
             title={node.full}
             style={{
-              flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', fontSize: 12.5,
+              flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', fontSize: 13.5,
               fontWeight: isActive ? 700 : 500,
               background: isActive ? tones.info.bg : 'transparent',
               color: isActive ? tones.info.fg : node.label ? '#475569' : '#94a3b8',
@@ -1103,7 +1103,7 @@ export default function EmailView() {
           >
             <Tag size={11} style={{ flexShrink: 0 }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.seg}</span>
-            {hasKids && <span style={{ fontSize: 10, color: '#cbd5e1', flexShrink: 0 }}>{node.children.length}</span>}
+            {hasKids && <span style={{ fontSize: 11, color: '#cbd5e1', flexShrink: 0 }}>{node.children.length}</span>}
           </button>
         </div>
         {hasKids && isOpen && node.children.map((c) => renderTreeNode(c, depth + 1))}
@@ -1115,7 +1115,7 @@ export default function EmailView() {
     return (
       <div style={{ border: '1px solid #94a3b8', borderRadius: 10, background: '#fff', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
             {composer.mode === 'new' ? 'New email' : composer.mode === 'forward' ? 'Forward' : composer.mode === 'replyAll' ? 'Reply all' : 'Reply'} — from {mailboxLabel[composer.mailbox] || composer.mailbox || mailbox}
           </span>
           <button onClick={() => setComposer(null)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={14} /></button>
@@ -1123,15 +1123,15 @@ export default function EmailView() {
         <AddressInput value={composer.to} onChange={(v) => setComposer((c) => ({ ...c, to: v }))} contacts={contacts} placeholder="To" />
         <AddressInput value={composer.cc} onChange={(v) => setComposer((c) => ({ ...c, cc: v }))} contacts={contacts} placeholder="Cc (optional)" />
         <input value={composer.subject} onChange={(e) => setComposer((c) => ({ ...c, subject: e.target.value }))} placeholder="Subject"
-          style={{ padding: '7px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, fontWeight: 600 }} />
+          style={{ padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, fontWeight: 600 }} />
         <textarea value={composer.body} onChange={(e) => setComposer((c) => ({ ...c, body: e.target.value }))} rows={10} autoFocus
-          style={{ padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, resize: 'vertical', lineHeight: 1.5 }} />
+          style={{ padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, resize: 'vertical', lineHeight: 1.5 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={sendComposer} disabled={sending}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, background: sending ? '#94a3b8' : '#0e7fe0', color: '#fff', border: 'none', borderRadius: 8, cursor: sending ? 'default' : 'pointer', fontFamily: font }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', fontSize: 14, fontWeight: 600, background: sending ? '#94a3b8' : '#0e7fe0', color: '#fff', border: 'none', borderRadius: 8, cursor: sending ? 'default' : 'pointer', fontFamily: font }}>
             <Send size={13} /> {sending ? 'Sending…' : 'Send'}
           </button>
-          {composer.mode === 'forward' && <span style={{ fontSize: 11, color: '#94a3b8' }}>Attachments aren&apos;t carried over on forwards yet.</span>}
+          {composer.mode === 'forward' && <span style={{ fontSize: 12, color: '#94a3b8' }}>Attachments aren&apos;t carried over on forwards yet.</span>}
         </div>
       </div>
     );
@@ -1145,7 +1145,7 @@ export default function EmailView() {
       return (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', flex: 1, minWidth: 200 }}>
+            <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', flex: 1, minWidth: 200 }}>
               {latestMsg?.subject || '(no subject)'}
             </span>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1187,7 +1187,7 @@ export default function EmailView() {
       );
     }
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13, border: '1px dashed #e2e8f0', borderRadius: 10, minHeight: 240 }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 14, border: '1px dashed #e2e8f0', borderRadius: 10, minHeight: 240 }}>
         {threadLoading ? 'Opening…' : 'Select an email to preview it here'}
       </div>
     );
@@ -1200,7 +1200,7 @@ export default function EmailView() {
         <select
           value={mailbox}
           onChange={(e) => setMailbox(e.target.value)}
-          style={{ padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', fontWeight: 600, color: '#0f172a' }}
+          style={{ padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', fontWeight: 600, color: '#0f172a' }}
         >
           {mailboxes.length > 1 && (
             <option value={ALL_MAILBOXES}>All mailboxes ({mailboxes.length})</option>
@@ -1211,7 +1211,7 @@ export default function EmailView() {
             </option>
           ))}
         </select>
-        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: -2, paddingLeft: 2 }}>
+        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: -2, paddingLeft: 2 }}>
           {isAll ? activeMailboxes.join(', ') : mailboxObj?.account_email}
         </div>
 
@@ -1259,7 +1259,7 @@ export default function EmailView() {
                 <InboxIcon size={13} /> Add shared mailbox
               </a>
             )}
-            <div style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.4 }}>
+            <div style={{ fontSize: 11.5, color: '#94a3b8', lineHeight: 1.4 }}>
               Shared = the whole team sees it (info@, accounts@…). You&apos;ll sign into that Google account once.
             </div>
           </div>
@@ -1267,7 +1267,7 @@ export default function EmailView() {
 
         <button
           onClick={() => { setThread(null); startComposer('new'); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
         >
           <PenSquare size={14} /> New email
         </button>
@@ -1280,7 +1280,7 @@ export default function EmailView() {
               key={s.id}
               onClick={() => selectLabel(s.id)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', fontSize: 13,
+                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', fontSize: 14,
                 fontWeight: labelId === s.id && !q ? 700 : 500,
                 background: labelId === s.id && !q ? tones.info.bg : 'transparent',
                 color: labelId === s.id && !q ? tones.info.fg : '#334155',
@@ -1290,7 +1290,7 @@ export default function EmailView() {
               {s.id === 'INBOX' ? <InboxIcon size={14} /> : s.id === 'ALL' ? <Layers size={14} /> : s.id === 'TRASH' ? <Trash2 size={13} /> : <Tag size={13} />} {s.label}
             </button>
           ))}
-          {labelTree.length > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, padding: '8px 10px 2px' }}>Labels</div>}
+          {labelTree.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', padding: '8px 10px 2px' }}>Labels</div>}
           {labelTree.map((n) => renderTreeNode(n, 0))}
         </div>
       </div>
@@ -1307,16 +1307,16 @@ export default function EmailView() {
               onChange={(e) => setQDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') setQ(qDraft.trim()); }}
               placeholder={`Search ${searchAll ? 'all mail' : currentFolderName} — Enter`}
-              style={{ flex: 1, padding: '8px 0', fontSize: 13, fontFamily: font, border: 'none', outline: 'none', minWidth: 0 }}
+              style={{ flex: 1, padding: '8px 0', fontSize: 14, fontFamily: font, border: 'none', outline: 'none', minWidth: 0 }}
             />
             <label
-              style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: searchAll ? tones.info.fg : '#94a3b8', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: searchAll ? tones.info.fg : '#94a3b8', cursor: 'pointer', whiteSpace: 'nowrap' }}
               title={`Search every message in the mailbox instead of just ${currentFolderName}`}
             >
               <input type="checkbox" checked={searchAll} onChange={(e) => setSearchAll(e.target.checked)} style={{ cursor: 'pointer' }} />
               All mail
             </label>
-            {q && <button onClick={() => { setQ(''); setQDraft(''); setSearchAll(false); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', fontSize: 11 }}>clear</button>}
+            {q && <button onClick={() => { setQ(''); setQDraft(''); setSearchAll(false); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', fontSize: 12 }}>clear</button>}
           </div>
           <button
             onClick={() => { setLastChecked(Date.now()); loadThreads(); }}
@@ -1328,13 +1328,13 @@ export default function EmailView() {
         </div>
 
         {/* Sort + inbox noise filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, color: '#64748b', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: '#64748b', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             Sort
             <select
               value={sort}
               onChange={(e) => { setSort(e.target.value); localStorage.setItem('comms_email_sort', e.target.value); }}
-              style={{ padding: '3px 6px', fontSize: 11.5, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#334155' }}
+              style={{ padding: '3px 6px', fontSize: 12.5, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#334155' }}
             >
               <option value="date">Newest first</option>
               <option value="recipient">Recipient email (A–Z)</option>
@@ -1360,7 +1360,7 @@ export default function EmailView() {
             <select
               value={pageSize}
               onChange={(e) => { setPageSize(Number(e.target.value)); localStorage.setItem('comms_page_size', e.target.value); }}
-              style={{ padding: '3px 6px', fontSize: 11.5, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#334155' }}
+              style={{ padding: '3px 6px', fontSize: 12.5, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#334155' }}
             >
               {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
@@ -1394,7 +1394,7 @@ export default function EmailView() {
 
         {/* Auto-suggested tags: eyeball, then one-click clear */}
         {!isAll && labelId === 'INBOX' && !q && (suggested.length > 0 || learnBusy || tagRules.length === 0) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: tones.teal.bg, border: `1px solid ${tones.teal.border}`, borderRadius: 8, fontSize: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: tones.teal.bg, border: `1px solid ${tones.teal.border}`, borderRadius: 8, fontSize: 13, flexWrap: 'wrap' }}>
             <Sparkles size={13} color={tones.teal.solid} style={{ flexShrink: 0 }} />
             {learnBusy ? (
               <span style={{ color: tones.teal.fg }}>Learning from this mailbox&apos;s labelled history…</span>
@@ -1423,7 +1423,7 @@ export default function EmailView() {
 
         {/* Bulk action bar */}
         {selected.size > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: tones.info.bg, border: `1px solid ${tones.info.border}`, borderRadius: 8, fontSize: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: tones.info.bg, border: `1px solid ${tones.info.border}`, borderRadius: 8, fontSize: 13, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 700, color: tones.info.fg }}>{selected.size} selected</span>
             {!isAll && (
               <LabelPicker
@@ -1449,9 +1449,9 @@ export default function EmailView() {
         )}
 
         <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', minHeight: 0 }}>
-          {listLoading && threads.length === 0 && <div style={{ padding: 20, fontSize: 13, color: '#64748b' }}>Loading…</div>}
+          {listLoading && threads.length === 0 && <div style={{ padding: 20, fontSize: 14, color: '#64748b' }}>Loading…</div>}
           {!listLoading && threads.length === 0 && (
-            <div style={{ padding: 26, fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>
+            <div style={{ padding: 26, fontSize: 14, color: '#94a3b8', textAlign: 'center' }}>
               {q ? 'No results.' : 'Nothing here — inbox zero 🎉'}
             </div>
           )}
@@ -1498,7 +1498,7 @@ export default function EmailView() {
             // 500 rows on every mouse move would crawl.
             const actions = (
               <span className="relative flex-shrink-0" style={{ display: 'inline-flex', alignItems: 'center' }}>
-                <span className="group-hover:invisible" style={{ fontSize: 10.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                <span className="group-hover:invisible" style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
                   {fmtDate(t.internalDate)}
                 </span>
                 <span
@@ -1539,15 +1539,15 @@ export default function EmailView() {
                   style={{ marginTop: compact ? 1 : 3, cursor: 'pointer', flexShrink: 0 }}
                 />
                 {compact ? (
-                  <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}>
                     {sender}{subject}{marks}{actions}
                   </div>
                 ) : (
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12.5 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13.5 }}>
                       {sender}{marks}{actions}
                     </div>
-                    <div style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject}</div>
+                    <div style={{ fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject}</div>
                   </div>
                 )}
               </div>
@@ -1555,7 +1555,7 @@ export default function EmailView() {
           })}
           {hasMore && (
             <button onClick={() => loadThreads({ append: true })} disabled={listLoading}
-              style={{ width: '100%', padding: 10, fontSize: 12, fontWeight: 600, color: tones.info.solid, background: 'none', border: 'none', cursor: 'pointer', fontFamily: font }}>
+              style={{ width: '100%', padding: 10, fontSize: 13, fontWeight: 600, color: tones.info.solid, background: 'none', border: 'none', cursor: 'pointer', fontFamily: font }}>
               {listLoading ? 'Loading…' : 'Load more'}
             </button>
           )}
@@ -1565,7 +1565,7 @@ export default function EmailView() {
       {/* ── Right: preview pane ── */}
       <div style={{ flex: 1, minWidth: 380, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
         {needsReconnect && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: tones.info.bg, border: `1px solid ${tones.info.border}`, borderRadius: 8, fontSize: 12, color: tones.info.fg }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: tones.info.bg, border: `1px solid ${tones.info.border}`, borderRadius: 8, fontSize: 13, color: tones.info.fg }}>
             {mailboxObj?.status !== 'active'
               ? <span>This mailbox&apos;s connection is broken ({mailboxObj?.error_message || mailboxObj?.status}).</span>
               : <span>This mailbox was connected with an older permission set — a quick reconnect unlocks everything.</span>}
@@ -1573,18 +1573,18 @@ export default function EmailView() {
           </div>
         )}
         {error && (
-          <div style={{ display: 'flex', gap: 10, padding: '8px 12px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12, color: '#b91c1c' }}>
+          <div style={{ display: 'flex', gap: 10, padding: '8px 12px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#b91c1c' }}>
             <span style={{ flex: 1 }}>{error}</span>
             <button onClick={() => setError(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b91c1c' }}><X size={13} /></button>
           </div>
         )}
         {notice && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 12, color: '#166534' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 13, color: '#166534' }}>
             <span style={{ flex: 1 }}>{notice.text}</span>
             {notice.undo && (
               <button
                 onClick={async () => { const u = notice.undo; setNotice(null); await u(); }}
-                style={{ fontSize: 12, fontWeight: 700, color: '#166534', background: 'none', border: '1px solid #86efac', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: font }}
+                style={{ fontSize: 13, fontWeight: 700, color: '#166534', background: 'none', border: '1px solid #86efac', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: font }}
               >
                 Undo
               </button>
@@ -1601,7 +1601,7 @@ export default function EmailView() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ width: 520, maxWidth: '92vw', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, fontFamily: font }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Email signature</span>
+              <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Email signature</span>
               <button onClick={() => setSigOpen(false)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={16} /></button>
             </div>
             <textarea
@@ -1609,9 +1609,9 @@ export default function EmailView() {
               onChange={(e) => setSigDraft(e.target.value)}
               rows={7}
               placeholder={'Kind regards,\nBobby\nAlmond Valley Accounting'}
-              style={{ padding: '9px 11px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, resize: 'vertical', lineHeight: 1.5 }}
+              style={{ padding: '9px 11px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, resize: 'vertical', lineHeight: 1.5 }}
             />
-            <div style={{ display: 'flex', gap: 14, fontSize: 12.5, color: '#334155' }}>
+            <div style={{ display: 'flex', gap: 14, fontSize: 13.5, color: '#334155' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                 <input type="radio" checked={sigScope === '*'} onChange={() => setSigScope('*')} /> All my mailboxes
               </label>
@@ -1619,12 +1619,12 @@ export default function EmailView() {
                 <input type="radio" checked={sigScope === mailbox} onChange={() => setSigScope(mailbox)} /> Only {mailboxObj?.display_name || mailbox}
               </label>
             </div>
-            <div style={{ fontSize: 11.5, color: '#94a3b8' }}>
+            <div style={{ fontSize: 12.5, color: '#94a3b8' }}>
               Added automatically when you compose or reply. Plain text for now.
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setSigOpen(false)} style={{ padding: '8px 14px', fontSize: 13, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, cursor: 'pointer', fontFamily: font, color: '#334155' }}>Cancel</button>
-              <button onClick={doSaveSignature} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#0e7fe0', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>Save</button>
+              <button onClick={() => setSigOpen(false)} style={{ padding: '8px 14px', fontSize: 14, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, cursor: 'pointer', fontFamily: font, color: '#334155' }}>Cancel</button>
+              <button onClick={doSaveSignature} style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#0e7fe0', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>Save</button>
             </div>
           </div>
         </div>
@@ -1634,26 +1634,26 @@ export default function EmailView() {
 }
 
 const btnIcon = {
-  display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', fontSize: 12, fontWeight: 600,
+  display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', fontSize: 13, fontWeight: 600,
   border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, cursor: 'pointer',
   fontFamily: font, color: '#334155',
 };
 
 const bulkBtn = {
-  display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', fontSize: 12, fontWeight: 600,
+  display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', fontSize: 13, fontWeight: 600,
   border: `1px solid ${tones.info.border}`, background: '#fff', borderRadius: 6, cursor: 'pointer',
   fontFamily: font, color: tones.info.fg,
 };
 
 const sweepBtn = {
-  display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', fontSize: 12, fontWeight: 600,
+  display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', fontSize: 13, fontWeight: 600,
   border: `1px solid ${tones.teal.solid}`, background: '#fff', borderRadius: 6, cursor: 'pointer',
   fontFamily: font, color: tones.teal.fg,
 };
 
 // One-click "tag as suggested + archive" chip on an inbox row.
 const suggChipBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 10.5, fontWeight: 700,
+  display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 11.5, fontWeight: 700,
   color: tones.teal.fg, background: tones.teal.bg, border: `1px dashed ${tones.teal.solid}`, borderRadius: 999,
   cursor: 'pointer', fontFamily: font, flexShrink: 0, whiteSpace: 'nowrap',
 };
@@ -1666,13 +1666,13 @@ const rowActionBtn = {
 };
 
 const railBtn = {
-  display: 'flex', alignItems: 'center', gap: 5, padding: '6px 8px', fontSize: 11.5, fontWeight: 600,
+  display: 'flex', alignItems: 'center', gap: 5, padding: '6px 8px', fontSize: 12.5, fontWeight: 600,
   border: '1px solid #e2e8f0', background: '#fff', borderRadius: 8, cursor: 'pointer',
   fontFamily: font, color: '#475569', textAlign: 'left', whiteSpace: 'nowrap',
 };
 
 const addOptionStyle = {
-  display: 'flex', alignItems: 'center', gap: 7, padding: '7px 10px', fontSize: 12.5, fontWeight: 600,
+  display: 'flex', alignItems: 'center', gap: 7, padding: '7px 10px', fontSize: 13.5, fontWeight: 600,
   background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 7,
   textDecoration: 'none', fontFamily: font,
 };

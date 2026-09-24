@@ -117,7 +117,7 @@ export default function ProductMappingPage() {
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Athena services → QuickBooks products
       </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 800, marginBottom: 14 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 800, marginBottom: 14 }}>
         This decides which QuickBooks product — and therefore which income account — each service invoices under.
         An unmapped service cannot be billed: the push refuses it rather than guessing. The product list is the
         qbo_items mirror kept fresh by the QBO pull.
@@ -126,24 +126,24 @@ export default function ProductMappingPage() {
       <BillingTabs active="products" />
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-            <div style={{ fontSize: 13, color: '#475569' }}>
+            <div style={{ fontSize: 14, color: '#475569' }}>
               <strong style={{ color: '#0f172a' }}>{stats.mapped}</strong> of <strong style={{ color: '#0f172a' }}>{stats.total}</strong> services mapped
               {stats.unmapped > 0 && (
-                <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }}>
+                <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }}>
                   {stats.unmapped} unmapped
                 </span>
               )}
               {stats.stale > 0 && (
-                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#fef2f2', color: '#b91c1c' }}>
+                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#fef2f2', color: '#b91c1c' }}>
                   {stats.stale} pointing at an inactive product
                 </span>
               )}
-              {saving && <span style={{ marginLeft: 12, fontSize: 11, color: '#94a3b8' }}>Saving…</span>}
-              {error && <span style={{ marginLeft: 12, fontSize: 11, color: '#dc2626' }}>{error}</span>}
+              {saving && <span style={{ marginLeft: 12, fontSize: 12, color: '#94a3b8' }}>Saving…</span>}
+              {error && <span style={{ marginLeft: 12, fontSize: 12, color: '#dc2626' }}>{error}</span>}
             </div>
             <div style={{ flex: 1 }} />
             <SearchInput value={search} onChange={setSearch} placeholder="Search service…" style={{ minWidth: 240 }} />
@@ -162,11 +162,11 @@ export default function ProductMappingPage() {
             return (
               <div key={g.kind} style={{ marginBottom: 20 }}>
                 <div style={{ marginBottom: 6 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{g.title}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{g.blurb}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{g.title}</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>{g.blurb}</div>
                 </div>
                 <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                     <thead>
                       <tr style={{ background: '#f8fafc' }}>
                         <Th>Athena service</Th>
@@ -183,7 +183,7 @@ export default function ProductMappingPage() {
                           <tr key={s.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                             <Td>
                               <div style={{ fontWeight: 500, color: '#0f172a' }}>{s.label}</div>
-                              {s.label !== s.id && <div style={{ fontSize: 11, color: '#94a3b8' }}>{s.id}</div>}
+                              {s.label !== s.id && <div style={{ fontSize: 12, color: '#94a3b8' }}>{s.id}</div>}
                             </Td>
                             <Td>
                               <select
@@ -204,7 +204,7 @@ export default function ProductMappingPage() {
                                 {isStale && <option value={mappedId}>Item {mappedId} — inactive in QuickBooks</option>}
                               </select>
                               {isStale && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 11, color: '#b91c1c' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 12, color: '#b91c1c' }}>
                                   <AlertTriangle size={12} /> This product is no longer active in QuickBooks — pick a live one.
                                 </div>
                               )}
@@ -227,6 +227,6 @@ export default function ProductMappingPage() {
   );
 }
 
-const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</th>;
+const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{children}</th>;
 const Td = ({ children, align, style }) => <td style={{ padding: '8px 12px', verticalAlign: 'middle', textAlign: align || 'left', ...style }}>{children}</td>;
-const selectStyle = { width: '100%', maxWidth: 420, padding: '5px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none' };
+const selectStyle = { width: '100%', maxWidth: 420, padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none' };

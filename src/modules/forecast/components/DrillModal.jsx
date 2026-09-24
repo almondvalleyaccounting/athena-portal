@@ -163,7 +163,7 @@ export default function DrillModal({ line, periods, periodsLabel, outputs, entit
       <div onClick={(e) => e.stopPropagation()} style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
+            <div style={{ fontSize: 12, color: colors.muted, fontWeight: 600 }}>
               {line.nominal_type} · {periodsLabel}
             </div>
             <h2 style={{ fontFamily: serifStack, fontSize: 24, fontWeight: 500, color: colors.ink, margin: '4px 0 0' }}>
@@ -184,7 +184,7 @@ export default function DrillModal({ line, periods, periodsLabel, outputs, entit
             <ContributorsSection contributors={contributors} scenarioId={scenarioId} periods={periods} entitiesById={entitiesById} />
           )}
           {drill.kind === 'unsupported' && (
-            <p style={{ color: colors.muted, fontSize: 13 }}>No drill view configured for this line.</p>
+            <p style={{ color: colors.muted, fontSize: 14 }}>No drill view configured for this line.</p>
           )}
         </div>
       </div>
@@ -195,7 +195,7 @@ export default function DrillModal({ line, periods, periodsLabel, outputs, entit
 function FormulaSection({ drill, periods, scopedMap }) {
   return (
     <>
-      <div style={{ padding: 12, background: colors.bgSoft, borderRadius: 8, fontFamily: 'ui-monospace, monospace', fontSize: 13, color: colors.ink }}>
+      <div style={{ padding: 12, background: colors.bgSoft, borderRadius: 8, fontFamily: 'ui-monospace, monospace', fontSize: 14, color: colors.ink }}>
         {drill.formula}
       </div>
       {drill.components && (
@@ -210,7 +210,7 @@ function FormulaSection({ drill, periods, scopedMap }) {
               }
               return (
                 <tr key={c} style={{ borderBottom: `1px solid ${colors.borderSoft}` }}>
-                  <td style={td}><code style={{ fontSize: 11 }}>{c}</code></td>
+                  <td style={td}><code style={{ fontSize: 12 }}>{c}</code></td>
                   <td style={{ ...td, textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{fmtP(total, { compact: true })}</td>
                 </tr>
               );
@@ -227,12 +227,12 @@ function ContributorsSection({ contributors, scenarioId, periods, entitiesById }
   if (!contributors) return null;
   const entries = Object.entries(contributors);
   if (entries.length === 0) {
-    return <p style={{ color: colors.muted, fontSize: 13 }}>No contributing rows in scope for this period.</p>;
+    return <p style={{ color: colors.muted, fontSize: 14 }}>No contributing rows in scope for this period.</p>;
   }
   const toggle = (key) => setExpanded(prev => prev === key ? null : key);
   return (
     <div>
-      <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 6px' }}>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 6px' }}>
         Click a module row to drill into its driver assumptions.
       </p>
       <table style={tableStyle}>
@@ -263,7 +263,7 @@ function ContributorsSection({ contributors, scenarioId, periods, entitiesById }
                           background: isExpanded ? '#f0f9ff' : 'transparent',
                         }}
                       >
-                        <td style={{ ...td, color: colors.muted, fontSize: 11 }}>
+                        <td style={{ ...td, color: colors.muted, fontSize: 12 }}>
                           <span style={{ marginRight: 4, color: colors.accent, fontFamily: 'ui-monospace, monospace' }}>
                             {isExpanded ? '▾' : '▸'}
                           </span>
@@ -324,10 +324,10 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
     if (periods && periods.length > 0) setTracePeriod(Math.max(...periods));
   }, [periods]);
 
-  if (state.loading) return <div style={{ padding: 12, fontSize: 12, color: colors.muted }}>Loading drivers…</div>;
-  if (state.err) return <div style={{ padding: 12, fontSize: 12, color: colors.red }}>{state.err}</div>;
+  if (state.loading) return <div style={{ padding: 12, fontSize: 13, color: colors.muted }}>Loading drivers…</div>;
+  if (state.err) return <div style={{ padding: 12, fontSize: 13, color: colors.red }}>{state.err}</div>;
   if (state.drivers.length === 0) {
-    return <div style={{ padding: 12, fontSize: 12, color: colors.muted }}>No drivers stored for this module / entity.</div>;
+    return <div style={{ padding: 12, fontSize: 13, color: colors.muted }}>No drivers stored for this module / entity.</div>;
   }
 
   // Try to produce a calc trace for this line at the chosen period
@@ -341,7 +341,7 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
   };
 
   const fmtVal = (d) => {
-    if (d.kind === 'linked') return <code style={{ fontSize: 11, color: colors.muted }}>{d.expression || '—'}</code>;
+    if (d.kind === 'linked') return <code style={{ fontSize: 12, color: colors.muted }}>{d.expression || '—'}</code>;
     if (d.kind === 'scalar') {
       const v = valueOf(d.id, -1);
       if (v == null) return <span style={{ color: colors.muted }}>—</span>;
@@ -359,7 +359,7 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
       return (
         <span>
           {formatDriverValue(lo, d.unit)} – {formatDriverValue(hi, d.unit)}
-          <span style={{ color: colors.muted, fontSize: 10, marginLeft: 4 }}>(over period range)</span>
+          <span style={{ color: colors.muted, fontSize: 11, marginLeft: 4 }}>(over period range)</span>
         </span>
       );
     }
@@ -371,24 +371,24 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
       {traceResult && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <div style={{ fontSize: 10, color: colors.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <div style={{ fontSize: 11, color: colors.muted, fontWeight: 700 }}>
               Calculation — {lineLabel} · t={tracePeriod}
             </div>
             {periods.length > 1 && (
-              <div style={{ display: 'flex', gap: 2, alignItems: 'center', fontSize: 11 }}>
+              <div style={{ display: 'flex', gap: 2, alignItems: 'center', fontSize: 12 }}>
                 <span style={{ color: colors.muted, marginRight: 4 }}>Period:</span>
-                <select value={tracePeriod} onChange={(e) => setTracePeriod(Number(e.target.value))} style={{ padding: '3px 6px', fontSize: 11, border: `1px solid ${colors.border}`, borderRadius: 4, fontFamily: fontStack, background: '#fff' }}>
+                <select value={tracePeriod} onChange={(e) => setTracePeriod(Number(e.target.value))} style={{ padding: '3px 6px', fontSize: 12, border: `1px solid ${colors.border}`, borderRadius: 4, fontFamily: fontStack, background: '#fff' }}>
                   {periods.map(p => <option key={p} value={p}>t={p}</option>)}
                 </select>
               </div>
             )}
           </div>
           {traceResult.formula && (
-            <div style={{ padding: '6px 10px', background: colors.bgSoft, borderRadius: 6, fontFamily: 'ui-monospace, monospace', fontSize: 11, color: colors.inkSoft, marginBottom: 8 }}>
+            <div style={{ padding: '6px 10px', background: colors.bgSoft, borderRadius: 6, fontFamily: 'ui-monospace, monospace', fontSize: 12, color: colors.inkSoft, marginBottom: 8 }}>
               {traceResult.formula}
             </div>
           )}
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack, background: '#fff', border: `1px solid ${colors.borderSoft}`, borderRadius: 6 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack, background: '#fff', border: `1px solid ${colors.borderSoft}`, borderRadius: 6 }}>
             <tbody>
               {traceResult.steps.map((s, i) => (
                 <tr key={i} style={{
@@ -411,15 +411,15 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
         </div>
       )}
       {!traceResult && tracePeriod != null && (
-        <div style={{ padding: '6px 10px', background: colors.bgSoft, borderRadius: 6, fontSize: 11, color: colors.muted, marginBottom: 10 }}>
+        <div style={{ padding: '6px 10px', background: colors.bgSoft, borderRadius: 6, fontSize: 12, color: colors.muted, marginBottom: 10 }}>
           No detailed calculation trace yet for this line. Drivers below.
         </div>
       )}
-      <div style={{ fontSize: 10, color: colors.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+      <div style={{ fontSize: 11, color: colors.muted, fontWeight: 700, marginBottom: 6 }}>
         Drivers — {moduleKey} {entityId ? '· entity-scoped' : '· group'}
         <span style={{ marginLeft: 8, color: colors.muted, fontWeight: 400 }}>({state.drivers.length})</span>
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
         <thead>
           <tr>
             <th style={driverTh}>Driver</th>
@@ -433,13 +433,13 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
             <tr key={d.id} style={{ borderTop: `1px solid ${colors.borderSoft}` }}>
               <td style={driverTd}>
                 <strong>{d.label}</strong>
-                <div style={{ fontSize: 9, color: colors.muted, fontFamily: 'ui-monospace, monospace' }}>{d.driver_key}</div>
+                <div style={{ fontSize: 10, color: colors.muted, fontFamily: 'ui-monospace, monospace' }}>{d.driver_key}</div>
               </td>
               <td style={driverTd}>
-                <span style={{ fontSize: 10, color: colors.muted }}>{d.entity_id ? 'entity' : 'group'}</span>
+                <span style={{ fontSize: 11, color: colors.muted }}>{d.entity_id ? 'entity' : 'group'}</span>
               </td>
               <td style={driverTd}>
-                <span style={{ fontSize: 10, color: colors.muted }}>{d.kind}</span>
+                <span style={{ fontSize: 11, color: colors.muted }}>{d.kind}</span>
               </td>
               <td style={{ ...driverTd, textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
                 {fmtVal(d)}
@@ -463,8 +463,8 @@ function formatDriverValue(v, unit) {
 const backdrop = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: fontStack };
 const card = { background: '#fff', borderRadius: 16, padding: 28, maxWidth: 720, width: '100%', maxHeight: '85vh', overflowY: 'auto' };
 const closeBtn = { background: 'transparent', border: 'none', fontSize: 28, color: colors.muted, cursor: 'pointer', padding: 0, lineHeight: 1, fontFamily: fontStack };
-const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack, marginTop: 12 };
+const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack, marginTop: 12 };
 const th = { padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}` };
 const td = { padding: '8px 10px', color: colors.ink };
-const driverTh = { padding: '4px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 };
+const driverTh = { padding: '4px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted, fontSize: 11 };
 const driverTd = { padding: '6px 8px', color: colors.ink };

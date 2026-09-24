@@ -217,8 +217,8 @@ export default function ClientDetailView() {
     setOffboarding(false);
   };
 
-  if (loading) return <div style={wrapStyle}><p style={{ color: '#94a3b8', fontSize: 13 }}>Loading client...</p></div>;
-  if (!entity) return <div style={wrapStyle}><p style={{ color: '#ef4444', fontSize: 13 }}>Client not found.</p></div>;
+  if (loading) return <div style={wrapStyle}><p style={{ color: '#94a3b8', fontSize: 14 }}>Loading client...</p></div>;
+  if (!entity) return <div style={wrapStyle}><p style={{ color: '#ef4444', fontSize: 14 }}>Client not found.</p></div>;
 
   // Approved-fee roll-up — shared rules live in feeRollup.js.
   const approvedServices = approvedServicesOf(billing);
@@ -254,7 +254,7 @@ export default function ClientDetailView() {
 
   return (
     <div style={wrapStyle}>
-      <button onClick={() => navigate('/clients')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 13, fontFamily: "'Outfit', sans-serif", marginBottom: 16, padding: 0 }}>
+      <button onClick={() => navigate('/clients')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 14, fontFamily: "'Outfit', sans-serif", marginBottom: 16, padding: 0 }}>
         <ChevronLeft size={16} /> Back to Clients
       </button>
 
@@ -262,7 +262,7 @@ export default function ClientDetailView() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <EditableName entity={entity} setEntity={setEntity} profile={profile} />
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#64748b', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, color: '#64748b', flexWrap: 'wrap' }}>
             <span style={{ textTransform: 'capitalize' }}>{entity.type?.replace('_', ' ')}</span>
             {entity.company_number && <span>· {entity.company_number}</span>}
             {entity.manager && <span>· Managed by {entity.manager}</span>}
@@ -318,7 +318,7 @@ export default function ClientDetailView() {
             />
             {entity.grade && (
               <span style={{
-                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
                 background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe',
                 fontFamily: "'Outfit', sans-serif",
               }} title="Client grade (imported)">Grade {entity.grade}</span>
@@ -333,7 +333,7 @@ export default function ClientDetailView() {
               disabled={offboarding}
               title="Reinstate this former client as active"
               style={{
-                fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
+                fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
                 background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe',
                 cursor: offboarding ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif",
               }}
@@ -346,7 +346,7 @@ export default function ClientDetailView() {
               disabled={offboarding}
               title="Mark as no longer a client — removes them from views and queues the BrightManager change for Sophie"
               style={{
-                fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
+                fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
                 background: '#fff', color: '#b91c1c', border: '1px solid #fecaca',
                 cursor: offboarding ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif",
               }}
@@ -359,7 +359,7 @@ export default function ClientDetailView() {
             disabled={archiving}
             title={entity.entity_status === 'archived' ? 'Restore this client to the active list' : 'Archive this client — hides it from the list, keeps its records'}
             style={{
-              fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
+              fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
               background: '#fff', color: entity.entity_status === 'archived' ? '#0e7fe0' : '#b91c1c',
               border: '1px solid ' + (entity.entity_status === 'archived' ? '#bfdbfe' : '#fecaca'),
               cursor: archiving ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif",
@@ -379,7 +379,7 @@ export default function ClientDetailView() {
               onClick={() => setActiveTab(t.id)}
               style={{
                 padding: '9px 16px', border: 'none', background: 'none', cursor: 'pointer',
-                fontFamily: "'Outfit', sans-serif", fontSize: 13.5, fontWeight: activeTab === t.id ? 700 : 500,
+                fontFamily: "'Outfit', sans-serif", fontSize: 14.5, fontWeight: activeTab === t.id ? 700 : 500,
                 color: activeTab === t.id ? '#0f172a' : '#64748b',
                 borderBottom: activeTab === t.id ? '2px solid #0e7fe0' : '2px solid transparent',
                 marginBottom: -1,
@@ -399,10 +399,10 @@ export default function ClientDetailView() {
 
       {offboardResult && (
         <div style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 12, padding: '12px 16px', marginBottom: 20, fontFamily: "'Outfit', sans-serif" }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
             Marked no longer a client
           </div>
-          <div style={{ fontSize: 12.5, color: '#7f1d1d' }}>
+          <div style={{ fontSize: 13.5, color: '#7f1d1d' }}>
             Removed from the clients list and billing views.
             {offboardResult.ch_stalled > 0 && ` ${offboardResult.ch_stalled} Companies House chase${offboardResult.ch_stalled === 1 ? '' : 's'} stopped.`}
             {offboardResult.onboardings_archived > 0 && ` ${offboardResult.onboardings_archived} onboarding${offboardResult.onboardings_archived === 1 ? '' : 's'} archived.`}
@@ -432,18 +432,18 @@ export default function ClientDetailView() {
           >
             <span style={{ fontSize: 20 }}>🚀</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a' }}>
+              <div style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a' }}>
                 Onboarding in progress
-                {ob.status !== 'active' && <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#fef3c7', color: '#92400e', textTransform: 'uppercase' }}>{ob.status.replace('_', ' ')}</span>}
+                {ob.status !== 'active' && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#fef3c7', color: '#92400e' }}>{ob.status.replace('_', ' ')}</span>}
               </div>
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+              <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
                 {ob.template?.name || 'Onboarding'} · {done}/{applicable.length} steps ({pct}%)
               </div>
             </div>
             <div style={{ width: 120, height: 6, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden', flexShrink: 0 }}>
               <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? '#059669' : '#0e7fe0' }} />
             </div>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: '#0e7fe0', whiteSpace: 'nowrap' }}>View onboarding →</span>
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0e7fe0', whiteSpace: 'nowrap' }}>View onboarding →</span>
           </div>
         );
       })}
@@ -480,7 +480,7 @@ export default function ClientDetailView() {
             <h3 style={sectionTitle}>Active Billing</h3>
             <button
               onClick={() => navigate(`/manage/billing/change?client=${encodeURIComponent(entity.name)}`)}
-              style={{ fontSize: 12, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0e7fe0', cursor: 'pointer', fontFamily: "'Outfit', sans-serif", fontWeight: 600 }}
+              style={{ fontSize: 13, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0e7fe0', cursor: 'pointer', fontFamily: "'Outfit', sans-serif", fontWeight: 600 }}
               title="Open this client in the billing Change matrix"
             >
               Manage billing
@@ -489,20 +489,20 @@ export default function ClientDetailView() {
           {approvedServices.length > 0 ? (
             <>
               <div style={{ display: 'flex', gap: 20, marginBottom: 12, flexWrap: 'wrap' }}>
-                <div><div style={{ fontSize: 10, color: '#94a3b8' }}>Monthly</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalMonthly)}</div></div>
-                <div><div style={{ fontSize: 10, color: '#94a3b8' }}>Annual fees (pure)</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f766e' }}>{fmt(totalAnnualFees)}</div></div>
-                <div><div style={{ fontSize: 10, color: '#94a3b8' }}>Annualised (×12 + annual)</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalAnnual)}</div></div>
+                <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Monthly</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalMonthly)}</div></div>
+                <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Annual fees (pure)</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f766e' }}>{fmt(totalAnnualFees)}</div></div>
+                <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Annualised (×12 + annual)</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalAnnual)}</div></div>
               </div>
               {approvedServices.map((s, idx) => (
-                <div key={`${s.row_id}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <div key={`${s.row_id}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
                   <span style={{ color: '#1e293b' }}>
                     {s.service_id || s.description || 'Service'}
-                    {s.fromTemplate && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600, padding: '1px 5px', borderRadius: 4, background: '#ccfbf1', color: '#115e59' }}>QBO TEMPLATE</span>}
+                    {s.fromTemplate && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 4, background: '#ccfbf1', color: '#115e59' }}>QBO TEMPLATE</span>}
                     {(() => {
                       const ub = underBillingOf(s);
                       return ub && (
                         <span
-                          style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
+                          style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
                           title={`Below the standard minimum of ${fmt(ub.min)}/yr — under by ${fmt(ub.under)}/yr`}
                         >
                           Under {fmt(ub.under)}/yr
@@ -529,7 +529,7 @@ export default function ClientDetailView() {
                 onChange={setAllocations}
               />
             </>
-          ) : <p style={{ fontSize: 13, color: '#cbd5e1' }}>No active billing.</p>}
+          ) : <p style={{ fontSize: 14, color: '#cbd5e1' }}>No active billing.</p>}
         </div>
       )}
 
@@ -540,13 +540,13 @@ export default function ClientDetailView() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={() => navigate(`/manage/quotes/new?entity=${entity.id}`)}
-                style={{ fontSize: 12, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+                style={{ fontSize: 13, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
               >
                 New quote
               </button>
               <button
                 onClick={() => navigate(`/manage/quotes/new?entity=${entity.id}&seed=source`)}
-                style={{ fontSize: 12, padding: '5px 10px', border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+                style={{ fontSize: 13, padding: '5px 10px', border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
                 title="Start a quote seeded from another client's recurring bill pricing"
               >
                 New quote from another client's pricing
@@ -554,15 +554,15 @@ export default function ClientDetailView() {
             </div>
           </div>
           {quotes.map((q) => (
-            <div key={q.id} onClick={() => navigate(`/manage/quotes/${q.id}`)} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '5px 0', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}>
+            <div key={q.id} onClick={() => navigate(`/manage/quotes/${q.id}`)} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}>
               <span style={{ fontWeight: 500, color: '#0f172a' }}>{q.quote_ref}</span>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: '#64748b' }}>{fmt(q.monthly_gross)}/mo</span>
+                <span style={{ fontSize: 12, color: '#64748b' }}>{fmt(q.monthly_gross)}/mo</span>
                 <Badge bg={q.status === 'accepted' ? '#f0fdf4' : q.status === 'sent' ? '#f5f3ff' : '#f1f5f9'} color={q.status === 'accepted' ? '#059669' : q.status === 'sent' ? '#7c3aed' : '#64748b'}>{q.status}</Badge>
               </div>
             </div>
           ))}
-          {quotes.length === 0 && <p style={{ fontSize: 13, color: '#cbd5e1' }}>No quotes.</p>}
+          {quotes.length === 0 && <p style={{ fontSize: 14, color: '#cbd5e1' }}>No quotes.</p>}
         </div>
       )}
 
@@ -570,24 +570,24 @@ export default function ClientDetailView() {
         <div style={{ ...cardStyle, marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
             <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Time Logged</h3>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#64748b' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#64748b' }}>
               Period
-              <select value={timePeriod} onChange={(e) => setTimePeriod(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
+              <select value={timePeriod} onChange={(e) => setTimePeriod(e.target.value)} style={{ padding: '4px 8px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
                 {TIME_PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
             </label>
           </div>
           <div style={{ fontSize: 20, fontWeight: 700, color: '#d97706', marginTop: 12, marginBottom: 12 }}>{durFmt(totalCompleted)}</div>
           {filteredCompleted.length > 0 ? filteredCompleted.slice(0, 20).map((t) => (
-            <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
+            <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
               <span style={{ color: '#1e293b' }}>{t.title}</span>
               <div style={{ display: 'flex', gap: 8 }}>
                 <span style={{ color: '#64748b' }}>{t.service}</span>
                 <span style={{ fontWeight: 500 }}>{durFmt(t.completion_mins)}</span>
-                <span style={{ color: '#94a3b8', fontSize: 11 }}>{new Date(t.completed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                <span style={{ color: '#94a3b8', fontSize: 12 }}>{new Date(t.completed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
               </div>
             </div>
-          )) : <p style={{ fontSize: 13, color: '#cbd5e1' }}>No completed work in this period.</p>}
+          )) : <p style={{ fontSize: 14, color: '#cbd5e1' }}>No completed work in this period.</p>}
         </div>
       )}
 
@@ -597,17 +597,17 @@ export default function ClientDetailView() {
           {issues.slice(0, 10).map((iss) => {
             const isOpen = iss.status === 'open';
             return (
-              <div key={iss.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
+              <div key={iss.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
                 <span style={{ fontWeight: 500, color: isOpen ? '#0f172a' : '#94a3b8', textDecoration: isOpen ? 'none' : 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{iss.title || iss.description}</span>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
                   <Badge bg={isOpen ? '#fef2f2' : '#f0fdf4'} color={isOpen ? '#dc2626' : '#059669'}>{(iss.stage || iss.status)?.replace(/_/g, ' ')}</Badge>
-                  {iss.priority && <span style={{ fontSize: 10, color: '#94a3b8' }}>{iss.priority}</span>}
+                  {iss.priority && <span style={{ fontSize: 11, color: '#94a3b8' }}>{iss.priority}</span>}
                 </div>
               </div>
             );
           })}
-          {issues.length === 0 && <p style={{ fontSize: 13, color: '#cbd5e1' }}>No issues.</p>}
-          <a href="/triage/list" onClick={(e) => { e.preventDefault(); navigate('/triage/list'); }} style={{ display: 'inline-block', marginTop: 8, fontSize: 12, color: '#0e7fe0', fontWeight: 600, textDecoration: 'none' }}>Open Triage →</a>
+          {issues.length === 0 && <p style={{ fontSize: 14, color: '#cbd5e1' }}>No issues.</p>}
+          <a href="/triage/list" onClick={(e) => { e.preventDefault(); navigate('/triage/list'); }} style={{ display: 'inline-block', marginTop: 8, fontSize: 13, color: '#0e7fe0', fontWeight: 600, textDecoration: 'none' }}>Open Triage →</a>
         </div>
       )}
 
@@ -615,15 +615,15 @@ export default function ClientDetailView() {
         <div style={{ ...cardStyle, marginBottom: 20 }}>
           <h3 style={sectionTitle}>Outstanding Actions ({tasks.length})</h3>
           {tasks.map((t) => (
-            <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
+            <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
               <span style={{ fontWeight: 500, color: '#0f172a' }}>{t.title}</span>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span style={{ color: '#64748b' }}>{t.service}</span>
-                <span style={{ fontSize: 10, color: '#94a3b8' }}>{new Date(t.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(t.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
               </div>
             </div>
           ))}
-          {tasks.length === 0 && <p style={{ fontSize: 13, color: '#cbd5e1' }}>No outstanding actions.</p>}
+          {tasks.length === 0 && <p style={{ fontSize: 14, color: '#cbd5e1' }}>No outstanding actions.</p>}
         </div>
       )}
 
@@ -631,7 +631,7 @@ export default function ClientDetailView() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
         <div style={cardStyle}>
           <h3 style={sectionTitle}>Client Details</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: 13 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: 14 }}>
             <DetailRow label="Name" value={entity.name} />
             <DetailRow label="Type" value={entity.type?.replace('_', ' ')} />
             <EditableRow label="Company No." field="company_number" entity={entity} setEntity={setEntity} profile={profile} placeholder="e.g. SC123456" overrides={fieldOverrides} setOverrides={setFieldOverrides} />
@@ -667,18 +667,18 @@ export default function ClientDetailView() {
       {/* Raise Action */}
       <div style={cardStyle}>
         <h3 style={sectionTitle}>Raise Action</h3>
-        <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>Create a task in the Work Planner linked to this client.</p>
+        <p style={{ fontSize: 13, color: '#64748b', marginBottom: 10 }}>Create a task in the Work Planner linked to this client.</p>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input value={changeTaskText} onChange={(e) => setChangeTaskText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleRaiseAction(); }} placeholder="e.g. Chase outstanding documents, review fees..." disabled={taskCreating} style={{ flex: 1, minWidth: 200, padding: '9px 14px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 10, outline: 'none', fontFamily: "'Outfit', sans-serif" }} />
-          <select value={actionAssignee} onChange={(e) => setActionAssignee(e.target.value)} style={{ padding: '9px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
+          <input value={changeTaskText} onChange={(e) => setChangeTaskText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleRaiseAction(); }} placeholder="e.g. Chase outstanding documents, review fees..." disabled={taskCreating} style={{ flex: 1, minWidth: 200, padding: '9px 14px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 10, outline: 'none', fontFamily: "'Outfit', sans-serif" }} />
+          <select value={actionAssignee} onChange={(e) => setActionAssignee(e.target.value)} style={{ padding: '9px 10px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
             <option value="">Assign to...</option>
             {staffList.filter((s) => s.is_active !== false).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <button onClick={handleRaiseAction} disabled={!changeTaskText.trim() || taskCreating} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: !changeTaskText.trim() ? '#e5e7eb' : '#0f172a', color: !changeTaskText.trim() ? '#94a3b8' : '#fff', border: 'none', borderRadius: 10, cursor: !changeTaskText.trim() ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif", flexShrink: 0 }}>
+          <button onClick={handleRaiseAction} disabled={!changeTaskText.trim() || taskCreating} style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, background: !changeTaskText.trim() ? '#e5e7eb' : '#0f172a', color: !changeTaskText.trim() ? '#94a3b8' : '#fff', border: 'none', borderRadius: 10, cursor: !changeTaskText.trim() ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif", flexShrink: 0 }}>
             {taskCreating ? 'Creating...' : 'Raise Action'}
           </button>
         </div>
-        {taskCreated && <div style={{ marginTop: 8, fontSize: 12, color: '#059669', fontWeight: 500 }}>✓ Action created in Work Planner</div>}
+        {taskCreated && <div style={{ marginTop: 8, fontSize: 13, color: '#059669', fontWeight: 500 }}>✓ Action created in Work Planner</div>}
       </div>
       </>)}
     </div>
@@ -697,7 +697,7 @@ function dobLabel(y, m) {
 function PeopleList({ people, kind }) {
   if (!people || people.length === 0) {
     return (
-      <div style={{ ...cardStyle, textAlign: 'center', padding: '40px 24px', color: '#94a3b8', fontSize: 13 }}>
+      <div style={{ ...cardStyle, textAlign: 'center', padding: '40px 24px', color: '#94a3b8', fontSize: 14 }}>
         {kind === 'psc'
           ? 'No persons with significant control recorded. These come from the Companies House refresh.'
           : 'No directors recorded. These come from the Companies House refresh.'}
@@ -714,8 +714,8 @@ function PeopleList({ people, kind }) {
         return (
           <div key={person.id || i} style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{person.name || 'Unnamed'}</div>
-              <div style={{ fontSize: 12, color: '#64748b', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
+              <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>{person.name || 'Unnamed'}</div>
+              <div style={{ fontSize: 13, color: '#64748b', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
                 <span style={{ textTransform: 'capitalize' }}>{p.role || (kind === 'psc' ? 'PSC' : 'officer')}</span>
                 {kind === 'psc' && p.role_pct != null && <span>· {p.role_pct}%+ control</span>}
                 {dob && <span>· b. {dob}</span>}
@@ -724,12 +724,12 @@ function PeopleList({ people, kind }) {
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 10, color: '#94a3b8' }}>CH personal code</div>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>CH personal code</div>
               {code
-                ? <div style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 600, color: placeholder ? '#b45309' : '#0f172a' }}>
+                ? <div style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 600, color: placeholder ? '#b45309' : '#0f172a' }}>
                     {code}{placeholder ? ' ⚠' : ''}
                   </div>
-                : <div style={{ fontSize: 12.5, color: '#cbd5e1' }}>none on file</div>}
+                : <div style={{ fontSize: 13.5, color: '#cbd5e1' }}>none on file</div>}
             </div>
           </div>
         );
@@ -776,8 +776,8 @@ function EditableName({ entity, setEntity, profile }) {
           disabled={saving}
           style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 500, color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 8, padding: '2px 10px', minWidth: 320 }}
         />
-        <button onClick={save} disabled={saving} style={{ fontSize: 12, padding: '5px 10px', border: 'none', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>{saving ? '…' : 'Save'}</button>
-        <button onClick={() => setEditing(false)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Cancel</button>
+        <button onClick={save} disabled={saving} style={{ fontSize: 13, padding: '5px 10px', border: 'none', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>{saving ? '…' : 'Save'}</button>
+        <button onClick={() => setEditing(false)} style={{ fontSize: 13, background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Cancel</button>
       </div>
     );
   }
@@ -795,8 +795,8 @@ function EditableName({ entity, setEntity, profile }) {
 function DetailRow({ label, value }) {
   if (!value) return null;
   return (<>
-    <span style={{ fontSize: 12, color: '#94a3b8' }}>{label}</span>
-    <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 500 }}>{value}</span>
+    <span style={{ fontSize: 13, color: '#94a3b8' }}>{label}</span>
+    <span style={{ fontSize: 14, color: '#0f172a', fontWeight: 500 }}>{value}</span>
   </>);
 }
 
@@ -853,7 +853,7 @@ function EditableRow({ label, field, entity, setEntity, profile, placeholder, ov
   }
 
   return (<>
-    <span style={{ fontSize: 12, color: '#94a3b8' }}>{label}</span>
+    <span style={{ fontSize: 13, color: '#94a3b8' }}>{label}</span>
     {editing ? (
       <input
         autoFocus value={val} placeholder={placeholder || ''}
@@ -861,7 +861,7 @@ function EditableRow({ label, field, entity, setEntity, profile, placeholder, ov
         onBlur={(e) => save(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') save(e.currentTarget.value); if (e.key === 'Escape') setEditing(false); }}
         disabled={saving}
-        style={{ fontSize: 13, padding: '3px 8px', border: '1px solid #0e7fe0', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif", maxWidth: 220 }}
+        style={{ fontSize: 14, padding: '3px 8px', border: '1px solid #0e7fe0', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif", maxWidth: 220 }}
       />
     ) : (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -869,7 +869,7 @@ function EditableRow({ label, field, entity, setEntity, profile, placeholder, ov
           onClick={() => { setVal(current); setEditing(true); }}
           title={`Click to ${current ? 'edit' : 'add'} ${label}`}
           style={{
-            fontSize: 13, fontWeight: 500, cursor: 'pointer',
+            fontSize: 14, fontWeight: 500, cursor: 'pointer',
             color: current ? '#0f172a' : '#94a3b8',
             borderBottom: '1px dashed #cbd5e1',
           }}
@@ -879,7 +879,7 @@ function EditableRow({ label, field, entity, setEntity, profile, placeholder, ov
         {bmDiffers && (
           <span
             title={`BrightManager still shows "${ov.bm_value || '(blank)'}" — on Sophie's admin list to update in BM. Clears automatically once BM matches.`}
-            style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 6, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', whiteSpace: 'nowrap' }}
+            style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 6, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', whiteSpace: 'nowrap' }}
           >
             BM: {ov.bm_value || '—'}
           </span>
@@ -890,7 +890,7 @@ function EditableRow({ label, field, entity, setEntity, profile, placeholder, ov
 }
 
 function Badge({ bg, color, children }) {
-  return <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: bg, color, textTransform: 'capitalize', fontFamily: "'Outfit', sans-serif" }}>{children}</span>;
+  return <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: bg, color, textTransform: 'capitalize', fontFamily: "'Outfit', sans-serif" }}>{children}</span>;
 }
 
 // Compliance & deadlines strip: every open (state='planned') BrightManager job
@@ -922,12 +922,12 @@ function CompliancePanel({ jobs, navigate }) {
         {jobs.length > 0 && overdue.length === 0 && (
           <Badge bg="#f0fdf4" color="#059669">on track</Badge>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#cbd5e1', fontFamily: "'Outfit', sans-serif" }}>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#cbd5e1', fontFamily: "'Outfit', sans-serif" }}>
           {jobs.length > 0 ? `${jobs.length} open BrightManager job${jobs.length === 1 ? '' : 's'}` : 'from BrightManager'}
         </span>
       </div>
       {jobs.length === 0 && (
-        <p style={{ fontSize: 13, color: '#cbd5e1', margin: 0 }}>No open BrightManager jobs for this client.</p>
+        <p style={{ fontSize: 14, color: '#cbd5e1', margin: 0 }}>No open BrightManager jobs for this client.</p>
       )}
       {visible.map((j) => {
         const late = j.bm_deadline ? daysLate(j.bm_deadline) : null;
@@ -939,19 +939,19 @@ function CompliancePanel({ jobs, navigate }) {
             onClick={svc ? () => navigate(`/planner/ready?service=${svc}`) : undefined}
             style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
-              fontSize: 12, padding: '5px 0', borderBottom: '1px solid #f1f5f9',
+              fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9',
               cursor: svc ? 'pointer' : 'default',
             }}
             title={svc ? 'Open in the planner (Ready Now)' : undefined}
           >
             <span style={{ color: '#1e293b', fontWeight: isLate ? 600 : 400, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {j.bm_task_name}
-              {svc && <span style={{ marginLeft: 6, fontSize: 10, color: '#0e7fe0' }}>→ planner</span>}
+              {svc && <span style={{ marginLeft: 6, fontSize: 11, color: '#0e7fe0' }}>→ planner</span>}
             </span>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-              {j.service && <span style={{ color: '#94a3b8', fontSize: 11 }}>{j.service}</span>}
+              {j.service && <span style={{ color: '#94a3b8', fontSize: 12 }}>{j.service}</span>}
               {j.bm_status && <Badge bg="#f1f5f9" color="#64748b">{j.bm_status}</Badge>}
-              <span style={{ color: isLate ? '#dc2626' : '#64748b', fontWeight: isLate ? 700 : 400, fontFamily: 'monospace', fontSize: 11 }}>
+              <span style={{ color: isLate ? '#dc2626' : '#64748b', fontWeight: isLate ? 700 : 400, fontFamily: 'monospace', fontSize: 12 }}>
                 {j.bm_deadline
                   ? isLate
                     ? `${late}d late · due ${new Date(j.bm_deadline).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
@@ -965,7 +965,7 @@ function CompliancePanel({ jobs, navigate }) {
       {jobs.length > 8 && (
         <button
           onClick={() => setShowAll((v) => !v)}
-          style={{ marginTop: 8, fontSize: 12, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'Outfit', sans-serif" }}
+          style={{ marginTop: 8, fontSize: 13, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'Outfit', sans-serif" }}
         >
           {showAll ? 'Show fewer' : `Show all ${jobs.length}`}
         </button>
@@ -988,18 +988,18 @@ function EmailReconPanel({ recon }) {
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 20, fontFamily: "'Outfit', sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: 0 }}>Email reconciliation</h3>
-        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: m.bg, color: m.fg }}>{m.label}</span>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', margin: 0 }}>Email reconciliation</h3>
+        <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: m.bg, color: m.fg }}>{m.label}</span>
       </div>
-      <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 10px 0' }}>{m.msg}</p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13 }}>
+      <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 10px 0' }}>{m.msg}</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 14 }}>
         <div>
-          <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 2 }}>BM contact email</div>
-          <div style={{ fontFamily: 'monospace', fontSize: 12, color: recon.bm_contact_email ? '#1e293b' : '#cbd5e1' }}>{recon.bm_contact_email || '—'}</div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>BM contact email</div>
+          <div style={{ fontFamily: 'monospace', fontSize: 13, color: recon.bm_contact_email ? '#1e293b' : '#cbd5e1' }}>{recon.bm_contact_email || '—'}</div>
         </div>
         <div>
-          <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 2 }}>QBO billing email(s)</div>
-          <div style={{ fontFamily: 'monospace', fontSize: 12, color: qbo.length ? '#1e293b' : '#cbd5e1', wordBreak: 'break-word' }}>{qbo.length ? qbo.join(', ') : '—'}</div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>QBO billing email(s)</div>
+          <div style={{ fontFamily: 'monospace', fontSize: 13, color: qbo.length ? '#1e293b' : '#cbd5e1', wordBreak: 'break-word' }}>{qbo.length ? qbo.join(', ') : '—'}</div>
         </div>
       </div>
     </div>
@@ -1062,10 +1062,10 @@ function AllocationEditor({ entityId, billing, allocations, staff, onChange }) {
 
   return (
     <div style={{ marginTop: 18 }}>
-      <h4 style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+      <h4 style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 8 }}>
         Fee earner allocation
       </h4>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 8, fontSize: 11, color: '#94a3b8', paddingBottom: 4, borderBottom: '1px solid #f1f5f9' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 8, fontSize: 12, color: '#94a3b8', paddingBottom: 4, borderBottom: '1px solid #f1f5f9' }}>
         <span>Service</span>
         <span>Fee earner</span>
         <span>Fee earner manager</span>
@@ -1074,7 +1074,7 @@ function AllocationEditor({ entityId, billing, allocations, staff, onChange }) {
         const a = byService[sid] || {};
         return (
           <div key={sid} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f8fafc' }}>
-            <span style={{ fontSize: 12, color: '#1e293b', fontWeight: 500 }}>{sid}</span>
+            <span style={{ fontSize: 13, color: '#1e293b', fontWeight: 500 }}>{sid}</span>
             <select
               value={a.fee_earner_id || ''}
               onChange={(e) => persist(sid, { fee_earner_id: e.target.value || null })}
@@ -1099,7 +1099,7 @@ function AllocationEditor({ entityId, billing, allocations, staff, onChange }) {
 }
 
 const allocSelectStyle = {
-  fontSize: 12, padding: '4px 6px',
+  fontSize: 13, padding: '4px 6px',
   border: '1px solid #e5e7eb', borderRadius: 6,
   background: '#fff', color: '#1e293b',
   fontFamily: "'Outfit', sans-serif", outline: 'none',
@@ -1126,7 +1126,7 @@ function StatusEditor({ value, onChange }) {
         title="Change entity status"
         style={{
           appearance: 'none', WebkitAppearance: 'none',
-          fontSize: 10, fontWeight: 600,
+          fontSize: 11, fontWeight: 600,
           padding: '2px 22px 2px 8px', borderRadius: 6,
           background: current.bg, color: current.color,
           border: '1px solid transparent',
@@ -1140,7 +1140,7 @@ function StatusEditor({ value, onChange }) {
       </select>
       <span style={{
         position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-        pointerEvents: 'none', color: current.color, fontSize: 9,
+        pointerEvents: 'none', color: current.color, fontSize: 10,
       }}>▾</span>
     </div>
   );
@@ -1161,7 +1161,7 @@ function CadenceEditor({ value, onChange }) {
         onChange={(e) => onChange(e.target.value)}
         style={{
           appearance: 'none', WebkitAppearance: 'none',
-          fontSize: 10, fontWeight: 600,
+          fontSize: 11, fontWeight: 600,
           padding: '2px 22px 2px 8px', borderRadius: 6,
           background: current.bg, color: current.color,
           border: '1px solid transparent',
@@ -1175,7 +1175,7 @@ function CadenceEditor({ value, onChange }) {
       </select>
       <span style={{
         position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-        pointerEvents: 'none', color: current.color, fontSize: 9,
+        pointerEvents: 'none', color: current.color, fontSize: 10,
       }}>▾</span>
     </div>
   );
@@ -1188,13 +1188,12 @@ function ExpediteToggle({ value, onChange }) {
       onClick={() => onChange(!on)}
       title={on ? 'Expedite ON — work prioritised post-period-end. Click to turn off.' : 'Expedite OFF. Click to flag this client for fast turnaround.'}
       style={{
-        fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
         background: on ? '#fef3c7' : '#f1f5f9',
         color: on ? '#b45309' : '#64748b',
         border: '1px solid ' + (on ? '#fcd34d' : '#cbd5e1'),
         fontFamily: "'Outfit', sans-serif",
-        cursor: 'pointer', letterSpacing: 0.3, textTransform: 'uppercase',
-      }}
+        cursor: 'pointer', }}
     >
       {on ? '⚡ Expedite' : 'Expedite off'}
     </button>
@@ -1213,7 +1212,7 @@ function SummaryCard({ icon: Icon, label, value, accent, onClick, active }) {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
         <Icon size={14} style={{ color: accent }} />
-        <span style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{label}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</span>
       </div>
       <div style={{ fontSize: 18, fontWeight: 700, color: accent, fontFamily: "'Outfit', sans-serif" }}>{value}</div>
     </div>
@@ -1224,13 +1223,13 @@ function WorkStat({ icon: Icon, label, count, sub, onClick }) {
   return (
     <div onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', cursor: onClick ? 'pointer' : 'default', borderBottom: '1px solid #f1f5f9' }}>
       <Icon size={14} style={{ color: '#94a3b8', flexShrink: 0 }} />
-      <span style={{ fontSize: 12, color: '#1e293b', flex: 1 }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{count}</span>
-      {sub && <span style={{ fontSize: 11, color: '#64748b' }}>{sub}</span>}
+      <span style={{ fontSize: 13, color: '#1e293b', flex: 1 }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{count}</span>
+      {sub && <span style={{ fontSize: 12, color: '#64748b' }}>{sub}</span>}
     </div>
   );
 }
 
 const wrapStyle = { maxWidth: 960, margin: '0 auto', padding: '28px 24px', fontFamily: "'Outfit', sans-serif" };
 const cardStyle = { background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: '18px 22px' };
-const sectionTitle = { fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 600, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.03em', marginBottom: 12, marginTop: 0 };
+const sectionTitle = { fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 12, marginTop: 0 };

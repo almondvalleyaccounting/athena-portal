@@ -69,14 +69,14 @@ export default function BillingEmailReconciliationPage() {
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Email reconciliation
       </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 820, marginBottom: 14 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 820, marginBottom: 14 }}>
         BrightManager owns the <strong>contact email</strong> (one per client); QuickBooks owns the <strong>billing email(s)</strong> (a client can have several). Athena flags where the BM contact email isn't present in QBO billing, or where either side is missing.
       </p>
 
       <BillingTabs active="emails" />
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -88,7 +88,7 @@ export default function BillingEmailReconciliationPage() {
                   key={f.id}
                   onClick={() => setFilter(f.id)}
                   style={{
-                    fontSize: 12, padding: '5px 12px', borderRadius: 999, cursor: 'pointer',
+                    fontSize: 13, padding: '5px 12px', borderRadius: 999, cursor: 'pointer',
                     border: isActive ? '1px solid #0f172a' : '1px solid #e5e7eb',
                     background: isActive ? '#0f172a' : '#fff',
                     color: isActive ? '#fff' : '#475569', fontFamily: font,
@@ -103,10 +103,10 @@ export default function BillingEmailReconciliationPage() {
           </div>
 
           {visible.length === 0 ? (
-            <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>No clients match.</p>
+            <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>No clients match.</p>
           ) : (
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 160px 1.4fr 1.6fr', gap: 0, background: '#f8fafc', padding: '8px 14px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 160px 1.4fr 1.6fr', gap: 0, background: '#f8fafc', padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>
                 <span>Client</span>
                 <span>Status</span>
                 <span>BM contact email</span>
@@ -118,20 +118,20 @@ export default function BillingEmailReconciliationPage() {
                   <div
                     key={r.entity_id}
                     onClick={() => navigate(`/clients/${r.entity_id}`)}
-                    style={{ display: 'grid', gridTemplateColumns: '1.4fr 160px 1.4fr 1.6fr', gap: 0, padding: '10px 14px', fontSize: 13, borderTop: '1px solid #f1f5f9', cursor: 'pointer', alignItems: 'center' }}
+                    style={{ display: 'grid', gridTemplateColumns: '1.4fr 160px 1.4fr 1.6fr', gap: 0, padding: '10px 14px', fontSize: 14, borderTop: '1px solid #f1f5f9', cursor: 'pointer', alignItems: 'center' }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = '#f8fafc'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                   >
                     <span style={{ color: '#0f172a', fontWeight: 500 }}>{r.name}</span>
                     <span>
-                      <span title={meta.desc} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: meta.bg, color: meta.fg }}>
+                      <span title={meta.desc} style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: meta.bg, color: meta.fg }}>
                         {meta.label}
                       </span>
                     </span>
-                    <span style={{ color: r.bm_contact_email ? '#1e293b' : '#cbd5e1', fontFamily: 'monospace', fontSize: 12 }}>
+                    <span style={{ color: r.bm_contact_email ? '#1e293b' : '#cbd5e1', fontFamily: 'monospace', fontSize: 13 }}>
                       {r.bm_contact_email || '—'}
                     </span>
-                    <span style={{ color: (r.qbo_billing_emails || []).length ? '#1e293b' : '#cbd5e1', fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-word' }}>
+                    <span style={{ color: (r.qbo_billing_emails || []).length ? '#1e293b' : '#cbd5e1', fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-word' }}>
                       {(r.qbo_billing_emails || []).length ? r.qbo_billing_emails.join(', ') : '—'}
                     </span>
                   </div>

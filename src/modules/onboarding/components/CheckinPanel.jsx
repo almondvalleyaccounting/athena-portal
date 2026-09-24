@@ -7,7 +7,7 @@ import { sendOnboardingEmail, updateOnboarding } from '../api';
 
 const font = "'Outfit', sans-serif";
 const input = {
-  padding: '5px 8px', fontSize: 12, fontFamily: font, background: '#fff',
+  padding: '5px 8px', fontSize: 13, fontFamily: font, background: '#fff',
   border: '1px solid #cbd5e1', borderRadius: 7,
 };
 
@@ -63,7 +63,7 @@ export default function CheckinPanel({ ob, staff, onChanged }) {
     <div style={{ background: '#fff', border: `1px solid ${due ? tones.warning.border : '#e5e7eb'}`, borderRadius: 12, padding: '14px 18px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <HeartHandshake size={14} color="#64748b" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>
           3-month check-in
         </span>
         {ob.checkin_sent_at && <span style={chipStyle('success')}>sent</span>}
@@ -71,17 +71,17 @@ export default function CheckinPanel({ ob, staff, onChanged }) {
       </div>
 
       {ob.checkin_sent_at ? (
-        <div style={{ fontSize: 12.5, color: '#475569' }}>
+        <div style={{ fontSize: 13.5, color: '#475569' }}>
           Check-in email sent {new Date(ob.checkin_sent_at).toLocaleDateString('en-GB')} — watch for the client's reply.
         </div>
       ) : (
         <>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}>
             Gather a line of feedback from each area owner, then send the client a friendly
             "how's it all going?" email.
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ fontSize: 12, color: '#64748b' }}>Due</span>
+            <span style={{ fontSize: 13, color: '#64748b' }}>Due</span>
             <DateField
               style={input} value={ob.checkin_due || ''} title="Check-in due date"
               onCommit={(checkin_due) => save({ checkin_due })}
@@ -101,7 +101,7 @@ export default function CheckinPanel({ ob, staff, onChanged }) {
                 const ownerName = staffName(currentOwnerId);
                 return (
                   <div key={area}>
-                    <div style={{ fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
                       {area}{ownerName ? ` — ${ownerName}` : ''}
                     </div>
                     <textarea
@@ -119,13 +119,13 @@ export default function CheckinPanel({ ob, staff, onChanged }) {
           <button
             disabled={busy}
             onClick={sendCheckin}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', fontSize: 12, fontWeight: 600, fontFamily: font, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', fontSize: 13, fontWeight: 600, fontFamily: font, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}
           >
             <Send size={12} /> Send check-in email
           </button>
         </>
       )}
-      {msg && <div style={{ fontSize: 12, color: tones[msg.tone].fg, marginTop: 8 }}>{msg.text}</div>}
+      {msg && <div style={{ fontSize: 13, color: tones[msg.tone].fg, marginTop: 8 }}>{msg.text}</div>}
     </div>
   );
 }

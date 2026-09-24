@@ -68,11 +68,11 @@ export default function MFAChallenge({ onPassed }) {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a', fontFamily: "'Outfit', sans-serif" }}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 32, width: 380, boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 500, color: '#0f172a', margin: 0 }}>Two-factor verification</h1>
-        <p style={{ fontSize: 13, color: '#64748b', marginTop: 6, marginBottom: 20 }}>
+        <p style={{ fontSize: 14, color: '#64748b', marginTop: 6, marginBottom: 20 }}>
           Open your authenticator app and enter the 6-digit code for Athena.
         </p>
         {loading ? (
-          <p style={{ fontSize: 13, color: '#94a3b8' }}>Loading…</p>
+          <p style={{ fontSize: 14, color: '#94a3b8' }}>Loading…</p>
         ) : (
           <>
             <input
@@ -84,7 +84,7 @@ export default function MFAChallenge({ onPassed }) {
               inputMode="numeric"
               style={{ width: '100%', fontSize: 24, fontFamily: 'monospace', textAlign: 'center', letterSpacing: 6, padding: '12px 8px', border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none' }}
             />
-            {error && <p style={{ fontSize: 12, color: '#b91c1c', marginTop: 10 }}>{error}</p>}
+            {error && <p style={{ fontSize: 13, color: '#b91c1c', marginTop: 10 }}>{error}</p>}
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14, cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -92,7 +92,7 @@ export default function MFAChallenge({ onPassed }) {
                 onChange={(e) => setStaySignedIn(e.target.checked)}
                 style={{ marginTop: 2, cursor: 'pointer' }}
               />
-              <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
+              <span style={{ fontSize: 13, color: '#64748b', lineHeight: 1.45 }}>
                 Stay signed in on this device for {TRUSTED_DEVICE_DAYS} days.
                 <span style={{ display: 'block', color: '#94a3b8' }}>
                   Untick on a shared or borrowed machine and this browser signs out after {UNTRUSTED_SESSION_DAYS} days instead.
@@ -103,13 +103,13 @@ export default function MFAChallenge({ onPassed }) {
             <button
               onClick={handleVerify}
               disabled={verifying || code.length < 6 || !challengeId}
-              style={{ width: '100%', marginTop: 14, padding: '10px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: verifying || code.length < 6 ? 'not-allowed' : 'pointer', opacity: verifying || code.length < 6 ? 0.6 : 1 }}
+              style={{ width: '100%', marginTop: 14, padding: '10px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14.5, fontWeight: 600, cursor: verifying || code.length < 6 ? 'not-allowed' : 'pointer', opacity: verifying || code.length < 6 ? 0.6 : 1 }}
             >
               {verifying ? 'Verifying…' : 'Verify'}
             </button>
             <button
               onClick={handleSignOut}
-              style={{ width: '100%', marginTop: 10, padding: '8px 14px', background: 'none', color: '#94a3b8', border: 'none', fontSize: 12, cursor: 'pointer' }}
+              style={{ width: '100%', marginTop: 10, padding: '8px 14px', background: 'none', color: '#94a3b8', border: 'none', fontSize: 13, cursor: 'pointer' }}
             >
               Sign out
             </button>

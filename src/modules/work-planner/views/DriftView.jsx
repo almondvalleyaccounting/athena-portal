@@ -60,7 +60,7 @@ const card = {
 function Pill({ tone, children, title }) {
   return (
     <span title={title} style={{
-      display: 'inline-flex', alignItems: 'center', gap: '5px', fontFamily: FONT, fontSize: '11.5px',
+      display: 'inline-flex', alignItems: 'center', gap: '5px', fontFamily: FONT, fontSize: '12.5px',
       fontWeight: 600, color: tone.text, backgroundColor: tone.bg, border: `1px solid ${tone.border}`,
       borderRadius: '999px', padding: '2px 9px', whiteSpace: 'nowrap',
     }}>
@@ -73,7 +73,7 @@ function Pill({ tone, children, title }) {
 function SoftFlag({ icon: Icon, label, title }) {
   return (
     <span title={title} style={{
-      display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: FONT, fontSize: '11px',
+      display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: FONT, fontSize: '12px',
       fontWeight: 600, color: '#7c2d12', backgroundColor: '#fff7ed', border: '1px solid #fed7aa',
       borderRadius: '7px', padding: '2px 7px', whiteSpace: 'nowrap',
     }}>
@@ -87,11 +87,11 @@ function SoftFlag({ icon: Icon, label, title }) {
 function Frontier({ label, value, sub, muted }) {
   return (
     <div style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '9px 12px', minWidth: '132px' }}>
-      <div style={{ fontFamily: FONT, fontSize: '10.5px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
-      <div style={{ fontFamily: FONT, fontSize: '14px', fontWeight: 700, color: muted ? '#94a3b8' : '#0f172a' }}>
+      <div style={{ fontFamily: FONT, fontSize: '11.5px', color: '#94a3b8', marginBottom: '2px' }}>{label}</div>
+      <div style={{ fontFamily: FONT, fontSize: '14.5px', fontWeight: 700, color: muted ? '#94a3b8' : '#0f172a' }}>
         {value}
       </div>
-      {sub && <div style={{ fontFamily: FONT, fontSize: '10.5px', color: '#64748b', marginTop: '1px' }}>{sub}</div>}
+      {sub && <div style={{ fontFamily: FONT, fontSize: '11.5px', color: '#64748b', marginTop: '1px' }}>{sub}</div>}
     </div>
   );
 }
@@ -157,7 +157,7 @@ function DetailPanel({ row, staff, onAssign, onPause, onAcknowledge, onDismiss, 
       {notes.length > 0 && (
         <ul style={{ margin: '0 0 12px', paddingLeft: '18px' }}>
           {notes.map((n, i) => (
-            <li key={i} style={{ fontFamily: FONT, fontSize: '12.5px', color: '#475569', marginBottom: '3px' }}>{n}</li>
+            <li key={i} style={{ fontFamily: FONT, fontSize: '13.5px', color: '#475569', marginBottom: '3px' }}>{n}</li>
           ))}
         </ul>
       )}
@@ -170,7 +170,7 @@ function DetailPanel({ row, staff, onAssign, onPause, onAcknowledge, onDismiss, 
               <tr>
                 {['Account', 'Last transaction', 'Last reconciled', 'Balance'].map((h) => (
                   <th key={h} style={{
-                    fontFamily: FONT, fontSize: '10.5px', color: '#94a3b8', fontWeight: 600,
+                    fontFamily: FONT, fontSize: '11.5px', color: '#94a3b8', fontWeight: 600,
                     textAlign: h === 'Account' ? 'left' : 'right', padding: '4px 10px', whiteSpace: 'nowrap',
                   }}>{h}</th>
                 ))}
@@ -179,26 +179,26 @@ function DetailPanel({ row, staff, onAssign, onPause, onAcknowledge, onDismiss, 
             <tbody>
               {live.map((a) => (
                 <tr key={a.id}>
-                  <td style={{ fontFamily: FONT, fontSize: '12px', padding: '4px 10px', color: '#0f172a' }}>
+                  <td style={{ fontFamily: FONT, fontSize: '13px', padding: '4px 10px', color: '#0f172a' }}>
                     {a.name}
                     {!a.active && (
-                      <span style={{ color: '#94a3b8', fontSize: '11px' }}> · dormant</span>
+                      <span style={{ color: '#94a3b8', fontSize: '12px' }}> · dormant</span>
                     )}
                   </td>
                   <td style={{
-                    fontFamily: FONT, fontSize: '12px', padding: '4px 10px', textAlign: 'right',
+                    fontFamily: FONT, fontSize: '13px', padding: '4px 10px', textAlign: 'right',
                     color: a.days_since_txn > 45 ? '#c2410c' : '#475569', fontVariantNumeric: 'tabular-nums',
                   }}>
                     {shortDate(a.last_txn)}
                   </td>
                   <td style={{
-                    fontFamily: FONT, fontSize: '12px', padding: '4px 10px', textAlign: 'right',
+                    fontFamily: FONT, fontSize: '13px', padding: '4px 10px', textAlign: 'right',
                     color: a.last_reconciled ? '#475569' : '#b91c1c', fontVariantNumeric: 'tabular-nums',
                   }}>
                     {a.last_reconciled ? shortDate(a.last_reconciled) : 'never'}
                   </td>
                   <td style={{
-                    fontFamily: FONT, fontSize: '12px', padding: '4px 10px', textAlign: 'right',
+                    fontFamily: FONT, fontSize: '13px', padding: '4px 10px', textAlign: 'right',
                     color: '#475569', fontVariantNumeric: 'tabular-nums',
                   }}>
                     {Number(a.balance || 0).toLocaleString('en-GB', { style: 'currency', currency: 'GBP' })}
@@ -213,7 +213,7 @@ function DetailPanel({ row, staff, onAssign, onPause, onAcknowledge, onDismiss, 
       {/* Actions */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-          <span style={{ fontFamily: FONT, fontSize: '10.5px', color: '#94a3b8' }}>Owner</span>
+          <span style={{ fontFamily: FONT, fontSize: '11.5px', color: '#94a3b8' }}>Owner</span>
           <select
             value={row.assignee_id || ''}
             disabled={busy}
@@ -228,14 +228,14 @@ function DetailPanel({ row, staff, onAssign, onPause, onAcknowledge, onDismiss, 
         {row.books_owner === 'us' && row.case_id && (
           <>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              <span style={{ fontFamily: FONT, fontSize: '10.5px', color: '#94a3b8' }}>Why is it behind?</span>
+              <span style={{ fontFamily: FONT, fontSize: '11.5px', color: '#94a3b8' }}>Why is it behind?</span>
               <select value={reason} onChange={(e) => setReason(e.target.value)} style={inputStyle}>
                 <option value="">Choose a reason…</option>
                 {REASONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
               </select>
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              <span style={{ fontFamily: FONT, fontSize: '10.5px', color: '#94a3b8' }}>Caught up by</span>
+              <span style={{ fontFamily: FONT, fontSize: '11.5px', color: '#94a3b8' }}>Caught up by</span>
               <input type="date" value={promised} onChange={(e) => setPromised(e.target.value)} style={inputStyle} />
             </label>
             <input
@@ -260,7 +260,7 @@ function DetailPanel({ row, staff, onAssign, onPause, onAcknowledge, onDismiss, 
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end', marginTop: '10px' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-          <span style={{ fontFamily: FONT, fontSize: '10.5px', color: '#94a3b8' }}>Pause until</span>
+          <span style={{ fontFamily: FONT, fontSize: '11.5px', color: '#94a3b8' }}>Pause until</span>
           <input type="date" value={pauseUntil} onChange={(e) => setPauseUntil(e.target.value)} style={inputStyle} />
         </label>
         <input
@@ -292,15 +292,15 @@ function DetailPanel({ row, staff, onAssign, onPause, onAcknowledge, onDismiss, 
 }
 
 const inputStyle = {
-  fontFamily: FONT, fontSize: '12.5px', padding: '6px 9px', borderRadius: '8px',
+  fontFamily: FONT, fontSize: '13.5px', padding: '6px 9px', borderRadius: '8px',
   border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#0f172a',
 };
 const btnGhost = {
-  fontFamily: FONT, fontSize: '12.5px', fontWeight: 600, padding: '6px 12px', borderRadius: '8px',
+  fontFamily: FONT, fontSize: '13.5px', fontWeight: 600, padding: '6px 12px', borderRadius: '8px',
   border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#475569', cursor: 'pointer',
 };
 const btnPrimary = (disabled) => ({
-  fontFamily: FONT, fontSize: '12.5px', fontWeight: 600, padding: '6px 14px', borderRadius: '8px',
+  fontFamily: FONT, fontSize: '13.5px', fontWeight: 600, padding: '6px 14px', borderRadius: '8px',
   border: 'none', backgroundColor: disabled ? '#cbd5e1' : '#0ea5e9', color: '#fff',
   cursor: disabled ? 'not-allowed' : 'pointer',
 });
@@ -325,12 +325,12 @@ function Row({ row, open, onToggle, children }) {
 
         <div style={{ minWidth: 0, flex: '1 1 220px' }}>
           <div style={{
-            fontFamily: FONT, fontSize: '13.5px', fontWeight: 600, color: '#0f172a',
+            fontFamily: FONT, fontSize: '14.5px', fontWeight: 600, color: '#0f172a',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {row.entity_name}
           </div>
-          <div style={{ fontFamily: FONT, fontSize: '11.5px', color: '#94a3b8' }}>
+          <div style={{ fontFamily: FONT, fontSize: '12.5px', color: '#94a3b8' }}>
             {/* "Reconciled to —" reads as missing data. Say what it is. */}
             {row.frontier_basis === 'posted'
               ? `Posted to ${shortDate(row.posted_to)}`
@@ -363,7 +363,7 @@ function Row({ row, open, onToggle, children }) {
           )}
           {row.hygiene_score > 0 && (
             <span title={`${row.hygiene_score} hygiene flags`} style={{
-              fontFamily: FONT, fontSize: '11px', fontWeight: 600, color: '#64748b',
+              fontFamily: FONT, fontSize: '12px', fontWeight: 600, color: '#64748b',
               backgroundColor: '#f1f5f9', borderRadius: '7px', padding: '2px 7px',
             }}>
               Hygiene {row.hygiene_score}
@@ -401,10 +401,10 @@ function LinkPanel({ rows, entities, onLink, onDismiss, onRescan }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <Link2 size={16} color="#c2410c" />
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: FONT, fontSize: '13.5px', fontWeight: 700, color: '#7c2d12' }}>
+          <div style={{ fontFamily: FONT, fontSize: '14.5px', fontWeight: 700, color: '#7c2d12' }}>
             {pending.length} QuickBooks {pending.length === 1 ? 'file is' : 'files are'} not linked to a client
           </div>
-          <div style={{ fontFamily: FONT, fontSize: '11.5px', color: '#9a3412' }}>
+          <div style={{ fontFamily: FONT, fontSize: '12.5px', color: '#9a3412' }}>
             They can't be watched until they are.
             {byState.former_client_only ? ` ${byState.former_client_only} match only a former client — worth revoking.` : ''}
           </div>
@@ -421,10 +421,10 @@ function LinkPanel({ rows, entities, onLink, onDismiss, onRescan }) {
               padding: '8px 10px', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #f1f5f9',
             }}>
               <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-                <div style={{ fontFamily: FONT, fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+                <div style={{ fontFamily: FONT, fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>
                   {r.company_name}
                 </div>
-                <div style={{ fontFamily: FONT, fontSize: '11px', color: '#94a3b8' }}>
+                <div style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>
                   {r.review_state === 'former_client_only' ? 'Only matches a former client'
                     : r.review_state === 'ambiguous' ? 'Several clients share this name'
                     : r.review_state === 'suggested' ? 'One likely match'
@@ -480,10 +480,10 @@ function NudgeQueue({ nudges, staff, armed }) {
     <div style={{ ...card, marginBottom: '14px', borderColor: '#ddd6fe', backgroundColor: '#faf5ff' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: FONT, fontSize: '13.5px', fontWeight: 700, color: '#5b21b6' }}>
+          <div style={{ fontFamily: FONT, fontSize: '14.5px', fontWeight: 700, color: '#5b21b6' }}>
             {nudges.length} {nudges.length === 1 ? 'nudge is' : 'nudges are'} queued and {armed ? 'will send' : 'held'}
           </div>
-          <div style={{ fontFamily: FONT, fontSize: '11.5px', color: '#6d28d9' }}>
+          <div style={{ fontFamily: FONT, fontSize: '12.5px', color: '#6d28d9' }}>
             {Object.entries(byRecipient)
               .map(([id, list]) => `${nameOf(id).split(' ')[0]} ${list.length}`)
               .join(' · ')}
@@ -496,7 +496,7 @@ function NudgeQueue({ nudges, staff, armed }) {
         <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {Object.entries(byRecipient).map(([id, list]) => (
             <div key={id}>
-              <div style={{ fontFamily: FONT, fontSize: '12px', fontWeight: 700, color: '#0f172a', margin: '6px 0 4px' }}>
+              <div style={{ fontFamily: FONT, fontSize: '13px', fontWeight: 700, color: '#0f172a', margin: '6px 0 4px' }}>
                 To {nameOf(id)}
               </div>
               {list.map((n) => (
@@ -504,10 +504,10 @@ function NudgeQueue({ nudges, staff, armed }) {
                   padding: '8px 10px', backgroundColor: '#fff', borderRadius: '10px',
                   border: '1px solid #f1f5f9', marginBottom: '5px',
                 }}>
-                  <div style={{ fontFamily: FONT, fontSize: '12.5px', fontWeight: 600, color: '#0f172a' }}>
+                  <div style={{ fontFamily: FONT, fontSize: '13.5px', fontWeight: 600, color: '#0f172a' }}>
                     {n.subject}
                   </div>
-                  <div style={{ fontFamily: FONT, fontSize: '11.5px', color: '#64748b', whiteSpace: 'pre-line' }}>
+                  <div style={{ fontFamily: FONT, fontSize: '12.5px', color: '#64748b', whiteSpace: 'pre-line' }}>
                     {n.body}
                   </div>
                 </div>
@@ -531,8 +531,8 @@ function Section({ title, subtitle, rows, expanded, setExpanded, detailProps, st
         borderBottom: '1px solid #f1f5f9',
       }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: FONT, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>{title}</div>
-          <div style={{ fontFamily: FONT, fontSize: '11.5px', color: '#94a3b8' }}>{subtitle}</div>
+          <div style={{ fontFamily: FONT, fontSize: '14.5px', fontWeight: 700, color: '#0f172a' }}>{title}</div>
+          <div style={{ fontFamily: FONT, fontSize: '12.5px', color: '#94a3b8' }}>{subtitle}</div>
         </div>
         <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
           {['critical', 'breach', 'watch', 'unknown', 'ok'].map((k) => (
@@ -542,7 +542,7 @@ function Section({ title, subtitle, rows, expanded, setExpanded, detailProps, st
       </div>
 
       {rows.length === 0 ? (
-        <div style={{ padding: '22px', textAlign: 'center', fontFamily: FONT, fontSize: '13px', color: '#94a3b8' }}>
+        <div style={{ padding: '22px', textAlign: 'center', fontFamily: FONT, fontSize: '14px', color: '#94a3b8' }}>
           Nothing here.
         </div>
       ) : rows.map((r) => (
@@ -675,14 +675,14 @@ export default function DriftView() {
     <div style={{ padding: '4px 0 30px' }}>
       {error && (
         <div style={{ ...card, marginBottom: '14px', borderColor: '#fecaca', backgroundColor: '#fef2f2' }}>
-          <span style={{ fontFamily: FONT, fontSize: '13px', color: '#b91c1c' }}>{error}</span>
+          <span style={{ fontFamily: FONT, fontSize: '14px', color: '#b91c1c' }}>{error}</span>
         </div>
       )}
 
       {/* Nudges are built but held. Say so plainly wherever the board is used. */}
       {settings && !settings.nudges_armed && (
         <div style={{ ...card, marginBottom: '14px', borderColor: '#ddd6fe', backgroundColor: '#faf5ff', padding: '10px 14px' }}>
-          <span style={{ fontFamily: FONT, fontSize: '12.5px', color: '#6d28d9' }}>
+          <span style={{ fontFamily: FONT, fontSize: '13.5px', color: '#6d28d9' }}>
             <strong>Nudges are held.</strong> Cases open and messages queue with their real recipient and wording,
             but nothing is sent until they're armed. Review the queue first.
           </span>
@@ -701,15 +701,15 @@ export default function DriftView() {
 
       {canApproveTier && suggestions.length > 0 && (
         <div style={{ ...card, marginBottom: '14px', borderColor: '#bfdbfe', backgroundColor: '#f8fbff' }}>
-          <div style={{ fontFamily: FONT, fontSize: '13.5px', fontWeight: 700, color: '#1e3a8a', marginBottom: '8px' }}>
+          <div style={{ fontFamily: FONT, fontSize: '14.5px', fontWeight: 700, color: '#1e3a8a', marginBottom: '8px' }}>
             {suggestions.length} priority {suggestions.length === 1 ? 'suggestion' : 'suggestions'} waiting on you
           </div>
           {suggestions.map((s) => (
             <div key={s.entity_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '5px 0', flexWrap: 'wrap' }}>
-              <span style={{ fontFamily: FONT, fontSize: '13px', fontWeight: 600, color: '#0f172a', flex: '1 1 180px' }}>
+              <span style={{ fontFamily: FONT, fontSize: '14px', fontWeight: 600, color: '#0f172a', flex: '1 1 180px' }}>
                 {s.entity_name}
               </span>
-              <span style={{ fontFamily: FONT, fontSize: '12px', color: '#64748b', flex: '2 1 260px' }}>
+              <span style={{ fontFamily: FONT, fontSize: '13px', color: '#64748b', flex: '2 1 260px' }}>
                 {s.tier_suggested_why}
               </span>
               <button onClick={() => setTier(s, s.tier_suggested, true)} style={btnPrimary(false)}>
@@ -748,7 +748,7 @@ export default function DriftView() {
         staff={staff}
       />
 
-      <p style={{ fontFamily: FONT, fontSize: '11px', color: '#94a3b8', margin: '4px 2px 0', maxWidth: '760px' }}>
+      <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8', margin: '4px 2px 0', maxWidth: '760px' }}>
         Transactions still sitting in QuickBooks' bank-feed “For Review” queue are not counted anywhere on this page —
         QuickBooks doesn't expose that queue to the API. Everything here reflects what has been posted. The volume and
         feed-gap flags exist to catch what posting alone can't show.

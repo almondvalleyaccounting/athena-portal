@@ -202,7 +202,7 @@ export default function EntriesView() {
         <div style={{ flex: 1 }} />
         <span style={labelStyle}>From</span>
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...selectStyle, width: 135 }} />
-        <span style={{ color: '#94a3b8', fontSize: 12 }}>to</span>
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>to</span>
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...selectStyle, width: 135 }} />
         <button onClick={exportCsv} disabled={!sorted.length} style={{ ...navBtn, gap: 5, opacity: sorted.length ? 1 : 0.4 }}>
           <Download size={13} /> Export CSV
@@ -231,17 +231,17 @@ export default function EntriesView() {
             style={{ ...selectStyle, width: '100%', boxSizing: 'border-box', paddingLeft: 26 }}
           />
         </div>
-        <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 12.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
           {sorted.length} {sorted.length === 1 ? 'entry' : 'entries'}
         </span>
       </div>
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading entries...</div>
+        <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading entries...</div>
       ) : (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
                   <SortHeader colKey="date" label="Date" />
@@ -256,7 +256,7 @@ export default function EntriesView() {
               <tbody>
                 {sorted.length === 0 && (
                   <tr>
-                    <td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#cbd5e1', fontSize: 13 }}>
+                    <td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#cbd5e1', fontSize: 14 }}>
                       No entries for this range and filters.
                     </td>
                   </tr>
@@ -273,7 +273,7 @@ export default function EntriesView() {
                     >
                       <td style={{ ...tdStyle, whiteSpace: 'nowrap', color: '#64748b' }}>
                         {e._date ? new Date(e._date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-                        {locked && <span style={{ marginLeft: 6, fontSize: 10, color: '#94a3b8' }}>🔒</span>}
+                        {locked && <span style={{ marginLeft: 6, fontSize: 11, color: '#94a3b8' }}>🔒</span>}
                       </td>
                       <td style={{ ...tdStyle, color: '#0f172a', fontWeight: 500 }}>{staffMap[e._staff]?.name || '—'}</td>
                       <td style={tdStyle}>
@@ -291,7 +291,7 @@ export default function EntriesView() {
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>{minutesToHMM(e._mins)}</td>
                       <td style={tdStyle}>
                         <span style={{
-                          fontSize: 10, fontWeight: 600, color: SOURCE_COLOURS[e._source] || '#64748b',
+                          fontSize: 11, fontWeight: 600, color: SOURCE_COLOURS[e._source] || '#64748b',
                           background: `${SOURCE_COLOURS[e._source] || '#64748b'}14`,
                           padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', letterSpacing: '0.03em',
                         }}>
@@ -311,10 +311,10 @@ export default function EntriesView() {
                     <td colSpan={4} style={{ ...tdStyle, fontWeight: 600, color: '#64748b' }}>
                       Total — {sorted.length} {sorted.length === 1 ? 'entry' : 'entries'}
                     </td>
-                    <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#0e7fe0', fontSize: 13.5, whiteSpace: 'nowrap' }}>
+                    <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#0e7fe0', fontSize: 14.5, whiteSpace: 'nowrap' }}>
                       {minutesToHMM(totalMinutes)}
                     </td>
-                    <td colSpan={2} style={{ ...tdStyle, color: '#94a3b8', fontSize: 11 }}>
+                    <td colSpan={2} style={{ ...tdStyle, color: '#94a3b8', fontSize: 12 }}>
                       {(totalMinutes / 60).toFixed(1)} hours
                     </td>
                   </tr>
@@ -363,16 +363,16 @@ function EditEntryModal({ row, staffName, clientName, onClose, onSaved }) {
   };
 
   const F = "'Outfit', sans-serif";
-  const inp = { width: '100%', boxSizing: 'border-box', padding: '8px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: F, outline: 'none' };
-  const lbl = { fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 5 };
+  const inp = { width: '100%', boxSizing: 'border-box', padding: '8px 12px', fontSize: 14, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: F, outline: 'none' };
+  const lbl = { fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 5 };
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: 20, width: 440, maxWidth: '94vw', fontFamily: F }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>Edit timesheet entry</div>
-        <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 14 }}>
+        <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>Edit timesheet entry</div>
+        <div style={{ fontSize: 13.5, color: '#64748b', marginBottom: 14 }}>
           {staffName} · {clientName} · {row._date ? new Date(row._date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
         </div>
-        {err && <div style={{ fontSize: 12.5, color: '#b91c1c', marginBottom: 10 }}>{err}</div>}
+        {err && <div style={{ fontSize: 13.5, color: '#b91c1c', marginBottom: 10 }}>{err}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div>
             <div style={lbl}>Minutes</div>
@@ -391,10 +391,10 @@ function EditEntryModal({ row, staffName, clientName, onClose, onSaved }) {
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={remove} disabled={busy} style={{ padding: '8px 12px', fontSize: 12.5, fontWeight: 600, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>Delete</button>
+          <button onClick={remove} disabled={busy} style={{ padding: '8px 12px', fontSize: 13.5, fontWeight: 600, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>Delete</button>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <button onClick={onClose} disabled={busy} style={{ padding: '8px 14px', fontSize: 13, color: '#334155', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>Cancel</button>
-            <button onClick={save} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>{busy ? 'Saving…' : 'Save'}</button>
+            <button onClick={onClose} disabled={busy} style={{ padding: '8px 14px', fontSize: 14, color: '#334155', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>Cancel</button>
+            <button onClick={save} disabled={busy} style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>{busy ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
       </div>
@@ -402,8 +402,8 @@ function EditEntryModal({ row, staffName, clientName, onClose, onSaved }) {
   );
 }
 
-const thStyle = { padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#64748b', borderBottom: '2px solid #e5e7eb', fontFamily: "'Outfit', sans-serif", textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'left' };
-const tdStyle = { padding: '8px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif" };
-const navBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '5px 10px', fontSize: 13, fontWeight: 500, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#1e293b', cursor: 'pointer', whiteSpace: 'nowrap' };
-const selectStyle = { padding: '5px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
-const labelStyle = { fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.03em' };
+const thStyle = { padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#64748b', borderBottom: '2px solid #e5e7eb', fontFamily: "'Outfit', sans-serif", textAlign: 'left' };
+const tdStyle = { padding: '8px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif" };
+const navBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '5px 10px', fontSize: 14, fontWeight: 500, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#1e293b', cursor: 'pointer', whiteSpace: 'nowrap' };
+const selectStyle = { padding: '5px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
+const labelStyle = { fontSize: 12, fontWeight: 600, color: '#94a3b8' };

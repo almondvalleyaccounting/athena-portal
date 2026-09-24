@@ -248,7 +248,7 @@ export default function IncomeView({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
         <H2>
           Income analysis
-          <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>
             · {filterLabel(filter, entities, groups)} · Y{year}
           </span>
         </H2>
@@ -256,7 +256,7 @@ export default function IncomeView({
           {onFilterChange && (
             <LocationFilter entities={entities} groups={groups} assignments={assignments} value={filter} onChange={onFilterChange} />
           )}
-          <div style={{ display: 'flex', gap: 4, fontSize: 11 }}>
+          <div style={{ display: 'flex', gap: 4, fontSize: 12 }}>
             {Array.from({ length: horizonYears }, (_, i) => i + 1).map(y => (
               <button key={y} onClick={() => setYear(y)} style={{
                 padding: '5px 10px', borderRadius: 6,
@@ -272,7 +272,7 @@ export default function IncomeView({
 
       {/* Summary cascade table */}
       <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 10, background: '#fff' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack, fontSize: 12, tableLayout: 'fixed' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack, fontSize: 13, tableLayout: 'fixed' }}>
           <colgroup>
             <col style={{ width: '11%' }} />
             <col style={{ width: '6%' }} />
@@ -313,7 +313,7 @@ export default function IncomeView({
               }}>
                 <td style={td}>
                   <strong>{r.label}</strong>
-                  <div style={{ fontSize: 10, color: colors.muted }}>
+                  <div style={{ fontSize: 11, color: colors.muted }}>
                     Eligible {fmtPct(r.eligPct)} · Take-up {fmtPct(r.takePct)}
                   </div>
                 </td>
@@ -356,10 +356,10 @@ export default function IncomeView({
 
       {/* Tie-out vs engine */}
       <div style={{ marginTop: 18, padding: '10px 14px', background: colors.bgSoft, border: `1px solid ${colors.border}`, borderRadius: 10 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: colors.muted, marginBottom: 6 }}>
           Tie-out vs engine
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack, fontSize: 11 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack, fontSize: 12 }}>
           <thead>
             <tr style={{ color: colors.muted }}>
               <th style={{ ...th, padding: '4px 8px' }}>Source</th>
@@ -377,7 +377,7 @@ export default function IncomeView({
             </tr>
           </tbody>
         </table>
-        <p style={{ fontSize: 10, color: colors.muted, margin: '6px 0 0' }}>
+        <p style={{ fontSize: 11, color: colors.muted, margin: '6px 0 0' }}>
           The cascade is anchored to the engine's emitted revenue (LA / private per band) and back-derives
           hours and effective children from there, so totals tie to the P&amp;L exactly.
         </p>
@@ -436,17 +436,17 @@ function CascadeTable({ rows, totals, weeksPerYear }) {
   ];
 
   // Compact cell styles — overrides the module-level th/td defaults.
-  const cTh   = { padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: `1px solid ${colors.border}` };
+  const cTh   = { padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: `1px solid ${colors.border}` };
   const cThR  = { ...cTh, textAlign: 'right' };
-  const cTd   = { padding: '3px 8px', verticalAlign: 'middle', color: colors.ink, fontSize: 11, lineHeight: 1.25 };
+  const cTd   = { padding: '3px 8px', verticalAlign: 'middle', color: colors.ink, fontSize: 12, lineHeight: 1.25 };
   const cTdR  = { ...cTd, textAlign: 'right', fontFamily: 'ui-monospace, monospace' };
 
   return (
     <div style={{ marginTop: 14, border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff', overflowX: 'auto' }}>
-      <div style={{ padding: '5px 10px', background: colors.bgSoft, borderBottom: `1px solid ${colors.border}`, fontSize: 10, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <div style={{ padding: '5px 10px', background: colors.bgSoft, borderBottom: `1px solid ${colors.border}`, fontSize: 11, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         Step-by-step calculation
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack, fontSize: 11, tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack, fontSize: 12, tableLayout: 'fixed' }}>
         <colgroup>
           <col style={{ width: '36%' }} />
           {rows.map(r => <col key={r.band} style={{ width: `${(50 / rows.length).toFixed(2)}%` }} />)}
@@ -465,8 +465,7 @@ function CascadeTable({ rows, totals, weeksPerYear }) {
               return (
                 <tr key={`s${i}`} style={{ background: '#f1f5f9' }}>
                   <td colSpan={2 + rows.length} style={{
-                    padding: '3px 8px', fontWeight: 700, fontSize: 9,
-                    textTransform: 'uppercase', letterSpacing: 0.5,
+                    padding: '3px 8px', fontWeight: 700, fontSize: 10,
                     color: step.color || colors.muted,
                   }}>{step.label}</td>
                 </tr>
@@ -515,16 +514,16 @@ function CascadeCard({ row, weeksPerYear }) {
       display: 'grid', gridTemplateColumns: '20px 1fr auto', gap: 8, alignItems: 'baseline',
       padding: '4px 0', borderTop: `1px dotted ${colors.borderSoft}`,
     }}>
-      <span style={{ color: colors.muted, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{op}</span>
-      <span style={{ color: colors.inkSoft, fontSize: 12 }}>{k}</span>
-      <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, fontWeight: accent ? 700 : 400, color: accent ? colors.ink : colors.inkSoft }}>{v}</span>
+      <span style={{ color: colors.muted, fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>{op}</span>
+      <span style={{ color: colors.inkSoft, fontSize: 13 }}>{k}</span>
+      <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, fontWeight: accent ? 700 : 400, color: accent ? colors.ink : colors.inkSoft }}>{v}</span>
     </div>
   );
 
   return (
     <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 10, padding: '12px 14px' }}>
       <div style={{ fontFamily: serifStack, fontSize: 17, fontWeight: 500, color: colors.ink }}>{row.label}</div>
-      <div style={{ fontSize: 11, color: colors.muted, marginBottom: 6 }}>
+      <div style={{ fontSize: 12, color: colors.muted, marginBottom: 6 }}>
         Capacity {fmtN(row.capacity)} · Avg occupancy {fmtPct(row.occPct)} · {fmtN(row.hpw)}hrs/wk operating
       </div>
 
@@ -534,26 +533,26 @@ function CascadeCard({ row, weeksPerYear }) {
       <Step k="Children (avg)" op="=" v={fmtN(row.children, 1)} accent />
 
       {/* Step 2 — operating hours */}
-      <div style={{ marginTop: 10, padding: '5px 8px', background: colors.bgSoft, borderRadius: 5, fontSize: 10, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+      <div style={{ marginTop: 10, padding: '5px 8px', background: colors.bgSoft, borderRadius: 5, fontSize: 11, fontWeight: 700, color: colors.muted }}>
         Operating hours / year
       </div>
       <Step k={`Children × ${fmtN(row.hpw)}hrs/wk × ${weeksPerYear}wks`} op="" v={fmtN(row.annualMax)} />
       <Step k={`× Occupancy → actual delivered`} op="×" v={fmtN(row.annualTotal)} accent />
 
       {/* Step 3 — LA / private split */}
-      <div style={{ marginTop: 10, padding: '5px 8px', background: '#f5f3ff', borderRadius: 5, fontSize: 10, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+      <div style={{ marginTop: 10, padding: '5px 8px', background: '#f5f3ff', borderRadius: 5, fontSize: 11, fontWeight: 700, color: '#7c3aed' }}>
         LA-funded fills first ({fmtPct(row.eligPct)} eligible × {fmtPct(row.takePct)} take-up)
       </div>
       <Step k={`LA hrs / eligible child / wk = 1140 ÷ ${weeksPerYear} = ${row.laPerChildWeek.toFixed(2)} (capped at ${fmtN(row.hpw)})`} op="" v="" />
       <Step k={`LA hours / year`} op="=" v={fmtN(row.annualLA)} accent />
 
-      <div style={{ marginTop: 6, padding: '5px 8px', background: '#eff6ff', borderRadius: 5, fontSize: 10, fontWeight: 700, color: '#0e7fe0', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+      <div style={{ marginTop: 6, padding: '5px 8px', background: '#eff6ff', borderRadius: 5, fontSize: 11, fontWeight: 700, color: '#0e7fe0' }}>
         Private = remainder
       </div>
       <Step k={`Total − LA`} op="" v={fmtN(row.annualPrivate)} accent />
 
       {/* Step 4 — rates */}
-      <div style={{ marginTop: 10, padding: '5px 8px', background: colors.bgSoft, borderRadius: 5, fontSize: 10, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+      <div style={{ marginTop: 10, padding: '5px 8px', background: colors.bgSoft, borderRadius: 5, fontSize: 11, fontWeight: 700, color: colors.muted }}>
         Rates per hour
       </div>
       <Step k="LA rate (driver)" op="" v={fmtR(row.laRateP)} />
@@ -562,23 +561,23 @@ function CascadeCard({ row, weeksPerYear }) {
       {/* Step 5 — revenue */}
       <div style={{ marginTop: 10, padding: '6px 10px', background: colors.bgSoft, borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontSize: 11, color: '#7c3aed', fontWeight: 600 }}>LA revenue</span>
-          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13 }}>{fmtCash(row.revenueLA)}</span>
+          <span style={{ fontSize: 12, color: '#7c3aed', fontWeight: 600 }}>LA revenue</span>
+          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 14 }}>{fmtCash(row.revenueLA)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontSize: 11, color: '#0e7fe0', fontWeight: 600 }}>Private revenue</span>
-          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13 }}>{fmtCash(row.revenuePrivate)}</span>
+          <span style={{ fontSize: 12, color: '#0e7fe0', fontWeight: 600 }}>Private revenue</span>
+          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 14 }}>{fmtCash(row.revenuePrivate)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: `1px solid ${colors.border}`, paddingTop: 4, marginTop: 2 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: colors.ink, textTransform: 'uppercase', letterSpacing: 0.4 }}>Total</span>
-          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 15, fontWeight: 700 }}>{fmtCash(row.revenueTotal)}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: colors.ink }}>Total</span>
+          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 15.5, fontWeight: 700 }}>{fmtCash(row.revenueTotal)}</span>
         </div>
       </div>
     </div>
   );
 }
 
-const th = { padding: '8px 10px', textAlign: 'left', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: `1px solid ${colors.border}` };
+const th = { padding: '8px 10px', textAlign: 'left', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: `1px solid ${colors.border}` };
 const thR = { ...th, textAlign: 'right' };
 const td = { padding: '8px 10px', verticalAlign: 'top', color: colors.ink };
 const tdR = { ...td, textAlign: 'right', fontFamily: 'ui-monospace, monospace' };

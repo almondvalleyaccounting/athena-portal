@@ -101,7 +101,7 @@ export function Pill({ children, colour, bg, title, style }) {
     <span
       title={title}
       style={{
-        fontSize: 11, fontWeight: 600, color: colour,
+        fontSize: 12, fontWeight: 600, color: colour,
         background: bg || `${colour}12`,
         border: `1px solid ${colour}33`,
         borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap',
@@ -119,9 +119,9 @@ export function Stat({ label, value, colour, hint, big }) {
       title={hint || ''}
       style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px', borderLeft: `3px solid ${colour}` }}
     >
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: big ? 24 : 19, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
-      {hint && <div style={{ fontSize: 10, color: '#cbd5e1', marginTop: 2 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>{hint}</div>}
     </div>
   );
 }
@@ -132,7 +132,7 @@ export function Chip({ value, label, active, onClick, count, colour }) {
     <button
       onClick={() => onClick(value)}
       style={{
-        padding: '6px 12px', fontSize: 12, fontWeight: isActive ? 600 : 500,
+        padding: '6px 12px', fontSize: 13, fontWeight: isActive ? 600 : 500,
         color: isActive ? (colour || '#0f172a') : '#64748b',
         background: isActive ? '#f1f5f9' : '#fff',
         border: `1px solid ${isActive ? (colour ? `${colour}55` : '#cbd5e1') : '#e5e7eb'}`,
@@ -141,7 +141,7 @@ export function Chip({ value, label, active, onClick, count, colour }) {
     >
       {label}
       {count !== undefined && (
-        <span style={{ marginLeft: 6, fontSize: 11, color: isActive ? '#64748b' : '#94a3b8' }}>{count}</span>
+        <span style={{ marginLeft: 6, fontSize: 12, color: isActive ? '#64748b' : '#94a3b8' }}>{count}</span>
       )}
     </button>
   );
@@ -168,7 +168,7 @@ export function ErrorBar({ message }) {
   return (
     <div style={{
       background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c',
-      borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 12,
+      borderRadius: 8, padding: '8px 12px', fontSize: 13, marginBottom: 12,
     }}>
       {message}
     </div>
@@ -180,7 +180,7 @@ export const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middl
 export const thNum = { ...th, textAlign: 'right' };
 export const tdNum = { ...td, textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' };
 export const inputStyle = {
-  width: '100%', padding: '6px 9px', fontSize: 12, border: '1px solid #e5e7eb',
+  width: '100%', padding: '6px 9px', fontSize: 13, border: '1px solid #e5e7eb',
   borderRadius: 6, fontFamily: font, boxSizing: 'border-box', background: '#fff',
 };
 export const card = {
@@ -223,7 +223,7 @@ export function LevelTrail({ level, taxKey, clientName, onLevel0, onLevel1, onCl
       onClick={onClick}
       disabled={!onClick || active}
       style={{
-        background: 'none', border: 'none', padding: 0, fontFamily: font, fontSize: 11.5,
+        background: 'none', border: 'none', padding: 0, fontFamily: font, fontSize: 12.5,
         color: active ? '#0f172a' : (onClick ? '#0e7fe0' : '#94a3b8'),
         fontWeight: active ? 600 : 500,
         cursor: onClick && !active ? 'pointer' : 'default',
@@ -232,7 +232,7 @@ export function LevelTrail({ level, taxKey, clientName, onLevel0, onLevel1, onCl
       {label}
     </button>
   );
-  const sep = <span style={{ color: '#cbd5e1', fontSize: 11 }}>›</span>;
+  const sep = <span style={{ color: '#cbd5e1', fontSize: 12 }}>›</span>;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 10 }}>
       {crumb('All taxes', onLevel0, level === 0)}
@@ -246,8 +246,7 @@ export function LevelTrail({ level, taxKey, clientName, onLevel0, onLevel1, onCl
       <span
         title={LEVELS[level]?.hint}
         style={{
-          fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
-          color: '#94a3b8', background: '#f1f5f9', border: '1px solid #e5e7eb',
+          fontSize: 10.5, fontWeight: 700, color: '#94a3b8', background: '#f1f5f9', border: '1px solid #e5e7eb',
           borderRadius: 999, padding: '1px 7px', marginLeft: 2,
         }}
       >
@@ -258,7 +257,7 @@ export function LevelTrail({ level, taxKey, clientName, onLevel0, onLevel1, onCl
           onClick={onClearClient}
           style={{
             marginLeft: 'auto', background: 'none', border: 'none', padding: 0,
-            fontFamily: font, fontSize: 11, color: '#b91c1c', cursor: 'pointer',
+            fontFamily: font, fontSize: 12, color: '#b91c1c', cursor: 'pointer',
           }}
         >
           every client on this tax

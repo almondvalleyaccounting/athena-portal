@@ -42,12 +42,12 @@ export default function TeamBehaviours() {
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
         <h3 style={{ fontFamily: SERIF, fontSize: 18, color: '#0f172a', margin: 0 }}>Team behaviours</h3>
-        <span style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8' }}>Do's and don'ts — for everyone, whatever your role.</span>
+        <span style={{ fontFamily: FONT, fontSize: 13, color: '#94a3b8' }}>Do's and don'ts — for everyone, whatever your role.</span>
       </div>
       <Card>
         {BEHAVIOURS.map((group) => (
           <div key={group.category} style={{ marginBottom: 18 }}>
-            <div style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0e7fe0', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+            <div style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#0e7fe0', marginBottom: 8 }}>
               {group.category}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -71,5 +71,5 @@ export default function TeamBehaviours() {
   );
 }
 
-const cell = { fontFamily: FONT, fontSize: 12.5, color: '#1e293b', lineHeight: 1.5 };
-const tag = (c, bg) => ({ display: 'inline-block', fontFamily: FONT, fontSize: 10, fontWeight: 700, color: c, background: bg, borderRadius: 999, padding: '1px 8px', marginRight: 6, verticalAlign: 'middle' });
+const cell = { fontFamily: FONT, fontSize: 13.5, color: '#1e293b', lineHeight: 1.5 };
+const tag = (c, bg) => ({ display: 'inline-block', fontFamily: FONT, fontSize: 11, fontWeight: 700, color: c, background: bg, borderRadius: 999, padding: '1px 8px', marginRight: 6, verticalAlign: 'middle' });

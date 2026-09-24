@@ -53,7 +53,7 @@ export default function JobReviewRadar() {
         <h3 className="text-sm font-semibold text-gray-700">
           Job Review {cycle ? `· ${monthLbl}` : ''}
           {stale && (
-            <span className="ml-2 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+            <span className="ml-2 text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
               Out of date — no review opened since {monthLbl}
             </span>
           )}
@@ -77,7 +77,7 @@ export default function JobReviewRadar() {
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
               <div className="h-full bg-ocean-500" style={{ width: `${pct}%` }} />
             </div>
-            <p className="text-[11px] text-gray-400 mt-1">{answered} of {total} jobs have an answer ({pct}%).</p>
+            <p className="text-[12px] text-gray-400 mt-1">{answered} of {total} jobs have an answer ({pct}%).</p>
           </div>
         </>
       )}
@@ -92,7 +92,7 @@ function Metric({ label, value, tone = 'default' }) {
   }[tone];
   return (
     <div>
-      <p className="text-[11px] text-gray-400 mb-0.5">{label}</p>
+      <p className="text-[12px] text-gray-400 mb-0.5">{label}</p>
       <p className={`text-lg font-bold font-mono ${colour}`}>{value}</p>
     </div>
   );

@@ -201,7 +201,7 @@ export default function PrepView() {
           hint="Build the agenda as the month goes on — work points on one side, development on the other."
         />
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span style={{ fontFamily: FONT, fontSize: 12, color: '#64748b' }}>Preparing for</span>
+          <span style={{ fontFamily: FONT, fontSize: 13, color: '#64748b' }}>Preparing for</span>
           <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} style={{ minWidth: 190 }}>
             <option value="">— Choose someone —</option>
             {staff.map((s) => (
@@ -235,7 +235,7 @@ export default function PrepView() {
         background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 12, padding: '10px 14px',
       }}>
         <Lock size={14} color="#475569" />
-        <span style={{ fontFamily: FONT, fontSize: 12.5, color: '#475569' }}>
+        <span style={{ fontFamily: FONT, fontSize: 13.5, color: '#475569' }}>
           <strong style={{ color: '#0f172a' }}>Only you can see these notes.</strong>{' '}
           {subject?.id === profile?.id
             ? 'Notes you keep on yourself are private to you too.'
@@ -286,7 +286,7 @@ export default function PrepView() {
 
       {parked.length > 0 && (
         <Card style={{ marginBottom: 24, background: '#fafafa' }}>
-          <div style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#94a3b8', marginBottom: 10 }}>
+          <div style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 10 }}>
             Parked ({parked.length})
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -304,7 +304,7 @@ export default function PrepView() {
             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
           >
             {showDiscussed ? <ChevronDown size={14} color="#94a3b8" /> : <ChevronRight size={14} color="#94a3b8" />}
-            <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#94a3b8' }}>
+            <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#94a3b8' }}>
               Already discussed ({discussed.length})
             </span>
           </button>
@@ -351,7 +351,7 @@ function AskPanel({ staff, subjectName, alreadyAsked, onSend, onCancel }) {
       <div style={{ fontFamily: SERIF, fontSize: 17, color: '#0f172a', marginBottom: 4 }}>
         Ask colleagues about {subjectName || 'this person'}
       </div>
-      <p style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', margin: '0 0 12px' }}>
+      <p style={{ fontFamily: FONT, fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>
         They&rsquo;ll be told what it&rsquo;s for and that it comes to you privately. They won&rsquo;t see your notes,
         each other&rsquo;s answers, or anything else about your prep — and {subjectName || 'the person'} is never told
         the request exists.
@@ -366,7 +366,7 @@ function AskPanel({ staff, subjectName, alreadyAsked, onSend, onCancel }) {
               key={s.id}
               onClick={() => toggle(s.id)}
               style={{
-                fontFamily: FONT, fontSize: 12.5, fontWeight: 600,
+                fontFamily: FONT, fontSize: 13.5, fontWeight: 600,
                 padding: '6px 13px', borderRadius: 999, cursor: 'pointer',
                 border: '1px solid ' + (on ? '#0e7fe0' : '#e5e7eb'),
                 background: on ? '#eff6ff' : '#fff',
@@ -385,7 +385,7 @@ function AskPanel({ staff, subjectName, alreadyAsked, onSend, onCancel }) {
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         placeholder={`What would you like them to comment on? e.g. "How have you found working with ${subjectName || 'them'} on the VAT jobs this quarter?"`}
-        style={{ minHeight: 62, fontSize: 13 }}
+        style={{ minHeight: 62, fontSize: 14 }}
       />
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
@@ -407,7 +407,7 @@ function RequestStrip({ requests, onCancel }) {
   const tone = { open: ['#fffbeb', '#b45309'], answered: ['#f0fdf4', '#15803d'], declined: ['#f8fafc', '#64748b'] };
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, alignItems: 'center' }}>
-      <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#94a3b8' }}>
+      <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>
         Asked
       </span>
       {requests.map((r) => {
@@ -415,7 +415,7 @@ function RequestStrip({ requests, onCancel }) {
         return (
           <span key={r.id} style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
-            fontFamily: FONT, fontSize: 12, background: bg, color: fg,
+            fontFamily: FONT, fontSize: 13, background: bg, color: fg,
             border: '1px solid ' + bg, borderRadius: 999, padding: '4px 6px 4px 12px',
           }}>
             <strong style={{ fontWeight: 600 }}>{r.responder?.name || 'Someone'}</strong>
@@ -440,7 +440,7 @@ function ContributionsPanel({ contributions, subjectName, adoptedBodies, onAdopt
       <div style={{ fontFamily: SERIF, fontSize: 17, color: '#0f172a', marginBottom: 4 }}>
         From colleagues ({contributions.length})
       </div>
-      <p style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', margin: '0 0 14px' }}>
+      <p style={{ fontFamily: FONT, fontSize: 13, color: '#64748b', margin: '0 0 14px' }}>
         Input you asked for on {subjectName || 'this person'}. Only you and the person who wrote it can see it.
         Pull anything you want to raise into your own notes.
       </p>
@@ -451,23 +451,23 @@ function ContributionsPanel({ contributions, subjectName, adoptedBodies, onAdopt
           return (
             <div key={c.id} style={{ border: '1px solid #f1f5f9', borderRadius: 10, padding: '10px 12px', background: '#fbfcfe' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
+                <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
                   {c.contributor?.name || 'A colleague'}
                 </span>
                 <Pill bg={c.kind === 'work' ? '#eff6ff' : '#f5f3ff'} fg={c.kind === 'work' ? '#0e7fe0' : '#7c3aed'}>
                   {kind?.label || c.kind}
                 </Pill>
-                <span style={{ fontFamily: FONT, fontSize: 11, color: '#cbd5e1' }}>
+                <span style={{ fontFamily: FONT, fontSize: 12, color: '#cbd5e1' }}>
                   {new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                 </span>
               </div>
-              <div style={{ fontFamily: FONT, fontSize: 13, color: '#1e293b', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{c.body}</div>
+              <div style={{ fontFamily: FONT, fontSize: 14, color: '#1e293b', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{c.body}</div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, marginTop: 8 }}>
                 <button
                   onClick={() => !adopted && onAdopt(c)}
                   disabled={adopted}
                   style={{
-                    fontFamily: FONT, fontSize: 12, fontWeight: 600,
+                    fontFamily: FONT, fontSize: 13, fontWeight: 600,
                     background: 'none', border: 'none', padding: '2px 6px',
                     color: adopted ? '#94a3b8' : '#0e7fe0', cursor: adopted ? 'default' : 'pointer',
                   }}
@@ -530,7 +530,7 @@ function InboxPanel({ inbox, focusId, onAnswer, onDecline }) {
             <InboxItem key={r.id} request={r} highlight={r.id === focusId} onAnswer={onAnswer} onDecline={onDecline} />
           ))}
           {openOnes.length === 0 && settled && (
-            <div style={{ fontFamily: FONT, fontSize: 12.5, color: '#78350f' }}>
+            <div style={{ fontFamily: FONT, fontSize: 13.5, color: '#78350f' }}>
               {settled.requester?.name || 'A colleague'}&rsquo;s ask about {settled.subject?.name || 'a colleague'} is
               marked <strong>{settled.status}</strong>. Nothing further is needed from you.
             </div>
@@ -573,11 +573,11 @@ function InboxItem({ request, highlight, onAnswer, onDecline }) {
       border: '1px solid ' + (highlight ? '#f59e0b' : '#fde68a'),
       boxShadow: highlight ? '0 0 0 3px rgba(245,158,11,0.18)' : 'none',
     }}>
-      <div style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', marginBottom: 2 }}>
+      <div style={{ fontFamily: FONT, fontSize: 14, color: '#0f172a', marginBottom: 2 }}>
         <strong>{asker}</strong> would like your input on <strong>{about}</strong>
       </div>
       {request.message && (
-        <div style={{ fontFamily: FONT, fontSize: 12.5, color: '#475569', fontStyle: 'italic', margin: '6px 0 8px', whiteSpace: 'pre-wrap' }}>
+        <div style={{ fontFamily: FONT, fontSize: 13.5, color: '#475569', fontStyle: 'italic', margin: '6px 0 8px', whiteSpace: 'pre-wrap' }}>
           &ldquo;{request.message}&rdquo;
         </div>
       )}
@@ -588,7 +588,7 @@ function InboxItem({ request, highlight, onAnswer, onDecline }) {
         padding: '10px 12px', margin: '10px 0',
       }}>
         <Users size={14} color="#475569" />
-        <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0f172a' }}>Who reads this</span>
+        <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>Who reads this</span>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {ROUTES.map((r) => {
             const on = route === r.v;
@@ -597,7 +597,7 @@ function InboxItem({ request, highlight, onAnswer, onDecline }) {
                 key={r.v}
                 onClick={() => setRoute(r.v)}
                 style={{
-                  fontFamily: FONT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                  fontFamily: FONT, fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
                   padding: '5px 11px', borderRadius: 999,
                   border: '1px solid ' + (on ? '#0e7fe0' : '#cbd5e1'),
                   background: on ? '#eff6ff' : '#fff',
@@ -610,20 +610,20 @@ function InboxItem({ request, highlight, onAnswer, onDecline }) {
             );
           })}
         </div>
-        <div style={{ flexBasis: '100%', fontFamily: FONT, fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
+        <div style={{ flexBasis: '100%', fontFamily: FONT, fontSize: 13, color: '#475569', lineHeight: 1.5 }}>
           {explain} Nobody else who was asked sees it. This choice is fixed once you send.
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-        <Select value={kind} onChange={(e) => setKind(e.target.value)} style={{ width: 140, fontSize: 13, padding: '8px 10px' }}>
+        <Select value={kind} onChange={(e) => setKind(e.target.value)} style={{ width: 140, fontSize: 14, padding: '8px 10px' }}>
           {PREP_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
         </Select>
         <Textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder={`Your feedback on ${aboutFirst}...`}
-          style={{ minHeight: 56, fontSize: 13 }}
+          style={{ minHeight: 56, fontSize: 14 }}
         />
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
@@ -655,13 +655,13 @@ function NoteColumn({ kind, notes, subjectName, onAdd, onPatch, onDelete, loadin
         <div style={{ fontFamily: SERIF, fontSize: 18, color: '#0f172a' }}>{kind.label}</div>
         <Pill bg={tint} fg={accent}>{notes.length} open</Pill>
       </div>
-      <p style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8', margin: '0 0 12px' }}>{kind.hint}</p>
+      <p style={{ fontFamily: FONT, fontSize: 13, color: '#94a3b8', margin: '0 0 12px' }}>{kind.hint}</p>
 
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={`Note about ${subjectName}…  (⌘/Ctrl + Enter to save)`}
-        style={{ minHeight: 62, fontSize: 13 }}
+        style={{ minHeight: 62, fontSize: 14 }}
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
       />
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
@@ -671,9 +671,9 @@ function NoteColumn({ kind, notes, subjectName, onAdd, onPatch, onDelete, loadin
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
-        {loading && <div style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8' }}>Loading…</div>}
+        {loading && <div style={{ fontFamily: FONT, fontSize: 13, color: '#94a3b8' }}>Loading…</div>}
         {!loading && notes.length === 0 && (
-          <div style={{ fontFamily: FONT, fontSize: 12.5, color: '#cbd5e1', padding: '10px 0' }}>
+          <div style={{ fontFamily: FONT, fontSize: 13.5, color: '#cbd5e1', padding: '10px 0' }}>
             Nothing noted yet.
           </div>
         )}
@@ -708,11 +708,11 @@ function NoteRow({ note, accent = '#0e7fe0', onPatch, onDelete }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
           <Pill bg="#f1f5f9" fg="#64748b">{sourceLabel(note.link_source)}</Pill>
           {note.link_url ? (
-            <Link to={note.link_url} style={{ fontFamily: FONT, fontSize: 11.5, color: '#0e7fe0', textDecoration: 'none' }}>
+            <Link to={note.link_url} style={{ fontFamily: FONT, fontSize: 12.5, color: '#0e7fe0', textDecoration: 'none' }}>
               {note.link_label} <ExternalLink size={10} style={{ verticalAlign: 'baseline' }} />
             </Link>
           ) : (
-            <span style={{ fontFamily: FONT, fontSize: 11.5, color: '#64748b' }}>{note.link_label}</span>
+            <span style={{ fontFamily: FONT, fontSize: 12.5, color: '#64748b' }}>{note.link_label}</span>
           )}
         </div>
       )}
@@ -724,13 +724,13 @@ function NoteRow({ note, accent = '#0e7fe0', onPatch, onDelete }) {
           onChange={(e) => setBody(e.target.value)}
           onBlur={save}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) save(); if (e.key === 'Escape') { setBody(note.body); setEditing(false); } }}
-          style={{ minHeight: 56, fontSize: 13 }}
+          style={{ minHeight: 56, fontSize: 14 }}
         />
       ) : (
         <div
           onClick={() => !done && setEditing(true)}
           style={{
-            fontFamily: FONT, fontSize: 13, color: '#0f172a', lineHeight: 1.5,
+            fontFamily: FONT, fontSize: 14, color: '#0f172a', lineHeight: 1.5,
             whiteSpace: 'pre-wrap', cursor: done ? 'default' : 'text',
             textDecoration: done ? 'line-through' : 'none',
           }}
@@ -738,7 +738,7 @@ function NoteRow({ note, accent = '#0e7fe0', onPatch, onDelete }) {
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
-        <span style={{ fontFamily: FONT, fontSize: 10.5, color: '#cbd5e1', flex: 1 }}>
+        <span style={{ fontFamily: FONT, fontSize: 11.5, color: '#cbd5e1', flex: 1 }}>
           {new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
           {done && note.discussed_at && ` · discussed ${new Date(note.discussed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`}
         </span>
@@ -820,14 +820,14 @@ function WorkFeedPanel({ feed, loading, subjectName, notes, onNote }) {
           <div style={{ fontFamily: SERIF, fontSize: 18, color: '#0f172a' }}>
             What&rsquo;s on {subjectName ? `${subjectName}'s` : 'their'} plate
           </div>
-          <p style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8', margin: '4px 0 0' }}>
+          <p style={{ fontFamily: FONT, fontSize: 13, color: '#94a3b8', margin: '4px 0 0' }}>
             Live from across Athena. Expand a row, then note anything you want to raise — the note stays private and links back here.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <div style={{ position: 'relative' }}>
             <Search size={13} color="#cbd5e1" style={{ position: 'absolute', left: 10, top: 11 }} />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" style={{ paddingLeft: 30, width: 200, fontSize: 13 }} />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" style={{ paddingLeft: 30, width: 200, fontSize: 14 }} />
           </div>
         </div>
       </div>
@@ -845,7 +845,7 @@ function WorkFeedPanel({ feed, loading, subjectName, notes, onNote }) {
       </div>
 
       {loading ? (
-        <div style={{ fontFamily: FONT, fontSize: 13, color: '#94a3b8', padding: 20, textAlign: 'center' }}>Loading their work…</div>
+        <div style={{ fontFamily: FONT, fontSize: 14, color: '#94a3b8', padding: 20, textAlign: 'center' }}>Loading their work…</div>
       ) : rows.length === 0 ? (
         <EmptyState icon={<NotebookPen size={28} />} title="Nothing to show" hint="No live work matches this filter." />
       ) : (
@@ -862,7 +862,7 @@ function WorkFeedPanel({ feed, loading, subjectName, notes, onNote }) {
             />
           ))}
           {rows.length > 300 && (
-            <div style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8', padding: '10px 14px', background: '#fafafa' }}>
+            <div style={{ fontFamily: FONT, fontSize: 13, color: '#94a3b8', padding: '10px 14px', background: '#fafafa' }}>
               Showing the first 300 of {rows.length} — narrow it with a filter or search.
             </div>
           )}
@@ -893,20 +893,20 @@ function FeedRow({ row, today, expanded, onToggle, onNote, noteCount }) {
         <span style={{ width: 92, flexShrink: 0 }}>
           <Pill bg="#f1f5f9" fg="#64748b">{row.source_label}</Pill>
         </span>
-        <span style={{ fontFamily: FONT, fontSize: 13, color: '#0f172a', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontFamily: FONT, fontSize: 14, color: '#0f172a', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {row.client_name && <strong style={{ fontWeight: 600 }}>{row.client_name} · </strong>}
           {row.title}
         </span>
         {noteCount > 0 && (
-          <span title={`${noteCount} note${noteCount === 1 ? '' : 's'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#0e7fe0', fontFamily: FONT, fontSize: 11, fontWeight: 700 }}>
+          <span title={`${noteCount} note${noteCount === 1 ? '' : 's'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#0e7fe0', fontFamily: FONT, fontSize: 12, fontWeight: 700 }}>
             <NotebookPen size={11} />{noteCount}
           </span>
         )}
         {row.status && (
-          <span style={{ fontFamily: FONT, fontSize: 11.5, color: '#64748b', flexShrink: 0 }}>{row.status}</span>
+          <span style={{ fontFamily: FONT, fontSize: 12.5, color: '#64748b', flexShrink: 0 }}>{row.status}</span>
         )}
         {row.due_date && (
-          <span style={{ fontFamily: FONT, fontSize: 11.5, color: overdue ? '#dc2626' : '#94a3b8', width: 70, textAlign: 'right', flexShrink: 0 }}>
+          <span style={{ fontFamily: FONT, fontSize: 12.5, color: overdue ? '#dc2626' : '#94a3b8', width: 70, textAlign: 'right', flexShrink: 0 }}>
             {new Date(row.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })}
           </span>
         )}
@@ -920,28 +920,28 @@ function FeedRow({ row, today, expanded, onToggle, onNote, noteCount }) {
               .filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== false)
               .map(([k, v]) => (
                 <div key={k}>
-                  <div style={{ fontFamily: FONT, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#94a3b8' }}>
+                  <div style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>
                     {k.replace(/_/g, ' ')}
                   </div>
-                  <div style={{ fontFamily: FONT, fontSize: 12.5, color: '#0f172a' }}>{v === true ? 'Yes' : String(v)}</div>
+                  <div style={{ fontFamily: FONT, fontSize: 13.5, color: '#0f172a' }}>{v === true ? 'Yes' : String(v)}</div>
                 </div>
               ))}
             {row.url && (
-              <Link to={row.url} style={{ fontFamily: FONT, fontSize: 12, color: '#0e7fe0', textDecoration: 'none', alignSelf: 'flex-end' }}>
+              <Link to={row.url} style={{ fontFamily: FONT, fontSize: 13, color: '#0e7fe0', textDecoration: 'none', alignSelf: 'flex-end' }}>
                 Open in Athena <ExternalLink size={11} style={{ verticalAlign: 'baseline' }} />
               </Link>
             )}
           </div>
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <Select value={kind} onChange={(e) => setKind(e.target.value)} style={{ width: 140, fontSize: 13, padding: '8px 10px' }}>
+            <Select value={kind} onChange={(e) => setKind(e.target.value)} style={{ width: 140, fontSize: 14, padding: '8px 10px' }}>
               {PREP_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
             </Select>
             <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Private note on this item…"
-              style={{ fontSize: 13 }}
+              style={{ fontSize: 14 }}
               onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
             />
             <Button variant="accent" onClick={save} disabled={!draft.trim()} style={{ padding: '8px 14px', flexShrink: 0 }}>Note</Button>
@@ -958,7 +958,7 @@ function FilterChip({ children, active, onClick, danger }) {
     <button
       onClick={onClick}
       style={{
-        fontFamily: FONT, fontSize: 12, fontWeight: 600,
+        fontFamily: FONT, fontSize: 13, fontWeight: 600,
         padding: '5px 12px', borderRadius: 999, cursor: 'pointer',
         border: '1px solid ' + (active ? on : '#e5e7eb'),
         background: active ? (danger ? '#fef2f2' : '#eff6ff') : '#fff',

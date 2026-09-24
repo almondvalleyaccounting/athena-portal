@@ -67,12 +67,12 @@ export default function ScheduledView({ sort, onEdit }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   onClick={() => onEdit(master)}
-                  style={{ fontSize: 14, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                  style={{ fontSize: 14.5, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                 >
                   {master.title}
                   {master.recurring && (
                     <span style={{
-                      padding: '1px 5px', fontSize: 10, borderRadius: 3,
+                      padding: '1px 5px', fontSize: 11, borderRadius: 3,
                       background: '#dbeafe', color: '#0e7fe0', fontWeight: 500,
                     }}>
                       {master.recurrence}
@@ -83,18 +83,18 @@ export default function ScheduledView({ sort, onEdit }) {
                   )}
                 </div>
 
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 1, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 13, color: '#64748b', marginTop: 1, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                   {master.entity_id && <span onClick={(e) => { e.stopPropagation(); window.location.href = `/clients/${master.entity_id}`; }} style={{ cursor: 'pointer', color: '#0e7fe0' }} onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'} onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}>{clientName(master.entity_id, entityMap)}</span>}
                   {master.service && <span style={{ color: '#94a3b8' }}>{master.service}</span>}
                   <span style={{
-                    padding: '1px 5px', fontSize: 10, borderRadius: 3, fontWeight: 500, ...srcStyle,
+                    padding: '1px 5px', fontSize: 11, borderRadius: 3, fontWeight: 500, ...srcStyle,
                   }}>
                     {src ? src.label : master.source}
                   </span>
                   {st && (
                     <span style={{
                       display: 'inline-flex', alignItems: 'center', gap: 3,
-                      padding: '2px 7px', borderRadius: 12, fontSize: 11, fontWeight: 500,
+                      padding: '2px 7px', borderRadius: 12, fontSize: 12, fontWeight: 500,
                       background: st.colour + '14', color: st.colour,
                     }}>
                       <span style={{ width: 5, height: 5, borderRadius: '50%', background: st.colour }} />
@@ -102,13 +102,13 @@ export default function ScheduledView({ sort, onEdit }) {
                     </span>
                   )}
                   {ni ? (
-                    <span style={{ fontSize: 11, color: '#64748b' }}>Next: {formatDateShort(ni._date)}</span>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>Next: {formatDateShort(ni._date)}</span>
                   ) : (
-                    <span style={{ fontSize: 11, color: '#cbd5e1' }}>No upcoming</span>
+                    <span style={{ fontSize: 12, color: '#cbd5e1' }}>No upcoming</span>
                   )}
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{durFmt(master.duration)}</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{durFmt(master.duration)}</span>
                   {(notesMap[`master:${master.id}`] || []).length > 0 && (
-                    <span style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3, fontSize: 9, color: '#64748b', fontWeight: 600 }}>
+                    <span style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3, fontSize: 10, color: '#64748b', fontWeight: 600 }}>
                       {(notesMap[`master:${master.id}`] || []).length} note{(notesMap[`master:${master.id}`] || []).length !== 1 ? 's' : ''}
                     </span>
                   )}
@@ -130,7 +130,7 @@ export default function ScheduledView({ sort, onEdit }) {
                       }}
                       placeholder="Progress note..."
                       style={{
-                        flex: 1, padding: '3px 6px', fontSize: 11,
+                        flex: 1, padding: '3px 6px', fontSize: 12,
                         fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
                         borderRadius: 3, outline: 'none',
                       }}
@@ -142,7 +142,7 @@ export default function ScheduledView({ sort, onEdit }) {
                       }}
                       style={{
                         border: 'none', background: '#0e7fe0', color: '#fff',
-                        fontSize: 10, fontWeight: 600, padding: '3px 8px',
+                        fontSize: 11, fontWeight: 600, padding: '3px 8px',
                         borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
                       }}
                     >
@@ -154,7 +154,7 @@ export default function ScheduledView({ sort, onEdit }) {
                     onClick={() => { setNoteInput(master.id); setNoteText(''); }}
                     style={{
                       border: '1px solid #e5e7eb', background: '#f8fafc', color: '#64748b',
-                      fontSize: 10, fontWeight: 500, cursor: 'pointer',
+                      fontSize: 11, fontWeight: 500, cursor: 'pointer',
                       padding: '3px 10px', marginTop: 3, borderRadius: 6,
                       fontFamily: "'Outfit', sans-serif",
                     }}
@@ -168,7 +168,7 @@ export default function ScheduledView({ sort, onEdit }) {
                 <button
                   onClick={() => onEdit(master)}
                   style={{
-                    padding: '2px 6px', fontSize: 11, fontWeight: 500,
+                    padding: '2px 6px', fontSize: 12, fontWeight: 500,
                     border: '1px solid #e5e7eb', borderRadius: 3,
                     background: '#fff', color: '#0e7fe0', cursor: 'pointer',
                     fontFamily: "'Outfit', sans-serif",
@@ -182,7 +182,7 @@ export default function ScheduledView({ sort, onEdit }) {
         })}
 
         {list.length === 0 && (
-          <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 13 }}>
+          <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 14 }}>
             No scheduled tasks match.
           </div>
         )}

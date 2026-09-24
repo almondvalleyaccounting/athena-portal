@@ -267,7 +267,7 @@ export default function QboConnectionPanel({ profile, onSyncComplete }) {
 function Stat({ label, value, highlight }) {
   return (
     <div>
-      <p className="text-gray-500 text-[10px] uppercase tracking-wide">{label}</p>
+      <p className="text-gray-500 text-[11px]">{label}</p>
       <p className={`font-mono text-sm ${highlight ? 'text-amber-700 font-bold' : 'text-gray-800'}`}>
         {value != null ? Number(value).toLocaleString() : '—'}
       </p>

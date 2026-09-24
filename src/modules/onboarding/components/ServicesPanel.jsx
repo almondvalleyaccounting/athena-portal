@@ -61,19 +61,19 @@ export default function ServicesPanel({ ob, staff, onChanged }) {
     run(() => addAdHocStep(ob, { group: CH_GROUP, groupSort: CH_GROUP_SORT, name, actorId: profile?.id }));
   }
 
-  const box = { display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: '#334155', cursor: busy ? 'default' : 'pointer' };
+  const box = { display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, color: '#334155', cursor: busy ? 'default' : 'pointer' };
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 18px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <ClipboardList size={14} color="#64748b" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>
           Services &amp; registrations
         </span>
       </div>
 
       {/* Services taken */}
-      <div style={{ fontSize: 11.5, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Services taken</div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Services taken</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
         {SERVICE_OPTIONS.map((opt) => (
           <label key={opt.key} style={box}>
@@ -85,12 +85,12 @@ export default function ServicesPanel({ ob, staff, onChanged }) {
           </label>
         ))}
       </div>
-      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
         Unticking a service marks its outstanding steps N/A and removes its handover &amp; check-in tiles. Completed steps are left as they are.
       </div>
 
       {/* HMRC registrations */}
-      <div style={{ fontSize: 11.5, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>HMRC registrations required</div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>HMRC registrations required</div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
         {REGISTRATION_OPTIONS.map((opt) => {
           const step = regStep(opt);
@@ -108,15 +108,15 @@ export default function ServicesPanel({ ob, staff, onChanged }) {
       </div>
 
       {/* Companies House tasks */}
-      <div style={{ fontSize: 11.5, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Companies House tasks</div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Companies House tasks</div>
       {chSteps.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
           {chSteps.map((s) => (
-            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#334155' }}>
+            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#334155' }}>
               <span style={{ flex: 1 }}>{s.name.replace(/^Companies House — /, '')}</span>
               {s.status === 'complete'
                 ? <span style={chipStyle('success')}>done</span>
-                : s.assignee_id && staffName(s.assignee_id) && <span style={{ fontSize: 11, color: '#94a3b8' }}>{staffName(s.assignee_id)}</span>}
+                : s.assignee_id && staffName(s.assignee_id) && <span style={{ fontSize: 12, color: '#94a3b8' }}>{staffName(s.assignee_id)}</span>}
               {s.status !== 'complete' && (
                 <button
                   onClick={() => { if (window.confirm('Remove this Companies House task?')) run(() => deleteOnboardingStep(s.id)); }}
@@ -134,14 +134,14 @@ export default function ServicesPanel({ ob, staff, onChanged }) {
         {CH_TASK_OPTIONS.map((opt) => (
           <button
             key={opt.key} onClick={() => addChTask(opt)} disabled={busy}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 11.5, fontWeight: 600, fontFamily: font, background: '#fff', color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 999, cursor: busy ? 'default' : 'pointer' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: '#fff', color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 999, cursor: busy ? 'default' : 'pointer' }}
           >
             <Plus size={11} /> {opt.label}
           </button>
         ))}
       </div>
 
-      {msg && <div style={{ fontSize: 12, color: tones.danger.fg, marginTop: 10 }}>{msg}</div>}
+      {msg && <div style={{ fontSize: 13, color: tones.danger.fg, marginTop: 10 }}>{msg}</div>}
     </div>
   );
 }

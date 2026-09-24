@@ -74,14 +74,14 @@ export default function LoansPanel({ scenarioId, onChanged }) {
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
           Lending
           {loans.length > 0 && (
-            <span style={{ fontSize: 12, fontWeight: 400, color: colors.muted, fontFamily: fontStack }}>
+            <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, fontFamily: fontStack }}>
               · {loans.length} of {MAX_SLOTS} loans
             </span>
           )}
         </span>
       }
     >
-      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 10px' }}>
+      <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 10px' }}>
         Bank facilities and director loans — type an amount on an empty row to add one.
         Principal is drawn at the start month; amortising loans repay fixed interest+principal monthly,
         interest-only loans pay interest with a balloon at term end. Property mortgages live with the
@@ -207,9 +207,9 @@ function parseField(field, raw) {
   return null;
 }
 
-const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack };
-const th = { padding: '6px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap' };
+const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack };
+const th = { padding: '6px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap' };
 const td = { padding: '5px 8px', color: colors.ink, verticalAlign: 'middle' };
 const tdR = { ...td, textAlign: 'right' };
-const cellInput = { ...inputStyle, width: 110, textAlign: 'right', padding: '4px 7px', fontSize: 12 };
-const cellSelect = { ...inputStyle, padding: '4px 6px', fontSize: 12, width: 'auto' };
+const cellInput = { ...inputStyle, width: 110, textAlign: 'right', padding: '4px 7px', fontSize: 13 };
+const cellSelect = { ...inputStyle, padding: '4px 6px', fontSize: 13, width: 'auto' };

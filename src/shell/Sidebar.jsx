@@ -328,7 +328,7 @@ export default function Sidebar() {
             <p
               style={{
                 fontFamily: "'Outfit', sans-serif",
-                fontSize: '11px',
+                fontSize: '12px',
                 color: '#94a3b8',
                 textAlign: 'center',
               }}
@@ -452,7 +452,7 @@ export default function Sidebar() {
                       )}
                       <span style={{
                         fontFamily: "'Outfit', sans-serif",
-                        fontSize: 13,
+                        fontSize: 14,
                         fontWeight: isChildActive(child, kids) ? 600 : 400,
                         color: isChildActive(child, kids) ? '#0f172a' : '#64748b',
                         whiteSpace: 'nowrap',
@@ -546,7 +546,7 @@ export default function Sidebar() {
                     }} />
                   )}
                   <span style={{
-                    fontFamily: "'Outfit', sans-serif", fontSize: 13,
+                    fontFamily: "'Outfit', sans-serif", fontSize: 14,
                     fontWeight: active ? 600 : 400,
                     color: active ? '#0f172a' : '#64748b',
                   }}>{child.label}</span>
@@ -576,7 +576,7 @@ export default function Sidebar() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '11px',
+                fontSize: '12px',
                 fontWeight: 600,
                 color: '#ffffff',
                 fontFamily: "'Outfit', sans-serif",
@@ -598,7 +598,7 @@ export default function Sidebar() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '11px',
+                fontSize: '12px',
                 fontWeight: 600,
                 color: '#ffffff',
                 fontFamily: "'Outfit', sans-serif",
@@ -611,7 +611,7 @@ export default function Sidebar() {
               <p
                 style={{
                   fontFamily: "'Outfit', sans-serif",
-                  fontSize: '13px',
+                  fontSize: '14px',
                   fontWeight: 500,
                   color: '#0f172a',
                   whiteSpace: 'nowrap',
@@ -624,7 +624,7 @@ export default function Sidebar() {
               <p
                 style={{
                   fontFamily: "'Outfit', sans-serif",
-                  fontSize: '11px',
+                  fontSize: '12px',
                   color: '#94a3b8',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
@@ -715,7 +715,7 @@ function ContextMenu({ menu, onClose }) {
       <div
         style={{
           fontFamily: "'Outfit', sans-serif",
-          fontSize: 11,
+          fontSize: 12,
           color: '#94a3b8',
           padding: '4px 10px 6px',
           whiteSpace: 'nowrap',
@@ -742,7 +742,7 @@ function ContextMenu({ menu, onClose }) {
             borderRadius: 6,
             cursor: 'pointer',
             fontFamily: "'Outfit', sans-serif",
-            fontSize: 13,
+            fontSize: 14,
             color: '#1e293b',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
@@ -764,8 +764,7 @@ function SectionHeading({ label, collapsed, first }) {
   }
   return (
     <div style={{
-      fontFamily: "'Outfit', sans-serif", fontSize: 10.5, fontWeight: 600, letterSpacing: 0.6,
-      textTransform: 'uppercase', color: '#94a3b8', padding: first ? '2px 12px 6px' : '14px 12px 6px',
+      fontFamily: "'Outfit', sans-serif", fontSize: 11.5, fontWeight: 600, color: '#94a3b8', padding: first ? '2px 12px 6px' : '14px 12px 6px',
     }}>
       {label}
     </div>
@@ -828,7 +827,7 @@ function NavItem({ icon: Icon, label, href, active, collapsed, clickable, planne
           <span
             style={{
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '14px',
+              fontSize: '14.5px',
               fontWeight: active ? 600 : 500,
               color: labelColor,
               whiteSpace: 'nowrap',
@@ -853,7 +852,7 @@ function NavItem({ icon: Icon, label, href, active, collapsed, clickable, planne
             <span
               style={{
                 fontFamily: "'Outfit', sans-serif",
-                fontSize: '10px',
+                fontSize: '11px',
                 fontWeight: 600,
                 color: '#d97706',
                 backgroundColor: '#fef3c7',
@@ -869,7 +868,7 @@ function NavItem({ icon: Icon, label, href, active, collapsed, clickable, planne
             <span
               style={{
                 fontFamily: "'Outfit', sans-serif",
-                fontSize: '10px',
+                fontSize: '11px',
                 color: '#94a3b8',
                 marginLeft: 'auto',
               }}
@@ -891,7 +890,7 @@ function NavItem({ icon: Icon, label, href, active, collapsed, clickable, planne
             backgroundColor: '#0f172a',
             color: '#ffffff',
             fontFamily: "'Outfit', sans-serif",
-            fontSize: '12px',
+            fontSize: '13px',
             padding: '4px 10px',
             borderRadius: '6px',
             whiteSpace: 'nowrap',
@@ -914,7 +913,7 @@ function NavItem({ icon: Icon, label, href, active, collapsed, clickable, planne
             backgroundColor: '#0f172a',
             color: '#ffffff',
             fontFamily: "'Outfit', sans-serif",
-            fontSize: '12px',
+            fontSize: '13px',
             padding: '4px 10px',
             borderRadius: '6px',
             whiteSpace: 'nowrap',

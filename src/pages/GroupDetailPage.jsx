@@ -352,7 +352,7 @@ export default function GroupDetailPage() {
           client record with its quote (ref / \u00A3 / status / edit). */}
       {groupEntities.length > 0 && (
         <div className="mb-4">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Clients &amp; Quotes in this Group</h3>
+          <h3 className="text-xs font-semibold text-gray-500 mb-2">Clients &amp; Quotes in this Group</h3>
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             {groupEntities.map(ent => {
               const entName = (ent.name || '').toLowerCase().trim();

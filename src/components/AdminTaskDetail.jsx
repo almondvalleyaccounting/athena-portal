@@ -11,8 +11,8 @@ import { fetchAdhocServices } from '../modules/billing/billingServices';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px' };
-const label = { fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 5 };
-const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '8px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' };
+const label = { fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 5 };
+const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '8px 12px', fontSize: 14, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' };
 const VAT_RATE = 0.20;
 const STAGES = [['draft', 'Draft'], ['bill_hold', 'Bill & Hold'], ['billed', 'Billed'], ['todo', 'To Do']];
 
@@ -199,8 +199,8 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
     onChanged?.();
   };
 
-  if (loading) return <div style={{ fontFamily: font, color: '#94a3b8', fontSize: 13 }}>Loading task…</div>;
-  if (!task) return <div style={{ fontFamily: font, color: '#ef4444', fontSize: 13 }}>Task not found.</div>;
+  if (loading) return <div style={{ fontFamily: font, color: '#94a3b8', fontSize: 14 }}>Loading task…</div>;
+  if (!task) return <div style={{ fontFamily: font, color: '#ef4444', fontSize: 14 }}>Task not found.</div>;
 
   return (
     <div style={{ fontFamily: font }}>
@@ -211,19 +211,19 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           {entity && (
             <button onClick={() => navigate(`/clients/${entity.id}`)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#0e7fe0', fontSize: 13.5, fontWeight: 600, padding: 0 }}>
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#0e7fe0', fontSize: 14.5, fontWeight: 600, padding: 0 }}>
               {entity.name} <ExternalLink size={13} />
             </button>
           )}
           {task.source && (
-            <span style={{ marginLeft: 'auto', fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', color: '#64748b' }}>
+            <span style={{ marginLeft: 'auto', fontSize: 12, padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', color: '#64748b' }}>
               {task.source}
             </span>
           )}
         </div>
       )}
 
-      {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ fontSize: 14, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
 
       {/* Editable task fields */}
       <div style={{ ...card, marginBottom: 16 }}>
@@ -254,7 +254,7 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
             <div style={label}>Deadline</div>
             <input type="date" value={form.deadline || ''} onChange={(e) => setField('deadline', e.target.value)} style={inputStyle} />
           </div>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#475569', cursor: 'pointer', paddingBottom: 8 }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, color: '#475569', cursor: 'pointer', paddingBottom: 8 }}>
             <input type="checkbox" checked={form.urgent} onChange={(e) => setField('urgent', e.target.checked)} style={{ width: 14, height: 14, accentColor: '#dc2626' }} />
             <Flame size={13} color={form.urgent ? '#dc2626' : '#64748b'} /> Urgent
           </label>
@@ -268,20 +268,20 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={save} disabled={saving || !form.title.trim()}
-            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: form.title.trim() ? '#0f172a' : '#e5e7eb', color: form.title.trim() ? '#fff' : '#94a3b8', border: 'none', borderRadius: 8, cursor: form.title.trim() ? 'pointer' : 'not-allowed', fontFamily: font }}>
+            style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, background: form.title.trim() ? '#0f172a' : '#e5e7eb', color: form.title.trim() ? '#fff' : '#94a3b8', border: 'none', borderRadius: 8, cursor: form.title.trim() ? 'pointer' : 'not-allowed', fontFamily: font }}>
             {saving ? 'Saving…' : 'Save changes'}
           </button>
-          {savedFlash && <span style={{ fontSize: 12.5, color: '#059669', fontWeight: 600 }}>✓ Saved</span>}
+          {savedFlash && <span style={{ fontSize: 13.5, color: '#059669', fontWeight: 600 }}>✓ Saved</span>}
 
           {/* Billing */}
           {bill ? (
             <button onClick={() => navigate(`/billing?highlight=${task.billing_item_id}`)}
-              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 12.5, fontWeight: 600, color: '#0e7fe0', background: '#fff', border: '1px solid #bae6fd', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>
+              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13.5, fontWeight: 600, color: '#0e7fe0', background: '#fff', border: '1px solid #bae6fd', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>
               <Receipt size={13} /> Review bill {bill.qbo_doc_number ? `#${bill.qbo_doc_number}` : ''} · £{bill.net_amount} ({bill.status})
             </button>
           ) : (
             <button onClick={addBill}
-              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 12.5, fontWeight: 600, color: '#0e7fe0', background: '#fff', border: '1px solid #bae6fd', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>
+              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13.5, fontWeight: 600, color: '#0e7fe0', background: '#fff', border: '1px solid #bae6fd', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>
               <Receipt size={13} /> Add a bill{form.service_id && feeFor(form.service_id) != null ? ` (£${feeFor(form.service_id)})` : ''}
             </button>
           )}
@@ -291,7 +291,7 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
             <span style={label}>Pipeline step</span>
             <select value={task.stage || 'todo'} onChange={(e) => setStage(e.target.value)}
-              style={{ fontSize: 12.5, fontFamily: font, padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', color: '#475569', outline: 'none' }}>
+              style={{ fontSize: 13.5, fontFamily: font, padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', color: '#475569', outline: 'none' }}>
               {STAGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
@@ -300,16 +300,16 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
 
       {/* Notes thread */}
       <div style={card}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>Notes &amp; responses ({notes.length})</div>
-        {notes.length === 0 && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>No notes yet.</div>}
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>Notes &amp; responses ({notes.length})</div>
+        {notes.length === 0 && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>No notes yet.</div>}
         {notes.map((n) => (
-          <div key={n.id} style={{ fontSize: 12.5, color: '#334155', padding: '6px 0', borderBottom: '1px solid #f8fafc', display: 'flex', gap: 8 }}>
-            <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, flexShrink: 0, height: 16, marginTop: 1, background: n.kind === 'escalation' ? '#fef3c7' : '#eef2ff', color: n.kind === 'escalation' ? '#b45309' : '#4338ca' }}>
+          <div key={n.id} style={{ fontSize: 13.5, color: '#334155', padding: '6px 0', borderBottom: '1px solid #f8fafc', display: 'flex', gap: 8 }}>
+            <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 4, flexShrink: 0, height: 16, marginTop: 1, background: n.kind === 'escalation' ? '#fef3c7' : '#eef2ff', color: n.kind === 'escalation' ? '#b45309' : '#4338ca' }}>
               {n.kind === 'escalation' ? 'escalation' : 'note'}
             </span>
             <div>
               <span>{n.body}</span>
-              <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 11 }}>— {staffMap[n.author_id] || 'staff'} · {fmtNoteTime(n.created_at)}</span>
+              <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 12 }}>— {staffMap[n.author_id] || 'staff'} · {fmtNoteTime(n.created_at)}</span>
             </div>
           </div>
         ))}
@@ -389,8 +389,8 @@ export function AdminTaskDrawer({ taskId, onClose, onChanged }) {
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '14px 20px', borderBottom: '1px solid #e5e7eb', background: '#fff', flexShrink: 0,
         }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Task detail</h2>
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#cbd5e1' }}>Esc to close</span>
+          <h2 style={{ margin: 0, fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Task detail</h2>
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#cbd5e1' }}>Esc to close</span>
           <button onClick={onClose} title="Close"
             style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', padding: 0 }}>
             <X size={18} />

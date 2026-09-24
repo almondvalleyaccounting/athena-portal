@@ -97,7 +97,7 @@ export default function AddToGroupPanel({ quote, profile, onDone }) {
 
   return (
     <div className="bg-white rounded-lg border border-ocean-200 p-4">
-      <h3 className="text-xs font-semibold text-ocean-600 uppercase mb-3">
+      <h3 className="text-xs font-semibold text-ocean-600 mb-3">
         {alreadyInGroup ? 'Group' : 'Add to Group'}
       </h3>
 

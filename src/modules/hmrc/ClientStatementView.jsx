@@ -176,7 +176,7 @@ export default function ClientStatementView({ payeRef = '', scheme = null }) {
     <div>
       <ErrorBar message={error} />
 
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 12, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 12, lineHeight: 1.55 }}>
         {selected ? <><b>{selected.entity_name || selected.hmrc_name}</b> · {selected.paye_ref} — </> : null}
         the PAYE account, months down the side: what HMRC charged, what relieved it, what was paid and what
         was left. Any date range, crossing tax years, so a September or December year end works as well as
@@ -224,7 +224,7 @@ export default function ClientStatementView({ payeRef = '', scheme = null }) {
           disabled={rows.length === 0}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
-            fontSize: 12, fontFamily: font, color: '#475569', background: '#fff',
+            fontSize: 13, fontFamily: font, color: '#475569', background: '#fff',
             border: '1px solid #e5e7eb', borderRadius: 8,
             cursor: rows.length ? 'pointer' : 'default', opacity: rows.length ? 1 : 0.5,
           }}
@@ -237,7 +237,7 @@ export default function ClientStatementView({ payeRef = '', scheme = null }) {
         <div style={{
           display: 'flex', gap: 9, alignItems: 'flex-start', background: '#fffbeb',
           border: '1px solid #fde68a', borderRadius: 10, padding: '9px 12px',
-          marginBottom: 12, fontSize: 12.5, color: '#78350f', lineHeight: 1.5,
+          marginBottom: 12, fontSize: 13.5, color: '#78350f', lineHeight: 1.5,
         }}>
           <TriangleAlert size={15} style={{ color: '#d97706', flexShrink: 0, marginTop: 1 }} />
           <div>
@@ -248,19 +248,19 @@ export default function ClientStatementView({ payeRef = '', scheme = null }) {
       )}
 
       {!payeRef ? (
-        <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+        <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
           This client has no PAYE scheme on HMRC's agent list.
         </div>
       ) : loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading statement…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading statement…</div>
       ) : rows.length === 0 ? (
-        <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+        <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
           Nothing scraped for this scheme between {prettyDate(from)} and {prettyDate(to)}.
         </div>
       ) : (
         <div style={card}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+            <table style={{ width: '100%', fontSize: 13.5, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
               <thead>
                 <tr style={headRow}>
                   <th style={th}>Period</th>
@@ -293,11 +293,11 @@ export default function ClientStatementView({ payeRef = '', scheme = null }) {
                           <span style={{ fontWeight: 600, color: '#0f172a' }}>
                             {MONTH_NAMES[r.tax_month]} {String(r.period_start).slice(0, 4)}
                           </span>
-                          <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 5 }}>
+                          <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 5 }}>
                             m{r.tax_month} · {r.tax_year}
                           </span>
                         </td>
-                        <td style={{ ...td, fontSize: 11.5, color: '#64748b' }}>{r.due_date}</td>
+                        <td style={{ ...td, fontSize: 12.5, color: '#64748b' }}>{r.due_date}</td>
                         <td style={tdNum}>
                           <DrillCell value={r.opening} colour="#64748b" {...cell('opening')}
                             hint="What was still owed going into this month — click for the months that make it up" />
@@ -386,7 +386,7 @@ export default function ClientStatementView({ payeRef = '', scheme = null }) {
           <BalanceProof proof={proof} to={to} />
 
           {unallocated.length > 0 && (
-            <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12, color: '#78350f', background: '#fffbeb', whiteSpace: 'normal', lineHeight: 1.5 }}>
+            <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 13, color: '#78350f', background: '#fffbeb', whiteSpace: 'normal', lineHeight: 1.5 }}>
               {unallocated.length} payment{unallocated.length === 1 ? '' : 's'} totalling{' '}
               <b>{fmtGbpDetailed(unallocated.reduce((s, p) => s + n(p.amount), 0))}</b> are sitting unallocated
               on this scheme, reducing nothing — see the Payments tab.
@@ -411,7 +411,7 @@ function DrillCell({ value, colour, bold, negate, active, onClick, hint, zeroDas
       style={{
         background: active ? '#e0edfb' : 'none', border: 'none',
         padding: active ? '1px 5px' : '1px 0', margin: 0, borderRadius: 4,
-        cursor: 'pointer', fontFamily: font, fontSize: 12.5,
+        cursor: 'pointer', fontFamily: font, fontSize: 13.5,
         fontWeight: bold ? 600 : 400,
         color: colour || '#0f172a',
         fontVariantNumeric: 'tabular-nums',
@@ -435,19 +435,19 @@ function DrillContent({ row, rows, idx, drill, lines, payments, onClose }) {
 
   const header = (title, sub) => (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: '#0f172a' }}>{title}</span>
-      {sub && <span style={{ fontSize: 11, color: '#94a3b8' }}>{sub}</span>}
+      <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{title}</span>
+      {sub && <span style={{ fontSize: 12, color: '#94a3b8' }}>{sub}</span>}
       <button onClick={onClose} style={{
-        marginLeft: 'auto', fontSize: 11, color: '#64748b', background: 'none',
+        marginLeft: 'auto', fontSize: 12, color: '#64748b', background: 'none',
         border: 'none', cursor: 'pointer', fontFamily: font,
       }}>close</button>
     </div>
   );
 
   const lineTable = (rowsIn) => (
-    <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 460 }}>
+    <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 460 }}>
       <thead>
-        <tr style={{ color: '#94a3b8', fontSize: 10, textTransform: 'uppercase' }}>
+        <tr style={{ color: '#94a3b8', fontSize: 11 }}>
           <th style={{ ...th, padding: '3px 12px 3px 0' }}>HMRC line</th>
           <th style={{ ...th, padding: '3px 12px' }}>Category</th>
           <th style={{ ...thNum, padding: '3px 0 3px 12px' }}>Amount</th>
@@ -476,7 +476,7 @@ function DrillContent({ row, rows, idx, drill, lines, payments, onClose }) {
   );
 
   const noDetail = (what) => (
-    <div style={{ fontSize: 12, color: '#94a3b8' }}>
+    <div style={{ fontSize: 13, color: '#94a3b8' }}>
       HMRC gives no line detail for {what} in this month — only the monthly total shown above.
     </div>
   );
@@ -526,7 +526,7 @@ function DrillContent({ row, rows, idx, drill, lines, payments, onClose }) {
       return (
         <>
           {header(`Payments — ${MONTH_NAMES[row.tax_month]} ${row.tax_year}`)}
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>
+          <div style={{ fontSize: 13, color: '#94a3b8' }}>
             HMRC shows {fmtGbpDetailed(row.payments)} against this month but no individual payment allocated
             to it — it was probably applied as part of a larger payment HMRC has not itemised here.
           </div>
@@ -541,9 +541,9 @@ function DrillContent({ row, rows, idx, drill, lines, payments, onClose }) {
             ? `everything received on ${dates[0]}`
             : `everything received on ${dates.length} dates`,
         )}
-        <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 520 }}>
+        <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 520 }}>
           <thead>
-            <tr style={{ color: '#94a3b8', fontSize: 10, textTransform: 'uppercase' }}>
+            <tr style={{ color: '#94a3b8', fontSize: 11 }}>
               <th style={{ ...th, padding: '3px 12px 3px 0' }}>Received</th>
               <th style={{ ...th, padding: '3px 12px' }}>HMRC allocated it to</th>
               <th style={{ ...thNum, padding: '3px 0 3px 12px' }}>Amount</th>
@@ -569,7 +569,7 @@ function DrillContent({ row, rows, idx, drill, lines, payments, onClose }) {
                             ? <span style={{ color: '#c2410c', fontWeight: 600 }}>Unallocated</span>
                             : p.allocated_to}
                           {isThisMonth && (
-                            <span style={{ fontSize: 10, color: '#0e7fe0', fontWeight: 600, marginLeft: 6 }}>
+                            <span style={{ fontSize: 11, color: '#0e7fe0', fontWeight: 600, marginLeft: 6 }}>
                               this month
                             </span>
                           )}
@@ -582,10 +582,10 @@ function DrillContent({ row, rows, idx, drill, lines, payments, onClose }) {
                   })}
                   {onDate.length > 1 && (
                     <tr style={{ fontWeight: 600 }}>
-                      <td style={{ padding: '3px 12px 6px 0', color: '#64748b', fontSize: 11 }}>
+                      <td style={{ padding: '3px 12px 6px 0', color: '#64748b', fontSize: 12 }}>
                         Received on {d}
                       </td>
-                      <td style={{ padding: '3px 12px 6px', color: '#94a3b8', fontSize: 11 }}>
+                      <td style={{ padding: '3px 12px 6px', color: '#94a3b8', fontSize: 12 }}>
                         {onDate.length} allocations
                       </td>
                       <td style={{ padding: '3px 0 6px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
@@ -598,7 +598,7 @@ function DrillContent({ row, rows, idx, drill, lines, payments, onClose }) {
             })}
           </tbody>
         </table>
-        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, maxWidth: 640, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6, maxWidth: 640, lineHeight: 1.5 }}>
           Rows without the blue mark are the same money set against other months. HMRC does not give us a
           reliable payment reference, so these are grouped by the date received — usually one bank payment,
           but two payments on the same day would appear together.
@@ -619,14 +619,14 @@ function DrillContent({ row, rows, idx, drill, lines, payments, onClose }) {
         'the months inside this range that are still unpaid',
       )}
       {contributing.length === 0 ? (
-        <div style={{ fontSize: 12, color: '#94a3b8' }}>
+        <div style={{ fontSize: 13, color: '#94a3b8' }}>
           Nothing in the range shown is unpaid. Any balance here was brought forward from before{' '}
           {rows[0]?.period_start} — widen the date range to see it.
         </div>
       ) : (
-        <table style={{ fontSize: 12, borderCollapse: 'collapse', minWidth: 420 }}>
+        <table style={{ fontSize: 13, borderCollapse: 'collapse', minWidth: 420 }}>
           <thead>
-            <tr style={{ color: '#94a3b8', fontSize: 10, textTransform: 'uppercase' }}>
+            <tr style={{ color: '#94a3b8', fontSize: 11 }}>
               <th style={{ ...th, padding: '3px 12px 3px 0' }}>Month</th>
               <th style={{ ...th, padding: '3px 12px' }}>Due</th>
               <th style={{ ...thNum, padding: '3px 0 3px 12px' }}>Still unpaid</th>
@@ -688,11 +688,11 @@ function BalanceProof({ proof, to }) {
   return (
     <div style={{ borderTop: '1px solid #e5e7eb', padding: '12px 14px', background: '#f8fafc' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
           Owed to HMRC at {prettyDate(to)}
         </span>
         <span style={{
-          fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
+          fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
           padding: '2px 7px', borderRadius: 999,
           color: isMinimum ? '#92400e' : '#166534',
           background: isMinimum ? '#fef3c7' : '#dcfce7',
@@ -701,14 +701,14 @@ function BalanceProof({ proof, to }) {
           {isMinimum ? 'Minimum' : 'Proven'}
         </span>
         {proof.last_period_end && (
-          <span style={{ fontSize: 11, color: '#94a3b8' }}>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>
             {proof.periods_counted} tax months to the one ending {prettyDate(proof.last_period_end)}, due{' '}
             {prettyDate(proof.last_period_due)}
           </span>
         )}
       </div>
 
-      <table style={{ fontSize: 12.5, borderCollapse: 'collapse', minWidth: 460 }}>
+      <table style={{ fontSize: 13.5, borderCollapse: 'collapse', minWidth: 460 }}>
         <tbody>
           {/* The derived opening balance — the plug that makes the walk tie to
               HMRC's own overdue figure. Zero for most clients, which is itself
@@ -755,7 +755,7 @@ function BalanceProof({ proof, to }) {
             <td style={{ padding: '6px 14px 2px 0', fontWeight: 700, color: '#0f172a' }}>
               Owed at {prettyDate(to)}
             </td>
-            <td style={{ padding: '6px 0 2px 14px', textAlign: 'right', fontWeight: 700, fontSize: 14,
+            <td style={{ padding: '6px 0 2px 14px', textAlign: 'right', fontWeight: 700, fontSize: 14.5,
                          color: n(proof.balance_at) > 0 ? '#b91c1c' : '#059669',
                          fontVariantNumeric: 'tabular-nums' }}>
               {fmtGbpDetailed(proof.balance_at)}
@@ -781,12 +781,12 @@ function BalanceProof({ proof, to }) {
       </table>
 
       {n(proof.overdue_at) === n(proof.stated_debt_today) && (
-        <div style={{ fontSize: 11.5, color: '#166534', marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12.5, color: '#166534', marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
           The overdue element ties to HMRC's own stated debt of {fmtGbpDetailed(proof.stated_debt_today)}.
         </div>
       )}
 
-      <div style={{ fontSize: 11.5, color: isMinimum ? '#78350f' : '#64748b', marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12.5, color: isMinimum ? '#78350f' : '#64748b', marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
         {isMinimum ? (
           <>
             <b>At least</b> this much was outstanding.{' '}
@@ -810,7 +810,7 @@ function BalanceProof({ proof, to }) {
 
       {/* The rule that decides which months are in, said plainly. It is the one
           thing about this figure people get wrong. */}
-      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, maxWidth: 720, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6, maxWidth: 720, lineHeight: 1.5 }}>
         A tax month belongs to the period containing the day it starts, so {prettyDate(to)} includes the month
         running to {prettyDate(proof.last_period_end)} — the payroll run in that month. HMRC gives us no finer
         grain than the month, so a payroll paid between {prettyDate(to)} and {prettyDate(proof.last_period_end)}
@@ -843,7 +843,7 @@ function Preset({ label, onClick, disabled, title }) {
       disabled={disabled}
       title={title || ''}
       style={{
-        padding: '5px 10px', fontSize: 11.5, fontFamily: font,
+        padding: '5px 10px', fontSize: 12.5, fontFamily: font,
         color: disabled ? '#cbd5e1' : '#475569',
         background: '#fff', border: '1px solid #e5e7eb', borderRadius: 999,
         cursor: disabled ? 'default' : 'pointer',
@@ -854,8 +854,7 @@ function Preset({ label, onClick, disabled, title }) {
   );
 }
 
-const lbl = { fontSize: 12, color: '#64748b', fontFamily: font, display: 'inline-flex', alignItems: 'center' };
+const lbl = { fontSize: 13, color: '#64748b', fontFamily: font, display: 'inline-flex', alignItems: 'center' };
 const headRow = {
-  background: '#f8fafc', fontSize: 9.5, textTransform: 'uppercase',
-  letterSpacing: 0.4, color: '#64748b',
+  background: '#f8fafc', fontSize: 10.5, color: '#64748b',
 };

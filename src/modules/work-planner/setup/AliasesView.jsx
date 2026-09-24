@@ -50,7 +50,7 @@ export default function AliasesView() {
 
   return (
     <div style={{ padding: '20px 28px', fontFamily: font }}>
-      <p style={{ fontSize: 13, color: '#475569', maxWidth: 760, marginBottom: 14 }}>
+      <p style={{ fontSize: 14, color: '#475569', maxWidth: 760, marginBottom: 14 }}>
         Every BM assignee name seen in a tasks import lands here. Map each to a real staff profile so tasks get the right <code>assignee_id</code>, or mark inactive if the person has left. New aliases appear automatically — no manual creation needed.
       </p>
 
@@ -66,14 +66,14 @@ export default function AliasesView() {
       )}
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8' }}>Loading…</p>
       ) : aliases.length === 0 ? (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
           No aliases yet. They'll appear the first time a BM Tasks import runs.
         </div>
       ) : (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th style={th}>BM name</th>
@@ -92,7 +92,7 @@ export default function AliasesView() {
                   <tr key={a.bm_assignee_name} style={{ borderTop: '1px solid #f1f5f9' }}>
                     <td style={td}>
                       <b>{a.display_name || a.bm_assignee_name}</b>
-                      <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' }}>{a.bm_assignee_name}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>{a.bm_assignee_name}</div>
                     </td>
                     <td style={td}>
                       <select
@@ -121,7 +121,7 @@ export default function AliasesView() {
                       )}
                     </td>
                     <td style={td}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#475569', cursor: 'pointer' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#475569', cursor: 'pointer' }}>
                         <input
                           type="checkbox"
                           checked={!!a.active}
@@ -149,9 +149,9 @@ function fmtDate(iso) {
   } catch { return iso; }
 }
 
-const th = { textAlign: 'left', padding: '10px 12px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' };
-const td = { padding: '10px 12px', fontSize: 12, verticalAlign: 'middle', color: '#1e293b' };
-const inp = { padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 12, fontFamily: font, background: '#fff' };
+const th = { textAlign: 'left', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: '#94a3b8' };
+const td = { padding: '10px 12px', fontSize: 13, verticalAlign: 'middle', color: '#1e293b' };
+const inp = { padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 13, fontFamily: font, background: '#fff' };
 
 function pill(tone) {
   const tones = {
@@ -160,10 +160,10 @@ function pill(tone) {
     slate: { bg: '#f1f5f9', color: '#475569' },
   };
   const t = tones[tone] || tones.slate;
-  return { fontSize: 11, padding: '2px 8px', borderRadius: 999, background: t.bg, color: t.color, fontWeight: 500 };
+  return { fontSize: 12, padding: '2px 8px', borderRadius: 999, background: t.bg, color: t.color, fontWeight: 500 };
 }
 function banner(tone) {
   const tones = { red: { bg: '#fee2e2', border: '#fca5a5', color: '#991b1b' } };
   const t = tones[tone] || tones.red;
-  return { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: t.bg, border: `1px solid ${t.border}`, color: t.color, fontSize: 13, marginBottom: 14 };
+  return { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: t.bg, border: `1px solid ${t.border}`, color: t.color, fontSize: 14, marginBottom: 14 };
 }

@@ -79,7 +79,7 @@ export default function UpdatesView() {
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '24px 20px', fontFamily: font }}>
       <button
         onClick={() => navigate('/onboarding')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: font }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: font }}
       >
         <ArrowLeft size={14} /> Back to pipeline
       </button>
@@ -89,7 +89,7 @@ export default function UpdatesView() {
         <h1 style={{ margin: 0, fontSize: 21, fontWeight: 700, color: '#0f172a' }}>Latest updates</h1>
         <select
           value={days} onChange={(e) => setDays(Number(e.target.value))}
-          style={{ marginLeft: 'auto', padding: '5px 9px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff' }}
+          style={{ marginLeft: 'auto', padding: '5px 9px', fontSize: 13.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff' }}
         >
           <option value={7}>Last 7 days</option>
           <option value={14}>Last 14 days</option>
@@ -97,21 +97,21 @@ export default function UpdatesView() {
           <option value={90}>Last 90 days</option>
         </select>
       </div>
-      <div style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>
+      <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20 }}>
         Major onboarding milestones across all clients — the same feed the Monday team email uses.
       </div>
 
-      {error && <div style={{ color: '#b91c1c', fontSize: 13 }}>{error}</div>}
-      {!rows && !error && <div style={{ color: '#94a3b8', fontSize: 13 }}>Loading…</div>}
+      {error && <div style={{ color: '#b91c1c', fontSize: 14 }}>{error}</div>}
+      {!rows && !error && <div style={{ color: '#94a3b8', fontSize: 14 }}>Loading…</div>}
       {rows && rows.length === 0 && (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '28px 22px', textAlign: 'center', color: '#94a3b8', fontSize: 13.5 }}>
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '28px 22px', textAlign: 'center', color: '#94a3b8', fontSize: 14.5 }}>
           No milestones in this period yet.
         </div>
       )}
 
       {byDay.map(([day, items]) => (
         <div key={day} style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>
             {day}
           </div>
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
@@ -130,9 +130,9 @@ export default function UpdatesView() {
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                 >
                   <span style={{ fontSize: 17 }}>{d.icon}</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', flex: '0 0 auto' }}>{u.entity_name}</span>
-                  <span style={{ fontSize: 13, color: '#475569', flex: 1 }}>{d.label}</span>
-                  <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', flex: '0 0 auto' }}>{u.entity_name}</span>
+                  <span style={{ fontSize: 14, color: '#475569', flex: 1 }}>{d.label}</span>
+                  <span style={{ fontSize: 12.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
                     {new Date(u.happened_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>

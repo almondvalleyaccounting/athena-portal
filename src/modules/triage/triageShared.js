@@ -7,7 +7,7 @@ export const card = { background: '#fff', border: '1px solid #e5e7eb', borderRad
 
 export function btn(kind) {
   return {
-    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', fontSize: 12.5, fontWeight: 600,
+    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', fontSize: 13.5, fontWeight: 600,
     fontFamily: font, borderRadius: 8, cursor: 'pointer',
     background: kind === 'primary' ? '#0f172a' : '#fff',
     color: kind === 'primary' ? '#fff' : '#475569',
@@ -23,12 +23,12 @@ export const backdrop = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
 };
 export const modal = { background: '#fff', borderRadius: 12, padding: '20px 22px', fontFamily: font, boxShadow: '0 20px 60px rgba(15,23,42,0.25)' };
-export const fieldLabel = { display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 };
+export const fieldLabel = { display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 4 };
 export const input = {
-  width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1',
+  width: '100%', padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1',
   borderRadius: 8, background: '#fff', color: '#0f172a', boxSizing: 'border-box', outline: 'none',
 };
-export const smallInput = { ...input, width: 'auto', padding: '5px 7px', fontSize: 12, borderRadius: 7 };
+export const smallInput = { ...input, width: 'auto', padding: '5px 7px', fontSize: 13, borderRadius: 7 };
 
 // ---- Action plan ----------------------------------------------------------
 
@@ -157,7 +157,7 @@ export function caseHeadline(c) {
 
 export function chip(tone) {
   return {
-    fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap',
+    fontSize: 11.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap',
     background: tone.bg, color: tone.fg, border: `1px solid ${tone.border}`,
   };
 }

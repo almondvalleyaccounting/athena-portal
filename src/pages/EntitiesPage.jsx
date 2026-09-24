@@ -204,7 +204,7 @@ export default function EntitiesPage() {
         {membershipMap[e.id] && (
           <button
             onClick={(ev) => { ev.stopPropagation(); navigate('/manage/quotes/group/' + membershipMap[e.id].groupId); }}
-            className="text-[10px] bg-ocean-50 text-ocean-600 border border-ocean-200 rounded px-1.5 py-0.5 hover:bg-ocean-100 truncate max-w-[120px]"
+            className="text-[11px] bg-ocean-50 text-ocean-600 border border-ocean-200 rounded px-1.5 py-0.5 hover:bg-ocean-100 truncate max-w-[120px]"
             title={membershipMap[e.id].groupName}
           >
             {membershipMap[e.id].groupName}
@@ -216,7 +216,7 @@ export default function EntitiesPage() {
               <button
                 key={status}
                 onClick={(ev) => { ev.stopPropagation(); navigate(`/manage/quotes?client=${encodeURIComponent(e.name)}&status=${status}`); }}
-                className={`text-[10px] rounded px-1.5 py-0.5 font-medium hover:opacity-80 ${
+                className={`text-[11px] rounded px-1.5 py-0.5 font-medium hover:opacity-80 ${
                   status === 'draft' ? 'bg-gray-100 text-gray-600' :
                   status === 'pending_approval' ? 'bg-amber-50 text-amber-700' :
                   status === 'approved' ? 'bg-blue-50 text-blue-700' :
@@ -323,7 +323,7 @@ export default function EntitiesPage() {
           {/* Clients with pending quotes */}
           {withPending.length > 0 && (
             <div>
-              <h3 className="text-xs font-semibold text-ocean-700 uppercase tracking-wide mb-2">
+              <h3 className="text-xs font-semibold text-ocean-700 mb-2">
                 Clients with Pending Quotes ({withPending.length})
               </h3>
               <div className="bg-white rounded-lg border-2 border-ocean-200 overflow-hidden">
@@ -346,7 +346,7 @@ export default function EntitiesPage() {
           {/* All other clients */}
           {withoutPending.length > 0 && (
             <div>
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              <h3 className="text-xs font-semibold text-gray-500 mb-2">
                 {withPending.length > 0 ? 'Other Clients' : 'All Clients'} ({withoutPending.length})
               </h3>
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

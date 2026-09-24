@@ -80,7 +80,7 @@ export default function PaymentsView({ payeRef = '', entityName = '' }) {
     <div>
       <ErrorBar message={error} />
 
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
         {payeRef
           ? <>Every payment HMRC has recorded against {entityName || 'this client'}&rsquo;s scheme {payeRef}, when it
               arrived and which tax month it was set against.</>
@@ -114,7 +114,7 @@ export default function PaymentsView({ payeRef = '', entityName = '' }) {
           disabled={filtered.length === 0}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
-            fontSize: 12, fontFamily: font, color: '#475569', background: '#fff',
+            fontSize: 13, fontFamily: font, color: '#475569', background: '#fff',
             border: '1px solid #e5e7eb', borderRadius: 8,
             cursor: filtered.length ? 'pointer' : 'default', opacity: filtered.length ? 1 : 0.5,
           }}
@@ -128,13 +128,13 @@ export default function PaymentsView({ payeRef = '', entityName = '' }) {
       {!payeRef && <AlphabetFilter items={rows} nameKey="entity_name" selected={letter} onChange={setLetter} />}
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading payments…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading payments…</div>
       ) : (
         <div style={{ ...card, marginTop: 8 }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', fontSize: 13.5, borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
                   <th style={th}>Client</th>
                   <th style={th}>PAYE ref</th>
                   <th style={th}>Received</th>
@@ -151,7 +151,7 @@ export default function PaymentsView({ payeRef = '', entityName = '' }) {
                 {filtered.map((r) => (
                   <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9', background: r.unallocated ? '#fff7ed' : undefined }}>
                     <td style={{ ...td, fontWeight: 500 }}>{r.entity_name}</td>
-                    <td style={{ ...td, fontSize: 11.5, color: '#64748b', whiteSpace: 'nowrap' }}>{r.paye_ref}</td>
+                    <td style={{ ...td, fontSize: 12.5, color: '#64748b', whiteSpace: 'nowrap' }}>{r.paye_ref}</td>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>{r.received_on_text}</td>
                     <td style={{ ...td, color: '#475569', maxWidth: 380 }}>
                       {r.unallocated ? (
@@ -162,7 +162,7 @@ export default function PaymentsView({ payeRef = '', entityName = '' }) {
                         <>
                           {r.allocated_to}
                           {r.allocated_month && (
-                            <span style={{ fontSize: 10.5, color: '#94a3b8', marginLeft: 6 }}>
+                            <span style={{ fontSize: 11.5, color: '#94a3b8', marginLeft: 6 }}>
                               {MONTH_NAMES[r.allocated_month]} · m{r.allocated_month} {r.allocated_year}
                             </span>
                           )}
@@ -181,4 +181,4 @@ export default function PaymentsView({ payeRef = '', entityName = '' }) {
   );
 }
 
-const lbl = { fontSize: 12, color: '#64748b', fontFamily: font, display: 'inline-flex', alignItems: 'center' };
+const lbl = { fontSize: 13, color: '#64748b', fontFamily: font, display: 'inline-flex', alignItems: 'center' };

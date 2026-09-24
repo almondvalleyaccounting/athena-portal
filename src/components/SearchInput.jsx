@@ -13,7 +13,7 @@ export default function SearchInput({ value, onChange, placeholder, style, input
         placeholder={placeholder}
         style={{
           padding: '4px 26px 4px 8px',
-          fontSize: 12,
+          fontSize: 13,
           fontFamily: font,
           border: '1px solid #e5e7eb',
           borderRadius: 6,

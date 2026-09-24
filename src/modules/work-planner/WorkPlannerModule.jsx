@@ -765,7 +765,7 @@ export default function WorkPlannerModule() {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100%', fontFamily: "'Outfit', sans-serif", color: '#94a3b8', fontSize: 14,
+        height: '100%', fontFamily: "'Outfit', sans-serif", color: '#94a3b8', fontSize: 14.5,
       }}>
         Loading Work Planner...
       </div>
@@ -776,7 +776,7 @@ export default function WorkPlannerModule() {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100%', fontFamily: "'Outfit', sans-serif", color: '#dc2626', fontSize: 14,
+        height: '100%', fontFamily: "'Outfit', sans-serif", color: '#dc2626', fontSize: 14.5,
       }}>
         Error: {error}
       </div>
@@ -799,7 +799,7 @@ export default function WorkPlannerModule() {
         }}>
           {soleTab ? (
             <div style={{
-              padding: '10px 18px 10px 0', fontSize: 14, fontWeight: 600,
+              padding: '10px 18px 10px 0', fontSize: 14.5, fontWeight: 600,
               color: '#0f172a', fontFamily: "'Outfit', sans-serif",
             }}>
               {soleTab.label}
@@ -809,7 +809,7 @@ export default function WorkPlannerModule() {
               key={tab.id}
               onClick={() => navigate(tab.path)}
               style={{
-                padding: '10px 18px', fontSize: 14, fontWeight: 500,
+                padding: '10px 18px', fontSize: 14.5, fontWeight: 500,
                 color: activeTab === tab.id ? '#0e7fe0' : '#64748b',
                 cursor: 'pointer', border: 'none', background: 'none',
                 borderBottom: activeTab === tab.id ? '2px solid #0e7fe0' : '2px solid transparent',
@@ -827,7 +827,7 @@ export default function WorkPlannerModule() {
                 <button
                   onClick={() => setQuickModal({ _new: true })}
                   style={{
-                    padding: '5px 12px', fontSize: 11, fontWeight: 500,
+                    padding: '5px 12px', fontSize: 12, fontWeight: 500,
                     fontFamily: "'Outfit', sans-serif", border: '1px solid #38bdf8',
                     borderRadius: 8, background: '#dbeafe', color: '#0e7fe0', cursor: 'pointer',
                   }}
@@ -838,7 +838,7 @@ export default function WorkPlannerModule() {
               <button
                 onClick={() => setModal('new')}
                 style={{
-                  padding: '5px 12px', fontSize: 11, fontWeight: 500,
+                  padding: '5px 12px', fontSize: 12, fontWeight: 500,
                   fontFamily: "'Outfit', sans-serif", border: '1px solid #0f172a',
                   borderRadius: 8, background: '#0f172a', color: '#fff', cursor: 'pointer',
                 }}

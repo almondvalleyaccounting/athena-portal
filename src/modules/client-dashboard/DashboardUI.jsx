@@ -14,7 +14,7 @@ export function LoadingCard({ label }) {
   return (
     <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
       <Loader size={22} style={{ color: '#7dd3fc', marginBottom: '10px', animation: 'spin 1s linear infinite' }} />
-      <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#64748b' }}>Loading {label}…</div>
+      <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#64748b' }}>Loading {label}…</div>
     </div>
   );
 }
@@ -23,10 +23,10 @@ export function EmptyState({ label, needsReconnect, selectedName, onPull, loadin
   return (
     <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
       <CloudOff size={26} style={{ color: '#cbd5e1', marginBottom: '10px' }} />
-      <div style={{ fontFamily: OUTFIT, fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
+      <div style={{ fontFamily: OUTFIT, fontSize: '15.5px', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
         No {label} for this client yet
       </div>
-      <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#64748b', maxWidth: '460px', margin: '0 auto 16px' }}>
+      <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#64748b', maxWidth: '460px', margin: '0 auto 16px' }}>
         {needsReconnect
           ? `${selectedName || 'This client'}'s QuickBooks connection has no usable access tokens, so nothing can be pulled. Reconnect them from Reports → Connect, then pull again.`
           : 'Pull from QuickBooks to fetch this report. If the pull fails, the client’s QuickBooks needs (re)connecting from the Reports module.'}
@@ -38,7 +38,7 @@ export function EmptyState({ label, needsReconnect, selectedName, onPull, loadin
           style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px',
             border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
-            cursor: loading ? 'not-allowed' : 'pointer', fontFamily: OUTFIT, fontSize: '13px',
+            cursor: loading ? 'not-allowed' : 'pointer', fontFamily: OUTFIT, fontSize: '14px',
             fontWeight: 600, color: '#38bdf8',
           }}
         >
@@ -56,14 +56,14 @@ export function Delta({ now, prev, currency, upIsGood = true, label = 'vs last m
   if (now === null || now === undefined || prev === null || prev === undefined) return null;
   const diff = now - prev;
   if (Math.abs(diff) < 0.005) {
-    return <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>unchanged {label}</span>;
+    return <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8' }}>unchanged {label}</span>;
   }
   const up = diff > 0;
   const good = up === upIsGood;
   const color = good ? '#166534' : '#991b1b';
   const Icon = up ? ArrowUpRight : ArrowDownRight;
   return (
-    <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', fontWeight: 600, color, display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+    <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', fontWeight: 600, color, display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
       <Icon size={12} /> {money(Math.abs(diff), currency)} {label}
     </span>
   );
@@ -83,13 +83,13 @@ export function MetricTile({ label, value, currency, sub, delta, onClick, accent
       onMouseEnter={(e) => { if (onClick) { e.currentTarget.style.borderColor = '#7dd3fc'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(56,189,248,0.08)'; } }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = accent ? '#bae6fd' : '#e5e7eb'; e.currentTarget.style.boxShadow = 'none'; }}
     >
-      <div style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>{label}</div>
+      <div style={{ fontFamily: OUTFIT, fontSize: '13px', color: '#94a3b8', marginBottom: '4px' }}>{label}</div>
       <div style={{ fontFamily: OUTFIT, fontSize: '22px', fontWeight: 700, color: (value ?? 0) < 0 ? '#991b1b' : '#0f172a' }}>
         {money(value, currency)}
       </div>
       <div style={{ minHeight: '16px', marginTop: '2px', display: 'flex', gap: '8px', alignItems: 'baseline', flexWrap: 'wrap' }}>
         {delta}
-        {sub && <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8' }}>{sub}</span>}
+        {sub && <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8' }}>{sub}</span>}
       </div>
     </div>
   );
@@ -105,7 +105,7 @@ export function Segmented({ options = [], value, onChange, size = 'md', label })
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
       {label && (
-        <span style={{ fontFamily: OUTFIT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#94a3b8' }}>
+        <span style={{ fontFamily: OUTFIT, fontSize: '12px', fontWeight: 700, color: '#94a3b8' }}>
           {label}
         </span>
       )}

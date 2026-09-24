@@ -405,7 +405,7 @@ export default function BillingReviewPage() {
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Billing approval queue
       </h1>
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
         Approve each monthly recurring bill flagged for review before it counts in the headline. Edit cadence or amount if the system got it wrong.
       </p>
 
@@ -428,7 +428,7 @@ export default function BillingReviewPage() {
             }
           }}
           disabled={diagnosing}
-          style={{ fontSize: 11, fontWeight: 500, padding: '4px 10px', background: '#fff', color: '#64748b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
+          style={{ fontSize: 12, fontWeight: 500, padding: '4px 10px', background: '#fff', color: '#64748b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
           title="Show every QBO recurring template and its link status"
         >
           {diagnosing ? 'Checking…' : 'Diagnose QBO templates'}
@@ -485,7 +485,7 @@ export default function BillingReviewPage() {
             <option value="invoice">Invoice-inferred</option>
           </select>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, fontSize: 12, color: '#475569', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, fontSize: 13, color: '#475569', cursor: 'pointer' }}>
             <input type="checkbox" checked={showNlac} onChange={(e) => setShowNlac(e.target.checked)} />
             Show NLAC clients
           </label>
@@ -493,7 +493,7 @@ export default function BillingReviewPage() {
           {(cadenceFilter !== 'all' || sourceFilter !== 'all' || showNlac) && (
             <button
               onClick={() => { setCadenceFilter('all'); setSourceFilter('all'); setShowNlac(false); }}
-              style={{ marginTop: 12, fontSize: 11, fontWeight: 500, background: 'none', border: 'none', color: '#0e7fe0', cursor: 'pointer', fontFamily: font, padding: 0 }}
+              style={{ marginTop: 12, fontSize: 12, fontWeight: 500, background: 'none', border: 'none', color: '#0e7fe0', cursor: 'pointer', fontFamily: font, padding: 0 }}
             >
               Reset filters
             </button>
@@ -501,12 +501,12 @@ export default function BillingReviewPage() {
         </FiltersPopover>
 
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 11, color: '#94a3b8' }}>{filtered.length} of {items.length}</span>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>{filtered.length} of {items.length}</span>
       </div>
 
       {pendingPushableRows.length > 0 && (
         <div style={pendingBarStyle}>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>
             {pendingPushableRows.length} template{pendingPushableRows.length === 1 ? ' has' : 's have'} a staged uplift waiting for review
           </span>
           <div style={{ flex: 1 }} />
@@ -527,7 +527,7 @@ export default function BillingReviewPage() {
       {/* Bulk bar */}
       {selected.size > 0 && (
         <div style={bulkBarStyle}>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>{selected.size} selected</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>{selected.size} selected</span>
           <div style={{ flex: 1 }} />
           <button onClick={bulkApprove} disabled={saving} style={btnApprove}>Approve</button>
           <button onClick={bulkReject} disabled={saving} style={btnReject}>Reject</button>
@@ -540,7 +540,7 @@ export default function BillingReviewPage() {
       )}
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : filtered.length === 0 ? (
         filter === 'suggested' ? (
           <EmptyState
@@ -589,7 +589,7 @@ export default function BillingReviewPage() {
 
       {!loading && filtered.length > 0 && (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 32 }} />
               <col style={{ width: '20%' }} />
@@ -641,15 +641,15 @@ export default function BillingReviewPage() {
                     <Td>
                       <div style={{ fontWeight: 500, color: '#0f172a' }}>{s.service_id || 'service'}</div>
                       {s.description && s.description !== s.service_id && (
-                        <div style={{ fontSize: 10, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.description}>
+                        <div style={{ fontSize: 11, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.description}>
                           {s.description.length > 60 ? s.description.slice(0, 60) + '…' : s.description}
                         </div>
                       )}
                       {s.review_reason && (
-                        <div style={{ fontSize: 10, color: '#b45309', marginTop: 2 }}>⚠ {s.review_reason}</div>
+                        <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>⚠ {s.review_reason}</div>
                       )}
                       {s.note && (
-                        <div style={{ fontSize: 10, color: '#0369a1', marginTop: 2, whiteSpace: 'normal' }} title={`Internal note (not on invoice): ${s.note}`}>
+                        <div style={{ fontSize: 11, color: '#0369a1', marginTop: 2, whiteSpace: 'normal' }} title={`Internal note (not on invoice): ${s.note}`}>
                           💬 Note: {s.note.length > 80 ? s.note.slice(0, 80) + '…' : s.note}
                         </div>
                       )}
@@ -687,7 +687,7 @@ export default function BillingReviewPage() {
                         <div>
                           <span style={{ fontFamily: 'monospace' }}>£{Number(s.monthly_amount || 0).toFixed(2)}</span>
                           {s.pending_monthly_amount != null && Number(s.pending_monthly_amount) !== Number(s.monthly_amount) && (
-                            <div style={{ fontSize: 10, fontFamily: 'monospace', color: '#7c3aed', marginTop: 2 }}
+                            <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#7c3aed', marginTop: 2 }}
                                  title={`Pending from ${s.pending_effective_at || ''}${s.pending_uplift_reason ? ` — ${s.pending_uplift_reason}` : ''}`}>
                               → £{Number(s.pending_monthly_amount).toFixed(2)}
                             </div>
@@ -869,10 +869,10 @@ function DeliveryGapsPanel({ canFix }) {
   if (gaps === null) return null;
   if (gaps.length === 0) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 11, color: '#64748b' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 12, color: '#64748b' }}>
         <span style={{ color: '#059669' }}>&#10003;</span>
         Every active recurring template emails its client.
-        <button onClick={recheck} disabled={!!busy} style={{ background: 'none', border: 'none', padding: 0, fontSize: 11, color: '#0e7fe0', cursor: 'pointer', fontFamily: font, textDecoration: 'underline' }}>
+        <button onClick={recheck} disabled={!!busy} style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#0e7fe0', cursor: 'pointer', fontFamily: font, textDecoration: 'underline' }}>
           {busy === 'sweep' ? 'Re-checking…' : 're-check from QBO'}
         </button>
       </div>
@@ -885,25 +885,25 @@ function DeliveryGapsPanel({ canFix }) {
     <div style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <MailWarning size={15} style={{ color: '#b91c1c', flexShrink: 0 }} />
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#991b1b' }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#991b1b' }}>
           {gaps.length} recurring template{gaps.length === 1 ? '' : 's'} bill the client but never email them
         </div>
-        <div style={{ fontSize: 12, color: '#b91c1c' }}>&#163;{atRisk.toFixed(2)}/month</div>
+        <div style={{ fontSize: 13, color: '#b91c1c' }}>&#163;{atRisk.toFixed(2)}/month</div>
         <div style={{ flex: 1 }} />
-        <button onClick={openPanel} disabled={!!busy} style={{ fontSize: 11, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: busy ? 'default' : 'pointer', fontFamily: font, opacity: busy ? 0.6 : 1 }}>
+        <button onClick={openPanel} disabled={!!busy} style={{ fontSize: 12, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: busy ? 'default' : 'pointer', fontFamily: font, opacity: busy ? 0.6 : 1 }}>
           {busy === 'preview' ? 'Checking addresses…' : open ? 'Hide' : 'Review one by one'}
         </button>
-        <button onClick={recheck} disabled={!!busy} style={{ fontSize: 11, background: '#fff', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 10px', cursor: busy ? 'default' : 'pointer', fontFamily: font }}>
+        <button onClick={recheck} disabled={!!busy} style={{ fontSize: 12, background: '#fff', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 10px', cursor: busy ? 'default' : 'pointer', fontFamily: font }}>
           {busy === 'sweep' ? 'Re-checking…' : 'Re-check'}
         </button>
       </div>
-      <p style={{ fontSize: 11, color: '#7f1d1d', margin: '6px 0 0', maxWidth: 860 }}>
+      <p style={{ fontSize: 12, color: '#7f1d1d', margin: '6px 0 0', maxWidth: 860 }}>
         QuickBooks generates and posts these invoices on schedule, so the balance grows, but it was never told to send them.
         Turning emailing on affects invoices generated from the next run date onwards — past invoices are not resent.
         {!canFix && ' Turning it on needs the billing-approval permission.'}
       </p>
       {open && (
-        <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginTop: 10 }}>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', marginTop: 10 }}>
           <thead><tr style={{ background: '#fff1f2' }}><DiagTh>Client</DiagTh><DiagTh>Monthly</DiagTh><DiagTh>Next run</DiagTh><DiagTh>Would email</DiagTh><DiagTh>Problem</DiagTh><DiagTh> </DiagTh></tr></thead>
           <tbody>
             {gaps.map((g) => {
@@ -928,7 +928,7 @@ function DeliveryGapsPanel({ canFix }) {
                         onClick={() => fixOne(g)}
                         disabled={!!busy || stuck}
                         title={stuck ? 'Add an email address to the client record first' : 'Turn on automatic emailing for this client'}
-                        style={{ fontSize: 11, fontWeight: 600, background: stuck ? '#f1f5f9' : '#b91c1c', color: stuck ? '#94a3b8' : '#fff', border: 'none', borderRadius: 6, padding: '3px 9px', cursor: (busy || stuck) ? 'default' : 'pointer', fontFamily: font, opacity: busy && busy !== g.billing_id ? 0.5 : 1, whiteSpace: 'nowrap' }}
+                        style={{ fontSize: 12, fontWeight: 600, background: stuck ? '#f1f5f9' : '#b91c1c', color: stuck ? '#94a3b8' : '#fff', border: 'none', borderRadius: 6, padding: '3px 9px', cursor: (busy || stuck) ? 'default' : 'pointer', fontFamily: font, opacity: busy && busy !== g.billing_id ? 0.5 : 1, whiteSpace: 'nowrap' }}
                       >
                         {busy === g.billing_id ? 'Turning on…' : 'Turn on'}
                       </button>
@@ -1028,11 +1028,11 @@ function DiagnoseModal({ data, onClose, onRepaired }) {
 
           {noEntity.length > 0 && (
             <details open style={{ marginBottom: 14 }}>
-              <summary style={{ fontWeight: 600, fontSize: 13, color: '#b91c1c', cursor: 'pointer', marginBottom: 6 }}>
+              <summary style={{ fontWeight: 600, fontSize: 14, color: '#b91c1c', cursor: 'pointer', marginBottom: 6 }}>
                 {noEntity.length} template{noEntity.length === 1 ? '' : 's'} — QBO customer not mapped to any Athena entity
               </summary>
-              <p style={{ fontSize: 11, color: '#64748b', marginTop: 0 }}>Fix on the <a href="/manage/billing/qbo-mapping" style={{ color: '#0e7fe0' }}>QBO mapping</a> page, then re-run pull.</p>
-              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+              <p style={{ fontSize: 12, color: '#64748b', marginTop: 0 }}>Fix on the <a href="/manage/billing/qbo-mapping" style={{ color: '#0e7fe0' }}>QBO mapping</a> page, then re-run pull.</p>
+              <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: '#f8fafc' }}><DiagTh>Template</DiagTh><DiagTh>QBO customer</DiagTh><DiagTh>QBO ID</DiagTh><DiagTh>Active</DiagTh></tr></thead>
                 <tbody>
                   {noEntity.map((r, i) => (
@@ -1050,10 +1050,10 @@ function DiagnoseModal({ data, onClose, onRepaired }) {
 
           {noBilling.length > 0 && (
             <details open>
-              <summary style={{ fontWeight: 600, fontSize: 13, color: '#b45309', cursor: 'pointer', marginBottom: 6 }}>
+              <summary style={{ fontWeight: 600, fontSize: 14, color: '#b45309', cursor: 'pointer', marginBottom: 6 }}>
                 {noBilling.length} template{noBilling.length === 1 ? '' : 's'} — entity matched but no live_billing row carries the txn id
               </summary>
-              <p style={{ fontSize: 11, color: '#64748b', marginTop: 0 }}>
+              <p style={{ fontSize: 12, color: '#64748b', marginTop: 0 }}>
                 These templates exist in QBO and belong to entities we already know about — they just never got attached to a billing row. Click <strong>Attach</strong> to wire each one to the entity's largest unlinked billing row. After repair, re-pull from QBO to refresh the service lines from the templates.
               </p>
               {repairableCount > 0 && (
@@ -1061,13 +1061,13 @@ function DiagnoseModal({ data, onClose, onRepaired }) {
                   <button
                     onClick={repairAll}
                     disabled={repairing}
-                    style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
+                    style={{ padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
                   >
                     {repairing ? 'Attaching…' : `Attach all ${repairableCount} suggested →`}
                   </button>
                 </div>
               )}
-              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+              <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: '#f8fafc' }}><DiagTh>Template</DiagTh><DiagTh>Entity</DiagTh><DiagTh>QBO customer</DiagTh><DiagTh>Active</DiagTh><DiagTh></DiagTh></tr></thead>
                 <tbody>
                   {noBilling.map((r, i) => {
@@ -1081,15 +1081,15 @@ function DiagnoseModal({ data, onClose, onRepaired }) {
                         <DiagTd>{r.active ? '✓' : '✗'}</DiagTd>
                         <DiagTd>
                           {done ? (
-                            <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>✓ Attached</span>
+                            <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>✓ Attached</span>
                           ) : cand ? (
                             <button
                               onClick={async () => { await attachOne(r); onRepaired?.(); }}
                               disabled={repairing}
-                              style={{ fontSize: 11, fontWeight: 500, padding: '3px 10px', background: '#fff', color: '#059669', border: '1px solid #6ee7b7', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
+                              style={{ fontSize: 12, fontWeight: 500, padding: '3px 10px', background: '#fff', color: '#059669', border: '1px solid #6ee7b7', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
                             >Attach</button>
                           ) : (
-                            <span style={{ fontSize: 10, color: '#94a3b8' }}>No free billing row</span>
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>No free billing row</span>
                           )}
                         </DiagTd>
                       </tr>
@@ -1101,7 +1101,7 @@ function DiagnoseModal({ data, onClose, onRepaired }) {
           )}
 
           {noEntity.length === 0 && noBilling.length === 0 && (
-            <div style={{ padding: 30, textAlign: 'center', color: '#15803d', fontSize: 13 }}>
+            <div style={{ padding: 30, textAlign: 'center', color: '#15803d', fontSize: 14 }}>
               Every QBO template is linked to a billing row. Nothing to fix.
             </div>
           )}
@@ -1115,12 +1115,12 @@ function DiagStat({ label, value, tone }) {
   const fg = tone === 'green' ? '#15803d' : tone === 'red' ? '#b91c1c' : tone === 'amber' ? '#b45309' : '#0f172a';
   return (
     <div style={{ flex: 1, minWidth: 130, padding: '10px 12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</div>
       <div style={{ fontSize: 20, fontWeight: 700, color: fg, fontFamily: 'monospace', marginTop: 2 }}>{value}</div>
     </div>
   );
 }
-const DiagTh = ({ children }) => <th style={{ textAlign: 'left', padding: '6px 10px', fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{children}</th>;
+const DiagTh = ({ children }) => <th style={{ textAlign: 'left', padding: '6px 10px', fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{children}</th>;
 const DiagTd = ({ children }) => <td style={{ padding: '6px 10px', verticalAlign: 'middle' }}>{children}</td>;
 
 function StatusChip({ status }) {
@@ -1133,7 +1133,7 @@ function StatusChip({ status }) {
   const t = tones[m.tone];
   return (
     <span style={{
-      fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+      fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
       background: t.bg, color: t.fg,
     }}>{m.label}</span>
   );
@@ -1160,7 +1160,7 @@ function CadenceSegmented({ value, onChange, disabled }) {
             disabled={disabled}
             title={`Classify as ${o.label}`}
             style={{
-              fontSize: 11, fontWeight: active ? 600 : 500,
+              fontSize: 12, fontWeight: active ? 600 : 500,
               padding: '4px 10px',
               background: active ? o.bg : '#fff',
               color: active ? o.fg : '#64748b',
@@ -1191,7 +1191,7 @@ function FilterPill({ label, count, active, tone, onClick }) {
   const border = isMaster && !active ? '#e5e7eb' : t.border;
   return (
     <button onClick={onClick} style={{
-      fontSize: 12, fontWeight: active ? 600 : 500,
+      fontSize: 13, fontWeight: active ? 600 : 500,
       padding: '5px 12px', borderRadius: 999,
       background: bg, color: fg, border: `1px solid ${border}`,
       cursor: 'pointer', fontFamily: font,
@@ -1202,7 +1202,7 @@ function FilterPill({ label, count, active, tone, onClick }) {
 }
 
 const Th = ({ children }) => (
-  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>
     {children}
   </th>
 );
@@ -1213,7 +1213,7 @@ function SortableTh({ label, sortKey, sortBy, sortDir, onSort }) {
   return (
     <th
       onClick={() => onSort(sortKey)}
-      style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: active ? '#0f172a' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }}
+      style={{ textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: active ? '#0f172a' : '#94a3b8', cursor: 'pointer', userSelect: 'none' }}
     >
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         {label}
@@ -1223,16 +1223,16 @@ function SortableTh({ label, sortKey, sortBy, sortDir, onSort }) {
   );
 }
 
-const filterLabelStyle = { fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: font };
-const popoverSelectStyle = { width: '100%', padding: '6px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', boxSizing: 'border-box' };
+const filterLabelStyle = { fontSize: 12, fontWeight: 600, color: '#64748b', fontFamily: font };
+const popoverSelectStyle = { width: '100%', padding: '6px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', boxSizing: 'border-box' };
 
-const Label = ({ children, style }) => <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5, ...style }}>{children}</div>;
+const Label = ({ children, style }) => <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5, ...style }}>{children}</div>;
 
-const selectStyle = { padding: '4px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
+const selectStyle = { padding: '4px 8px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
 
 const backLinkStyle = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 12, fontWeight: 500, color: '#64748b',
+  fontSize: 13, fontWeight: 500, color: '#64748b',
   background: 'none', border: 'none', cursor: 'pointer',
   marginBottom: 12, padding: 0, fontFamily: font,
 };
@@ -1244,13 +1244,13 @@ const bulkBarStyle = {
   position: 'sticky', top: 0, zIndex: 20,
 };
 
-const btnApprove = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnReject = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnUplift = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnApprove = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnReject = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnUplift = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const pendingBarStyle = { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', marginBottom: 12, background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: 8 };
-const btnPushDry = { padding: '6px 14px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnPushLive = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnGhost = { padding: '6px 12px', fontSize: 12, fontWeight: 500, background: 'none', color: '#cbd5e1', border: 'none', cursor: 'pointer', fontFamily: font };
+const btnPushDry = { padding: '6px 14px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnPushLive = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnGhost = { padding: '6px 12px', fontSize: 13, fontWeight: 500, background: 'none', color: '#cbd5e1', border: 'none', cursor: 'pointer', fontFamily: font };
 
 function iconBtn(color) {
   return {
@@ -1268,8 +1268,7 @@ function tagStyle(tone) {
   const t = tones[map[tone] || 'neutral'];
   return {
     display: 'inline-block', marginLeft: 8,
-    fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
-    padding: '1px 6px', borderRadius: 4,
+    fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
     background: t.bg, color: t.fg,
   };
 }

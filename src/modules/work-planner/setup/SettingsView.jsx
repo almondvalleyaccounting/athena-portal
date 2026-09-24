@@ -63,7 +63,7 @@ export default function SettingsView() {
 
   return (
     <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 800 }}>
-      <p style={{ fontSize: 13, color: '#475569', marginBottom: 14 }}>
+      <p style={{ fontSize: 14, color: '#475569', marginBottom: 14 }}>
         Workflow auto-scheduling feature flag. Ingest/reconciliation writes to Supabase regardless of this flag — but future behaviours (Outlook push, automated chasers, calendar propagation) check it before running. Flip when you're confident the data is clean.
       </p>
 
@@ -74,13 +74,13 @@ export default function SettingsView() {
       )}
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8' }}>Loading…</p>
       ) : !flag ? (
-        <p style={{ fontSize: 13, color: '#991b1b' }}>Flag {FLAG_KEY} not found.</p>
+        <p style={{ fontSize: 14, color: '#991b1b' }}>Flag {FLAG_KEY} not found.</p>
       ) : (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 20 }}>
-          <p style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'monospace', marginBottom: 4 }}>{FLAG_KEY}</p>
-          <p style={{ fontSize: 14, color: '#475569', marginBottom: 16 }}>{flag.description || '—'}</p>
+          <p style={{ fontSize: 13, color: '#94a3b8', fontFamily: 'monospace', marginBottom: 4 }}>{FLAG_KEY}</p>
+          <p style={{ fontSize: 14.5, color: '#475569', marginBottom: 16 }}>{flag.description || '—'}</p>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
             <ModeCard
@@ -110,13 +110,13 @@ export default function SettingsView() {
           </div>
 
           <details>
-            <summary style={{ cursor: 'pointer', fontSize: 12, color: '#64748b', fontWeight: 500 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 13, color: '#64748b', fontWeight: 500 }}>
               Raw value
             </summary>
             <pre style={{
               marginTop: 8, padding: 12, background: '#f8fafc',
               border: '1px solid #e5e7eb', borderRadius: 6,
-              fontSize: 11, color: '#1e293b', fontFamily: 'monospace',
+              fontSize: 12, color: '#1e293b', fontFamily: 'monospace',
               overflow: 'auto',
             }}>
 {JSON.stringify(current, null, 2)}
@@ -124,7 +124,7 @@ export default function SettingsView() {
           </details>
 
           {!canEdit && (
-            <p style={{ marginTop: 14, fontSize: 12, color: '#92400e' }}>
+            <p style={{ marginTop: 14, fontSize: 13, color: '#92400e' }}>
               Only portal admins can change this flag.
             </p>
           )}
@@ -210,7 +210,7 @@ function DangerZone({ canEdit }) {
           Danger zone — clear scheduled tasks
         </h3>
       </div>
-      <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>
         Delete rows from <code>bm_task_schedule</code>. Logged time is kept (stored separately on timesheet entries). A re-import will rebuild rows for any BM tasks that still exist upstream.
       </p>
 
@@ -328,8 +328,8 @@ function ClearRow({ label, description, action }) {
       padding: '12px 14px', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: 8,
     }}>
       <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{label}</div>
-        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{description}</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{label}</div>
+        <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{description}</div>
       </div>
       {action}
     </div>
@@ -359,17 +359,17 @@ function ConfirmModal({ pending, confirmText, onConfirmTextChange, onCancel, onC
           <AlertTriangle size={18} style={{ color: '#b91c1c' }} />
           <h3 style={{ fontSize: 16, fontWeight: 600, color: '#991b1b', margin: 0 }}>Confirm delete</h3>
         </div>
-        <p style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.5, marginBottom: 12 }}>
+        <p style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, marginBottom: 12 }}>
           This will permanently delete <strong>{pending.count}</strong> schedule row{pending.count === 1 ? '' : 's'} for <strong>{pending.label}</strong>. Logged time is not affected.
         </p>
         {pending.count === 0 && (
-          <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+          <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
             Nothing matches — nothing to delete.
           </p>
         )}
         {required && pending.count > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 13, color: '#475569', display: 'block', marginBottom: 4 }}>
               Type <code>{required}</code> to confirm:
             </label>
             <input
@@ -377,7 +377,7 @@ function ConfirmModal({ pending, confirmText, onConfirmTextChange, onCancel, onC
               onChange={(e) => onConfirmTextChange(e.target.value)}
               autoFocus
               style={{
-                width: '100%', padding: '7px 10px', fontSize: 13, fontFamily: font,
+                width: '100%', padding: '7px 10px', fontSize: 14, fontFamily: font,
                 border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none',
               }}
             />
@@ -395,7 +395,7 @@ function ConfirmModal({ pending, confirmText, onConfirmTextChange, onCancel, onC
 }
 
 const selectStyle = {
-  padding: '6px 10px', fontSize: 12, fontFamily: font,
+  padding: '6px 10px', fontSize: 13, fontFamily: font,
   border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
   color: '#0f172a', outline: 'none', minWidth: 220,
 };
@@ -403,7 +403,7 @@ const selectStyle = {
 function dangerBtn(disabled) {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 6,
-    padding: '6px 12px', fontSize: 12, fontWeight: 600,
+    padding: '6px 12px', fontSize: 13, fontWeight: 600,
     fontFamily: font, border: 'none', borderRadius: 6,
     background: disabled ? '#fca5a5' : '#dc2626', color: '#fff',
     cursor: disabled ? 'not-allowed' : 'pointer',
@@ -413,7 +413,7 @@ function dangerBtn(disabled) {
 
 function neutralBtn(disabled) {
   return {
-    padding: '6px 12px', fontSize: 12, fontWeight: 500,
+    padding: '6px 12px', fontSize: 13, fontWeight: 500,
     fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6,
     background: '#fff', color: '#0f172a',
     cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1,
@@ -446,9 +446,9 @@ function ModeCard({ label, description, active, tone, disabled, onClick }) {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
         {active && <Check size={14} style={{ color: t.active }} />}
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{label}</span>
+        <span style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>{label}</span>
       </div>
-      <p style={{ fontSize: 11, color: '#475569', lineHeight: 1.4 }}>{description}</p>
+      <p style={{ fontSize: 12, color: '#475569', lineHeight: 1.4 }}>{description}</p>
     </button>
   );
 }
@@ -459,5 +459,5 @@ function banner(tone) {
     green: { bg: '#dcfce7', border: '#86efac', color: '#15803d' },
   };
   const t = tones[tone] || tones.red;
-  return { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: t.bg, border: `1px solid ${t.border}`, color: t.color, fontSize: 13, marginBottom: 14 };
+  return { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: t.bg, border: `1px solid ${t.border}`, color: t.color, fontSize: 14, marginBottom: 14 };
 }

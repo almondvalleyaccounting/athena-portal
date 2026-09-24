@@ -196,7 +196,7 @@ function RankedList({ tax, onPick }) {
     <div>
       <ErrorBar message={error} />
 
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 12, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 12, lineHeight: 1.55 }}>
         {meta.label} for every client, ranked. <b>Click a client</b> to open their own {meta.label} detail —
         they stay selected as you move between tax tabs. The practice-wide make-up of this figure is on
         the Breakdown tab.
@@ -204,7 +204,7 @@ function RankedList({ tax, onPick }) {
 
       {creditsHidden && (
         <div style={{
-          fontSize: 12, color: '#0369a1', background: '#f0f9ff', border: '1px solid #bae6fd',
+          fontSize: 13, color: '#0369a1', background: '#f0f9ff', border: '1px solid #bae6fd',
           borderRadius: 6, padding: '7px 10px', marginBottom: 12, maxWidth: 820, lineHeight: 1.55,
         }}>
           The total below counts the clients shown. {credits.clients} other client{credits.clients === 1 ? '' : 's'}
@@ -216,16 +216,16 @@ function RankedList({ tax, onPick }) {
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <SearchInput value={search} onChange={setSearch} placeholder="Client or reference…" style={{ minWidth: 240 }} />
-        <label style={{ fontSize: 12, color: '#64748b', fontFamily: font, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <label style={{ fontSize: 13, color: '#64748b', fontFamily: font, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <input type="checkbox" checked={owingOnly} onChange={(e) => setOwingOnly(e.target.checked)} />
           With a balance only
         </label>
-        <span style={{ fontSize: 12, color: '#64748b' }}>
+        <span style={{ fontSize: 13, color: '#64748b' }}>
           {filtered.length} shown · <b style={{ color: '#b91c1c' }}>{fmtGbpDetailed(sum('total'))}</b>
         </span>
         <div style={{ flex: 1 }} />
         <select value={sort} onChange={(e) => setSort(e.target.value)}
-                style={{ padding: '5px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
+                style={{ padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
           <option value="total">Sort: total owed</option>
           {tax === 'corporation-tax' && <option value="interest">Sort: interest</option>}
           {tax === 'corporation-tax' && <option value="moved">Sort: repaid / reallocated</option>}
@@ -239,7 +239,7 @@ function RankedList({ tax, onPick }) {
         <button onClick={exportCsv} disabled={filtered.length === 0}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
-            fontSize: 12, fontFamily: font, color: '#475569', background: '#fff',
+            fontSize: 13, fontFamily: font, color: '#475569', background: '#fff',
             border: '1px solid #e5e7eb', borderRadius: 8,
             cursor: filtered.length ? 'pointer' : 'default', opacity: filtered.length ? 1 : 0.5,
           }}>
@@ -250,13 +250,13 @@ function RankedList({ tax, onPick }) {
       <AlphabetFilter items={rows} nameKey="name" selected={letter} onChange={setLetter} />
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading {meta.label}…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading {meta.label}…</div>
       ) : (
         <div style={{ ...card, marginTop: 8 }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+            <table style={{ width: '100%', fontSize: 13.5, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, color: '#64748b' }}>
+                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
                   <th style={th}>Client</th>
                   <th style={th}>Reference</th>
                   {COLUMNS.map(([label, , kind]) => (
@@ -287,20 +287,20 @@ function RankedList({ tax, onPick }) {
                           style={{
                             background: 'none', border: 'none', padding: 0,
                             cursor: r.entity_id ? 'pointer' : 'default',
-                            fontFamily: font, fontSize: 12.5, fontWeight: 500,
+                            fontFamily: font, fontSize: 13.5, fontWeight: 500,
                             color: r.entity_id ? '#0f172a' : '#94a3b8', textAlign: 'left',
                           }}>
                           {r.name}
                         </button>
                         {r.no_statement && (
-                          <Pill colour="#b45309" style={{ fontSize: 10 }}
+                          <Pill colour="#b45309" style={{ fontSize: 11 }}
                             title="HMRC would not show the statement, so a zero here is unknown rather than nil">
                             No statement
                           </Pill>
                         )}
                       </div>
                     </td>
-                    <td style={{ ...td, fontSize: 11.5, color: '#64748b' }}>{r.reference}</td>
+                    <td style={{ ...td, fontSize: 12.5, color: '#64748b' }}>{r.reference}</td>
                     {COLUMNS.map(([label, get, kind]) => {
                       const v = get(r);
                       return kind === 'n' ? (
@@ -308,7 +308,7 @@ function RankedList({ tax, onPick }) {
                           {n(v) ? fmtGbpDetailed(v) : '—'}
                         </td>
                       ) : (
-                        <td key={label} style={{ ...td, textAlign: 'center', fontSize: 11.5, color: '#64748b' }}>
+                        <td key={label} style={{ ...td, textAlign: 'center', fontSize: 12.5, color: '#64748b' }}>
                           {v ?? '—'}
                         </td>
                       );
@@ -341,7 +341,7 @@ function RankedList({ tax, onPick }) {
           {orphaned.rows > 0 && (
             <div style={{
               borderTop: '1px solid #fde68a', background: '#fffbeb', padding: '9px 14px',
-              fontSize: 12, color: '#78350f', lineHeight: 1.5, whiteSpace: 'normal',
+              fontSize: 13, color: '#78350f', lineHeight: 1.5, whiteSpace: 'normal',
             }}>
               <b>{fmtGbpDetailed(orphaned.total)}</b> is excluded from this table:{' '}
               {orphaned.names.length} HMRC record{orphaned.names.length === 1 ? '' : 's'} could not be matched
@@ -400,7 +400,7 @@ function ClientTaxDetail({ tax, entityId, name, drill, setDrill }) {
   }, [tax, entityId]);
 
   if (loading) {
-    return <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading {name}&rsquo;s {meta.label}…</div>;
+    return <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading {name}&rsquo;s {meta.label}…</div>;
   }
 
   // A client can have no outstanding position and still have a payment history,
@@ -409,7 +409,7 @@ function ClientTaxDetail({ tax, entityId, name, drill, setDrill }) {
     return (
       <>
         <ErrorBar message={error} />
-        <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+        <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
           Nothing scraped for {name} on {meta.label}. Either they are not registered for it, or the scrape
           has not reached them — the banner above says when each head was last run.
         </div>
@@ -439,7 +439,7 @@ function Cell({ value, colour, bold, onClick, active, title, dashZero = true }) 
       style={{
         background: active ? '#e0edfb' : 'none', border: 'none',
         padding: active ? '1px 5px' : '1px 0', borderRadius: 4,
-        cursor: onClick ? 'pointer' : 'default', fontFamily: font, fontSize: 12,
+        cursor: onClick ? 'pointer' : 'default', fontFamily: font, fontSize: 13,
         fontWeight: bold ? 700 : 400, color: colour || '#0f172a',
         fontVariantNumeric: 'tabular-nums',
         textDecoration: onClick ? 'underline' : 'none',
@@ -460,9 +460,9 @@ function CtDetail({ rows, name, meta, moves, drill, setDrill }) {
       <Head title={`${name} — Corporation Tax by accounting period`}
             sub={`${rows.length} period${rows.length === 1 ? '' : 's'}, newest first · click a figure for the payments and reallocations behind it`} />
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
           <thead>
-            <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
               <th style={th}>Period end</th><th style={th}>Status</th>
               <th style={thNum}>Tax</th><th style={thNum}>Interest</th><th style={thNum}>Penalties</th>
               <th style={thNum}>Paid</th><th style={thNum}>Repaid / realloc</th>
@@ -480,9 +480,9 @@ function CtDetail({ rows, name, meta, moves, drill, setDrill }) {
                   <tr style={{ borderTop: '1px solid #f1f5f9', background: p.unreadable ? '#fffbeb' : undefined }}>
                     <td style={td}>
                       {shortDate(p.period_end)}
-                      {p.unreadable && <span style={{ fontSize: 10, color: '#b45309', fontWeight: 600, marginLeft: 5 }}>unreadable</span>}
+                      {p.unreadable && <span style={{ fontSize: 11, color: '#b45309', fontWeight: 600, marginLeft: 5 }}>unreadable</span>}
                     </td>
-                    <td style={{ ...td, color: '#64748b', fontSize: 11.5 }}>{p.status || '—'}</td>
+                    <td style={{ ...td, color: '#64748b', fontSize: 12.5 }}>{p.status || '—'}</td>
                     <td style={tdNum}><Cell value={p.tax} onClick={hit} active={open} title="The transactions on this period" /></td>
                     <td style={tdNum}><Cell value={p.interest} colour="#c2410c" onClick={hit} active={open} /></td>
                     <td style={tdNum}><Cell value={p.penalties} colour="#b91c1c" onClick={hit} active={open} /></td>
@@ -556,9 +556,9 @@ function VatDetail({ rows, name, meta, moves, drill, setDrill }) {
       <Head title={`${name} — VAT by period`}
             sub={`${periods.length} period${periods.length === 1 ? '' : 's'} outstanding, ${rows.length} line${rows.length === 1 ? '' : 's'} · click an amount for the lines and the cash behind it`} />
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
           <thead>
-            <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
               <th style={th}>Period</th>
               <th style={{ ...th, textAlign: 'center' }}>Lines</th>
               <th style={th}>Flags</th>
@@ -578,9 +578,9 @@ function VatDetail({ rows, name, meta, moves, drill, setDrill }) {
                     <td style={{ ...td, textAlign: 'center', color: '#64748b' }}>{p.lines.length}</td>
                     <td style={td}>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        {p.overdue > 0 && <Pill colour="#b91c1c" style={{ fontSize: 10 }}>{p.overdue} overdue</Pill>}
+                        {p.overdue > 0 && <Pill colour="#b91c1c" style={{ fontSize: 11 }}>{p.overdue} overdue</Pill>}
                         {p.assessed > 0 && (
-                          <Pill colour="#c2410c" style={{ fontSize: 10 }}
+                          <Pill colour="#c2410c" style={{ fontSize: 11 }}
                                 title="HMRC has estimated this because no return was filed. Paying it does not file the return">
                             {p.assessed} assessed
                           </Pill>
@@ -596,13 +596,12 @@ function VatDetail({ rows, name, meta, moves, drill, setDrill }) {
                   {open && (
                     <tr style={{ background: '#f8fafc' }}>
                       <td colSpan={4} style={{ padding: '10px 14px' }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase',
-                                      letterSpacing: 0.4, marginBottom: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
                           What HMRC raised
                         </div>
-                        <table style={{ fontSize: 11.5, borderCollapse: 'collapse', minWidth: 520, background: '#fff' }}>
+                        <table style={{ fontSize: 12.5, borderCollapse: 'collapse', minWidth: 520, background: '#fff' }}>
                           <thead>
-                            <tr style={{ color: '#94a3b8', fontSize: 9.5, textTransform: 'uppercase' }}>
+                            <tr style={{ color: '#94a3b8', fontSize: 10.5 }}>
                               <th style={{ ...th, padding: '3px 12px 3px 0' }}>Description</th>
                               <th style={{ ...th, padding: '3px 12px' }}>Kind</th>
                               <th style={{ ...th, padding: '3px 12px' }}>Flags</th>
@@ -684,12 +683,12 @@ function SaDetail({ rows, txns, name, meta, moves, drill, setDrill }) {
         <Head title={`${name} — Self Assessment statement`}
               sub={p?.as_at ? `as at ${shortDate(p.as_at)}` : 'HMRC gave no statement date'} />
         {!p ? (
-          <div style={{ padding: '14px', fontSize: 12, color: '#94a3b8' }}>
+          <div style={{ padding: '14px', fontSize: 13, color: '#94a3b8' }}>
             No statement held — the years below are built from the transactions HMRC does show.
           </div>
         ) : (
           <div style={{ padding: '10px 14px' }}>
-            <table style={{ fontSize: 12.5, borderCollapse: 'collapse', minWidth: 400 }}>
+            <table style={{ fontSize: 13.5, borderCollapse: 'collapse', minWidth: 400 }}>
               <tbody>
                 {[['Tax', p.tax], ['Surcharges', p.surcharges], ['Interest', p.interest],
                   ['Penalties', p.penalties], ['Total', p.total], ['Amount due', p.amount_due],
@@ -708,7 +707,7 @@ function SaDetail({ rows, txns, name, meta, moves, drill, setDrill }) {
               </tbody>
             </table>
             {p.statement_available === false && (
-              <div style={{ fontSize: 11.5, color: '#b45309', marginTop: 8 }}>
+              <div style={{ fontSize: 12.5, color: '#b45309', marginTop: 8 }}>
                 HMRC would not show the statement, so a zero here is unknown rather than nil.
               </div>
             )}
@@ -720,9 +719,9 @@ function SaDetail({ rows, txns, name, meta, moves, drill, setDrill }) {
         <Head title="By tax year"
               sub="click a figure for the individual payments and credits" />
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
             <thead>
-              <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
                 <th style={th}>Tax year ending</th>
                 <th style={{ ...th, textAlign: 'center' }}>Movements</th>
                 <th style={thNum}>Paid by client</th>
@@ -800,14 +799,14 @@ function Movements({ moves, match, label, onClose, paymentsHeld = true }) {
     <>
       <DrillHead title={label} sub={`${mine.length} movement${mine.length === 1 ? '' : 's'}`} onClose={onClose} />
       {!paymentsHeld && (
-        <div style={{ fontSize: 11.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a',
+        <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a',
                       borderRadius: 4, padding: '6px 10px', marginBottom: 8, lineHeight: 1.45, maxWidth: 640 }}>
           Reallocations only. The scrape does not yet read HMRC&rsquo;s &ldquo;Less paid&rdquo; breakdown, so
           payments against this period are missing here even though the Paid column above counts them.
         </div>
       )}
       {mine.length === 0 ? (
-        <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5, maxWidth: 640 }}>
+        <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5, maxWidth: 640 }}>
           {paymentsHeld
             ? `HMRC records no payment or reallocation against this period. For an unpaid period that is the
                point; for a settled one it means HMRC has not itemised how it was cleared.`
@@ -815,9 +814,9 @@ function Movements({ moves, match, label, onClose, paymentsHeld = true }) {
                see the note above.`}
         </div>
       ) : (
-        <table style={{ fontSize: 11.5, borderCollapse: 'collapse', minWidth: 560, background: '#fff' }}>
+        <table style={{ fontSize: 12.5, borderCollapse: 'collapse', minWidth: 560, background: '#fff' }}>
           <thead>
-            <tr style={{ color: '#94a3b8', fontSize: 9.5, textTransform: 'uppercase' }}>
+            <tr style={{ color: '#94a3b8', fontSize: 10.5 }}>
               <th style={{ ...th, padding: '3px 12px 3px 0' }}>Date</th>
               <th style={{ ...th, padding: '3px 12px' }}>What</th>
               <th style={{ ...th, padding: '3px 12px' }}>HMRC description</th>
@@ -831,7 +830,7 @@ function Movements({ moves, match, label, onClose, paymentsHeld = true }) {
                 <tr key={i} style={{ borderTop: '1px solid #eef2f6' }}>
                   <td style={{ padding: '3px 12px 3px 0', color: '#475569', whiteSpace: 'nowrap' }}>{shortDate(m.txn_date)}</td>
                   <td style={{ padding: '3px 12px' }}>
-                    <Pill colour={mm.colour} style={{ fontSize: 9.5 }} title={mm.hint}>{mm.label}</Pill>
+                    <Pill colour={mm.colour} style={{ fontSize: 10.5 }} title={mm.hint}>{mm.label}</Pill>
                   </td>
                   <td style={{ padding: '3px 12px', color: '#64748b', whiteSpace: 'normal', maxWidth: 420 }}>{m.description}</td>
                   <td style={{ padding: '3px 0 3px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
@@ -852,9 +851,9 @@ function SaLedger({ txns, label, onClose }) {
   return (
     <>
       <DrillHead title={label} sub={`${txns.length} movement${txns.length === 1 ? '' : 's'}`} onClose={onClose} />
-      <table style={{ fontSize: 11.5, borderCollapse: 'collapse', minWidth: 560, background: '#fff' }}>
+      <table style={{ fontSize: 12.5, borderCollapse: 'collapse', minWidth: 560, background: '#fff' }}>
         <thead>
-          <tr style={{ color: '#94a3b8', fontSize: 9.5, textTransform: 'uppercase' }}>
+          <tr style={{ color: '#94a3b8', fontSize: 10.5 }}>
             <th style={{ ...th, padding: '3px 12px 3px 0' }}>Date</th>
             <th style={{ ...th, padding: '3px 12px' }}>What</th>
             <th style={{ ...th, padding: '3px 12px' }}>HMRC description</th>
@@ -868,7 +867,7 @@ function SaLedger({ txns, label, onClose }) {
               <tr key={i} style={{ borderTop: '1px solid #eef2f6' }}>
                 <td style={{ padding: '3px 12px 3px 0', color: '#475569', whiteSpace: 'nowrap' }}>{shortDate(t.txn_date)}</td>
                 <td style={{ padding: '3px 12px' }}>
-                  <Pill colour={mm.colour} style={{ fontSize: 9.5 }} title={mm.hint}>{t.label || mm.label}</Pill>
+                  <Pill colour={mm.colour} style={{ fontSize: 10.5 }} title={mm.hint}>{t.label || mm.label}</Pill>
                 </td>
                 <td style={{ padding: '3px 12px', color: '#64748b', whiteSpace: 'normal', maxWidth: 420 }}>{t.description}</td>
                 <td style={{ padding: '3px 0 3px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
@@ -890,8 +889,8 @@ function Head({ title, sub }) {
   return (
     <div style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', display: 'flex',
                   alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{title}</span>
-      {sub && <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{sub}</span>}
+      <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{title}</span>
+      {sub && <span style={{ fontSize: 12.5, color: '#94a3b8' }}>{sub}</span>}
     </div>
   );
 }
@@ -899,10 +898,10 @@ function Head({ title, sub }) {
 function DrillHead({ title, sub, onClose }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{title}</span>
-      {sub && <span style={{ fontSize: 11, color: '#94a3b8' }}>{sub}</span>}
+      <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{title}</span>
+      {sub && <span style={{ fontSize: 12, color: '#94a3b8' }}>{sub}</span>}
       <button onClick={onClose} style={{
-        marginLeft: 'auto', fontSize: 11, color: '#64748b', background: 'none',
+        marginLeft: 'auto', fontSize: 12, color: '#64748b', background: 'none',
         border: 'none', cursor: 'pointer', fontFamily: font,
       }}>close</button>
     </div>
@@ -912,7 +911,7 @@ function DrillHead({ title, sub, onClose }) {
 function Foot({ children }) {
   return (
     <div style={{ padding: '9px 14px', borderTop: '1px solid #f1f5f9', background: '#f8fafc',
-                  fontSize: 11.5, color: '#64748b', lineHeight: 1.5 }}>
+                  fontSize: 12.5, color: '#64748b', lineHeight: 1.5 }}>
       {children}
     </div>
   );

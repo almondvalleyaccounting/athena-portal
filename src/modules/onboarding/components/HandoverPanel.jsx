@@ -10,7 +10,7 @@ import {
 
 const font = "'Outfit', sans-serif";
 const input = {
-  padding: '5px 8px', fontSize: 12, fontFamily: font, background: '#fff',
+  padding: '5px 8px', fontSize: 13, fontFamily: font, background: '#fff',
   border: '1px solid #cbd5e1', borderRadius: 7,
 };
 
@@ -77,7 +77,7 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
     <div style={{ background: '#fff', border: `1px solid ${anyDue ? tones.warning.border : '#e5e7eb'}`, borderRadius: 12, padding: '14px 18px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <ArrowRightLeft size={14} color="#64748b" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>
           Handovers by service
         </span>
         {allDone && <span style={chipStyle('success')}>all done</span>}
@@ -91,7 +91,7 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
         </button>
       </div>
 
-      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>
+      <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}>
         Each area owner settles the client in, then hands them to their permanent team member.
       </div>
 
@@ -105,7 +105,7 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
             background: h.done_at ? '#f8fdf9' : dueNow(h) ? tones.warning.bg : '#fbfcfd',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: h.done_at ? 0 : 7 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a', flex: 1 }}>{h.area}</span>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', flex: 1 }}>{h.area}</span>
               {h.done_at
                 ? <span style={chipStyle('success')}>done {new Date(h.done_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
                 : dueNow(h) && <span style={chipStyle('warning')}>due</span>}
@@ -120,7 +120,7 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
               )}
             </div>
             {h.done_at ? (
-              <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
+              <div style={{ fontSize: 13, color: '#475569', marginTop: 4 }}>
                 {staffName(h.owner_id) || '—'} → <strong>{staffName(h.handover_to) || '—'}</strong>
               </div>
             ) : (
@@ -132,7 +132,7 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
                   <option value="">Owner…</option>
                   {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
-                <span style={{ color: '#94a3b8', fontSize: 11 }}>→</span>
+                <span style={{ color: '#94a3b8', fontSize: 12 }}>→</span>
                 <select
                   style={input} value={h.handover_to || ''} disabled={busy} title="Permanent team member"
                   onChange={(e) => run(() => updateHandover(h.id, { handover_to: e.target.value || null }))}
@@ -147,7 +147,7 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
                 {h.handover_to && (
                   <button
                     disabled={busy} onClick={() => complete(h)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 11.5, fontWeight: 600, fontFamily: font, background: tones.success.solid, color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: tones.success.solid, color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}
                   >
                     <CheckCircle2 size={12} /> Done
                   </button>
@@ -157,7 +157,7 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
           </div>
         ))}
         {handovers.length === 0 && (
-          <div style={{ fontSize: 12, color: '#cbd5e1' }}>Setting up handover areas…</div>
+          <div style={{ fontSize: 13, color: '#cbd5e1' }}>Setting up handover areas…</div>
         )}
       </div>
 
@@ -171,22 +171,22 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
           <button
             disabled={!newArea.trim() || busy}
             onClick={() => { run(() => addHandoverArea(ob.id, newArea, profile?.id)); setAdding(false); setNewArea(''); }}
-            style={{ padding: '5px 10px', fontSize: 11.5, fontWeight: 600, fontFamily: font, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}
+            style={{ padding: '5px 10px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}
           >
             Add
           </button>
-          <button onClick={() => { setAdding(false); setNewArea(''); }} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 11.5, cursor: 'pointer', fontFamily: font }}>Cancel</button>
+          <button onClick={() => { setAdding(false); setNewArea(''); }} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 12.5, cursor: 'pointer', fontFamily: font }}>Cancel</button>
         </div>
       ) : (
         <button
           onClick={() => setAdding(true)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 10, background: 'none', border: 'none', color: '#64748b', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: font, padding: 0 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 10, background: 'none', border: 'none', color: '#64748b', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: font, padding: 0 }}
         >
           <Plus size={12} /> Add area
         </button>
       )}
 
-      {msg && <div style={{ fontSize: 12, color: tones.danger.fg, marginTop: 8 }}>{msg}</div>}
+      {msg && <div style={{ fontSize: 13, color: tones.danger.fg, marginTop: 8 }}>{msg}</div>}
     </div>
   );
 }
@@ -211,17 +211,17 @@ function DefaultsEditor({ staff, onClose }) {
   return (
     <div style={{ border: '1px dashed #cbd5e1', borderRadius: 9, padding: '10px 12px', marginBottom: 12, background: '#f8fafc' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, flex: 1 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', flex: 1 }}>
           Team defaults (new onboardings)
         </span>
         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 2, display: 'flex' }}>
           <X size={13} />
         </button>
       </div>
-      {!defaults && !err && <div style={{ fontSize: 12, color: '#94a3b8' }}>Loading…</div>}
+      {!defaults && !err && <div style={{ fontSize: 13, color: '#94a3b8' }}>Loading…</div>}
       {defaults?.map((d) => (
         <div key={d.area} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px 0', opacity: d.active ? 1 : 0.5 }}>
-          <span style={{ fontSize: 12, color: '#0f172a', fontWeight: 600, flex: 1 }}>{d.area}</span>
+          <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, flex: 1 }}>{d.area}</span>
           <select
             style={input} value={d.default_owner_id || ''}
             onChange={(e) => patch(d.area, { default_owner_id: e.target.value || null })}
@@ -235,11 +235,11 @@ function DefaultsEditor({ staff, onClose }) {
           />
         </div>
       ))}
-      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
         Areas with a service condition (Bookkeeping/Accounts/Payroll) only appear when the client
         takes that service. Changes apply to new onboardings.
       </div>
-      {err && <div style={{ fontSize: 12, color: tones.danger.fg, marginTop: 6 }}>{err}</div>}
+      {err && <div style={{ fontSize: 13, color: tones.danger.fg, marginTop: 6 }}>{err}</div>}
     </div>
   );
 }

@@ -159,7 +159,7 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
         <p
           style={{
             fontFamily: "'Outfit', sans-serif",
-            fontSize: '13px',
+            fontSize: '14px',
             color: '#64748b',
             marginBottom: '24px',
           }}
@@ -289,7 +289,7 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
           <p
             style={{
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '12px',
+              fontSize: '13px',
               color: '#ef4444',
               marginTop: '12px',
             }}
@@ -306,7 +306,7 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
             style={{
               flex: 1,
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '13px',
+              fontSize: '14px',
               fontWeight: 600,
               color: '#64748b',
               backgroundColor: '#ffffff',
@@ -325,7 +325,7 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
             style={{
               flex: 1,
               fontFamily: "'Outfit', sans-serif",
-              fontSize: '13px',
+              fontSize: '14px',
               fontWeight: 600,
               color: canSave ? '#ffffff' : '#94a3b8',
               backgroundColor: canSave ? '#0f172a' : '#e5e7eb',
@@ -347,18 +347,16 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
 const labelStyle = {
   display: 'block',
   fontFamily: "'Outfit', sans-serif",
-  fontSize: '12px',
+  fontSize: '13px',
   fontWeight: 600,
   color: '#64748b',
   marginBottom: '6px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.03em',
-};
+  };
 
 const inputStyle = {
   width: '100%',
   fontFamily: "'Outfit', sans-serif",
-  fontSize: '14px',
+  fontSize: '14.5px',
   color: '#0f172a',
   border: '1px solid #e5e7eb',
   borderRadius: '10px',

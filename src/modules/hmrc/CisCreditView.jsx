@@ -101,19 +101,19 @@ export default function CisCreditView() {
   };
 
   if (loading) {
-    return <div style={{ color: '#94a3b8', fontSize: 13, padding: 24 }}>Loading the credit pot…</div>;
+    return <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading the credit pot…</div>;
   }
 
   return (
     <div>
       <ErrorBar message={error} />
 
-      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 6, lineHeight: 1.55 }}>
+      <p style={{ fontSize: 14, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 6, lineHeight: 1.55 }}>
         What HMRC is holding on our clients’ PAYE accounts, and what can be done with it{taxYear ? ` in ${taxYear}` : ''}.
         There is deliberately <b>no single “available” figure</b>: cash and credit obey different rules,
         and most credit cannot be dated.
       </p>
-      <p style={{ fontSize: 12, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
+      <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
         <b>Cash</b> is money the client actually sent that HMRC has not matched to a bill. It can go against
         any liability, any year, on request. <b>Credit</b> — chiefly CIS suffered — only offsets the current
         year’s PAYE bills until 6 April; credit from a closed year is free to move. The test is the
@@ -129,16 +129,16 @@ export default function CisCreditView() {
         <Chip value="unknown" label="Age unknown"         count={groups.unknown.length} active={view} onClick={setView} colour="#b45309" />
         <button onClick={exportCsv} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
           background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 11px',
-          fontFamily: font, fontSize: 12, color: '#475569', cursor: 'pointer' }}>
+          fontFamily: font, fontSize: 13, color: '#475569', cursor: 'pointer' }}>
           <Download size={13} /> Export
         </button>
       </div>
 
       <div style={card}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
             <thead>
-              <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
                 <th style={th}>Client</th>
                 <th style={thNum} title="Money the client sent that HMRC has not matched to a bill. No year restriction.">Cash · movable</th>
                 <th style={thNum} title="Credit that arose in a closed tax year, so it can be set against another year, another tax, or repaid.">Credit · movable</th>
@@ -159,7 +159,7 @@ export default function CisCreditView() {
                         <button
                           onClick={() => navigate(`/hmrc/paye?entity=${r.entity_id}`)}
                           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                   fontFamily: font, fontSize: 12, color: '#0f172a',
+                                   fontFamily: font, fontSize: 13, color: '#0f172a',
                                    textDecoration: 'underline', textDecorationStyle: 'dotted',
                                    textDecorationColor: '#cbd5e1' }}
                           title="Open this client’s PAYE account">
@@ -190,9 +190,9 @@ export default function CisCreditView() {
                       {n(r.credit_cis) ? fmtGbpDetailed(r.credit_cis) : '—'}
                     </td>
                     <td style={td}>
-                      <Pill colour={b.colour} title={b.hint} style={{ fontSize: 9.5 }}>{b.label}</Pill>
+                      <Pill colour={b.colour} title={b.hint} style={{ fontSize: 10.5 }}>{b.label}</Pill>
                       {r.matched_year && (
-                        <span style={{ fontSize: 10.5, color: '#94a3b8', marginLeft: 6 }}>{r.matched_year}</span>
+                        <span style={{ fontSize: 11.5, color: '#94a3b8', marginLeft: 6 }}>{r.matched_year}</span>
                       )}
                     </td>
                   </tr>
@@ -213,7 +213,7 @@ export default function CisCreditView() {
             </tfoot>
           </table>
         </div>
-        <div style={{ padding: '10px 14px', fontSize: 11.5, color: '#94a3b8', lineHeight: 1.6, borderTop: '1px solid #f1f5f9' }}>
+        <div style={{ padding: '10px 14px', fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6, borderTop: '1px solid #f1f5f9' }}>
           The three credit columns add up to the credit total, so nothing is lost between them.
           <b> Age unknown is not nil and not available</b> — it is credit HMRC holds whose year we cannot
           read, because HMRC restates the running balance in every year’s credits history rather than

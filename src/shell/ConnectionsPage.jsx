@@ -22,7 +22,7 @@ export default function ConnectionsPage() {
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
           Connections
         </h1>
-        <p style={{ fontSize: 14, color: '#64748b' }}>
+        <p style={{ fontSize: 14.5, color: '#64748b' }}>
           You need the Portal admin permission to manage connections.
         </p>
       </div>
@@ -42,7 +42,7 @@ export default function ConnectionsPage() {
       >
         Connections
       </h1>
-      <p style={{ fontSize: 14, color: '#64748b', marginBottom: 24 }}>
+      <p style={{ fontSize: 14.5, color: '#64748b', marginBottom: 24 }}>
         External services Athena is wired up to.
       </p>
 
@@ -65,17 +65,17 @@ export default function ConnectionsPage() {
       >
         <Inbox size={18} color="#64748b" />
         <div style={{ flex: 1 }}>
-          <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
+          <p style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
             Team inboxes, SMS &amp; WhatsApp
           </p>
-          <p style={{ fontSize: 13, color: '#64748b' }}>
+          <p style={{ fontSize: 14, color: '#64748b' }}>
             Personal and shared mailboxes (info@, payroll@) are connected from the
             Communications module; texts and WhatsApp ride the practice Telnyx number.
           </p>
         </div>
         <Link
           to="/comms/email"
-          style={{ padding: '8px 14px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', borderRadius: 8, textDecoration: 'none' }}
+          style={{ padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', borderRadius: 8, textDecoration: 'none' }}
         >
           Open Communications
         </Link>

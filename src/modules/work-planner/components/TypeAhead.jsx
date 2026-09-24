@@ -29,7 +29,7 @@ export default function TypeAhead({ items, value, onChange, placeholder = 'All' 
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         style={{
           padding: '3px 8px',
-          fontSize: 12,
+          fontSize: 13,
           fontFamily: "'Outfit', sans-serif",
           border: `1px solid ${hasValue ? '#0e7fe0' : '#e5e7eb'}`,
           borderRadius: 6,
@@ -62,7 +62,7 @@ export default function TypeAhead({ items, value, onChange, placeholder = 'All' 
             onClick={() => { onChange(''); setOpen(false); }}
             style={{
               padding: '4px 10px',
-              fontSize: 12,
+              fontSize: 13,
               cursor: 'pointer',
               color: !value ? '#0e7fe0' : '#1e293b',
               fontWeight: !value ? 600 : 400,
@@ -77,7 +77,7 @@ export default function TypeAhead({ items, value, onChange, placeholder = 'All' 
               onClick={() => { onChange(it.id); setOpen(false); }}
               style={{
                 padding: '4px 10px',
-                fontSize: 12,
+                fontSize: 13,
                 cursor: 'pointer',
                 color: value === it.id ? '#0e7fe0' : '#1e293b',
                 fontWeight: value === it.id ? 600 : 400,

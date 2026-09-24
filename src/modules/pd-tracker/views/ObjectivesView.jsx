@@ -140,7 +140,7 @@ export default function ObjectivesView() {
         <>
           {open.length > 0 && (
             <div style={{ marginBottom: 32 }}>
-              <h3 style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Active ({open.length})</h3>
+              <h3 style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#94a3b8', margin: '0 0 12px' }}>Active ({open.length})</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {open.map((o) => (
                   <ObjectiveCard key={o.id} obj={o} skills={skills} onPatch={patch} onDelete={remove} />
@@ -150,7 +150,7 @@ export default function ObjectivesView() {
           )}
           {closed.length > 0 && (
             <div>
-              <h3 style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Closed ({closed.length})</h3>
+              <h3 style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#94a3b8', margin: '0 0 12px' }}>Closed ({closed.length})</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {closed.map((o) => (
                   <ObjectiveCard key={o.id} obj={o} skills={skills} onPatch={patch} onDelete={remove} compact />
@@ -165,9 +165,8 @@ export default function ObjectivesView() {
 }
 
 const lblStyle = {
-  display: 'block', fontFamily: FONT, fontSize: 11, fontWeight: 600,
-  color: '#475569', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em',
-};
+  display: 'block', fontFamily: FONT, fontSize: 12, fontWeight: 600,
+  color: '#475569', marginBottom: 6, };
 
 function ObjectiveCard({ obj, skills, onPatch, onDelete, compact }) {
   const meta = STATUS_META[obj.status];
@@ -181,11 +180,11 @@ function ObjectiveCard({ obj, skills, onPatch, onDelete, compact }) {
     <Card style={{ padding: compact ? 14 : 18, opacity: compact ? 0.78 : 1 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: SERIF, fontSize: compact ? 15 : 17, fontWeight: 500, color: '#0f172a', marginBottom: 4 }}>
+          <div style={{ fontFamily: SERIF, fontSize: compact ? 15.5 : 17, fontWeight: 500, color: '#0f172a', marginBottom: 4 }}>
             {obj.title}
           </div>
           {obj.description && !compact && (
-            <p style={{ fontFamily: FONT, fontSize: 13, color: '#64748b', margin: '4px 0 8px', lineHeight: 1.5 }}>
+            <p style={{ fontFamily: FONT, fontSize: 14, color: '#64748b', margin: '4px 0 8px', lineHeight: 1.5 }}>
               {obj.description}
             </p>
           )}
@@ -194,7 +193,7 @@ function ObjectiveCard({ obj, skills, onPatch, onDelete, compact }) {
             <Pill bg={pmeta.bg} fg={pmeta.fg}>{pmeta.label} priority</Pill>
             {skill && <Pill bg="#ede9fe" fg="#5b21b6">{skill.name}</Pill>}
             {obj.target_date && (
-              <span style={{ fontFamily: FONT, fontSize: 12, color: days != null && days < 0 ? '#dc2626' : '#64748b' }}>
+              <span style={{ fontFamily: FONT, fontSize: 13, color: days != null && days < 0 ? '#dc2626' : '#64748b' }}>
                 {new Date(obj.target_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                 {days != null && obj.status !== 'complete' && (
                   <> &middot; {days >= 0 ? `${days}d to go` : `${-days}d overdue`}</>
@@ -219,7 +218,7 @@ function ObjectiveCard({ obj, skills, onPatch, onDelete, compact }) {
 
       {!compact && obj.status !== 'complete' && obj.status !== 'abandoned' && (
         <div style={{ marginTop: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontFamily: FONT, fontSize: 12, color: '#475569' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontFamily: FONT, fontSize: 13, color: '#475569' }}>
             <span>Progress</span>
             <span style={{ fontWeight: 600 }}>{obj.progress_pct}%</span>
           </div>
@@ -230,7 +229,7 @@ function ObjectiveCard({ obj, skills, onPatch, onDelete, compact }) {
                 key={v}
                 onClick={() => onPatch(obj.id, { progress_pct: v, status: v === 100 ? 'complete' : v > 0 ? 'in_progress' : 'open' })}
                 style={{
-                  fontFamily: FONT, fontSize: 11, fontWeight: 600,
+                  fontFamily: FONT, fontSize: 12, fontWeight: 600,
                   background: obj.progress_pct === v ? '#0f172a' : '#f1f5f9',
                   color: obj.progress_pct === v ? '#fff' : '#475569',
                   border: 'none', borderRadius: 999, padding: '4px 10px', cursor: 'pointer',

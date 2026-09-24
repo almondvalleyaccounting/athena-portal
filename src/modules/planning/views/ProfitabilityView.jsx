@@ -75,7 +75,7 @@ export default function ProfitabilityView() {
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>Target hrs / fee earner / yr</label>
+            <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>Target hrs / fee earner / yr</label>
             <input type="number" step="50" value={targetHours}
               onChange={(e) => updateScenario({ target_chargeable_hours_pa: parseFloat(e.target.value) || 1400 })}
               style={{ ...inputStyle, width: 90, textAlign: 'right' }} />
@@ -97,7 +97,7 @@ export default function ProfitabilityView() {
         </div>
 
         {timesheets.length === 0 && !loading && (
-          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginTop: 16, fontSize: 12, color: '#92400e' }}>
+          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginTop: 16, fontSize: 13, color: '#92400e' }}>
             <AlertTriangle size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
             No timesheet entries in LTM — profitability calc shows 100% margin for every client until staff start logging time.
           </div>
@@ -117,7 +117,7 @@ export default function ProfitabilityView() {
             { v: 'no_time', l: 'No time logged', c: rows.filter((r) => r.hours_ltm === 0).length },
           ].map((t) => (
             <button key={t.v} onClick={() => setFilter(t.v)}
-              style={{ padding: '6px 12px', fontSize: 12, fontWeight: filter === t.v ? 600 : 400, color: filter === t.v ? '#0f172a' : '#94a3b8', background: 'none', border: 'none', borderBottom: filter === t.v ? '2px solid #0e7fe0' : '2px solid transparent', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>
+              style={{ padding: '6px 12px', fontSize: 13, fontWeight: filter === t.v ? 600 : 400, color: filter === t.v ? '#0f172a' : '#94a3b8', background: 'none', border: 'none', borderBottom: filter === t.v ? '2px solid #0e7fe0' : '2px solid transparent', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>
               {t.l} ({t.c})
             </button>
           ))}
@@ -126,9 +126,9 @@ export default function ProfitabilityView() {
 
       {/* Hitlist table */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+            <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
               <th style={th}>Client</th>
               <th style={{ ...th, textAlign: 'right' }}>Annual £</th>
               <th style={{ ...th, textAlign: 'right' }}>Hrs LTM</th>
@@ -164,7 +164,7 @@ export default function ProfitabilityView() {
                   <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.hours_ltm === 0 ? '#cbd5e1' : r.margin_pct >= 0.3 ? '#059669' : r.margin_pct >= 0 ? '#f59e0b' : '#dc2626', fontWeight: 700 }}>
                     {r.hours_ltm === 0 ? '—' : fmtPct(r.margin_pct)}
                   </td>
-                  <td style={{ ...td, fontSize: 11, color: '#64748b' }}>{r.top_service || '—'}</td>
+                  <td style={{ ...td, fontSize: 12, color: '#64748b' }}>{r.top_service || '—'}</td>
                 </tr>
               );
             })}
@@ -178,16 +178,16 @@ export default function ProfitabilityView() {
 function Stat({ label, value, sub, colour, big }) {
   return (
     <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px', borderLeft: `3px solid ${colour}` }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: big ? 20 : 18, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#64748b' }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: '#64748b' }}>{sub}</div>}
     </div>
   );
 }
 
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
 const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: '0 0 4px' };
-const help = { fontSize: 12, color: '#94a3b8', marginBottom: 4, lineHeight: 1.55 };
+const help = { fontSize: 13, color: '#94a3b8', marginBottom: 4, lineHeight: 1.55 };
 const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600 };
 const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
-const inputStyle = { padding: '7px 10px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
+const inputStyle = { padding: '7px 10px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };

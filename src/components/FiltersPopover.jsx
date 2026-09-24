@@ -32,7 +32,7 @@ export default function FiltersPopover({ children, activeCount = 0, label = 'Fil
         onClick={() => setOpen((v) => !v)}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '5px 12px', fontSize: 12, fontWeight: 500,
+          padding: '5px 12px', fontSize: 13, fontWeight: 500,
           background: open ? '#f1f5f9' : '#fff',
           color: '#475569', border: '1px solid #e5e7eb',
           borderRadius: 999, cursor: 'pointer', fontFamily: font,
@@ -43,7 +43,7 @@ export default function FiltersPopover({ children, activeCount = 0, label = 'Fil
         <span>{label}</span>
         {activeCount > 0 && (
           <span style={{
-            fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 999,
+            fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999,
             background: '#0f172a', color: '#fff',
           }}>{activeCount}</span>
         )}

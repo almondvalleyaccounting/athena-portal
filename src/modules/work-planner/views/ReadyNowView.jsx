@@ -542,10 +542,10 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
   }
 
   if (loading) {
-    return <div style={{ padding: 20, fontFamily: font, color: '#64748b', fontSize: 13 }}>Loading…</div>;
+    return <div style={{ padding: 20, fontFamily: font, color: '#64748b', fontSize: 14 }}>Loading…</div>;
   }
   if (error) {
-    return <div style={{ padding: 20, fontFamily: font, color: '#dc2626', fontSize: 13 }}>Error: {error}</div>;
+    return <div style={{ padding: 20, fontFamily: font, color: '#dc2626', fontSize: 14 }}>Error: {error}</div>;
   }
 
   return (
@@ -553,7 +553,7 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 10 }}>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#0f172a' }}>Ready Now</h2>
-        <span style={{ fontSize: 12, color: '#64748b' }}>
+        <span style={{ fontSize: 13, color: '#64748b' }}>
           Self Assessment & Annual Accounts where period end has passed and the job hasn't been submitted.
         </span>
       </div>
@@ -567,7 +567,7 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
           const total = Object.values(summary[svc] || {}).reduce((a, b) => a + b, 0);
           return (
             <div key={svc} style={{ minWidth: 280 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>
                 {svc} · <span style={{ color: '#0e7fe0' }}>{total}</span>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -591,7 +591,7 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
                       }}
                       title={active ? 'Clear filter' : `Filter to ${svc} · ${g}`}
                       style={{
-                        fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                        fontSize: 12, padding: '2px 8px', borderRadius: 999,
                         background: active ? GROUP_COLOUR[g] : GROUP_COLOUR[g] + '22',
                         color: active ? '#fff' : GROUP_COLOUR[g],
                         border: '1px solid ' + GROUP_COLOUR[g] + (active ? '' : '55'),
@@ -608,7 +608,7 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ fontSize: 13, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
           Client
           <ClientTypeAhead
             entityList={entityList}
@@ -625,25 +625,25 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
           options={[['all', 'All'], ...gradeOptions.map((g) => [g, g]), ['none', '— No grade —']]} />
         <Select label="Statutory" value={dueFilter} onChange={setDueFilter}
           options={[['all', 'All'], ['overdue', 'Overdue'], ['30', 'Due in 30'], ['60', 'Due in 60'], ['90', 'Due in 90']]} />
-        <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ fontSize: 13, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
           Urgent: due in ≤
           <input
             type="number" min={0} value={impendingDays}
             onChange={(e) => setImpendingDays(Math.max(0, parseInt(e.target.value || '0', 10)))}
             style={{
-              width: 50, padding: '4px 6px', fontSize: 12, fontFamily: font,
+              width: 50, padding: '4px 6px', fontSize: 13, fontFamily: font,
               border: '1px solid #cbd5e1', borderRadius: 6,
             }}
           />
           days
         </label>
-        <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ fontSize: 13, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
           Normal box: days past PE ≥
           <input
             type="number" min={0} value={normalDaysBuffer}
             onChange={(e) => setNormalDaysBuffer(Math.max(0, parseInt(e.target.value || '0', 10)))}
             style={{
-              width: 60, padding: '4px 6px', fontSize: 12, fontFamily: font,
+              width: 60, padding: '4px 6px', fontSize: 13, fontFamily: font,
               border: '1px solid #cbd5e1', borderRadius: 6,
             }}
           />
@@ -663,7 +663,7 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
             }}
             title="Clear all filters and restore defaults"
             style={{
-              padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
+              padding: '5px 12px', fontSize: 13, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
               border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#475569', cursor: 'pointer',
             }}
           >Reset filters</button>
@@ -671,14 +671,14 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
             onClick={() => setQueueOpen(true)}
             title="Review queued BM change requests"
             style={{
-              padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
+              padding: '5px 12px', fontSize: 13, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
               border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer',
             }}
           >Changes Queue ({pendingChanges.length})</button>
           <button
             onClick={exportCsv}
             style={{
-              padding: '5px 12px', fontSize: 12, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
+              padding: '5px 12px', fontSize: 13, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
               border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer',
             }}
           >Export CSV</button>
@@ -825,7 +825,7 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
         />
       )}
 
-      <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 14, lineHeight: 1.5 }}>
+      <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 14, lineHeight: 1.5 }}>
         Period end is derived: Annual Accounts = BM deadline − 9 months; Self Assessment = 5 April of the year before the BM deadline.
         Non-standard accounting periods (first-year, struck-off, overseas) may differ — spot-check anomalies.
         BM target is the internal deadline from BrightManager — to change it, update the task's Target Date in BM.
@@ -864,24 +864,24 @@ function Box({
         }}
       >
         {collapsible && (
-          <span style={{ fontSize: 10, color: titleColor || '#0f172a', width: 10, display: 'inline-block' }}>
+          <span style={{ fontSize: 11, color: titleColor || '#0f172a', width: 10, display: 'inline-block' }}>
             {collapsed ? '▶' : '▼'}
           </span>
         )}
-        <span style={{ fontSize: 13, fontWeight: 700, color: titleColor || '#0f172a' }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: titleColor || '#0f172a' }}>
           {title}
         </span>
-        <span style={{ fontSize: 11, color: '#64748b' }}>{subtitle}</span>
+        <span style={{ fontSize: 12, color: '#64748b' }}>{subtitle}</span>
         <div style={{ flex: 1 }} />
         <span style={{
-          fontSize: 12, fontWeight: 700,
+          fontSize: 13, fontWeight: 700,
           padding: '2px 10px', borderRadius: 999,
           background: accent, color: '#fff',
           fontVariantNumeric: 'tabular-nums',
         }}>{rows.length} {rows.length === 1 ? 'job' : 'jobs'}</span>
       </div>
       {collapsed ? null : (
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead style={{ background: '#f8fafc' }}>
           <tr>
             <Th onClick={() => toggleSort('client')} active={sortKey === 'client'} dir={sortDir}>Client</Th>
@@ -905,13 +905,13 @@ function Box({
               <td style={td}>
                 {expedite ? (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ color: '#f59e0b', fontSize: 13, lineHeight: 1 }}>⚡</span>
+                    <span style={{ color: '#f59e0b', fontSize: 14, lineHeight: 1 }}>⚡</span>
                     <span>{r.client}</span>
                   </span>
                 ) : showReason && r.deprioritise_reason ? (
                   <div>
                     <div>{r.client}</div>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>
+                    <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>
                       {r.deprioritise_reason}
                     </div>
                   </div>
@@ -920,7 +920,7 @@ function Box({
               <td style={{ ...td, color: '#475569', fontWeight: 600 }}>
                 <CellWithPending current={r.grade ? (
                   <span style={{
-                    fontSize: 10, padding: '1px 6px', borderRadius: 4,
+                    fontSize: 11, padding: '1px 6px', borderRadius: 4,
                     background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe',
                   }}>{r.grade}</span>
                 ) : <span style={{ color: '#cbd5e1' }}>—</span>}
@@ -945,7 +945,7 @@ function Box({
               </td>
               <td style={td}>
                 <span style={{
-                  fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                  fontSize: 12, padding: '2px 8px', borderRadius: 999,
                   background: GROUP_COLOUR[r.status_group] + '22',
                   color: GROUP_COLOUR[r.status_group],
                   border: '1px solid ' + GROUP_COLOUR[r.status_group] + '55',
@@ -968,7 +968,7 @@ function Box({
                         onClick={() => onOpenFeedback(r, fb)}
                         title={fb ? 'View Job Review feedback' : 'No Job Review feedback yet'}
                         style={{
-                          fontSize: 11, padding: '3px 8px', fontFamily: font, cursor: 'pointer',
+                          fontSize: 12, padding: '3px 8px', fontFamily: font, cursor: 'pointer',
                           borderRadius: 6, border: '1px solid ' + (fb ? '#0e7fe0' : '#e2e8f0'),
                           background: fb ? '#eff6ff' : '#fff', color: fb ? '#0e7fe0' : '#94a3b8',
                           fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -984,7 +984,7 @@ function Box({
                       onClick={() => onEdit(r)}
                       title="Queue a change for Grade / BM Target / Assignee"
                       style={{
-                        fontSize: 11, padding: '3px 8px', fontFamily: font, cursor: 'pointer',
+                        fontSize: 12, padding: '3px 8px', fontFamily: font, cursor: 'pointer',
                         borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff',
                         color: '#475569', fontWeight: 600,
                       }}
@@ -1036,7 +1036,7 @@ function RowAction({ kind, busy, onExpedite, onUnexpedite, onDeprioritise, onRea
       onClick={handler}
       title={s.title}
       style={{
-        fontSize: 11, padding: '3px 8px', fontFamily: font, cursor: busy ? 'wait' : 'pointer',
+        fontSize: 12, padding: '3px 8px', fontFamily: font, cursor: busy ? 'wait' : 'pointer',
         borderRadius: 6,
         border: '1px solid ' + s.border,
         background: s.background,
@@ -1055,7 +1055,7 @@ function CellWithPending({ current, pending }) {
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
       <span style={{ textDecoration: 'line-through', opacity: 0.6 }}>{current}</span>
       <span style={{
-        fontSize: 10, padding: '1px 6px', borderRadius: 4,
+        fontSize: 11, padding: '1px 6px', borderRadius: 4,
         background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d',
         fontWeight: 600,
       }}>→ {pending}</span>
@@ -1104,10 +1104,10 @@ function EditChangeDialog({ row, staffList, pendingByKey, onCancel, onSave }) {
   return (
     <div onClick={onCancel} style={modalBackdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
           Queue change for {row.client}
         </div>
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 14 }}>
           {row.service} · {row.period_end ? fmt(row.period_end) : '—'} — saved as pending until applied in BM.
         </div>
 
@@ -1131,7 +1131,7 @@ function EditChangeDialog({ row, staffList, pendingByKey, onCancel, onSave }) {
         </Field>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
-          <div style={{ fontSize: 11, color: '#64748b' }}>
+          <div style={{ fontSize: 12, color: '#64748b' }}>
             {drafts.length === 0 ? 'No changes' : `${drafts.length} change${drafts.length === 1 ? '' : 's'} to queue`}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1149,15 +1149,15 @@ function QueueModal({ changes, onClose, onApplied, onCancel, onCancelAll, onExpo
     <div onClick={onClose} style={modalBackdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 760, maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>BM change requests</div>
-          <div style={{ fontSize: 12, color: '#64748b' }}>{changes.length} pending</div>
+          <div style={{ fontSize: 15.5, fontWeight: 600, color: '#0f172a' }}>BM change requests</div>
+          <div style={{ fontSize: 13, color: '#64748b' }}>{changes.length} pending</div>
           <div style={{ flex: 1 }} />
           <button onClick={onExport} disabled={!changes.length} style={changes.length ? btnPrimary : btnPrimaryDisabled}>Export CSV</button>
           <button onClick={onCancelAll} disabled={!changes.length} style={btnSecondary}>Discard all</button>
           <button onClick={onClose} style={btnSecondary}>Close</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
               <tr>
                 <th style={qmTh}>Client</th>
@@ -1182,8 +1182,8 @@ function QueueModal({ changes, onClose, onApplied, onCancel, onCancelAll, onExpo
                   <td style={{ ...qmTd, fontWeight: 600, color: '#92400e' }}>{c.proposed_value || '—'}</td>
                   <td style={{ ...qmTd, color: '#64748b' }}>{c.note || ''}</td>
                   <td style={{ ...qmTd, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <button onClick={() => onApplied(c.id)} style={{ ...btnSecondary, padding: '3px 8px', fontSize: 11, marginRight: 4 }}>Mark applied</button>
-                    <button onClick={() => onCancel(c.id)} style={{ ...btnSecondary, padding: '3px 8px', fontSize: 11 }}>Discard</button>
+                    <button onClick={() => onApplied(c.id)} style={{ ...btnSecondary, padding: '3px 8px', fontSize: 12, marginRight: 4 }}>Mark applied</button>
+                    <button onClick={() => onCancel(c.id)} style={{ ...btnSecondary, padding: '3px 8px', fontSize: 12 }}>Discard</button>
                   </td>
                 </tr>
               ))}
@@ -1197,7 +1197,7 @@ function QueueModal({ changes, onClose, onApplied, onCancel, onCancelAll, onExpo
 
 function Field({ label, children }) {
   return (
-    <label style={{ display: 'block', marginBottom: 10, fontSize: 12, color: '#475569' }}>
+    <label style={{ display: 'block', marginBottom: 10, fontSize: 13, color: '#475569' }}>
       <div style={{ marginBottom: 4, fontWeight: 500 }}>{label}</div>
       {children}
     </label>
@@ -1218,15 +1218,15 @@ function FeedbackModal({ row, feedback: fb, onClose }) {
   return (
     <div onClick={onClose} style={modalBackdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
+        <div style={{ fontSize: 15.5, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
           Job Review feedback
         </div>
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 14 }}>
           {row.client} · {row.service === 'Self Assessment' ? 'SA' : 'Annual Accs'} · PE {fmt(row.period_end)}
         </div>
 
         {!fb ? (
-          <div style={{ fontSize: 13, color: '#64748b', padding: '10px 0 4px', lineHeight: 1.5 }}>
+          <div style={{ fontSize: 14, color: '#64748b', padding: '10px 0 4px', lineHeight: 1.5 }}>
             No feedback captured for this job yet. It appears here once the assignee answers it in the
             monthly Job Review (Work Planner → Review).
           </div>
@@ -1237,19 +1237,19 @@ function FeedbackModal({ row, feedback: fb, onClose }) {
                 ? <span style={{ color: '#0f172a', fontWeight: 600 }}>{fb.next_action}</span>
                 : <span style={{ color: '#cbd5e1' }}>—</span>}
               {fb.next_action_note && (
-                <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>{fb.next_action_note}</div>
+                <div style={{ fontSize: 13, color: '#475569', marginTop: 2 }}>{fb.next_action_note}</div>
               )}
             </FbRow>
             <FbRow label="Confidence">
               {conf
-                ? <span style={{ fontSize: 12, fontWeight: 600, color: conf.colour, background: conf.bg, padding: '2px 8px', borderRadius: 999 }}>{conf.label}</span>
+                ? <span style={{ fontSize: 13, fontWeight: 600, color: conf.colour, background: conf.bg, padding: '2px 8px', borderRadius: 999 }}>{conf.label}</span>
                 : <span style={{ color: '#cbd5e1' }}>—</span>}
-              {fb.needs_help && <span style={{ marginLeft: 8, fontSize: 12, color: '#b91c1c', fontWeight: 600 }}>🙋 Needs help</span>}
+              {fb.needs_help && <span style={{ marginLeft: 8, fontSize: 13, color: '#b91c1c', fontWeight: 600 }}>🙋 Needs help</span>}
             </FbRow>
             <FbRow label="Expected done by">{fb.done_by ? fmtIso(fb.done_by) : <span style={{ color: '#cbd5e1' }}>—</span>}</FbRow>
             <FbRow label="Blocker / reason">{fb.reason || <span style={{ color: '#cbd5e1' }}>—</span>}</FbRow>
             {fb.note && <FbRow label="Note">{fb.note}</FbRow>}
-            <div style={{ fontSize: 11, color: '#94a3b8', borderTop: '1px solid #f1f5f9', paddingTop: 10, marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: '#94a3b8', borderTop: '1px solid #f1f5f9', paddingTop: 10, marginTop: 2 }}>
               {fb.assignee ? `Answered by ${fb.assignee}` : 'Answered'}
               {fb.responded_at ? ` on ${fmt(parseISO(fb.responded_at.slice(0, 10)))}` : ''}
               {fb.period_month ? ` · ${parseISO(fb.period_month.slice(0, 10)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} cycle` : ''}
@@ -1269,8 +1269,8 @@ function FeedbackModal({ row, feedback: fb, onClose }) {
 function FbRow({ label, children }) {
   return (
     <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', width: 120, flexShrink: 0 }}>{label}</div>
-      <div style={{ fontSize: 13, color: '#0f172a', flex: 1 }}>{children}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', width: 120, flexShrink: 0 }}>{label}</div>
+      <div style={{ fontSize: 14, color: '#0f172a', flex: 1 }}>{children}</div>
     </div>
   );
 }
@@ -1284,20 +1284,20 @@ const modalCard = {
   fontFamily: font, boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
 };
 const selectInput = {
-  width: '100%', padding: '7px 10px', fontSize: 13, fontFamily: font,
+  width: '100%', padding: '7px 10px', fontSize: 14, fontFamily: font,
   border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#0f172a',
   boxSizing: 'border-box', outline: 'none',
 };
 const btnPrimary = {
-  fontSize: 12, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
+  fontSize: 13, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
   borderRadius: 6, border: '1px solid #0f172a', background: '#0f172a', color: '#fff', fontWeight: 600,
 };
 const btnPrimaryDisabled = { ...btnPrimary, background: '#94a3b8', border: '1px solid #94a3b8', cursor: 'not-allowed' };
 const btnSecondary = {
-  fontSize: 12, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
+  fontSize: 13, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
   borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 500,
 };
-const qmTh = { padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid #e5e7eb' };
+const qmTh = { padding: '8px 10px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#475569', borderBottom: '1px solid #e5e7eb' };
 const qmTd = { padding: '7px 10px', verticalAlign: 'middle' };
 
 const DEPRI_REASONS = ['Client Unresponsive', 'Being Struck Off', 'Awaiting Client', 'Other'];
@@ -1320,16 +1320,16 @@ function DeprioritiseDialog({ client, onCancel, onConfirm }) {
           width: 380, fontFamily: font, boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
         }}
       >
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>
           Deprioritise {client}
         </div>
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 14 }}>
           Pick a reason — the client will move into the Deprioritised box and stop appearing in Urgent.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
           {DEPRI_REASONS.map((r) => (
             <label key={r} style={{
-              display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#0f172a',
+              display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#0f172a',
               padding: '8px 10px', border: '1px solid ' + (choice === r ? '#0e7fe0' : '#e5e7eb'),
               borderRadius: 6, cursor: 'pointer', background: choice === r ? '#eff6ff' : '#fff',
             }}>
@@ -1345,7 +1345,7 @@ function DeprioritiseDialog({ client, onCancel, onConfirm }) {
             onChange={(e) => setOtherText(e.target.value)}
             placeholder="Reason…"
             style={{
-              width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font,
+              width: '100%', padding: '8px 10px', fontSize: 14, fontFamily: font,
               border: '1px solid #cbd5e1', borderRadius: 6, marginBottom: 14, boxSizing: 'border-box',
             }}
           />
@@ -1354,7 +1354,7 @@ function DeprioritiseDialog({ client, onCancel, onConfirm }) {
           <button
             onClick={onCancel}
             style={{
-              fontSize: 12, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
+              fontSize: 13, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
               borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 500,
             }}
           >Cancel</button>
@@ -1362,7 +1362,7 @@ function DeprioritiseDialog({ client, onCancel, onConfirm }) {
             disabled={disabled}
             onClick={() => onConfirm(choice === 'Other' ? otherText.trim() : choice)}
             style={{
-              fontSize: 12, padding: '6px 14px', fontFamily: font, cursor: disabled ? 'not-allowed' : 'pointer',
+              fontSize: 13, padding: '6px 14px', fontFamily: font, cursor: disabled ? 'not-allowed' : 'pointer',
               borderRadius: 6, border: '1px solid #0f172a',
               background: disabled ? '#94a3b8' : '#0f172a', color: '#fff', fontWeight: 600,
             }}
@@ -1378,9 +1378,8 @@ function Th({ children, onClick, active, dir, align }) {
     <th
       onClick={onClick}
       style={{
-        padding: '8px 10px', textAlign: align || 'left', fontWeight: 600, fontSize: 11,
-        color: active ? '#0f172a' : '#64748b', textTransform: 'uppercase', letterSpacing: 0.4,
-        cursor: 'pointer', userSelect: 'none', borderBottom: '1px solid #e5e7eb',
+        padding: '8px 10px', textAlign: align || 'left', fontWeight: 600, fontSize: 12,
+        color: active ? '#0f172a' : '#64748b', cursor: 'pointer', userSelect: 'none', borderBottom: '1px solid #e5e7eb',
       }}
     >
       {children}{active ? (dir === 'asc' ? ' ↑' : ' ↓') : ''}
@@ -1390,12 +1389,12 @@ function Th({ children, onClick, active, dir, align }) {
 
 function Select({ label, value, onChange, options }) {
   return (
-    <label style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+    <label style={{ fontSize: 13, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
       {label}
       <select
         value={value} onChange={(e) => onChange(e.target.value)}
         style={{
-          padding: '4px 8px', fontSize: 12, fontFamily: font,
+          padding: '4px 8px', fontSize: 13, fontFamily: font,
           border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer',
         }}
       >

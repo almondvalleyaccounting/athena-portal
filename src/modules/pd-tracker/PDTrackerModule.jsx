@@ -56,7 +56,7 @@ export default function PDTrackerModule() {
               end={tab.id === 'dashboard'}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,
-                padding: '14px 16px', fontSize: 13, fontWeight: 500,
+                padding: '14px 16px', fontSize: 14, fontWeight: 500,
                 color: active ? '#0e7fe0' : '#64748b',
                 textDecoration: 'none',
                 borderBottom: active ? '2px solid #0e7fe0' : '2px solid transparent',

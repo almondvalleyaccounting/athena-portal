@@ -175,7 +175,7 @@ export default function SkillsView() {
         <SectionTitle kicker="Skill matrix" title="Where am I, where am I heading?"
           hint="Pick a role to see the target profile, or your own starred picks. Score yourself honestly." />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <label style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontFamily: FONT, fontSize: 13, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
             View
             <Select value={group} onChange={(e) => { setGroup(e.target.value); setActiveCategory('All'); }} style={{ minWidth: 190 }}>
               <option value="picks">My picks (starred)</option>
@@ -186,7 +186,7 @@ export default function SkillsView() {
           </label>
           {isRoleMode && canEdit && (
             <button onClick={() => setShowCust((v) => !v)}
-              style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '7px 12px', borderRadius: 8, border: '1px solid ' + (showCust ? '#0f172a' : '#cbd5e1'), background: showCust ? '#0f172a' : '#fff', color: showCust ? '#fff' : '#475569' }}>
+              style={{ fontFamily: FONT, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '7px 12px', borderRadius: 8, border: '1px solid ' + (showCust ? '#0f172a' : '#cbd5e1'), background: showCust ? '#0f172a' : '#fff', color: showCust ? '#fff' : '#475569' }}>
               Customise
             </button>
           )}
@@ -198,7 +198,7 @@ export default function SkillsView() {
             </Select>
           )}
           {isAdmin && (
-            <label style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <label style={{ fontFamily: FONT, fontSize: 13, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
               Role
               <Select value={assignedRoleId} onChange={(e) => changeRole(e.target.value)} style={{ minWidth: 150 }}>
                 <option value="">— None —</option>
@@ -212,7 +212,7 @@ export default function SkillsView() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 24, alignItems: 'start' }}>
         {/* Radar */}
         <Card>
-          <div style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8', marginBottom: 4, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          <div style={{ fontFamily: FONT, fontSize: 13, color: '#94a3b8', marginBottom: 4, fontWeight: 600 }}>
             {isRoleMode ? 'Role profile' : 'Spider chart'}
           </div>
           <div style={{ fontFamily: SERIF, fontSize: 18, color: '#0f172a', marginBottom: 16 }}>
@@ -233,7 +233,7 @@ export default function SkillsView() {
           ) : (
             <RadarChart skills={radarPicks} current={levelMap.current} target={levelMap.target} />
           )}
-          <div style={{ marginTop: 16, fontFamily: FONT, fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+          <div style={{ marginTop: 16, fontFamily: FONT, fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
             <strong style={{ color: '#0f172a' }}>How to read it:</strong> the dark shape is where you are now, the dashed sky-blue shape is the target.
             {isRoleMode && ' Each axis is a category — its score is the average of the skills underneath.'}
           </div>
@@ -243,7 +243,7 @@ export default function SkillsView() {
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div style={{ fontFamily: SERIF, fontSize: 18, color: '#0f172a' }}>Skill matrix</div>
-            {saving && <span style={{ fontFamily: FONT, fontSize: 11, color: '#0e7fe0' }}>Saving…</span>}
+            {saving && <span style={{ fontFamily: FONT, fontSize: 12, color: '#0e7fe0' }}>Saving…</span>}
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -253,7 +253,7 @@ export default function SkillsView() {
                   border: 'none', cursor: 'pointer',
                   background: activeCategory === c ? '#0f172a' : '#f1f5f9',
                   color: activeCategory === c ? '#fff' : '#475569',
-                  fontFamily: FONT, fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 999,
+                  fontFamily: FONT, fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 999,
                 }}>{c}</button>
             ))}
           </div>
@@ -275,9 +275,9 @@ export default function SkillsView() {
                     <Star size={16} fill={starred ? '#f59e0b' : 'none'} color={starred ? '#f59e0b' : '#cbd5e1'} strokeWidth={1.8} />
                   </button>
                   <div style={{ padding: '10px 0', borderTop: '1px solid #f1f5f9' }}>
-                    <div style={{ fontFamily: FONT, fontSize: 13, fontWeight: 500, color: '#0f172a' }}>{s.name}</div>
+                    <div style={{ fontFamily: FONT, fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{s.name}</div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
-                      <span style={{ fontFamily: FONT, fontSize: 11, color: '#94a3b8' }}>{s.category}</span>
+                      <span style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8' }}>{s.category}</span>
                       {gap > 0 && <Pill bg="#fef3c7" fg="#92400e">Gap {gap}</Pill>}
                       {gap === 0 && cur > 0 && <Pill bg="#dcfce7" fg="#166534">On target</Pill>}
                       {gap < 0 && <Pill bg="#dbeafe" fg="#1e40af">Above target</Pill>}
@@ -299,7 +299,7 @@ export default function SkillsView() {
             })}
           </div>
 
-          <div style={{ marginTop: 18, padding: 12, background: '#f8fafc', borderRadius: 10, fontFamily: FONT, fontSize: 12, color: '#475569' }}>
+          <div style={{ marginTop: 18, padding: 12, background: '#f8fafc', borderRadius: 10, fontFamily: FONT, fontSize: 13, color: '#475569' }}>
             <strong style={{ color: '#0f172a' }}>Levels:</strong>{' '}
             {LEVEL_LABELS.slice(1).map((l, i) => <span key={l} style={{ marginRight: 12 }}><strong>{i + 1}</strong> {l}</span>)}
           </div>
@@ -330,11 +330,11 @@ function HelpMenu({ skill, current, target }) {
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
   const links = helpMeLearnLinks(skill.name, skill.category, current, target);
-  const item = { display: 'block', padding: '7px 12px', fontFamily: FONT, fontSize: 12, color: '#0f172a', textDecoration: 'none', whiteSpace: 'nowrap' };
+  const item = { display: 'block', padding: '7px 12px', fontFamily: FONT, fontSize: 13, color: '#0f172a', textDecoration: 'none', whiteSpace: 'nowrap' };
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
       <button onClick={() => setOpen((v) => !v)}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #cbd5e1', background: '#fff', color: '#0e7fe0', cursor: 'pointer', fontFamily: FONT, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999 }}>
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #cbd5e1', background: '#fff', color: '#0e7fe0', cursor: 'pointer', fontFamily: FONT, fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999 }}>
         <GraduationCap size={12} /> Help me learn
       </button>
       {open && (
@@ -367,11 +367,11 @@ function LevelClicker({ value, onChange, kind, disabled }) {
   );
 }
 
-const hdr = { fontFamily: FONT, fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center' };
+const hdr = { fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#94a3b8', textAlign: 'center' };
 
 function Placeholder({ children }) {
   return (
-    <div style={{ height: 460, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, textAlign: 'center', padding: 20, fontFamily: FONT, fontSize: 13, color: '#64748b' }}>
+    <div style={{ height: 460, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, textAlign: 'center', padding: 20, fontFamily: FONT, fontSize: 14, color: '#64748b' }}>
       {children}
     </div>
   );

@@ -70,38 +70,38 @@ export default function PortalAccessPanel({ entityId, onboardingId, entityEmail 
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <Globe size={14} color="#64748b" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>
           Client portal access
         </span>
       </div>
-      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>
+      <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}>
         Invited emails can sign in at <a href={PORTAL_URL} target="_blank" rel="noreferrer" style={{ color: '#0e7fe0' }}>{PORTAL_URL.replace('https://', '')}</a> and see their setup progress + what we need from them.
       </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
         <input
           value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@email.com"
           onKeyDown={(e) => e.key === 'Enter' && invite()}
-          style={{ flex: 1, padding: '7px 10px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }}
+          style={{ flex: 1, padding: '7px 10px', fontSize: 13.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }}
         />
         <button
           onClick={() => invite(true)} disabled={busy || !email.includes('@')}
           title="Create the portal invite and send the warm welcome email (portal link + what we need)"
-          style={{ padding: '7px 14px', fontSize: 12.5, fontWeight: 700, fontFamily: font, background: '#F5C518', color: '#1E4560', border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}
+          style={{ padding: '7px 14px', fontSize: 13.5, fontWeight: 700, fontFamily: font, background: '#F5C518', color: '#1E4560', border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}
         >
           Invite + welcome
         </button>
         <button
           onClick={() => invite(false)} disabled={busy || !email.includes('@')}
           title="Invite silently — no email goes out"
-          style={{ padding: '7px 10px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: '#fff', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: 8, cursor: 'pointer' }}
+          style={{ padding: '7px 10px', fontSize: 13.5, fontWeight: 600, fontFamily: font, background: '#fff', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: 8, cursor: 'pointer' }}
         >
           Quietly
         </button>
       </div>
-      {msg && <div style={{ fontSize: 12, color: tones[msg.tone].fg, marginBottom: 8 }}>{msg.text}</div>}
+      {msg && <div style={{ fontSize: 13, color: tones[msg.tone].fg, marginBottom: 8 }}>{msg.text}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {invites.map((inv) => (
-          <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#334155' }}>
+          <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#334155' }}>
             <span style={{ flex: 1 }}>{inv.email}</span>
             <span style={chipStyle(inv.claimed_at ? 'success' : 'neutral')}>
               {inv.claimed_at ? 'signed in' : 'invited'}
@@ -114,7 +114,7 @@ export default function PortalAccessPanel({ entityId, onboardingId, entityEmail 
             </button>
           </div>
         ))}
-        {invites.length === 0 && <div style={{ fontSize: 12, color: '#cbd5e1' }}>No one invited yet.</div>}
+        {invites.length === 0 && <div style={{ fontSize: 13, color: '#cbd5e1' }}>No one invited yet.</div>}
       </div>
     </div>
   );

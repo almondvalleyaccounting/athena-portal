@@ -22,28 +22,28 @@ const overlay = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
 };
 const btnGhost = {
-  padding: '7px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: '#fff', color: '#334155', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer',
 };
 const btnPrimary = (on) => ({
-  padding: '8px 16px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '8px 16px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: on ? '#0e7fe0' : '#e5e7eb', color: on ? '#fff' : '#94a3b8',
   border: 'none', borderRadius: 8, cursor: on ? 'pointer' : 'default',
 });
 const btnDanger = (on) => ({
-  padding: '7px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: '#fff', color: on ? '#b91c1c' : '#cbd5e1', border: `1px solid ${on ? '#fecaca' : '#e5e7eb'}`,
   borderRadius: 8, cursor: on ? 'pointer' : 'default',
 });
 const selStyle = {
-  padding: '6px 10px', fontSize: 12.5, fontFamily: font, color: '#0f172a',
+  padding: '6px 10px', fontSize: 13.5, fontFamily: font, color: '#0f172a',
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer',
 };
 const th = {
-  padding: '7px 10px', fontSize: 11, fontWeight: 600, color: '#64748b', textAlign: 'left',
-  textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
+  padding: '7px 10px', fontSize: 12, fontWeight: 600, color: '#64748b', textAlign: 'left',
+  borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
 };
-const td = { padding: '6px 10px', fontSize: 12.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
+const td = { padding: '6px 10px', fontSize: 13.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
 
 const KIND_META = {
   promo: { label: 'Opt-in invite', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
@@ -159,7 +159,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
     <button
       onClick={() => setView(key)}
       style={{
-        padding: '5px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: font, borderRadius: 999, cursor: 'pointer',
+        padding: '5px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font, borderRadius: 999, cursor: 'pointer',
         background: view === key ? '#eff6ff' : '#fff', color: view === key ? '#1d4ed8' : '#64748b',
         border: `1px solid ${view === key ? '#bfdbfe' : '#e5e7eb'}`,
       }}
@@ -170,18 +170,18 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
     <div style={overlay}>
       <div style={{ ...card, width: 1080, maxWidth: '96vw', maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 20, fontFamily: font }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Client Tax Reminders queue</div>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Client Tax Reminders queue</div>
           {tab('queued', 'Queued')}
           {tab('sent', 'Sent')}
-          <span style={{ fontSize: 12, color: '#64748b' }}>
+          <span style={{ fontSize: 13, color: '#64748b' }}>
             {rows.length} {view}{isQueued ? ` · ${selected.size} selected` : ''}
           </span>
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer', fontFamily: font }}>×</button>
         </div>
 
-        {error && <div style={{ ...card, padding: '9px 12px', marginBottom: 10, background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c', fontSize: 12.5 }}>{error}</div>}
-        {notice && <div style={{ ...card, padding: '9px 12px', marginBottom: 10, background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534', fontSize: 12.5 }}>{notice}</div>}
+        {error && <div style={{ ...card, padding: '9px 12px', marginBottom: 10, background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c', fontSize: 13.5 }}>{error}</div>}
+        {notice && <div style={{ ...card, padding: '9px 12px', marginBottom: 10, background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534', fontSize: 13.5 }}>{notice}</div>}
 
         <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0 }}>
           {/* list */}
@@ -218,14 +218,14 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
                       return (
                         <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                           <span style={{
-                            display: 'inline-block', fontSize: 10.5, fontWeight: 600, padding: '2px 8px',
+                            display: 'inline-block', fontSize: 11.5, fontWeight: 600, padding: '2px 8px',
                             borderRadius: 999, background: m.bg, color: m.color, border: `1px solid ${m.border}`, whiteSpace: 'nowrap',
                           }}>{m.label}</span>
                           {r.is_resend && (
                             <span
                               title="A deliberate extra copy — this client had already been emailed for this batch (or this was a test send to a staff mailbox)"
                               style={{
-                                display: 'inline-block', fontSize: 10.5, fontWeight: 600, padding: '2px 8px',
+                                display: 'inline-block', fontSize: 11.5, fontWeight: 600, padding: '2px 8px',
                                 borderRadius: 999, background: '#fffbeb', color: '#92400e',
                                 border: '1px solid #fde68a', whiteSpace: 'nowrap',
                               }}
@@ -240,7 +240,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
                         {(() => {
                           const chip = (label, bg, color, border) => (
                             <span style={{
-                              display: 'inline-block', fontSize: 10.5, fontWeight: 600, padding: '2px 8px',
+                              display: 'inline-block', fontSize: 11.5, fontWeight: 600, padding: '2px 8px',
                               borderRadius: 999, background: bg, color, border: `1px solid ${border}`, whiteSpace: 'nowrap',
                             }}>{label}</span>
                           );
@@ -252,7 +252,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
                               : 'Clicked';
                             return chip(what, '#eff6ff', '#1d4ed8', '#bfdbfe');
                           }
-                          return <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>—</span>;
+                          return <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>—</span>;
                         })()}
                       </td>
                     )}
@@ -264,12 +264,12 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
 
           {/* preview */}
           <div style={{ flex: '1 1 420px', minWidth: 300, overflowY: 'auto' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
               {isQueued ? 'Exactly what will send' : 'What was sent'}
             </div>
             {focus ? (
               <>
-                <div style={{ fontSize: 12.5, color: '#334155', margin: '2px 0 8px' }}>
+                <div style={{ fontSize: 13.5, color: '#334155', margin: '2px 0 8px' }}>
                   To <strong>{focus.to_email}</strong> · Subject: <strong>{focus.subject}</strong>
                 </div>
                 <div
@@ -277,7 +277,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
                   dangerouslySetInnerHTML={{ __html: focus.body_html || '<p style="color:#94a3b8">(body not stored for this row)</p>' }}
                 />
               </>
-            ) : <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Select a row to preview.</div>}
+            ) : <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Select a row to preview.</div>}
           </div>
         </div>
 
@@ -287,7 +287,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
               Drop selected
             </button>
             <div style={{ flex: 1 }} />
-            <span style={{ fontSize: 12, color: '#64748b' }}>Send from</span>
+            <span style={{ fontSize: 13, color: '#64748b' }}>Send from</span>
             <select value={mailbox} onChange={(e) => setMailbox(e.target.value)} style={selStyle} disabled={!mailboxes.length}>
               {mailboxes.length === 0 && <option value="">no active mailbox</option>}
               {mailboxes.map((m) => (

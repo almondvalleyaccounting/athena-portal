@@ -16,17 +16,17 @@ const overlayStyle = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
 };
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
-const label = { fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4, display: 'block' };
+const label = { fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4, display: 'block' };
 const input = {
-  width: '100%', padding: '7px 10px', fontSize: 12.5, fontFamily: font,
+  width: '100%', padding: '7px 10px', fontSize: 13.5, fontFamily: font,
   border: '1px solid #e5e7eb', borderRadius: 8, boxSizing: 'border-box', color: '#0f172a',
 };
 const btnGhost = {
-  padding: '7px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: '#fff', color: '#334155', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer',
 };
 const btnPrimary = (on) => ({
-  padding: '8px 16px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '8px 16px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: on ? '#0e7fe0' : '#e5e7eb', color: on ? '#fff' : '#94a3b8',
   border: 'none', borderRadius: 8, cursor: on ? 'pointer' : 'default',
 });
@@ -99,13 +99,13 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
     <div style={overlayStyle}>
       <div style={{ ...card, width: 1040, maxWidth: '96vw', maxHeight: '92vh', overflowY: 'auto', padding: 20, fontFamily: font }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Email templates</div>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Email templates</div>
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer', fontFamily: font }}>×</button>
         </div>
 
         {error && (
-          <div style={{ ...card, padding: '9px 12px', marginBottom: 12, background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c', fontSize: 12.5 }}>{error}</div>
+          <div style={{ ...card, padding: '9px 12px', marginBottom: 12, background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c', fontSize: 13.5 }}>{error}</div>
         )}
 
         {/* kind switch */}
@@ -117,7 +117,7 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
                 key={k.key}
                 onClick={() => setKind(k.key)}
                 style={{
-                  padding: '6px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: font, borderRadius: 999, cursor: 'pointer',
+                  padding: '6px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font, borderRadius: 999, cursor: 'pointer',
                   background: active ? '#eff6ff' : '#fff', color: active ? '#1d4ed8' : '#64748b',
                   border: `1px solid ${active ? '#bfdbfe' : '#e5e7eb'}`,
                 }}
@@ -129,7 +129,7 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
         </div>
 
         {loading ? (
-          <div style={{ fontSize: 13, color: '#64748b' }}>Loading…</div>
+          <div style={{ fontSize: 14, color: '#64748b' }}>Loading…</div>
         ) : (
           <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             {/* editor */}
@@ -142,17 +142,17 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
               />
               <label style={{ ...label, marginTop: 12 }}>Body — HTML</label>
               <textarea
-                style={{ ...input, minHeight: 200, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 11.5, lineHeight: 1.45, resize: 'vertical' }}
+                style={{ ...input, minHeight: 200, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 12.5, lineHeight: 1.45, resize: 'vertical' }}
                 value={draft.body_html}
                 onChange={(e) => setDraft((d) => ({ ...d, body_html: e.target.value }))}
               />
               <label style={{ ...label, marginTop: 12 }}>Body — plain text</label>
               <textarea
-                style={{ ...input, minHeight: 130, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 11.5, lineHeight: 1.45, resize: 'vertical' }}
+                style={{ ...input, minHeight: 130, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 12.5, lineHeight: 1.45, resize: 'vertical' }}
                 value={draft.body_text}
                 onChange={(e) => setDraft((d) => ({ ...d, body_text: e.target.value }))}
               />
-              <div style={{ marginTop: 10, fontSize: 11, color: '#94a3b8', lineHeight: 1.7 }}>
+              <div style={{ marginTop: 10, fontSize: 12, color: '#94a3b8', lineHeight: 1.7 }}>
                 Tokens:{' '}
                 {TOKENS.map((t) => (
                   <code key={t} style={{ background: '#f1f5f9', padding: '1px 5px', borderRadius: 4, marginRight: 5, color: '#475569' }}>{t}</code>
@@ -168,7 +168,7 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
             {/* preview */}
             <div style={{ flex: '1 1 420px', minWidth: 300 }}>
               <label style={label}>Preview (sample data)</label>
-              <div style={{ fontSize: 12.5, color: '#334155', margin: '2px 0 8px' }}>
+              <div style={{ fontSize: 13.5, color: '#334155', margin: '2px 0 8px' }}>
                 Subject: <strong>{preview.subject}</strong>
               </div>
               <div
@@ -180,8 +180,8 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 18 }}>
-          {savedAt && <span style={{ fontSize: 12, color: '#166534', fontWeight: 600 }}>Saved ✓</span>}
-          {dirty && !savedAt && <span style={{ fontSize: 12, color: '#92400e' }}>Unsaved changes</span>}
+          {savedAt && <span style={{ fontSize: 13, color: '#166534', fontWeight: 600 }}>Saved ✓</span>}
+          {dirty && !savedAt && <span style={{ fontSize: 13, color: '#92400e' }}>Unsaved changes</span>}
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={btnGhost}>Close</button>
           <button onClick={save} disabled={!dirty || saving} style={btnPrimary(dirty && !saving)}>

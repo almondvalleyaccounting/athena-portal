@@ -50,7 +50,7 @@ function Cell({ step, groupStart }) {
     <td style={tdStyle} title={title}>
       <div style={{
         width: 26, height: 20, borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 11, fontWeight: 700, ...boxStyle,
+        fontSize: 12, fontWeight: 700, ...boxStyle,
       }}>
         {glyph}
       </div>
@@ -95,7 +95,7 @@ export default function BoardView() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Onboarding</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
             Every client's onboarding, by significant milestone, at a glance
           </p>
         </div>
@@ -113,19 +113,19 @@ export default function BoardView() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search client…"
           style={{
-            marginLeft: 'auto', padding: '7px 12px', fontSize: 13, fontFamily: font,
+            marginLeft: 'auto', padding: '7px 12px', fontSize: 14, fontFamily: font,
             border: '1px solid #cbd5e1', borderRadius: 8, minWidth: 220, background: '#fff',
           }}
         />
       </div>
 
-      {error && <div style={{ color: tones.danger.fg, fontSize: 13 }}>Failed to load: {error}</div>}
-      {!rows && !error && <div style={{ color: '#64748b', fontSize: 13 }}>Loading…</div>}
+      {error && <div style={{ color: tones.danger.fg, fontSize: 14 }}>Failed to load: {error}</div>}
+      {!rows && !error && <div style={{ color: '#64748b', fontSize: 14 }}>Loading…</div>}
 
       {rows && filtered.length === 0 && (
         <div style={{
           background: '#fff', border: '1px dashed #cbd5e1', borderRadius: 12,
-          padding: '40px 20px', textAlign: 'center', color: '#64748b', fontSize: 14,
+          padding: '40px 20px', textAlign: 'center', color: '#64748b', fontSize: 14.5,
         }}>
           No onboardings here yet.
         </div>
@@ -133,7 +133,7 @@ export default function BoardView() {
 
       {rows && filtered.length > 0 && (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'auto', maxHeight: 'calc(100vh - 220px)' }}>
-          <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
             <thead>
               <tr>
                 <th style={{ ...nameColStyle, position: 'sticky', top: 0, left: 0, zIndex: 3, background: '#fff' }} />
@@ -143,8 +143,8 @@ export default function BoardView() {
                     colSpan={g.columns.length}
                     style={{
                       position: 'sticky', top: 0, zIndex: 1, background: '#f8fafc',
-                      padding: '6px 4px', fontSize: 10, fontWeight: 700, color: '#64748b',
-                      textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid #e5e7eb',
+                      padding: '6px 4px', fontSize: 11, fontWeight: 700, color: '#64748b',
+                      borderBottom: '1px solid #e5e7eb',
                       borderLeft: '1px solid #e5e7eb', textAlign: 'center',
                     }}
                   >
@@ -162,7 +162,7 @@ export default function BoardView() {
                       title={col.label}
                       style={{
                         position: 'sticky', top: 26, zIndex: 1, background: '#fff',
-                        padding: '6px 3px', fontSize: 9.5, fontWeight: 600, color: '#94a3b8',
+                        padding: '6px 3px', fontSize: 10.5, fontWeight: 600, color: '#94a3b8',
                         borderBottom: '1px solid #e5e7eb', borderLeft: isGroupStart ? '1px solid #e5e7eb' : 'none',
                         writingMode: 'vertical-rl', transform: 'rotate(180deg)', height: 90, whiteSpace: 'nowrap',
                       }}
@@ -179,10 +179,10 @@ export default function BoardView() {
                 return (
                   <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/onboarding/${r.id}`)}>
                     <td style={{ ...nameColStyle, borderBottom: '1px solid #f1f5f9' }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{r.entity?.name || '—'}</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{r.entity?.name || '—'}</div>
                       <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={chipStyle(meta.tone)}>{meta.label}</span>
-                        <span style={{ fontSize: 10.5, color: '#94a3b8' }}>{r.template?.name || ''}</span>
+                        <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{r.template?.name || ''}</span>
                       </div>
                     </td>
                     {MILESTONE_COLUMNS.map((col, i) => {

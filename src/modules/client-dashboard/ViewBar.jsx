@@ -103,7 +103,7 @@ export default function ViewBar({
 
       {showBasis && basis === 'fiscal' && fiscalYear && (
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontFamily: OUTFIT, fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#94a3b8' }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: '12px', fontWeight: 700, color: '#94a3b8' }}>
             Ends
           </span>
           <select
@@ -112,7 +112,7 @@ export default function ViewBar({
             disabled={!onFiscalYearEndChange}
             title={src.hint}
             style={{
-              ...inputStyle, padding: '6px 9px', fontSize: '12.5px',
+              ...inputStyle, padding: '6px 9px', fontSize: '13.5px',
               borderColor: src.warn ? '#fde68a' : '#e5e7eb',
               backgroundColor: src.warn ? '#fffbeb' : '#ffffff',
             }}
@@ -121,7 +121,7 @@ export default function ViewBar({
           </select>
           {src.badge && (
             <span title={src.hint} style={{
-              fontFamily: OUTFIT, fontSize: '11px', fontWeight: 600,
+              fontFamily: OUTFIT, fontSize: '12px', fontWeight: 600,
               color: src.warn ? '#b45309' : '#94a3b8',
             }}>
               {src.badge}
@@ -131,7 +131,7 @@ export default function ViewBar({
       )}
 
       {note && (
-        <span style={{ fontFamily: OUTFIT, fontSize: '11.5px', color: '#94a3b8', marginLeft: 'auto' }}>
+        <span style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', marginLeft: 'auto' }}>
           {note}
         </span>
       )}

@@ -378,7 +378,7 @@ export default function QuotesPage() {
       </div>
 
       {/* Status Cards */}
-      <p className="text-[11px] text-gray-400 mb-1.5">
+      <p className="text-[12px] text-gray-400 mb-1.5">
         Card totals show annual value, {netGross === 'net' ? 'net of VAT' : 'gross (inc VAT)'}.
       </p>
       <div className="grid grid-cols-4 gap-2 mb-4">
@@ -400,7 +400,7 @@ export default function QuotesPage() {
                     : 'border-gray-200 bg-white hover:border-ocean-200'
               }`}
             >
-              <div className={`text-[11px] font-medium mb-1 ${isPipeline ? 'text-ocean-200' : 'text-gray-500'}`}>{card.label}</div>
+              <div className={`text-[12px] font-medium mb-1 ${isPipeline ? 'text-ocean-200' : 'text-gray-500'}`}>{card.label}</div>
               <div className="flex items-baseline justify-between gap-2">
                 <span className={`text-lg font-bold ${isPipeline ? 'text-white' : isActive ? 'text-ocean-700' : 'text-gray-700'}`}>{d.count}</span>
                 <span className={`text-xs font-mono ${isPipeline ? 'text-ocean-200' : isActive ? 'text-ocean-600' : 'text-gray-400'}`}>{fmtWhole(d.value)}</span>
@@ -570,7 +570,7 @@ export default function QuotesPage() {
               )}
               <span className="font-medium text-gray-700 truncate">
                 {q.quote_ref}
-                {q.group_id && <span className="ml-1 text-[9px] bg-ocean-50 text-ocean-600 px-1 rounded">group</span>}
+                {q.group_id && <span className="ml-1 text-[10px] bg-ocean-50 text-ocean-600 px-1 rounded">group</span>}
               </span>
               <span className="text-gray-500 truncate">{q.relationship_group || '\u2014'}</span>
               <span className="truncate">
@@ -615,7 +615,7 @@ export default function QuotesPage() {
                     position: 'fixed', top: menuPos.top, left: menuPos.left,
                     background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
                     boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 50, minWidth: 140,
-                    fontSize: 12, padding: 4,
+                    fontSize: 13, padding: 4,
                   }}>
                     <MenuItem onClick={() => { setMenuQuoteId(null); navigate('/manage/quotes/' + q.id); }}>Open</MenuItem>
                     <MenuItem onClick={() => { setMenuQuoteId(null); navigate('/manage/quotes/' + q.id + '/edit'); }}>Edit</MenuItem>
@@ -640,7 +640,7 @@ function MenuItem({ children, onClick, danger }) {
       style={{
         display: 'block', width: '100%', textAlign: 'left',
         padding: '6px 10px', border: 'none', borderRadius: 4,
-        background: 'none', cursor: 'pointer', fontSize: 12,
+        background: 'none', cursor: 'pointer', fontSize: 13,
         color: danger ? '#b91c1c' : '#1e293b',
       }}
       onMouseEnter={(e) => { e.currentTarget.style.background = danger ? '#fee2e2' : '#f1f5f9'; }}

@@ -155,9 +155,9 @@ export default function DashboardView() {
         overflow: 'hidden',
       }}>
         <div style={{ position: 'absolute', top: -40, right: -40, width: 200, height: 200, background: 'rgba(56,189,248,0.18)', borderRadius: '50%', filter: 'blur(60px)' }} />
-        <div style={{ fontFamily: FONT, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.7 }}>{greeting},</div>
+        <div style={{ fontFamily: FONT, fontSize: 13, opacity: 0.7 }}>{greeting},</div>
         <div style={{ fontFamily: SERIF, fontSize: 32, fontWeight: 500, marginTop: 4 }}>{profile.name?.split(' ')[0] || 'there'} 👋</div>
-        <div style={{ fontFamily: FONT, fontSize: 14, opacity: 0.85, marginTop: 8, maxWidth: 600 }}>
+        <div style={{ fontFamily: FONT, fontSize: 14.5, opacity: 0.85, marginTop: 8, maxWidth: 600 }}>
           {topGap
             ? <>Your biggest growth opportunity right now is <strong>{topGap.skill.name}</strong> — a gap of {topGap.gap} levels. Small, deliberate steps add up fast.</>
             : 'Set a few targets in the Skills tab and we\'ll surface where to focus.'}
@@ -174,7 +174,7 @@ export default function DashboardView() {
               Feedback shared with you ({sharedFeedback.length})
             </div>
           </div>
-          <p style={{ fontFamily: FONT, fontSize: 12, color: '#64748b', margin: '0 0 12px' }}>
+          <p style={{ fontFamily: FONT, fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>
             Written by a colleague, and shown to you because they chose to. Bring it to your next 1-2-1
             if you want to talk it through.
           </p>
@@ -182,17 +182,17 @@ export default function DashboardView() {
             {sharedFeedback.map((f) => (
               <div key={f.id} style={{ border: '1px solid #eef2ff', background: '#fbfcfe', borderRadius: 10, padding: '10px 12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
+                  <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
                     {f.contributor?.name || 'A colleague'}
                   </span>
                   <Pill bg={f.kind === 'work' ? '#eff6ff' : '#f5f3ff'} fg={f.kind === 'work' ? '#0e7fe0' : '#7c3aed'}>
                     {f.kind === 'work' ? 'Work' : 'Development'}
                   </Pill>
-                  <span style={{ fontFamily: FONT, fontSize: 11, color: '#cbd5e1' }}>
+                  <span style={{ fontFamily: FONT, fontSize: 12, color: '#cbd5e1' }}>
                     {new Date(f.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                   </span>
                 </div>
-                <div style={{ fontFamily: FONT, fontSize: 13, color: '#1e293b', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{f.body}</div>
+                <div style={{ fontFamily: FONT, fontSize: 14, color: '#1e293b', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{f.body}</div>
               </div>
             ))}
           </div>
@@ -237,14 +237,14 @@ export default function DashboardView() {
                 {openObjectives.slice(0, 3).map((o) => (
                   <div key={o.id}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                      <div style={{ fontFamily: FONT, fontSize: 13, fontWeight: 500, color: '#0f172a' }}>{o.title}</div>
-                      <div style={{ fontFamily: FONT, fontSize: 12, color: '#64748b' }}>{o.progress_pct}%</div>
+                      <div style={{ fontFamily: FONT, fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{o.title}</div>
+                      <div style={{ fontFamily: FONT, fontSize: 13, color: '#64748b' }}>{o.progress_pct}%</div>
                     </div>
                     <ProgressBar value={o.progress_pct} />
                   </div>
                 ))}
                 {completedObjectives.length > 0 && (
-                  <div style={{ marginTop: 6, fontFamily: FONT, fontSize: 12, color: '#16a34a' }}>
+                  <div style={{ marginTop: 6, fontFamily: FONT, fontSize: 13, color: '#16a34a' }}>
                     🏆 {completedObjectives.length} completed objective{completedObjectives.length === 1 ? '' : 's'} — well done!
                   </div>
                 )}
@@ -260,12 +260,12 @@ export default function DashboardView() {
             </div>
             {lastOneToOne ? (
               <div>
-                <div style={{ fontFamily: FONT, fontSize: 13, color: '#475569' }}>
+                <div style={{ fontFamily: FONT, fontSize: 14, color: '#475569' }}>
                   {new Date(lastOneToOne.meeting_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
                   {lastOneToOne.duration_mins && ` · ${lastOneToOne.duration_mins} mins`}
                 </div>
                 {lastOneToOne.what_went_well && (
-                  <div style={{ marginTop: 10, padding: 10, background: '#dcfce7', borderRadius: 8, fontFamily: FONT, fontSize: 13, color: '#1e293b' }}>
+                  <div style={{ marginTop: 10, padding: 10, background: '#dcfce7', borderRadius: 8, fontFamily: FONT, fontSize: 14, color: '#1e293b' }}>
                     <strong style={{ color: '#166534' }}>Went well:</strong> {truncate(lastOneToOne.what_went_well, 140)}
                   </div>
                 )}
@@ -309,13 +309,13 @@ export default function DashboardView() {
           <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 500, color: '#78350f' }}>
             Visit {LEARNING_PARTNER.name}
           </div>
-          <div style={{ fontFamily: FONT, fontSize: 13, color: '#92400e', marginTop: 2 }}>
+          <div style={{ fontFamily: FONT, fontSize: 14, color: '#92400e', marginTop: 2 }}>
             {LEARNING_PARTNER.blurb}
           </div>
         </div>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
-          fontFamily: FONT, fontSize: 13, fontWeight: 600, color: '#78350f',
+          fontFamily: FONT, fontSize: 14, fontWeight: 600, color: '#78350f',
           flexShrink: 0,
         }}>
           Open <ExternalLink size={13} />
@@ -376,13 +376,13 @@ export default function DashboardView() {
                       display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0,
                     }}>{b.emoji}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontFamily: FONT, fontSize: 12, color: '#64748b' }}>
+                      <div style={{ fontFamily: FONT, fontSize: 13, color: '#64748b' }}>
                         <strong style={{ color: '#0f172a' }}>{staffName(k.from_id)}</strong>
                         {' → '}
                         <strong style={{ color: '#0e7fe0' }}>{staffName(k.to_id)}</strong>
                         <span style={{ marginLeft: 8 }}>{relativeTime(k.created_at)}</span>
                       </div>
-                      <div style={{ fontFamily: FONT, fontSize: 13, color: '#1e293b', marginTop: 4 }}>
+                      <div style={{ fontFamily: FONT, fontSize: 14, color: '#1e293b', marginTop: 4 }}>
                         {k.message}
                       </div>
                     </div>
@@ -408,13 +408,13 @@ export default function DashboardView() {
               {cpd.slice(0, 5).map((c) => (
                 <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderTop: '1px solid #f1f5f9' }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontFamily: FONT, fontSize: 13, fontWeight: 500, color: '#0f172a' }}>{c.title}</div>
-                    <div style={{ fontFamily: FONT, fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                    <div style={{ fontFamily: FONT, fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{c.title}</div>
+                    <div style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
                       {new Date(c.entry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                       {c.provider && ` · ${c.provider}`}
                     </div>
                   </div>
-                  <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#0e7fe0', flexShrink: 0 }}>{Number(c.hours).toFixed(1)}h</span>
+                  <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#0e7fe0', flexShrink: 0 }}>{Number(c.hours).toFixed(1)}h</span>
                 </div>
               ))}
             </div>
@@ -427,7 +427,7 @@ export default function DashboardView() {
 
 const linkBtn = {
   background: 'none', border: 'none', cursor: 'pointer', color: '#0e7fe0',
-  fontFamily: FONT, fontSize: 12, fontWeight: 600,
+  fontFamily: FONT, fontSize: 13, fontWeight: 600,
 };
 
 function getGreeting() {

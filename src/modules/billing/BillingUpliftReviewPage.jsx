@@ -394,7 +394,7 @@ export default function BillingUpliftReviewPage() {
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
             Push uplifts
           </h1>
-          <p style={{ fontSize: 13, color: '#64748b', maxWidth: 720, marginBottom: 0 }}>
+          <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720, marginBottom: 0 }}>
             Review staged fee uplifts and approve them before pushing to QBO. Approval is per template — every pending service on a row goes through together.
           </p>
         </div>
@@ -427,7 +427,7 @@ export default function BillingUpliftReviewPage() {
       {/* Bulk bar */}
       {selected.size > 0 && (
         <div style={bulkBarStyle}>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>{selected.size} selected</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>{selected.size} selected</span>
           <div style={{ flex: 1 }} />
           <button onClick={() => setStatus(Array.from(selected), 'approved')} disabled={saving} style={btnApprove}>Approve</button>
           <button onClick={() => setStatus(Array.from(selected), 'rejected')} disabled={saving} style={btnReject}>Reject</button>
@@ -447,7 +447,7 @@ export default function BillingUpliftReviewPage() {
       )}
 
       {loading ? (
-        <p style={{ fontSize: 13, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading…</p>
       ) : visible.length === 0 ? (
         filter === 'staged' ? (
           <EmptyState
@@ -482,7 +482,7 @@ export default function BillingUpliftReviewPage() {
         )
       ) : (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <colgroup>
               <col style={{ width: 32 }} />
               <col style={{ width: '22%' }} />
@@ -522,25 +522,25 @@ export default function BillingUpliftReviewPage() {
                         <span style={{ fontWeight: 500, color: '#0f172a' }}>{r.entity?.name || 'Unknown'}</span>
                         {r.uplift_email_sent_at && (
                           <span
-                            style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}
+                            style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}
                             title={`Email sent ${new Date(r.uplift_email_sent_at).toLocaleString('en-GB')}${r.uplift_email_to ? ` to ${r.uplift_email_to}` : ''}`}
                           >✉ SENT</span>
                         )}
                         {!r.uplift_email_sent_at && r.uplift_gmail_draft_id && (
                           <span
-                            style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dbeafe', color: '#0c4a6e' }}
+                            style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dbeafe', color: '#0c4a6e' }}
                             title={`Gmail draft created ${r.uplift_gmail_draft_created_at ? new Date(r.uplift_gmail_draft_created_at).toLocaleString('en-GB') : ''}${r.uplift_email_to ? ` for ${r.uplift_email_to}` : ''} — finalise and send in Gmail.`}
                           >✎ DRAFT</span>
                         )}
                         {r.uplift_email_skipped && !r.uplift_email_sent_at && (
                           <span
-                            style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#f1f5f9', color: '#475569' }}
+                            style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#f1f5f9', color: '#475569' }}
                             title="Marked as not needing an email — excluded from Send all"
                           >NO EMAIL</span>
                         )}
                       </div>
-                      {!hasTemplate && <span style={{ fontSize: 10, color: '#b45309' }}>⚠ no QBO template</span>}
-                      {r._reason && <div style={{ fontSize: 10, color: '#94a3b8' }} title={r._reason}>{r._reason.length > 50 ? r._reason.slice(0, 50) + '…' : r._reason}</div>}
+                      {!hasTemplate && <span style={{ fontSize: 11, color: '#b45309' }}>⚠ no QBO template</span>}
+                      {r._reason && <div style={{ fontSize: 11, color: '#94a3b8' }} title={r._reason}>{r._reason.length > 50 ? r._reason.slice(0, 50) + '…' : r._reason}</div>}
                     </Td>
                     <Td>{r._pendingLines}</Td>
                     <Td align="right" style={{ fontFamily: 'monospace' }}>£{r._oldTotal.toFixed(2)}</Td>
@@ -590,7 +590,7 @@ export default function BillingUpliftReviewPage() {
                         >
                           <Mail size={13} />
                         </button>
-                        <button onClick={() => unstage(r.id)} disabled={saving} title="Discard the pending uplift entirely" style={{ ...iconBtn('#94a3b8'), fontSize: 10 }}>
+                        <button onClick={() => unstage(r.id)} disabled={saving} title="Discard the pending uplift entirely" style={{ ...iconBtn('#94a3b8'), fontSize: 11 }}>
                           ✕
                         </button>
                       </div>
@@ -607,7 +607,7 @@ export default function BillingUpliftReviewPage() {
                 <Td align="right" style={{ fontFamily: 'monospace', fontWeight: 700, color: totals.delta > 0 ? '#15803d' : '#94a3b8' }}>
                   {totals.delta > 0 ? '+' : ''}£{totals.delta.toFixed(2)}
                 </Td>
-                <Td colSpan={4} style={{ fontSize: 11, color: '#94a3b8' }}>{visible.length} row{visible.length === 1 ? '' : 's'}</Td>
+                <Td colSpan={4} style={{ fontSize: 12, color: '#94a3b8' }}>{visible.length} row{visible.length === 1 ? '' : 's'}</Td>
               </tr>
             </tfoot>
           </table>
@@ -619,7 +619,7 @@ export default function BillingUpliftReviewPage() {
           the user has scrolled to. */}
       {approvedCount > 0 && (
         <div style={pushFooterStyle}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>
             {approvedCount} approved {approvedCount === 1 ? 'template' : 'templates'} ready to push
           </span>
           <div style={{ flex: 1 }} />
@@ -660,7 +660,7 @@ function StatusChip({ status }) {
   const m = map[status] || map.staged;
   const t = tones[m.tone];
   return (
-    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: t.bg, color: t.fg }}>{m.label}</span>
+    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: t.bg, color: t.fg }}>{m.label}</span>
   );
 }
 
@@ -673,20 +673,20 @@ function Pill({ label, count, active, tone, onClick }) {
   const fg = active && isMaster ? '#fff' : t.fg;
   const border = isMaster && !active ? '#e5e7eb' : t.border;
   return (
-    <button onClick={onClick} style={{ fontSize: 12, fontWeight: active ? 600 : 500, padding: '5px 12px', borderRadius: 999, background: bg, color: fg, border: `1px solid ${border}`, cursor: 'pointer', fontFamily: font }}>
+    <button onClick={onClick} style={{ fontSize: 13, fontWeight: active ? 600 : 500, padding: '5px 12px', borderRadius: 999, background: bg, color: fg, border: `1px solid ${border}`, cursor: 'pointer', fontFamily: font }}>
       {label}{count != null ? ` · ${count}` : ''}
     </button>
   );
 }
 
-const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</th>;
+const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{children}</th>;
 
 function SortTh({ label, sortKey, active, onClick, align }) {
   const isActive = active.key === sortKey;
   return (
     <th
       onClick={() => onClick(sortKey)}
-      style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: isActive ? '#0f172a' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }}
+      style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: isActive ? '#0f172a' : '#94a3b8', cursor: 'pointer', userSelect: 'none' }}
     >
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexDirection: align === 'right' ? 'row-reverse' : 'row' }}>
         {label}
@@ -699,15 +699,15 @@ function SortTh({ label, sortKey, active, onClick, align }) {
 }
 const Td = ({ children, align, style, colSpan }) => <td colSpan={colSpan} style={{ padding: '8px 12px', verticalAlign: 'middle', textAlign: align || 'left', ...style }}>{children}</td>;
 
-const backLinkStyle = { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 12, padding: 0, fontFamily: font };
+const backLinkStyle = { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 12, padding: 0, fontFamily: font };
 const bulkBarStyle = { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', marginBottom: 10, background: '#0f172a', color: '#fff', borderRadius: 8, position: 'sticky', top: 0, zIndex: 20 };
-const btnApprove = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnReject = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnUndo = { padding: '6px 14px', fontSize: 12, fontWeight: 500, background: '#64748b', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnGhost = { padding: '6px 12px', fontSize: 12, fontWeight: 500, background: 'none', color: '#cbd5e1', border: 'none', cursor: 'pointer', fontFamily: font };
-const btnSecondary = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnPushDry = { padding: '6px 14px', fontSize: 12, fontWeight: 500, background: '#fff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnPushLive = { padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnApprove = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnReject = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnUndo = { padding: '6px 14px', fontSize: 13, fontWeight: 500, background: '#64748b', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnGhost = { padding: '6px 12px', fontSize: 13, fontWeight: 500, background: 'none', color: '#cbd5e1', border: 'none', cursor: 'pointer', fontFamily: font };
+const btnSecondary = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnPushDry = { padding: '6px 14px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnPushLive = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const pushFooterStyle = {
   position: 'sticky', bottom: 0, marginTop: 14,
   display: 'flex', alignItems: 'center', gap: 10,
@@ -903,7 +903,7 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10 }}>
           <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 500, color: '#0f172a', margin: 0 }}>
             Fee-raise email
-            {drafts.length > 1 && <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8', marginLeft: 8 }}>{idx + 1} of {drafts.length}</span>}
+            {drafts.length > 1 && <span style={{ fontSize: 13, fontWeight: 500, color: '#94a3b8', marginLeft: 8 }}>{idx + 1} of {drafts.length}</span>}
           </h2>
           <div style={{ flex: 1 }} />
           {drafts.length > 1 && (
@@ -915,20 +915,20 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18 }}>×</button>
         </div>
 
-        <div style={{ padding: '12px 18px', borderBottom: '1px solid #f1f5f9', fontSize: 12, color: '#475569', display: 'grid', gridTemplateColumns: '70px 1fr', gap: '6px 10px', alignItems: 'start' }}>
+        <div style={{ padding: '12px 18px', borderBottom: '1px solid #f1f5f9', fontSize: 13, color: '#475569', display: 'grid', gridTemplateColumns: '70px 1fr', gap: '6px 10px', alignItems: 'start' }}>
           <strong style={{ color: '#0f172a', paddingTop: 4 }}>Contact</strong>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {active.contact ? (
               <>
                 <span>{active.contact.name}{active.contactName ? ` (greeting: ${active.contactName})` : ''}</span>
                 {noContactName && (
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#991b1b' }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#991b1b' }}>
                     Cannot derive first name — set one in BM
                   </span>
                 )}
               </>
             ) : (
-              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#991b1b' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#991b1b' }}>
                 No primary contact on file — add one in BM before sending
               </span>
             )}
@@ -937,17 +937,17 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
           <strong style={{ color: '#0f172a', paddingTop: 4 }}>To</strong>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {isLetter ? (
-              <span style={{ fontSize: 12, color: '#475569', fontStyle: 'italic' }}>
+              <span style={{ fontSize: 13, color: '#475569', fontStyle: 'italic' }}>
                 Physical letter — no email will be sent. Marks the row as sent for tracking.
               </span>
             ) : active.candidates.length === 0 ? (
-              <span style={{ fontSize: 11, color: '#991b1b' }}>
+              <span style={{ fontSize: 12, color: '#991b1b' }}>
                 No email addresses on file. Type one below or switch to physical letter.
               </span>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 {active.candidates.map((c) => (
-                  <label key={c.addr} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                  <label key={c.addr} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
                     <input
                       type="radio"
                       name={`to-${rowId}`}
@@ -955,7 +955,7 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
                       onChange={() => setSelectedAddr((s) => ({ ...s, [rowId]: c.addr }))}
                     />
                     <span style={{ fontFamily: 'monospace' }}>{c.addr}</span>
-                    <span style={{ fontSize: 10, color: '#94a3b8' }}>· {c.label}</span>
+                    <span style={{ fontSize: 11, color: '#94a3b8' }}>· {c.label}</span>
                   </label>
                 ))}
               </div>
@@ -966,10 +966,10 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
                 value={to}
                 onChange={(e) => setSelectedAddr((s) => ({ ...s, [rowId]: e.target.value }))}
                 placeholder="Or type a different address…"
-                style={{ padding: '4px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none' }}
+                style={{ padding: '4px 8px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none' }}
               />
             )}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#475569', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#475569', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={isLetter}
@@ -980,9 +980,9 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
             {(alreadySentOnServer && !sentThisSession) || sentThisSession ? (
               <span style={{ display: 'inline-flex', alignSelf: 'flex-start' }}>
                 {sentThisSession ? (
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}>✓ Sent this session</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}>✓ Sent this session</span>
                 ) : (
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }} title={`Last sent ${new Date(active.row.uplift_email_sent_at).toLocaleString('en-GB')}${active.row.uplift_email_to ? ` to ${active.row.uplift_email_to}` : ''}`}>
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }} title={`Last sent ${new Date(active.row.uplift_email_sent_at).toLocaleString('en-GB')}${active.row.uplift_email_to ? ` to ${active.row.uplift_email_to}` : ''}`}>
                     Previously sent{active.row.uplift_email_to ? ` to ${active.row.uplift_email_to}` : ''}
                   </span>
                 )}
@@ -1041,5 +1041,5 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
   );
 }
 
-const modalBtnPrimary = { padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const modalBtnGhost = { padding: '8px 14px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const modalBtnPrimary = { padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const modalBtnGhost = { padding: '8px 14px', fontSize: 14, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };

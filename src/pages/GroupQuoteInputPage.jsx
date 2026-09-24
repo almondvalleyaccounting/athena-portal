@@ -135,7 +135,7 @@ function Tooltip({ text, children }) {
     <span className="relative" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
       {children}
       {show && text && (
-        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-[10px] rounded whitespace-nowrap max-w-[280px] text-center shadow-lg">
+        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-[11px] rounded whitespace-nowrap max-w-[280px] text-center shadow-lg">
           {text}
         </span>
       )}
@@ -535,7 +535,7 @@ export default function GroupQuoteInputPage() {
       <div className="bg-white rounded-lg border border-blue-200 overflow-x-auto mb-4">
         <div className="px-3 py-2 bg-blue-50 border-b border-blue-200">
           <h3 className="text-xs font-semibold text-blue-700">Quote Drivers</h3>
-          <p className="text-[10px] text-blue-400">Set the inputs — values calculate automatically below</p>
+          <p className="text-[11px] text-blue-400">Set the inputs — values calculate automatically below</p>
         </div>
         <table className="w-full text-xs border-collapse table-fixed">
           <colgroup>
@@ -553,7 +553,7 @@ export default function GroupQuoteInputPage() {
           <tbody>
             {Object.entries(driverSections).map(([section, defs]) => (
               <React.Fragment key={section}>
-                <tr><td colSpan={entities.length + 2} className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase bg-gray-50 border-t border-gray-100">{section}</td></tr>
+                <tr><td colSpan={entities.length + 2} className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 bg-gray-50 border-t border-gray-100">{section}</td></tr>
                 {defs.map(d => (
                   <tr key={d.id} className="border-b border-gray-50 hover:bg-blue-50/30">
                     <td className="px-3 py-1 text-gray-600 sticky left-0 bg-white z-10">{d.label}</td>
@@ -589,7 +589,7 @@ export default function GroupQuoteInputPage() {
       <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto mb-4">
         <div className="px-3 py-2 bg-ocean-50 border-b border-ocean-200">
           <h3 className="text-xs font-semibold text-ocean-700">Calculated Values (Annual)</h3>
-          <p className="text-[10px] text-ocean-400">Hover any number to see its calculation. Override by typing directly.</p>
+          <p className="text-[11px] text-ocean-400">Hover any number to see its calculation. Override by typing directly.</p>
         </div>
         <table className="w-full text-xs border-collapse table-fixed">
           <colgroup>

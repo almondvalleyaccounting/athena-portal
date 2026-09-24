@@ -89,15 +89,15 @@ export default function VacancyDetailView() {
 
   const openApp = apps.find((a) => a.id === openAppId) || null;
 
-  if (loading) return <div style={{ fontFamily: font, color: '#94a3b8', fontSize: 13, padding: 20 }}>Loading…</div>;
-  if (!vacancy) return <div style={{ fontFamily: font, color: '#b91c1c', fontSize: 13, padding: 20 }}>{error || 'Vacancy not found.'}</div>;
+  if (loading) return <div style={{ fontFamily: font, color: '#94a3b8', fontSize: 14, padding: 20 }}>Loading…</div>;
+  if (!vacancy) return <div style={{ fontFamily: font, color: '#b91c1c', fontSize: 14, padding: 20 }}>{error || 'Vacancy not found.'}</div>;
 
   const st = VACANCY_STATUS_MAP[vacancy.status] || VACANCY_STATUS_MAP.draft;
 
   return (
     <div style={{ maxWidth: 1180, margin: '0 auto', fontFamily: font }}>
       <button onClick={() => navigate('/recruitment')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#64748b', fontSize: 12.5, cursor: 'pointer', fontFamily: font, padding: 0, marginBottom: 12 }}>
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#64748b', fontSize: 13.5, cursor: 'pointer', fontFamily: font, padding: 0, marginBottom: 12 }}>
         <ArrowLeft size={14} /> All vacancies
       </button>
 
@@ -106,12 +106,12 @@ export default function VacancyDetailView() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>{vacancy.title}</h1>
             <span style={{
-              fontSize: 10.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
+              fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
               background: st.tone.bg, color: st.tone.fg, border: `1px solid ${st.tone.border}`,
               textTransform: 'uppercase', letterSpacing: 0.3,
             }}>{st.label}</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 6, fontSize: 12.5, color: '#64748b', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 6, fontSize: 13.5, color: '#64748b', flexWrap: 'wrap' }}>
             {vacancy.department && <span>{vacancy.department}</span>}
             <span>{EMP_MAP[vacancy.employment_type]} · {MODE_MAP[vacancy.work_mode]}</span>
             {vacancy.location && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><MapPin size={12} /> {vacancy.location}</span>}
@@ -129,7 +129,7 @@ export default function VacancyDetailView() {
           <button key={t.key} onClick={() => setTab(t.key)}
             style={{
               padding: '8px 4px', marginBottom: -1, background: 'none', border: 'none', cursor: 'pointer', fontFamily: font,
-              fontSize: 13, fontWeight: tab === t.key ? 700 : 500,
+              fontSize: 14, fontWeight: tab === t.key ? 700 : 500,
               color: tab === t.key ? '#0f172a' : '#94a3b8',
               borderBottom: `2px solid ${tab === t.key ? '#0e7fe0' : 'transparent'}`,
             }}>{t.label}</button>
@@ -141,11 +141,11 @@ export default function VacancyDetailView() {
         )}
       </div>
 
-      {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ fontSize: 14, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
 
       {tab === 'pipeline' && (
         apps.length === 0 ? (
-          <div style={{ ...card, padding: '32px 18px', textAlign: 'center', fontSize: 13.5, color: '#94a3b8' }}>
+          <div style={{ ...card, padding: '32px 18px', textAlign: 'center', fontSize: 14.5, color: '#94a3b8' }}>
             No applicants yet. Add one manually, or they'll arrive via the jobs@ inbox once wired up.
             <div style={{ marginTop: 10 }}>
               <button onClick={() => setAdding(true)} style={btn('primary')}><Plus size={14} /> Add applicant</button>
@@ -186,15 +186,15 @@ export default function VacancyDetailView() {
 function DetailsPanel({ vacancy }) {
   const Field = ({ label, children }) => (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 13.5, color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{children || <span style={{ color: '#cbd5e1' }}>—</span>}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 14.5, color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{children || <span style={{ color: '#cbd5e1' }}>—</span>}</div>
     </div>
   );
   return (
     <div style={{ ...card, padding: '18px 20px', maxWidth: 760 }}>
       <Field label="Description">{vacancy.description}</Field>
       <Field label="Requirements">{vacancy.requirements}</Field>
-      <div style={{ fontSize: 11.5, color: '#94a3b8', borderTop: '1px solid #f1f5f9', paddingTop: 10 }}>
+      <div style={{ fontSize: 12.5, color: '#94a3b8', borderTop: '1px solid #f1f5f9', paddingTop: 10 }}>
         Created {fmtDate(vacancy.created_at)}
       </div>
     </div>
@@ -218,20 +218,20 @@ function AdvertsPanel({ adverts, canManage, onCreate, onDelete }) {
 
   return (
     <div style={{ maxWidth: 760 }}>
-      <p style={{ fontSize: 12.5, color: '#64748b', margin: '0 0 14px' }}>
+      <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 14px' }}>
         Where this role is posted. Athena doesn't push to boards yet — post on each site, then record the public link here so applications can be traced back.
       </p>
       {adverts.length === 0 && !adding && (
-        <div style={{ ...card, padding: '22px 18px', textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>No adverts recorded.</div>
+        <div style={{ ...card, padding: '22px 18px', textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>No adverts recorded.</div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {adverts.map((a) => (
           <div key={a.id} style={{ ...card, padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', minWidth: 130 }}>{CHANNEL_MAP[a.channel] || a.channel}</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', minWidth: 130 }}>{CHANNEL_MAP[a.channel] || a.channel}</span>
             {a.external_url
-              ? <a href={a.external_url} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: '#0e7fe0', display: 'inline-flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><Link2 size={12} /> {a.external_url} <ExternalLink size={11} /></a>
-              : <span style={{ flex: 1, fontSize: 12.5, color: '#cbd5e1' }}>No link</span>}
-            {a.posted_at && <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{fmtDate(a.posted_at)}</span>}
+              ? <a href={a.external_url} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: '#0e7fe0', display: 'inline-flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><Link2 size={12} /> {a.external_url} <ExternalLink size={11} /></a>
+              : <span style={{ flex: 1, fontSize: 13.5, color: '#cbd5e1' }}>No link</span>}
+            {a.posted_at && <span style={{ fontSize: 12.5, color: '#94a3b8' }}>{fmtDate(a.posted_at)}</span>}
             {canManage && (
               <button onClick={() => onDelete(a.id)} title="Remove" style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', display: 'flex' }}>
                 <Trash2 size={14} />
@@ -245,14 +245,14 @@ function AdvertsPanel({ adverts, canManage, onCreate, onDelete }) {
         <div style={{ ...card, padding: '14px 16px', marginTop: 10 }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>Channel</div>
-              <select value={channel} onChange={(e) => setChannel(e.target.value)} style={{ padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 4 }}>Channel</div>
+              <select value={channel} onChange={(e) => setChannel(e.target.value)} style={{ padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }}>
                 {ADVERT_CHANNELS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
               </select>
             </div>
             <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>Public link</div>
-              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" style={{ width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box' }} />
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 4 }}>Public link</div>
+              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" style={{ width: '100%', padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box' }} />
             </div>
             <button onClick={submit} style={btn('primary')}>Save</button>
             <button onClick={() => setAdding(false)} style={btn('ghost')}>Cancel</button>

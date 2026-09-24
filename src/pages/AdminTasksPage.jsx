@@ -1174,7 +1174,7 @@ export default function AdminTasksPage() {
           service or a description, so they'd filter half the numbers and leave
           the rest — it keeps the client filter only, and the controls hide. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Filter by client</span>
+        <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>Filter by client</span>
         <ClientTypeAhead entityList={allEntities} value={clientFilter} onChange={setClientFilter} size="small" />
 
         {view !== 'report' && (<>
@@ -1182,7 +1182,7 @@ export default function AdminTasksPage() {
             value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)}
             title="The service a task's bill is coded to"
             style={{
-              fontSize: 12, fontFamily: font, padding: '6px 8px', borderRadius: 8,
+              fontSize: 13, fontFamily: font, padding: '6px 8px', borderRadius: 8,
               border: `1px solid ${serviceFilter ? '#0e7fe0' : '#cbd5e1'}`,
               color: serviceFilter ? '#0e7fe0' : '#475569',
               fontWeight: serviceFilter ? 600 : 400, outline: 'none', maxWidth: 240,
@@ -1200,7 +1200,7 @@ export default function AdminTasksPage() {
               onKeyDown={(e) => { if (e.key === 'Escape') setTextFilter(''); }}
               placeholder="Search descriptions, notes, comments…"
               style={{
-                width: 260, padding: '6px 10px 6px 26px', fontSize: 12, fontFamily: font,
+                width: 260, padding: '6px 10px 6px 26px', fontSize: 13, fontFamily: font,
                 border: `1px solid ${q ? '#0e7fe0' : '#cbd5e1'}`, borderRadius: 8, outline: 'none',
               }}
             />
@@ -1210,7 +1210,7 @@ export default function AdminTasksPage() {
         {(clientFilter || serviceFilter || textFilter) && (
           <button
             onClick={() => { setClientFilter(''); setServiceFilter(''); setTextFilter(''); }}
-            style={{ ...btn('ghost'), padding: '4px 9px', fontSize: 11.5 }}
+            style={{ ...btn('ghost'), padding: '4px 9px', fontSize: 12.5 }}
           >
             <X size={11} /> Clear
           </button>
@@ -1225,7 +1225,7 @@ export default function AdminTasksPage() {
             Completed
             {unreadIn(completedFiltered) > 0 && (
               <span title="Completed tasks carrying a comment you have not read" style={{
-                marginLeft: 6, fontSize: 10.5, fontWeight: 700, padding: '0 5px', borderRadius: 999,
+                marginLeft: 6, fontSize: 11.5, fontWeight: 700, padding: '0 5px', borderRadius: 999,
                 background: view === 'completed' ? '#fff' : '#1e3a8a', color: view === 'completed' ? '#1e3a8a' : '#fff',
               }}>{unreadIn(completedFiltered)}</span>
             )}
@@ -1240,11 +1240,11 @@ export default function AdminTasksPage() {
       </div>
 
       {confirmedNow > 0 && (
-        <div style={{ ...card, borderColor: '#bbf7d0', background: '#f0fdf4', padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#166534' }}>
+        <div style={{ ...card, borderColor: '#bbf7d0', background: '#f0fdf4', padding: '10px 16px', marginBottom: 16, fontSize: 14, color: '#166534' }}>
           ✓ {confirmedNow} task{confirmedNow === 1 ? '' : 's'} confirmed complete by the latest BrightManager data and moved to Completed.
         </div>
       )}
-      {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ fontSize: 14, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
 
       {/* A filtered list and an empty list look identical, so say which is on.
           The service line matters most: it empties three whole sections, and
@@ -1253,7 +1253,7 @@ export default function AdminTasksPage() {
       {(attention || serviceFilter || q) && (
         <div style={{
           ...card, borderColor: '#bae6fd', background: '#f0f9ff', padding: '8px 14px',
-          marginBottom: 16, fontSize: 12.5, color: '#0369a1',
+          marginBottom: 16, fontSize: 13.5, color: '#0369a1',
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
         }}>
           <span>
@@ -1266,7 +1266,7 @@ export default function AdminTasksPage() {
           </span>
           <button
             onClick={() => { clearAttention(); setServiceFilter(''); setTextFilter(''); }}
-            style={{ ...btn('ghost'), padding: '3px 9px', fontSize: 11.5, marginLeft: 'auto' }}>
+            style={{ ...btn('ghost'), padding: '3px 9px', fontSize: 12.5, marginLeft: 'auto' }}>
             <X size={11} /> Show all
           </button>
         </div>
@@ -1279,16 +1279,16 @@ export default function AdminTasksPage() {
               autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Escape') setAdding(false); }}
               placeholder="Task description (required) — e.g. Update year-end date on BM"
-              style={{ flex: '2 1 320px', padding: '8px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
+              style={{ flex: '2 1 320px', padding: '8px 12px', fontSize: 14, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
             />
             <div style={{ flex: '0 0 auto' }}>
               <ClientTypeAhead entityList={allEntities} value={newClient} onChange={setNewClient} onAddNew={openNewClientModal} size="small" />
             </div>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#64748b' }} title="Target date">
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b' }} title="Target date">
               <CalendarDays size={13} color="#94a3b8" />
               <input
                 type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)}
-                style={{ fontSize: 12, fontFamily: font, padding: '6px 8px', borderRadius: 8, border: '1px solid #cbd5e1', color: '#475569', outline: 'none' }}
+                style={{ fontSize: 13, fontFamily: font, padding: '6px 8px', borderRadius: 8, border: '1px solid #cbd5e1', color: '#475569', outline: 'none' }}
               />
             </label>
           </div>
@@ -1296,40 +1296,40 @@ export default function AdminTasksPage() {
           <textarea
             value={newNotes} onChange={(e) => setNewNotes(e.target.value)} rows={2}
             placeholder="Notes (optional)"
-            style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, padding: '8px 12px', fontSize: 12.5, border: '1px solid #e2e8f0', borderRadius: 8, fontFamily: font, outline: 'none', resize: 'vertical' }}
+            style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, padding: '8px 12px', fontSize: 13.5, border: '1px solid #e2e8f0', borderRadius: 8, fontFamily: font, outline: 'none', resize: 'vertical' }}
           />
 
           <div style={{ display: 'flex', gap: 16, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#475569', cursor: 'pointer' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#475569', cursor: 'pointer' }}>
               <input type="checkbox" checked={newUrgent} onChange={(e) => setNewUrgent(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#dc2626' }} />
               <Flame size={13} color={newUrgent ? '#dc2626' : '#64748b'} /> Urgent
             </label>
 
             {/* A span, not a label: the picker is a custom control, and label
                 activation would fight its own click handling. */}
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#475569' }} title="The service the bill is coded to — the same list the Billing module picks from, and what maps to a QuickBooks product on the push">
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#475569' }} title="The service the bill is coded to — the same list the Billing module picks from, and what maps to a QuickBooks product on the push">
               Service
               <ServicePicker
                 value={newService}
                 options={serviceOptions}
                 onChange={setNewService}
                 placeholder="— none —"
-                style={{ fontSize: 12.5, fontFamily: font, padding: '6px 8px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none', width: 240 }}
+                style={{ fontSize: 13.5, fontFamily: font, padding: '6px 8px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none', width: 240 }}
               />
             </span>
 
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#475569', cursor: 'pointer' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#475569', cursor: 'pointer' }}>
               <input type="checkbox" checked={newBillable} onChange={(e) => setNewBillable(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#0e7fe0' }} />
               <Receipt size={13} color="#64748b" /> Billable — raise a bill
             </label>
 
             {newBillable && (
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#94a3b8' }}>£</span>
+                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#94a3b8' }}>£</span>
                 <input
                   type="number" step="0.01" value={newBillAmount} onChange={(e) => setNewBillAmount(e.target.value)}
                   placeholder="Net amount"
-                  style={{ width: 120, padding: '7px 10px 7px 20px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
+                  style={{ width: 120, padding: '7px 10px 7px 20px', fontSize: 14, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' }}
                 />
               </div>
             )}
@@ -1340,13 +1340,13 @@ export default function AdminTasksPage() {
                 onChange={(e) => setNewFiles(Array.from(e.target.files || []))} />
             </label>
             {newFiles.length > 0 && (
-              <span style={{ fontSize: 11.5, color: '#94a3b8', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 12.5, color: '#94a3b8', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {newFiles.map((f) => f.name).join(', ')}
               </span>
             )}
 
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-              {newBillable && !newClient && <span style={{ fontSize: 11.5, color: '#b45309' }}>Billable needs a client</span>}
+              {newBillable && !newClient && <span style={{ fontSize: 12.5, color: '#b45309' }}>Billable needs a client</span>}
               <button onClick={() => setAdding(false)} style={btn('ghost')}>Cancel</button>
               <button
                 onClick={() => addManual(true)}
@@ -1367,24 +1367,24 @@ export default function AdminTasksPage() {
       {/* ── Where admin time goes (completed view) ── */}
       {view === 'completed' && timeSummary && (
         <div style={{ ...card, padding: '12px 16px', marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8 }}>
             Where admin time is going · {Math.round(timeSummary.total / 6) / 10}h recorded across {timeSummary.count} task{timeSummary.count === 1 ? '' : 's'}
           </div>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 260px' }}>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>By task type</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>By task type</div>
               {timeSummary.byType.map((r) => (
-                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#334155', padding: '2px 0' }}>
+                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, color: '#334155', padding: '2px 0' }}>
                   <span>{r.label}</span>
                   <span style={{ fontVariantNumeric: 'tabular-nums', color: '#0f172a', fontWeight: 600 }}>{r.minutes}m</span>
                 </div>
               ))}
             </div>
             <div style={{ flex: '1 1 260px' }}>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>By client</div>
-              {timeSummary.byClient.length === 0 && <div style={{ fontSize: 12, color: '#cbd5e1' }}>No client-linked time yet.</div>}
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>By client</div>
+              {timeSummary.byClient.length === 0 && <div style={{ fontSize: 13, color: '#cbd5e1' }}>No client-linked time yet.</div>}
               {timeSummary.byClient.map((r) => (
-                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#334155', padding: '2px 0' }}>
+                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, color: '#334155', padding: '2px 0' }}>
                   <span>{r.label}</span>
                   <span style={{ fontVariantNumeric: 'tabular-nums', color: '#0f172a', fontWeight: 600 }}>{r.minutes}m</span>
                 </div>
@@ -1406,13 +1406,13 @@ export default function AdminTasksPage() {
 
       {view !== 'report' && (<>
       {tasks === null && (
-        <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Loading…</div>
+        <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>Loading…</div>
       )}
 
       {/* ── Completed view: simple source grouping ── */}
       {view === 'completed' && (<>
         {tasks !== null && completedGroupKeys.length === 0 && (
-          <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+          <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>
             Nothing completed yet.
           </div>
         )}
@@ -1471,7 +1471,7 @@ export default function AdminTasksPage() {
           title="Confirmation statements — overdue and due in 14 days" count={filteredConfStatements.length}
           collapsed={!expandedSet.has('confstat')} onToggle={() => toggleCollapse('confstat')}
           anchor="confstat"
-          action={<span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+          action={<span style={{ fontSize: 12.5, color: '#94a3b8' }}>
             {stats.confstatOverdue > 0
               ? `${stats.confstatOverdue} overdue · ${filteredConfStatements.length - stats.confstatOverdue} due within 14 days`
               : 'none overdue'}
@@ -1496,7 +1496,7 @@ export default function AdminTasksPage() {
             />
           ))}
           {filteredConfStatements.length > 0 && (
-            <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
+            <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 12.5, color: '#94a3b8' }}>
               Due dates come straight from Companies House on the nightly refresh — file the statement and the row leaves this list on the next run, so there is nothing to mark complete. The rest is yours: <b>status</b> is where the work has got to, <b>next action</b> is what to do about it and by when. Both reset when the statement is filed and the next one falls due. A next action dated after the deadline is a plan, not an extension — the day count on the right does not move for it.
             </div>
           )}
@@ -1513,7 +1513,7 @@ export default function AdminTasksPage() {
             const meta = stageMeta(r.stage);
             return (
               <div key={r.id} onClick={() => navigate(`/onboarding/ch-codes/${r.id}`)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13, cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 14, cursor: 'pointer' }}>
                 <KeyRound size={13} color="#94a3b8" style={{ flexShrink: 0 }} />
                 <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 190px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {r.person?.name || 'Person'}
@@ -1521,10 +1521,10 @@ export default function AdminTasksPage() {
                 <span style={{ color: '#64748b', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {(r.entities && r.entities.length ? r.entities.join(', ') : r.entity?.name) || ''}
                 </span>
-                <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#e0f2fe', color: '#0369a1', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                <span style={{ fontSize: 12, padding: '1px 7px', borderRadius: 999, background: '#e0f2fe', color: '#0369a1', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   {meta.short} · {meta.label}
                 </span>
-                <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                <span style={{ fontSize: 12.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   {r.emails_sent ? `${r.emails_sent} email${r.emails_sent === 1 ? '' : 's'} sent` : 'no emails yet'}
                 </span>
               </div>
@@ -1544,13 +1544,13 @@ export default function AdminTasksPage() {
             const pct = o.total ? Math.round((o.done / o.total) * 100) : 0;
             return (
               <div key={o.id} onClick={() => navigate(`/onboarding/${o.id}`)}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13, cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 14, cursor: 'pointer' }}>
                 <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 190px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {o.entity?.name || 'Client'}
                 </span>
                 {o.status === 'issues'
-                  ? <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#fee2e2', color: '#b91c1c', fontWeight: 600 }}>Issues</span>
-                  : <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#e0f2fe', color: '#0369a1' }}>Active</span>}
+                  ? <span style={{ fontSize: 12, padding: '1px 7px', borderRadius: 999, background: '#fee2e2', color: '#b91c1c', fontWeight: 600 }}>Issues</span>
+                  : <span style={{ fontSize: 12, padding: '1px 7px', borderRadius: 999, background: '#e0f2fe', color: '#0369a1' }}>Active</span>}
                 <div style={{ flex: 1, minWidth: 0, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {o.nextStep ? <>Next: {o.nextStep}</> : 'All steps done'}
                 </div>
@@ -1613,7 +1613,7 @@ export default function AdminTasksPage() {
         >
           {filteredDrafts.length === 0 && <Empty>No reallocation proposals waiting.</Empty>}
           {filteredDrafts.map((d) => (
-            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 13 }}>
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f8fafc', fontSize: 14 }}>
               <span style={{ fontWeight: 600, color: '#0f172a' }}>{entities[d.entity_id] || 'Client'}</span>
               <span style={{ color: '#64748b', flex: 1 }}>{String(d.canonical_service_id || '').replace(/_/g, ' ')}</span>
               <span style={{ color: '#475569', whiteSpace: 'nowrap' }}>→ {staffMap[d.proposed_fee_earner_id] || 'unassigned'}</span>
@@ -1623,7 +1623,7 @@ export default function AdminTasksPage() {
             </div>
           ))}
           {filteredDrafts.length > 0 && (
-            <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 11.5, color: '#94a3b8' }}>
+            <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 12.5, color: '#94a3b8' }}>
               Marking one complete assumes you've made the change in BM. The next BM upload checks it — if the assignee still doesn't match, it reappears here.
             </div>
           )}
@@ -1649,7 +1649,7 @@ export default function AdminTasksPage() {
         ))}
 
         {visibleSystemKeys.length === 0 && (
-          <div style={{ ...card, padding: '14px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+          <div style={{ ...card, padding: '14px 16px', marginBottom: 16, textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>
             No data issues flagged — Athena and BrightManager are in step. 🎉
           </div>
         )}
@@ -1726,10 +1726,10 @@ function AddBillModal({ task, serviceOptions, standardNetFor, onClose, onConfirm
   return (
     <div onClick={onClose} style={modalBackdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Receipt size={16} color="#0e7fe0" /> Raise a bill
         </div>
-        <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 14 }}>
+        <div style={{ fontSize: 13.5, color: '#64748b', marginBottom: 14 }}>
           {task.entity?.name ? `${task.entity.name} — ` : ''}{task.title}
         </div>
 
@@ -1744,7 +1744,7 @@ function AddBillModal({ task, serviceOptions, standardNetFor, onClose, onConfirm
 
         <label style={{ ...fieldLabel, marginTop: 12 }}>Net amount (excl. VAT)</label>
         <div style={{ position: 'relative' }}>
-          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#94a3b8' }}>£</span>
+          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#94a3b8' }}>£</span>
           <input
             type="number" step="0.01" min="0" value={amount} autoFocus
             onChange={(e) => { setAmount(e.target.value); setErr(''); }}
@@ -1753,14 +1753,14 @@ function AddBillModal({ task, serviceOptions, standardNetFor, onClose, onConfirm
             style={{ ...selectInput, paddingLeft: 20 }}
           />
         </div>
-        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 6 }}>
+        <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 6 }}>
           {netOk
             ? `£${net.toFixed(2)} + £${vat.toFixed(2)} VAT = £${(net + vat).toFixed(2)} gross. `
             : 'Enter a net amount of 0 or more. '}
           Blank or 0 raises a placeholder — Billing will not approve or push a £0.00 bill.
         </div>
 
-        {err && <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 10 }}>{err}</div>}
+        {err && <div style={{ fontSize: 13.5, color: '#b91c1c', marginTop: 10 }}>{err}</div>}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
           <button onClick={onClose} style={btn('ghost')}>Cancel</button>
@@ -1792,10 +1792,10 @@ function CompleteModal({ task, staffList, defaultStaffId, onClose, onConfirm }) 
   return (
     <div onClick={onClose} style={modalBackdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 420 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
           <CheckCircle2 size={16} color="#16a34a" /> Complete task
         </div>
-        <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 14 }}>{task.title}</div>
+        <div style={{ fontSize: 13.5, color: '#64748b', marginBottom: 14 }}>{task.title}</div>
 
         <label style={fieldLabel}>Who did it?</label>
         <select value={doneBy} onChange={(e) => setDoneBy(e.target.value)} style={selectInput}>
@@ -1807,7 +1807,7 @@ function CompleteModal({ task, staffList, defaultStaffId, onClose, onConfirm }) 
           {MINUTE_PRESETS.map((m) => (
             <button key={m} onClick={() => { setMinutes(m); setCustom(''); }}
               style={{
-                padding: '6px 12px', fontSize: 12.5, fontWeight: 600, fontFamily: font, borderRadius: 8, cursor: 'pointer',
+                padding: '6px 12px', fontSize: 13.5, fontWeight: 600, fontFamily: font, borderRadius: 8, cursor: 'pointer',
                 background: minutes === m && custom === '' ? '#0f172a' : '#fff',
                 color: minutes === m && custom === '' ? '#fff' : '#475569',
                 border: `1px solid ${minutes === m && custom === '' ? '#0f172a' : '#e5e7eb'}`,
@@ -1816,10 +1816,10 @@ function CompleteModal({ task, staffList, defaultStaffId, onClose, onConfirm }) 
           <input
             type="number" min="1" value={custom} placeholder="Other"
             onChange={(e) => { setCustom(e.target.value); setMinutes(null); }}
-            style={{ width: 70, padding: '6px 8px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
+            style={{ width: 70, padding: '6px 8px', fontSize: 13.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
           />
         </div>
-        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 8 }}>
+        <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 8 }}>
           Recorded against the task — builds the picture of where admin time goes, by task type and client.
         </div>
 
@@ -1856,14 +1856,14 @@ function TaskRow({
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px' }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           {urgent && (
-            <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 999, background: '#dc2626', color: '#fff', fontWeight: 700, letterSpacing: 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>
+            <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#dc2626', color: '#fff', fontWeight: 700, letterSpacing: 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>
               URGENT
             </span>
           )}
           <span
             onClick={onOpen || undefined}
             style={{
-              fontSize: 13.5, fontWeight: 600, color: '#0f172a', cursor: onOpen ? 'pointer' : 'default',
+              fontSize: 14.5, fontWeight: 600, color: '#0f172a', cursor: onOpen ? 'pointer' : 'default',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}
             title={onOpen ? 'Open task detail' : t.title}
@@ -1875,12 +1875,12 @@ function TaskRow({
               style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 width: 16, height: 16, borderRadius: 999, background: '#eef2ff', color: '#4338ca',
-                fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
               }}
             >i</span>
           )}
           {t.escalated_to && (
-            <span style={{ fontSize: 10.5, padding: '1px 6px', borderRadius: 999, background: '#fef3c7', color: '#b45309', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 11.5, padding: '1px 6px', borderRadius: 999, background: '#fef3c7', color: '#b45309', fontWeight: 600, whiteSpace: 'nowrap' }}>
               → {staffMap[t.escalated_to] || 'escalated'}
             </span>
           )}
@@ -1888,7 +1888,7 @@ function TaskRow({
             <span
               title={`Added by ${addedBy} · ${fmtShort(t.created_at)}`}
               style={{
-                fontSize: 10.5, padding: '1px 7px', borderRadius: 999, background: '#f1f5f9',
+                fontSize: 11.5, padding: '1px 7px', borderRadius: 999, background: '#f1f5f9',
                 color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',
               }}
             >{addedBy}</span>
@@ -1898,7 +1898,7 @@ function TaskRow({
         {/* Copy chip is for values Sophie keys into BM (codes, UTRs) — internal
             bookkeeping values like the dedup pair ids stay hidden. */}
         {t.value && t.source !== 'person_dedup' && (
-          <button onClick={onCopy} title="Copy the value to paste into BM" style={{ ...btn('ghost'), fontFamily: 'monospace', fontSize: 12, flexShrink: 0 }}>
+          <button onClick={onCopy} title="Copy the value to paste into BM" style={{ ...btn('ghost'), fontFamily: 'monospace', fontSize: 13, flexShrink: 0 }}>
             {copied ? '✓ copied' : <>{t.value} <Copy size={11} /></>}
           </button>
         )}
@@ -1926,7 +1926,7 @@ function TaskRow({
             value={t.stage || 'todo'}
             onChange={(e) => onSetStage && onSetStage(e.target.value)}
             title="Move this task to another pipeline step"
-            style={{ fontSize: 11.5, fontFamily: font, padding: '3px 6px', borderRadius: 6, border: '1px solid #e2e8f0', color: '#475569', background: '#fff', outline: 'none', flexShrink: 0 }}
+            style={{ fontSize: 12.5, fontFamily: font, padding: '3px 6px', borderRadius: 6, border: '1px solid #e2e8f0', color: '#475569', background: '#fff', outline: 'none', flexShrink: 0 }}
           >
             <option value="draft">Draft</option>
             <option value="bill_hold">Bill &amp; Hold</option>
@@ -1943,7 +1943,7 @@ function TaskRow({
           <input
             type="date" value={t.deadline || ''} onChange={(e) => onDeadline(e.target.value)}
             style={{
-              fontSize: 11.5, fontFamily: font, padding: '3px 6px', borderRadius: 6,
+              fontSize: 12.5, fontFamily: font, padding: '3px 6px', borderRadius: 6,
               border: `1px solid ${overdue ? '#fca5a5' : '#e2e8f0'}`, color: overdue ? '#dc2626' : '#475569',
               background: overdue ? '#fef2f2' : '#fff', outline: 'none',
             }}
@@ -1963,7 +1963,7 @@ function TaskRow({
             borderColor: unreadNotes ? '#1e3a8a' : (notes.length ? '#bae6fd' : '#e5e7eb'),
             fontWeight: unreadNotes ? 700 : undefined,
           }}>
-          <MessageSquare size={13} />{notes.length > 0 && <span style={{ fontSize: 11, fontWeight: 700 }}>{notes.length}</span>}
+          <MessageSquare size={13} />{notes.length > 0 && <span style={{ fontSize: 12, fontWeight: 700 }}>{notes.length}</span>}
         </button>
 
         <button onClick={onToggleUrgent} title={urgent ? 'Remove urgent flag' : 'Mark as urgent'}
@@ -1972,7 +1972,7 @@ function TaskRow({
         </button>
 
         <label title="Attach a file" style={{ ...iconBtn, color: docs.length ? '#0e7fe0' : '#94a3b8', borderColor: docs.length ? '#bae6fd' : '#e5e7eb', cursor: 'pointer' }}>
-          <Paperclip size={13} />{docs.length > 0 && <span style={{ fontSize: 11, fontWeight: 700 }}>{docs.length}</span>}
+          <Paperclip size={13} />{docs.length > 0 && <span style={{ fontSize: 12, fontWeight: 700 }}>{docs.length}</span>}
           <input type="file" multiple style={{ display: 'none' }} onChange={(e) => { onAttach(e.target.files); e.target.value = ''; }} />
         </label>
 
@@ -1997,7 +1997,7 @@ function TaskRow({
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '0 16px 8px 26px' }}>
           {docs.map((d) => (
             <span key={d.id} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5,
+              display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12.5,
               padding: '2px 8px', borderRadius: 999, background: '#eff6ff', color: '#0e7fe0', border: '1px solid #dbeafe',
             }}>
               <Paperclip size={11} />
@@ -2013,20 +2013,20 @@ function TaskRow({
       {notesOpen && (
         <div style={{ padding: '4px 16px 12px 46px', background: '#fafbfc' }}>
           {t.detail && (
-            <div style={{ fontSize: 12.5, color: '#475569', padding: '6px 0', borderBottom: '1px solid #f1f5f9', whiteSpace: 'pre-wrap' }}>
+            <div style={{ fontSize: 13.5, color: '#475569', padding: '6px 0', borderBottom: '1px solid #f1f5f9', whiteSpace: 'pre-wrap' }}>
               {t.detail}
             </div>
           )}
-          {notes.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8', padding: '4px 0' }}>No notes yet.</div>}
+          {notes.length === 0 && <div style={{ fontSize: 13, color: '#94a3b8', padding: '4px 0' }}>No notes yet.</div>}
           {notes.map((n) => (
-            <div key={n.id} style={{ fontSize: 12.5, color: '#334155', padding: '4px 0', display: 'flex', gap: 8 }}>
+            <div key={n.id} style={{ fontSize: 13.5, color: '#334155', padding: '4px 0', display: 'flex', gap: 8 }}>
               <span style={{
-                fontSize: 10, padding: '1px 6px', borderRadius: 4, flexShrink: 0, height: 16, alignSelf: 'flex-start', marginTop: 1,
+                fontSize: 11, padding: '1px 6px', borderRadius: 4, flexShrink: 0, height: 16, alignSelf: 'flex-start', marginTop: 1,
                 background: n.kind === 'escalation' ? '#fef3c7' : '#eef2ff', color: n.kind === 'escalation' ? '#b45309' : '#4338ca',
               }}>{n.kind === 'escalation' ? 'escalation' : 'note'}</span>
               <div>
                 <span>{n.body}</span>
-                <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 11 }}>
+                <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 12 }}>
                   — {staffMap[n.author_id] || 'staff'} · {fmtNoteTime(n.created_at)}
                 </span>
               </div>
@@ -2037,7 +2037,7 @@ function TaskRow({
               value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && noteDraft.trim()) { onAddNote(noteDraft); setNoteDraft(''); } }}
               placeholder="Add a note or response…"
-              style={{ flex: 1, fontSize: 12.5, fontFamily: font, padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
+              style={{ flex: 1, fontSize: 13.5, fontFamily: font, padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
             />
             <button onClick={() => { if (noteDraft.trim()) { onAddNote(noteDraft); setNoteDraft(''); } }}
               disabled={!noteDraft.trim()} style={{ ...btn('primary'), padding: '6px 12px' }}><Send size={12} /></button>
@@ -2070,7 +2070,7 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
   return (
     <div style={{ borderTop: '1px solid #f8fafc', background: r.overdue ? '#fffbfb' : '#fff' }}>
       <div onClick={onOpenClient}
-        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', fontSize: 14, cursor: 'pointer' }}>
         <CalendarDays size={13} color={r.overdue ? '#b91c1c' : '#94a3b8'} style={{ flexShrink: 0 }} />
         <span style={{ fontWeight: 600, color: '#0f172a', flex: '0 0 178px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {r.entity_name}
@@ -2090,7 +2090,7 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
         {strikeOff && (
           <span title={r.company_status_detail || r.company_status}
             style={{
-              fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#fef3c7',
+              fontSize: 12, padding: '1px 7px', borderRadius: 999, background: '#fef3c7',
               color: '#b45309', whiteSpace: 'nowrap', flex: '0 1 auto',
               minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
@@ -2111,7 +2111,7 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
             ? `${status.label}${r.work_status_set_at ? ` — set ${fmtNoteTime(r.work_status_set_at)} by ${staffMap[r.work_status_set_by] || 'staff'}` : ''}`
             : 'Not started — pick where this statement has got to'}
           style={{
-            fontSize: 11.5, fontFamily: font, fontWeight: status ? 600 : 400,
+            fontSize: 12.5, fontFamily: font, fontWeight: status ? 600 : 400,
             padding: '3px 6px', borderRadius: 999, outline: 'none', flexShrink: 0,
             maxWidth: 168,
             border: `1px solid ${status ? status.bg : '#e2e8f0'}`,
@@ -2142,7 +2142,7 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
             ? `Next: ${action.label}${r.next_action_set_at ? ` — set ${fmtNoteTime(r.next_action_set_at)} by ${staffMap[r.next_action_set_by] || 'staff'}` : ''}`
             : 'No next action — pick what happens next on this one'}
           style={{
-            fontSize: 11.5, fontFamily: font, fontWeight: action ? 600 : 400,
+            fontSize: 12.5, fontFamily: font, fontWeight: action ? 600 : 400,
             padding: '3px 6px', borderRadius: 8, outline: 'none', flexShrink: 0, width: 150,
             border: `1px solid ${action ? (actionLate ? '#fca5a5' : '#c7d2fe') : '#e2e8f0'}`,
             background: action ? (actionLate ? '#fef2f2' : '#eef2ff') : '#fff',
@@ -2167,7 +2167,7 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
             ? (actionLate ? 'This action is past the date we set for it' : 'When we do the next action — not the filing deadline')
             : 'Pick a next action first'}
           style={{
-            fontSize: 11.5, fontFamily: font, padding: '3px 6px', borderRadius: 8,
+            fontSize: 12.5, fontFamily: font, padding: '3px 6px', borderRadius: 8,
             outline: 'none', flexShrink: 0, width: 122,
             border: `1px solid ${actionLate ? '#fca5a5' : '#e2e8f0'}`,
             background: r.next_action ? (actionLate ? '#fef2f2' : '#fff') : '#f8fafc',
@@ -2180,11 +2180,11 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
         <button onClick={(e) => { stop(e); onToggleNotes(); }}
           title={noteCount ? `${noteCount} note${noteCount === 1 ? '' : 's'}` : 'Add a note'}
           style={{ ...btn('ghost'), padding: '3px 7px', flexShrink: 0, color: noteCount ? '#4338ca' : '#94a3b8' }}>
-          <MessageSquare size={13} />{noteCount > 0 && <span style={{ fontSize: 11, marginLeft: 3 }}>{noteCount}</span>}
+          <MessageSquare size={13} />{noteCount > 0 && <span style={{ fontSize: 12, marginLeft: 3 }}>{noteCount}</span>}
         </button>
 
         <span style={{
-          fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+          fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
           width: 108, textAlign: 'right',
           color: r.overdue ? '#b91c1c' : '#0369a1',
         }}>
@@ -2196,16 +2196,16 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
 
       {notesOpen && (
         <div onClick={stop} style={{ padding: '4px 16px 12px 46px', background: '#fafbfc' }}>
-          {notes.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8', padding: '4px 0' }}>No notes yet.</div>}
+          {notes.length === 0 && <div style={{ fontSize: 13, color: '#94a3b8', padding: '4px 0' }}>No notes yet.</div>}
           {notes.map((n) => (
-            <div key={n.id} style={{ fontSize: 12.5, color: '#334155', padding: '4px 0', display: 'flex', gap: 8 }}>
+            <div key={n.id} style={{ fontSize: 13.5, color: '#334155', padding: '4px 0', display: 'flex', gap: 8 }}>
               <span style={{
-                fontSize: 10, padding: '1px 6px', borderRadius: 4, flexShrink: 0, height: 16, alignSelf: 'flex-start', marginTop: 1,
+                fontSize: 11, padding: '1px 6px', borderRadius: 4, flexShrink: 0, height: 16, alignSelf: 'flex-start', marginTop: 1,
                 background: '#eef2ff', color: '#4338ca',
               }}>note</span>
               <div>
                 <span>{n.body}</span>
-                <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 11 }}>
+                <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 12 }}>
                   — {staffMap[n.author_id] || 'staff'} · {fmtNoteTime(n.created_at)}
                 </span>
               </div>
@@ -2216,7 +2216,7 @@ function ConfStatementRow({ r, notes, notesOpen, staffMap, saving, onSetStatus, 
               value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && noteDraft.trim()) { onAddNote(noteDraft); setNoteDraft(''); } }}
               placeholder="Add a note…"
-              style={{ flex: 1, fontSize: 12.5, fontFamily: font, padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
+              style={{ flex: 1, fontSize: 13.5, fontFamily: font, padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
             />
             <button onClick={() => { if (noteDraft.trim()) { onAddNote(noteDraft); setNoteDraft(''); } }}
               disabled={!noteDraft.trim() || saving} style={{ ...btn('primary'), padding: '6px 12px' }}><Send size={12} /></button>
@@ -2248,27 +2248,27 @@ function CompletedRow({
         <span
           onClick={onOpenClient || undefined} title={t.title}
           style={{
-            flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: '#334155',
+            flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: 600, color: '#334155',
             cursor: onOpenClient ? 'pointer' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}
         >{t.title}</span>
-        {t.value && <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>{t.value}</span>}
+        {t.value && <span style={{ fontFamily: 'monospace', fontSize: 13, color: '#94a3b8', flexShrink: 0 }}>{t.value}</span>}
         {addedByLabel(t, staffMap) && (
           <span title={`Added by ${addedByLabel(t, staffMap)} · ${fmtShort(t.created_at)}`} style={{
-            fontSize: 10.5, padding: '1px 7px', borderRadius: 999, background: '#f1f5f9',
+            fontSize: 11.5, padding: '1px 7px', borderRadius: 999, background: '#f1f5f9',
             color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',
           }}>{addedByLabel(t, staffMap)}</span>
         )}
         {(t.done_by || t.done_minutes) && (
-          <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
             {t.done_by ? ((staffMap && staffMap[t.done_by]) || 'staff') : ''}{t.done_minutes ? ` · ${t.done_minutes}m` : ''}
           </span>
         )}
         <span title={badge.hint} style={{
-          fontSize: 10.5, padding: '2px 8px', borderRadius: 999, background: badge.bg, color: badge.fg,
+          fontSize: 11.5, padding: '2px 8px', borderRadius: 999, background: badge.bg, color: badge.fg,
           fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default',
         }}>{badge.text}</span>
-        <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtShort(when)}</span>
+        <span style={{ fontSize: 12.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtShort(when)}</span>
         {/* Same three-state bubble as an open row: dark blue = someone commented
             and you haven't opened the thread, pale blue = read, grey = none. A
             completed task keeps its thread — closing the task doesn't answer the
@@ -2282,14 +2282,14 @@ function CompletedRow({
             borderColor: unreadNotes ? '#1e3a8a' : (notes.length ? '#bae6fd' : '#e5e7eb'),
             fontWeight: unreadNotes ? 700 : undefined,
           }}>
-          <MessageSquare size={13} />{notes.length > 0 && <span style={{ fontSize: 11, fontWeight: 700 }}>{notes.length}</span>}
+          <MessageSquare size={13} />{notes.length > 0 && <span style={{ fontSize: 12, fontWeight: 700 }}>{notes.length}</span>}
         </button>
         {onReviewBill && (
-          <button onClick={onReviewBill} title="Open the bill raised for this task" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', padding: '5px 10px', fontSize: 12 }}>
+          <button onClick={onReviewBill} title="Open the bill raised for this task" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', padding: '5px 10px', fontSize: 13 }}>
             <Receipt size={12} /> Review bill
           </button>
         )}
-        <button onClick={onReopen} title="Move back to open tasks" style={{ ...btn('ghost'), padding: '5px 10px', fontSize: 12 }}>
+        <button onClick={onReopen} title="Move back to open tasks" style={{ ...btn('ghost'), padding: '5px 10px', fontSize: 13 }}>
           <RotateCcw size={12} /> Reopen
         </button>
       </div>
@@ -2297,20 +2297,20 @@ function CompletedRow({
       {notesOpen && (
         <div style={{ padding: '4px 16px 12px 46px', background: '#fafbfc' }}>
           {t.detail && (
-            <div style={{ fontSize: 12.5, color: '#475569', padding: '6px 0', borderBottom: '1px solid #f1f5f9', whiteSpace: 'pre-wrap' }}>
+            <div style={{ fontSize: 13.5, color: '#475569', padding: '6px 0', borderBottom: '1px solid #f1f5f9', whiteSpace: 'pre-wrap' }}>
               {t.detail}
             </div>
           )}
-          {notes.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8', padding: '4px 0' }}>No notes yet.</div>}
+          {notes.length === 0 && <div style={{ fontSize: 13, color: '#94a3b8', padding: '4px 0' }}>No notes yet.</div>}
           {notes.map((n) => (
-            <div key={n.id} style={{ fontSize: 12.5, color: '#334155', padding: '4px 0', display: 'flex', gap: 8 }}>
+            <div key={n.id} style={{ fontSize: 13.5, color: '#334155', padding: '4px 0', display: 'flex', gap: 8 }}>
               <span style={{
-                fontSize: 10, padding: '1px 6px', borderRadius: 4, flexShrink: 0, height: 16, alignSelf: 'flex-start', marginTop: 1,
+                fontSize: 11, padding: '1px 6px', borderRadius: 4, flexShrink: 0, height: 16, alignSelf: 'flex-start', marginTop: 1,
                 background: n.kind === 'escalation' ? '#fef3c7' : '#eef2ff', color: n.kind === 'escalation' ? '#b45309' : '#4338ca',
               }}>{n.kind === 'escalation' ? 'escalation' : 'note'}</span>
               <div>
                 <span>{n.body}</span>
-                <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 11 }}>
+                <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 12 }}>
                   — {staffMap[n.author_id] || 'staff'} · {fmtNoteTime(n.created_at)}
                 </span>
               </div>
@@ -2324,7 +2324,7 @@ function CompletedRow({
               value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && noteDraft.trim()) { onAddNote(noteDraft); setNoteDraft(''); } }}
               placeholder="Add a note or response…"
-              style={{ flex: 1, fontSize: 12.5, fontFamily: font, padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
+              style={{ flex: 1, fontSize: 13.5, fontFamily: font, padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
             />
             <button onClick={() => { if (noteDraft.trim()) { onAddNote(noteDraft); setNoteDraft(''); } }}
               disabled={!noteDraft.trim()} style={{ ...btn('primary'), padding: '6px 12px' }}><Send size={12} /></button>
@@ -2406,7 +2406,7 @@ function ReportPanel({ completions, created, loading, staffMap }) {
   }, [completions]);
 
   if (loading) {
-    return <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Building report…</div>;
+    return <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>Building report…</div>;
   }
 
   // Chart geometry — one slot per day, main bar (completions) + thin bar (created).
@@ -2422,39 +2422,39 @@ function ReportPanel({ completions, created, loading, staffMap }) {
 
   return (
     <>
-      <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 12 }}>
+      <div style={{ fontSize: 13.5, color: '#94a3b8', marginBottom: 12 }}>
         What's being done each day across the admin list — last two weeks.
       </div>
 
       {/* Summary tiles */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div style={{ ...card, padding: '12px 18px', flex: '1 1 180px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>Completed this week</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>Completed this week</div>
           <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{summary.thisWeek}</div>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: deltaTone }}>{deltaText}</div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: deltaTone }}>{deltaText}</div>
         </div>
         <div style={{ ...card, padding: '12px 18px', flex: '1 1 180px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>Minutes recorded this week</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>Minutes recorded this week</div>
           <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{summary.minutesThisWeek}m</div>
-          <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{Math.round(summary.minutesThisWeek / 6) / 10}h across timed tasks</div>
+          <div style={{ fontSize: 12.5, color: '#94a3b8' }}>{Math.round(summary.minutesThisWeek / 6) / 10}h across timed tasks</div>
         </div>
         <div style={{ ...card, padding: '12px 18px', flex: '1 1 180px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>Busiest day</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>Busiest day</div>
           <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a' }}>{summary.busiest ? summary.busiest.label : '—'}</div>
-          <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{summary.busiest ? `${summary.busiest.done} completion${summary.busiest.done === 1 ? '' : 's'}` : 'nothing completed yet'}</div>
+          <div style={{ fontSize: 12.5, color: '#94a3b8' }}>{summary.busiest ? `${summary.busiest.done} completion${summary.busiest.done === 1 ? '' : 's'}` : 'nothing completed yet'}</div>
         </div>
       </div>
 
       {/* Actions per day chart */}
       <div style={{ ...card, padding: '14px 16px', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>
             Actions taken per day
           </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#64748b' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#64748b' }}>
             <span style={{ width: 10, height: 10, borderRadius: 3, background: '#93c5fd', display: 'inline-block' }} /> completed
           </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#64748b' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#64748b' }}>
             <span style={{ width: 5, height: 10, borderRadius: 2, background: '#cbd5e1', display: 'inline-block' }} /> added
           </span>
         </div>
@@ -2474,12 +2474,12 @@ function ReportPanel({ completions, created, loading, staffMap }) {
                   <rect x={x + 39} y={baseY - ah} width={7} height={ah} rx={2} fill="#cbd5e1" />
                 )}
                 {d.done > 0 && (
-                  <text x={x + 22} y={baseY - dh - 5} textAnchor="middle" fontSize={10.5}
+                  <text x={x + 22} y={baseY - dh - 5} textAnchor="middle" fontSize={11.5}
                     fontFamily={font} fontWeight={d.isToday ? 700 : 600} fill="#475569">
                     {d.done}
                   </text>
                 )}
-                <text x={x + 27} y={baseY + 16} textAnchor="middle" fontSize={10.5}
+                <text x={x + 27} y={baseY + 16} textAnchor="middle" fontSize={11.5}
                   fontFamily={font} fontWeight={d.isToday ? 700 : 500}
                   fill={d.isToday ? '#0f172a' : '#94a3b8'}>
                   {d.label}
@@ -2491,7 +2491,7 @@ function ReportPanel({ completions, created, loading, staffMap }) {
       </div>
 
       {completions.length === 0 && (
-        <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>
+        <div style={{ ...card, padding: '18px 16px', marginBottom: 16, textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>
           Nothing completed in the last two weeks{created.length ? ` — though ${created.length} task${created.length === 1 ? ' was' : 's were'} added` : ''}.
         </div>
       )}
@@ -2499,12 +2499,12 @@ function ReportPanel({ completions, created, loading, staffMap }) {
       {/* By person + by type */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div style={{ ...card, flex: '1 1 340px', overflow: 'hidden' }}>
-          <div style={{ padding: '10px 16px', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
+          <div style={{ padding: '10px 16px', fontSize: 13, fontWeight: 700, color: '#475569', borderBottom: '1px solid #f1f5f9' }}>
             By person
           </div>
           {byPerson.length === 0 && <Empty>No completions to show.</Empty>}
           {byPerson.length > 0 && (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
               <thead>
                 <tr>
                   <th style={reportTh}>Person</th>
@@ -2528,12 +2528,12 @@ function ReportPanel({ completions, created, loading, staffMap }) {
         </div>
 
         <div style={{ ...card, flex: '1 1 340px', overflow: 'hidden' }}>
-          <div style={{ padding: '10px 16px', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
+          <div style={{ padding: '10px 16px', fontSize: 13, fontWeight: 700, color: '#475569', borderBottom: '1px solid #f1f5f9' }}>
             By task type
           </div>
           {byType.length === 0 && <Empty>No completions to show.</Empty>}
           {byType.length > 0 && (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
               <thead>
                 <tr>
                   <th style={reportTh}>Type</th>
@@ -2559,16 +2559,15 @@ function ReportPanel({ completions, created, loading, staffMap }) {
 }
 
 const reportTh = {
-  padding: '7px 16px', fontSize: 11, fontWeight: 600, color: '#64748b',
-  textAlign: 'left', textTransform: 'uppercase', letterSpacing: 0.4,
-  borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap',
+  padding: '7px 16px', fontSize: 12, fontWeight: 600, color: '#64748b',
+  textAlign: 'left', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap',
 };
 const reportTd = { padding: '7px 16px', color: '#334155', borderBottom: '1px solid #f8fafc' };
 
 function TabBtn({ active, onClick, children }) {
   return (
     <button onClick={onClick} style={{
-      padding: '4px 11px', fontSize: 11.5, fontWeight: 600, fontFamily: font, borderRadius: 999, cursor: 'pointer',
+      padding: '4px 11px', fontSize: 12.5, fontWeight: 600, fontFamily: font, borderRadius: 999, cursor: 'pointer',
       background: active ? '#0f172a' : '#fff', color: active ? '#fff' : '#64748b',
       border: `1px solid ${active ? '#0f172a' : '#e5e7eb'}`, whiteSpace: 'nowrap',
     }}>{children}</button>
@@ -2591,10 +2590,10 @@ function EscalateModal({ task, staffList, onClose, onSend }) {
   return (
     <div onClick={onClose} style={modalBackdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 440 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
           <AlertTriangle size={16} color="#b45309" /> Escalate task
         </div>
-        <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 14 }}>{task.title}</div>
+        <div style={{ fontSize: 13.5, color: '#64748b', marginBottom: 14 }}>{task.title}</div>
 
         <label style={fieldLabel}>Who needs to action this?</label>
         <select value={toId} onChange={(e) => setToId(e.target.value)} style={selectInput}>
@@ -2607,7 +2606,7 @@ function EscalateModal({ task, staffList, onClose, onSend }) {
           placeholder="Give them the context they need to act."
           style={{ ...selectInput, resize: 'vertical' }} />
 
-        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 8 }}>
+        <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 8 }}>
           Sends them an email with the task and your note, and logs it on the task thread.
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
@@ -2629,7 +2628,7 @@ function Section({ title, count, collapsed, onToggle, action, unread = 0, anchor
         <button onClick={onToggle} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginRight: 8, color: '#64748b', display: 'flex' }}>
           {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
         </button>
-        <span onClick={onToggle} style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer' }}>
+        <span onClick={onToggle} style={{ fontSize: 13, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>
           {title} ({count})
         </span>
         {/* Sections default collapsed, so a dark bubble on a row you can't see
@@ -2641,7 +2640,7 @@ function Section({ title, count, collapsed, onToggle, action, unread = 0, anchor
               display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 8, cursor: 'pointer',
               padding: '2px 7px', borderRadius: 999, background: '#1e3a8a', color: '#fff',
             }}>
-            <MessageSquare size={11} /><span style={{ fontSize: 11, fontWeight: 700 }}>{unread}</span>
+            <MessageSquare size={11} /><span style={{ fontSize: 12, fontWeight: 700 }}>{unread}</span>
           </span>
         )}
         <span style={{ flex: 1 }} />
@@ -2679,22 +2678,21 @@ function Chip({ label, value, tone = 'default', onClick, active = false, title }
         userSelect: 'none',
       }}
     >
-      <span style={{ fontSize: 14.5, fontWeight: 700, color: active ? '#fff' : c.fg, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
-      <span style={{ fontSize: 11.5, color: active ? '#fff' : c.fg, opacity: active ? 0.9 : 0.85 }}>{label}</span>
+      <span style={{ fontSize: 15, fontWeight: 700, color: active ? '#fff' : c.fg, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      <span style={{ fontSize: 12.5, color: active ? '#fff' : c.fg, opacity: active ? 0.9 : 0.85 }}>{label}</span>
     </div>
   );
 }
 
 function Empty({ children }) {
-  return <div style={{ padding: '18px 16px', fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>{children}</div>;
+  return <div style={{ padding: '18px 16px', fontSize: 14, color: '#94a3b8', textAlign: 'center' }}>{children}</div>;
 }
 
 // Top-level group divider (Manually generated / System generated).
 function GroupHeader({ children }) {
   return (
     <div style={{
-      fontSize: 12.5, fontWeight: 800, color: '#334155', textTransform: 'uppercase',
-      letterSpacing: 0.6, margin: '24px 0 10px', paddingBottom: 6, borderBottom: '2px solid #e5e7eb',
+      fontSize: 13.5, fontWeight: 800, color: '#334155', margin: '24px 0 10px', paddingBottom: 6, borderBottom: '2px solid #e5e7eb',
     }}>
       {children}
     </div>
@@ -2703,7 +2701,7 @@ function GroupHeader({ children }) {
 
 function btn(kind) {
   return {
-    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', fontSize: 12.5, fontWeight: 600,
+    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', fontSize: 13.5, fontWeight: 600,
     fontFamily: font, borderRadius: 8, cursor: 'pointer',
     background: kind === 'primary' ? '#0f172a' : '#fff',
     color: kind === 'primary' ? '#fff' : '#475569',
@@ -2716,7 +2714,7 @@ const iconBtn = {
 };
 function completeBtn(active) {
   return {
-    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, fontWeight: 600,
+    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 13, fontWeight: 600,
     fontFamily: font, borderRadius: 7, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
     background: active ? '#dcfce7' : '#fff', color: active ? '#166534' : '#475569',
     border: `1px solid ${active ? '#bbf7d0' : '#e5e7eb'}`,
@@ -2727,8 +2725,8 @@ const modalBackdrop = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
 };
 const modalCard = { background: '#fff', borderRadius: 12, padding: '20px 22px', fontFamily: font, boxShadow: '0 20px 60px rgba(15,23,42,0.25)' };
-const fieldLabel = { display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 };
+const fieldLabel = { display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 4 };
 const selectInput = {
-  width: '100%', padding: '8px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1',
+  width: '100%', padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1',
   borderRadius: 8, background: '#fff', color: '#0f172a', boxSizing: 'border-box', outline: 'none',
 };

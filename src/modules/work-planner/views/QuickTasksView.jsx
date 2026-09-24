@@ -70,12 +70,12 @@ export default function QuickTasksView({ compact, onAction }) {
   }
 
   const inputStyle = {
-    padding: '8px 12px', fontSize: 14, fontFamily: "'Outfit', sans-serif",
+    padding: '8px 12px', fontSize: 14.5, fontFamily: "'Outfit', sans-serif",
     border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff',
     color: '#0f172a', outline: 'none', flex: 1, minWidth: 200,
   };
   const selectStyle = {
-    padding: '4px 8px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+    padding: '4px 8px', fontSize: 13, fontFamily: "'Outfit', sans-serif",
     border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
     color: '#1e293b', outline: 'none',
   };
@@ -112,7 +112,7 @@ export default function QuickTasksView({ compact, onAction }) {
           onClick={handleAdd}
           disabled={!canAdd}
           style={{
-            padding: '6px 14px', fontSize: 13, fontWeight: 500,
+            padding: '6px 14px', fontSize: 14, fontWeight: 500,
             fontFamily: "'Outfit', sans-serif",
             border: canAdd ? '1px solid #0f172a' : '1px solid #e5e7eb',
             borderRadius: 8,
@@ -158,7 +158,7 @@ export default function QuickTasksView({ compact, onAction }) {
                 draggable
                 onDragStart={() => setDragId(task.id)}
                 onDragEnd={() => setDragId(null)}
-                style={{ cursor: 'grab', color: '#cbd5e1', fontSize: 12, userSelect: 'none', flexShrink: 0, marginTop: compact ? 0 : 1 }}
+                style={{ cursor: 'grab', color: '#cbd5e1', fontSize: 13, userSelect: 'none', flexShrink: 0, marginTop: compact ? 0 : 1 }}
               >
                 &#9776;
               </span>
@@ -170,12 +170,12 @@ export default function QuickTasksView({ compact, onAction }) {
               <div style={{ flex: 1, minWidth: 0, display: compact ? 'flex' : 'block', alignItems: 'center', gap: compact ? 8 : 0, flexWrap: compact ? 'wrap' : 'nowrap' }}>
                 <div
                   onClick={(e) => onAction(e, task)}
-                  style={{ fontSize: compact ? 12 : 14, fontWeight: 500, cursor: 'pointer' }}
+                  style={{ fontSize: compact ? 13 : 14.5, fontWeight: 500, cursor: 'pointer' }}
                 >
                   {task.title}
                 </div>
                 <div style={{
-                  fontSize: compact ? 11 : 12, color: '#64748b',
+                  fontSize: compact ? 12 : 13, color: '#64748b',
                   marginTop: compact ? 0 : 1,
                   display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap',
                 }}>
@@ -183,7 +183,7 @@ export default function QuickTasksView({ compact, onAction }) {
                   <span style={{ color: '#94a3b8' }}>{task.service}</span>
                   <DueBadge date={task.due_date} />
                   {isPlanned && (
-                    <span style={{ color: '#0e7fe0', fontSize: 9 }}>
+                    <span style={{ color: '#0e7fe0', fontSize: 10 }}>
                       &#128197; {formatDateShort(task.planned_date)}
                     </span>
                   )}
@@ -194,7 +194,7 @@ export default function QuickTasksView({ compact, onAction }) {
                   <div
                     onClick={() => setExpandedNote(task.id)}
                     style={{
-                      fontSize: 10, color: '#1e293b', marginTop: 3,
+                      fontSize: 11, color: '#1e293b', marginTop: 3,
                       padding: '3px 6px', background: '#f1f5f9', borderRadius: 3,
                       lineHeight: 1.3, cursor: 'pointer', maxHeight: 32, overflow: 'hidden',
                     }}
@@ -209,7 +209,7 @@ export default function QuickTasksView({ compact, onAction }) {
                     onBlur={() => setExpandedNote(null)}
                     autoFocus
                     style={{
-                      width: '100%', padding: '4px 6px', fontSize: 10,
+                      width: '100%', padding: '4px 6px', fontSize: 11,
                       fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
                       borderRadius: 3, background: '#fff', color: '#1e293b',
                       outline: 'none', resize: 'vertical', minHeight: 24, marginTop: 3,
@@ -229,9 +229,9 @@ export default function QuickTasksView({ compact, onAction }) {
                       {notes.length > 0 && (
                         <div style={{ marginTop: 4, borderLeft: '2px solid #e5e7eb', paddingLeft: 6 }}>
                           {notes.map((n) => (
-                            <div key={n.id} style={{ fontSize: 10, color: '#1e293b', lineHeight: 1.4, marginBottom: 2 }}>
+                            <div key={n.id} style={{ fontSize: 11, color: '#1e293b', lineHeight: 1.4, marginBottom: 2 }}>
                               <span>{n.note}</span>
-                              <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 9 }}>
+                              <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 10 }}>
                                 {(n.created_by_name || '').split(' ')[0]} &middot; {timeAgo(n.created_at)}
                               </span>
                             </div>
@@ -254,7 +254,7 @@ export default function QuickTasksView({ compact, onAction }) {
                             }}
                             placeholder="Progress note..."
                             style={{
-                              flex: 1, padding: '3px 6px', fontSize: 10,
+                              flex: 1, padding: '3px 6px', fontSize: 11,
                               fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
                               borderRadius: 3, background: '#fff', color: '#1e293b', outline: 'none',
                             }}
@@ -269,7 +269,7 @@ export default function QuickTasksView({ compact, onAction }) {
                             }}
                             style={{
                               border: 'none', background: '#0e7fe0', color: '#fff',
-                              fontSize: 9, fontWeight: 600, padding: '3px 8px',
+                              fontSize: 10, fontWeight: 600, padding: '3px 8px',
                               borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
                             }}
                           >
@@ -281,7 +281,7 @@ export default function QuickTasksView({ compact, onAction }) {
                           onClick={() => { setProgressInput(task.id); setProgressText(''); }}
                           style={{
                             border: '1px solid #e5e7eb', background: '#f8fafc', color: '#64748b',
-                            fontSize: 10, fontWeight: 500, cursor: 'pointer',
+                            fontSize: 11, fontWeight: 500, cursor: 'pointer',
                             padding: '2px 8px', marginTop: notes.length > 0 ? 2 : 3, borderRadius: 5,
                             fontFamily: "'Outfit', sans-serif",
                           }}
@@ -300,7 +300,7 @@ export default function QuickTasksView({ compact, onAction }) {
                   onClick={(e) => onAction(e, task)}
                   title="Complete"
                   style={{
-                    padding: '2px 6px', fontSize: 9, fontWeight: 500,
+                    padding: '2px 6px', fontSize: 10, fontWeight: 500,
                     border: '1px solid #0e7fe0', borderRadius: 3,
                     background: '#dbeafe', color: '#0e7fe0', cursor: 'pointer',
                     fontFamily: "'Outfit', sans-serif",
@@ -310,7 +310,7 @@ export default function QuickTasksView({ compact, onAction }) {
                 </button>
                 <input
                   type="date"
-                  style={{ ...selectStyle, width: 95, fontSize: 9, padding: '1px 3px' }}
+                  style={{ ...selectStyle, width: 95, fontSize: 10, padding: '1px 3px' }}
                   value={task.due_date ? formatISO(new Date(task.due_date)) : ''}
                   onChange={(e) => {
                     updateQuickTask(task.id, {
@@ -363,7 +363,7 @@ export default function QuickTasksView({ compact, onAction }) {
         })}
 
         {list.length === 0 && (
-          <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 13 }}>
+          <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 14 }}>
             No quick tasks. Type above to add one.
           </div>
         )}
@@ -373,7 +373,7 @@ export default function QuickTasksView({ compact, onAction }) {
 }
 
 const miniBtn = {
-  padding: '3px 8px', fontSize: 11, fontWeight: 500,
+  padding: '3px 8px', fontSize: 12, fontWeight: 500,
   border: '1px solid #e5e7eb', borderRadius: 4,
   background: '#fff', color: '#0e7fe0', cursor: 'pointer',
   fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap',

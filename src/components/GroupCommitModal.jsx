@@ -333,10 +333,10 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
 
   const statusPill = (r) => {
     if (!r) return null;
-    if (r.status === 'running') return <span style={{ fontSize: 11, color: '#0e7fe0' }}>Pushing…</span>;
-    if (r.status === 'done') return <span style={{ fontSize: 11, color: '#15803d' }}>✓ {r.action === 'overwrite' ? 'Updated' : r.action === 'create' ? 'Created' : 'Pushed'}</span>;
-    if (r.status === 'warn') return <span style={{ fontSize: 11, color: '#b45309' }} title={r.error}>⚠ Committed, push failed</span>;
-    if (r.status === 'error') return <span style={{ fontSize: 11, color: '#b91c1c' }} title={r.error}>✗ Failed</span>;
+    if (r.status === 'running') return <span style={{ fontSize: 12, color: '#0e7fe0' }}>Pushing…</span>;
+    if (r.status === 'done') return <span style={{ fontSize: 12, color: '#15803d' }}>✓ {r.action === 'overwrite' ? 'Updated' : r.action === 'create' ? 'Created' : 'Pushed'}</span>;
+    if (r.status === 'warn') return <span style={{ fontSize: 12, color: '#b45309' }} title={r.error}>⚠ Committed, push failed</span>;
+    if (r.status === 'error') return <span style={{ fontSize: 12, color: '#b91c1c' }} title={r.error}>✗ Failed</span>;
     return null;
   };
 
@@ -355,7 +355,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           {cur && (
             <div className="bg-gray-50 rounded-lg p-3">
               <div className="flex items-center justify-between mb-1.5">
-                <h3 className="text-xs font-semibold text-gray-500 uppercase">Billing contact</h3>
+                <h3 className="text-xs font-semibold text-gray-500">Billing contact</h3>
                 {members.length > 1 && (
                   <div className="flex items-center gap-2 text-xs text-gray-600">
                     <button onClick={() => setCurrent((i) => (i - 1 + members.length) % members.length)} disabled={running} className="px-1.5 py-0.5 rounded hover:bg-gray-200 disabled:opacity-40" title="Previous company">‹</button>
@@ -380,7 +380,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
                   : 'bg-amber-50 border-amber-200';
                 return (
                   <div className={`rounded-lg border p-2 mb-2 text-xs ${tone}`}>
-                    <div className="font-semibold text-gray-500 uppercase mb-0.5">QuickBooks customer</div>
+                    <div className="font-semibold text-gray-500 mb-0.5">QuickBooks customer</div>
                     {t.mode === 'missing' ? (
                       <p className="text-red-700">
                         Mapped to QuickBooks customer <span className="font-mono">#{t.id}</span>, which QuickBooks no longer returns. Fix the mapping on the client record before committing.

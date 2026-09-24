@@ -38,12 +38,12 @@ function Card({ app, staffMap, onOpen, dragging }) {
       onClick={() => onOpen(app)}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {candidateName(app)}
         </span>
-        <span style={{ fontSize: 10.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>{daysSince(app.applied_at)}d</span>
+        <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>{daysSince(app.applied_at)}d</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, fontSize: 11, color: '#94a3b8', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, fontSize: 12, color: '#94a3b8', flexWrap: 'wrap' }}>
         <Rating value={app.rating} />
         {app.candidate?.location && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
@@ -52,7 +52,7 @@ function Card({ app, staffMap, onOpen, dragging }) {
         )}
         {app.source && <span>{app.source}</span>}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 10.5, color: '#94a3b8' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 11.5, color: '#94a3b8' }}>
         {app.candidate?.email && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
             <Mail size={10} /> {app.candidate.email}
@@ -75,10 +75,10 @@ function Column({ stage, apps, staffMap, onOpen }) {
         display: 'flex', alignItems: 'center', gap: 6, padding: '8px 11px', borderRadius: '10px 10px 0 0',
         background: stage.tone.bg, border: `1px solid ${stage.tone.border}`, borderBottom: 'none',
       }}>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: stage.tone.fg, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: stage.tone.fg }}>
           {stage.label}
         </span>
-        <span style={{ fontSize: 11, color: stage.tone.fg, opacity: 0.7 }}>{apps.length}</span>
+        <span style={{ fontSize: 12, color: stage.tone.fg, opacity: 0.7 }}>{apps.length}</span>
       </div>
       <div
         ref={setNodeRef}
@@ -90,7 +90,7 @@ function Column({ stage, apps, staffMap, onOpen }) {
         }}
       >
         {apps.length === 0 && (
-          <div style={{ fontSize: 11.5, color: '#cbd5e1', textAlign: 'center', padding: '14px 0' }}>—</div>
+          <div style={{ fontSize: 12.5, color: '#cbd5e1', textAlign: 'center', padding: '14px 0' }}>—</div>
         )}
         {apps.map((app) => (
           <Card key={app.id} app={app} staffMap={staffMap} onOpen={onOpen} />

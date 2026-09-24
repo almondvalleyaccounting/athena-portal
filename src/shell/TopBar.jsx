@@ -125,12 +125,12 @@ export default function TopBar() {
           const isCurrent = !seg.path || seg.path === location.pathname;
           return (
             <React.Fragment key={i}>
-              {i > 0 && <span style={{ color: '#cbd5e1', fontSize: 13, userSelect: 'none' }}>/</span>}
+              {i > 0 && <span style={{ color: '#cbd5e1', fontSize: 14, userSelect: 'none' }}>/</span>}
               {!isCurrent ? (
                 <button
                   onClick={() => navigate(seg.path)}
                   style={{
-                    fontFamily: "'Outfit', sans-serif", fontSize: 13,
+                    fontFamily: "'Outfit', sans-serif", fontSize: 14,
                     fontWeight: 500, color: '#64748b', background: 'none',
                     border: 'none', cursor: 'pointer', padding: 0,
                     transition: 'color 0.15s',
@@ -142,7 +142,7 @@ export default function TopBar() {
                 </button>
               ) : (
                 <span style={{
-                  fontFamily: "'Outfit', sans-serif", fontSize: 13,
+                  fontFamily: "'Outfit', sans-serif", fontSize: 14,
                   fontWeight: 600, color: '#0f172a',
                 }}>
                   {seg.label}
@@ -178,7 +178,7 @@ export default function TopBar() {
             title={profile?.name || 'User'}
           >
             <span style={{
-              fontFamily: "'Outfit', sans-serif", fontSize: 12,
+              fontFamily: "'Outfit', sans-serif", fontSize: 13,
               fontWeight: 600, color: '#ffffff',
             }}>
               {initials}
@@ -193,10 +193,10 @@ export default function TopBar() {
               boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)', zIndex: 100,
             }}>
               <div style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', marginBottom: 4 }}>
-                <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 500, color: '#0f172a' }}>
+                <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 14, fontWeight: 500, color: '#0f172a' }}>
                   {profile?.name || 'User'}
                 </p>
-                <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 11, color: '#94a3b8' }}>
+                <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: 12, color: '#94a3b8' }}>
                   {profile?.email || ''}
                 </p>
               </div>
@@ -206,7 +206,7 @@ export default function TopBar() {
                   display: 'flex', alignItems: 'center', gap: 8,
                   width: '100%', padding: '8px 10px', background: 'none',
                   border: 'none', borderRadius: 6, cursor: 'pointer',
-                  fontFamily: "'Outfit', sans-serif", fontSize: 13,
+                  fontFamily: "'Outfit', sans-serif", fontSize: 14,
                   fontWeight: 500, color: '#64748b', transition: 'all 0.2s ease',
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
@@ -220,7 +220,7 @@ export default function TopBar() {
                   display: 'flex', alignItems: 'center', gap: 8,
                   width: '100%', padding: '8px 10px', background: 'none',
                   border: 'none', borderRadius: 6, cursor: 'pointer',
-                  fontFamily: "'Outfit', sans-serif", fontSize: 13,
+                  fontFamily: "'Outfit', sans-serif", fontSize: 14,
                   fontWeight: 500, color: '#64748b', transition: 'all 0.2s ease',
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
@@ -234,7 +234,7 @@ export default function TopBar() {
                   display: 'flex', alignItems: 'center', gap: 8,
                   width: '100%', padding: '8px 10px', background: 'none',
                   border: 'none', borderRadius: 6, cursor: 'pointer',
-                  fontFamily: "'Outfit', sans-serif", fontSize: 13,
+                  fontFamily: "'Outfit', sans-serif", fontSize: 14,
                   fontWeight: 500, color: '#64748b', transition: 'all 0.2s ease',
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#fef2f2'; e.currentTarget.style.color = '#ef4444'; }}

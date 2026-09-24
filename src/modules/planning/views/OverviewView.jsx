@@ -37,7 +37,7 @@ export default function OverviewView() {
   const varianceProfitY1 = actualMonths.reduce((s, m) => s + (m.varianceProfit || 0), 0);
 
   if (!months.length) {
-    return <div style={{ color: '#94a3b8', fontSize: 13 }}>No projection yet — add a scenario.</div>;
+    return <div style={{ color: '#94a3b8', fontSize: 14 }}>No projection yet — add a scenario.</div>;
   }
 
   // Client concentration
@@ -67,10 +67,10 @@ export default function OverviewView() {
         <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: '#f8fafc', borderRadius: 12, padding: '18px 22px', marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <Sparkles size={16} style={{ color: '#fbbf24' }} />
-            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 500, margin: 0, color: '#f8fafc' }}>
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 15.5, fontWeight: 500, margin: 0, color: '#f8fafc' }}>
               The plan at a glance
             </h3>
-            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>
               {findings.length} finding{findings.length !== 1 ? 's' : ''}
             </span>
           </div>
@@ -84,14 +84,14 @@ export default function OverviewView() {
               }[f.severity] || { icon: Info, colour: '#cbd5e1' };
               const Icon = meta.icon;
               return (
-                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, lineHeight: 1.55 }}>
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, lineHeight: 1.55 }}>
                   <Icon size={14} style={{ color: meta.colour, flexShrink: 0, marginTop: 2 }} />
                   <span style={{ color: '#e2e8f0' }}>{f.text}</span>
                 </div>
               );
             })}
             {findings.length > 8 && (
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
                 …and {findings.length - 8} more. Lower-priority findings hidden.
               </div>
             )}
@@ -104,7 +104,7 @@ export default function OverviewView() {
 
       {/* Rolling-forecast banner — shows when actuals are available */}
       {actualMonths.length > 0 && (
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', fontSize: 12, marginBottom: 14, display: 'flex', gap: 18, alignItems: 'center' }}>
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 14, display: 'flex', gap: 18, alignItems: 'center' }}>
           <div>
             <b style={{ color: '#0e7fe0' }}>Rolling forecast:</b> {actualMonths.length} actual month{actualMonths.length !== 1 ? 's' : ''} overlaid ({actualMonths[0].label} → {actualMonths[actualMonths.length - 1].label}).
           </div>
@@ -157,7 +157,7 @@ export default function OverviewView() {
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
           <h3 style={h3}>Y1 → Y2 profit drivers</h3>
-          <div style={{ fontSize: 11, color: '#94a3b8' }}>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>
             Fee uplift {scenario?.fee_uplift_pct || 0}% · Pay rise {scenario?.pay_rise_pct || 0}% · Churn {scenario?.churn_pct_annual || 0}%
           </div>
         </div>
@@ -179,9 +179,9 @@ export default function OverviewView() {
           Month-by-month P&L
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', minWidth: 920 }}>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', minWidth: 920 }}>
             <thead>
-              <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
                 <th style={{ ...th, textAlign: 'left' }}>Month</th>
                 <th style={th}>Revenue</th>
                 <th style={th}>Staff</th>
@@ -197,7 +197,7 @@ export default function OverviewView() {
                 <tr key={m.index} style={{ borderTop: '1px solid #f1f5f9', background: m.isActual ? '#f0fdf4' : undefined }}>
                   <td style={{ ...td, textAlign: 'left', color: '#64748b' }}>
                     {m.label}
-                    {m.isActual && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: '#059669', background: '#dcfce7', padding: '1px 5px', borderRadius: 3 }}>ACTUAL</span>}
+                    {m.isActual && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#059669', background: '#dcfce7', padding: '1px 5px', borderRadius: 3 }}>ACTUAL</span>}
                   </td>
                   <td style={{ ...td, color: '#0e7fe0' }}>{fmtGBP(m.revenue)}</td>
                   <td style={td}>{fmtGBP(m.staffCost)}</td>
@@ -237,7 +237,7 @@ function BenchmarkCard({ projection, staffLines }) {
         <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#92400e', margin: '0 0 6px' }}>
           UK practice benchmarks — needs setup
         </h3>
-        <p style={{ fontSize: 12.5, color: '#92400e', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13.5, color: '#92400e', margin: 0, lineHeight: 1.6 }}>
           This scenario has no staff, overhead, or owner-comp lines yet, so margin and cost-ratio
           benchmarks would be meaningless. Add costs on the <strong>Staff</strong>, <strong>Overheads</strong> and{' '}
           <strong>Owner comp</strong> tabs and the benchmarks will appear.
@@ -285,11 +285,11 @@ function BenchmarkCard({ projection, staffLines }) {
         <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: 0 }}>
           UK practice benchmarks
         </h3>
-        <span style={{ fontSize: 10, color: '#94a3b8' }}>
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>
           Sources: ICAEW Benchmarking · Practice Track · Xero Accounting Industry Report
         </span>
       </div>
-      <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
+      <p style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12 }}>
         Your Y1 plan plotted against typical ranges for UK accountancy practices. Top-quartile boundary shown; "typical" is the median.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
@@ -318,12 +318,12 @@ function BenchmarkRow({ bench, value, format }) {
   return (
     <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.3 }}>{bench.label}</span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: scoreColour }}>{scoreLabel}</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{bench.label}</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: scoreColour }}>{scoreLabel}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
         <span style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{format(value || 0)}</span>
-        <span style={{ fontSize: 11, color: '#94a3b8' }}>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>
           Typical {format(typical)} · Top-Q {format(topQ)}
         </span>
       </div>
@@ -340,9 +340,9 @@ function BenchmarkRow({ bench, value, format }) {
 function Kpi({ label, value, sub, colour }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', borderLeft: `3px solid ${colour}` }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }
@@ -392,7 +392,7 @@ function Waterfall({ waterfall }) {
               background: b.type === 'anchor' ? '#0f172a' : b.type === 'pos' ? '#059669' : '#dc2626',
               borderRadius: 4,
             }} />
-            <div style={{ position: 'absolute', bottom: -22, left: 0, right: 0, textAlign: 'center', fontSize: 10, color: '#64748b' }}>
+            <div style={{ position: 'absolute', bottom: -22, left: 0, right: 0, textAlign: 'center', fontSize: 11, color: '#64748b' }}>
               {b.type === 'anchor' ? fmtGBP(b.value) : fmtGBPSigned(b.value)}
             </div>
           </div>
@@ -400,7 +400,7 @@ function Waterfall({ waterfall }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${bars.length}, 1fr)`, gap: 8, marginTop: 12 }}>
         {bars.map((b, i) => (
-          <div key={i} style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', lineHeight: 1.3 }}>{b.label}</div>
+          <div key={i} style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', lineHeight: 1.3 }}>{b.label}</div>
         ))}
       </div>
     </div>
@@ -436,7 +436,7 @@ function StackedChart({ months }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${months.length}, 1fr)`, gap: 3, marginTop: 4 }}>
         {months.map((m) => (
-          <div key={m.index} style={{ fontSize: 9, color: '#94a3b8', textAlign: 'center', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          <div key={m.index} style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', overflow: 'hidden', whiteSpace: 'nowrap' }}>
             {m.index % 3 === 0 ? m.label : ''}
           </div>
         ))}
@@ -447,7 +447,7 @@ function StackedChart({ months }) {
 
 function Legend() {
   return (
-    <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#64748b' }}>
+    <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#64748b' }}>
       <LegendItem colour="#0e7fe0" label="Revenue" />
       <LegendItem colour="#7c3aed" label="Staff" />
       <LegendItem colour="#f59e0b" label="Overheads" />

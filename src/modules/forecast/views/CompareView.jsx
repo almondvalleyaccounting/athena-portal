@@ -114,7 +114,7 @@ export default function CompareView({
 
   if (versions.length < 2) {
     return (
-      <div style={{ padding: '48px 24px', textAlign: 'center', color: colors.muted, fontSize: 14, fontFamily: fontStack }}>
+      <div style={{ padding: '48px 24px', textAlign: 'center', color: colors.muted, fontSize: 14.5, fontFamily: fontStack }}>
         Only one version exists ({version?.name}). Use <strong>+ Version</strong> in the header to duplicate it
         (e.g. as "Budget" or "Rolling Forecast"), change some assumptions, then compare here.
       </div>
@@ -133,7 +133,7 @@ export default function CompareView({
       {/* Version picker chips */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         <H2>Compare versions</H2>
-        <span style={{ fontSize: 12, color: colors.muted, marginLeft: 4 }}>up to {MAX_VERSIONS} ·</span>
+        <span style={{ fontSize: 13, color: colors.muted, marginLeft: 4 }}>up to {MAX_VERSIONS} ·</span>
         {versions.map(v => {
           const idx = selectedIds.indexOf(v.id);
           const on = idx >= 0;
@@ -143,7 +143,7 @@ export default function CompareView({
               title={isCurrent ? 'Current version (always included)' : on ? 'Remove from comparison' : 'Add to comparison'}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '5px 12px', borderRadius: 999, fontSize: 12, fontFamily: fontStack,
+                padding: '5px 12px', borderRadius: 999, fontSize: 13, fontFamily: fontStack,
                 cursor: isCurrent ? 'default' : 'pointer',
                 border: `1.5px solid ${on ? SLOT_COLORS[idx % SLOT_COLORS.length] : colors.border}`,
                 background: on ? '#fff' : colors.bgSoft,
@@ -155,18 +155,18 @@ export default function CompareView({
             </button>
           );
         })}
-        {loading && <span style={{ fontSize: 12, color: colors.muted }}>Loading…</span>}
+        {loading && <span style={{ fontSize: 13, color: colors.muted }}>Loading…</span>}
       </div>
 
       {err && (
-        <div style={{ padding: 10, background: '#fef2f2', color: colors.red, borderRadius: 8, marginBottom: 12, fontSize: 12 }}>{err}</div>
+        <div style={{ padding: 10, background: '#fef2f2', color: colors.red, borderRadius: 8, marginBottom: 12, fontSize: 13 }}>{err}</div>
       )}
 
       {stale.length > 0 && (
-        <div style={{ padding: 12, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, marginBottom: 14, fontSize: 13, color: '#7c2d12', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ padding: 12, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, marginBottom: 14, fontSize: 14, color: '#7c2d12', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span>No computed outputs yet:</span>
           {stale.map(s => (
-            <button key={s.v.id} onClick={() => onRecomputeVersion(s.v.id)} disabled={loading} style={{ ...btnOutline, padding: '4px 10px', fontSize: 12 }}>
+            <button key={s.v.id} onClick={() => onRecomputeVersion(s.v.id)} disabled={loading} style={{ ...btnOutline, padding: '4px 10px', fontSize: 13 }}>
               Recompute {s.v.name}
             </button>
           ))}
@@ -239,7 +239,7 @@ function MultiChart({ title, series, monthLbl }) {
   return (
     <div style={{ border: `1px solid ${colors.border}`, borderRadius: 10, background: '#fff', padding: '10px 12px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: colors.muted }}>{title}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: colors.muted }}>{title}</div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {series.map(s => <LegendChip key={s.label} color={s.color} label={s.label} />)}
         </div>
@@ -248,11 +248,11 @@ function MultiChart({ title, series, monthLbl }) {
         {ticks.values.map(v => (
           <g key={v}>
             <line x1={PAD.l} x2={W - PAD.r} y1={yFor(v)} y2={yFor(v)} stroke="#e1e0d9" strokeWidth="1" />
-            <text x={PAD.l - 6} y={yFor(v) + 3} textAnchor="end" fontSize="9" fill="#898781">{fmtAxis(v)}</text>
+            <text x={PAD.l - 6} y={yFor(v) + 3} textAnchor="end" fontSize="10" fill="#898781">{fmtAxis(v)}</text>
           </g>
         ))}
         {xLabels.map(i => (
-          <text key={i} x={xFor(i)} y={H - 6} textAnchor="middle" fontSize="9" fill="#898781">{monthLbl(i)}</text>
+          <text key={i} x={xFor(i)} y={H - 6} textAnchor="middle" fontSize="10" fill="#898781">{monthLbl(i)}</text>
         ))}
         {/* Draw in reverse so the CURRENT version (slot 1) paints on top */}
         {[...series].reverse().map(s => (
@@ -265,7 +265,7 @@ function MultiChart({ title, series, monthLbl }) {
 
 function LegendChip({ color, label }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: colors.inkSoft }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: colors.inkSoft }}>
       <span style={{ width: 14, height: 3, background: color, borderRadius: 2, display: 'inline-block' }} />
       {label}
     </span>
@@ -377,7 +377,7 @@ function MetricsTable({ selection, periods, openingPeriod, entities, currentId }
     <>
       <H2 style={{ fontSize: 16 }}>Key metrics</H2>
       <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff', marginBottom: 24 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack }}>
           <thead>
             <tr style={{ background: colors.bgSoft }}>
               <th style={{ ...th, minWidth: 190 }}>Metric</th>
@@ -397,7 +397,7 @@ function MetricsTable({ selection, periods, openingPeriod, entities, currentId }
             {groups.map(g => (
               <React.Fragment key={g.title}>
                 <tr style={{ background: '#eef2f7' }}>
-                  <td colSpan={1 + cols.length} style={{ ...td, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: colors.muted }}>
+                  <td colSpan={1 + cols.length} style={{ ...td, fontSize: 11, fontWeight: 700, color: colors.muted }}>
                     {g.title}
                   </td>
                 </tr>
@@ -482,17 +482,17 @@ function AssumptionsDiff({ selection, currentId }) {
   return (
     <div>
       <H2 style={{ fontSize: 16 }}>Assumption differences</H2>
-      <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 8px' }}>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 8px' }}>
         Every driver value and loan that differs across the selected versions. Locations are shared
         between versions, so assumptions are the only thing that can differ.
       </p>
       {diffs.rows.length === 0 && diffs.loanRows.length === 0 ? (
-        <div style={{ padding: 14, background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', borderRadius: 8, fontSize: 13 }}>
+        <div style={{ padding: 14, background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', borderRadius: 8, fontSize: 14 }}>
           No assumption differences — the selected versions are identical. Any output differences would come from a stale recompute.
         </div>
       ) : (
         <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, fontFamily: fontStack }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, fontFamily: fontStack }}>
             <thead>
               <tr style={{ background: colors.bgSoft }}>
                 <th style={th}>Module</th>
@@ -511,7 +511,7 @@ function AssumptionsDiff({ selection, currentId }) {
             <tbody>
               {diffs.rows.map((r) => (
                 <tr key={r.key} style={{ borderBottom: `1px solid ${colors.borderSoft}` }}>
-                  <td style={{ ...td, color: colors.muted, fontSize: 10.5 }}>{r.rep.module_key}</td>
+                  <td style={{ ...td, color: colors.muted, fontSize: 11.5 }}>{r.rep.module_key}</td>
                   <td style={td}>{r.rep.label || r.rep.driver_key}</td>
                   <td style={{ ...td, color: colors.muted }}>{r.rep.entity_id ? 'location' : 'group'}</td>
                   {r.cells.map((c, i) => (
@@ -521,7 +521,7 @@ function AssumptionsDiff({ selection, currentId }) {
               ))}
               {diffs.loanRows.map((l, i) => (
                 <tr key={`loan-${i}`} style={{ borderBottom: `1px solid ${colors.borderSoft}` }}>
-                  <td style={{ ...td, color: colors.muted, fontSize: 10.5 }}>loans</td>
+                  <td style={{ ...td, color: colors.muted, fontSize: 11.5 }}>loans</td>
                   <td style={td}>{l.label}</td>
                   <td style={{ ...td, color: colors.muted }}>group</td>
                   {l.cells.map((loan, j) => (
@@ -570,7 +570,7 @@ function niceTicks(lo, hi, count) {
   return { lo: nlo, hi: nhi, values };
 }
 
-const th = { padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, fontSize: 10.5 };
+const th = { padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, fontSize: 11.5 };
 const thR = { ...th, textAlign: 'right' };
 const td = { padding: '7px 10px', color: colors.ink };
 const tdR = { ...td, textAlign: 'right', fontFamily: 'ui-monospace, monospace' };

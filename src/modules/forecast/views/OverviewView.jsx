@@ -151,7 +151,7 @@ export default function OverviewView({ outputs = [], forecast, periods = [], ent
   if (!model) {
     return (
       <Section title="Overview">
-        <p style={{ fontSize: 13, color: colors.muted }}>No outputs yet — run a recompute to populate the overview.</p>
+        <p style={{ fontSize: 14, color: colors.muted }}>No outputs yet — run a recompute to populate the overview.</p>
       </Section>
     );
   }
@@ -251,13 +251,13 @@ export default function OverviewView({ outputs = [], forecast, periods = [], ent
 
   return (
     <Section title="Overview — five-year summary">
-      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 12px' }}>
+      <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 12px' }}>
         Group-wide, from computed outputs. Children and heads are averages across each year
         (places are the registered maximum of sites open in that year); money rows are annual totals
         except cash, which is the month-end balance.
       </p>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack }}>
           <thead>
             <tr>
               <th style={ovTh}>Metric</th>
@@ -268,7 +268,7 @@ export default function OverviewView({ outputs = [], forecast, periods = [], ent
           <tbody>
             {rows.map((r, i) => r.section ? (
               <tr key={`s${i}`}>
-                <td colSpan={n + 2} style={{ padding: '14px 8px 4px', fontSize: 10, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: `1px solid ${colors.border}` }}>
+                <td colSpan={n + 2} style={{ padding: '14px 8px 4px', fontSize: 11, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: `1px solid ${colors.border}` }}>
                   {r.section}
                 </td>
               </tr>
@@ -292,5 +292,5 @@ export default function OverviewView({ outputs = [], forecast, periods = [], ent
   );
 }
 
-const ovTh = { padding: '6px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, background: colors.bgSoft, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap' };
+const ovTh = { padding: '6px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, background: colors.bgSoft, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap' };
 const ovTd = { padding: '6px 8px', color: colors.ink, verticalAlign: 'middle', whiteSpace: 'nowrap' };

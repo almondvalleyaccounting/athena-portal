@@ -138,13 +138,13 @@ export default function PremisesOverheadsView({
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
         <H2>
-          Premises & overheads <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span>
+          Premises & overheads <span style={{ fontSize: 14, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)}</span>
         </H2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {onFilterChange && (
             <LocationFilter entities={entities} groups={groups} assignments={assignments} value={filter} onChange={onFilterChange} />
           )}
-          <div style={{ display: 'flex', gap: 4, fontSize: 11 }}>
+          <div style={{ display: 'flex', gap: 4, fontSize: 12 }}>
             {['monthly', 'quarterly', 'annual'].map(g => (
               <button key={g} onClick={() => setGranularity(g)}
                 style={{
@@ -159,14 +159,14 @@ export default function PremisesOverheadsView({
         </div>
       </div>
 
-      <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 10px' }}>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 10px' }}>
         Direct costs are tied to attendance (consumables / food). Premises = operating costs of holding the property
         plus depreciation. Overheads are general site / group costs. Financing costs (interest) sit below EBITDA on the P&L.
         Click any cell to drill into the contributing rows.
       </p>
 
       <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
           <thead>
             <tr style={{ background: colors.bgSoft }}>
               <th style={{ ...th, position: 'sticky', left: 0, background: colors.bgSoft, minWidth: 220 }}>Line</th>
@@ -269,8 +269,7 @@ function SectionRow({ label, colSpan, color }) {
   return (
     <tr style={{ background: '#f1f5f9' }}>
       <td colSpan={colSpan} style={{
-        padding: '6px 10px', fontWeight: 700, fontSize: 10, textTransform: 'uppercase',
-        letterSpacing: 0.5, color: color || colors.muted,
+        padding: '6px 10px', fontWeight: 700, fontSize: 11, color: color || colors.muted,
       }}>{label}</td>
     </tr>
   );

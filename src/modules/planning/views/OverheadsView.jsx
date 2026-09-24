@@ -57,25 +57,25 @@ export default function OverheadsView() {
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Clock size={14} style={{ color: '#64748b' }} />
-          <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>Nightly sync</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#64748b' }}>Nightly sync</span>
         </div>
         {syncRuns.length === 0 ? (
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>
+          <span style={{ fontSize: 13, color: '#94a3b8' }}>
             Scheduled 03:00 UTC daily. Never run yet — needs vault secret <code>planning_service_role_key</code> set via Supabase SQL editor (see migration).
           </span>
         ) : (
           <>
             {lastSuccess && (
-              <span style={{ fontSize: 12, color: '#059669', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 13, color: '#059669', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <CheckCircle2 size={12} /> Last success: {new Date(lastSuccess.completed_at || lastSuccess.run_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
               </span>
             )}
             {lastError && (!lastSuccess || new Date(lastError.run_at) > new Date(lastSuccess.run_at)) && (
-              <span style={{ fontSize: 12, color: '#dc2626', display: 'inline-flex', alignItems: 'center', gap: 4 }} title={lastError.error_message}>
+              <span style={{ fontSize: 13, color: '#dc2626', display: 'inline-flex', alignItems: 'center', gap: 4 }} title={lastError.error_message}>
                 <XCircle size={12} /> Last error: {new Date(lastError.run_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} — {(lastError.error_message || '').slice(0, 80)}
               </span>
             )}
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>
               {syncRuns.length} recent run{syncRuns.length !== 1 ? 's' : ''}
             </span>
           </>
@@ -95,7 +95,7 @@ export default function OverheadsView() {
                 <input type="number" step="0.25" value={inflator}
                   onChange={(e) => updateScenario({ overhead_inflator_pct: parseFloat(e.target.value) || 0 })}
                   style={{ ...inputStyle, width: 50, textAlign: 'right', padding: '6px 4px' }} />
-                <span style={{ fontSize: 12, color: '#64748b' }}>%</span>
+                <span style={{ fontSize: 13, color: '#64748b' }}>%</span>
               </div>
             </div>
           </Field>
@@ -110,14 +110,14 @@ export default function OverheadsView() {
           <div style={{
             background: pullMsg.kind === 'ok' ? '#eff6ff' : '#fef2f2',
             color: pullMsg.kind === 'ok' ? '#0e7fe0' : '#dc2626',
-            fontSize: 12, padding: '10px 14px', borderRadius: 8, flex: 1, minWidth: 200,
+            fontSize: 13, padding: '10px 14px', borderRadius: 8, flex: 1, minWidth: 200,
             border: `1px solid ${pullMsg.kind === 'ok' ? '#bfdbfe' : '#fecaca'}`,
           }}>
             <div style={{ fontWeight: 600, marginBottom: pullMsg.raw ? 4 : 0 }}>{pullMsg.text}</div>
             {pullMsg.raw && (
               <details style={{ marginTop: 4 }}>
-                <summary style={{ cursor: 'pointer', fontSize: 11, color: '#94a3b8' }}>Raw QBO response</summary>
-                <pre style={{ fontSize: 10, marginTop: 4, padding: 6, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'auto', maxHeight: 120 }}>{pullMsg.raw}</pre>
+                <summary style={{ cursor: 'pointer', fontSize: 12, color: '#94a3b8' }}>Raw QBO response</summary>
+                <pre style={{ fontSize: 11, marginTop: 4, padding: 6, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, overflow: 'auto', maxHeight: 120 }}>{pullMsg.raw}</pre>
               </details>
             )}
           </div>
@@ -135,9 +135,9 @@ export default function OverheadsView() {
       </div>
 
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#f8fafc', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#64748b' }}>
+            <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
               <th style={th}>Category</th>
               <th style={{ ...th, textAlign: 'right' }}>Monthly forecast</th>
               <th style={{ ...th, textAlign: 'right' }}>Annual forecast</th>
@@ -217,7 +217,7 @@ function BlurNumber({ value, onChange }) {
 function Field({ label, children }) {
   return (
     <div>
-      <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>{label}</label>
+      <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>{label}</label>
       {children}
     </div>
   );
@@ -226,18 +226,18 @@ function Field({ label, children }) {
 function Stat({ label, value, sub }) {
   return (
     <div>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</div>
       <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#64748b' }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: '#64748b' }}>{sub}</div>}
     </div>
   );
 }
 
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
 const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, color: '#0f172a', margin: '0 0 4px' };
-const help = { fontSize: 12, color: '#94a3b8', marginBottom: 14 };
+const help = { fontSize: 13, color: '#94a3b8', marginBottom: 14 };
 const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600 };
 const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
-const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
-const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
-const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
+const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };

@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 
 const labelStyle = {
-  display: 'block', fontSize: 9, fontWeight: 600, color: '#94a3b8',
-  textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 3,
+  display: 'block', fontSize: 10, fontWeight: 600, color: '#94a3b8',
+  marginBottom: 3,
   fontFamily: "'Outfit', sans-serif",
 };
 const btnBase = {
-  padding: '5px 12px', fontSize: 11, fontWeight: 500,
+  padding: '5px 12px', fontSize: 12, fontWeight: 500,
   fontFamily: "'Outfit', sans-serif", borderRadius: 8, cursor: 'pointer',
   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
 };
@@ -57,9 +57,9 @@ export default function CompleteModal({ task, mode, onConfirm, onClose }) {
           {isNotReq ? 'Mark as Not Required' : 'Complete Task'}
         </h3>
 
-        <p style={{ fontSize: 13, color: '#1e293b', marginBottom: 2 }}>{task.title}</p>
+        <p style={{ fontSize: 14, color: '#1e293b', marginBottom: 2 }}>{task.title}</p>
         {entityName && (
-          <p style={{ fontSize: 11, color: '#94a3b8', marginBottom: 14 }}>{entityName}</p>
+          <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>{entityName}</p>
         )}
         {!entityName && <div style={{ marginBottom: 14 }} />}
 
@@ -76,12 +76,12 @@ export default function CompleteModal({ task, mode, onConfirm, onClose }) {
                 onChange={(e) => setMins(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm(); }}
                 style={{
-                  width: 80, padding: '7px 10px', fontSize: 14, fontFamily: "'Outfit', sans-serif",
+                  width: 80, padding: '7px 10px', fontSize: 14.5, fontFamily: "'Outfit', sans-serif",
                   border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff',
                   color: '#0f172a', outline: 'none', textAlign: 'center',
                 }}
               />
-              <span style={{ fontSize: 12, color: '#64748b' }}>minutes</span>
+              <span style={{ fontSize: 13, color: '#64748b' }}>minutes</span>
             </div>
           </div>
         )}
@@ -98,12 +98,12 @@ export default function CompleteModal({ task, mode, onConfirm, onClose }) {
             placeholder={isNotReq ? 'Why is this not required...' : 'Add a final note...'}
             rows={3}
             style={{
-              width: '100%', padding: '7px 10px', fontSize: 12, fontFamily: "'Outfit', sans-serif",
+              width: '100%', padding: '7px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif",
               border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff',
               color: '#0f172a', outline: 'none', resize: 'vertical', lineHeight: 1.5,
             }}
           />
-          <p style={{ fontSize: 9, color: '#94a3b8', marginTop: 2 }}>Ctrl+Enter to confirm</p>
+          <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>Ctrl+Enter to confirm</p>
         </div>
 
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>

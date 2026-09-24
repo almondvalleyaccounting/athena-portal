@@ -95,7 +95,7 @@ export default function MandatoryView() {
         <h2 style={{ margin: 0, fontSize: 19, fontWeight: 600, color: '#0f172a' }}>Mandatory training</h2>
         <div style={{ flex: 1 }} />
         {isAdmin && (
-          <label style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: 13, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
             Recording for
             <select value={viewStaffId} onChange={(e) => setViewStaffId(e.target.value)} style={selectStyle}>
               <option value={profile.id}>{profile.name} (you)</option>
@@ -106,7 +106,7 @@ export default function MandatoryView() {
           </label>
         )}
       </div>
-      <p style={{ fontSize: 13, color: '#64748b', marginTop: 0, marginBottom: 18 }}>
+      <p style={{ fontSize: 14, color: '#64748b', marginTop: 0, marginBottom: 18 }}>
         Record required training as done — {viewStaffName === 'you' ? 'yours' : `for ${viewStaffName}`}. Annual items go “due” 60 days before expiry, then “overdue”.
       </p>
 
@@ -119,11 +119,11 @@ export default function MandatoryView() {
             <div key={t.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', padding: '12px 14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ minWidth: 200 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{t.name}</div>
-                  {t.description && <div style={{ fontSize: 12, color: '#94a3b8' }}>{t.description}</div>}
+                  <div style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>{t.name}</div>
+                  {t.description && <div style={{ fontSize: 13, color: '#94a3b8' }}>{t.description}</div>}
                 </div>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 999, background: ss.bg, color: ss.c }}>{st.label}</span>
-                <span style={{ fontSize: 12, color: '#64748b' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 999, background: ss.bg, color: ss.c }}>{st.label}</span>
+                <span style={{ fontSize: 13, color: '#64748b' }}>
                   {latest ? `Done ${fmt(latest.completed_on)}` : 'No record yet'}
                   {latest?.expires_on ? ` · expires ${fmt(latest.expires_on)}` : ''}
                 </span>
@@ -142,7 +142,7 @@ export default function MandatoryView() {
       {isAdmin && (
         <>
           <div style={{ marginTop: 28, marginBottom: 8, display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#0f172a' }}>Team compliance</h3>
+            <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, color: '#0f172a' }}>Team compliance</h3>
             <div style={{ flex: 1 }} />
             <button onClick={() => setAddOpen((v) => !v)} style={btnSecondary}>{addOpen ? 'Cancel' : '+ Add training'}</button>
           </div>
@@ -201,7 +201,7 @@ function AddTraining({ onSaved }) {
 function TeamMatrix({ staff, trainings, completions }) {
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead style={{ background: '#f8fafc' }}>
           <tr>
             <th style={thLeft}>Staff</th>
@@ -219,7 +219,7 @@ function TeamMatrix({ staff, trainings, completions }) {
                 return (
                   <td key={t.id} style={{ ...td, textAlign: 'center' }}>
                     <span title={latest ? `Done ${fmt(latest.completed_on)}${latest.expires_on ? ', expires ' + fmt(latest.expires_on) : ''}` : 'No record'}
-                      style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: ss.bg, color: ss.c }}>
+                      style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: ss.bg, color: ss.c }}>
                       {st.label}
                     </span>
                   </td>
@@ -236,20 +236,20 @@ function TeamMatrix({ staff, trainings, completions }) {
 function Field({ label, children, grow }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: grow ? 1 : 'initial' }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{label}</span>
       {children}
     </label>
   );
 }
 
-const inputStyle = { padding: '7px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a', outline: 'none' };
-const selectStyle = { padding: '5px 8px', fontSize: 12, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer' };
-const btnPrimary = { fontSize: 12, fontWeight: 600, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff', whiteSpace: 'nowrap' };
-const btnSecondary = { fontSize: 12, fontWeight: 500, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', whiteSpace: 'nowrap' };
-const th = { padding: '8px 10px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4 };
+const inputStyle = { padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a', outline: 'none' };
+const selectStyle = { padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer' };
+const btnPrimary = { fontSize: 13, fontWeight: 600, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff', whiteSpace: 'nowrap' };
+const btnSecondary = { fontSize: 13, fontWeight: 500, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', whiteSpace: 'nowrap' };
+const th = { padding: '8px 10px', textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#64748b' };
 const thLeft = { ...th, textAlign: 'left' };
 const td = { padding: '7px 10px', verticalAlign: 'middle' };
 
 function Msg({ children, colour = '#64748b' }) {
-  return <div style={{ padding: 28, fontFamily: font, color: colour, fontSize: 14, textAlign: 'center' }}>{children}</div>;
+  return <div style={{ padding: 28, fontFamily: font, color: colour, fontSize: 14.5, textAlign: 'center' }}>{children}</div>;
 }

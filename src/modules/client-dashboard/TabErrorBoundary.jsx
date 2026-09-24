@@ -66,11 +66,11 @@ export default class TabErrorBoundary extends React.Component {
           color: '#7f1d1d',
         }}
       >
-        <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '6px' }}>
+        <div style={{ fontSize: '14.5px', fontWeight: 700, marginBottom: '6px' }}>
           {what} couldn&rsquo;t be displayed
         </div>
 
-        <div style={{ fontSize: '13px', lineHeight: 1.55, color: '#991b1b' }}>
+        <div style={{ fontSize: '14px', lineHeight: 1.55, color: '#991b1b' }}>
           {showDetail
             ? 'Something in this tab threw while rendering. The rest of the dashboard is unaffected — the other tabs still work.'
             : 'Something went wrong at our end, so this part of your dashboard is unavailable. Nothing is wrong with your figures, and the other sections still work. We have been told about it.'}
@@ -79,7 +79,7 @@ export default class TabErrorBoundary extends React.Component {
         {showDetail && (
           <pre
             style={{
-              fontSize: '12px',
+              fontSize: '13px',
               lineHeight: 1.5,
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
@@ -105,7 +105,7 @@ export default class TabErrorBoundary extends React.Component {
             borderRadius: '9px',
             padding: '7px 14px',
             fontFamily: 'inherit',
-            fontSize: '13px',
+            fontSize: '14px',
             fontWeight: 600,
             color: '#b91c1c',
             cursor: 'pointer',
@@ -115,7 +115,7 @@ export default class TabErrorBoundary extends React.Component {
         </button>
 
         {showDetail && (
-          <span style={{ fontSize: '12px', color: '#b91c1c', marginLeft: '10px' }}>
+          <span style={{ fontSize: '13px', color: '#b91c1c', marginLeft: '10px' }}>
             Details are in the browser console.
           </span>
         )}

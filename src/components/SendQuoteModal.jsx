@@ -183,7 +183,7 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
                 {/* Say where the address came from — a prefill you cannot trace
                     is a prefill nobody checks. */}
                 {!prefillLoading && prefill?.sourceLabel && !prefillEdited && (
-                  <p className="text-[10px] text-gray-400 mt-1">
+                  <p className="text-[11px] text-gray-400 mt-1">
                     From {prefill.sourceLabel}
                     {prefill.source === 'last_send' && prefill.sentAt
                       ? ` on ${new Date(prefill.sentAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
@@ -196,19 +196,19 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
                   <button
                     type="button"
                     onClick={() => { setRecipientEmail(prefill.to.join(', ')); setPrefillEdited(false); }}
-                    className="text-[10px] text-ocean-600 hover:underline mt-1"
+                    className="text-[11px] text-ocean-600 hover:underline mt-1"
                   >
                     Restore {prefill.to.join(', ')}
                   </button>
                 )}
                 {!prefillLoading && !prefill?.to?.length && (
-                  <p className="text-[10px] text-gray-400 mt-1">
+                  <p className="text-[11px] text-gray-400 mt-1">
                     No email on file for this client — add one to the client record so the next
                     quote fills itself in.
                   </p>
                 )}
                 {toList.length > 1 && (
-                  <p className="text-[10px] text-gray-400 mt-1">
+                  <p className="text-[11px] text-gray-400 mt-1">
                     {toList.length} recipients — the accept link works for all of them, and the
                     acceptance is recorded against {toList[0]}.
                   </p>
@@ -253,7 +253,7 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
               <Btn onClick={onClose} variant="ghost">Cancel</Btn>
             </div>
 
-            <p className="text-[10px] text-gray-400 mt-2">
+            <p className="text-[11px] text-gray-400 mt-2">
               The quote PDF will be generated and attached automatically.
             </p>
           </>

@@ -182,7 +182,7 @@ export default function CapacityView() {
   }, [shifts]);
 
   if (loading) {
-    return <div style={{ padding: 24, color: '#94a3b8', fontSize: 14 }}>Loading capacity…</div>;
+    return <div style={{ padding: 24, color: '#94a3b8', fontSize: 14.5 }}>Loading capacity…</div>;
   }
 
   return (
@@ -192,12 +192,12 @@ export default function CapacityView() {
         display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
         borderBottom: '1px solid #e5e7eb', background: '#f8fafc',
       }}>
-        <div style={{ fontSize: 13, color: '#475569' }}>
+        <div style={{ fontSize: 14, color: '#475569' }}>
           Monthly load from BM tasks vs each member's weekly capacity × 4.33.
         </div>
         {draftCount > 0 && (
           <label style={{
-            fontSize: 12, color: '#475569',
+            fontSize: 13, color: '#475569',
             display: 'flex', alignItems: 'center', gap: 6,
             background: '#fef3c7', border: '1px solid #fde68a',
             padding: '4px 10px', borderRadius: 12,
@@ -212,7 +212,7 @@ export default function CapacityView() {
         )}
         {shifts.length > 0 && (
           <label style={{
-            fontSize: 12, color: '#475569',
+            fontSize: 13, color: '#475569',
             display: 'flex', alignItems: 'center', gap: 6,
             background: '#dbeafe', border: '1px solid #93c5fd',
             padding: '4px 10px', borderRadius: 12,
@@ -229,7 +229,7 @@ export default function CapacityView() {
         {draftShiftCount > 0 && (
           <>
             <span style={{
-              fontSize: 12, color: '#92400e', background: '#fef3c7',
+              fontSize: 13, color: '#92400e', background: '#fef3c7',
               border: '1px solid #fde68a', padding: '4px 10px', borderRadius: 12,
             }}>
               {draftShiftCount} pending shift{draftShiftCount === 1 ? '' : 's'}
@@ -269,17 +269,17 @@ export default function CapacityView() {
                     background: s.colour || teamColour(s.id),
                   }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {s.name}
                     </div>
-                    <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>
                       {editingCapacity === s.id ? (
                         <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                           <input
                             type="number"
                             value={capacityDraft}
                             onChange={(e) => setCapacityDraft(e.target.value)}
-                            style={{ width: 50, fontSize: 10, padding: '1px 3px', border: '1px solid #cbd5e1', borderRadius: 3 }}
+                            style={{ width: 50, fontSize: 11, padding: '1px 3px', border: '1px solid #cbd5e1', borderRadius: 3 }}
                             autoFocus
                           />
                           h/wk
@@ -329,7 +329,7 @@ export default function CapacityView() {
                 <div style={{
                   width: MONTH_COL_W + 20, minWidth: MONTH_COL_W + 20, height: ROW_H,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 13, fontWeight: 600, color: '#0f172a',
+                  fontSize: 14, fontWeight: 600, color: '#0f172a',
                   borderLeft: '1px solid #e5e7eb',
                 }}>
                   {Math.round(totalHours)}h
@@ -339,7 +339,7 @@ export default function CapacityView() {
           })}
 
           {/* Legend */}
-          <div style={{ display: 'flex', gap: 12, padding: '12px 6px', fontSize: 11, color: '#64748b', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 12, padding: '12px 6px', fontSize: 12, color: '#64748b', alignItems: 'center' }}>
             <span>Load vs capacity:</span>
             <Swatch colour="#dbeafe" label="< 50%" />
             <Swatch colour="#bbf7d0" label="50–80%" />
@@ -375,7 +375,7 @@ function HeatCell({ hours, capacity, delta = 0, onClick }) {
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
         background: colour, borderRight: '1px solid #f1f5f9',
-        fontSize: 12, fontWeight: hours > 0 ? 600 : 400,
+        fontSize: 13, fontWeight: hours > 0 ? 600 : 400,
         color: pct > 1.0 ? '#7f1d1d' : '#0f172a',
         cursor: 'pointer',
       }}
@@ -383,7 +383,7 @@ function HeatCell({ hours, capacity, delta = 0, onClick }) {
       <span>{text}</span>
       {showDelta && (
         <span style={{
-          fontSize: 9, fontWeight: 600,
+          fontSize: 10, fontWeight: 600,
           color: delta > 0 ? '#7c2d12' : '#166534',
         }}>
           {delta > 0 ? '+' : ''}{Math.round(delta)}
@@ -428,24 +428,24 @@ function ShiftPopover({ popover, months, onClose, onSubmit }) {
           fontFamily: "'Outfit', sans-serif",
         }}
       >
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>
           Pull forward / push out
         </div>
-        <div style={{ fontSize: 14, fontWeight: 500, color: '#0f172a', marginTop: 4, marginBottom: 10 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 500, color: '#0f172a', marginTop: 4, marginBottom: 10 }}>
           {staff.name} · {monthLabel}
         </div>
-        <label style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>Hours to move</label>
+        <label style={{ fontSize: 13, color: '#475569', display: 'block', marginBottom: 4 }}>Hours to move</label>
         <input
           type="number" autoFocus value={hours}
           onChange={(e) => setHours(e.target.value)}
           placeholder="e.g. 5"
-          style={{ width: '100%', padding: '6px 8px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 6, fontFamily: "'Outfit', sans-serif", marginBottom: 10 }}
+          style={{ width: '100%', padding: '6px 8px', fontSize: 14, border: '1px solid #cbd5e1', borderRadius: 6, fontFamily: "'Outfit', sans-serif", marginBottom: 10 }}
         />
-        <label style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>To month</label>
+        <label style={{ fontSize: 13, color: '#475569', display: 'block', marginBottom: 4 }}>To month</label>
         <select
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          style={{ width: '100%', padding: '6px 8px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 6, fontFamily: "'Outfit', sans-serif", marginBottom: 14 }}
+          style={{ width: '100%', padding: '6px 8px', fontSize: 14, border: '1px solid #cbd5e1', borderRadius: 6, fontFamily: "'Outfit', sans-serif", marginBottom: 14 }}
         >
           <option value="">— pick a month —</option>
           {otherMonths.map((m) => {
@@ -455,12 +455,12 @@ function ShiftPopover({ popover, months, onClose, onSubmit }) {
         </select>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} disabled={busy} style={{
-            padding: '5px 12px', fontSize: 12, border: '1px solid #cbd5e1',
+            padding: '5px 12px', fontSize: 13, border: '1px solid #cbd5e1',
             background: '#fff', color: '#64748b', borderRadius: 6, cursor: 'pointer',
             fontFamily: "'Outfit', sans-serif",
           }}>Cancel</button>
           <button onClick={go} disabled={busy} style={{
-            padding: '5px 12px', fontSize: 12, border: '1px solid #0f172a',
+            padding: '5px 12px', fontSize: 13, border: '1px solid #0f172a',
             background: '#0f172a', color: '#fff', borderRadius: 6, cursor: 'pointer',
             fontFamily: "'Outfit', sans-serif",
           }}>{busy ? 'Saving…' : 'Propose shift'}</button>
@@ -492,23 +492,22 @@ function headerCellStyle(width, align = 'center') {
   return {
     width, minWidth: width, height: 32,
     display: 'flex', alignItems: 'center', justifyContent: align === 'left' ? 'flex-start' : 'center',
-    padding: '0 10px', fontSize: 11, fontWeight: 600,
-    color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5,
-    borderBottom: '1px solid #e5e7eb', background: '#f8fafc',
+    padding: '0 10px', fontSize: 12, fontWeight: 600,
+    color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#f8fafc',
   };
 }
 
 function btnStyle(variant) {
   if (variant === 'primary') {
     return {
-      padding: '5px 12px', fontSize: 12, fontWeight: 500,
+      padding: '5px 12px', fontSize: 13, fontWeight: 500,
       border: '1px solid #0f172a', borderRadius: 6,
       background: '#0f172a', color: '#fff', cursor: 'pointer',
       fontFamily: "'Outfit', sans-serif",
     };
   }
   return {
-    padding: '5px 12px', fontSize: 12, fontWeight: 500,
+    padding: '5px 12px', fontSize: 13, fontWeight: 500,
     border: '1px solid #cbd5e1', borderRadius: 6,
     background: '#fff', color: '#64748b', cursor: 'pointer',
     fontFamily: "'Outfit', sans-serif",
@@ -517,7 +516,7 @@ function btnStyle(variant) {
 
 function miniBtn(kind) {
   return {
-    border: 'none', padding: '0 4px', borderRadius: 3, fontSize: 10, cursor: 'pointer',
+    border: 'none', padding: '0 4px', borderRadius: 3, fontSize: 11, cursor: 'pointer',
     background: kind === 'save' ? '#0f172a' : '#e5e7eb',
     color: kind === 'save' ? '#fff' : '#64748b',
     fontFamily: "'Outfit', sans-serif",

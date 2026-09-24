@@ -65,18 +65,18 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
         <div style={{ background: '#0f172a', color: '#fff', padding: '14px 20px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Eye size={16} style={{ color: '#7dd3fc' }} />
-            <span style={{ fontSize: 14, fontWeight: 700 }}>
+            <span style={{ fontSize: 14.5, fontWeight: 700 }}>
               Previewing as {row.email}
             </span>
             {ui.loading && <Loader size={13} style={{ animation: 'spin 1s linear infinite' }} />}
             <button
               onClick={onClose}
-              style={{ marginLeft: 'auto', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
+              style={{ marginLeft: 'auto', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: 8, padding: '6px 12px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
             >
               Close
             </button>
           </div>
-          <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 5, lineHeight: 1.55 }}>
+          <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 5, lineHeight: 1.55 }}>
             {row.entity_name} · the real client view, fetched through the client's own endpoint
             with their grant applied — not a mock. Every control below works as it will for them.
             {onToggle
@@ -87,7 +87,7 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
             {Object.keys(SECTION_LABELS).map((k) => {
               const on = !!row[k];
               const chip = {
-                fontSize: 11, fontWeight: on ? 600 : 500, padding: '4px 10px', borderRadius: 999,
+                fontSize: 12, fontWeight: on ? 600 : 500, padding: '4px 10px', borderRadius: 999,
                 border: `1px solid ${on ? 'rgba(125,211,252,0.4)' : 'rgba(148,163,184,0.3)'}`,
                 background: on ? 'rgba(125,211,252,0.18)' : 'rgba(148,163,184,0.1)',
                 color: on ? '#7dd3fc' : '#94a3b8',
@@ -123,7 +123,7 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
               ui={ui}
             />
             {ui.payload && portalTabsFor(ui.payload).length === 0 && (
-              <div style={{ fontSize: 13.5, color: portalTheme.muted, textAlign: 'center', padding: '30px 0' }}>
+              <div style={{ fontSize: 14.5, color: portalTheme.muted, textAlign: 'center', padding: '30px 0' }}>
                 Every section is switched off, so this person would see nothing at all.
               </div>
             )}

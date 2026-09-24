@@ -148,7 +148,7 @@ export default function ServicePicker({ value, options, onChange, style, disable
         <div ref={panelRef} style={{ ...panelStyle, zIndex: 1200, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.14)', overflowY: 'auto', fontFamily: "'Outfit', sans-serif" }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderBottom: '1px solid #f1f5f9', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
             <Search size={12} style={{ color: '#94a3b8', flexShrink: 0 }} />
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>
               {query ? `${flat.length} match${flat.length === 1 ? '' : 'es'}` : `${flat.length} services, grouped as in QuickBooks`}
             </span>
           </div>
@@ -158,21 +158,21 @@ export default function ServicePicker({ value, options, onChange, style, disable
               options at all is a load or permissions problem, not a catalogue
               that has run out of services. */}
           {options.length === 0 && (
-            <div style={{ padding: '12px 12px', fontSize: 12, color: '#b45309' }}>
+            <div style={{ padding: '12px 12px', fontSize: 13, color: '#b45309' }}>
               No services loaded. This list is the QuickBooks product mapping — if it
               stays empty, it failed to load rather than being empty.
             </div>
           )}
 
           {options.length > 0 && flat.length === 0 && (
-            <div style={{ padding: '12px 12px', fontSize: 12, color: '#94a3b8' }}>
+            <div style={{ padding: '12px 12px', fontSize: 13, color: '#94a3b8' }}>
               Nothing matches “{query}”. Only services mapped to a QuickBooks product can be billed.
             </div>
           )}
 
           {groups.map((g) => (
             <div key={g.cat}>
-              <div style={{ padding: '6px 10px 3px', fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#94a3b8', background: '#fbfcfd' }}>
+              <div style={{ padding: '6px 10px 3px', fontSize: 11, fontWeight: 700, color: '#94a3b8', background: '#fbfcfd' }}>
                 {g.cat}
               </div>
               {g.items.map((o) => {
@@ -187,7 +187,7 @@ export default function ServicePicker({ value, options, onChange, style, disable
                     onMouseDown={(e) => { e.preventDefault(); pick(o); }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6,
-                      padding: '6px 10px 6px 14px', fontSize: 13, cursor: 'pointer',
+                      padding: '6px 10px 6px 14px', fontSize: 14, cursor: 'pointer',
                       background: active ? '#eff6ff' : 'transparent',
                       color: isSel ? '#0e7fe0' : '#1e293b',
                       fontWeight: isSel ? 600 : 400,

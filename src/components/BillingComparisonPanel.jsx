@@ -93,7 +93,7 @@ export default function BillingComparisonPanel({ items, title = 'Quote vs curren
   const sg = (n) => (n > 0 ? '+' : '');
   const billedCount = perEntity.filter((e) => e.hasLive).length;
   const FilterBtn = ({ onClick, active, children }) => (
-    <button onClick={onClick} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
+    <button onClick={onClick} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
       border: active ? '1px solid #0f172a' : '1px solid #e5e7eb', background: active ? '#0f172a' : '#fff', color: active ? '#fff' : '#475569' }}>
       {children}
     </button>
@@ -104,7 +104,7 @@ export default function BillingComparisonPanel({ items, title = 'Quote vs curren
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
-      <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">{title}</h3>
+      <h3 className="text-xs font-semibold text-gray-500 mb-2">{title}</h3>
       {!hasLive && (
         <p className="text-xs text-amber-700 mb-2">No current live billing in the selected set — this is all new business.</p>
       )}
@@ -113,7 +113,7 @@ export default function BillingComparisonPanel({ items, title = 'Quote vs curren
         <>
           {/* Quick filters */}
           <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-            <span className="text-[11px] text-gray-400">Compare:</span>
+            <span className="text-[12px] text-gray-400">Compare:</span>
             <FilterBtn onClick={selectAll} active={allSel}>All ({perEntity.length})</FilterBtn>
             <FilterBtn onClick={selectBilled} active={billedSel}>Already billed ({billedCount})</FilterBtn>
             <FilterBtn onClick={selectNew} active={newSel}>Not yet billed ({perEntity.length - billedCount})</FilterBtn>
@@ -124,7 +124,7 @@ export default function BillingComparisonPanel({ items, title = 'Quote vs curren
               <label key={e.entityId} className="inline-flex items-center gap-1.5 text-xs cursor-pointer border border-gray-200 rounded-full px-2.5 py-1">
                 <input type="checkbox" checked={isSelected(e.entityId)} onChange={() => toggle(e.entityId)} className="w-3 h-3 accent-ocean-600" />
                 <span className={isSelected(e.entityId) ? 'text-gray-700' : 'text-gray-400'}>
-                  {e.name}{!e.hasLive && <span className="ml-1 text-[9px] text-green-600">new</span>}
+                  {e.name}{!e.hasLive && <span className="ml-1 text-[10px] text-green-600">new</span>}
                 </span>
               </label>
             ))}
@@ -147,7 +147,7 @@ export default function BillingComparisonPanel({ items, title = 'Quote vs curren
               <span className="text-right font-mono text-gray-600">{r.quoteAnnual ? fmt(r.quoteAnnual) : '—'}</span>
               <span className="text-right font-mono text-gray-600">{r.liveAnnual ? fmt(r.liveAnnual) : '—'}</span>
               <span className="text-right font-mono" style={{ color: dc(r.deltaAnnual) }}>{r.deltaAnnual ? `${sg(r.deltaAnnual)}${fmt(r.deltaAnnual)}` : '—'}</span>
-              <span className="text-right">{st.label && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 999, background: st.bg, color: st.fg }}>{st.label}</span>}</span>
+              <span className="text-right">{st.label && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 999, background: st.bg, color: st.fg }}>{st.label}</span>}</span>
             </React.Fragment>
           );
         })}

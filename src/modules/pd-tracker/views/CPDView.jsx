@@ -146,14 +146,14 @@ export default function CPDView() {
       }}>
         <span style={{ fontSize: 22 }}>🎓</span>
         <span style={{ flex: 1 }}>
-          <span style={{ display: 'block', fontFamily: FONT, fontSize: 14, fontWeight: 600, color: '#78350f' }}>
+          <span style={{ display: 'block', fontFamily: FONT, fontSize: 14.5, fontWeight: 600, color: '#78350f' }}>
             {LEARNING_PARTNER.name}
           </span>
-          <span style={{ display: 'block', fontFamily: FONT, fontSize: 12, color: '#92400e' }}>
+          <span style={{ display: 'block', fontFamily: FONT, fontSize: 13, color: '#92400e' }}>
             {LEARNING_PARTNER.blurb}
           </span>
         </span>
-        <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#78350f' }}>
+        <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#78350f' }}>
           Open ↗
         </span>
       </a>
@@ -226,7 +226,7 @@ export default function CPDView() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                       <div style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 500, color: '#0f172a' }}>{i.title}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                        <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#0e7fe0' }}>{Number(i.hours).toFixed(1)}h</span>
+                        <span style={{ fontFamily: FONT, fontSize: 14, fontWeight: 700, color: '#0e7fe0' }}>{Number(i.hours).toFixed(1)}h</span>
                         <button onClick={() => remove(i.id)} style={{
                           background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', padding: 4,
                         }} onMouseEnter={(e) => e.currentTarget.style.color = '#dc2626'} onMouseLeave={(e) => e.currentTarget.style.color = '#cbd5e1'}>
@@ -237,19 +237,19 @@ export default function CPDView() {
                     <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                       <Pill bg={meta.bg} fg={meta.fg}>{meta.label}</Pill>
                       {skill && <Pill bg="#ede9fe" fg="#5b21b6">{skill.name}</Pill>}
-                      <span style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8' }}>
+                      <span style={{ fontFamily: FONT, fontSize: 13, color: '#94a3b8' }}>
                         {new Date(i.entry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                         {i.provider && <> &middot; {i.provider}</>}
                       </span>
                       {i.evidence_url && (
                         <a href={i.evidence_url} target="_blank" rel="noreferrer" style={{
                           display: 'inline-flex', alignItems: 'center', gap: 4,
-                          fontFamily: FONT, fontSize: 12, color: '#0e7fe0', textDecoration: 'none',
+                          fontFamily: FONT, fontSize: 13, color: '#0e7fe0', textDecoration: 'none',
                         }}>Evidence <ExternalLink size={11} /></a>
                       )}
                     </div>
                     {i.reflection && (
-                      <p style={{ fontFamily: FONT, fontSize: 13, color: '#475569', margin: '8px 0 0', lineHeight: 1.5, fontStyle: 'italic' }}>
+                      <p style={{ fontFamily: FONT, fontSize: 14, color: '#475569', margin: '8px 0 0', lineHeight: 1.5, fontStyle: 'italic' }}>
                         "{i.reflection}"
                       </p>
                     )}
@@ -265,9 +265,8 @@ export default function CPDView() {
 }
 
 const lblStyle = {
-  display: 'block', fontFamily: FONT, fontSize: 11, fontWeight: 600,
-  color: '#475569', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em',
-};
+  display: 'block', fontFamily: FONT, fontSize: 12, fontWeight: 600,
+  color: '#475569', marginBottom: 6, };
 
 function BarChart({ months }) {
   const max = Math.max(1, ...months.map((m) => m.hours));
@@ -277,7 +276,7 @@ function BarChart({ months }) {
         const h = (m.hours / max) * 110;
         return (
           <div key={m.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-            <div style={{ position: 'absolute', top: -16, fontFamily: FONT, fontSize: 10, fontWeight: 600, color: m.hours > 0 ? '#0f172a' : '#cbd5e1' }}>
+            <div style={{ position: 'absolute', top: -16, fontFamily: FONT, fontSize: 11, fontWeight: 600, color: m.hours > 0 ? '#0f172a' : '#cbd5e1' }}>
               {m.hours > 0 ? m.hours.toFixed(1) : ''}
             </div>
             <div style={{
@@ -285,7 +284,7 @@ function BarChart({ months }) {
               background: m.hours > 0 ? 'linear-gradient(180deg, #38bdf8, #0e7fe0)' : '#f1f5f9',
               borderRadius: 6, transition: 'height 0.3s',
             }} />
-            <div style={{ position: 'absolute', bottom: -22, fontFamily: FONT, fontSize: 11, color: '#64748b' }}>{m.label}</div>
+            <div style={{ position: 'absolute', bottom: -22, fontFamily: FONT, fontSize: 12, color: '#64748b' }}>{m.label}</div>
           </div>
         );
       })}

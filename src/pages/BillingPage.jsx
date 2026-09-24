@@ -635,7 +635,7 @@ export default function BillingPage() {
 
       {/* Revenue bands — distribution of clients by monthly £ spend. */}
       <div className="mb-4">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Clients by monthly £ band (current)</div>
+        <div className="text-xs font-semibold text-gray-500 mb-2">Clients by monthly £ band (current)</div>
         <div className="grid grid-cols-5 gap-2">
           {bandCounts.map((b) => (
             <BandTile
@@ -722,7 +722,7 @@ export default function BillingPage() {
         <div className="mb-4">
           <h3 className="text-sm font-bold text-ocean-700 mb-2">Revenue by service type (annualised)</h3>
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr' }}>
+            <div className="grid text-xs font-medium text-gray-400 px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr' }}>
               <span>Service</span>
               <span className="text-right">Monthly</span>
               <span className="text-right">Monthly × 12</span>
@@ -863,7 +863,7 @@ export default function BillingPage() {
 
       {/* Billing Table */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
-        <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr' }}>
+        <div className="grid text-xs font-medium text-gray-400 px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr' }}>
           <span>Client</span>
           <span className="text-right">Type</span>
           <span className="text-right">Monthly Net</span>
@@ -911,7 +911,7 @@ export default function BillingPage() {
                 {isExpanded && (
                   <div className="px-6 py-3 bg-gray-50 border-b border-gray-100">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-xs font-semibold text-gray-500 uppercase">Service Breakdown</h4>
+                      <h4 className="text-xs font-semibold text-gray-500">Service Breakdown</h4>
                       <div className="flex gap-2">
                         <Btn
                           onClick={(e) => {
@@ -982,7 +982,7 @@ export default function BillingPage() {
           </button>
           {showSyncLog && (
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '60px 1.5fr 1fr 1fr 2fr' }}>
+              <div className="grid text-xs font-medium text-gray-400 px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '60px 1.5fr 1fr 1fr 2fr' }}>
                 <span>Dir</span>
                 <span>Entity</span>
                 <span>Status</span>
@@ -1022,7 +1022,7 @@ export default function BillingPage() {
       <div className="mb-6">
         <h3 className="text-sm font-bold text-ocean-700 mb-3">Live vs Quote Comparison</h3>
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="grid text-xs font-medium text-gray-400 uppercase px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
+          <div className="grid text-xs font-medium text-gray-400 px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
             <span>Client</span>
             <span className="text-right">Live Monthly</span>
             <span className="text-right">Quote Monthly</span>
@@ -1110,9 +1110,9 @@ function RevenueTile({ label, value, hint, delta, onClick, active, highlight }) 
         fontFamily: "'Outfit', sans-serif",
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 600, color: highlight ? '#cbd5e1' : '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: highlight ? '#cbd5e1' : '#64748b' }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'monospace', marginTop: 4, lineHeight: 1 }}>{value}</div>
-      {hint && <div style={{ fontSize: 11, color: deltaColor || (highlight ? '#94a3b8' : '#64748b'), marginTop: 6 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 12, color: deltaColor || (highlight ? '#94a3b8' : '#64748b'), marginTop: 6 }}>{hint}</div>}
     </button>
   );
 }
@@ -1124,9 +1124,9 @@ function BandTile({ label, count, total, onClick }) {
       className="text-left rounded-lg border border-gray-200 bg-white p-3 hover:border-blue-300 hover:bg-blue-50 transition-colors"
       style={{ fontFamily: "'Outfit', sans-serif" }}
     >
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'monospace', marginTop: 4, color: '#0f172a' }}>{count}</div>
-      <div style={{ fontSize: 10, fontFamily: 'monospace', color: '#64748b' }}>{total > 0 ? `${count === 1 ? '' : '~'}£${Math.round(total).toLocaleString('en-GB')}/m` : ' '}</div>
+      <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#64748b' }}>{total > 0 ? `${count === 1 ? '' : '~'}£${Math.round(total).toLocaleString('en-GB')}/m` : ' '}</div>
     </button>
   );
 }
@@ -1134,14 +1134,14 @@ function BandTile({ label, count, total, onClick }) {
 function ActionLine({ count, noun, tone, label, ctaLabel, onClick }) {
   const t = semanticTones[tone] || semanticTones.warning;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#1e293b' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, color: '#1e293b' }}>
       <span style={{
-        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+        fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
         background: t.bg, color: t.fg,
       }}>{count}</span>
       <span>{noun} {label}</span>
       <button onClick={onClick} style={{
-        fontSize: 12, fontWeight: 600, padding: '3px 10px',
+        fontSize: 13, fontWeight: 600, padding: '3px 10px',
         background: '#fff', color: '#0f172a',
         border: '1px solid #e5e7eb', borderRadius: 6,
         cursor: 'pointer', fontFamily: "'Outfit', sans-serif",

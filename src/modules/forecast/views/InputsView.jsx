@@ -371,7 +371,7 @@ export default function InputsView({
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
             Locations
             {entities.length > 0 && (
-              <span style={{ fontSize: 12, fontWeight: 400, color: colors.muted, fontFamily: fontStack }}>
+              <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, fontFamily: fontStack }}>
                 · {entities.length} location{entities.length !== 1 ? 's' : ''}
                 {entities.length <= 4 && (
                   <span> ({entities.map(e => e.label).join(', ')})</span>
@@ -424,7 +424,7 @@ export default function InputsView({
         }
       >
         {entities.length === 0 ? (
-          <p style={{ fontSize: 13, color: colors.muted }}>No locations yet. Add one to start populating drivers.</p>
+          <p style={{ fontSize: 14, color: colors.muted }}>No locations yet. Add one to start populating drivers.</p>
         ) : !locationsExpanded ? null : (
           <div>
           <GroupsPanel groups={groups} onAdd={onAddGroup} onDelete={onDeleteGroup} />
@@ -448,7 +448,7 @@ export default function InputsView({
                       <select
                         value={groupForEntity(e.id)}
                         onChange={(ev) => onSetEntityGroup(e.id, ev.target.value)}
-                        style={{ padding: '4px 8px', fontSize: 12, border: `1px solid ${colors.border}`, borderRadius: 6, background: '#fff', fontFamily: fontStack }}
+                        style={{ padding: '4px 8px', fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 6, background: '#fff', fontFamily: fontStack }}
                       >
                         <option value="">—</option>
                         {groups.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
@@ -493,8 +493,8 @@ export default function InputsView({
             <button
               onClick={() => setCompact(c => !c)}
               style={compact
-                ? { ...btnDark, background: '#475569', padding: '6px 12px', fontSize: 12 }
-                : { ...btnOutline, padding: '6px 12px', fontSize: 12 }}
+                ? { ...btnDark, background: '#475569', padding: '6px 12px', fontSize: 13 }
+                : { ...btnOutline, padding: '6px 12px', fontSize: 13 }}
               title="Toggle compact / comfortable density"
             >
               {compact ? 'Compact ✓' : 'Compact'}
@@ -511,7 +511,7 @@ export default function InputsView({
               key={m.key}
               onClick={() => setActiveModuleKey(m.key)}
               style={{
-                padding: '8px 12px', fontSize: 12, fontWeight: activeModuleKey === m.key ? 600 : 400,
+                padding: '8px 12px', fontSize: 13, fontWeight: activeModuleKey === m.key ? 600 : 400,
                 color: activeModuleKey === m.key ? colors.ink : colors.muted,
                 background: 'transparent', border: 'none', borderBottom: `2px solid ${activeModuleKey === m.key ? colors.accent : 'transparent'}`,
                 cursor: 'pointer', fontFamily: fontStack, whiteSpace: 'nowrap',
@@ -556,9 +556,9 @@ export default function InputsView({
         />
 
         {moduleDrivers.length === 0 ? (
-          <p style={{ fontSize: 13, color: colors.muted }}>No drivers match the current filter for {activeModuleKey}. Clear filters or click "Fill missing defaults" above.</p>
+          <p style={{ fontSize: 14, color: colors.muted }}>No drivers match the current filter for {activeModuleKey}. Clear filters or click "Fill missing defaults" above.</p>
         ) : (
-          <table style={{ ...tableStyle, fontSize: compact ? 11 : 12 }}>
+          <table style={{ ...tableStyle, fontSize: compact ? 12 : 13 }}>
             <thead>
               <tr>
                 <th style={compact ? thCompact : th}>Driver</th>
@@ -577,7 +577,7 @@ export default function InputsView({
                 if (d.__section) {
                   return (
                     <tr key={`sec-${d.__section}`}>
-                      <td colSpan={compact ? 4 : 6} style={{ padding: '14px 8px 4px', fontSize: 10, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: `1px solid ${colors.border}`, background: '#fff' }}>
+                      <td colSpan={compact ? 4 : 6} style={{ padding: '14px 8px 4px', fontSize: 11, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: `1px solid ${colors.border}`, background: '#fff' }}>
                         {d.__section}
                       </td>
                     </tr>
@@ -593,7 +593,7 @@ export default function InputsView({
                     <td style={cellTd}>
                       <strong>{d.label}</strong>
                       {compact && (
-                        <span style={{ marginLeft: 6, fontSize: 10, color: colors.muted }}>
+                        <span style={{ marginLeft: 6, fontSize: 11, color: colors.muted }}>
                           <Pill>{prettyUnit(d.unit)}</Pill>
                         </span>
                       )}
@@ -606,18 +606,18 @@ export default function InputsView({
                     <td style={{ ...cellTd, textAlign: 'right' }}>
                       {d.kind === 'scalar' ? (
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          {isMoneyUnit(d.unit) && <span style={{ fontSize: compact ? 11 : 12, color: colors.muted }}>£</span>}
+                          {isMoneyUnit(d.unit) && <span style={{ fontSize: compact ? 12 : 13, color: colors.muted }}>£</span>}
                           <input
                             defaultValue={toDisplay(valueOf(d.id, -1), d.unit)}
                             onBlur={(e) => onChangeValue(d.id, -1, e.target.value, d.unit)}
                             style={{ ...inputStyle, width: compact ? 100 : 140, textAlign: 'right', padding: compact ? '3px 6px' : '6px 8px' }}
                           />
-                          {d.unit === 'pct' && <span style={{ fontSize: compact ? 11 : 12, color: colors.muted }}>%</span>}
+                          {d.unit === 'pct' && <span style={{ fontSize: compact ? 12 : 13, color: colors.muted }}>%</span>}
                         </div>
                       ) : d.kind === 'timeseries' ? (
-                        <span style={{ fontSize: 11, color: colors.muted }}>(timeseries)</span>
+                        <span style={{ fontSize: 12, color: colors.muted }}>(timeseries)</span>
                       ) : (
-                        <code style={{ fontSize: 10 }}>{d.expression || '—'}</code>
+                        <code style={{ fontSize: 11 }}>{d.expression || '—'}</code>
                       )}
                     </td>
                     <td style={{ ...cellTd, textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -635,7 +635,7 @@ export default function InputsView({
                           >×</button>
                         </span>
                       ) : (
-                        <span style={{ fontSize: 9, color: colors.muted, fontStyle: 'italic' }}>built-in</span>
+                        <span style={{ fontSize: 10, color: colors.muted, fontStyle: 'italic' }}>built-in</span>
                       )}
                     </td>
                   </tr>
@@ -676,11 +676,11 @@ function GroupsPanel({ groups, onAdd, onDelete }) {
   return (
     <div style={{ padding: '10px 12px', background: colors.bgSoft, borderRadius: 8, marginBottom: 12, border: `1px solid ${colors.border}` }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 11, color: colors.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Groups</span>
+        <span style={{ fontSize: 12, color: colors.muted, fontWeight: 700 }}>Groups</span>
         <button onClick={onAdd} style={btnGhost}>+ Group</button>
       </div>
       {groups.length === 0 ? (
-        <p style={{ fontSize: 12, color: colors.muted, margin: 0 }}>
+        <p style={{ fontSize: 13, color: colors.muted, margin: 0 }}>
           No groups yet. Create groups (e.g. <em>Confirmed</em>, <em>In progress</em>, <em>Possible</em>) and assign each location below.
         </p>
       ) : (
@@ -688,11 +688,11 @@ function GroupsPanel({ groups, onAdd, onDelete }) {
           {groups.map(g => (
             <span key={g.id} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '4px 10px', fontSize: 12, color: colors.ink,
+              padding: '4px 10px', fontSize: 13, color: colors.ink,
               background: '#fff', borderRadius: 999, border: `1px solid ${colors.border}`,
             }}>
               {g.label}
-              <button onClick={() => onDelete(g.id)} style={{ background: 'transparent', border: 'none', color: colors.muted, cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}>×</button>
+              <button onClick={() => onDelete(g.id)} style={{ background: 'transparent', border: 'none', color: colors.muted, cursor: 'pointer', padding: 0, fontSize: 14.5, lineHeight: 1 }}>×</button>
             </span>
           ))}
         </div>
@@ -739,14 +739,14 @@ function PipelineDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
 
   return (
     <div>
-      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 12px' }}>
+      <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 12px' }}>
         Ramp-up assumptions resolve top-down: an <strong>age-band value</strong> beats the <strong>site-wide override</strong>,
         which beats the location default (set in <em>Edit location</em>) or the group default.
         Leave a cell blank to inherit — the grey number shows what blank means.
       </p>
 
       {entities.length === 0 && (
-        <p style={{ fontSize: 13, color: colors.muted }}>Add a location above to set its ramp-up assumptions.</p>
+        <p style={{ fontSize: 14, color: colors.muted }}>Add a location above to set its ramp-up assumptions.</p>
       )}
       {entities.map(e => (
         <LocationRampCard key={e.id} entity={e} find={find} numOf={numOf} groupCurveFor={groupCurveFor} {...cellProps} />
@@ -797,7 +797,7 @@ function ServicesDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
 
   return (
     <div>
-      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 12px' }}>
+      <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 12px' }}>
         Pricing and funded-hours assumptions per age band, one card per location.
         LA-funded hours (1140/yr) are billed at the LA rate; remaining hours at the private rate.
         <strong> Funded-only %</strong> is the share of funded take-up made up of part-timers using
@@ -806,12 +806,12 @@ function ServicesDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
       </p>
 
       {entities.length === 0 && (
-        <p style={{ fontSize: 13, color: colors.muted }}>Add a location above to set its pricing.</p>
+        <p style={{ fontSize: 14, color: colors.muted }}>Add a location above to set its pricing.</p>
       )}
       {entities.map(e => (
         <div key={e.id} style={pipeCard}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: colors.ink }}>{e.label}</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: colors.ink }}>{e.label}</span>
             <Pill>pricing & funding by age band</Pill>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack }}>
@@ -846,7 +846,7 @@ function ServicesDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dTake} suffix="%" {...cellProps} /></td>
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dFOnly} suffix="%" {...cellProps} /></td>
                     <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dLa} {...cellProps} /></td>
-                    <td style={{ ...pipeTd, paddingLeft: 18, fontSize: 11, color: colors.muted, whiteSpace: 'nowrap' }}>
+                    <td style={{ ...pipeTd, paddingLeft: 18, fontSize: 12, color: colors.muted, whiteSpace: 'nowrap' }}>
                       {perHr == null ? '—' : `£${perHr.toFixed(2)}/hr`}
                     </td>
                   </tr>
@@ -860,13 +860,13 @@ function ServicesDriversPanel({ entities, drivers, valueOf, toDisplay, onChangeV
       {groupDrivers.length > 0 && (
         <div style={pipeCard}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: colors.ink }}>Billing & calendar</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: colors.ink }}>Billing & calendar</span>
             <Pill>group — all locations</Pill>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, max-content) auto', gap: '6px 14px', alignItems: 'center' }}>
             {groupDrivers.map(d => (
               <React.Fragment key={d.id}>
-                <span style={{ fontSize: 12, color: colors.ink }}>{d.label}</span>
+                <span style={{ fontSize: 13, color: colors.ink }}>{d.label}</span>
                 <OverrideCell driver={d} suffix="wks" {...cellProps} />
               </React.Fragment>
             ))}
@@ -913,7 +913,7 @@ function LocationRampCard({ entity, find, numOf, groupCurveFor, valueOf, toDispl
   return (
     <div style={pipeCard}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: colors.ink }}>{entity.label}</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: colors.ink }}>{entity.label}</span>
         <Pill>{acqLabel}</Pill>
       </div>
 
@@ -922,7 +922,7 @@ function LocationRampCard({ entity, find, numOf, groupCurveFor, valueOf, toDispl
         <LabelledCell label="Opening occupancy" suffix="%" driver={dStart} placeholder={sitePh.start} {...cellProps} />
         <LabelledCell label="Target occupancy" suffix="%" driver={dTarget} placeholder={sitePh.target} {...cellProps} />
         <LabelledCell label="Months to target" driver={dMonths} placeholder={sitePh.months} {...cellProps} />
-        <span style={{ fontSize: 11, color: colors.muted }}>
+        <span style={{ fontSize: 12, color: colors.muted }}>
           {isAcquired ? 'Blank = location default (Edit location).' : 'Blank = per-band defaults.'}
         </span>
       </div>
@@ -954,7 +954,7 @@ function LocationRampCard({ entity, find, numOf, groupCurveFor, valueOf, toDispl
                 <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dO} placeholder={r1(inherited.start)} {...cellProps} /></td>
                 <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dT} placeholder={r1(inherited.target)} {...cellProps} /></td>
                 <td style={{ ...pipeTd, textAlign: 'right' }}><OverrideCell driver={dP} placeholder={r1(inherited.ramp)} {...cellProps} /></td>
-                <td style={{ ...pipeTd, paddingLeft: 18, fontSize: 11, color: overridden ? colors.accent : colors.muted, whiteSpace: 'nowrap' }}>
+                <td style={{ ...pipeTd, paddingLeft: 18, fontSize: 12, color: overridden ? colors.accent : colors.muted, whiteSpace: 'nowrap' }}>
                   {r1(effective.start)}% → {r1(effective.target)}% over {r1(effective.ramp)} mo{overridden ? ' · band override' : ''}
                 </td>
               </tr>
@@ -971,10 +971,10 @@ function GroupBandDefaultsCard({ find, valueOf, toDisplay, onChangeValue, compac
   return (
     <div style={pipeCard}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: colors.ink }}>Greenfield ramp defaults</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: colors.ink }}>Greenfield ramp defaults</span>
         <Pill>group — all locations</Pill>
       </div>
-      <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 8px' }}>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 8px' }}>
         Default per-band curve for greenfield sites. Acquired sites use their own location settings instead.
       </p>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fontStack }}>
@@ -1006,17 +1006,17 @@ function CohortCard({ drivers, valueOf, toDisplay, onChangeValue, compact }) {
   return (
     <div style={pipeCard}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: colors.ink }}>August cohort dynamics</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: colors.ink }}>August cohort dynamics</span>
         <Pill>group — all locations</Pill>
       </div>
-      <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 8px' }}>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 8px' }}>
         Each August a share of 3-5s leaves for P1 (some staying on in after-school care) and P7
         after-schoolers move up to high school. The occupancy dip refills over the window below.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, max-content) auto', gap: '6px 14px', alignItems: 'center' }}>
         {drivers.map(d => (
           <React.Fragment key={d.id}>
-            <span style={{ fontSize: 12, color: colors.ink }}>{d.label}</span>
+            <span style={{ fontSize: 13, color: colors.ink }}>{d.label}</span>
             <OverrideCell driver={d} suffix={d.unit === 'pct' ? '%' : d.unit === 'count' ? 'mo' : null} {...cellProps} />
           </React.Fragment>
         ))}
@@ -1041,7 +1041,7 @@ function OtherDriversTable({ drivers, entities, declaredKeys, onRenameDriver, on
                 <td style={{ ...pipeTd, textAlign: 'right' }}>
                   {d.kind === 'scalar'
                     ? <OverrideCell driver={d} suffix={d.unit === 'pct' ? '%' : null} {...cellProps} />
-                    : <span style={{ fontSize: 11, color: colors.muted }}>({d.kind})</span>}
+                    : <span style={{ fontSize: 12, color: colors.muted }}>({d.kind})</span>}
                 </td>
                 <td style={{ ...pipeTd, textAlign: 'right', whiteSpace: 'nowrap' }}>
                   {!declaredKeys.has(d.driver_key) && (
@@ -1062,7 +1062,7 @@ function OtherDriversTable({ drivers, entities, declaredKeys, onRenameDriver, on
 
 function LabelledCell({ label, driver, placeholder, suffix, valueOf, toDisplay, onChangeValue, compact }) {
   return (
-    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
       <span style={{ color: colors.muted }}>{label}</span>
       <OverrideCell
         driver={driver} placeholder={placeholder} suffix={suffix}
@@ -1074,28 +1074,28 @@ function LabelledCell({ label, driver, placeholder, suffix, valueOf, toDisplay, 
 
 function OverrideCell({ driver, placeholder, suffix, valueOf, toDisplay, onChangeValue, compact }) {
   if (!driver) {
-    return <span style={{ fontSize: 11, color: colors.muted }} title={'Driver row missing — click "Fill missing defaults" above'}>—</span>;
+    return <span style={{ fontSize: 12, color: colors.muted }} title={'Driver row missing — click "Fill missing defaults" above'}>—</span>;
   }
   const ph = placeholder == null ? '' : String(placeholder);
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      {driver.unit === 'gbp_p' && <span style={{ fontSize: 11, color: colors.muted }}>£</span>}
+      {driver.unit === 'gbp_p' && <span style={{ fontSize: 12, color: colors.muted }}>£</span>}
       <input
         defaultValue={toDisplay(valueOf(driver.id, -1), driver.unit)}
         placeholder={ph}
         title={ph !== '' ? `Blank = ${ph} (inherited)` : undefined}
         onBlur={(e) => onChangeValue(driver.id, -1, e.target.value, driver.unit)}
-        style={{ ...inputStyle, width: compact ? 64 : 80, textAlign: 'right', padding: compact ? '3px 6px' : '5px 8px', fontSize: compact ? 11 : 12 }}
+        style={{ ...inputStyle, width: compact ? 64 : 80, textAlign: 'right', padding: compact ? '3px 6px' : '5px 8px', fontSize: compact ? 12 : 13 }}
       />
-      {suffix && <span style={{ fontSize: 11, color: colors.muted }}>{suffix}</span>}
+      {suffix && <span style={{ fontSize: 12, color: colors.muted }}>{suffix}</span>}
     </span>
   );
 }
 
 const pipeCard = { border: `1px solid ${colors.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12, background: '#fff' };
-const pipeSectionLabel = { fontSize: 10, color: colors.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 };
-const pipeTh = { padding: '4px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, background: colors.bgSoft };
-const pipeTd = { padding: '5px 8px', color: colors.ink, verticalAlign: 'middle', fontSize: 12 };
+const pipeSectionLabel = { fontSize: 11, color: colors.muted, fontWeight: 700 };
+const pipeTh = { padding: '4px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, background: colors.bgSoft };
+const pipeTd = { padding: '5px 8px', color: colors.ink, verticalAlign: 'middle', fontSize: 13 };
 
 function CustomDriverModal({ scenarioId, moduleKey, entities, onClose, onSaved }) {
   const [form, setForm] = useState({
@@ -1152,7 +1152,7 @@ function CustomDriverModal({ scenarioId, moduleKey, entities, onClose, onSaved }
         <h2 style={{ fontFamily: serifStack, fontSize: 20, fontWeight: 500, color: colors.ink, margin: '0 0 6px' }}>
           Add custom driver
         </h2>
-        <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 16px' }}>
+        <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 16px' }}>
           Module: <strong>{moduleKey}</strong>
         </p>
 
@@ -1224,7 +1224,7 @@ function CustomDriverModal({ scenarioId, moduleKey, entities, onClose, onSaved }
             {busy ? 'Saving…' : 'Add driver'}
           </button>
         </div>
-        <p style={{ fontSize: 11, color: colors.muted, margin: '14px 0 0' }}>
+        <p style={{ fontSize: 12, color: colors.muted, margin: '14px 0 0' }}>
           Custom drivers persist alongside seeded ones. They'll be picked up by the engine if any module's compute() reads them by key — otherwise they stay as data without affecting outputs.
         </p>
       </div>
@@ -1355,7 +1355,7 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
         <h2 style={{ fontFamily: serifStack, fontSize: 22, fontWeight: 500, color: colors.ink, margin: '0 0 16px' }}>
           {form.id ? 'Edit location' : 'New location'}
           {isNew && nurseryDefaults && (
-            <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 400, color: colors.muted, fontFamily: fontStack }}>
+            <span style={{ marginLeft: 10, fontSize: 13, fontWeight: 400, color: colors.muted, fontFamily: fontStack }}>
               · prefilled from saved nursery defaults
             </span>
           )}
@@ -1389,13 +1389,13 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
           <Field label="Launch occupancy % (day-1 marketing influx)"><input type="number" value={form.starting_occupancy_pct} onChange={setNum('starting_occupancy_pct')} style={inputStyle} /></Field>
         </div>
 
-        <p style={{ fontSize: 11, color: colors.muted, margin: '10px 0 0' }}>
+        <p style={{ fontSize: 12, color: colors.muted, margin: '10px 0 0' }}>
           Ramp / launch / target occupancy here are the location's <strong>defaults, shared by every version</strong>.
           To vary the ramp per version (e.g. a slower ramp in "Budget"), set the
           "Ramp override" drivers on the Inputs → Drivers → locations tab of that version.
         </p>
         <h3 style={{ fontFamily: serifStack, fontSize: 16, color: colors.ink, margin: '20px 0 4px' }}>Capacity by age band</h3>
-        <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 10px' }}>
+        <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 10px' }}>
           Registered places apply to <strong>this version only</strong> — other versions keep their
           own split. Everything else on this form (LA, sq ft, opening month, lease terms) is shared
           by every version of the forecast.
@@ -1412,7 +1412,7 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
             <h3 style={{ fontFamily: serifStack, fontSize: 16, color: colors.ink, margin: '20px 0 6px' }}>
               Rent concession stages
             </h3>
-            <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 10px' }}>
+            <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 10px' }}>
               Sequential stages from the location's opening month. Months × Factor (100% = full rent, 50% = half price, 0% = free).
               Once stages are exhausted, full rent applies. Leave empty for no concession.
             </p>
@@ -1424,7 +1424,7 @@ function EntityModal({ forecast, entity, councils, scenarioId, modules, onClose,
             <h3 style={{ fontFamily: serifStack, fontSize: 16, color: colors.ink, margin: '20px 0 6px' }}>
               Service charge concession stages
             </h3>
-            <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 10px' }}>
+            <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 10px' }}>
               Independent of the rent schedule — a rent-free period rarely extends to the service charge,
               which is usually payable in full from day one. Leave empty for no concession.
             </p>
@@ -1456,7 +1456,7 @@ function ConcessionEditor({ stages, onChange }) {
   let cursor = 0;
   return (
     <div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack }}>
         <thead>
           <tr style={{ background: colors.bgSoft }}>
             <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: colors.muted }}>Stage</th>
@@ -1492,9 +1492,9 @@ function ConcessionEditor({ stages, onChange }) {
                     onChange={(e) => update(i, { factor: e.target.value === '' ? 0 : Number(e.target.value) / 100 })}
                     style={{ ...inputStyle, width: 80 }}
                   />
-                  <span style={{ marginLeft: 4, color: colors.muted, fontSize: 11 }}>%</span>
+                  <span style={{ marginLeft: 4, color: colors.muted, fontSize: 12 }}>%</span>
                 </td>
-                <td style={{ padding: '6px 10px', color: colors.muted, fontSize: 11 }}>
+                <td style={{ padding: '6px 10px', color: colors.muted, fontSize: 12 }}>
                   {months > 0 ? `m${from}–m${to}` : '—'}
                 </td>
                 <td style={{ padding: '6px 10px', textAlign: 'right' }}>
@@ -1507,7 +1507,7 @@ function ConcessionEditor({ stages, onChange }) {
       </table>
       <button onClick={add} style={{ ...btnGhost, marginTop: 6 }}>+ Add stage</button>
       {stages.length > 0 && (
-        <p style={{ fontSize: 11, color: colors.muted, margin: '6px 0 0' }}>
+        <p style={{ fontSize: 12, color: colors.muted, margin: '6px 0 0' }}>
           Full rent from month {cursor} onward.
         </p>
       )}
@@ -1518,7 +1518,7 @@ function ConcessionEditor({ stages, onChange }) {
 function Field({ label, children }) {
   return (
     <label style={{ display: 'block' }}>
-      <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 12, color: colors.muted, fontWeight: 600, marginBottom: 4 }}>{label}</div>
       {children}
     </label>
   );
@@ -1553,7 +1553,7 @@ function DriverFilters({ entities, unitOptions, filterEntity, setFilterEntity, f
   );
 }
 
-const filterSel = { padding: '7px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 12, fontFamily: fontStack, background: '#fff' };
+const filterSel = { padding: '7px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: fontStack, background: '#fff' };
 
 function prettyUnit(u) {
   switch (u) {
@@ -1569,13 +1569,13 @@ function prettyUnit(u) {
 
 const iconBtn = {
   background: 'transparent', border: `1px solid ${colors.border}`, borderRadius: 5,
-  padding: '2px 7px', fontSize: 12, lineHeight: 1, cursor: 'pointer',
+  padding: '2px 7px', fontSize: 13, lineHeight: 1, cursor: 'pointer',
   color: colors.muted, fontFamily: fontStack,
 };
-const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack };
+const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack };
 const th = { padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, background: colors.bgSoft };
 const td = { padding: '8px 10px', color: colors.ink, verticalAlign: 'top' };
-const thCompact = { padding: '4px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, background: colors.bgSoft, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 };
+const thCompact = { padding: '4px 8px', textAlign: 'left', fontWeight: 600, color: colors.muted, borderBottom: `1px solid ${colors.border}`, background: colors.bgSoft, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4 };
 const tdCompact = { padding: '4px 8px', color: colors.ink, verticalAlign: 'middle' };
 const modalBackdrop = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: fontStack };
 const modalCard = { background: '#fff', borderRadius: 16, padding: 28, maxWidth: 720, width: '100%', maxHeight: '90vh', overflowY: 'auto' };

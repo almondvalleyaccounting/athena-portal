@@ -40,7 +40,7 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComp
             color: '#fff',
             padding: '6px 14px',
             borderRadius: 8,
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
@@ -64,7 +64,7 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComp
     background: 'none',
     cursor: 'pointer',
     fontFamily: "'Outfit', sans-serif",
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: 500,
     color: '#1e293b',
     minWidth: 44,
@@ -78,7 +78,7 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComp
         onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
       >
-        <span style={{ fontSize: 14, lineHeight: 1 }}>&#9998;</span>
+        <span style={{ fontSize: 14.5, lineHeight: 1 }}>&#9998;</span>
         Open
       </button>
       <button
@@ -90,7 +90,7 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComp
         onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
       >
-        <span style={{ fontSize: 14, lineHeight: 1 }}>&#10003;</span>
+        <span style={{ fontSize: 14.5, lineHeight: 1 }}>&#10003;</span>
         Done
       </button>
       <button
@@ -102,7 +102,7 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComp
         onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
       >
-        <span style={{ fontSize: 14, lineHeight: 1 }}>&#10005;</span>
+        <span style={{ fontSize: 14.5, lineHeight: 1 }}>&#10005;</span>
         Not Req
       </button>
       {onDelete && (
@@ -112,7 +112,7 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComp
           onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
         >
-          <span style={{ fontSize: 14, lineHeight: 1 }}>&#128465;</span>
+          <span style={{ fontSize: 14.5, lineHeight: 1 }}>&#128465;</span>
           Delete
         </button>
       )}

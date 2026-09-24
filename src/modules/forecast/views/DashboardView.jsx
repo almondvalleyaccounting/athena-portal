@@ -181,10 +181,10 @@ export default function DashboardView({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h2 style={{ fontFamily: serifStack, fontSize: 22, fontWeight: 500, color: colors.ink, margin: 0 }}>
-            Dashboard <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)} · Y{activeYear}</span>
+            Dashboard <span style={{ fontSize: 14, fontWeight: 400, color: colors.muted, marginLeft: 8 }}>· {filterLabel(filter, entities, groups)} · Y{activeYear}</span>
           </h2>
           {scopeMembersText && (
-            <p style={{ fontSize: 11, color: colors.muted, margin: '4px 0 0', fontStyle: 'italic' }}>
+            <p style={{ fontSize: 12, color: colors.muted, margin: '4px 0 0', fontStyle: 'italic' }}>
               {scopeMembersText}
             </p>
           )}
@@ -195,7 +195,7 @@ export default function DashboardView({
               value={filter} onChange={onFilterChange} />
           )}
           <select value={activeYear} onChange={(e) => setSelectedYear(Number(e.target.value))}
-            style={{ padding: '7px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 12, fontFamily: fontStack, background: '#fff' }}>
+            style={{ padding: '7px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: fontStack, background: '#fff' }}>
             {yearOptions.map(y => <option key={y} value={y}>Year {y}</option>)}
           </select>
         </div>
@@ -276,7 +276,7 @@ export default function DashboardView({
 
       {/* Consolidated matrix: capacity / occupancy / income / cost / net */}
       <Section title={`Capacity, income & costs · Y${activeYear}`}>
-        <p style={{ fontSize: 11, color: colors.muted, margin: '0 0 10px' }}>
+        <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 10px' }}>
           Direct rows show fees and ratio-driven staff cost per age band. Central rows split shared costs:
           <strong> Management</strong> = manager salaries + pre-opening staffing;
           <strong> Admin</strong> = central admin overhead;
@@ -298,7 +298,7 @@ export default function DashboardView({
           </thead>
           <tbody>
             <tr style={{ ...tr, background: '#f1f5f9' }}>
-              <td style={{ ...td, fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: colors.muted }} colSpan={7}>
+              <td style={{ ...td, fontWeight: 700, fontSize: 11, color: colors.muted }} colSpan={7}>
                 Direct (by age band)
               </td>
             </tr>
@@ -335,7 +335,7 @@ export default function DashboardView({
             </tr>
 
             <tr style={{ ...tr, background: '#f1f5f9' }}>
-              <td style={{ ...td, fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: colors.muted }} colSpan={7}>
+              <td style={{ ...td, fontWeight: 700, fontSize: 11, color: colors.muted }} colSpan={7}>
                 Central
               </td>
             </tr>
@@ -376,7 +376,7 @@ function CentralRow({ label, hint, amount }) {
     <tr style={{ borderBottom: `1px solid ${colors.borderSoft}` }}>
       <td style={{ padding: '8px 12px', color: colors.ink }}>
         <strong>{label}</strong>
-        <span style={{ display: 'block', fontSize: 10, color: colors.muted, fontWeight: 400 }}>{hint}</span>
+        <span style={{ display: 'block', fontSize: 11, color: colors.muted, fontWeight: 400 }}>{hint}</span>
       </td>
       <td style={{ padding: '8px 12px', textAlign: 'right', color: colors.muted }}>—</td>
       <td style={{ padding: '8px 12px', textAlign: 'right', color: colors.muted }}>—</td>
@@ -415,20 +415,20 @@ function SplitBar({ left, right }) {
       <div style={{ display: 'flex', height: 36, borderRadius: 6, overflow: 'hidden', border: `1px solid ${colors.border}`, marginBottom: 8 }}>
         {total > 0 ? (
           <>
-            <div style={{ width: lp + '%', background: left.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>
+            <div style={{ width: lp + '%', background: left.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
               {lp >= 8 ? `${left.label} · ${fmtPct(lp)}` : ''}
             </div>
-            <div style={{ width: rp + '%', background: right.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>
+            <div style={{ width: rp + '%', background: right.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
               {rp >= 8 ? `${right.label} · ${fmtPct(rp)}` : ''}
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, background: colors.bgSoft, color: colors.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>
+          <div style={{ flex: 1, background: colors.bgSoft, color: colors.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
             No revenue this year
           </div>
         )}
       </div>
-      <div style={{ display: 'flex', gap: 24, fontSize: 12, color: colors.inkSoft }}>
+      <div style={{ display: 'flex', gap: 24, fontSize: 13, color: colors.inkSoft }}>
         <div><span style={{ display: 'inline-block', width: 10, height: 10, background: left.color, borderRadius: 2, marginRight: 6 }} />
           {left.label}: <strong>{fmtP(left.amount, { compact: true })}</strong> ({fmtPct(lp)})</div>
         <div><span style={{ display: 'inline-block', width: 10, height: 10, background: right.color, borderRadius: 2, marginRight: 6 }} />
@@ -438,7 +438,7 @@ function SplitBar({ left, right }) {
   );
 }
 
-const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack, background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8 };
+const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: fontStack, background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8 };
 const trHead = { background: colors.bgSoft };
 const tr = { borderBottom: `1px solid ${colors.borderSoft}` };
 const th = { padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: colors.muted };

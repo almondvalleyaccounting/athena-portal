@@ -28,21 +28,20 @@ const font = "'Outfit', sans-serif";
 */
 
 const btnPrimary = (enabled) => ({
-  padding: '8px 16px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '8px 16px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: enabled ? '#0e7fe0' : '#e5e7eb', color: enabled ? '#fff' : '#94a3b8',
   border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
 });
 const btnGhost = {
-  padding: '7px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: font,
+  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: '#fff', color: '#334155', border: '1px solid #e5e7eb',
   borderRadius: 8, cursor: 'pointer',
 };
 const th = {
-  padding: '8px 10px', fontSize: 11, fontWeight: 600, color: '#64748b',
-  textAlign: 'left', textTransform: 'uppercase', letterSpacing: 0.4,
-  borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
+  padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#64748b',
+  textAlign: 'left', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
 };
-const td = { padding: '7px 10px', fontSize: 12.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
+const td = { padding: '7px 10px', fontSize: 13.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
 // Sticky header so the whole preview list scrolls under fixed column titles.
 const thSticky = { ...th, position: 'sticky', top: 0, background: '#fff', zIndex: 1 };
 
@@ -187,10 +186,10 @@ export default function TaxBatchUpload({ entities, ignoreUtrs = [], profileId, o
   };
 
   const selStyle = {
-    padding: '5px 8px', fontSize: 12, fontFamily: font, border: '1px solid #e5e7eb',
+    padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb',
     borderRadius: 6, background: '#fff', color: '#1e293b',
   };
-  const lbl = { fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 3, display: 'block' };
+  const lbl = { fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 3, display: 'block' };
 
   const unmatchedTotal = parsed.length - stats.ok - stats.ignored;
 
@@ -200,10 +199,10 @@ export default function TaxBatchUpload({ entities, ignoreUtrs = [], profileId, o
         <div style={{
           display: 'flex', alignItems: 'flex-start', gap: 8, padding: '9px 12px',
           background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8,
-          fontSize: 12.5, color: '#b91c1c', marginBottom: 10,
+          fontSize: 13.5, color: '#b91c1c', marginBottom: 10,
         }}>
           <div style={{ flex: 1 }}>{err}</div>
-          <button onClick={() => setErr(null)} style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', fontSize: 13, fontFamily: font, padding: 0 }}>×</button>
+          <button onClick={() => setErr(null)} style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', fontSize: 14, fontFamily: font, padding: 0 }}>×</button>
         </div>
       )}
 
@@ -240,7 +239,7 @@ export default function TaxBatchUpload({ entities, ignoreUtrs = [], profileId, o
             </div>
           </div>
 
-          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+          <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>
             {parsed.length} row{parsed.length === 1 ? '' : 's'} with a POA amount will import
             {mapping.reference >= 0 && mapping.surname >= 0 && (
               <> — <strong style={{ color: '#166534' }}>{stats.ok} matched</strong> by UTR + surname
@@ -253,7 +252,7 @@ export default function TaxBatchUpload({ entities, ignoreUtrs = [], profileId, o
             )}.
           </div>
           {unmatchedTotal > 0 && (
-            <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 6 }}>
+            <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 6 }}>
               Unmatched rows still import. After saving, open <strong>Client Tax Reminders</strong> to match
               each to a client (per-row picker) or mark it <strong>Excluded</strong> — e.g. someone whose
               tax return you file but who isn’t a practice client. Only matched, opted-in clients are emailed.

@@ -182,7 +182,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
   if (!canManage) {
     return (
       <div style={cardStyle}>
-        <p style={{ fontFamily: OUTFIT, fontSize: 13.5, color: '#64748b', margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontFamily: OUTFIT, fontSize: 14.5, color: '#64748b', margin: 0, lineHeight: 1.6 }}>
           Giving a client sight of their own figures needs the Portal admin permission.
           Ask Bobby, Tracy or whoever holds it — the whole picture is on
           {' '}<strong>Admin → Client Dashboard Access</strong>.
@@ -194,7 +194,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
   if (!entityId) {
     return (
       <div style={cardStyle}>
-        <p style={{ fontFamily: OUTFIT, fontSize: 13.5, color: '#64748b', margin: 0 }}>
+        <p style={{ fontFamily: OUTFIT, fontSize: 14.5, color: '#64748b', margin: 0 }}>
           Choose a client first.
         </p>
       </div>
@@ -206,10 +206,10 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
       <div style={cardStyle}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontFamily: OUTFIT, fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
+            <div style={{ fontFamily: OUTFIT, fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>
               Who can see {clientName || 'this client'}'s own dashboard
             </div>
-            <p style={{ fontFamily: OUTFIT, fontSize: 12.5, color: '#64748b', margin: '5px 0 0', lineHeight: 1.6 }}>
+            <p style={{ fontFamily: OUTFIT, fontSize: 13.5, color: '#64748b', margin: '5px 0 0', lineHeight: 1.6 }}>
               One grant is one person and one client. They see the same reports and the same
               controls we do — their own date range, the same comparatives, rows that expand to
               account level — filtered to the sections ticked here.
@@ -222,7 +222,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 16px',
               border: 'none', borderRadius: 10, backgroundColor: realmId ? '#0f172a' : '#cbd5e1',
-              color: '#fff', fontFamily: OUTFIT, fontSize: 13, fontWeight: 700,
+              color: '#fff', fontFamily: OUTFIT, fontSize: 14, fontWeight: 700,
               cursor: realmId ? 'pointer' : 'not-allowed',
             }}
           >
@@ -232,7 +232,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
 
         {msg && (
           <div style={{
-            marginTop: 14, padding: '10px 14px', borderRadius: 10, fontFamily: OUTFIT, fontSize: 13,
+            marginTop: 14, padding: '10px 14px', borderRadius: 10, fontFamily: OUTFIT, fontSize: 14,
             backgroundColor: msg.tone === 'error' ? '#fef2f2' : '#f0fdf4',
             border: `1px solid ${msg.tone === 'error' ? '#fecaca' : '#bbf7d0'}`,
             color: msg.tone === 'error' ? '#991b1b' : '#166534',
@@ -246,7 +246,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
           padding: '11px 15px', backgroundColor: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 11,
         }}>
           <Info size={15} style={{ color: '#94a3b8', flexShrink: 0, marginTop: 1 }} />
-          <span style={{ fontFamily: OUTFIT, fontSize: 12.5, color: '#64748b', lineHeight: 1.6 }}>
+          <span style={{ fontFamily: OUTFIT, fontSize: 13.5, color: '#64748b', lineHeight: 1.6 }}>
             Giving access also issues a portal invite if they haven't one, so they can actually sign
             in — but it tells them nothing. <strong>Send link</strong> does that: the portal address
             and the email address to use, with no code and no link that signs anyone in, blind-copied
@@ -259,7 +259,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
       </div>
 
       {loading && (
-        <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 9, color: '#94a3b8', fontFamily: OUTFIT, fontSize: 13 }}>
+        <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 9, color: '#94a3b8', fontFamily: OUTFIT, fontSize: 14 }}>
           <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Loading…
         </div>
       )}
@@ -267,7 +267,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
       {!loading && live.length === 0 && (
         <div style={{
           padding: '38px 24px', textAlign: 'center', border: '1px dashed #cbd5e1',
-          borderRadius: 14, color: '#64748b', fontFamily: OUTFIT, fontSize: 13.5,
+          borderRadius: 14, color: '#64748b', fontFamily: OUTFIT, fontSize: 14.5,
         }}>
           Nobody at {clientName || 'this client'} can see their dashboard yet.
         </div>
@@ -302,7 +302,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
         <div>
           <button
             onClick={() => setShowRevoked((x) => !x)}
-            style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: OUTFIT, fontSize: 13, fontWeight: 600, color: '#64748b' }}
+            style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: OUTFIT, fontSize: 14, fontWeight: 600, color: '#64748b' }}
           >
             {showRevoked ? '▾' : '▸'} Previously removed ({revoked.length})
           </button>
@@ -321,10 +321,10 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
 
       {/* ── Reports published to the client ────────────────────── */}
       <div style={cardStyle}>
-        <div style={{ fontFamily: OUTFIT, fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
+        <div style={{ fontFamily: OUTFIT, fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>
           Reports published to the client
         </div>
-        <p style={{ fontFamily: OUTFIT, fontSize: 12.5, color: '#64748b', margin: '5px 0 12px', lineHeight: 1.6 }}>
+        <p style={{ fontFamily: OUTFIT, fontSize: 13.5, color: '#64748b', margin: '5px 0 12px', lineHeight: 1.6 }}>
           A report is a working paper until you publish it. Published reports appear as their own tab
           on the client's dashboard, and only for people whose grant has <strong>Reports</strong>
           {' '}ticked above — so a report published here still shows nobody anything until somebody
@@ -332,7 +332,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
         </p>
 
         {reports.length === 0 && (
-          <div style={{ fontFamily: OUTFIT, fontSize: 13, color: '#94a3b8' }}>
+          <div style={{ fontFamily: OUTFIT, fontSize: 14, color: '#94a3b8' }}>
             No custom reports reach this client yet. Build one on the Reports tab.
           </div>
         )}
@@ -343,10 +343,10 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
             borderTop: '1px solid #f1f5f9',
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: OUTFIT, fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>
+              <div style={{ fontFamily: OUTFIT, fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>
                 {r.name}
               </div>
-              <div style={{ fontFamily: OUTFIT, fontSize: 11.5, color: '#94a3b8' }}>
+              <div style={{ fontFamily: OUTFIT, fontSize: 12.5, color: '#94a3b8' }}>
                 {r.entity_id ? 'this client only' : r.sector_id ? 'every client in the sector' : 'practice-wide'}
                 {r.description ? ` · ${r.description}` : ''}
               </div>
@@ -356,7 +356,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
               disabled={busy === r.id}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px',
-                borderRadius: 999, fontFamily: OUTFIT, fontSize: 12, fontWeight: 600,
+                borderRadius: 999, fontFamily: OUTFIT, fontSize: 13, fontWeight: 600,
                 cursor: busy === r.id ? 'wait' : 'pointer',
                 border: `1px solid ${r.is_client_visible ? '#bbf7d0' : '#e5e7eb'}`,
                 background: r.is_client_visible ? '#f0fdf4' : '#fff',
@@ -408,7 +408,7 @@ function AccessTable({ rows, busy, onToggle, action, readOnly }) {
             <tr key={r.id}>
               <td style={td}>
                 <div style={{ fontWeight: 600, color: '#0f172a' }}>{r.email}</div>
-                <div style={{ fontSize: 11.5, color: personStatus(r).tone }}>
+                <div style={{ fontSize: 12.5, color: personStatus(r).tone }}>
                   {personStatus(r).text}
                 </div>
               </td>
@@ -430,7 +430,7 @@ function AccessTable({ rows, busy, onToggle, action, readOnly }) {
               ))}
               <td style={{ ...td, whiteSpace: 'nowrap' }}>
                 {fmtDate(r.granted_at)}
-                {r.granted_by_name && <div style={{ fontSize: 11.5, color: '#94a3b8' }}>by {r.granted_by_name}</div>}
+                {r.granted_by_name && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>by {r.granted_by_name}</div>}
               </td>
               <td style={{ ...td, whiteSpace: 'nowrap', color: r.last_viewed_at ? '#334155' : '#cbd5e1' }}>
                 {r.last_viewed_at ? fmtDate(r.last_viewed_at) : 'never'}
@@ -519,7 +519,7 @@ function GrantModal({ entityId, clientName, existing, onClose, onDone, onError }
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 22px', borderBottom: '1px solid #e5e7eb' }}>
-          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
             Give {clientName || 'this client'} dashboard access
           </span>
           <button onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
@@ -540,7 +540,7 @@ function GrantModal({ entityId, clientName, existing, onClose, onDone, onError }
 
           {contacts.length > 0 && (
             <div>
-              <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 6 }}>
+              <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 6 }}>
                 Their contacts on file
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -552,7 +552,7 @@ function GrantModal({ entityId, clientName, existing, onClose, onDone, onError }
                       border: `1px solid ${email === c.email ? '#0f172a' : '#e5e7eb'}`,
                       background: email === c.email ? '#0f172a' : '#fff',
                       color: email === c.email ? '#fff' : '#334155',
-                      borderRadius: 999, padding: '5px 12px', fontSize: 12,
+                      borderRadius: 999, padding: '5px 12px', fontSize: 13,
                       cursor: 'pointer', fontFamily: OUTFIT,
                     }}
                     title={c.roles.join(', ')}
@@ -565,14 +565,14 @@ function GrantModal({ entityId, clientName, existing, onClose, onDone, onError }
           )}
 
           {clash && (
-            <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '9px 13px' }}>
+            <div style={{ fontSize: 13.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '9px 13px' }}>
               They already have access to this client. Saving will overwrite their sections with the
               ones ticked below.
             </div>
           )}
 
           <div>
-            <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 8 }}>
+            <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 8 }}>
               What they see
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -585,8 +585,8 @@ function GrantModal({ entityId, clientName, existing, onClose, onDone, onError }
                     style={{ width: 16, height: 16, marginTop: 2, cursor: 'pointer', accentColor: '#0f172a' }}
                   />
                   <span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{s.label}</span>
-                    <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', lineHeight: 1.5 }}>{s.hint}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{s.label}</span>
+                    <span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8', lineHeight: 1.5 }}>{s.hint}</span>
                   </span>
                 </label>
               ))}
@@ -613,7 +613,7 @@ function GrantModal({ entityId, clientName, existing, onClose, onDone, onError }
               display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 18px',
               border: 'none', borderRadius: 10,
               backgroundColor: (!valid || saving) ? '#cbd5e1' : '#0f172a',
-              color: '#fff', fontFamily: OUTFIT, fontSize: 13, fontWeight: 700,
+              color: '#fff', fontFamily: OUTFIT, fontSize: 14, fontWeight: 700,
               cursor: (!valid || saving) ? 'not-allowed' : 'pointer',
             }}
           >
@@ -628,22 +628,21 @@ function GrantModal({ entityId, clientName, existing, onClose, onDone, onError }
 
 /* ─── Styles ───────────────────────────────────────────────────── */
 const th = {
-  fontFamily: OUTFIT, fontSize: 11, color: '#94a3b8', fontWeight: 700, textAlign: 'left',
+  fontFamily: OUTFIT, fontSize: 12, color: '#94a3b8', fontWeight: 700, textAlign: 'left',
   padding: '10px 12px', whiteSpace: 'nowrap', borderBottom: '1px solid #e5e7eb',
-  textTransform: 'uppercase', letterSpacing: '0.04em',
-};
+  };
 const td = {
-  fontFamily: OUTFIT, fontSize: 13, color: '#334155', padding: '11px 12px',
+  fontFamily: OUTFIT, fontSize: 14, color: '#334155', padding: '11px 12px',
   borderBottom: '1px solid #f1f5f9', verticalAlign: 'top',
 };
 const fieldLabel = {
   display: 'flex', flexDirection: 'column', gap: 6,
-  fontFamily: OUTFIT, fontSize: 12, fontWeight: 600, color: '#475569',
+  fontFamily: OUTFIT, fontSize: 13, fontWeight: 600, color: '#475569',
 };
 const linkishBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px',
   border: '1px solid #e5e7eb', borderRadius: 9, background: '#fff',
-  fontFamily: OUTFIT, fontSize: 12, fontWeight: 600, color: '#334155', cursor: 'pointer',
+  fontFamily: OUTFIT, fontSize: 13, fontWeight: 600, color: '#334155', cursor: 'pointer',
 };
 const dangerBtn = { ...linkishBtn, color: '#991b1b', borderColor: '#fecaca' };
 // Nudged, not shouted: the one row action that is outstanding work rather than

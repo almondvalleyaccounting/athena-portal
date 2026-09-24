@@ -151,7 +151,7 @@ export default function LedgerView({
           <h2 style={{ fontFamily: serifStack, fontSize: 22, fontWeight: 500, color: colors.ink, margin: 0 }}>
             {isPnl ? 'Profit & Loss' : 'Cashflow'}
           </h2>
-          <p style={{ fontSize: 11, color: colors.muted, margin: '4px 0 0' }}>
+          <p style={{ fontSize: 12, color: colors.muted, margin: '4px 0 0' }}>
             {isPnl
               ? 'Click any forecast figure to override that month. Actual months are shaded and cannot be edited.'
               : `Forecast only — historic cash movements are not imported. The opening bank balance comes from the actual balance sheet before ${periodLabel(0, forecast.opening_period)}.`}
@@ -160,7 +160,7 @@ export default function LedgerView({
         {isPnl && actualMonths.length > 0 && (
           <button onClick={() => setShowActuals(s => !s)}
             style={{
-              padding: '5px 10px', fontSize: 11, fontFamily: fontStack, cursor: 'pointer',
+              padding: '5px 10px', fontSize: 12, fontFamily: fontStack, cursor: 'pointer',
               border: `1px solid ${colors.border}`, borderRadius: 6,
               background: showActuals ? colors.ink : '#fff',
               color: showActuals ? '#fff' : colors.inkSoft,
@@ -172,11 +172,11 @@ export default function LedgerView({
 
       {err && (
         <div style={{ padding: 10, background: '#fef2f2', border: `1px solid ${colors.red}`,
-          borderRadius: 8, color: colors.red, fontSize: 12, marginBottom: 10 }}>{err}</div>
+          borderRadius: 8, color: colors.red, fontSize: 13, marginBottom: 10 }}>{err}</div>
       )}
 
       <div style={{ overflowX: 'auto', border: `1px solid ${colors.border}`, borderRadius: 8, background: '#fff' }}>
-        <table style={{ borderCollapse: 'collapse', fontSize: 11, fontFamily: fontStack, minWidth: '100%' }}>
+        <table style={{ borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack, minWidth: '100%' }}>
           <thead>
             {/* Band row — the actuals/forecast boundary, stated once and plainly. */}
             <tr>
@@ -273,7 +273,7 @@ export default function LedgerView({
         </table>
       </div>
 
-      <p style={{ fontSize: 11, color: colors.muted, marginTop: 8 }}>
+      <p style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>
         {isPnl
           ? 'Overridden months show a dot; click the dot to put the month back on its projection.'
           : 'Each line is the cash effect of the matching P&L line after its payment terms — receipts include VAT, payroll splits into net pay and PAYE, and a line on a quarterly cadence or a payment cap moves when its terms say. These figures are not edited directly: change the invoice on the P&L tab, or the terms under Cash timing on Lines & assumptions.'}
@@ -293,7 +293,7 @@ function LineRow({ line, actuals, actualValues, periods, values, editable, editi
     <tr style={{ opacity: inactive ? 0.45 : 1 }}>
       <td style={{ ...tdBase, position: 'sticky', left: 0, zIndex: 2, background: '#fff', paddingLeft: 20 }}>
         {line.label}
-        {inactive && <span style={{ color: colors.amber, marginLeft: 6, fontSize: 10 }}>excluded</span>}
+        {inactive && <span style={{ color: colors.amber, marginLeft: 6, fontSize: 11 }}>excluded</span>}
       </td>
       {actuals.map(m => (
         <td key={m} title="Actual, from QuickBooks — not editable"
@@ -427,7 +427,7 @@ function CellEditor({ initial, onCommit, onCancel }) {
       style={{
         width: '100%', boxSizing: 'border-box', padding: '4px 6px', textAlign: 'right',
         border: `2px solid ${colors.accent}`, borderRadius: 4, outline: 'none',
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12,
       }}
     />
   );
@@ -436,11 +436,11 @@ function CellEditor({ initial, onCommit, onCancel }) {
 /* ── Cell styles ────────────────────────────────────────────────── */
 
 const thBase = {
-  padding: '7px 10px', fontSize: 10, fontWeight: 700, color: colors.muted,
+  padding: '7px 10px', fontSize: 11, fontWeight: 700, color: colors.muted,
   borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap', textAlign: 'left',
 };
 const bandTh = {
-  padding: '4px 10px', fontSize: 10, fontWeight: 700, textAlign: 'center',
+  padding: '4px 10px', fontSize: 11, fontWeight: 700, textAlign: 'center',
   textTransform: 'uppercase', letterSpacing: 0.6, borderBottom: `1px solid ${colors.border}`,
 };
 const numTh = { textAlign: 'right', minWidth: 84 };
@@ -452,6 +452,5 @@ const numTd = {
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
 };
 const sectionTd = {
-  padding: '6px 10px', background: '#0f172a', color: '#e2e8f0', fontSize: 10,
-  fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
-};
+  padding: '6px 10px', background: '#0f172a', color: '#e2e8f0', fontSize: 11,
+  fontWeight: 700, };
