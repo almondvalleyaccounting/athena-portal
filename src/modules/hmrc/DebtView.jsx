@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Download, ExternalLink, Search } from 'lucide-react';
+import { AlertTriangle, Download, ExternalLink, Search, ListChecks } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import { fmtGbp, fmtGbpDetailed } from '../../lib/money';
 import { downloadCSV } from '../../lib/exportUtils';
 import { useAuth } from '../../shell/AppShell';
 import DataTable, { sortRows } from '../../components/DataTable';
+import RowMenu from '../../components/RowMenu';
 import { saveReview } from './hmrcApi';
 import SchemeDetailPanel from './SchemeDetailPanel';
 import {
@@ -289,32 +290,16 @@ export default function DebtView({ entityId = '' }) {
       ),
     },
     {
-      key: 'actions', label: '', width: 170, sortable: false,
+      key: 'actions', label: '', width: 56, align: 'right', sortable: false,
+      // One main action per row (UI audit, Sprint 4): the status dropdown is
+      // the row's action and the name opens the statement, so "HMRC detail"
+      // (HMRC's raw overdue items and credits — the one thing the statement
+      // does not restate) and the client link move into the ⋮ menu.
       render: (r) => (
-        <>
-          {/* HMRC's raw overdue items and credits for the scheme —
-              the one thing the statement does not restate. */}
-          <button
-            onClick={() => openScheme(r.paye_ref)}
-            title="HMRC's own overdue items, monthly position and credits for this scheme"
-            style={{
-              background: 'none', border: 'none', padding: 0, marginRight: 10, cursor: 'pointer',
-              fontFamily: font, fontSize: 13, color: '#64748b',
-            }}
-          >
-            HMRC detail
-          </button>
-          {r.entity_id && (
-            <a
-              href={`/clients/${r.entity_id}`}
-              target="_blank"
-              rel="noreferrer"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#64748b', textDecoration: 'none' }}
-            >
-              Client <ExternalLink size={11} />
-            </a>
-          )}
-        </>
+        <RowMenu items={[
+          { label: 'HMRC detail', icon: ListChecks, title: "HMRC's own overdue items, monthly position and credits for this scheme", onClick: () => openScheme(r.paye_ref) },
+          r.entity_id && { label: 'Open client record', icon: ExternalLink, title: 'Opens in a new tab', onClick: () => window.open(`/clients/${r.entity_id}`, '_blank', 'noopener') },
+        ].filter(Boolean)} />
       ),
     },
   ];

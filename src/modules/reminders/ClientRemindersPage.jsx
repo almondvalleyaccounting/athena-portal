@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import DataTable from '../../components/DataTable';
+import { Trash2 } from 'lucide-react';
+import RowMenu from '../../components/RowMenu';
 import { useAuth } from '../../shell/AppShell';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import {
@@ -648,18 +650,6 @@ export default function ClientRemindersPage() {
                   by hand
                 </span>
               )}
-              {isManual && (
-                <button
-                  onClick={() => deleteManualRow(row)}
-                  title="Remove this hand-added row from the batch"
-                  style={{
-                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                    fontFamily: font, fontSize: 13, color: '#cbd5e1', lineHeight: 1,
-                  }}
-                >
-                  ×
-                </button>
-              )}
             </div>
             {row.reference_raw && <div style={{ fontSize: 12, color: '#94a3b8' }}>{row.reference_raw}</div>}
             {isManual && row.status_note && (
@@ -820,6 +810,14 @@ export default function ClientRemindersPage() {
           </button>
         );
       },
+    },
+    {
+      // Hand-added rows can be removed; the × by the name moved here into a
+      // ⋮ menu (UI audit, Sprint 4). Same handler and confirm.
+      key: 'rowmenu', label: '', width: 56, align: 'right', sortable: false,
+      render: (row) => ((row.source || 'taxcalc') === 'manual'
+        ? <RowMenu items={[{ label: 'Remove hand-added row…', icon: Trash2, danger: true, onClick: () => deleteManualRow(row) }]} />
+        : null),
     },
     {
       key: 'last', label: 'Last contact', width: 170, wrap: true, firstDir: 'desc',

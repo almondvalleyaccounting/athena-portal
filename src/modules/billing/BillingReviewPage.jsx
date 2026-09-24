@@ -4,6 +4,7 @@ import { ArrowLeft, Check, X, Edit2, CalendarX, Copy, RotateCcw, MailWarning } f
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import DataTable from '../../components/DataTable';
+import RowMenu from '../../components/RowMenu';
 import { useAuth } from '../../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import SearchInput from '../../components/SearchInput';
@@ -507,53 +508,37 @@ export default function BillingReviewPage() {
       ),
     },
     {
-      key: 'actions', label: '', width: 210, sortable: false,
+      key: 'actions', label: '', width: 170, sortable: false,
+      // One main action per row (UI audit, Sprint 4): a line waiting for
+      // review (or rejected) gets Approve; an approved line just says so.
+      // Reject, Un-approve, Mark ending, the duplicate flag and Edit move into
+      // the ⋮ menu. Same handlers as before.
       render: (i) => {
         const s = i.service;
         const isEdit = editing?.rowId === i.rowId && editing?.serviceIdx === i.serviceIdx;
+        const guard = (fn) => () => { if (!saving) fn(); };
+        const items = [
+          { label: isEdit ? 'Close the editor' : 'Edit cadence and amount', icon: Edit2, onClick: guard(() => setEditing(isEdit ? null : { rowId: i.rowId, serviceIdx: i.serviceIdx })) },
+          s.recurring_status === 'ending'
+            ? { label: 'Unmark ending (back to recurring)', icon: CalendarX, onClick: guard(() => toggleEnding(i)) }
+            : { label: 'Mark ending', icon: CalendarX, onClick: guard(() => toggleEnding(i)), title: 'Drops from future billing' },
+          (isDup(i) || s.duplicate_acknowledged) && (s.duplicate_acknowledged
+            ? { label: 'Re-flag as a possible duplicate', icon: Copy, onClick: guard(() => unacknowledgeDuplicate(i)) }
+            : { label: 'Not a duplicate (intentional)', icon: Copy, onClick: guard(() => acknowledgeDuplicate(i)) }),
+          i.status === 'approved' && { label: 'Un-approve', icon: RotateCcw, onClick: guard(() => unapprove(i)) },
+          i.status !== 'rejected' && { label: 'Reject', icon: X, onClick: guard(() => reject(i)) },
+        ].filter(Boolean);
         return (
-          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center' }}>
-            {i.status !== 'approved' && (
-              <button onClick={() => approve(i)} disabled={saving} title="Approve" style={iconBtn('#059669')}>
-                <Check size={13} />
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+            {i.status !== 'approved' ? (
+              <button onClick={() => approve(i)} disabled={saving} title="Approve"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', fontSize: 13, fontWeight: 600, borderRadius: 6, border: 'none', background: '#059669', color: '#fff', cursor: saving ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif" }}>
+                <Check size={13} strokeWidth={3} />Approve
               </button>
+            ) : (
+              <span style={{ fontSize: 12.5, color: '#64748b' }}>Approved</span>
             )}
-            {i.status !== 'rejected' && (
-              <button onClick={() => reject(i)} disabled={saving} title="Reject" style={iconBtn('#b91c1c')}>
-                <X size={13} />
-              </button>
-            )}
-            {i.status === 'approved' && (
-              <button onClick={() => unapprove(i)} disabled={saving} title="Un-approve" style={iconBtn('#64748b')}>
-                <RotateCcw size={13} />
-              </button>
-            )}
-            <button
-              onClick={() => toggleEnding(i)}
-              disabled={saving}
-              title={s.recurring_status === 'ending' ? 'Unmark ending (back to recurring)' : 'Mark ending (drops from future billing)'}
-              style={iconBtn(s.recurring_status === 'ending' ? '#b45309' : '#64748b')}
-            >
-              <CalendarX size={13} />
-            </button>
-            {(isDup(i) || s.duplicate_acknowledged) && (
-              <button
-                onClick={() => s.duplicate_acknowledged ? unacknowledgeDuplicate(i) : acknowledgeDuplicate(i)}
-                disabled={saving}
-                title={s.duplicate_acknowledged ? 'Re-flag as potential duplicate' : 'Mark not a duplicate (intentional)'}
-                style={iconBtn(s.duplicate_acknowledged ? '#475569' : '#b91c1c')}
-              >
-                <Copy size={13} />
-              </button>
-            )}
-            <button
-              onClick={() => setEditing(isEdit ? null : { rowId: i.rowId, serviceIdx: i.serviceIdx })}
-              disabled={saving}
-              title="Edit cadence and amount"
-              style={iconBtn(isEdit ? '#0e7fe0' : '#64748b')}
-            >
-              <Edit2 size={13} />
-            </button>
+            <RowMenu items={items} />
           </div>
         );
       },
@@ -1235,15 +1220,6 @@ const pendingBarStyle = { display: 'flex', alignItems: 'center', gap: 8, padding
 const btnPushDry = { padding: '6px 14px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnPushLive = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnGhost = { padding: '6px 12px', fontSize: 13, fontWeight: 500, background: 'none', color: '#cbd5e1', border: 'none', cursor: 'pointer', fontFamily: font };
-
-function iconBtn(color) {
-  return {
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    width: 24, height: 24, padding: 0,
-    background: '#fff', border: `1px solid ${color}40`, borderRadius: 6,
-    color, cursor: 'pointer',
-  };
-}
 
 function tagStyle(tone) {
   // Legacy tone names → semantic. teal historically meant "QBO
