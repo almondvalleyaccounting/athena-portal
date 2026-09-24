@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail, MailX } from 'lucide-react';
+import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail, MailX, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import DataTable from '../../components/DataTable';
+import RowMenu from '../../components/RowMenu';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
 import SearchInput from '../../components/SearchInput';
@@ -443,51 +444,58 @@ export default function BillingUpliftReviewPage() {
       ),
     },
     {
-      key: 'status', label: 'Status', width: 100, sortValue: (r) => r.uplift_review_status || 'staged',
-      render: (r) => <StatusChip status={r.uplift_review_status || 'staged'} />,
+      key: 'status', label: 'Status', width: 150, sortValue: (r) => r.uplift_review_status || 'staged',
+      // "No email" was only a red envelope icon; it's a tag now so the rows
+      // that won't get a letter can be seen at a glance.
+      render: (r) => (
+        <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+          <StatusChip status={r.uplift_review_status || 'staged'} />
+          {r.uplift_email_skipped && (
+            <span title="This client won't get the fee-raise email (excluded from Send all)" style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#b91c1c' }}>No email</span>
+          )}
+        </span>
+      ),
     },
     {
-      key: 'actions', label: '', width: 200, sortable: false,
+      key: 'actions', label: '', width: 190, sortable: false,
+      // One main action per row (UI audit, Sprint 4): the row's next step is
+      // the button, the rest are in the ⋮ menu with Discard last and in red.
+      // Same handlers as before — only where they sit has changed.
       render: (r) => {
         const status = r.uplift_review_status || 'staged';
+        const skipped = !!r.uplift_email_skipped;
+        const guard = (fn) => () => { if (!saving) fn(); };
+        const approve = { label: 'Approve', icon: Check, onClick: guard(() => setStatus([r.id], 'approved')) };
+        const preview = !skipped && { label: 'Preview email', icon: Mail, onClick: guard(() => setEmailFor(r)) };
+        const emailToggle = skipped
+          ? { label: 'Email this client after all', icon: Mail, onClick: guard(() => setEmailSkipped([r.id], false)) }
+          : { label: "Don't email this client", icon: MailX, onClick: guard(() => setEmailSkipped([r.id], true)), title: 'Excluded from Send all' };
+        const restage = { label: 'Back to staged', icon: RotateCcw, onClick: guard(() => setStatus([r.id], 'staged')) };
+        const reject = { label: 'Reject', icon: X, onClick: guard(() => setStatus([r.id], 'rejected')), title: 'Keep staged but exclude from push' };
+        const discard = { label: 'Discard uplift…', icon: Trash2, onClick: guard(() => unstage(r.id)), danger: true, title: 'The current monthly amount stays as-is' };
+
+        const solid = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', fontSize: 13, fontWeight: 600, borderRadius: 6, border: 'none', background: '#059669', color: '#fff', cursor: saving ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap' };
+        const quiet = { ...solid, background: '#fff', color: '#334155', border: '1px solid #cbd5e1' };
+
+        let main = null;
+        let items;
+        if (status === 'approved' && !skipped) {
+          main = <button onClick={() => setEmailFor(r)} disabled={saving} style={quiet} title="Preview the fee-raise email for this client"><Mail size={13} />Preview email</button>;
+          items = [emailToggle, restage, reject, discard];
+        } else if (status === 'approved') {
+          main = <span style={{ fontSize: 12.5, color: '#64748b', whiteSpace: 'nowrap' }}>Ready to push</span>;
+          items = [emailToggle, restage, reject, discard];
+        } else if (status === 'rejected') {
+          main = <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} style={quiet} title="Reset to staged"><RotateCcw size={13} />Back to staged</button>;
+          items = [approve, preview, emailToggle, discard];
+        } else {
+          main = <button onClick={() => setStatus([r.id], 'approved')} disabled={saving} style={solid} title="Approve for push"><Check size={13} strokeWidth={3} />Approve</button>;
+          items = [preview, emailToggle, reject, discard];
+        }
         return (
-          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-            {status !== 'approved' && (
-              <button onClick={() => setStatus([r.id], 'approved')} disabled={saving} title="Approve for push" style={iconBtn('#059669')}>
-                <Check size={13} />
-              </button>
-            )}
-            {status !== 'rejected' && (
-              <button onClick={() => setStatus([r.id], 'rejected')} disabled={saving} title="Reject (keep staged but exclude from push)" style={iconBtn('#b91c1c')}>
-                <X size={13} />
-              </button>
-            )}
-            {status !== 'staged' && (
-              <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} title="Reset to staged" style={iconBtn('#64748b')}>
-                <RotateCcw size={13} />
-              </button>
-            )}
-            <button
-              onClick={() => setEmailSkipped([r.id], !r.uplift_email_skipped)}
-              disabled={saving}
-              title={r.uplift_email_skipped ? 'Email currently skipped — click to re-enable' : 'Mark this client as not needing an email (excluded from Send all)'}
-              style={r.uplift_email_skipped
-                ? { ...iconBtn('#b91c1c'), background: '#fee2e2', borderColor: '#b91c1c' }
-                : iconBtn('#94a3b8')}
-            >
-              <MailX size={13} />
-            </button>
-            <button
-              onClick={() => setEmailFor(r)}
-              disabled={saving || r.uplift_email_skipped}
-              title={r.uplift_email_skipped ? 'Email skipped for this row' : 'Preview the fee-raise email for this client'}
-              style={iconBtn('#0e7fe0')}
-            >
-              <Mail size={13} />
-            </button>
-            <button onClick={() => unstage(r.id)} disabled={saving} title="Discard the pending uplift entirely" style={{ ...iconBtn('#94a3b8'), fontSize: 11 }}>
-              ✕
-            </button>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+            {main}
+            <RowMenu items={items.filter(Boolean)} />
           </div>
         );
       },
@@ -697,10 +705,6 @@ const pushFooterStyle = {
   boxShadow: '0 -6px 20px rgba(15,23,42,0.05)',
   color: '#0f172a', fontFamily: font, zIndex: 10,
 };
-
-function iconBtn(color) {
-  return { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, padding: 0, background: '#fff', border: `1px solid ${color}40`, borderRadius: 6, color, cursor: 'pointer' };
-}
 
 // Preview drafts of the fee-raise email for one or many approved
 // rows. Each draft can be copied to clipboard or opened in the
