@@ -335,6 +335,7 @@ export default function Sidebar() {
         <NavItem
           icon={Home}
           label="Home"
+          href="/home"
           active={location.pathname === '/home'}
           collapsed={collapsed}
           onClick={() => navigate('/home')}
