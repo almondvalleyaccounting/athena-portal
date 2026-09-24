@@ -7,6 +7,7 @@ import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import NewClientModal from '../../components/NewClientModal';
 import { insertEntity } from '../work-planner/lib/supabaseQueries';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
+import DataTable from '../../components/DataTable';
 
 const font = "'Outfit', sans-serif";
 
@@ -34,6 +35,9 @@ export default function QboMappingPage() {
   const [letter, setLetter] = useState(null);
   const [selected, setSelected] = useState(new Set()); // qbo_customer_ids
   const [sort, setSort] = useState('name'); // name | score | qbo_id
+  // Controlled paging, so mapping a row (which rebuilds `rows`) keeps you on
+  // the page you were working through rather than jumping back to page 1.
+  const [page, setPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [newId, setNewId] = useState('');
   const [newName, setNewName] = useState('');
@@ -42,14 +46,16 @@ export default function QboMappingPage() {
   const load = async () => {
     setLoading(true);
     setSelected(new Set());
-    // `maps` is a plain array (fetchAllRows); `ents` still arrives as { data }.
-    const [maps, { data: ents }] = await Promise.all([
+    // Both are plain arrays (fetchAllRows).
+    const [maps, ents] = await Promise.all([
       // 838 rows and climbing with every QBO customer. Paged, because past 1000
       // the API returns a prefix and an unmapped-looking gap on the very page you
       // use to fix mappings.
       fetchAllRows(() => supabase.from('qbo_customer_mappings').select('*')
         .order('qbo_customer_name').order('qbo_customer_id')),
-      supabase.from('entities').select('id, name').order('name'),
+      // Every entity, not the first 1000 — a picker missing a client looks
+      // exactly like the client not existing. id breaks ties between names.
+      fetchAllRows(() => supabase.from('entities').select('id, name').order('name').order('id')),
     ]);
     setRows(maps || []);
     setEntities(ents || []);
@@ -165,7 +171,9 @@ export default function QboMappingPage() {
   }, [rows, suggestions]);
 
   const visibleIds = filtered.map((r) => r.qbo_customer_id);
-  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+
+  // A new filter, search, letter or sort starts from page 1; an edit does not.
+  useEffect(() => { setPage(1); }, [filter, search, letter, sort]);
 
   // ─── Mutations ───────────────────────────────────────────
   // Optimistic: apply the change to local state immediately, write to
@@ -321,19 +329,151 @@ export default function QboMappingPage() {
     await load();
   };
 
-  // Selection helpers
-  const toggleSel = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-  const toggleSelAll = () => {
-    if (allVisibleSelected) setSelected(new Set());
-    else setSelected(new Set(visibleIds));
+  // Selection. A row's tickbox adds or removes that one row, as before. The
+  // heading box keeps this page's own rule: ticking it makes the selection
+  // exactly the current view, unticking it clears everything — so rows ticked
+  // under another filter do not ride along into a bulk action unseen.
+  const onToggleAll = () => {
+    const allIn = visibleIds.length > 0 && visibleIds.every((k) => selected.has(k));
+    setSelected(allIn ? new Set() : new Set(visibleIds));
   };
   const clearSel = () => setSelected(new Set());
+
+  const columns = [
+    {
+      key: 'qbo', label: 'QBO customer', width: '30%', wrap: true, sortable: false,
+      render: (r) => (
+        <>
+          <div style={{ fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+               title={r.qbo_customer_name || ''}>
+            {r.qbo_customer_name || <span style={{ color: '#cbd5e1' }}>—</span>}
+          </div>
+          {r.needs_review && r.previous_qbo_customer_name && (
+            <div style={{
+              fontSize: 11, color: '#3730a3', marginTop: 2,
+              display: 'inline-block', padding: '1px 6px', borderRadius: 4,
+              background: '#eef2ff', border: '1px solid #c7d2fe',
+            }}
+            title="This QBO customer was Ignored; its name changed in the last pull. Review and re-map if it's now a real client.">
+              renamed — was: {r.previous_qbo_customer_name}
+            </div>
+          )}
+          <div style={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 11 }}>
+            QBO #{r.qbo_customer_id}
+          </div>
+        </>
+      ),
+    },
+    {
+      key: 'suggested', label: 'Suggested match', width: '35%', wrap: true, sortable: false,
+      render: (r) => {
+        const isUnmapped = !r.entity_id && r.role !== 'not_a_client';
+        const rowSuggestions = suggestions[r.qbo_customer_id] || [];
+        const top = rowSuggestions[0];
+        if (isUnmapped && top) {
+          return (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => acceptTopSuggestion(r)}
+                disabled={saving === r.qbo_customer_id}
+                title={`Accept — ${Math.round(top.score * 100)}% match`}
+                style={suggestionChip(top.score)}
+              >
+                <Check size={10} /> {top.entity_name}
+                <span style={{ opacity: 0.7, fontWeight: 400 }}> · {Math.round(top.score * 100)}%</span>
+              </button>
+              {rowSuggestions.length > 1 && (
+                <details style={{ display: 'inline', position: 'relative' }} data-no-row-click>
+                  <summary style={{
+                    fontSize: 11, color: '#64748b', cursor: 'pointer',
+                    listStyle: 'none', padding: '2px 4px',
+                  }}>+{rowSuggestions.length - 1}</summary>
+                  <div style={{
+                    position: 'absolute', background: '#fff',
+                    border: '1px solid #e5e7eb', borderRadius: 6,
+                    padding: 4, marginTop: 2, zIndex: 10,
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+                    display: 'flex', flexDirection: 'column', gap: 3,
+                    minWidth: 220,
+                  }}>
+                    {rowSuggestions.slice(1).map((s) => (
+                      <button key={s.entity_id} onClick={() => setEntity(r.qbo_customer_id, s.entity_id)}
+                        style={{ ...suggestionChip(s.score), justifyContent: 'flex-start' }}>
+                        <Check size={10} /> {s.entity_name}
+                        <span style={{ opacity: 0.7, fontWeight: 400 }}> · {Math.round(s.score * 100)}%</span>
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          );
+        }
+        return isUnmapped
+          ? <span style={{ fontSize: 11, color: '#94a3b8' }}>No close match</span>
+          : <span style={{ fontSize: 12, color: '#cbd5e1' }}>—</span>;
+      },
+    },
+    {
+      key: 'entity', label: 'Athena entity', width: '27%', wrap: true, sortable: false,
+      render: (r) => (
+        <ClientTypeAhead
+          entityList={entities}
+          value={r.entity_id || ''}
+          onChange={(id) => setEntity(r.qbo_customer_id, id)}
+          onAddNew={(name) => openNewClientModal(name, r.qbo_customer_id)}
+          size="small"
+        />
+      ),
+    },
+    {
+      key: 'actions', label: '', width: 110, wrap: true, sortable: false,
+      render: (r) => {
+        const isIgnored = r.role === 'not_a_client';
+        return (
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => toggleIgnore(r)}
+              disabled={saving === r.qbo_customer_id}
+              title={isIgnored ? 'Restore' : 'Ignore — exclude from billing'}
+              style={{
+                fontSize: 12, padding: '3px 10px', borderRadius: 6,
+                border: '1px solid ' + (isIgnored ? '#cbd5e1' : '#fca5a5'),
+                background: isIgnored ? '#f8fafc' : '#fff',
+                color: isIgnored ? '#475569' : '#991b1b',
+                cursor: 'pointer', fontFamily: font,
+              }}
+            >
+              {isIgnored ? 'Restore' : 'Ignore'}
+            </button>
+            <button onClick={() => remove(r.qbo_customer_id)}
+              title="Delete this mapping row"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 14.5, padding: '0 4px' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#991b1b'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#cbd5e1'; }}
+            >✕</button>
+          </div>
+        );
+      },
+    },
+  ];
+
+  // State is carried by a 3px inset left accent bar; review is the one state
+  // that also tints the row, since it's the loudest call. The tint is a
+  // full-width inset shadow rather than a background, because the table
+  // resets a row's background when the pointer leaves it.
+  const rowStyle = (r) => {
+    const isSel = selected.has(r.qbo_customer_id);
+    const isUnmapped = !r.entity_id && r.role !== 'not_a_client';
+    const isIgnored = r.role === 'not_a_client';
+    return {
+      boxShadow: isSel ? 'inset 3px 0 0 #38bdf8'
+        : r.needs_review ? 'inset 3px 0 0 #818cf8, inset 0 0 0 100vmax #eef2ff'
+        : isUnmapped ? 'inset 3px 0 0 #fcd34d'
+        : undefined,
+      opacity: isIgnored && !r.needs_review ? 0.55 : undefined,
+    };
+  };
 
   const selectedIds = [...selected];
 
@@ -470,160 +610,27 @@ export default function QboMappingPage() {
       ) : filtered.length === 0 ? (
         <EmptyState filter={filter} total={rows.length} />
       ) : (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, tableLayout: 'fixed' }}>
-            <colgroup>
-              <col style={{ width: 32 }} />
-              <col style={{ width: '30%' }} />
-              <col style={{ width: '35%' }} />
-              <col style={{ width: '27%' }} />
-              <col style={{ width: 110 }} />
-            </colgroup>
-            <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                <Th>
-                  <input
-                    type="checkbox"
-                    checked={allVisibleSelected}
-                    onChange={toggleSelAll}
-                    title="Select all in current view"
-                  />
-                </Th>
-                <Th>QBO customer</Th>
-                <Th>Suggested match</Th>
-                <Th>Athena entity</Th>
-                <Th></Th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => {
-                const isUnmapped = !r.entity_id && r.role !== 'not_a_client';
-                const isIgnored = r.role === 'not_a_client';
-                const rowSuggestions = suggestions[r.qbo_customer_id] || [];
-                const top = rowSuggestions[0];
-                const isSel = selected.has(r.qbo_customer_id);
-                return (
-                  <tr key={r.qbo_customer_id} style={{
-                    borderTop: '1px solid #f1f5f9',
-                    // Minimal theme: rows stay white; state carried by a
-                    // 3px inset left accent bar. Review is the one state
-                    // that also tints the row, since it's the loudest call.
-                    background: isSel ? '#f0f9ff'
-                      : r.needs_review ? '#eef2ff'
-                      : 'transparent',
-                    boxShadow: isSel ? 'inset 3px 0 0 #38bdf8'
-                      : r.needs_review ? 'inset 3px 0 0 #818cf8'
-                      : isUnmapped ? 'inset 3px 0 0 #fcd34d'
-                      : 'none',
-                    opacity: isIgnored && !r.needs_review ? 0.55 : 1,
-                  }}>
-                    <Td>
-                      <input
-                        type="checkbox"
-                        checked={isSel}
-                        onChange={() => toggleSel(r.qbo_customer_id)}
-                      />
-                    </Td>
-                    <Td style={{ overflow: 'hidden' }}>
-                      <div style={{ fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                           title={r.qbo_customer_name || ''}>
-                        {r.qbo_customer_name || <span style={{ color: '#cbd5e1' }}>—</span>}
-                      </div>
-                      {r.needs_review && r.previous_qbo_customer_name && (
-                        <div style={{
-                          fontSize: 11, color: '#3730a3', marginTop: 2,
-                          display: 'inline-block', padding: '1px 6px', borderRadius: 4,
-                          background: '#eef2ff', border: '1px solid #c7d2fe',
-                        }}
-                        title="This QBO customer was Ignored; its name changed in the last pull. Review and re-map if it's now a real client.">
-                          renamed — was: {r.previous_qbo_customer_name}
-                        </div>
-                      )}
-                      <div style={{ fontFamily: 'monospace', color: '#94a3b8', fontSize: 11 }}>
-                        QBO #{r.qbo_customer_id}
-                      </div>
-                    </Td>
-                    <Td>
-                      {isUnmapped && top ? (
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <button
-                            onClick={() => acceptTopSuggestion(r)}
-                            disabled={saving === r.qbo_customer_id}
-                            title={`Accept — ${Math.round(top.score * 100)}% match`}
-                            style={suggestionChip(top.score)}
-                          >
-                            <Check size={10} /> {top.entity_name}
-                            <span style={{ opacity: 0.7, fontWeight: 400 }}> · {Math.round(top.score * 100)}%</span>
-                          </button>
-                          {rowSuggestions.length > 1 && (
-                            <details style={{ display: 'inline', position: 'relative' }}>
-                              <summary style={{
-                                fontSize: 11, color: '#64748b', cursor: 'pointer',
-                                listStyle: 'none', padding: '2px 4px',
-                              }}>+{rowSuggestions.length - 1}</summary>
-                              <div style={{
-                                position: 'absolute', background: '#fff',
-                                border: '1px solid #e5e7eb', borderRadius: 6,
-                                padding: 4, marginTop: 2, zIndex: 10,
-                                boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
-                                display: 'flex', flexDirection: 'column', gap: 3,
-                                minWidth: 220,
-                              }}>
-                                {rowSuggestions.slice(1).map((s) => (
-                                  <button key={s.entity_id} onClick={() => setEntity(r.qbo_customer_id, s.entity_id)}
-                                    style={{ ...suggestionChip(s.score), justifyContent: 'flex-start' }}>
-                                    <Check size={10} /> {s.entity_name}
-                                    <span style={{ opacity: 0.7, fontWeight: 400 }}> · {Math.round(s.score * 100)}%</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </details>
-                          )}
-                        </div>
-                      ) : isUnmapped ? (
-                        <span style={{ fontSize: 11, color: '#94a3b8' }}>No close match</span>
-                      ) : (
-                        <span style={{ fontSize: 12, color: '#cbd5e1' }}>—</span>
-                      )}
-                    </Td>
-                    <Td>
-                      <ClientTypeAhead
-                        entityList={entities}
-                        value={r.entity_id || ''}
-                        onChange={(id) => setEntity(r.qbo_customer_id, id)}
-                        onAddNew={(name) => openNewClientModal(name, r.qbo_customer_id)}
-                        size="small"
-                      />
-                    </Td>
-                    <Td>
-                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                        <button
-                          onClick={() => toggleIgnore(r)}
-                          disabled={saving === r.qbo_customer_id}
-                          title={isIgnored ? 'Restore' : 'Ignore — exclude from billing'}
-                          style={{
-                            fontSize: 12, padding: '3px 10px', borderRadius: 6,
-                            border: '1px solid ' + (isIgnored ? '#cbd5e1' : '#fca5a5'),
-                            background: isIgnored ? '#f8fafc' : '#fff',
-                            color: isIgnored ? '#475569' : '#991b1b',
-                            cursor: 'pointer', fontFamily: font,
-                          }}
-                        >
-                          {isIgnored ? 'Restore' : 'Ignore'}
-                        </button>
-                        <button onClick={() => remove(r.qbo_customer_id)}
-                          title="Delete this mapping row"
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 14.5, padding: '0 4px' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.color = '#991b1b'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.color = '#cbd5e1'; }}
-                        >✕</button>
-                      </div>
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        // The entity picker and the "+N" suggestions open below their row, so
+        // the table frame must not clip them on the last rows of a page.
+        <div className="qbo-map-table">
+          <style>{`
+            .qbo-map-table > div > div:first-child { overflow: visible !important; }
+            .qbo-map-table thead th:first-child { border-top-left-radius: 12px; }
+            .qbo-map-table thead th:last-child { border-top-right-radius: 12px; }
+          `}</style>
+          <DataTable
+            columns={columns}
+            rows={filtered}
+            rowKey={(r) => r.qbo_customer_id}
+            // Order comes from the Sort menu above (applied in `filtered`), so
+            // the headings do not sort and the table keeps the order it is given.
+            sort={null}
+            onSort={() => {}}
+            page={page}
+            onPage={setPage}
+            rowStyle={rowStyle}
+            selection={{ selected, onChange: setSelected, onToggleAll }}
+          />
         </div>
       )}
 
@@ -682,13 +689,6 @@ function EmptyState({ filter, total }) {
 }
 
 // ─── Styles ────────────────────────────────────────────────
-const Th = ({ children }) => (
-  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>
-    {children}
-  </th>
-);
-const Td = ({ children, style }) => <td style={{ padding: '8px 12px', verticalAlign: 'middle', ...style }}>{children}</td>;
-
 const selectStyle = { padding: '6px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
 const btnPrimary = { padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font };
 const btnSecondary = { padding: '6px 12px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#1e293b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };

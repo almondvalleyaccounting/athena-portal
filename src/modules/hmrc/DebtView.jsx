@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Download, ExternalLink, Search } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 import { fmtGbp, fmtGbpDetailed } from '../../lib/money';
 import { downloadCSV } from '../../lib/exportUtils';
 import { useAuth } from '../../shell/AppShell';
-import { fetchSchemes, saveReview } from './hmrcApi';
+import DataTable, { sortRows } from '../../components/DataTable';
+import { saveReview } from './hmrcApi';
 import SchemeDetailPanel from './SchemeDetailPanel';
 import {
   font, TIERS, REVIEW_STATUSES, Pill, Stat, Chip, BlurInput, ErrorBar,
-  ageLabel, shortDate, th, td, thNum, tdNum, card, inputStyle,
+  ageLabel, shortDate, inputStyle,
 } from './hmrcShared';
 
 // The working list: every PAYE scheme HMRC shows us as agent for, ordered so
@@ -16,6 +19,8 @@ import {
 //
 // Default view is deliberately narrow — active clients, in arrears, not yet
 // triaged. That is the day's work. Everything else is a filter away.
+
+const n = (v) => Number(v || 0);
 
 export default function DebtView({ entityId = '' }) {
   const { profile } = useAuth();
@@ -26,9 +31,21 @@ export default function DebtView({ entityId = '' }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [tierFilter, setTierFilter] = useState('owing');   // 'owing' | '1' | '2' | '3' | 'clear' | 'all'
-  const [statusFilter, setStatusFilter] = useState('open'); // 'open' | <status> | 'all'
-  const [search, setSearch] = useState('');
+  const [tierFilter, setTierFilterRaw] = useState('owing');   // 'owing' | '1' | '2' | '3' | 'clear' | 'all'
+  const [statusFilter, setStatusFilterRaw] = useState('open'); // 'open' | <status> | 'all'
+  const [search, setSearchRaw] = useState('');
+  // Sorting is on the column headings. Largest debt first is the order the
+  // list always came in.
+  const [sort, setSort] = useState({ key: 'total_debt', dir: 'desc' });
+  // Held here, not in the table, so a triage edit that drops a row out of the
+  // filter leaves you on the page you were working rather than page 1.
+  const [page, setPage] = useState(1);
+
+  // Any change to what is shown starts the list again at page 1.
+  const setTierFilter = (v) => { setTierFilterRaw(v); setPage(1); };
+  const setStatusFilter = (v) => { setStatusFilterRaw(v); setPage(1); };
+  const setSearch = (v) => { setSearchRaw(v); setPage(1); };
+  useEffect(() => { setPage(1); }, [entityId]);
 
   // Its own parameter. ?scheme= is how the PAYE tab picks which of a client's
   // schemes the statement is about, and reusing it here would mean opening this
@@ -40,7 +57,14 @@ export default function DebtView({ entityId = '' }) {
   async function load() {
     setLoading(true);
     try {
-      setRows(await fetchSchemes());
+      // PostgREST caps a fetch at 1000 rows and truncates SILENTLY, so page
+      // through the lot. Same order as fetchSchemes, with the PAYE ref as a
+      // unique tiebreak so paging cannot repeat or skip a scheme.
+      setRows(await fetchAllRows(() => supabase
+        .from('v_hmrc_paye_clients')
+        .select('*')
+        .order('total_debt', { ascending: false, nullsFirst: false })
+        .order('paye_ref', { ascending: true })));
       setError('');
     } catch (e) {
       setError(e.message || 'Could not load HMRC data');
@@ -143,13 +167,166 @@ export default function DebtView({ entityId = '' }) {
     setParams(next, { replace: true });
   };
 
+  const columns = [
+    {
+      key: 'entity_name', label: 'Client', wrap: true,
+      sortValue: (r) => r.entity_name || r.hmrc_name || '',
+      render: (r) => {
+        const tier = TIERS[r.chase_tier] || TIERS[4];
+        return (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {r.chase_tier === 1 && (
+                <AlertTriangle size={12} style={{ color: tier.colour, flexShrink: 0 }} />
+              )}
+              <button
+                onClick={() => openStatement(r)}
+                style={{
+                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                  fontFamily: font, fontSize: 14, fontWeight: 500, color: '#0f172a', textAlign: 'left',
+                }}
+                title="Open this scheme's statement — month by month, with the balance at any date"
+              >
+                {r.entity_name || r.hmrc_name}
+              </button>
+            </div>
+            {r.entity_name && r.hmrc_name && r.entity_name !== r.hmrc_name && (
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>HMRC: {r.hmrc_name}</div>
+            )}
+          </>
+        );
+      },
+    },
+    {
+      key: 'paye_ref', label: 'PAYE ref', width: 130,
+      render: (r) => <span style={{ fontSize: 13, color: '#64748b' }}>{r.paye_ref}</span>,
+    },
+    {
+      key: 'total_debt', label: 'Owed', align: 'right', width: 120, firstDir: 'desc',
+      sortValue: (r) => n(r.total_debt),
+      render: (r) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: r.total_debt > 0 ? 600 : 400, color: r.total_debt > 0 ? '#b91c1c' : '#94a3b8' }}>
+          {r.total_debt > 0 ? fmtGbpDetailed(r.total_debt) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'accruing_interest', label: 'Interest', align: 'right', width: 110, firstDir: 'desc',
+      sortValue: (r) => n(r.accruing_interest),
+      render: (r) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums', color: r.accruing_interest > 0 ? '#c2410c' : '#cbd5e1' }}>
+          {r.accruing_interest > 0 ? fmtGbpDetailed(r.accruing_interest) : '—'}
+        </span>
+      ),
+    },
+    {
+      // Oldest first on the first click: the longest-unpaid charge is the one to chase.
+      key: 'days_oldest_overdue', label: 'Oldest arrears', width: 140, firstDir: 'desc',
+      sortValue: (r) => (r.oldest_due_date ? n(r.days_oldest_overdue) : null),
+      render: (r) => (
+        <span style={{ fontSize: 13, color: '#64748b' }}>
+          {r.oldest_due_date ? (
+            <span title={`Oldest unpaid charge was due ${shortDate(r.oldest_due_date)} (${r.oldest_overdue_year})`}>
+              {ageLabel(r.days_oldest_overdue)}
+              <span style={{ color: '#cbd5e1', marginLeft: 5 }}>{r.oldest_overdue_year}</span>
+            </span>
+          ) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'overdue_items', label: 'Items', align: 'center', width: 90, firstDir: 'desc',
+      sortValue: (r) => n(r.overdue_items),
+      render: (r) => (
+        <span style={{ fontSize: 13, color: '#64748b' }}>
+          {r.overdue_items || '—'}
+          {r.penalty_items > 0 && (
+            <span style={{ color: '#b91c1c', fontWeight: 600 }} title={`${r.penalty_items} penalty charge(s)`}>
+              {' '}· {r.penalty_items}P
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'flags', label: 'Flags', width: 120, sortable: false,
+      render: (r) => (
+        <div style={{ display: 'flex', gap: 3 }}>
+          {r.payment_plan && <Pill colour="#0369a1" bg="#f0f9ff" title="Time-to-pay arrangement in place" style={{ fontSize: 11 }}>Plan</Pill>}
+          {r.variable_dd && <Pill colour="#059669" bg="#f0fdf4" title="Paying by variable direct debit" style={{ fontSize: 11 }}>DD</Pill>}
+          {r.claiming_ea && <Pill colour="#7c3aed" bg="#faf5ff" title="Employment Allowance claimed" style={{ fontSize: 11 }}>EA</Pill>}
+        </div>
+      ),
+    },
+    {
+      // Sorts in workflow order (not looked at → chasing → … → not ours).
+      key: 'review_status', label: 'Status', width: 170,
+      sortValue: (r) => Math.max(0, REVIEW_STATUSES.findIndex((s) => s.value === (r.review_status || 'pending'))),
+      render: (r) => {
+        const st = REVIEW_STATUSES.find((s) => s.value === r.review_status) || REVIEW_STATUSES[0];
+        return (
+          <select
+            value={r.review_status || 'pending'}
+            onChange={(e) => update(r, { review_status: e.target.value })}
+            style={{ ...inputStyle, width: 'auto', maxWidth: '100%', color: st.colour, fontWeight: 500, background: st.bg, border: `1px solid ${st.colour}33` }}
+          >
+            {REVIEW_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        );
+      },
+    },
+    {
+      // BlurInput saves on blur, so the list cannot re-sort under a note
+      // while it is still being typed.
+      key: 'review_notes', label: 'Notes', width: 220,
+      sortValue: (r) => r.review_notes || '',
+      render: (r) => (
+        <BlurInput
+          value={r.review_notes}
+          onChange={(v) => update(r, { review_notes: v })}
+          placeholder="What have we done?"
+        />
+      ),
+    },
+    {
+      key: 'actions', label: '', width: 170, sortable: false,
+      render: (r) => (
+        <>
+          {/* HMRC's raw overdue items and credits for the scheme —
+              the one thing the statement does not restate. */}
+          <button
+            onClick={() => openScheme(r.paye_ref)}
+            title="HMRC's own overdue items, monthly position and credits for this scheme"
+            style={{
+              background: 'none', border: 'none', padding: 0, marginRight: 10, cursor: 'pointer',
+              fontFamily: font, fontSize: 13, color: '#64748b',
+            }}
+          >
+            HMRC detail
+          </button>
+          {r.entity_id && (
+            <a
+              href={`/clients/${r.entity_id}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#64748b', textDecoration: 'none' }}
+            >
+              Client <ExternalLink size={11} />
+            </a>
+          )}
+        </>
+      ),
+    },
+  ];
+
   const exportCsv = () => {
     downloadCSV(
       `hmrc-paye-debt-${new Date().toISOString().slice(0, 10)}.csv`,
       ['Client', 'HMRC name', 'PAYE ref', 'Accounts Office ref', 'Chase tier',
        'Total owed', 'Accruing interest', 'Overdue items', 'Oldest arrears year', 'Days overdue',
        'Payment plan', 'Employment Allowance', 'Status', 'Notes'],
-      filtered.map((r) => [
+      // In the order the table shows.
+      sortRows(filtered, columns, sort).map((r) => [
         r.entity_name || '', r.hmrc_name || '', r.paye_ref || '', r.accounts_office_ref || '',
         (TIERS[r.chase_tier] || {}).label || '',
         Number(r.total_debt || 0).toFixed(2), Number(r.accruing_interest || 0).toFixed(2),
@@ -224,133 +401,22 @@ export default function DebtView({ entityId = '' }) {
       {loading ? (
         <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading HMRC positions…</div>
       ) : (
-        <div style={card}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
-                  <th style={th}>Client</th>
-                  <th style={th}>PAYE ref</th>
-                  <th style={thNum}>Owed</th>
-                  <th style={thNum}>Interest</th>
-                  <th style={th}>Oldest arrears</th>
-                  <th style={{ ...th, textAlign: 'center' }}>Items</th>
-                  <th style={th}>Flags</th>
-                  <th style={th}>Status</th>
-                  <th style={th}>Notes</th>
-                  <th style={th} />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={10} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
-                      {rows.length === 0
-                        ? 'No HMRC data yet — the scrape has not populated anything this module can read.'
-                        : 'Nothing matches these filters.'}
-                    </td>
-                  </tr>
-                )}
-                {filtered.map((r) => {
-                  const tier = TIERS[r.chase_tier] || TIERS[4];
-                  const st = REVIEW_STATUSES.find((s) => s.value === r.review_status) || REVIEW_STATUSES[0];
-                  return (
-                    <tr key={r.paye_ref} style={{ borderTop: '1px solid #f1f5f9' }}>
-                      <td style={td}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {r.chase_tier === 1 && (
-                            <AlertTriangle size={12} style={{ color: tier.colour, flexShrink: 0 }} />
-                          )}
-                          <button
-                            onClick={() => openStatement(r)}
-                            style={{
-                              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                              fontFamily: font, fontSize: 14, fontWeight: 500, color: '#0f172a', textAlign: 'left',
-                            }}
-                            title="Open this scheme's statement — month by month, with the balance at any date"
-                          >
-                            {r.entity_name || r.hmrc_name}
-                          </button>
-                        </div>
-                        {r.entity_name && r.hmrc_name && r.entity_name !== r.hmrc_name && (
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>HMRC: {r.hmrc_name}</div>
-                        )}
-                      </td>
-                      <td style={{ ...td, fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' }}>{r.paye_ref}</td>
-                      <td style={{ ...tdNum, fontWeight: r.total_debt > 0 ? 600 : 400, color: r.total_debt > 0 ? '#b91c1c' : '#94a3b8' }}>
-                        {r.total_debt > 0 ? fmtGbpDetailed(r.total_debt) : '—'}
-                      </td>
-                      <td style={{ ...tdNum, color: r.accruing_interest > 0 ? '#c2410c' : '#cbd5e1' }}>
-                        {r.accruing_interest > 0 ? fmtGbpDetailed(r.accruing_interest) : '—'}
-                      </td>
-                      <td style={{ ...td, fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' }}>
-                        {r.oldest_due_date ? (
-                          <span title={`Oldest unpaid charge was due ${shortDate(r.oldest_due_date)} (${r.oldest_overdue_year})`}>
-                            {ageLabel(r.days_oldest_overdue)}
-                            <span style={{ color: '#cbd5e1', marginLeft: 5 }}>{r.oldest_overdue_year}</span>
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td style={{ ...td, textAlign: 'center', fontSize: 13, color: '#64748b' }}>
-                        {r.overdue_items || '—'}
-                        {r.penalty_items > 0 && (
-                          <span style={{ color: '#b91c1c', fontWeight: 600 }} title={`${r.penalty_items} penalty charge(s)`}>
-                            {' '}· {r.penalty_items}P
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', gap: 3 }}>
-                          {r.payment_plan && <Pill colour="#0369a1" bg="#f0f9ff" title="Time-to-pay arrangement in place" style={{ fontSize: 11 }}>Plan</Pill>}
-                          {r.variable_dd && <Pill colour="#059669" bg="#f0fdf4" title="Paying by variable direct debit" style={{ fontSize: 11 }}>DD</Pill>}
-                          {r.claiming_ea && <Pill colour="#7c3aed" bg="#faf5ff" title="Employment Allowance claimed" style={{ fontSize: 11 }}>EA</Pill>}
-                        </div>
-                      </td>
-                      <td style={td}>
-                        <select
-                          value={r.review_status || 'pending'}
-                          onChange={(e) => update(r, { review_status: e.target.value })}
-                          style={{ ...inputStyle, width: 'auto', color: st.colour, fontWeight: 500, background: st.bg, border: `1px solid ${st.colour}33` }}
-                        >
-                          {REVIEW_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
-                      </td>
-                      <td style={{ ...td, minWidth: 170 }}>
-                        <BlurInput
-                          value={r.review_notes}
-                          onChange={(v) => update(r, { review_notes: v })}
-                          placeholder="What have we done?"
-                        />
-                      </td>
-                      <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                        {/* HMRC's raw overdue items and credits for the scheme —
-                            the one thing the statement does not restate. */}
-                        <button
-                          onClick={() => openScheme(r.paye_ref)}
-                          title="HMRC's own overdue items, monthly position and credits for this scheme"
-                          style={{
-                            background: 'none', border: 'none', padding: 0, marginRight: 10, cursor: 'pointer',
-                            fontFamily: font, fontSize: 13, color: '#64748b',
-                          }}
-                        >
-                          HMRC detail
-                        </button>
-                        {r.entity_id && (
-                          <a
-                            href={`/clients/${r.entity_id}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#64748b', textDecoration: 'none' }}
-                          >
-                            Client <ExternalLink size={11} />
-                          </a>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        // Ten columns with a select and a note field do not fit a narrow
+        // screen, so the table keeps a minimum width and scrolls sideways.
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: 1400 }}>
+            <DataTable
+              columns={columns}
+              rows={filtered}
+              rowKey={(r) => r.paye_ref}
+              sort={sort}
+              onSort={(s) => { setSort(s); setPage(1); }}
+              page={page}
+              onPage={setPage}
+              empty={rows.length === 0
+                ? 'No HMRC data yet — the scrape has not populated anything this module can read.'
+                : 'Nothing matches these filters.'}
+            />
           </div>
         </div>
       )}

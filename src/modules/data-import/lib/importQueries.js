@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabase';
+import { fetchAllRows } from '../../../lib/fetchAllRows';
 
 export async function fetchStatusCounts() {
   const { count: total } = await supabase
@@ -46,25 +47,30 @@ export async function fetchLatestPerSource() {
   return bySource;
 }
 
+// Every run in the window (the history table pages it) — "All time" used to
+// show only the newest 200 without saying so.
 export async function fetchImportHistory({ source, status, sinceDays = 30 } = {}) {
-  let q = supabase
-    .from('import_log')
-    .select('*')
-    .order('triggered_at', { ascending: false })
-    .limit(200);
-  if (source && source !== 'all') q = q.eq('source_key', source);
-  if (status && status !== 'all') q = q.eq('status', status);
-  if (sinceDays && sinceDays !== 'all') {
-    const since = new Date();
-    since.setDate(since.getDate() - sinceDays);
-    q = q.gte('triggered_at', since.toISOString());
-  }
-  const { data, error } = await q;
-  if (error) {
+  const build = () => {
+    let q = supabase
+      .from('import_log')
+      .select('*')
+      .order('triggered_at', { ascending: false })
+      .order('id', { ascending: false });
+    if (source && source !== 'all') q = q.eq('source_key', source);
+    if (status && status !== 'all') q = q.eq('status', status);
+    if (sinceDays && sinceDays !== 'all') {
+      const since = new Date();
+      since.setDate(since.getDate() - sinceDays);
+      q = q.gte('triggered_at', since.toISOString());
+    }
+    return q;
+  };
+  try {
+    return await fetchAllRows(build);
+  } catch (error) {
     if (error.code === '42P01') return [];
     throw error;
   }
-  return data || [];
 }
 
 // ─── Task-type exclusions ──────────────────────────────────────

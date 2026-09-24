@@ -3,6 +3,24 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Btn, fmt } from '../components/ui';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
+import DataTable from '../components/DataTable';
+import { fetchAllRows } from '../lib/fetchAllRows';
+
+const statusPillClass = (status) => (
+  status === 'draft' ? 'bg-gray-100 text-gray-600' :
+  status === 'pending_approval' ? 'bg-amber-50 text-amber-700' :
+  status === 'approved' ? 'bg-blue-50 text-blue-700' :
+  status === 'sent' ? 'bg-purple-50 text-purple-700' :
+  status === 'accepted' ? 'bg-green-50 text-green-700' :
+  status === 'committed' ? 'bg-teal-50 text-teal-700' :
+  status === 'declined' ? 'bg-red-50 text-red-600' :
+  status === 'expired' ? 'bg-gray-50 text-gray-400' :
+  'bg-gray-100 text-gray-600'
+);
+
+const statusPillLabel = (status) => (
+  status === 'pending_approval' ? 'Pending' : status === 'sent' ? 'Sent' : status === 'declined' ? 'Rejected' : status === 'accepted' ? 'Accepted' : status === 'committed' ? 'Committed' : status.charAt(0).toUpperCase() + status.slice(1)
+);
 
 const PIPELINE_STATUSES = ['draft', 'pending_approval', 'approved', 'sent', 'accepted'];
 
@@ -27,33 +45,50 @@ export default function EntitiesPage() {
 
   const loadEntities = async () => {
     try {
-      const { data: ents } = await supabase
+      // Paged past PostgREST's silent 1000-row cap; id breaks name ties so
+      // pages are stable.
+      const ents = await fetchAllRows(() => supabase
         .from('entities')
         .select('*')
-        .order('name');
+        .order('name')
+        .order('id', { ascending: true }));
 
       if (ents?.length) {
-        const [{ data: quotes }, { data: members }] = await Promise.all([
-          supabase
+        // Quotes and group memberships are read whole and matched to clients
+        // here, rather than with .in(~600 ids): that URL is too long, and the
+        // response would be cut at 1000 rows without saying so. A failed list
+        // comes back empty, as a failed query did before.
+        const all = (label, build) => fetchAllRows(build).catch((err) => {
+          console.error(`Loading ${label} failed`, err);
+          return [];
+        });
+        const [quotes, members] = await Promise.all([
+          all('quotes', () => supabase
             .from('quotes')
             .select('entity_id, status, monthly_gross, monthly_net, annual_total, quote_ref, created_at')
-            .in('entity_id', ents.map(e => e.id))
             .neq('status', 'deleted') // soft-deleted quotes must not surface as a "Deleted" pill on the client row
-            .order('created_at', { ascending: false }),
-          supabase
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: true })),
+          all('billing group members', () => supabase
             .from('billing_group_members')
             .select('entity_id, group_id, group:billing_groups(id, name)')
-            .in('entity_id', ents.map(e => e.id)),
+            .order('entity_id', { ascending: true })
+            .order('group_id', { ascending: true })),
         ]);
 
+        const entityIds = new Set(ents.map(e => e.id));
         const mMap = {};
-        (members || []).forEach(m => {
-          if (m.group) mMap[m.entity_id] = { groupId: m.group.id, groupName: m.group.name };
+        members.forEach(m => {
+          if (m.group && entityIds.has(m.entity_id)) mMap[m.entity_id] = { groupId: m.group.id, groupName: m.group.name };
         });
         setMembershipMap(mMap);
 
+        // Newest first within each client, as the query returned them.
+        const quotesByEntity = {};
+        quotes.forEach(q => { (quotesByEntity[q.entity_id] ||= []).push(q); });
+
         const enriched = ents.map(e => {
-          const entityQuotes = (quotes || []).filter(q => q.entity_id === e.id);
+          const entityQuotes = quotesByEntity[e.id] || [];
           const statusCounts = {};
           entityQuotes.forEach(q => {
             statusCounts[q.status] = (statusCounts[q.status] || 0) + 1;
@@ -68,7 +103,7 @@ export default function EntitiesPage() {
       } else {
         setEntities([]);
       }
-    } catch {}
+    } catch (err) { console.error('Loading clients failed', err); }
     setLoading(false);
   };
 
@@ -168,86 +203,103 @@ export default function EntitiesPage() {
   };
 
 
-  const renderClientRow = (e) => (
-    <div
-      key={e.id}
-      onClick={() => selectMode ? toggleSelect(e.id) : null}
-      className={`flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-0 transition-all ${
-        selected.has(e.id) ? 'bg-ocean-50' : 'hover:bg-gray-50'
-      } ${selectMode ? 'cursor-pointer' : ''}`}
-    >
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        {selectMode && (
-          <input
-            type="checkbox"
-            checked={selected.has(e.id)}
-            onChange={(ev) => toggleSelect(e.id, ev)}
-            onClick={(ev) => ev.stopPropagation()}
-            className="w-3 h-3 accent-ocean-600 shrink-0"
-          />
-        )}
-        <div className="min-w-0" onClick={(ev) => { if (!selectMode) { ev.stopPropagation(); navigate('/clients/' + e.id); } }}>
-          <p className={`text-sm font-medium text-gray-700 ${!selectMode ? 'hover:text-ocean-600 cursor-pointer' : ''}`}>{e.name}</p>
-          <p className="text-xs text-gray-400">
+  // Columns shared by both sections. The name opens the client record (a
+  // real link, so Ctrl-click opens a new tab); in Select mode it is plain
+  // text and a row click ticks the row, as before.
+  const openClient = (ev, id) => {
+    if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button !== 0) return;
+    ev.preventDefault();
+    navigate('/clients/' + id);
+  };
+
+  const columns = [
+    {
+      key: 'name', label: 'Client',
+      sortValue: (e) => (e.name || '').toLowerCase(),
+      render: (e) => (
+        <div className="min-w-0">
+          {selectMode ? (
+            <p className="text-sm font-medium text-gray-700 truncate">{e.name}</p>
+          ) : (
+            <a
+              href={'/clients/' + e.id}
+              onClick={(ev) => openClient(ev, e.id)}
+              className="block text-sm font-medium text-gray-700 hover:text-ocean-600 truncate"
+            >
+              {e.name}
+            </a>
+          )}
+          <p className="text-xs text-gray-400 truncate">
             {e.type?.replace('_', ' ')}{e.company_number ? ` \u00B7 ${e.company_number}` : ''}
             {e.entity_status && e.entity_status !== 'prospect' && ` \u00B7 ${e.entity_status}`}
           </p>
         </div>
-      </div>
-      <div className="flex items-center gap-3 shrink-0">
-        {/* Pipeline total */}
-        {e.pipelineTotal > 0 && (
-          <span className="text-xs font-mono text-ocean-600 bg-ocean-50 border border-ocean-200 rounded px-2 py-0.5">
-            {fmt(e.pipelineTotal)}/yr
-          </span>
-        )}
-        {membershipMap[e.id] && (
-          <button
-            onClick={(ev) => { ev.stopPropagation(); navigate('/manage/quotes/group/' + membershipMap[e.id].groupId); }}
-            className="text-[11px] bg-ocean-50 text-ocean-600 border border-ocean-200 rounded px-1.5 py-0.5 hover:bg-ocean-100 truncate max-w-[120px]"
-            title={membershipMap[e.id].groupName}
-          >
-            {membershipMap[e.id].groupName}
-          </button>
-        )}
-        {e.statusCounts && Object.keys(e.statusCounts).length > 0 ? (
-          <div className="flex items-center gap-1 flex-wrap">
-            {Object.entries(e.statusCounts).map(([status, count]) => (
-              <button
-                key={status}
-                onClick={(ev) => { ev.stopPropagation(); navigate(`/manage/quotes?client=${encodeURIComponent(e.name)}&status=${status}`); }}
-                className={`text-[11px] rounded px-1.5 py-0.5 font-medium hover:opacity-80 ${
-                  status === 'draft' ? 'bg-gray-100 text-gray-600' :
-                  status === 'pending_approval' ? 'bg-amber-50 text-amber-700' :
-                  status === 'approved' ? 'bg-blue-50 text-blue-700' :
-                  status === 'sent' ? 'bg-purple-50 text-purple-700' :
-                  status === 'accepted' ? 'bg-green-50 text-green-700' :
-                  status === 'committed' ? 'bg-teal-50 text-teal-700' :
-                  status === 'declined' ? 'bg-red-50 text-red-600' :
-                  status === 'expired' ? 'bg-gray-50 text-gray-400' :
-                  'bg-gray-100 text-gray-600'
-                }`}
-              >
-                {count} {status === 'pending_approval' ? 'Pending' : status === 'sent' ? 'Sent' : status === 'declined' ? 'Rejected' : status === 'accepted' ? 'Accepted' : status === 'committed' ? 'Committed' : status.charAt(0).toUpperCase() + status.slice(1)}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <span className="text-xs text-gray-300">No quotes</span>
-        )}
-        {!selectMode && (
-          <div className="flex gap-1">
-            <Btn onClick={() => navigate('/manage/quotes/new?entity=' + e.id)} variant="secondary" className="text-xs py-1 px-3">
-              Quote
-            </Btn>
-          </div>
-        )}
-      </div>
-    </div>
+      ),
+    },
+    {
+      key: 'pipelineTotal', label: 'Pipeline', width: 130, align: 'right', firstDir: 'desc',
+      sortValue: (e) => (e.pipelineTotal > 0 ? e.pipelineTotal : null),
+      render: (e) => (e.pipelineTotal > 0 ? (
+        <span className="text-xs font-mono text-ocean-600 bg-ocean-50 border border-ocean-200 rounded px-2 py-0.5">
+          {fmt(e.pipelineTotal)}/yr
+        </span>
+      ) : null),
+    },
+    {
+      key: 'group', label: 'Group', width: 150,
+      sortValue: (e) => membershipMap[e.id]?.groupName?.toLowerCase() ?? null,
+      render: (e) => (membershipMap[e.id] ? (
+        <button
+          onClick={(ev) => { ev.stopPropagation(); navigate('/manage/quotes/group/' + membershipMap[e.id].groupId); }}
+          className="text-[11px] bg-ocean-50 text-ocean-600 border border-ocean-200 rounded px-1.5 py-0.5 hover:bg-ocean-100 truncate max-w-full"
+          title={membershipMap[e.id].groupName}
+        >
+          {membershipMap[e.id].groupName}
+        </button>
+      ) : null),
+    },
+    {
+      key: 'quotes', label: 'Quotes', width: 260, wrap: true, firstDir: 'desc',
+      sortValue: (e) => e.entityQuotes?.length || null,
+      render: (e) => (e.statusCounts && Object.keys(e.statusCounts).length > 0 ? (
+        <div className="flex items-center gap-1 flex-wrap">
+          {Object.entries(e.statusCounts).map(([status, count]) => (
+            <button
+              key={status}
+              onClick={(ev) => { ev.stopPropagation(); navigate(`/manage/quotes?client=${encodeURIComponent(e.name)}&status=${status}`); }}
+              className={`text-[11px] rounded px-1.5 py-0.5 font-medium hover:opacity-80 ${statusPillClass(status)}`}
+            >
+              {count} {statusPillLabel(status)}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <span className="text-xs text-gray-300">No quotes</span>
+      )),
+    },
+    {
+      key: 'actions', label: '', width: 100, align: 'right', sortable: false,
+      render: (e) => (!selectMode ? (
+        <Btn onClick={() => navigate('/manage/quotes/new?entity=' + e.id)} variant="secondary" className="text-xs py-1 px-3">
+          Quote
+        </Btn>
+      ) : null),
+    },
+  ];
+
+  // One table per section; both share the one set of ticked clients.
+  const sectionTable = (rows) => (
+    <DataTable
+      columns={columns}
+      rows={rows}
+      rowKey={(e) => e.id}
+      onRowClick={selectMode ? (e) => toggleSelect(e.id) : undefined}
+      selection={selectMode ? { selected, onChange: setSelected } : undefined}
+    />
   );
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-ocean-700">Clients</h2>
@@ -320,26 +372,26 @@ export default function EntitiesPage() {
         </div>
       ) : (
         <div className="space-y-4">
+          {/* Select all — ticks every client shown, across both sections */}
+          {selectMode && (
+            <label className="flex items-center px-1 cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                checked={selected.size === filtered.length && filtered.length > 0}
+                onChange={selectAll}
+                className="w-3 h-3 accent-ocean-600 mr-3"
+              />
+              <span className="text-xs text-gray-400">Select all</span>
+            </label>
+          )}
+
           {/* Clients with pending quotes */}
           {withPending.length > 0 && (
             <div>
               <h3 className="text-xs font-semibold text-ocean-700 mb-2">
                 Clients with Pending Quotes ({withPending.length})
               </h3>
-              <div className="bg-white rounded-lg border-2 border-ocean-200 overflow-hidden">
-                {selectMode && (
-                  <div className="flex items-center px-4 py-2 border-b border-gray-200 bg-gray-50">
-                    <input
-                      type="checkbox"
-                      checked={selected.size === filtered.length && filtered.length > 0}
-                      onChange={selectAll}
-                      className="w-3 h-3 accent-ocean-600 mr-3"
-                    />
-                    <span className="text-xs text-gray-400">Select all</span>
-                  </div>
-                )}
-                {withPending.map(renderClientRow)}
-              </div>
+              {sectionTable(withPending)}
             </div>
           )}
 
@@ -349,20 +401,7 @@ export default function EntitiesPage() {
               <h3 className="text-xs font-semibold text-gray-500 mb-2">
                 {withPending.length > 0 ? 'Other Clients' : 'All Clients'} ({withoutPending.length})
               </h3>
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                {selectMode && !withPending.length && (
-                  <div className="flex items-center px-4 py-2 border-b border-gray-200 bg-gray-50">
-                    <input
-                      type="checkbox"
-                      checked={selected.size === filtered.length && filtered.length > 0}
-                      onChange={selectAll}
-                      className="w-3 h-3 accent-ocean-600 mr-3"
-                    />
-                    <span className="text-xs text-gray-400">Select all</span>
-                  </div>
-                )}
-                {withoutPending.map(renderClientRow)}
-              </div>
+              {sectionTable(withoutPending)}
             </div>
           )}
         </div>

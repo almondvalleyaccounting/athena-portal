@@ -10,6 +10,24 @@ import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 import BillingTabs from '../modules/billing/BillingTabs';
 import RevenueByFeeEarner from '../modules/billing/RevenueByFeeEarner';
 import { tones as semanticTones } from '../lib/tokens';
+import DataTable from '../components/DataTable';
+import { fetchAllRows } from '../lib/fetchAllRows';
+import { ChevronRight, ChevronDown } from 'lucide-react';
+
+// DataTable writes a row's background inline on hover and clears it on
+// mouse-out, so a background passed through rowStyle would vanish after the
+// first hover. Row tints are set here instead, from a marker in the first
+// cell; the inline hover colour still wins while the pointer is over a row.
+const ROW_TINTS = `
+  tr:has(> td [data-row-tint="open"]) { background: #F5F8FA; }
+  tr:has(> td [data-row-tint="up"]) { background: #f0fdf4; }
+  tr:has(> td [data-row-tint="down"]) { background: #fef2f2; }
+`;
+
+const syncDot = (s) => (s === 'synced' ? 'bg-green-500'
+  : s === 'pending' ? 'bg-amber-500'
+  : s === 'error' ? 'bg-red-500'
+  : 'bg-gray-300');
 
 export default function BillingPage() {
   const { profile } = useAuth();
@@ -71,41 +89,56 @@ export default function BillingPage() {
   const loadData = async () => {
     setLoading(true);
     try {
+      // Every unbounded list below is paged past PostgREST's silent
+      // 1000-row cap, with a unique column last so pages are stable. A
+      // failed list logs and comes back empty, as a failed query did before,
+      // rather than blanking the whole page.
+      const all = (label, build) => fetchAllRows(build).catch((e) => {
+        console.error(`Failed to load ${label}:`, e);
+        return [];
+      });
+
       // Load live_billing with entity join
-      const { data: billingData } = await supabase
+      const billingData = await all('live billing', () => supabase
         .from('live_billing')
         .select('*, entity:entities(id, name, company_number, entity_status)')
-        .order('committed_at', { ascending: false });
+        .order('committed_at', { ascending: false })
+        .order('id', { ascending: true }));
 
       // Load accepted quotes for comparison
-      const { data: acceptedQuotes } = await supabase
+      const acceptedQuotes = await all('accepted quotes', () => supabase
         .from('quotes')
         .select('id, entity_id, primary_entity_id, relationship_group, monthly_gross, monthly_net, annual_total, status, accepted_at, committed_at')
         .in('status', ['accepted', 'committed'])
-        .order('accepted_at', { ascending: false });
+        .order('accepted_at', { ascending: false })
+        .order('id', { ascending: true }));
 
       // Load entities (full set — we need status + source to compute
       // "clients without billing" correctly, excluding prospects and
       // entities whose only QBO link is an ignored customer).
-      const { data: ents } = await supabase
+      const ents = await all('clients', () => supabase
         .from('entities')
         .select('id, name, entity_status, source')
-        .order('name');
+        .order('name')
+        .order('id', { ascending: true }));
 
       // Billing-group membership — if any member of a group has a
       // live_billing row, every member counts as billed (relationship
       // billing: sole trader billed via the connected company).
-      const { data: groupMemberRows } = await supabase
+      const groupMemberRows = await all('billing group members', () => supabase
         .from('billing_group_members')
-        .select('entity_id, group_id');
+        .select('entity_id, group_id')
+        .order('entity_id', { ascending: true })
+        .order('group_id', { ascending: true }));
 
       // QBO customer mappings: entities whose mapping is flagged
       // role='not_a_client' are explicitly ignored — exclude them from
       // the "without billing" count.
-      const { data: mappingRows } = await supabase
+      const mappingRows = await all('QBO customer mappings', () => supabase
         .from('qbo_customer_mappings')
         .select('entity_id, role')
-        .eq('role', 'not_a_client');
+        .eq('role', 'not_a_client')
+        .order('qbo_customer_id', { ascending: true }));
 
       const ignored = new Set();
       for (const m of (mappingRows || [])) {
@@ -391,6 +424,167 @@ export default function BillingPage() {
       latestQuoteByEntity[eid] = q;
     }
   }
+
+  // -- Billing table: one row per live_billing record; a click opens the
+  //    service breakdown in place (one row open at a time, as before). --
+  const money = (v) => Number(v) || 0;
+  const billingColumns = [
+    {
+      key: 'client', label: 'Client',
+      sortValue: (b) => (b.entity?.name || 'Unknown').toLowerCase(),
+      render: (b) => {
+        const open = expandedId === b.id;
+        const Chev = open ? ChevronDown : ChevronRight;
+        return (
+          <span data-row-tint={open ? 'open' : undefined} className="text-gray-700 font-medium flex items-center gap-1.5 min-w-0">
+            <Chev size={14} className="text-gray-400 shrink-0" aria-hidden="true" />
+            <span className="truncate">{b.entity?.name || 'Unknown'}</span>
+          </span>
+        );
+      },
+    },
+    {
+      key: 'billing_type', label: 'Type', width: '12.5%', align: 'right',
+      sortValue: (b) => (b.billing_type || '').replace('_', ' '),
+      render: (b) => <span className="text-gray-500 capitalize">{(b.billing_type || '').replace('_', ' ')}</span>,
+    },
+    {
+      key: 'monthly_net', label: 'Monthly Net', width: '12.5%', align: 'right', firstDir: 'desc',
+      sortValue: (b) => money(b.monthly_net),
+      render: (b) => <span className="font-mono text-gray-700">{fmt(b.monthly_net)}</span>,
+    },
+    {
+      key: 'monthly_gross', label: 'Monthly Gross', width: '12.5%', align: 'right', firstDir: 'desc',
+      sortValue: (b) => money(b.monthly_gross),
+      render: (b) => <span className="font-mono text-ocean-700 font-semibold">{fmt(b.monthly_gross)}</span>,
+    },
+    {
+      key: 'annual_total', label: 'Annual', width: '12.5%', align: 'right', firstDir: 'desc',
+      sortValue: (b) => money(b.annual_total),
+      render: (b) => <span className="font-mono text-gray-700">{fmt(b.annual_total)}</span>,
+    },
+    {
+      key: 'status', label: 'Status', width: '12.5%', align: 'right',
+      sortValue: (b) => b.status || 'active',
+      render: (b) => (
+        <span className={`inline-block px-1.5 py-0.5 rounded-full text-xs font-medium ${b.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+          {b.status || 'active'}
+        </span>
+      ),
+    },
+    {
+      key: 'last_qbo_sync', label: 'QBO Sync', width: '12.5%', align: 'right', firstDir: 'desc',
+      sortValue: (b) => (b.last_qbo_sync ? new Date(b.last_qbo_sync).getTime() : null),
+      render: (b) => (
+        <span className="text-gray-400 inline-flex items-center justify-end gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full ${syncDot(b.qbo_sync_status)}`} />
+          {b.last_qbo_sync ? new Date(b.last_qbo_sync).toLocaleDateString('en-GB') : '--'}
+        </span>
+      ),
+    },
+  ];
+
+  // Expanded service breakdown — same content and buttons as before.
+  const renderBillingDetail = (b) => {
+    if (expandedId !== b.id) return null;
+    const services = Array.isArray(b.services) ? b.services : [];
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-semibold text-gray-500">Service Breakdown</h4>
+          <div className="flex gap-2">
+            <Btn
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePushToQbo(b.id);
+              }}
+              variant="secondary"
+              className="text-xs"
+              disabled={pushingId === b.id}
+            >
+              {pushingId === b.id ? 'Pushing...' : 'Push to QBO'}
+            </Btn>
+            <Btn
+              onClick={(e) => {
+                e.stopPropagation();
+                const qboItems = services.map((s) => ({
+                  service_id: s.service_id,
+                  description: s.description,
+                  qty: 1,
+                  rate: s.monthly_amount,
+                  amount: s.monthly_amount,
+                }));
+                exportQboCsv(b.entity?.name || 'Client', qboItems, true);
+              }}
+              variant="ghost"
+              className="text-xs"
+            >
+              Export CSV
+            </Btn>
+          </div>
+        </div>
+        {services.length > 0 ? (
+          <div className="space-y-1">
+            {services.map((s, idx) => (
+              <div key={idx} className="flex justify-between text-xs py-1 border-b border-gray-100 last:border-0">
+                <span className="text-gray-600">{s.description || s.service_id}</span>
+                <span className="font-mono text-gray-700">
+                  {fmt(s.annual_amount)}/yr ({fmt(s.monthly_amount)}/mo)
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400">No service breakdown available.</p>
+        )}
+        {b.quote_id && (
+          <p className="text-xs text-gray-400 mt-2">
+            Source Quote: <span className="text-ocean-600">{b.quote_id.slice(0, 8)}</span>
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  // -- Live vs quote comparison rows (active billing only) --
+  const comparisonRows = activeBilling.map((b) => {
+    const latestQuote = latestQuoteByEntity[b.entity_id];
+    const liveGross = Number(b.monthly_gross) || 0;
+    const quoteGross = latestQuote ? Number(latestQuote.monthly_gross) || 0 : null;
+    const delta = quoteGross != null ? liveGross - quoteGross : null;
+    const tint = delta != null && delta > 0.5 ? 'up' : delta != null && delta < -0.5 ? 'down' : null;
+    return { id: b.id, name: b.entity?.name || 'Unknown', liveGross, quoteGross, delta, tint };
+  });
+  const comparisonColumns = [
+    {
+      key: 'name', label: 'Client',
+      sortValue: (r) => r.name.toLowerCase(),
+      render: (r) => <span data-row-tint={r.tint || undefined} className="text-gray-700 font-medium">{r.name}</span>,
+    },
+    {
+      key: 'liveGross', label: 'Live Monthly', width: '20%', align: 'right', firstDir: 'desc',
+      sortValue: (r) => r.liveGross,
+      render: (r) => <span className="font-mono text-ocean-700 font-semibold">{fmt(r.liveGross)}</span>,
+    },
+    {
+      key: 'quoteGross', label: 'Quote Monthly', width: '20%', align: 'right', firstDir: 'desc',
+      sortValue: (r) => r.quoteGross,
+      render: (r) => (
+        <span className="font-mono text-gray-600">
+          {r.quoteGross != null ? fmt(r.quoteGross) : <span className="text-gray-300">No quote</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'delta', label: 'Delta', width: '20%', align: 'right', firstDir: 'desc',
+      sortValue: (r) => r.delta,
+      render: (r) => (
+        <span className={`font-mono font-semibold ${r.tint === 'up' ? 'text-green-700' : r.tint === 'down' ? 'text-red-700' : 'text-gray-400'}`}>
+          {r.delta != null ? (r.delta >= 0 ? '+' : '') + fmt(r.delta) : '--'}
+        </span>
+      ),
+    },
+  ];
 
   // -- CSV Import --
   const handleCsvImport = async (e) => {
@@ -861,113 +1055,17 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* Billing Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
-        <div className="grid text-xs font-medium text-gray-400 px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr' }}>
-          <span>Client</span>
-          <span className="text-right">Type</span>
-          <span className="text-right">Monthly Net</span>
-          <span className="text-right">Monthly Gross</span>
-          <span className="text-right">Annual</span>
-          <span className="text-right">Status</span>
-          <span className="text-right">QBO Sync</span>
-        </div>
-        {filtered.length === 0 ? (
-          <div className="px-4 py-6 text-center text-xs text-gray-400">
-            No billing records found.
-          </div>
-        ) : (
-          filtered.map((b) => {
-            const isExpanded = expandedId === b.id;
-            const services = Array.isArray(b.services) ? b.services : [];
-            return (
-              <div key={b.id}>
-                <div
-                  className={`grid text-xs px-4 py-2.5 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-ocean-50' : ''}`}
-                  style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr' }}
-                  onClick={() => setExpandedId(isExpanded ? null : b.id)}
-                >
-                  <span className="text-gray-700 font-medium">{b.entity?.name || 'Unknown'}</span>
-                  <span className="text-right text-gray-500 capitalize">{(b.billing_type || '').replace('_', ' ')}</span>
-                  <span className="text-right font-mono text-gray-700">{fmt(b.monthly_net)}</span>
-                  <span className="text-right font-mono text-ocean-700 font-semibold">{fmt(b.monthly_gross)}</span>
-                  <span className="text-right font-mono text-gray-700">{fmt(b.annual_total)}</span>
-                  <span className="text-right">
-                    <span className={`inline-block px-1.5 py-0.5 rounded-full text-xs font-medium ${b.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {b.status || 'active'}
-                    </span>
-                  </span>
-                  <span className="text-right text-gray-400 flex items-center justify-end gap-1.5">
-                    <span className={`w-1.5 h-1.5 rounded-full ${
-                      b.qbo_sync_status === 'synced' ? 'bg-green-500'
-                      : b.qbo_sync_status === 'pending' ? 'bg-amber-500'
-                      : b.qbo_sync_status === 'error' ? 'bg-red-500'
-                      : 'bg-gray-300'
-                    }`} />
-                    {b.last_qbo_sync ? new Date(b.last_qbo_sync).toLocaleDateString('en-GB') : '--'}
-                  </span>
-                </div>
-                {/* Expanded Service Breakdown */}
-                {isExpanded && (
-                  <div className="px-6 py-3 bg-gray-50 border-b border-gray-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-xs font-semibold text-gray-500">Service Breakdown</h4>
-                      <div className="flex gap-2">
-                        <Btn
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handlePushToQbo(b.id);
-                          }}
-                          variant="secondary"
-                          className="text-xs"
-                          disabled={pushingId === b.id}
-                        >
-                          {pushingId === b.id ? 'Pushing...' : 'Push to QBO'}
-                        </Btn>
-                        <Btn
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const qboItems = services.map((s) => ({
-                              service_id: s.service_id,
-                              description: s.description,
-                              qty: 1,
-                              rate: s.monthly_amount,
-                              amount: s.monthly_amount,
-                            }));
-                            exportQboCsv(b.entity?.name || 'Client', qboItems, true);
-                          }}
-                          variant="ghost"
-                          className="text-xs"
-                        >
-                          Export CSV
-                        </Btn>
-                      </div>
-                    </div>
-                    {services.length > 0 ? (
-                      <div className="space-y-1">
-                        {services.map((s, idx) => (
-                          <div key={idx} className="flex justify-between text-xs py-1 border-b border-gray-100 last:border-0">
-                            <span className="text-gray-600">{s.description || s.service_id}</span>
-                            <span className="font-mono text-gray-700">
-                              {fmt(s.annual_amount)}/yr ({fmt(s.monthly_amount)}/mo)
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-gray-400">No service breakdown available.</p>
-                    )}
-                    {b.quote_id && (
-                      <p className="text-xs text-gray-400 mt-2">
-                        Source Quote: <span className="text-ocean-600">{b.quote_id.slice(0, 8)}</span>
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
+      {/* Billing Table — a row click opens its service breakdown in place */}
+      <style>{ROW_TINTS}</style>
+      <div className="mb-6">
+        <DataTable
+          columns={billingColumns}
+          rows={filtered}
+          rowKey={(b) => b.id}
+          onRowClick={(b) => setExpandedId(expandedId === b.id ? null : b.id)}
+          renderExpanded={renderBillingDetail}
+          empty="No billing records found."
+        />
       </div>
 
       {/* QBO Sync History */}
@@ -1021,47 +1119,12 @@ export default function BillingPage() {
       {/* Comparison Section */}
       <div className="mb-6">
         <h3 className="text-sm font-bold text-ocean-700 mb-3">Live vs Quote Comparison</h3>
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="grid text-xs font-medium text-gray-400 px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
-            <span>Client</span>
-            <span className="text-right">Live Monthly</span>
-            <span className="text-right">Quote Monthly</span>
-            <span className="text-right">Delta</span>
-          </div>
-          {activeBilling.length === 0 ? (
-            <div className="px-4 py-6 text-center text-xs text-gray-400">
-              No active billing records to compare.
-            </div>
-          ) : (
-            activeBilling.map((b) => {
-              const latestQuote = latestQuoteByEntity[b.entity_id];
-              const liveGross = Number(b.monthly_gross) || 0;
-              const quoteGross = latestQuote ? Number(latestQuote.monthly_gross) || 0 : null;
-              const delta = quoteGross != null ? liveGross - quoteGross : null;
-              let deltaColor = 'text-gray-400';
-              let deltaBg = '';
-              if (delta != null && delta > 0.5) {
-                deltaColor = 'text-green-700';
-                deltaBg = 'bg-green-50';
-              } else if (delta != null && delta < -0.5) {
-                deltaColor = 'text-red-700';
-                deltaBg = 'bg-red-50';
-              }
-              return (
-                <div key={b.id} className={`grid text-xs px-4 py-2.5 border-b border-gray-50 ${deltaBg}`} style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
-                  <span className="text-gray-700 font-medium">{b.entity?.name || 'Unknown'}</span>
-                  <span className="text-right font-mono text-ocean-700 font-semibold">{fmt(liveGross)}</span>
-                  <span className="text-right font-mono text-gray-600">
-                    {quoteGross != null ? fmt(quoteGross) : <span className="text-gray-300">No quote</span>}
-                  </span>
-                  <span className={`text-right font-mono font-semibold ${deltaColor}`}>
-                    {delta != null ? (delta >= 0 ? '+' : '') + fmt(delta) : '--'}
-                  </span>
-                </div>
-              );
-            })
-          )}
-        </div>
+        <DataTable
+          columns={comparisonColumns}
+          rows={comparisonRows}
+          rowKey={(r) => r.id}
+          empty="No active billing records to compare."
+        />
       </div>
     </div>
   );

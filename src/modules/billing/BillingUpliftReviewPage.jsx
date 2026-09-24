@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail, MailX, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Check, X, RotateCcw, RefreshCw, Mail, MailX } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
+import DataTable from '../../components/DataTable';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
 import SearchInput from '../../components/SearchInput';
@@ -74,27 +76,38 @@ export default function BillingUpliftReviewPage() {
     if (prev.dir === 'desc') return { key, dir: 'asc' };
     return { key: 'delta', dir: 'desc' };
   });
+  // Controlled paging: a row action reloads the rows, and that must not
+  // throw you back to page 1. A new filter, search or sort does.
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [filter, search, sortBy]);
 
   const load = async () => {
     setLoading(true);
     // Pull every active billing row with at least one pending uplift.
     // We over-fetch (no jsonb filter) then narrow client-side — the set
-    // is small (~ tens of rows).
-    const { data } = await supabase
-      .from('live_billing')
-      .select(`
-        id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date,
-        uplift_review_status, uplift_reviewed_at,
-        uplift_email_sent_at, uplift_email_to, uplift_email_skipped,
-        uplift_gmail_draft_id, uplift_gmail_draft_created_at,
-        entity:entities(
-          id, name, billing_email, entity_status,
-          entity_people(is_primary_contact, person:people(id, name, first_name, preferred_name, email)),
-          qbo_customer_mappings(qbo_email, role)
-        )
-      `)
-      .eq('status', 'active')
-      .order('id', { ascending: false });
+    // is small (~ tens of rows) — but the over-fetch reads every active
+    // row, so page past PostgREST's silent 1000-row cap (id is unique, so
+    // the order is stable across pages).
+    let data = [];
+    try {
+      data = await fetchAllRows(() => supabase
+        .from('live_billing')
+        .select(`
+          id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date,
+          uplift_review_status, uplift_reviewed_at,
+          uplift_email_sent_at, uplift_email_to, uplift_email_skipped,
+          uplift_gmail_draft_id, uplift_gmail_draft_created_at,
+          entity:entities(
+            id, name, billing_email, entity_status,
+            entity_people(is_primary_contact, person:people(id, name, first_name, preferred_name, email)),
+            qbo_customer_mappings(qbo_email, role)
+          )
+        `)
+        .eq('status', 'active')
+        .order('id', { ascending: false }));
+    } catch (err) {
+      console.error('Uplift review load failed:', err);
+    }
     // A row is "really" pending only if at least one service has a
     // pending amount AND that service is in scope for push:
     //   - approval_status must be 'approved' (rejected/suggested lines
@@ -217,27 +230,9 @@ export default function BillingUpliftReviewPage() {
     const q = search.trim().toLowerCase();
     if (q) out = out.filter((r) => (r.entity?.name || '').toLowerCase().includes(q));
 
-    const dir = sortBy.dir === 'asc' ? 1 : -1;
-    const getKey = (r) => {
-      switch (sortBy.key) {
-        case 'client':    return (r.entity?.name || '').toLowerCase();
-        case 'lines':     return r._pendingLines || 0;
-        case 'old':       return r._oldTotal || 0;
-        case 'new':       return r._newTotal || 0;
-        case 'delta':     return r._delta || 0;
-        case 'goLive':    return r._goLive || '';
-        case 'nextRun':   return r.qbo_next_run_date || '';
-        case 'status':    return r.uplift_review_status || 'staged';
-        default:          return 0;
-      }
-    };
-    out = [...out].sort((a, b) => {
-      const av = getKey(a), bv = getKey(b);
-      if (typeof av === 'string' && typeof bv === 'string') return av.localeCompare(bv) * dir;
-      return ((av || 0) - (bv || 0)) * dir;
-    });
+    // Sorting is the table's (columns below, driven by sortBy).
     return out;
-  }, [summarised, filter, search, sortBy]);
+  }, [summarised, filter, search]);
 
   const totals = useMemo(() => {
     const old = visible.reduce((s, r) => s + r._oldTotal, 0);
@@ -371,19 +366,133 @@ export default function BillingUpliftReviewPage() {
     }
   };
 
-  const toggleSel = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-  const toggleSelAll = () => {
-    const visIds = visible.map((r) => r.id);
-    const all = visIds.length > 0 && visIds.every((id) => selected.has(id));
-    setSelected(all ? new Set() : new Set(visIds));
-  };
-  const allVisibleSelected = visible.length > 0 && visible.every((r) => selected.has(r.id));
+  const visibleIds = visible.map((r) => r.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  // This page's heading tickbox has always REPLACED the selection with the
+  // lines in view (or cleared it) — the bulk bar acts on the whole selection,
+  // so nothing hidden by a filter may stay ticked.
+  const onToggleAll = () => setSelected(allVisibleSelected ? new Set() : new Set(visibleIds));
+
+  // Headings keep the page's own three-step cycle (first click, reverse,
+  // then back to the default largest-Δ-first), so the table's suggested
+  // direction is ignored and cycleSort decides.
+  const columns = [
+    {
+      key: 'client', label: 'Client', width: '22%', wrap: true,
+      sortValue: (r) => (r.entity?.name || '').toLowerCase(),
+      render: (r) => {
+        const hasTemplate = !!r.qbo_recurring_txn_id;
+        return (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 500, color: '#0f172a' }}>{r.entity?.name || 'Unknown'}</span>
+              {r.uplift_email_sent_at && (
+                <span
+                  style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}
+                  title={`Email sent ${new Date(r.uplift_email_sent_at).toLocaleString('en-GB')}${r.uplift_email_to ? ` to ${r.uplift_email_to}` : ''}`}
+                >✉ SENT</span>
+              )}
+              {!r.uplift_email_sent_at && r.uplift_gmail_draft_id && (
+                <span
+                  style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dbeafe', color: '#0c4a6e' }}
+                  title={`Gmail draft created ${r.uplift_gmail_draft_created_at ? new Date(r.uplift_gmail_draft_created_at).toLocaleString('en-GB') : ''}${r.uplift_email_to ? ` for ${r.uplift_email_to}` : ''} — finalise and send in Gmail.`}
+                >✎ DRAFT</span>
+              )}
+              {r.uplift_email_skipped && !r.uplift_email_sent_at && (
+                <span
+                  style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#f1f5f9', color: '#475569' }}
+                  title="Marked as not needing an email — excluded from Send all"
+                >NO EMAIL</span>
+              )}
+            </div>
+            {!hasTemplate && <span style={{ fontSize: 11, color: '#b45309' }}>⚠ no QBO template</span>}
+            {r._reason && <div style={{ fontSize: 11, color: '#94a3b8' }} title={r._reason}>{r._reason.length > 50 ? r._reason.slice(0, 50) + '…' : r._reason}</div>}
+          </>
+        );
+      },
+    },
+    { key: 'lines', label: 'Lines', width: 70, firstDir: 'desc', sortValue: (r) => r._pendingLines || 0, render: (r) => r._pendingLines },
+    {
+      key: 'old', label: 'Old monthly', width: 110, align: 'right', firstDir: 'desc', sortValue: (r) => r._oldTotal || 0,
+      render: (r) => <span style={{ fontFamily: 'monospace' }}>£{r._oldTotal.toFixed(2)}</span>,
+    },
+    {
+      key: 'new', label: 'New monthly', width: 110, align: 'right', firstDir: 'desc', sortValue: (r) => r._newTotal || 0,
+      render: (r) => <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>£{r._newTotal.toFixed(2)}</span>,
+    },
+    {
+      key: 'delta', label: 'Δ', width: 90, align: 'right', firstDir: 'desc', sortValue: (r) => r._delta || 0,
+      render: (r) => (
+        <span style={{ fontFamily: 'monospace', color: r._delta > 0 ? '#15803d' : r._delta < 0 ? '#b91c1c' : '#94a3b8' }}>
+          {r._delta > 0 ? '+' : ''}£{r._delta.toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      key: 'goLive', label: 'Go-live', width: 110, firstDir: 'desc', sortValue: (r) => r._goLive || '',
+      render: (r) => <span style={{ color: '#475569' }}>{r._goLive || '—'}</span>,
+    },
+    {
+      key: 'nextRun', label: 'Next QBO run', width: 120, firstDir: 'desc', sortValue: (r) => r.qbo_next_run_date || '',
+      render: (r) => (
+        <span style={{ color: '#475569' }}>
+          {r.qbo_next_run_date || (metaErrors[r.id]
+            ? <span style={{ color: '#b45309', cursor: 'help' }} title={`QBO could not be read for this template: ${metaErrors[r.id]}`}>— ⚠</span>
+            : '—')}
+        </span>
+      ),
+    },
+    {
+      key: 'status', label: 'Status', width: 100, sortValue: (r) => r.uplift_review_status || 'staged',
+      render: (r) => <StatusChip status={r.uplift_review_status || 'staged'} />,
+    },
+    {
+      key: 'actions', label: '', width: 200, sortable: false,
+      render: (r) => {
+        const status = r.uplift_review_status || 'staged';
+        return (
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+            {status !== 'approved' && (
+              <button onClick={() => setStatus([r.id], 'approved')} disabled={saving} title="Approve for push" style={iconBtn('#059669')}>
+                <Check size={13} />
+              </button>
+            )}
+            {status !== 'rejected' && (
+              <button onClick={() => setStatus([r.id], 'rejected')} disabled={saving} title="Reject (keep staged but exclude from push)" style={iconBtn('#b91c1c')}>
+                <X size={13} />
+              </button>
+            )}
+            {status !== 'staged' && (
+              <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} title="Reset to staged" style={iconBtn('#64748b')}>
+                <RotateCcw size={13} />
+              </button>
+            )}
+            <button
+              onClick={() => setEmailSkipped([r.id], !r.uplift_email_skipped)}
+              disabled={saving}
+              title={r.uplift_email_skipped ? 'Email currently skipped — click to re-enable' : 'Mark this client as not needing an email (excluded from Send all)'}
+              style={r.uplift_email_skipped
+                ? { ...iconBtn('#b91c1c'), background: '#fee2e2', borderColor: '#b91c1c' }
+                : iconBtn('#94a3b8')}
+            >
+              <MailX size={13} />
+            </button>
+            <button
+              onClick={() => setEmailFor(r)}
+              disabled={saving || r.uplift_email_skipped}
+              title={r.uplift_email_skipped ? 'Email skipped for this row' : 'Preview the fee-raise email for this client'}
+              style={iconBtn('#0e7fe0')}
+            >
+              <Mail size={13} />
+            </button>
+            <button onClick={() => unstage(r.id)} disabled={saving} title="Discard the pending uplift entirely" style={{ ...iconBtn('#94a3b8'), fontSize: 11 }}>
+              ✕
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
 
   const approvedCount = counts.approved || 0;
 
@@ -481,137 +590,29 @@ export default function BillingUpliftReviewPage() {
           />
         )
       ) : (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <colgroup>
-              <col style={{ width: 32 }} />
-              <col style={{ width: '22%' }} />
-              <col style={{ width: 70 }} />
-              <col style={{ width: 110 }} />
-              <col style={{ width: 110 }} />
-              <col style={{ width: 90 }} />
-              <col style={{ width: 110 }} />
-              <col style={{ width: 110 }} />
-              <col style={{ width: 100 }} />
-              <col style={{ width: 160 }} />
-            </colgroup>
-            <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                <Th><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelAll} /></Th>
-                <SortTh label="Client"      sortKey="client"  active={sortBy} onClick={cycleSort} />
-                <SortTh label="Lines"       sortKey="lines"   active={sortBy} onClick={cycleSort} />
-                <SortTh label="Old monthly" sortKey="old"     active={sortBy} onClick={cycleSort} align="right" />
-                <SortTh label="New monthly" sortKey="new"     active={sortBy} onClick={cycleSort} align="right" />
-                <SortTh label="Δ"           sortKey="delta"   active={sortBy} onClick={cycleSort} align="right" />
-                <SortTh label="Go-live"     sortKey="goLive"  active={sortBy} onClick={cycleSort} />
-                <SortTh label="Next QBO run" sortKey="nextRun" active={sortBy} onClick={cycleSort} />
-                <SortTh label="Status"      sortKey="status"  active={sortBy} onClick={cycleSort} />
-                <Th></Th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((r) => {
-                const status = r.uplift_review_status || 'staged';
-                const isSel = selected.has(r.id);
-                const hasTemplate = !!r.qbo_recurring_txn_id;
-                return (
-                  <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9', background: isSel ? '#f0f9ff' : 'transparent' }}>
-                    <Td><input type="checkbox" checked={isSel} onChange={() => toggleSel(r.id)} /></Td>
-                    <Td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontWeight: 500, color: '#0f172a' }}>{r.entity?.name || 'Unknown'}</span>
-                        {r.uplift_email_sent_at && (
-                          <span
-                            style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}
-                            title={`Email sent ${new Date(r.uplift_email_sent_at).toLocaleString('en-GB')}${r.uplift_email_to ? ` to ${r.uplift_email_to}` : ''}`}
-                          >✉ SENT</span>
-                        )}
-                        {!r.uplift_email_sent_at && r.uplift_gmail_draft_id && (
-                          <span
-                            style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dbeafe', color: '#0c4a6e' }}
-                            title={`Gmail draft created ${r.uplift_gmail_draft_created_at ? new Date(r.uplift_gmail_draft_created_at).toLocaleString('en-GB') : ''}${r.uplift_email_to ? ` for ${r.uplift_email_to}` : ''} — finalise and send in Gmail.`}
-                          >✎ DRAFT</span>
-                        )}
-                        {r.uplift_email_skipped && !r.uplift_email_sent_at && (
-                          <span
-                            style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#f1f5f9', color: '#475569' }}
-                            title="Marked as not needing an email — excluded from Send all"
-                          >NO EMAIL</span>
-                        )}
-                      </div>
-                      {!hasTemplate && <span style={{ fontSize: 11, color: '#b45309' }}>⚠ no QBO template</span>}
-                      {r._reason && <div style={{ fontSize: 11, color: '#94a3b8' }} title={r._reason}>{r._reason.length > 50 ? r._reason.slice(0, 50) + '…' : r._reason}</div>}
-                    </Td>
-                    <Td>{r._pendingLines}</Td>
-                    <Td align="right" style={{ fontFamily: 'monospace' }}>£{r._oldTotal.toFixed(2)}</Td>
-                    <Td align="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>£{r._newTotal.toFixed(2)}</Td>
-                    <Td align="right" style={{ fontFamily: 'monospace', color: r._delta > 0 ? '#15803d' : r._delta < 0 ? '#b91c1c' : '#94a3b8' }}>
-                      {r._delta > 0 ? '+' : ''}£{r._delta.toFixed(2)}
-                    </Td>
-                    <Td style={{ color: '#475569' }}>{r._goLive || '—'}</Td>
-                    <Td style={{ color: '#475569' }}>
-                      {r.qbo_next_run_date || (metaErrors[r.id]
-                        ? <span style={{ color: '#b45309', cursor: 'help' }} title={`QBO could not be read for this template: ${metaErrors[r.id]}`}>— ⚠</span>
-                        : '—')}
-                    </Td>
-                    <Td><StatusChip status={status} /></Td>
-                    <Td>
-                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                        {status !== 'approved' && (
-                          <button onClick={() => setStatus([r.id], 'approved')} disabled={saving} title="Approve for push" style={iconBtn('#059669')}>
-                            <Check size={13} />
-                          </button>
-                        )}
-                        {status !== 'rejected' && (
-                          <button onClick={() => setStatus([r.id], 'rejected')} disabled={saving} title="Reject (keep staged but exclude from push)" style={iconBtn('#b91c1c')}>
-                            <X size={13} />
-                          </button>
-                        )}
-                        {status !== 'staged' && (
-                          <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} title="Reset to staged" style={iconBtn('#64748b')}>
-                            <RotateCcw size={13} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setEmailSkipped([r.id], !r.uplift_email_skipped)}
-                          disabled={saving}
-                          title={r.uplift_email_skipped ? 'Email currently skipped — click to re-enable' : 'Mark this client as not needing an email (excluded from Send all)'}
-                          style={r.uplift_email_skipped
-                            ? { ...iconBtn('#b91c1c'), background: '#fee2e2', borderColor: '#b91c1c' }
-                            : iconBtn('#94a3b8')}
-                        >
-                          <MailX size={13} />
-                        </button>
-                        <button
-                          onClick={() => setEmailFor(r)}
-                          disabled={saving || r.uplift_email_skipped}
-                          title={r.uplift_email_skipped ? 'Email skipped for this row' : 'Preview the fee-raise email for this client'}
-                          style={iconBtn('#0e7fe0')}
-                        >
-                          <Mail size={13} />
-                        </button>
-                        <button onClick={() => unstage(r.id)} disabled={saving} title="Discard the pending uplift entirely" style={{ ...iconBtn('#94a3b8'), fontSize: 11 }}>
-                          ✕
-                        </button>
-                      </div>
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr style={{ background: '#f8fafc', borderTop: '2px solid #e5e7eb' }}>
-                <Td colSpan={3} />
-                <Td align="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>£{totals.old.toFixed(2)}</Td>
-                <Td align="right" style={{ fontFamily: 'monospace', fontWeight: 600 }}>£{totals.neu.toFixed(2)}</Td>
-                <Td align="right" style={{ fontFamily: 'monospace', fontWeight: 700, color: totals.delta > 0 ? '#15803d' : '#94a3b8' }}>
-                  {totals.delta > 0 ? '+' : ''}£{totals.delta.toFixed(2)}
-                </Td>
-                <Td colSpan={4} style={{ fontSize: 12, color: '#94a3b8' }}>{visible.length} row{visible.length === 1 ? '' : 's'}</Td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          rows={visible}
+          rowKey={(r) => r.id}
+          sort={sortBy}
+          onSort={(next) => cycleSort(next.key)}
+          page={page}
+          onPage={setPage}
+          selection={{ selected, onChange: setSelected, onToggleAll }}
+          footer={() => ({
+            old: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>£{totals.old.toFixed(2)}</span>,
+            new: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>£{totals.neu.toFixed(2)}</span>,
+            delta: (
+              <span style={{ fontFamily: 'monospace', fontWeight: 700, color: totals.delta > 0 ? '#15803d' : '#94a3b8' }}>
+                {totals.delta > 0 ? '+' : ''}£{totals.delta.toFixed(2)}
+              </span>
+            ),
+            goLive: {
+              span: 4,
+              content: <span style={{ fontSize: 12, fontWeight: 400, color: '#94a3b8' }}>{visible.length} row{visible.length === 1 ? '' : 's'}</span>,
+            },
+          })}
+        />
       )}
 
       {/* Sticky push footer — appears whenever there's something
@@ -678,26 +679,6 @@ function Pill({ label, count, active, tone, onClick }) {
     </button>
   );
 }
-
-const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{children}</th>;
-
-function SortTh({ label, sortKey, active, onClick, align }) {
-  const isActive = active.key === sortKey;
-  return (
-    <th
-      onClick={() => onClick(sortKey)}
-      style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: isActive ? '#0f172a' : '#94a3b8', cursor: 'pointer', userSelect: 'none' }}
-    >
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexDirection: align === 'right' ? 'row-reverse' : 'row' }}>
-        {label}
-        {isActive
-          ? (active.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)
-          : <span style={{ display: 'inline-flex', color: '#cbd5e1' }}><ArrowUp size={9} style={{ marginRight: -3 }} /><ArrowDown size={9} /></span>}
-      </span>
-    </th>
-  );
-}
-const Td = ({ children, align, style, colSpan }) => <td colSpan={colSpan} style={{ padding: '8px 12px', verticalAlign: 'middle', textAlign: align || 'left', ...style }}>{children}</td>;
 
 const backLinkStyle = { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 12, padding: 0, fontFamily: font };
 const bulkBarStyle = { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', marginBottom: 10, background: '#0f172a', color: '#fff', borderRadius: 8, position: 'sticky', top: 0, zIndex: 20 };

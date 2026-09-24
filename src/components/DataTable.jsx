@@ -24,8 +24,10 @@ const font = "'Outfit', sans-serif";
               row over ALL filtered rows (not just the page); `span` lets one
               cell run across the next columns
   rowTitle:   (row) => string — hover hint for the whole row
-  selection:  { selected: Set<key>, onChange(nextSet) } — adds a tickbox
-              column; the heading box ticks every filtered row, not just the page
+  selection:  { selected: Set<key>, onChange(nextSet), onToggleAll?() } — adds
+              a tickbox column; the heading box ticks every filtered row, not
+              just the page. Pass onToggleAll to decide what the heading box
+              does yourself (e.g. replace the selection with what is in view)
   pageSize:   default 50; 0 turns paging off
   renderExpanded: (row) => node | null — detail shown full-width under a
               row (expand in place); the caller decides which rows are open
@@ -101,6 +103,7 @@ export default function DataTable({
   const allOn = selection && allKeys.length > 0 && allKeys.every((k) => sel.has(k));
   const someOn = selection && !allOn && allKeys.some((k) => sel.has(k));
   const toggleAll = () => {
+    if (selection.onToggleAll) { selection.onToggleAll(); return; }
     const next = new Set(sel);
     if (allOn) allKeys.forEach((k) => next.delete(k)); else allKeys.forEach((k) => next.add(k));
     selection.onChange(next);
@@ -170,7 +173,7 @@ export default function DataTable({
                   onAuxClick={(e) => { if (e.button === 1 && rowHref) open(e, row); }}
                   style={{ cursor: clickable ? 'pointer' : 'default', ...(sel?.has(k) ? { background: '#eff6ff' } : {}), ...(rowStyle?.(row) || {}) }}
                   onMouseEnter={(e) => { if (!sel?.has(k)) e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.opacity = '1'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = sel?.has(k) ? '#eff6ff' : ''; e.currentTarget.style.opacity = rowStyle?.(row)?.opacity ?? ''; }}
+                  onMouseLeave={(e) => { const own = rowStyle?.(row) || {}; e.currentTarget.style.background = sel?.has(k) ? '#eff6ff' : (own.background ?? own.backgroundColor ?? ''); e.currentTarget.style.opacity = own.opacity ?? ''; }}
                 >
                   {selection && (
                     <td style={{ ...td, textAlign: 'center', padding: '11px 0' }}>

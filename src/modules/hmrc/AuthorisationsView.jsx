@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Check, ExternalLink, RotateCcw } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 import { fmtGbp } from '../../lib/money';
-import { fetchAuthorisations, closeAuthorisation, reopenAuthorisation } from './hmrcApi';
+import DataTable from '../../components/DataTable';
+import { closeAuthorisation, reopenAuthorisation } from './hmrcApi';
 import {
   font, DISENGAGE_REASONS, Pill, Stat, Chip, ErrorBar,
-  shortDate, ageLabel, th, td, thNum, tdNum, card, inputStyle,
+  shortDate, ageLabel, inputStyle,
 } from './hmrcShared';
 
 // Schemes we still hold HMRC authorisation for, with no active Athena client
@@ -27,16 +30,34 @@ export default function AuthorisationsView() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [reason, setReason] = useState('all');
-  const [showClosed, setShowClosed] = useState(false);
+  const [reason, setReasonRaw] = useState('all');
+  const [showClosed, setShowClosedRaw] = useState(false);
   const [drafts, setDrafts] = useState({});
+  // Sorting is on the column headings. Largest last-known debt first is the
+  // order the list always came in (the loader breaks ties by name).
+  const [sort, setSort] = useState({ key: 'last_known_debt', dir: 'desc' });
+  // Held here, not in the table, so closing a row (which reloads the list)
+  // leaves you on the page you were working rather than page 1.
+  const [page, setPage] = useState(1);
+
+  // Any change to what is shown starts the list again at page 1.
+  const setReason = (v) => { setReasonRaw(v); setPage(1); };
+  const setShowClosed = (v) => { setShowClosedRaw(v); setPage(1); };
 
   useEffect(() => { load(); }, []);
 
   async function load() {
     setLoading(true);
     try {
-      setRows(await fetchAuthorisations());
+      // PostgREST caps a fetch at 1000 rows and truncates SILENTLY, so page
+      // through the lot. Same order as fetchAuthorisations, with the id as a
+      // unique tiebreak so paging cannot repeat or skip a row.
+      setRows(await fetchAllRows(() => supabase
+        .from('v_hmrc_authorisation_review')
+        .select('*')
+        .order('last_known_debt', { ascending: false, nullsFirst: false })
+        .order('hmrc_name', { ascending: true })
+        .order('id', { ascending: true })));
       setError('');
     } catch (e) {
       setError(e.message || 'Could not load authorisation reviews');
@@ -76,6 +97,92 @@ export default function AuthorisationsView() {
   const reasonCounts = openRows.reduce((acc, r) => { acc[r.reason] = (acc[r.reason] || 0) + 1; return acc; }, {});
   const withDebt = openRows.filter((r) => Number(r.last_known_debt) > 0);
 
+  const columns = [
+    {
+      key: 'hmrc_name', label: 'Scheme', wrap: true,
+      sortValue: (r) => r.hmrc_name || '',
+      render: (r) => (
+        <>
+          <div style={{ fontWeight: 500, color: '#0f172a' }}>{r.hmrc_name}</div>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>
+            {r.paye_ref} · {r.service?.toUpperCase()}
+          </div>
+        </>
+      ),
+    },
+    {
+      key: 'reason', label: 'Why', width: 330, wrap: true,
+      sortValue: (r) => DISENGAGE_REASONS[r.reason] || r.reason || '',
+      render: (r) => (
+        <>
+          <Pill colour={REASON_COLOUR[r.reason] || '#64748b'}>
+            {DISENGAGE_REASONS[r.reason] || r.reason}
+          </Pill>
+          {r.entity_id && (
+            <a href={`/clients/${r.entity_id}`} target="_blank" rel="noreferrer"
+               style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0e7fe0', textDecoration: 'none', marginLeft: 6 }}>
+              {r.entity_name} <ExternalLink size={10} />
+            </a>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'last_known_debt', label: 'Last known debt', align: 'right', width: 150, firstDir: 'desc',
+      sortValue: (r) => (r.last_known_debt == null ? null : Number(r.last_known_debt)),
+      render: (r) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums', color: Number(r.last_known_debt) > 0 ? '#b91c1c' : '#cbd5e1', fontWeight: Number(r.last_known_debt) > 0 ? 600 : 400 }}>
+          {Number(r.last_known_debt) > 0 ? fmtGbp(r.last_known_debt) : '—'}
+        </span>
+      ),
+    },
+    {
+      // Longest outstanding first on the first click.
+      key: 'days_outstanding', label: 'Flagged', width: 120, firstDir: 'desc',
+      sortValue: (r) => (r.days_outstanding == null ? null : Number(r.days_outstanding)),
+      render: (r) => (
+        <span style={{ fontSize: 13, color: '#64748b' }}
+              title={`First flagged ${shortDate(r.first_flagged)}, last seen on the agent list ${shortDate(r.last_seen_on_list)}`}>
+          {ageLabel(r.days_outstanding)} ago
+        </span>
+      ),
+    },
+    {
+      // Closed rows sort by when they were closed; open rows by the saved
+      // note. A draft being typed is not in the rows, so it never re-sorts.
+      key: 'note', label: showClosed ? 'Closed' : 'Note', width: 260, wrap: true,
+      firstDir: showClosed ? 'desc' : 'asc',
+      sortValue: (r) => (showClosed ? r.removed_at : r.note) || '',
+      render: (r) => (showClosed ? (
+        <div style={{ fontSize: 13, color: '#64748b' }}>
+          {shortDate(r.removed_at)}{r.removed_by ? ` · ${r.removed_by}` : ''}
+          {r.note && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{r.note}</div>}
+        </div>
+      ) : (
+        <input
+          value={drafts[r.id] ?? (r.note || '')}
+          onChange={(e) => setDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
+          placeholder="Handed back? Or record fixed?"
+          style={inputStyle}
+        />
+      )),
+    },
+    {
+      key: 'actions', label: '', width: 120, sortable: false,
+      render: (r) => (showClosed ? (
+        <button onClick={() => reopen(r)} style={btn('#64748b', '#f8fafc', '#e5e7eb')}
+                title="Put this back on the outstanding list">
+          <RotateCcw size={12} /> Reopen
+        </button>
+      ) : (
+        <button onClick={() => close(r)} style={btn('#059669', '#f0fdf4', '#05966933')}
+                title="Record that this authorisation has been dealt with">
+          <Check size={12} /> Done
+        </button>
+      )),
+    },
+  ];
+
   return (
     <div>
       <ErrorBar message={error} />
@@ -112,85 +219,20 @@ export default function AuthorisationsView() {
       {loading ? (
         <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading authorisation reviews…</div>
       ) : (
-        <div style={card}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
-                  <th style={th}>Scheme</th>
-                  <th style={th}>Why</th>
-                  <th style={thNum}>Last known debt</th>
-                  <th style={th}>Flagged</th>
-                  <th style={th}>{showClosed ? 'Closed' : 'Note'}</th>
-                  <th style={th} />
-                </tr>
-              </thead>
-              <tbody>
-                {visible.length === 0 && (
-                  <tr>
-                    <td colSpan={6} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
-                      {showClosed ? 'Nothing closed yet.' : 'No authorisations outstanding.'}
-                    </td>
-                  </tr>
-                )}
-                {visible.map((r) => (
-                  <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                    <td style={td}>
-                      <div style={{ fontWeight: 500, color: '#0f172a' }}>{r.hmrc_name}</div>
-                      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>
-                        {r.paye_ref} · {r.service?.toUpperCase()}
-                      </div>
-                    </td>
-                    <td style={td}>
-                      <Pill colour={REASON_COLOUR[r.reason] || '#64748b'}>
-                        {DISENGAGE_REASONS[r.reason] || r.reason}
-                      </Pill>
-                      {r.entity_id && (
-                        <a href={`/clients/${r.entity_id}`} target="_blank" rel="noreferrer"
-                           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0e7fe0', textDecoration: 'none', marginLeft: 6 }}>
-                          {r.entity_name} <ExternalLink size={10} />
-                        </a>
-                      )}
-                    </td>
-                    <td style={{ ...tdNum, color: Number(r.last_known_debt) > 0 ? '#b91c1c' : '#cbd5e1', fontWeight: Number(r.last_known_debt) > 0 ? 600 : 400 }}>
-                      {Number(r.last_known_debt) > 0 ? fmtGbp(r.last_known_debt) : '—'}
-                    </td>
-                    <td style={{ ...td, fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' }}
-                        title={`First flagged ${shortDate(r.first_flagged)}, last seen on the agent list ${shortDate(r.last_seen_on_list)}`}>
-                      {ageLabel(r.days_outstanding)} ago
-                    </td>
-                    <td style={{ ...td, minWidth: 200 }}>
-                      {showClosed ? (
-                        <div style={{ fontSize: 13, color: '#64748b' }}>
-                          {shortDate(r.removed_at)}{r.removed_by ? ` · ${r.removed_by}` : ''}
-                          {r.note && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{r.note}</div>}
-                        </div>
-                      ) : (
-                        <input
-                          value={drafts[r.id] ?? (r.note || '')}
-                          onChange={(e) => setDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
-                          placeholder="Handed back? Or record fixed?"
-                          style={inputStyle}
-                        />
-                      )}
-                    </td>
-                    <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                      {showClosed ? (
-                        <button onClick={() => reopen(r)} style={btn('#64748b', '#f8fafc', '#e5e7eb')}
-                                title="Put this back on the outstanding list">
-                          <RotateCcw size={12} /> Reopen
-                        </button>
-                      ) : (
-                        <button onClick={() => close(r)} style={btn('#059669', '#f0fdf4', '#05966933')}
-                                title="Record that this authorisation has been dealt with">
-                          <Check size={12} /> Done
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        // Keeps a minimum width and scrolls sideways on a narrow screen rather
+        // than squashing the note field.
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: 1100 }}>
+            <DataTable
+              columns={columns}
+              rows={visible}
+              rowKey={(r) => r.id}
+              sort={sort}
+              onSort={(s) => { setSort(s); setPage(1); }}
+              page={page}
+              onPage={setPage}
+              empty={showClosed ? 'Nothing closed yet.' : 'No authorisations outstanding.'}
+            />
           </div>
         </div>
       )}

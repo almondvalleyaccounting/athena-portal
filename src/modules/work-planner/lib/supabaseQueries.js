@@ -55,12 +55,11 @@ export async function reorderQuickTasks(orderedIds) {
 // ── Scheduled Tasks ──
 
 export async function fetchScheduledTasks() {
-  const { data, error } = await supabase
+  return fetchAllRows(() => supabase
     .from('scheduled_tasks')
     .select('*')
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  return data || [];
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true }));
 }
 
 export async function insertScheduledTask(task) {
@@ -95,11 +94,10 @@ export async function deleteScheduledTask(id) {
 // ── Instance Overrides ──
 
 export async function fetchInstanceOverrides() {
-  const { data, error } = await supabase
+  return fetchAllRows(() => supabase
     .from('instance_overrides')
-    .select('*');
-  if (error) throw error;
-  return data || [];
+    .select('*')
+    .order('id', { ascending: true }));
 }
 
 export async function upsertInstanceOverride(masterId, occurrenceDate, fields) {

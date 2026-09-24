@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, X, Edit2, ArrowUp, ArrowDown, CalendarX, Copy, RotateCcw, MailWarning } from 'lucide-react';
+import { ArrowLeft, Check, X, Edit2, CalendarX, Copy, RotateCcw, MailWarning } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
+import DataTable from '../../components/DataTable';
 import { useAuth } from '../../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import SearchInput from '../../components/SearchInput';
@@ -35,20 +37,32 @@ export default function BillingReviewPage() {
   const [pushing, setPushing] = useState(false);
   const [diagnosing, setDiagnosing] = useState(false);
   const [diagnoseResult, setDiagnoseResult] = useState(null);
-  const [sortBy, setSortBy] = useState('client'); // client | service | monthly
-  const [sortDir, setSortDir] = useState('asc'); // asc | desc
+  const [sort, setSort] = useState({ key: 'client', dir: 'asc' }); // client | service | monthly
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [letter, setLetter] = useState(null);
   const [selected, setSelected] = useState(new Set()); // "rowId::serviceId"
   const [editing, setEditing] = useState(null); // { rowId, serviceIdx }
 
+  // Controlled paging so an inline edit (which rebuilds the rows) does not
+  // throw you back to page 1. Changing a filter, the search or the sort does.
+  useEffect(() => { setPage(1); }, [filter, cadenceFilter, sourceFilter, showNlac, search, letter, sort]);
+
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('live_billing')
-      .select('id, entity_id, billing_type, services, monthly_net, annual_total, qbo_recurring_txn_id, entity:entities(id, name, entity_status)')
-      .eq('status', 'active')
-      .order('created_at', { ascending: false });
+    // fetchAllRows: PostgREST silently caps a response at 1000 rows; id is the
+    // unique tiebreak that keeps range paging stable.
+    let data = [];
+    try {
+      data = await fetchAllRows(() => supabase
+        .from('live_billing')
+        .select('id, entity_id, billing_type, services, monthly_net, annual_total, qbo_recurring_txn_id, entity:entities(id, name, entity_status)')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true }));
+    } catch (err) {
+      console.error('Billing review load failed:', err);
+    }
     setRows(data || []);
     setSelected(new Set());
     setLoading(false);
@@ -135,27 +149,10 @@ export default function BillingReviewPage() {
         (i.service.service_id || '').toLowerCase().includes(q)
       );
     }
-    // Sort
-    const dir = sortDir === 'asc' ? 1 : -1;
-    out = [...out].sort((a, b) => {
-      let av, bv;
-      if (sortBy === 'monthly') {
-        av = Number(a.service.monthly_amount) || 0;
-        bv = Number(b.service.monthly_amount) || 0;
-        return (av - bv) * dir;
-      }
-      if (sortBy === 'service') {
-        av = (a.service.service_id || a.service.description || '').toLowerCase();
-        bv = (b.service.service_id || b.service.description || '').toLowerCase();
-      } else { // client
-        av = (a.entityName || '').toLowerCase();
-        bv = (b.entityName || '').toLowerCase();
-      }
-      return av.localeCompare(bv) * dir;
-    });
+    // Sorting is the table's (DataTable columns below).
     return out;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, filter, cadenceFilter, sourceFilter, showNlac, search, letter, sortBy, sortDir, dupKeySet]);
+  }, [items, filter, cadenceFilter, sourceFilter, showNlac, search, letter, dupKeySet]);
 
   const counts = useMemo(() => {
     const c = { suggested: 0, approved: 0, rejected: 0, ending: 0, duplicates: 0, all: 0 };
@@ -384,21 +381,184 @@ export default function BillingReviewPage() {
     setSaving(false);
   };
 
-  const toggleSel = (key) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  };
-  const toggleSelAll = () => {
-    const visibleKeys = filtered.map((i) => `${i.rowId}::${i.serviceIdx}`);
-    const allSelected = visibleKeys.length > 0 && visibleKeys.every((k) => selected.has(k));
-    setSelected(allSelected ? new Set() : new Set(visibleKeys));
-  };
-
-  const visibleKeys = filtered.map((i) => `${i.rowId}::${i.serviceIdx}`);
+  const itemKey = (i) => `${i.rowId}::${i.serviceIdx}`;
+  const visibleKeys = filtered.map(itemKey);
   const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every((k) => selected.has(k));
+  // This page's heading tickbox has always REPLACED the selection with the
+  // lines in view (or cleared it) — the bulk bar acts on the whole selection,
+  // so nothing hidden by a filter may stay ticked.
+  const onToggleAll = () => setSelected(allVisibleSelected ? new Set() : new Set(visibleKeys));
+
+  // Same sortable headings as before (Client, Service, Monthly), same default
+  // (client A–Z); Monthly's first click is high-to-low. Cadence and Status
+  // stay unsortable so a click on either never moves the row being worked.
+  const columns = [
+    {
+      key: 'client', label: 'Client', width: '20%', wrap: true,
+      sortValue: (i) => (i.entityName || '').toLowerCase(),
+      render: (i) => (
+        <>
+          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={i.entityName}>
+            {i.entityName}
+          </div>
+          {/* Chips on their own row so a long entity name
+              never clips the QBO TEMPLATE / NLAC / DUP markers. */}
+          {(i.entityStatus === 'nlac' || i.fromTemplate || isDup(i) || i.service.duplicate_acknowledged) && (
+            <div style={{ marginTop: 2, marginLeft: -8 /* tagStyle adds marginLeft:8 to the first */ }}>
+              {i.entityStatus === 'nlac' && <span style={tagStyle('red')} title="No Longer A Client">NLAC</span>}
+              {i.fromTemplate && <span style={tagStyle('teal')} title="From QBO RecurringTransaction template">QBO template</span>}
+              {isDup(i) && <span style={tagStyle('red')} title={`Potential duplicate — another line on this client also has service "${i.service.service_id}"`}>DUP</span>}
+              {i.service.duplicate_acknowledged && <span style={tagStyle('slate')} title="Duplicate acknowledged as intentional">DUP OK</span>}
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'service', label: 'Service', width: '26%', wrap: true,
+      sortValue: (i) => (i.service.service_id || i.service.description || '').toLowerCase(),
+      render: (i) => {
+        const s = i.service;
+        return (
+          <>
+            <div style={{ fontWeight: 500, color: '#0f172a' }}>{s.service_id || 'service'}</div>
+            {s.description && s.description !== s.service_id && (
+              <div style={{ fontSize: 11, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.description}>
+                {s.description.length > 60 ? s.description.slice(0, 60) + '…' : s.description}
+              </div>
+            )}
+            {s.review_reason && (
+              <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>⚠ {s.review_reason}</div>
+            )}
+            {s.note && (
+              <div style={{ fontSize: 11, color: '#0369a1', marginTop: 2, whiteSpace: 'normal' }} title={`Internal note (not on invoice): ${s.note}`}>
+                💬 Note: {s.note.length > 80 ? s.note.slice(0, 80) + '…' : s.note}
+              </div>
+            )}
+          </>
+        );
+      },
+    },
+    {
+      key: 'cadence', label: 'Cadence', width: 250, sortable: false,
+      render: (i) => {
+        const s = i.service;
+        const key = itemKey(i);
+        return (
+          <CadenceSegmented
+            value={s.cadence || 'monthly'}
+            onChange={(next) => {
+              if (next !== (s.cadence || 'monthly')) {
+                patchService(i.rowId, i.serviceIdx, { cadence: next });
+              }
+              setSelected((prev) => {
+                if (prev.has(key)) return prev;
+                const nextSet = new Set(prev);
+                nextSet.add(key);
+                return nextSet;
+              });
+            }}
+            disabled={saving}
+          />
+        );
+      },
+    },
+    {
+      key: 'monthly', label: 'Monthly', width: 120, firstDir: 'desc',
+      sortValue: (i) => Number(i.service.monthly_amount) || 0,
+      render: (i) => {
+        const s = i.service;
+        const isEdit = editing?.rowId === i.rowId && editing?.serviceIdx === i.serviceIdx;
+        // Uncontrolled input committed on blur: typing never re-renders the
+        // rows, so nothing re-sorts until the amount is saved.
+        return isEdit ? (
+          <input
+            type="number"
+            step="0.01"
+            defaultValue={s.monthly_amount || 0}
+            onBlur={(e) => {
+              const v = parseFloat(e.target.value) || 0;
+              if (v !== Number(s.monthly_amount)) patchService(i.rowId, i.serviceIdx, { monthly_amount: v });
+            }}
+            style={{ ...selectStyle, width: 90 }}
+          />
+        ) : (
+          <div>
+            <span style={{ fontFamily: 'monospace' }}>£{Number(s.monthly_amount || 0).toFixed(2)}</span>
+            {s.pending_monthly_amount != null && Number(s.pending_monthly_amount) !== Number(s.monthly_amount) && (
+              <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#7c3aed', marginTop: 2 }}
+                   title={`Pending from ${s.pending_effective_at || ''}${s.pending_uplift_reason ? ` — ${s.pending_uplift_reason}` : ''}`}>
+                → £{Number(s.pending_monthly_amount).toFixed(2)}
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'status', label: 'Status', width: 130, sortable: false,
+      render: (i) => (
+        <>
+          <StatusChip status={i.status} />
+          {i.service.recurring_status === 'ending' && (
+            <span style={{ ...tagStyle('amber'), marginLeft: 6 }} title="Service marked as ending — excluded from future billing">Ending</span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'actions', label: '', width: 210, sortable: false,
+      render: (i) => {
+        const s = i.service;
+        const isEdit = editing?.rowId === i.rowId && editing?.serviceIdx === i.serviceIdx;
+        return (
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center' }}>
+            {i.status !== 'approved' && (
+              <button onClick={() => approve(i)} disabled={saving} title="Approve" style={iconBtn('#059669')}>
+                <Check size={13} />
+              </button>
+            )}
+            {i.status !== 'rejected' && (
+              <button onClick={() => reject(i)} disabled={saving} title="Reject" style={iconBtn('#b91c1c')}>
+                <X size={13} />
+              </button>
+            )}
+            {i.status === 'approved' && (
+              <button onClick={() => unapprove(i)} disabled={saving} title="Un-approve" style={iconBtn('#64748b')}>
+                <RotateCcw size={13} />
+              </button>
+            )}
+            <button
+              onClick={() => toggleEnding(i)}
+              disabled={saving}
+              title={s.recurring_status === 'ending' ? 'Unmark ending (back to recurring)' : 'Mark ending (drops from future billing)'}
+              style={iconBtn(s.recurring_status === 'ending' ? '#b45309' : '#64748b')}
+            >
+              <CalendarX size={13} />
+            </button>
+            {(isDup(i) || s.duplicate_acknowledged) && (
+              <button
+                onClick={() => s.duplicate_acknowledged ? unacknowledgeDuplicate(i) : acknowledgeDuplicate(i)}
+                disabled={saving}
+                title={s.duplicate_acknowledged ? 'Re-flag as potential duplicate' : 'Mark not a duplicate (intentional)'}
+                style={iconBtn(s.duplicate_acknowledged ? '#475569' : '#b91c1c')}
+              >
+                <Copy size={13} />
+              </button>
+            )}
+            <button
+              onClick={() => setEditing(isEdit ? null : { rowId: i.rowId, serviceIdx: i.serviceIdx })}
+              disabled={saving}
+              title="Edit cadence and amount"
+              style={iconBtn(isEdit ? '#0e7fe0' : '#64748b')}
+            >
+              <Edit2 size={13} />
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <div style={{ padding: '20px 28px', fontFamily: font }}>
@@ -588,170 +748,16 @@ export default function BillingReviewPage() {
       )}
 
       {!loading && filtered.length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, tableLayout: 'fixed' }}>
-            <colgroup>
-              <col style={{ width: 32 }} />
-              <col style={{ width: '20%' }} />
-              <col style={{ width: '26%' }} />
-              <col style={{ width: 230 }} />
-              <col style={{ width: 100 }} />
-              <col style={{ width: 130 }} />
-              <col style={{ width: 210 }} />
-            </colgroup>
-            <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                <Th>
-                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelAll} title="Select all in view" />
-                </Th>
-                <SortableTh label="Client" sortKey="client" sortBy={sortBy} sortDir={sortDir} onSort={(k) => { if (sortBy === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc'); else { setSortBy(k); setSortDir('asc'); } }} />
-                <SortableTh label="Service" sortKey="service" sortBy={sortBy} sortDir={sortDir} onSort={(k) => { if (sortBy === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc'); else { setSortBy(k); setSortDir('asc'); } }} />
-                <Th>Cadence</Th>
-                <SortableTh label="Monthly" sortKey="monthly" sortBy={sortBy} sortDir={sortDir} onSort={(k) => { if (sortBy === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc'); else { setSortBy(k); setSortDir('desc'); } }} />
-                <Th>Status</Th>
-                <Th></Th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((i) => {
-                const key = `${i.rowId}::${i.serviceIdx}`;
-                const isSel = selected.has(key);
-                const isEdit = editing?.rowId === i.rowId && editing?.serviceIdx === i.serviceIdx;
-                const s = i.service;
-                return (
-                  <tr key={key} style={{ borderTop: '1px solid #f1f5f9', background: isSel ? '#f0f9ff' : 'transparent' }}>
-                    <Td>
-                      <input type="checkbox" checked={isSel} onChange={() => toggleSel(key)} />
-                    </Td>
-                    <Td>
-                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={i.entityName}>
-                        {i.entityName}
-                      </div>
-                      {/* Chips on their own row so a long entity name
-                          never clips the QBO TEMPLATE / NLAC / DUP markers. */}
-                      {(i.entityStatus === 'nlac' || i.fromTemplate || isDup(i) || i.service.duplicate_acknowledged) && (
-                        <div style={{ marginTop: 2, marginLeft: -8 /* tagStyle adds marginLeft:8 to the first */ }}>
-                          {i.entityStatus === 'nlac' && <span style={tagStyle('red')} title="No Longer A Client">NLAC</span>}
-                          {i.fromTemplate && <span style={tagStyle('teal')} title="From QBO RecurringTransaction template">QBO template</span>}
-                          {isDup(i) && <span style={tagStyle('red')} title={`Potential duplicate — another line on this client also has service "${i.service.service_id}"`}>DUP</span>}
-                          {i.service.duplicate_acknowledged && <span style={tagStyle('slate')} title="Duplicate acknowledged as intentional">DUP OK</span>}
-                        </div>
-                      )}
-                    </Td>
-                    <Td>
-                      <div style={{ fontWeight: 500, color: '#0f172a' }}>{s.service_id || 'service'}</div>
-                      {s.description && s.description !== s.service_id && (
-                        <div style={{ fontSize: 11, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.description}>
-                          {s.description.length > 60 ? s.description.slice(0, 60) + '…' : s.description}
-                        </div>
-                      )}
-                      {s.review_reason && (
-                        <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>⚠ {s.review_reason}</div>
-                      )}
-                      {s.note && (
-                        <div style={{ fontSize: 11, color: '#0369a1', marginTop: 2, whiteSpace: 'normal' }} title={`Internal note (not on invoice): ${s.note}`}>
-                          💬 Note: {s.note.length > 80 ? s.note.slice(0, 80) + '…' : s.note}
-                        </div>
-                      )}
-                    </Td>
-                    <Td>
-                      <CadenceSegmented
-                        value={s.cadence || 'monthly'}
-                        onChange={(next) => {
-                          if (next !== (s.cadence || 'monthly')) {
-                            patchService(i.rowId, i.serviceIdx, { cadence: next });
-                          }
-                          setSelected((prev) => {
-                            if (prev.has(key)) return prev;
-                            const nextSet = new Set(prev);
-                            nextSet.add(key);
-                            return nextSet;
-                          });
-                        }}
-                        disabled={saving}
-                      />
-                    </Td>
-                    <Td>
-                      {isEdit ? (
-                        <input
-                          type="number"
-                          step="0.01"
-                          defaultValue={s.monthly_amount || 0}
-                          onBlur={(e) => {
-                            const v = parseFloat(e.target.value) || 0;
-                            if (v !== Number(s.monthly_amount)) patchService(i.rowId, i.serviceIdx, { monthly_amount: v });
-                          }}
-                          style={{ ...selectStyle, width: 90 }}
-                        />
-                      ) : (
-                        <div>
-                          <span style={{ fontFamily: 'monospace' }}>£{Number(s.monthly_amount || 0).toFixed(2)}</span>
-                          {s.pending_monthly_amount != null && Number(s.pending_monthly_amount) !== Number(s.monthly_amount) && (
-                            <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#7c3aed', marginTop: 2 }}
-                                 title={`Pending from ${s.pending_effective_at || ''}${s.pending_uplift_reason ? ` — ${s.pending_uplift_reason}` : ''}`}>
-                              → £{Number(s.pending_monthly_amount).toFixed(2)}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </Td>
-                    <Td>
-                      <StatusChip status={i.status} />
-                      {s.recurring_status === 'ending' && (
-                        <span style={{ ...tagStyle('amber'), marginLeft: 6 }} title="Service marked as ending — excluded from future billing">Ending</span>
-                      )}
-                    </Td>
-                    <Td>
-                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center' }}>
-                        {i.status !== 'approved' && (
-                          <button onClick={() => approve(i)} disabled={saving} title="Approve" style={iconBtn('#059669')}>
-                            <Check size={13} />
-                          </button>
-                        )}
-                        {i.status !== 'rejected' && (
-                          <button onClick={() => reject(i)} disabled={saving} title="Reject" style={iconBtn('#b91c1c')}>
-                            <X size={13} />
-                          </button>
-                        )}
-                        {i.status === 'approved' && (
-                          <button onClick={() => unapprove(i)} disabled={saving} title="Un-approve" style={iconBtn('#64748b')}>
-                            <RotateCcw size={13} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => toggleEnding(i)}
-                          disabled={saving}
-                          title={s.recurring_status === 'ending' ? 'Unmark ending (back to recurring)' : 'Mark ending (drops from future billing)'}
-                          style={iconBtn(s.recurring_status === 'ending' ? '#b45309' : '#64748b')}
-                        >
-                          <CalendarX size={13} />
-                        </button>
-                        {(isDup(i) || s.duplicate_acknowledged) && (
-                          <button
-                            onClick={() => s.duplicate_acknowledged ? unacknowledgeDuplicate(i) : acknowledgeDuplicate(i)}
-                            disabled={saving}
-                            title={s.duplicate_acknowledged ? 'Re-flag as potential duplicate' : 'Mark not a duplicate (intentional)'}
-                            style={iconBtn(s.duplicate_acknowledged ? '#475569' : '#b91c1c')}
-                          >
-                            <Copy size={13} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setEditing(isEdit ? null : { rowId: i.rowId, serviceIdx: i.serviceIdx })}
-                          disabled={saving}
-                          title="Edit cadence and amount"
-                          style={iconBtn(isEdit ? '#0e7fe0' : '#64748b')}
-                        >
-                          <Edit2 size={13} />
-                        </button>
-                      </div>
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          rows={filtered}
+          rowKey={itemKey}
+          sort={sort}
+          onSort={setSort}
+          page={page}
+          onPage={setPage}
+          selection={{ selected, onChange: setSelected, onToggleAll }}
+        />
       )}
     </div>
   );
@@ -1198,28 +1204,6 @@ function FilterPill({ label, count, active, tone, onClick }) {
     }}>
       {label}{count != null ? ` · ${count}` : ''}
     </button>
-  );
-}
-
-const Th = ({ children }) => (
-  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>
-    {children}
-  </th>
-);
-const Td = ({ children, style }) => <td style={{ padding: '8px 12px', verticalAlign: 'middle', ...style }}>{children}</td>;
-
-function SortableTh({ label, sortKey, sortBy, sortDir, onSort }) {
-  const active = sortBy === sortKey;
-  return (
-    <th
-      onClick={() => onSort(sortKey)}
-      style={{ textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: active ? '#0f172a' : '#94a3b8', cursor: 'pointer', userSelect: 'none' }}
-    >
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        {label}
-        {active && (sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
-      </span>
-    </th>
   );
 }
 

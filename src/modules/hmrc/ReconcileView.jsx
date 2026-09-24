@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Check, ExternalLink, RotateCcw } from 'lucide-react';
-import { fetchExceptions, setExceptionResolved, setExceptionNote } from './hmrcApi';
+import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
+import DataTable from '../../components/DataTable';
+import { setExceptionResolved, setExceptionNote } from './hmrcApi';
 import {
   font, EXCEPTION_KINDS, Pill, Chip, BlurInput, ErrorBar,
-  shortDate, th, td, card, inputStyle,
+  shortDate,
 } from './hmrcShared';
 
 // Where the HMRC agent list and Athena disagree.
@@ -15,19 +18,39 @@ import {
 // records that a human has dealt with it, so the next scrape's list is only
 // the new problems.
 
+const kindMeta = (r) => EXCEPTION_KINDS[r.kind] || { label: r.kind, colour: '#64748b', hint: '' };
+
 export default function ReconcileView() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [kind, setKind] = useState('all');
-  const [showResolved, setShowResolved] = useState(false);
+  const [kind, setKindRaw] = useState('all');
+  const [showResolved, setShowResolvedRaw] = useState(false);
+  // Sorting is on the column headings. By kind is the order the list always
+  // came in (the loader breaks ties by HMRC name).
+  const [sort, setSort] = useState({ key: 'kind', dir: 'asc' });
+  // Held here, not in the table, so clearing a row (which drops it out of the
+  // list) leaves you on the page you were working rather than page 1.
+  const [page, setPage] = useState(1);
+
+  // Any change to what is shown starts the list again at page 1.
+  const setKind = (v) => { setKindRaw(v); setPage(1); };
+  const setShowResolved = (v) => { setShowResolvedRaw(v); setPage(1); };
 
   useEffect(() => { load(); }, []);
 
   async function load() {
     setLoading(true);
     try {
-      setRows(await fetchExceptions());
+      // PostgREST caps a fetch at 1000 rows and truncates SILENTLY, so page
+      // through the lot. Same order as fetchExceptions, with the id as a
+      // unique tiebreak so paging cannot repeat or skip a row.
+      setRows(await fetchAllRows(() => supabase
+        .from('v_hmrc_link_exceptions')
+        .select('*')
+        .order('kind', { ascending: true })
+        .order('hmrc_name', { ascending: true })
+        .order('id', { ascending: true })));
       setError('');
     } catch (e) {
       setError(e.message || 'Could not load reconciliation exceptions');
@@ -67,6 +90,104 @@ export default function ReconcileView() {
   const open = rows.filter((r) => !r.resolved);
   const kindCounts = open.reduce((acc, r) => { acc[r.kind] = (acc[r.kind] || 0) + 1; return acc; }, {});
   const kinds = Object.keys(EXCEPTION_KINDS).filter((k) => kindCounts[k]);
+
+  const columns = [
+    {
+      key: 'kind', label: 'Kind', width: 210,
+      sortValue: (r) => r.kind || '',
+      render: (r) => {
+        const meta = kindMeta(r);
+        return <Pill colour={meta.colour} title={meta.hint}>{meta.label}</Pill>;
+      },
+    },
+    {
+      key: 'hmrc_name', label: 'Scheme', wrap: true,
+      sortValue: (r) => r.hmrc_name || '',
+      render: (r) => (
+        <>
+          <div style={{ fontWeight: 500, color: '#0f172a' }}>{r.hmrc_name}</div>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>{r.paye_ref}</div>
+        </>
+      ),
+    },
+    {
+      key: 'athena', label: 'Athena', width: 230, wrap: true,
+      sortValue: (r) => (r.entity_id ? (r.entity_name || 'Open') : (r.suggested_entity_name || '')),
+      render: (r) => (
+        <span style={{ fontSize: 13 }}>
+          {r.entity_id ? (
+            <a href={`/clients/${r.entity_id}`} target="_blank" rel="noreferrer"
+               style={{ color: '#0e7fe0', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              {r.entity_name || 'Open'} <ExternalLink size={11} />
+            </a>
+          ) : r.suggested_entity_id ? (
+            // Normalised-name match from the view. It is a lead,
+            // not a link — the actual fix is keying the PAYE ref
+            // onto the client record.
+            <div>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>Possible match</div>
+              <a href={`/clients/${r.suggested_entity_id}`} target="_blank" rel="noreferrer"
+                 style={{ color: '#7c3aed', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {r.suggested_entity_name} <ExternalLink size={11} />
+              </a>
+              {r.suggested_entity_status && r.suggested_entity_status !== 'active' && (
+                <span style={{ fontSize: 11, color: '#c2410c', marginLeft: 5 }}>({r.suggested_entity_status})</span>
+              )}
+            </div>
+          ) : (
+            <span style={{ color: '#cbd5e1' }}>No match</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'hmrc_value', label: 'HMRC', width: 170, wrap: true,
+      sortValue: (r) => r.hmrc_value || '',
+      render: (r) => (
+        <div style={{ fontSize: 13, color: '#64748b' }}>
+          {r.hmrc_value || '—'}
+          {r.athena_value && r.athena_value !== r.hmrc_value && (
+            <div style={{ fontSize: 12, color: '#c2410c', marginTop: 2 }}>Athena: {r.athena_value}</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      // One note field, seeded by the scraper with why it raised the row,
+      // then overwritten by whoever works it. Editing replaces the scraper's
+      // text — that is fine, the kind and its tooltip already carry the
+      // reason. BlurInput saves on blur, so the list cannot re-sort under a
+      // note while it is still being typed.
+      key: 'note', label: 'Note', width: 240,
+      sortValue: (r) => r.note || '',
+      render: (r) => (
+        <BlurInput value={r.note} onChange={(v) => saveNote(r, v)} placeholder="What did you find?" />
+      ),
+    },
+    {
+      key: 'raised_at', label: 'Raised', width: 120, firstDir: 'desc',
+      sortValue: (r) => r.raised_at || '',
+      render: (r) => <span style={{ fontSize: 13, color: '#94a3b8' }}>{shortDate(r.raised_at)}</span>,
+    },
+    {
+      key: 'actions', label: '', width: 120, sortable: false,
+      render: (r) => (
+        <button
+          onClick={() => toggleResolved(r)}
+          title={r.resolved ? 'Put this back on the outstanding list' : 'Mark as dealt with'}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px',
+            fontSize: 13, fontFamily: font, borderRadius: 7, cursor: 'pointer',
+            color: r.resolved ? '#64748b' : '#059669',
+            background: r.resolved ? '#f8fafc' : '#f0fdf4',
+            border: `1px solid ${r.resolved ? '#e5e7eb' : '#05966933'}`,
+          }}
+        >
+          {r.resolved ? <><RotateCcw size={12} /> Reopen</> : <><Check size={12} /> Clear</>}
+        </button>
+      ),
+    },
+  ];
 
   return (
     <div>
@@ -111,97 +232,20 @@ export default function ReconcileView() {
       {loading ? (
         <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading exceptions…</div>
       ) : (
-        <div style={card}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
-                  <th style={th}>Kind</th>
-                  <th style={th}>Scheme</th>
-                  <th style={th}>Athena</th>
-                  <th style={th}>HMRC</th>
-                  <th style={th}>Note</th>
-                  <th style={th}>Raised</th>
-                  <th style={th} />
-                </tr>
-              </thead>
-              <tbody>
-                {visible.length === 0 && (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
-                      {showResolved ? 'Nothing cleared yet.' : 'Nothing outstanding — HMRC and Athena agree.'}
-                    </td>
-                  </tr>
-                )}
-                {visible.map((r) => {
-                  const meta = EXCEPTION_KINDS[r.kind] || { label: r.kind, colour: '#64748b', hint: '' };
-                  return (
-                    <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                      <td style={td}>
-                        <Pill colour={meta.colour} title={meta.hint}>{meta.label}</Pill>
-                      </td>
-                      <td style={td}>
-                        <div style={{ fontWeight: 500, color: '#0f172a' }}>{r.hmrc_name}</div>
-                        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>{r.paye_ref}</div>
-                      </td>
-                      <td style={{ ...td, fontSize: 13 }}>
-                        {r.entity_id ? (
-                          <a href={`/clients/${r.entity_id}`} target="_blank" rel="noreferrer"
-                             style={{ color: '#0e7fe0', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            {r.entity_name || 'Open'} <ExternalLink size={11} />
-                          </a>
-                        ) : r.suggested_entity_id ? (
-                          // Normalised-name match from the view. It is a lead,
-                          // not a link — the actual fix is keying the PAYE ref
-                          // onto the client record.
-                          <div>
-                            <div style={{ fontSize: 11, color: '#94a3b8' }}>Possible match</div>
-                            <a href={`/clients/${r.suggested_entity_id}`} target="_blank" rel="noreferrer"
-                               style={{ color: '#7c3aed', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              {r.suggested_entity_name} <ExternalLink size={11} />
-                            </a>
-                            {r.suggested_entity_status && r.suggested_entity_status !== 'active' && (
-                              <span style={{ fontSize: 11, color: '#c2410c', marginLeft: 5 }}>({r.suggested_entity_status})</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span style={{ color: '#cbd5e1' }}>No match</span>
-                        )}
-                      </td>
-                      <td style={{ ...td, fontSize: 13, color: '#64748b', maxWidth: 160 }}>
-                        {r.hmrc_value || '—'}
-                        {r.athena_value && r.athena_value !== r.hmrc_value && (
-                          <div style={{ fontSize: 12, color: '#c2410c', marginTop: 2 }}>Athena: {r.athena_value}</div>
-                        )}
-                      </td>
-                      {/* One note field, seeded by the scraper with why it
-                          raised the row, then overwritten by whoever works it.
-                          Editing replaces the scraper's text — that is fine,
-                          the kind and its tooltip already carry the reason. */}
-                      <td style={{ ...td, minWidth: 220 }}>
-                        <BlurInput value={r.note} onChange={(v) => saveNote(r, v)} placeholder="What did you find?" />
-                      </td>
-                      <td style={{ ...td, fontSize: 13, color: '#94a3b8', whiteSpace: 'nowrap' }}>{shortDate(r.raised_at)}</td>
-                      <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                        <button
-                          onClick={() => toggleResolved(r)}
-                          title={r.resolved ? 'Put this back on the outstanding list' : 'Mark as dealt with'}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px',
-                            fontSize: 13, fontFamily: font, borderRadius: 7, cursor: 'pointer',
-                            color: r.resolved ? '#64748b' : '#059669',
-                            background: r.resolved ? '#f8fafc' : '#f0fdf4',
-                            border: `1px solid ${r.resolved ? '#e5e7eb' : '#05966933'}`,
-                          }}
-                        >
-                          {r.resolved ? <><RotateCcw size={12} /> Reopen</> : <><Check size={12} /> Clear</>}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        // Keeps a minimum width and scrolls sideways on a narrow screen rather
+        // than squashing the note field.
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: 1250 }}>
+            <DataTable
+              columns={columns}
+              rows={visible}
+              rowKey={(r) => r.id}
+              sort={sort}
+              onSort={(s) => { setSort(s); setPage(1); }}
+              page={page}
+              onPage={setPage}
+              empty={showResolved ? 'Nothing cleared yet.' : 'Nothing outstanding — HMRC and Athena agree.'}
+            />
           </div>
         </div>
       )}

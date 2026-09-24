@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
+import DataTable from '../../components/DataTable';
 import { useAuth } from '../../shell/AppShell';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import {
@@ -39,12 +41,6 @@ const btnGhost = {
   background: '#fff', color: '#334155', border: '1px solid #e5e7eb',
   borderRadius: 8, cursor: 'pointer',
 };
-const th = {
-  padding: '8px 8px', fontSize: 12, fontWeight: 600, color: '#64748b',
-  textAlign: 'left', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
-};
-const td = { padding: '7px 8px', fontSize: 13.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
-
 const PREF_META = {
   opted_in: { label: 'Opted in', bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
   opted_out: { label: 'Opted out', bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' },
@@ -63,6 +59,8 @@ function PrefChip({ status }) {
     </span>
   );
 }
+
+const IGNORE_LABEL = { not_client: 'Not a client', client_excluded: 'Client — excluded' };
 
 const PAID_META = {
   unpaid: { label: 'Unpaid', bg: '#fffbeb', color: '#92400e', border: '#fde68a' },
@@ -285,6 +283,11 @@ export default function ClientRemindersPage() {
   const [bmEmailByEntity, setBmEmailByEntity] = useState({}); // entity_id -> BM contact email fallback
   const [ignoreByUtr, setIgnoreByUtr] = useState(() => new Map()); // utr -> reason ('not_client' | 'client_excluded')
   const [filters, setFilters] = useState({ q: '', pref: 'all', paid: 'all', match: 'all', source: 'all' });
+  // Table sort and page are held here, not in the table, so an inline edit
+  // (which rebuilds `rows`) leaves you on the page you were on. No sort by
+  // default: the batch's own order (payment name) as before.
+  const [sort, setSort] = useState(null);
+  const [page, setPage] = useState(1);
 
   const entityById = useMemo(() => Object.fromEntries(entities.map((e) => [e.id, e])), [entities]);
   const batch = batches.find((b) => b.id === batchId) || null;
@@ -292,27 +295,33 @@ export default function ClientRemindersPage() {
   // ── loads ──
   const loadShared = useCallback(async () => {
     try {
-      const [{ data: b, error: e1 }, { data: ents, error: e2 }] = await Promise.all([
+      // Entities are paged in full: past 1000 the API silently returns a
+      // prefix, and a client missing here reads as unmatched / no email.
+      const [{ data: b, error: e1 }, ents] = await Promise.all([
         supabase.from('tax_payment_batches').select('id, label, due_date, source_filename, created_at').order('created_at', { ascending: false }),
-        supabase.from('entities').select('id, name, utr, bm_client_id, qbo_customer_name, billing_email, prospect_email, type, entity_status').order('name'),
+        fetchAllRows(() => supabase.from('entities')
+          .select('id, name, utr, bm_client_id, qbo_customer_name, billing_email, prospect_email, type, entity_status')
+          .order('name').order('id')),
       ]);
       if (e1) throw e1;
-      if (e2) throw e2;
       setBatches(b || []);
       setEntities(ents || []);
       setBatchId((cur) => cur || (b && b[0] ? b[0].id : ''));
 
-      const [{ data: prefs, error: e3 }, { data: emails, error: e4 }] = await Promise.all([
-        supabase.from('client_comm_preferences').select('*').eq('comm_type', COMM_TYPE),
-        supabase.from('reminder_emails')
+      // Both paged in full. The old `.limit(3000)` was really 1000 (the API
+      // cap), so once the sent log passed 1000 the oldest clients showed
+      // "never" under Last contact. Newest first, id as the tiebreak, so the
+      // first email seen per client below is still its latest.
+      const [prefs, emails] = await Promise.all([
+        fetchAllRows(() => supabase.from('client_comm_preferences').select('*')
+          .eq('comm_type', COMM_TYPE).order('entity_id')),
+        fetchAllRows(() => supabase.from('reminder_emails')
           .select('id, entity_id, kind, sent_at, clicked_choice, clicked_at, reply_seen_at, to_email')
           .eq('comm_type', COMM_TYPE)
           .not('sent_at', 'is', null)
           .order('sent_at', { ascending: false })
-          .limit(3000),
+          .order('id')),
       ]);
-      if (e3) throw e3;
-      if (e4) throw e4;
       setPrefsByEntity(Object.fromEntries((prefs || []).map((p) => [p.entity_id, p])));
       const latest = {};
       for (const em of emails || []) {
@@ -327,8 +336,10 @@ export default function ClientRemindersPage() {
 
       // BM contact email — the send-to fallback when a client has no
       // billing/prospect email on the entity (most personal-tax clients).
-      const { data: bmRows } = await supabase
-        .from('v_email_reconciliation').select('entity_id, bm_contact_email');
+      // One row per entity, so paged in full like the entities themselves.
+      const bmRows = await fetchAllRows(() => supabase
+        .from('v_email_reconciliation').select('entity_id, bm_contact_email').order('entity_id'))
+        .catch(() => []); // as before: a failed read just means no BM fallback
       const bmMap = {};
       for (const b of bmRows || []) {
         if (b.entity_id && !bmMap[b.entity_id] && (b.bm_contact_email || '').trim()) {
@@ -349,7 +360,8 @@ export default function ClientRemindersPage() {
       setAutoQueue(aq || null);
 
       // Reminder-exclusion list (UTR -> reason: not a client / client-excluded).
-      const { data: ign } = await supabase.from('tax_reminder_ignore').select('utr, reason');
+      const ign = await fetchAllRows(() => supabase.from('tax_reminder_ignore').select('utr, reason').order('utr'))
+        .catch(() => []); // as before, a failed read is not fatal to the page
       setIgnoreByUtr(new Map((ign || []).map((r) => [r.utr, r.reason || 'not_client'])));
 
       // Gmail pill — reminders go out from the practice-default mailbox.
@@ -375,17 +387,28 @@ export default function ClientRemindersPage() {
 
   const loadRows = useCallback(async (id) => {
     if (!id) { setRows([]); setEmailedThisBatch({ promo: new Set(), reminder: new Set() }); return; }
-    const [{ data, error: e }, { data: sentRows }] = await Promise.all([
-      supabase.from('tax_payments_due').select('*').eq('batch_id', id).order('client_name_raw'),
-      // Who has already had each kind of email for this batch — a first send,
-      // not a resend. These are the clients the once-per-run block will refuse
-      // unless "Send again" is ticked.
-      supabase.from('reminder_emails')
-        .select('entity_id, kind, status, is_resend')
-        .eq('comm_type', COMM_TYPE).eq('batch_id', id).eq('is_resend', false)
-        .in('status', ['queued', 'sent']),
-    ]);
-    if (e) { setError(`Could not load batch rows: ${e.message}`); return; }
+    let data;
+    let sentRows;
+    try {
+      // Both paged in full — a batch of payments, or its sent log, past 1000
+      // rows would otherwise be cut short without an error.
+      [data, sentRows] = await Promise.all([
+        fetchAllRows(() => supabase.from('tax_payments_due').select('*').eq('batch_id', id)
+          .order('client_name_raw').order('id')),
+        // Who has already had each kind of email for this batch — a first send,
+        // not a resend. These are the clients the once-per-run block will refuse
+        // unless "Send again" is ticked.
+        fetchAllRows(() => supabase.from('reminder_emails')
+          .select('id, entity_id, kind, status, is_resend')
+          .eq('comm_type', COMM_TYPE).eq('batch_id', id).eq('is_resend', false)
+          .in('status', ['queued', 'sent'])
+          .order('id'))
+          .catch(() => []), // as before, this read failing does not block the batch
+      ]);
+    } catch (e) {
+      setError(`Could not load batch rows: ${e.message}`);
+      return;
+    }
     setRows(data || []);
     const promo = new Set();
     const reminder = new Set();
@@ -398,6 +421,8 @@ export default function ClientRemindersPage() {
 
   useEffect(() => { loadShared(); }, [loadShared]);
   useEffect(() => { setSelected(new Set()); setRowResults({}); loadRows(batchId); }, [batchId, loadRows]);
+  // A new batch or filter starts from page 1; an edit does not.
+  useEffect(() => { setPage(1); }, [batchId, filters]);
 
   // ── row helpers ──
   const emailOf = (row) => {
@@ -516,13 +541,9 @@ export default function ClientRemindersPage() {
   };
 
   // ── selection + action-bar eligibility ──
-  const toggleRow = (id) => {
-    setSelected((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-  };
+  // Ticking is done by the table: a row's box toggles that row's id, and the
+  // heading box ticks (or unticks) every row the filters show — the same rule
+  // as before. The Set holds tax_payments_due ids, exactly as it always has.
   // Never send to a former client (nlac/archived), even if a stale TaxCalc row
   // has them opted-in and unpaid. reminders-send enforces this too; we filter
   // here so they don't show as selectable targets in the first place.
@@ -555,14 +576,6 @@ export default function ClientRemindersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, filters, entityById, prefsByEntity, ignoreByUtr, bmEmailByEntity]);
 
-  const allSelected = visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id));
-  const toggleAll = () => {
-    setSelected((s) => {
-      const n = new Set(s);
-      visibleRows.forEach((r) => (allSelected ? n.delete(r.id) : n.add(r.id)));
-      return n;
-    });
-  };
 
   const selRows = (rows || []).filter((r) => selected.has(r.id));
   const toTarget = (r) => {
@@ -608,6 +621,243 @@ export default function ClientRemindersPage() {
       ? 'Auto-queue ON — every 15 minutes in January & July the queue is filled for you to review and release.'
       : 'Auto-queue OFF.');
   };
+
+  // ── table columns ──
+  // Every control calls the same handler it always did; the table only lays
+  // them out. "Set" is always blank (a one-shot menu), so it does not sort.
+  const columns = [
+    {
+      key: 'payment', label: 'Payment row', wrap: true,
+      sortValue: (row) => row.client_name_raw || '',
+      // The payment row itself — imported name + UTR, or a hand-keyed row
+      // (removable, amount editable).
+      render: (row) => {
+        const isManual = (row.source || 'taxcalc') === 'manual';
+        return (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 600 }}>{row.client_name_raw}</span>
+              {isManual && (
+                <span
+                  title={row.status_note || 'Keyed in by hand — not from the TaxCalc export'}
+                  style={{
+                    padding: '1px 7px', fontSize: 11.5, fontWeight: 600, borderRadius: 999,
+                    background: '#eff6ff', color: ACCENT, border: '1px solid #bfdbfe',
+                  }}
+                >
+                  by hand
+                </span>
+              )}
+              {isManual && (
+                <button
+                  onClick={() => deleteManualRow(row)}
+                  title="Remove this hand-added row from the batch"
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    fontFamily: font, fontSize: 13, color: '#cbd5e1', lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {row.reference_raw && <div style={{ fontSize: 12, color: '#94a3b8' }}>{row.reference_raw}</div>}
+            {isManual && row.status_note && (
+              <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>{row.status_note}</div>
+            )}
+          </>
+        );
+      },
+    },
+    {
+      // Athena (BM) Client — the matched client picker
+      key: 'matched', label: 'Matched (BM)', width: 210, wrap: true,
+      sortValue: (row) => (row.entity_id ? entityById[row.entity_id]?.name : null) || null,
+      render: (row) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <ClientTypeAhead
+            entityList={entities}
+            value={row.entity_id || ''}
+            onChange={(id) => setEntityMatch(row, id)}
+            size="small"
+            metaOf={(e) => [
+              e.utr && `UTR ${e.utr}`,
+              e.bm_client_id && `ref ${e.bm_client_id}`,
+              (e.qbo_customer_name && e.qbo_customer_name !== e.name) ? e.qbo_customer_name : null,
+            ].filter(Boolean).join(' · ')}
+          />
+          {!row.entity_id && !isIgnored(row) && (
+            <span style={{ fontSize: 11.5, color: '#b91c1c', fontWeight: 600 }}>unmatched</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      // Reminder — exclusion reason (persists, changeable)
+      key: 'reminder', label: 'Reminder', width: 150, wrap: true,
+      sortValue: (row) => (!rowUtr(row) ? null : (IGNORE_LABEL[ignoreReason(row)] || 'Reminding')),
+      render: (row) => {
+        if (!rowUtr(row)) return <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>—</span>;
+        const rowIgnored = isIgnored(row);
+        return (
+          <select
+            value={ignoreReason(row)}
+            onChange={(e) => (e.target.value ? setIgnore(row, e.target.value) : removeIgnore(row))}
+            title="Exclude this UTR from reminders (persists across imports) — or leave 'Reminding' to keep them in the run"
+            style={{
+              padding: '3px 6px', fontSize: 12, fontFamily: font, borderRadius: 6, cursor: 'pointer',
+              background: rowIgnored ? '#fef2f2' : '#f0fdf4',
+              color: rowIgnored ? '#b91c1c' : '#166534',
+              border: `1px solid ${rowIgnored ? '#fecaca' : '#bbf7d0'}`,
+            }}
+          >
+            <option value="">Reminding</option>
+            <option value="not_client">Not a client</option>
+            <option value="client_excluded">Client — excluded</option>
+          </select>
+        );
+      },
+    },
+    {
+      key: 'email', label: 'Email', width: 190,
+      sortValue: (row) => emailOf(row),
+      render: (row) => {
+        const email = emailOf(row);
+        const ent = row.entity_id ? entityById[row.entity_id] : null;
+        if (email) {
+          return (
+            <span title={email} style={{
+              display: 'inline-block', maxWidth: 180, overflow: 'hidden',
+              textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle',
+              fontSize: 13, color: '#334155',
+            }}>{email}</span>
+          );
+        }
+        return ent ? (
+          <span style={{
+            padding: '2px 8px', fontSize: 12, fontWeight: 600, borderRadius: 999,
+            background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca',
+          }}>
+            no email
+          </span>
+        ) : (
+          <span style={{ fontSize: 12.5, color: '#94a3b8' }}>—</span>
+        );
+      },
+    },
+    {
+      key: 'amount', label: 'Amount', width: 110, align: 'right', firstDir: 'desc',
+      sortValue: (row) => (row.amount != null ? Number(row.amount) : null),
+      render: (row) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {(row.source || 'taxcalc') === 'manual' ? (
+            <input
+              key={`amt-${row.id}-${row.amount}`}
+              defaultValue={row.amount != null ? Number(row.amount).toFixed(2) : ''}
+              onBlur={(e) => setManualAmount(row, e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+              title="Hand-added amount — edit and press Enter or click away to save"
+              inputMode="decimal"
+              style={{
+                width: 82, padding: '3px 6px', fontSize: 13.5, fontFamily: font,
+                textAlign: 'right', color: '#1e293b', background: '#fff',
+                border: '1px solid #bfdbfe', borderRadius: 6,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            />
+          ) : (
+            row.amount != null ? `£${fmtMoney(row.amount)}` : '—'
+          )}
+        </span>
+      ),
+    },
+    {
+      // Preference — status chip only
+      key: 'pref', label: 'Preference', width: 110,
+      sortValue: (row) => (PREF_META[prefStatusOf(row)] || PREF_META.not_asked).label,
+      render: (row) => <PrefChip status={prefStatusOf(row)} />,
+    },
+    {
+      // Set — manual preference override
+      key: 'set', label: 'Set', width: 120, sortable: false,
+      render: (row) => (row.entity_id && entityById[row.entity_id] ? (
+        <select
+          value=""
+          onChange={(e) => setPreference(row.entity_id, e.target.value)}
+          title="Set the preference manually — e.g. record a yes/no from an email reply"
+          style={{
+            padding: '3px 6px', fontSize: 12, fontFamily: font, color: '#64748b',
+            border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
+          }}
+        >
+          <option value="">set…</option>
+          <option value="in_reply">Opted in (replied)</option>
+          <option value="out_reply">Opted out (replied)</option>
+          <option value="in_staff">Opted in (staff)</option>
+          <option value="out_staff">Opted out (staff)</option>
+          <option value="pending">Back to pending</option>
+        </select>
+      ) : (
+        <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>—</span>
+      )),
+    },
+    {
+      key: 'paid', label: 'Payment', width: 100,
+      sortValue: (row) => (PAID_META[row.status] || PAID_META.unpaid).label,
+      render: (row) => {
+        const paidMeta = PAID_META[row.status] || PAID_META.unpaid;
+        return (
+          <button
+            onClick={() => cyclePaid(row)}
+            title="Click to toggle paid / unpaid. Paid suppresses reminders because they've paid — use the Reminder column to exclude for other reasons."
+            style={{
+              padding: '2px 10px', fontSize: 12, fontWeight: 600, fontFamily: font,
+              background: paidMeta.bg, color: paidMeta.color, border: `1px solid ${paidMeta.border}`,
+              borderRadius: 999, cursor: 'pointer',
+            }}
+          >
+            {paidMeta.label}
+          </button>
+        );
+      },
+    },
+    {
+      key: 'last', label: 'Last contact', width: 170, wrap: true, firstDir: 'desc',
+      sortValue: (row) => (row.entity_id ? lastEmailByEntity[row.entity_id]?.sent_at : null) || null,
+      render: (row) => {
+        const lastEm = row.entity_id ? lastEmailByEntity[row.entity_id] : null;
+        const res = row.entity_id ? rowResults[row.entity_id] : null;
+        return (
+          <>
+            {res && (
+              <div style={{ marginBottom: 4 }}>
+                <span style={{
+                  fontSize: 11.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
+                  background: res.ok ? '#f0fdf4' : '#fef2f2',
+                  color: res.ok ? '#166534' : '#b91c1c',
+                  border: `1px solid ${res.ok ? '#bbf7d0' : '#fecaca'}`,
+                }} title={res.text}>
+                  {res.ok ? '✓ sent' : `✗ ${res.text}`}
+                </span>
+              </div>
+            )}
+            {lastEm ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12.5, color: '#64748b' }}>
+                  {lastEm.kind === 'promo' ? 'invite' : 'reminder'} {fmtDateTimeShort(lastEm.sent_at)}
+                </span>
+                {lastEm.clicked_choice === 'in' && <span style={{ fontSize: 12, color: '#166534', fontWeight: 600 }}>✓ clicked in</span>}
+                {lastEm.clicked_choice === 'out' && <span style={{ fontSize: 12, color: '#b91c1c', fontWeight: 600 }}>✗ clicked out</span>}
+                {lastEm.reply_seen_at && <span style={{ fontSize: 12, color: ACCENT, fontWeight: 600 }}>↩ replied</span>}
+              </div>
+            ) : (
+              <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>never</span>
+            )}
+          </>
+        );
+      },
+    },
+  ];
 
   // ── render ──
   if (loading) {
@@ -764,226 +1014,25 @@ export default function ClientRemindersPage() {
               <button onClick={() => setFilters({ q: '', pref: 'all', paid: 'all', match: 'all', source: 'all' })} style={btnGhost}>Clear</button>
             )}
           </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ ...th, width: 30 }}>
-                    <input type="checkbox" checked={!!allSelected} onChange={toggleAll} />
-                  </th>
-                  <th style={th}>Payment row</th>
-                  <th style={th}>Matched (BM)</th>
-                  <th style={th}>Reminder</th>
-                  <th style={th}>Email</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Amount</th>
-                  <th style={th}>Preference</th>
-                  <th style={th}>Set</th>
-                  <th style={th}>Payment</th>
-                  <th style={th}>Last contact</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.length === 0 && (
-                  <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={10}>No rows match these filters.</td></tr>
-                )}
-                {visibleRows.map((row) => {
-                  const ent = row.entity_id ? entityById[row.entity_id] : null;
-                  const email = emailOf(row);
-                  const prefStatus = prefStatusOf(row);
-                  const lastEm = row.entity_id ? lastEmailByEntity[row.entity_id] : null;
-                  const paidMeta = PAID_META[row.status] || PAID_META.unpaid;
-                  const res = row.entity_id ? rowResults[row.entity_id] : null;
-                  const rowIgnored = isIgnored(row);
-                  const isManual = (row.source || 'taxcalc') === 'manual';
-                  return (
-                    <tr key={row.id} style={{ background: selected.has(row.id) ? '#f8fbff' : 'transparent' }}>
-                      <td style={td}>
-                        <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleRow(row.id)} />
-                      </td>
-                      {/* The payment row itself — imported name + UTR, or a
-                          hand-keyed row (removable, amount editable). */}
-                      <td style={td}>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: 600 }}>{row.client_name_raw}</span>
-                          {isManual && (
-                            <span
-                              title={row.status_note || 'Keyed in by hand — not from the TaxCalc export'}
-                              style={{
-                                padding: '1px 7px', fontSize: 11.5, fontWeight: 600, borderRadius: 999,
-                                background: '#eff6ff', color: ACCENT, border: '1px solid #bfdbfe',
-                              }}
-                            >
-                              by hand
-                            </span>
-                          )}
-                          {isManual && (
-                            <button
-                              onClick={() => deleteManualRow(row)}
-                              title="Remove this hand-added row from the batch"
-                              style={{
-                                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                fontFamily: font, fontSize: 13, color: '#cbd5e1', lineHeight: 1,
-                              }}
-                            >
-                              ×
-                            </button>
-                          )}
-                        </div>
-                        {row.reference_raw && <div style={{ fontSize: 12, color: '#94a3b8' }}>{row.reference_raw}</div>}
-                        {isManual && row.status_note && (
-                          <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>{row.status_note}</div>
-                        )}
-                      </td>
-                      {/* Athena (BM) Client — the matched client picker */}
-                      <td style={td}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <ClientTypeAhead
-                            entityList={entities}
-                            value={row.entity_id || ''}
-                            onChange={(id) => setEntityMatch(row, id)}
-                            size="small"
-                            metaOf={(e) => [
-                              e.utr && `UTR ${e.utr}`,
-                              e.bm_client_id && `ref ${e.bm_client_id}`,
-                              (e.qbo_customer_name && e.qbo_customer_name !== e.name) ? e.qbo_customer_name : null,
-                            ].filter(Boolean).join(' · ')}
-                          />
-                          {!row.entity_id && !rowIgnored && (
-                            <span style={{ fontSize: 11.5, color: '#b91c1c', fontWeight: 600 }}>unmatched</span>
-                          )}
-                        </div>
-                      </td>
-                      {/* Reminder — exclusion reason (persists, changeable) */}
-                      <td style={td}>
-                        {!rowUtr(row) ? (
-                          <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>—</span>
-                        ) : (
-                          <select
-                            value={ignoreReason(row)}
-                            onChange={(e) => (e.target.value ? setIgnore(row, e.target.value) : removeIgnore(row))}
-                            title="Exclude this UTR from reminders (persists across imports) — or leave 'Reminding' to keep them in the run"
-                            style={{
-                              padding: '3px 6px', fontSize: 12, fontFamily: font, borderRadius: 6, cursor: 'pointer',
-                              background: rowIgnored ? '#fef2f2' : '#f0fdf4',
-                              color: rowIgnored ? '#b91c1c' : '#166534',
-                              border: `1px solid ${rowIgnored ? '#fecaca' : '#bbf7d0'}`,
-                            }}
-                          >
-                            <option value="">Reminding</option>
-                            <option value="not_client">Not a client</option>
-                            <option value="client_excluded">Client — excluded</option>
-                          </select>
-                        )}
-                      </td>
-                      <td style={td}>
-                        {email ? (
-                          <span title={email} style={{
-                            display: 'inline-block', maxWidth: 180, overflow: 'hidden',
-                            textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle',
-                            fontSize: 13, color: '#334155',
-                          }}>{email}</span>
-                        ) : ent ? (
-                          <span style={{
-                            padding: '2px 8px', fontSize: 12, fontWeight: 600, borderRadius: 999,
-                            background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca',
-                          }}>
-                            no email
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 12.5, color: '#94a3b8' }}>—</span>
-                        )}
-                      </td>
-                      <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                        {isManual ? (
-                          <input
-                            key={`amt-${row.id}-${row.amount}`}
-                            defaultValue={row.amount != null ? Number(row.amount).toFixed(2) : ''}
-                            onBlur={(e) => setManualAmount(row, e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                            title="Hand-added amount — edit and press Enter or click away to save"
-                            inputMode="decimal"
-                            style={{
-                              width: 82, padding: '3px 6px', fontSize: 13.5, fontFamily: font,
-                              textAlign: 'right', color: '#1e293b', background: '#fff',
-                              border: '1px solid #bfdbfe', borderRadius: 6,
-                              fontVariantNumeric: 'tabular-nums',
-                            }}
-                          />
-                        ) : (
-                          row.amount != null ? `£${fmtMoney(row.amount)}` : '—'
-                        )}
-                      </td>
-                      {/* Preference — status chip only */}
-                      <td style={td}>
-                        <PrefChip status={prefStatus} />
-                      </td>
-                      {/* Set — manual preference override */}
-                      <td style={td}>
-                        {ent ? (
-                          <select
-                            value=""
-                            onChange={(e) => setPreference(row.entity_id, e.target.value)}
-                            title="Set the preference manually — e.g. record a yes/no from an email reply"
-                            style={{
-                              padding: '3px 6px', fontSize: 12, fontFamily: font, color: '#64748b',
-                              border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',
-                            }}
-                          >
-                            <option value="">set…</option>
-                            <option value="in_reply">Opted in (replied)</option>
-                            <option value="out_reply">Opted out (replied)</option>
-                            <option value="in_staff">Opted in (staff)</option>
-                            <option value="out_staff">Opted out (staff)</option>
-                            <option value="pending">Back to pending</option>
-                          </select>
-                        ) : (
-                          <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>—</span>
-                        )}
-                      </td>
-                      <td style={td}>
-                        <button
-                          onClick={() => cyclePaid(row)}
-                          title="Click to toggle paid / unpaid. Paid suppresses reminders because they've paid — use the Reminder column to exclude for other reasons."
-                          style={{
-                            padding: '2px 10px', fontSize: 12, fontWeight: 600, fontFamily: font,
-                            background: paidMeta.bg, color: paidMeta.color, border: `1px solid ${paidMeta.border}`,
-                            borderRadius: 999, cursor: 'pointer',
-                          }}
-                        >
-                          {paidMeta.label}
-                        </button>
-                      </td>
-                      <td style={td}>
-                        {res && (
-                          <div style={{ marginBottom: 4 }}>
-                            <span style={{
-                              fontSize: 11.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999,
-                              background: res.ok ? '#f0fdf4' : '#fef2f2',
-                              color: res.ok ? '#166534' : '#b91c1c',
-                              border: `1px solid ${res.ok ? '#bbf7d0' : '#fecaca'}`,
-                            }} title={res.text}>
-                              {res.ok ? '✓ sent' : `✗ ${res.text}`}
-                            </span>
-                          </div>
-                        )}
-                        {lastEm ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 12.5, color: '#64748b' }}>
-                              {lastEm.kind === 'promo' ? 'invite' : 'reminder'} {fmtDateTimeShort(lastEm.sent_at)}
-                            </span>
-                            {lastEm.clicked_choice === 'in' && <span style={{ fontSize: 12, color: '#166534', fontWeight: 600 }}>✓ clicked in</span>}
-                            {lastEm.clicked_choice === 'out' && <span style={{ fontSize: 12, color: '#b91c1c', fontWeight: 600 }}>✗ clicked out</span>}
-                            {lastEm.reply_seen_at && <span style={{ fontSize: 12, color: ACCENT, fontWeight: 600 }}>↩ replied</span>}
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>never</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="reminders-table" style={{ padding: 12 }}>
+            {/* The client picker opens below its row, so the table frame must
+                not clip it on the last rows of a page. */}
+            <style>{`
+              .reminders-table > div > div:first-child { overflow: visible !important; }
+              .reminders-table thead th:first-child { border-top-left-radius: 12px; }
+              .reminders-table thead th:last-child { border-top-right-radius: 12px; }
+            `}</style>
+            <DataTable
+              columns={columns}
+              rows={visibleRows}
+              rowKey={(r) => r.id}
+              sort={sort}
+              onSort={(next) => { setSort(next); setPage(1); }}
+              page={page}
+              onPage={setPage}
+              selection={{ selected, onChange: setSelected }}
+              empty="No rows match these filters."
+            />
           </div>
 
           {/* 4 — action bar */}

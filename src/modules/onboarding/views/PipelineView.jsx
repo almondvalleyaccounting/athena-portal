@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserPlus, Clock, AlertTriangle, Hourglass, MessageSquare } from 'lucide-react';
 import { Btn } from '../../../components/ui';
+import DataTable from '../../../components/DataTable';
 import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import ChasersPanel from '../components/ChasersPanel';
@@ -45,8 +46,18 @@ export default function PipelineView() {
   const [filter, setFilter] = useState('open'); // open | complete | archived | all
   const [search, setSearch] = useState('');
   const [busyId, setBusyId] = useState(null);
+  // { id, top, left } — the issues chip's reason, pinned to the viewport so the
+  // table's clipped cells and rounded frame don't cut it off.
   const [hoverIssue, setHoverIssue] = useState(null);
   const [openNotes, setOpenNotes] = useState(null); // onboarding id whose comments are expanded
+  const [sort, setSort] = useState(null); // null = as loaded (newest first)
+  const [page, setPage] = useState(1);
+
+  // Back to page 1 when the tab or search changes. Paging is controlled so an
+  // action or a new comment (which reloads the rows) never jumps the page.
+  const pageKey = `${filter}|${search}`;
+  const [pagedFor, setPagedFor] = useState(pageKey);
+  if (pagedFor !== pageKey) { setPagedFor(pageKey); setPage(1); }
 
   useEffect(() => {
     let cancelled = false;
@@ -137,6 +148,165 @@ export default function PipelineView() {
     return { done, total: applicable.length, waitingClient, waitingExternal, overdue };
   };
 
+  const columns = [
+    {
+      key: 'client', label: 'Client', wrap: true,
+      sortValue: (r) => r.entity?.name || null,
+      render: (r) => {
+        const latest = (r.notes || [])[0];
+        return (
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{r.entity?.name || '—'}</div>
+            <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
+              {r.template?.name || '—'} · {r.owner?.name ? `Owner: ${r.owner.name}` : 'No owner'}
+            </div>
+            {latest && (
+              <div
+                title={`${latest.author?.name || 'Athena'} · ${fmtNoteTime(latest.created_at)}
+
+${latest.body}`}
+                style={{ fontSize: 13, color: '#475569', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                <MessageSquare size={10} style={{ verticalAlign: -1, marginRight: 4, color: '#94a3b8' }} />
+                {latest.body}
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'status', label: 'Status', width: 120, wrap: true,
+      sortValue: (r) => statusMeta(r.status).label,
+      render: (r) => {
+        const meta = statusMeta(r.status);
+        if (r.status !== 'issues') return <span style={chipStyle(meta.tone)}>{meta.label}</span>;
+        return (
+          <span
+            style={{ display: 'inline-block' }}
+            onMouseEnter={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setHoverIssue({ id: r.id, top: rect.bottom + 6, left: Math.min(rect.left, window.innerWidth - 272) });
+            }}
+            onMouseLeave={() => setHoverIssue((h) => (h?.id === r.id ? null : h))}
+          >
+            <span style={{ ...chipStyle(meta.tone), cursor: 'help' }}>{meta.label}</span>
+            {hoverIssue?.id === r.id && (
+              <div style={{
+                position: 'fixed', top: hoverIssue.top, left: hoverIssue.left, zIndex: 50,
+                width: 260, background: '#0f172a', color: '#fff', fontSize: 13, lineHeight: 1.45,
+                padding: '9px 11px', borderRadius: 8, boxShadow: '0 8px 24px rgba(15,23,42,0.28)',
+                whiteSpace: 'normal', fontWeight: 400,
+              }}>
+                {r.issue_note || 'No reason recorded yet — open the client to add one.'}
+              </div>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'progress', label: 'Progress', width: '17%',
+      sortValue: (r) => { const s = summarise(r); return s.total > 0 ? s.done / s.total : 0; },
+      render: (r) => { const s = summarise(r); return <ProgressBar done={s.done} total={s.total} />; },
+    },
+    {
+      key: 'flags', label: 'Waiting on', width: '20%', wrap: true, sortable: false,
+      render: (r) => {
+        const s = summarise(r);
+        return (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {s.waitingClient > 0 && (
+              <span style={{ ...chipStyle('warning'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Hourglass size={10} /> {s.waitingClient} on client
+              </span>
+            )}
+            {s.waitingExternal > 0 && (
+              <span style={{ ...chipStyle('accent'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Clock size={10} /> {s.waitingExternal} on HMRC/3rd party
+              </span>
+            )}
+            {s.overdue > 0 && (
+              <span style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <AlertTriangle size={10} /> {s.overdue} overdue
+              </span>
+            )}
+            {r.escalation_status && r.escalation_status !== 'none' && (
+              <span style={chipStyle(r.escalation_status === 'paused' ? 'neutral' : 'danger')}>
+                {r.escalation_status.replace(/_/g, ' ')}
+              </span>
+            )}
+            {(r.handovers || []).some((h) => h.due && !h.done_at && new Date(h.due) <= new Date()) && (
+              <span style={chipStyle('warning')}>handover due</span>
+            )}
+            {r.checkin_due && !r.checkin_sent_at && new Date(r.checkin_due) <= new Date() && (
+              <span style={chipStyle('info')}>check-in due</span>
+            )}
+            {r.client_replied_at && (
+              <span
+                style={chipStyle('success')}
+                title={`Email reply received ${new Date(r.client_replied_at).toLocaleString('en-GB')} — chasing held until it's processed`}
+              >
+                replied 📩
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'age', label: 'Age', width: 100, align: 'right', wrap: true, firstDir: 'desc',
+      sortValue: (r) => daysSince(r.started_at),
+      render: (r) => {
+        const age = daysSince(r.started_at);
+        return (
+          <div style={{ fontSize: 13, color: '#64748b', textAlign: 'right' }}>
+            {age != null ? `${age}d in` : ''}
+            {r.target_date ? <div>due {new Date(r.target_date).toLocaleDateString('en-GB')}</div> : null}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'actions', label: '', width: 250, align: 'right', sortable: false,
+      render: (r) => {
+        const notes = r.notes || [];
+        const notesOpen = openNotes === r.id;
+        return (
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setOpenNotes(notesOpen ? null : r.id); }}
+              title={notesOpen ? 'Hide comments' : 'Comments'}
+              style={{ ...actionBtnStyle(notesOpen ? 'info' : 'neutral'), display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            >
+              <MessageSquare size={12} /> {notes.length || ''}
+            </button>
+            {r.archived_at ? (
+              <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'restore', e)} style={actionBtnStyle('info')}>
+                Restore
+              </button>
+            ) : (
+              <>
+                {r.status === 'complete' ? (
+                  <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'reopen', e)} style={actionBtnStyle('neutral')}>
+                    Reopen
+                  </button>
+                ) : (
+                  <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'complete', e)} style={actionBtnStyle('success')}>
+                    Complete
+                  </button>
+                )}
+                <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'archive', e)} style={actionBtnStyle('neutral')}>
+                  Archive
+                </button>
+              </>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <div style={{ padding: '24px 28px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
@@ -193,143 +363,23 @@ export default function PipelineView() {
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {filtered.map((r) => {
-          const s = summarise(r);
-          const meta = statusMeta(r.status);
-          const age = daysSince(r.started_at);
-          const notes = r.notes || [];
-          const latest = notes[0];
-          const notesOpen = openNotes === r.id;
-          return (
-            <div key={r.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, opacity: busyId === r.id ? 0.55 : 1 }}>
-            <div
-              onClick={() => navigate(`/onboarding/${r.id}`)}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'minmax(180px, 2fr) 110px minmax(140px, 1.4fr) minmax(180px, 1.4fr) 90px auto',
-                gap: 14, alignItems: 'center',
-                padding: '14px 18px', cursor: 'pointer',
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{r.entity?.name || '—'}</div>
-                <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
-                  {r.template?.name || '—'} · {r.owner?.name ? `Owner: ${r.owner.name}` : 'No owner'}
-                </div>
-                {latest && (
-                  <div
-                    title={`${latest.author?.name || 'Athena'} · ${fmtNoteTime(latest.created_at)}
-
-${latest.body}`}
-                    style={{ fontSize: 13, color: '#475569', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                  >
-                    <MessageSquare size={10} style={{ verticalAlign: -1, marginRight: 4, color: '#94a3b8' }} />
-                    {latest.body}
-                  </div>
-                )}
-              </div>
-              {r.status === 'issues' ? (
-                <span
-                  style={{ position: 'relative', justifySelf: 'start' }}
-                  onMouseEnter={() => setHoverIssue(r.id)}
-                  onMouseLeave={() => setHoverIssue((h) => (h === r.id ? null : h))}
-                >
-                  <span style={{ ...chipStyle(meta.tone), cursor: 'help' }}>{meta.label}</span>
-                  {hoverIssue === r.id && (
-                    <div style={{
-                      position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 20,
-                      width: 260, background: '#0f172a', color: '#fff', fontSize: 13, lineHeight: 1.45,
-                      padding: '9px 11px', borderRadius: 8, boxShadow: '0 8px 24px rgba(15,23,42,0.28)',
-                      whiteSpace: 'normal', fontWeight: 400,
-                    }}>
-                      {r.issue_note || 'No reason recorded yet — open the client to add one.'}
-                    </div>
-                  )}
-                </span>
-              ) : (
-                <span style={{ ...chipStyle(meta.tone), justifySelf: 'start' }}>{meta.label}</span>
-              )}
-              <ProgressBar done={s.done} total={s.total} />
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {s.waitingClient > 0 && (
-                  <span style={{ ...chipStyle('warning'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <Hourglass size={10} /> {s.waitingClient} on client
-                  </span>
-                )}
-                {s.waitingExternal > 0 && (
-                  <span style={{ ...chipStyle('accent'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <Clock size={10} /> {s.waitingExternal} on HMRC/3rd party
-                  </span>
-                )}
-                {s.overdue > 0 && (
-                  <span style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <AlertTriangle size={10} /> {s.overdue} overdue
-                  </span>
-                )}
-                {r.escalation_status && r.escalation_status !== 'none' && (
-                  <span style={chipStyle(r.escalation_status === 'paused' ? 'neutral' : 'danger')}>
-                    {r.escalation_status.replace(/_/g, ' ')}
-                  </span>
-                )}
-                {(r.handovers || []).some((h) => h.due && !h.done_at && new Date(h.due) <= new Date()) && (
-                  <span style={chipStyle('warning')}>handover due</span>
-                )}
-                {r.checkin_due && !r.checkin_sent_at && new Date(r.checkin_due) <= new Date() && (
-                  <span style={chipStyle('info')}>check-in due</span>
-                )}
-                {r.client_replied_at && (
-                  <span
-                    style={chipStyle('success')}
-                    title={`Email reply received ${new Date(r.client_replied_at).toLocaleString('en-GB')} — chasing held until it's processed`}
-                  >
-                    replied 📩
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: 13, color: '#64748b', textAlign: 'right' }}>
-                {age != null ? `${age}d in` : ''}
-                {r.target_date ? <div>due {new Date(r.target_date).toLocaleDateString('en-GB')}</div> : null}
-              </div>
-              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setOpenNotes(notesOpen ? null : r.id); }}
-                  title={notesOpen ? 'Hide comments' : 'Comments'}
-                  style={{ ...actionBtnStyle(notesOpen ? 'info' : 'neutral'), display: 'inline-flex', alignItems: 'center', gap: 5 }}
-                >
-                  <MessageSquare size={12} /> {notes.length || ''}
-                </button>
-                {r.archived_at ? (
-                  <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'restore', e)} style={actionBtnStyle('info')}>
-                    Restore
-                  </button>
-                ) : (
-                  <>
-                    {r.status === 'complete' ? (
-                      <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'reopen', e)} style={actionBtnStyle('neutral')}>
-                        Reopen
-                      </button>
-                    ) : (
-                      <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'complete', e)} style={actionBtnStyle('success')}>
-                        Complete
-                      </button>
-                    )}
-                    <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'archive', e)} style={actionBtnStyle('neutral')}>
-                      Archive
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-            {notesOpen && (
-              <div style={{ borderTop: '1px solid #f1f5f9', padding: '12px 18px 14px' }}>
-                <NotesThread onboardingId={r.id} notes={notes} onAdded={reload} maxHeight={260} autoFocus />
-              </div>
-            )}
-            </div>
-          );
-        })}
-      </div>
+      {rows && filtered.length > 0 && (
+        <DataTable
+          columns={columns}
+          rows={filtered}
+          rowKey={(r) => r.id}
+          rowHref={(r) => `/onboarding/${r.id}`}
+          onOpen={(href) => navigate(href)}
+          rowStyle={(r) => (busyId === r.id ? { opacity: 0.55 } : undefined)}
+          sort={sort}
+          onSort={(next) => { setSort(next); setPage(1); }}
+          page={page}
+          onPage={setPage}
+          renderExpanded={(r) => (openNotes === r.id ? (
+            <NotesThread onboardingId={r.id} notes={r.notes || []} onAdded={reload} maxHeight={260} autoFocus />
+          ) : null)}
+        />
+      )}
     </div>
   );
 }

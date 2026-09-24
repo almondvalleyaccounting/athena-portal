@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { AlertTriangle, ExternalLink, FilePlus2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 import { useAuth } from '../../shell/AppShell';
+import DataTable from '../../components/DataTable';
 import BillingTabs from './BillingTabs';
 
 const font = "'Outfit', sans-serif";
@@ -52,18 +54,30 @@ export default function FeeEngineGapsPage() {
   const [statusFilter, setStatusFilter] = useState('pending');
   const [tierFilter, setTierFilter] = useState('priority'); // 'priority' | 'individuals' | 'all'
   const [error, setError] = useState('');
+  // Controlled paging: a status change (which can drop the row out of the
+  // current filter) keeps you on the page you were working, clamped by the
+  // table. A change of filter goes back to page 1.
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [statusFilter, tierFilter]);
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
   async function load() {
     setLoading(true);
-    const { data, error: err } = await supabase
-      .from('v_fee_engine_gaps')
-      .select('*')
-      .order('tier', { ascending: true })
-      .order('overdue_tasks', { ascending: false })
-      .order('next_deadline', { ascending: true, nullsFirst: false });
-    if (err) setError(err.message || 'Load failed');
+    // fetchAllRows: PostgREST caps a response at 1000 rows silently; entity_id
+    // is the unique tiebreak so range paging is stable.
+    let data = [];
+    try {
+      data = await fetchAllRows(() => supabase
+        .from('v_fee_engine_gaps')
+        .select('*')
+        .order('tier', { ascending: true })
+        .order('overdue_tasks', { ascending: false })
+        .order('next_deadline', { ascending: true, nullsFirst: false })
+        .order('entity_id', { ascending: true }));
+    } catch (err) {
+      setError(err.message || 'Load failed');
+    }
     setRows(data || []);
     setLoading(false);
   }
@@ -121,6 +135,98 @@ export default function FeeEngineGapsPage() {
     resolved: rows.filter((r) => ['dismissed', 'not_client'].includes(r.review_status)).length,
   };
 
+  // No default sort: rows keep the server's order (tier, most overdue, soonest
+  // deadline) until a heading is clicked — as before.
+  const columns = [
+    {
+      key: 'client', label: 'Client', sortValue: (r) => r.entity_name,
+      render: (r) => {
+        const tm = TIER_META[r.tier] || TIER_META[3];
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            {r.tier <= 2 && (r.review_status || 'pending') === 'pending' && (
+              <AlertTriangle size={12} style={{ color: tm.colour, flexShrink: 0 }} />
+            )}
+            <span style={{ fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.entity_name}>{r.entity_name}</span>
+            <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{TYPE_LABEL[r.entity_type] || r.entity_type}</span>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'tier', label: 'Tier', width: 160, sortValue: (r) => r.tier,
+      render: (r) => {
+        const tm = TIER_META[r.tier] || TIER_META[3];
+        return (
+          <span title={tm.hint} style={{ fontSize: 12, fontWeight: 600, color: tm.colour, background: tm.bg, border: `1px solid ${tm.colour}22`, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+            {tm.label}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'services', label: 'Services', width: 240, wrap: true,
+      sortValue: (r) => (Array.isArray(r.services) ? r.services.join(', ') : ''),
+      render: (r) => {
+        const services = Array.isArray(r.services) ? r.services : [];
+        return <span style={{ color: '#475569', fontSize: 13 }}>{services.join(', ') || '—'}</span>;
+      },
+    },
+    {
+      key: 'work', label: 'Work', width: 130, align: 'center', firstDir: 'desc', sortValue: (r) => r.planned_tasks,
+      render: (r) => (
+        <span style={{ fontSize: 13, color: '#64748b' }}>
+          {r.planned_tasks} job{r.planned_tasks === 1 ? '' : 's'}
+          {r.overdue_tasks > 0 && (
+            <span style={{ color: '#b91c1c', fontWeight: 600 }}> · {r.overdue_tasks} late</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'next_deadline', label: 'Next due', width: 120, firstDir: 'desc', sortValue: (r) => r.next_deadline,
+      render: (r) => <span style={{ color: '#64748b', fontSize: 13 }}>{shortDate(r.next_deadline)}</span>,
+    },
+    {
+      key: 'status', label: 'Status', width: 150,
+      sortValue: (r) => (STATUSES.find((s) => s.value === (r.review_status || 'pending')) || STATUSES[0]).label,
+      render: (r) => {
+        const st = STATUSES.find((s) => s.value === (r.review_status || 'pending')) || STATUSES[0];
+        return (
+          <select
+            value={r.review_status || 'pending'}
+            onChange={(e) => setStatus(r, e.target.value)}
+            style={{ ...inputStyle, color: st.colour, fontWeight: 500, background: st.bg, border: `1px solid ${st.colour}33`, width: 'auto' }}
+          >
+            {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        );
+      },
+    },
+    {
+      // Notes save on blur and are not written back into `rows`, so sorting by
+      // notes never moves a row while it is being typed in.
+      key: 'notes', label: 'Notes', width: 200, sortValue: (r) => r.review_notes,
+      render: (r) => <BlurInput value={r.review_notes} onChange={(v) => setNotes(r, v)} placeholder="Notes…" />,
+    },
+    {
+      key: 'actions', label: 'Actions', width: 150, sortable: false,
+      render: (r) => (
+        <div style={{ display: 'flex', gap: 10 }}>
+          <a href={`/manage/quotes/new?entity=${r.entity_id}`}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#0e7fe0', textDecoration: 'none' }}
+            title="Set up a fee — raise a quote for this client">
+            <FilePlus2 size={12} /> Quote
+          </a>
+          <a href={`/clients/${r.entity_id}`} target="_blank" rel="noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#64748b', textDecoration: 'none' }}>
+            Client <ExternalLink size={11} />
+          </a>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div style={{ padding: '20px 28px', fontFamily: font }}>
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
@@ -166,87 +272,16 @@ export default function FeeEngineGapsPage() {
       {loading ? (
         <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading fee-engine gaps…</div>
       ) : (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
-                  <th style={th}>Client</th>
-                  <th style={th}>Tier</th>
-                  <th style={th}>Services</th>
-                  <th style={{ ...th, textAlign: 'center' }}>Work</th>
-                  <th style={th}>Next due</th>
-                  <th style={th}>Status</th>
-                  <th style={th}>Notes</th>
-                  <th style={th}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 && (
-                  <tr><td colSpan={8} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
-                    {statusFilter === 'pending' ? 'Nothing pending in this view — every gap here has been triaged.' : 'No clients match.'}
-                  </td></tr>
-                )}
-                {filtered.map((r) => {
-                  const st = STATUSES.find((s) => s.value === (r.review_status || 'pending')) || STATUSES[0];
-                  const tm = TIER_META[r.tier] || TIER_META[3];
-                  const services = Array.isArray(r.services) ? r.services : [];
-                  return (
-                    <tr key={r.entity_id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                      <td style={td}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {r.tier <= 2 && (r.review_status || 'pending') === 'pending' && (
-                            <AlertTriangle size={12} style={{ color: tm.colour, flexShrink: 0 }} />
-                          )}
-                          <span style={{ fontWeight: 500, color: '#0f172a' }}>{r.entity_name}</span>
-                          <span style={{ fontSize: 11, color: '#94a3b8' }}>{TYPE_LABEL[r.entity_type] || r.entity_type}</span>
-                        </div>
-                      </td>
-                      <td style={td}>
-                        <span title={tm.hint} style={{ fontSize: 12, fontWeight: 600, color: tm.colour, background: tm.bg, border: `1px solid ${tm.colour}22`, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>
-                          {tm.label}
-                        </span>
-                      </td>
-                      <td style={{ ...td, color: '#475569', fontSize: 13, maxWidth: 260 }}>
-                        {services.join(', ') || '—'}
-                      </td>
-                      <td style={{ ...td, textAlign: 'center', fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' }}>
-                        {r.planned_tasks} job{r.planned_tasks === 1 ? '' : 's'}
-                        {r.overdue_tasks > 0 && (
-                          <span style={{ color: '#b91c1c', fontWeight: 600 }}> · {r.overdue_tasks} late</span>
-                        )}
-                      </td>
-                      <td style={{ ...td, color: '#64748b', fontSize: 13, whiteSpace: 'nowrap' }}>{shortDate(r.next_deadline)}</td>
-                      <td style={td}>
-                        <select
-                          value={r.review_status || 'pending'}
-                          onChange={(e) => setStatus(r, e.target.value)}
-                          style={{ ...inputStyle, color: st.colour, fontWeight: 500, background: st.bg, border: `1px solid ${st.colour}33`, width: 'auto' }}
-                        >
-                          {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
-                      </td>
-                      <td style={{ ...td, minWidth: 160 }}>
-                        <BlurInput value={r.review_notes} onChange={(v) => setNotes(r, v)} placeholder="Notes…" />
-                      </td>
-                      <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', gap: 10 }}>
-                          <a href={`/manage/quotes/new?entity=${r.entity_id}`}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#0e7fe0', textDecoration: 'none' }}
-                            title="Set up a fee — raise a quote for this client">
-                            <FilePlus2 size={12} /> Quote
-                          </a>
-                          <a href={`/clients/${r.entity_id}`} target="_blank" rel="noreferrer"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#64748b', textDecoration: 'none' }}>
-                            Client <ExternalLink size={11} />
-                          </a>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: 1180 }}>
+            <DataTable
+              columns={columns}
+              rows={filtered}
+              rowKey={(r) => r.entity_id}
+              page={page}
+              onPage={setPage}
+              empty={statusFilter === 'pending' ? 'Nothing pending in this view — every gap here has been triaged.' : 'No clients match.'}
+            />
           </div>
         </div>
       )}
@@ -304,6 +339,4 @@ function Stat({ label, value, colour, big, hint }) {
   );
 }
 
-const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' };
-const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
 const inputStyle = { width: '100%', padding: '6px 9px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: font, boxSizing: 'border-box', background: '#fff' };

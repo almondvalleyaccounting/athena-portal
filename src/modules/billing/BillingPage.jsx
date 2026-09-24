@@ -8,6 +8,9 @@ import NewClientModal from '../../components/NewClientModal';
 import { fetchAdhocServices } from './billingServices';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import ServicePicker from './ServicePicker';
+import DataTable, { sortRows } from '../../components/DataTable';
+import SearchInput from '../../components/SearchInput';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 
 const VAT_RATE = 0.20;
 const STATUS_CONFIG = {
@@ -46,6 +49,12 @@ export default function BillingPage() {
   const [editingId, setEditingId] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [expanded, setExpanded] = useState(new Set()); // tiles showing their line detail
+  // List search + sort + page. Held here rather than in the table so a deep
+  // link can land on the page that holds the highlighted bill. No sort means
+  // the load order (newest first), which is what the list always showed.
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState(null);
+  const [page, setPage] = useState(1);
   const [showPushConfirm, setShowPushConfirm] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [sendMode, setSendMode] = useState('send'); // bulk default for rows not set individually
@@ -115,7 +124,9 @@ export default function BillingPage() {
   const loadData = async () => {
     try {
       const [{ data: bills }, { data: ents }, { data: staff }, svcOpts, { data: cmts }] = await Promise.all([
-        supabase.from('billing_items').select('*').order('created_at', { ascending: false }),
+        // Every bill, not the first 1000 — see fetchAllRows. Its own catch, as
+        // before: a failed read leaves the list empty rather than the page.
+        loadAllBills().then((data) => ({ data })).catch((e) => { console.error('[Billing] bills failed to load:', e); return { data: null }; }),
         supabase.from('entities').select('id, name').order('name'),
         supabase.from('staff_profiles').select('*').order('name'),
         // Ad-hoc line labels that actually map to a QBO product. Fee-engine
@@ -125,7 +136,8 @@ export default function BillingPage() {
         // Its own catch: a service list that fails to load shouldn't take the
         // bills down with it, which is what this screen did before.
         fetchAdhocServices().catch((e) => { console.error('[Billing] service options failed to load:', e); return []; }),
-        supabase.from('billing_item_comments').select('*').order('created_at'),
+        fetchAllRows(() => supabase.from('billing_item_comments').select('*').order('created_at').order('id'))
+          .then((data) => ({ data })).catch((e) => { console.error('[Billing] comments failed to load:', e); return { data: null }; }),
       ]);
       setItems(bills || []);
       setComments(groupComments(cmts));
@@ -157,7 +169,7 @@ export default function BillingPage() {
     if (!need.length) return;
     try {
       await refreshBillingItems(need.map((i) => i.id), profile?.id);
-      const { data } = await supabase.from('billing_items').select('*').order('created_at', { ascending: false });
+      const data = await loadAllBills();
       if (data) setItems(data);
     } catch (e) { console.error('[Billing] auto-refresh error:', e); }
   };
@@ -166,7 +178,7 @@ export default function BillingPage() {
     setRefreshing(true);
     try {
       await refreshBillingItems([], profile?.id); // all pushed
-      const { data } = await supabase.from('billing_items').select('*').order('created_at', { ascending: false });
+      const data = await loadAllBills();
       if (data) setItems(data);
     } catch (e) { console.error('[Billing] refresh error:', e); }
     setRefreshing(false);
@@ -623,8 +635,12 @@ export default function BillingPage() {
   };
 
   const toggleExpand = (id) => setExpanded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const toggleSelect = (id) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const toggleSelectAll = () => { if (selected.size === filtered.length) setSelected(new Set()); else setSelected(new Set(filtered.map((i) => i.id))); };
+  // "Select all" ticks the whole tab, or only the search results while searching.
+  const toggleSelectAll = () => {
+    const pool = search.trim() ? shown : filtered;
+    if (pool.length > 0 && pool.every((i) => selected.has(i.id))) setSelected(new Set());
+    else setSelected(new Set(pool.map((i) => i.id)));
+  };
 
   const handleExport = () => {
     const toExport = selected.size > 0 ? filtered.filter((i) => selected.has(i.id)) : filtered;
@@ -639,6 +655,155 @@ export default function BillingPage() {
     const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url;
     a.download=`billing-${new Date().toISOString().split('T')[0]}.csv`; a.click(); URL.revokeObjectURL(url);
+  };
+
+  // ── The list ──────────────────────────────────────────────────────────────
+  // Search narrows the current tab; it doesn't touch the totals bar, the
+  // export or the push, which all work off the tab (and the ticks) as before.
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return filtered;
+    return filtered.filter((i) => [
+      entityMap[i.entity_id]?.name, i.service, i.description, i.qbo_doc_number,
+      ...itemLines(i).flatMap((l) => [l.service, l.description]),
+    ].some((v) => v != null && String(v).toLowerCase().includes(q)));
+  }, [filtered, search, entityMap]);
+
+  // A tick you can't see must not be pushed: while searching, drop ticks on
+  // bills the search hides, so Push to QB only ever acts on bills on screen.
+  useEffect(() => {
+    if (!search.trim()) return;
+    const onScreen = new Set(shown.map((i) => i.id));
+    setSelected((prev) => {
+      const next = new Set([...prev].filter((id) => onScreen.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [shown, search]);
+
+  const clientNameOf = (item) => entityMap[item.entity_id]?.name || 'Unknown';
+  const addedByOf = (item) => staffMap[item.created_by]?.name || 'Unknown';
+  // The team types descriptions per line, so the item-level description is
+  // usually empty — fall back to the lines rather than showing "No
+  // description" on a bill that has plenty.
+  const descPreviewOf = (item) => item.description || itemLines(item).map((l) => l.description).filter(Boolean).join(' · ');
+
+  // Compact and full share the same columns (so a sort survives the toggle);
+  // compact keeps every row to one line with the smaller tags and buttons.
+  const columns = [
+    {
+      key: 'open', label: '', width: 34, sortable: false,
+      render: (item) => {
+        const isOpen = expanded.has(item.id);
+        return (
+          <span id={`billing-item-${item.id}`} style={{display:'inline-flex'}}>
+            {isOpen?<ChevronDown size={compact?13:14} style={{color:'#94a3b8'}}/>:<ChevronRight size={compact?13:14} style={{color:'#cbd5e1'}}/>}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'client', label: 'Client', wrap: !compact, sortValue: clientNameOf,
+      render: (item) => {
+        const descPreview = descPreviewOf(item);
+        if (compact) return (
+          <span style={{fontSize:13,fontWeight:500,color:'#0f172a'}}>{clientNameOf(item)} — {[descPreview, item.service].filter(Boolean).join(' · ') || item.service}</span>
+        );
+        const isOpen = expanded.has(item.id);
+        return (
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:14.5,fontWeight:500,color:'#0f172a',marginBottom:2}}>{clientNameOf(item)}</div>
+            <div style={{fontSize:13,color:'#64748b',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:isOpen?'normal':'nowrap'}}>
+              {descPreview || <span style={{fontStyle:'italic',color:'#cbd5e1'}}>No description</span>}
+              {item.service && <span style={{color:'#0f172a',fontWeight:500}}> · {item.service}</span>}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'status', label: 'Status', width: compact ? 250 : 230, wrap: !compact,
+      sortValue: (item) => (STATUS_CONFIG[item.status] || STATUS_CONFIG.draft).label,
+      render: (item) => {
+        const sc = STATUS_CONFIG[item.status] || STATUS_CONFIG.draft;
+        const n = commentsOf(item.id).length;
+        const lineCount = itemLines(item).length;
+        return (
+          <span style={{display:'inline-flex',gap:compact?6:8,alignItems:'center',flexWrap:compact?'nowrap':'wrap',fontSize:12,color:'#94a3b8'}}>
+            <span style={{fontSize:11,fontWeight:600,color:sc.colour,background:sc.bg,padding:compact?'2px 6px':'2px 8px',borderRadius:compact?4:6,flexShrink:0}}>{sc.label}</span>
+            <QboInvoiceTag item={item}/>
+            <CommentTag count={n} compact={compact}/>
+            <UnpricedTag item={item} compact={compact}/>
+            {!compact && lineCount>1 && <span>{lineCount} lines</span>}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'added_by', label: 'Added by', width: 130, sortValue: addedByOf,
+      render: (item) => <span style={{fontSize:compact?11:12,color:'#94a3b8'}}>{addedByOf(item)}</span>,
+    },
+    {
+      key: 'created_at', label: 'Date', width: 112, firstDir: 'desc',
+      render: (item) => <span style={{fontSize:compact?11:12,color:'#94a3b8'}}>{new Date(item.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</span>,
+    },
+    {
+      key: 'gross_amount', label: 'Amount', width: 140, align: 'right', firstDir: 'desc',
+      sortValue: (item) => Number(item.gross_amount) || 0,
+      render: (item) => compact
+        ? <span style={{fontSize:13,fontWeight:600,color:'#0f172a'}}>{fmt(item.gross_amount)}</span>
+        : (
+          <div>
+            <div style={{fontSize:16,fontWeight:700,color:'#0f172a'}}>{fmt(item.gross_amount)}</div>
+            <div style={{fontSize:11,color:'#64748b'}}>{fmt(item.net_amount)} + {fmt(item.vat_amount)} VAT</div>
+          </div>
+        ),
+    },
+    {
+      key: 'actions', label: '', width: compact ? 110 : 176, align: 'right', sortable: false,
+      // data-no-row-click: a click on a disabled button (Approve on a £0.00
+      // bill) mustn't fall through and open the row either.
+      render: (item) => (
+        <span data-no-row-click style={{display:'inline-flex',justifyContent:'flex-end'}}>
+          <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} compact={compact}/>
+        </span>
+      ),
+    },
+  ];
+
+  // A deep-linked bill may sit beyond the first page — go to the page it's on.
+  useEffect(() => {
+    if (!highlightId || loading) return;
+    const idx = sortRows(shown, columns, sort).findIndex((i) => i.id === highlightId);
+    if (idx >= 0) setPage(Math.floor(idx / LIST_PAGE_SIZE) + 1);
+  }, [highlightId, loading, filter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Line detail + the comment thread, opened in place under the row.
+  const renderBillDetail = (item) => {
+    if (!expanded.has(item.id)) return null;
+    return (
+      <div style={{margin:'-14px -18px'}}>
+        <BillLines lines={itemLines(item)} fmt={fmt}/>
+        <BillComments
+          comments={commentsOf(item.id)} staffMap={staffMap} meId={profile?.id}
+          draft={commentDrafts[item.id]||''}
+          onDraft={(v)=>setCommentDrafts((prev)=>({...prev,[item.id]:v}))}
+          onAdd={()=>handleAddComment(item.id)}
+          onDelete={handleDeleteComment}
+          busy={commentBusy===item.id}
+        />
+      </div>
+    );
+  };
+
+  // The coloured status edge the tiles had, and the deep-link flash.
+  const billRowStyle = (item) => {
+    const sc = STATUS_CONFIG[item.status] || STATUS_CONFIG.draft;
+    const isHighlighted = highlightActive && item.id === highlightId;
+    return {
+      boxShadow: `inset 3px 0 0 ${sc.colour}${isHighlighted ? ', inset 0 0 0 3px rgba(14,127,224,0.35)' : ''}`,
+      transition: 'box-shadow 0.3s ease',
+      ...(isHighlighted ? { background: '#eff6ff' } : {}),
+    };
   };
 
   // The bill editor's innards. Always shown inside the modal below — editing
@@ -838,7 +1003,7 @@ export default function BillingPage() {
       {/* Filter tabs */}
       <div style={{display:'flex',gap:2,marginBottom:16,borderBottom:'1px solid #e5e7eb'}}>
         {[{value:'pipeline',label:'Pipeline'},{value:'all',label:'All'},...Object.entries(STATUS_CONFIG).map(([k,v])=>({value:k,label:v.label}))].map((tab)=>(
-          <button key={tab.value} onClick={()=>{setFilter(tab.value);setSelected(new Set());}} style={{
+          <button key={tab.value} onClick={()=>{setFilter(tab.value);setSelected(new Set());setPage(1);}} style={{
             padding:'8px 14px',fontSize:13,fontWeight:filter===tab.value?600:400,
             color:filter===tab.value?'#0f172a':'#94a3b8',background:'none',border:'none',
             borderBottom:filter===tab.value?'2px solid #38bdf8':'2px solid transparent',
@@ -859,11 +1024,18 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* Select all */}
+      {/* Select all + search */}
       {filtered.length > 0 && (
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,padding:'0 4px'}}>
-          <input type="checkbox" checked={selected.size===filtered.length&&filtered.length>0} onChange={toggleSelectAll} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0'}}/>
+          <input type="checkbox" checked={(search.trim()?shown:filtered).length>0&&(search.trim()?shown:filtered).every((i)=>selected.has(i.id))} onChange={toggleSelectAll} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0'}}/>
           <span style={{fontSize:12,color:'#94a3b8'}}>Select all</span>
+          <SearchInput
+            value={search}
+            onChange={(v)=>{setSearch(v);setPage(1);}}
+            placeholder="Search client, description or invoice number"
+            style={{marginLeft:'auto',width:320}}
+            inputStyle={{padding:'6px 26px 6px 10px'}}
+          />
         </div>
       )}
 
@@ -874,109 +1046,22 @@ export default function BillingPage() {
           <p style={{fontSize:14.5,color:'#94a3b8'}}>No billing items in this view.</p>
         </div>
       ) : (
-        <div style={{display:'flex',flexDirection:'column',gap:compact?3:6}}>
-          {filtered.map((item)=>{
-            const sc = STATUS_CONFIG[item.status]||STATUS_CONFIG.draft;
-            const clientName = entityMap[item.entity_id]?.name||'Unknown';
-            const addedBy = staffMap[item.created_by]?.name || 'Unknown';
-            const dateStr = new Date(item.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
-            const isSelected = selected.has(item.id);
-            const isHighlighted = highlightActive && item.id === highlightId;
-            const isOpen = expanded.has(item.id);
-            // The team types descriptions per line, so the item-level
-            // description is usually empty — fall back to the lines rather
-            // than showing "No description" on a bill that has plenty.
-            const lines = itemLines(item);
-            const cmts = commentsOf(item.id);
-            const descPreview = item.description || lines.map((l)=>l.description).filter(Boolean).join(' · ');
-            // Stop the checkbox and the action buttons from also toggling
-            // the expander they sit inside.
-            const swallow = (e)=>e.stopPropagation();
-
-            if (compact) return (
-              <div key={item.id} id={`billing-item-${item.id}`} style={{background:isHighlighted?'#eff6ff':isSelected?'#eff6ff':'#fff',borderRadius:8,overflow:'hidden',border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
-                <div onClick={()=>toggleExpand(item.id)} title={isOpen?'Hide detail':'Show the line detail'} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',fontSize:13,cursor:'pointer'}}>
-                  <span onClick={swallow} style={{display:'inline-flex',flexShrink:0}}>
-                    <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:13,height:13,cursor:'pointer',accentColor:'#0e7fe0'}}/>
-                  </span>
-                  {isOpen?<ChevronDown size={13} style={{color:'#94a3b8',flexShrink:0}}/>:<ChevronRight size={13} style={{color:'#cbd5e1',flexShrink:0}}/>}
-                  <span style={{fontWeight:500,color:'#0f172a',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clientName} — {[descPreview, item.service].filter(Boolean).join(' · ') || item.service}</span>
-                  <span style={{fontWeight:600,color:'#0f172a',flexShrink:0}}>{fmt(item.gross_amount)}</span>
-                  <CommentTag count={cmts.length} compact/>
-                  <UnpricedTag item={item} compact/>
-                  <span style={{fontSize:11,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 6px',borderRadius:4,flexShrink:0}}>{sc.label}</span>
-                  <QboInvoiceTag item={item}/>
-                  <span style={{fontSize:11,color:'#94a3b8',flexShrink:0}}>{addedBy} · {dateStr}</span>
-                  <span onClick={swallow} style={{display:'inline-flex',flexShrink:0}}>
-                    <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} compact/>
-                  </span>
-                </div>
-                {isOpen && (
-                  <>
-                    <BillLines lines={lines} fmt={fmt}/>
-                    <BillComments
-                      comments={cmts} staffMap={staffMap} meId={profile?.id}
-                      draft={commentDrafts[item.id]||''}
-                      onDraft={(v)=>setCommentDrafts((prev)=>({...prev,[item.id]:v}))}
-                      onAdd={()=>handleAddComment(item.id)}
-                      onDelete={handleDeleteComment}
-                      busy={commentBusy===item.id}
-                    />
-                  </>
-                )}
-              </div>
-            );
-
-            return (
-              <div key={item.id} id={`billing-item-${item.id}`} style={{background:isSelected?'#eff6ff':'#fff',borderRadius:12,overflow:'hidden',border:`1px solid ${isSelected?'#0e7fe0':'#e5e7eb'}`,borderLeft:`3px solid ${sc.colour}`,boxShadow:isHighlighted?'0 0 0 3px rgba(14,127,224,0.35)':'none',transition:'box-shadow 0.3s ease'}}>
-                <div onClick={()=>toggleExpand(item.id)} title={isOpen?'Hide detail':'Show the line detail'} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'14px 18px',cursor:'pointer'}}>
-                  <span onClick={swallow} style={{display:'inline-flex',marginTop:3,flexShrink:0}}>
-                    <input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(item.id)} style={{width:14,height:14,cursor:'pointer',accentColor:'#0e7fe0'}}/>
-                  </span>
-                  <span style={{marginTop:3,flexShrink:0,display:'inline-flex'}}>
-                    {isOpen?<ChevronDown size={14} style={{color:'#94a3b8'}}/>:<ChevronRight size={14} style={{color:'#cbd5e1'}}/>}
-                  </span>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:14.5,fontWeight:500,color:'#0f172a',marginBottom:2}}>{clientName}</div>
-                    <div style={{fontSize:13,color:'#64748b',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:isOpen?'normal':'nowrap'}}>
-                      {descPreview || <span style={{fontStyle:'italic',color:'#cbd5e1'}}>No description</span>}
-                      {item.service && <span style={{color:'#0f172a',fontWeight:500}}> · {item.service}</span>}
-                    </div>
-                    <div style={{fontSize:12,color:'#94a3b8',marginTop:4,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-                      <span style={{fontSize:11,fontWeight:600,color:sc.colour,background:sc.bg,padding:'2px 8px',borderRadius:6}}>{sc.label}</span>
-                      <QboInvoiceTag item={item}/>
-                      <CommentTag count={cmts.length}/>
-                      <UnpricedTag item={item}/>
-                      <span>Added by {addedBy}</span>
-                      <span>{dateStr}</span>
-                      {lines.length>1 && <span>{lines.length} lines</span>}
-                    </div>
-                  </div>
-                  <div style={{textAlign:'right',flexShrink:0}}>
-                    <div style={{fontSize:16,fontWeight:700,color:'#0f172a'}}>{fmt(item.gross_amount)}</div>
-                    <div style={{fontSize:11,color:'#64748b'}}>{fmt(item.net_amount)} + {fmt(item.vat_amount)} VAT</div>
-                  </div>
-                  <span onClick={swallow} style={{display:'inline-flex',flexShrink:0}}>
-                    <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange}/>
-                  </span>
-                </div>
-                {isOpen && (
-                  <>
-                    <BillLines lines={lines} fmt={fmt}/>
-                    <BillComments
-                      comments={cmts} staffMap={staffMap} meId={profile?.id}
-                      draft={commentDrafts[item.id]||''}
-                      onDraft={(v)=>setCommentDrafts((prev)=>({...prev,[item.id]:v}))}
-                      onAdd={()=>handleAddComment(item.id)}
-                      onDelete={handleDeleteComment}
-                      busy={commentBusy===item.id}
-                    />
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <DataTable
+          columns={columns}
+          rows={shown}
+          rowKey={(item)=>item.id}
+          onRowClick={(item)=>toggleExpand(item.id)}
+          rowTitle={(item)=>expanded.has(item.id)?'Hide detail':'Show the line detail'}
+          rowStyle={billRowStyle}
+          sort={sort}
+          onSort={(s)=>{setSort(s);setPage(1);}}
+          page={page}
+          onPage={setPage}
+          pageSize={LIST_PAGE_SIZE}
+          selection={{selected, onChange:setSelected}}
+          renderExpanded={renderBillDetail}
+          empty="No bills match that search."
+        />
       )}
 
       {/* Push to QB confirmation modal */}
@@ -1553,6 +1638,8 @@ const sendToggleDraft = {background:'#e2e8f0',color:'#334155'};
 // to "Business Accounts and Corporation Tax Combined" (sql/186), and a picker
 // you can't read the end of is a picker you can choose wrongly from.
 const LINE_COLS = '1.6fr 1.6fr 0.5fr 0.72fr 0.8fr 0.72fr 0.8fr 30px';
+// Bills per page in the list.
+const LIST_PAGE_SIZE = 50;
 const DETAIL_COLS = '1.5fr 1.9fr 0.4fr 0.7fr 0.7fr 0.6fr 0.7fr';
 const calcHint = { background: '#f1f5f9', borderRadius: 4, padding: '1px 4px', fontFamily: 'monospace', color: '#475569' };
 // A fresh, empty editor line.
@@ -1566,6 +1653,13 @@ function blankLine() { return { service: '', description: '', qty: '', rate: '',
 // pushed until it's priced. Nothing about it is an error, so it's a state to
 // show, not a validation failure.
 function isPriced(item) { return Number(item?.net_amount) > 0; }
+
+// Every billing item, newest first. The list grows forever, so it's paged in
+// past PostgREST's 1000-row cap; id breaks ties so paging can't skip or repeat.
+function loadAllBills() {
+  return fetchAllRows(() => supabase.from('billing_items').select('*')
+    .order('created_at', { ascending: false }).order('id'));
+}
 
 // Comment rows → { [billing_item_id]: [oldest … newest] }.
 function groupComments(rows) {

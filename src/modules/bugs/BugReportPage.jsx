@@ -3,6 +3,8 @@ import { Bug, Plus, Copy, Check, ChevronDown, ChevronRight, Paperclip, X, Filter
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import { MODULES } from '../../modules.config';
+import DataTable from '../../components/DataTable';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 
 /* ─── Bug Reports Module ───────────────────────────────────────────────
  *
@@ -121,10 +123,16 @@ export default function BugReportPage() {
 
   const loadData = useCallback(async () => {
     try {
+      // bugs and entities both grow past PostgREST's silent 1000-row cap, so
+      // page them; id breaks ties so paging neither repeats nor skips a row.
+      // A failed read shows an empty list, as it did before.
+      const all = (label, build) => fetchAllRows(build)
+        .then((data) => ({ data }))
+        .catch((e) => { console.error(`[Bugs] load ${label}:`, e); return { data: null }; });
       const [{ data: bg }, { data: staff }, { data: ents }] = await Promise.all([
-        supabase.from('bugs').select('*').order('created_at', { ascending: false }),
+        all('bugs', () => supabase.from('bugs').select('*').order('created_at', { ascending: false }).order('id')),
         supabase.from('staff_profiles').select('id, name, email').eq('is_active', true).order('name'),
-        supabase.from('entities').select('id, name').order('name'),
+        all('entities', () => supabase.from('entities').select('id, name').order('name').order('id')),
       ]);
       setBugs(bg || []);
       setStaffList((staff || []).map((s) => ({ ...s, name: s.name || s.email })));
@@ -385,8 +393,12 @@ function ReportForm({ profile, entities, onSaved, canTriage, staffList }) {
 }
 
 /* ─── Reporter's list / generic list ─────────────────────────────────── */
+const PRIO_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
+
 function BugList({ bugs, loading, entityMap, staffList, canTriage, onPatch, onDelete, profile, emptyMsg }) {
   const [expandedId, setExpandedId] = useState(null);
+  const [sort, setSort] = useState(null); // null = as loaded (newest first)
+  const [page, setPage] = useState(1);
   if (loading) return <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 14, padding: 40 }}>Loading…</p>;
   if (bugs.length === 0) return (
     <div style={{ textAlign: 'center', padding: 60, background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb' }}>
@@ -394,14 +406,65 @@ function BugList({ bugs, loading, entityMap, staffList, canTriage, onPatch, onDe
       <p style={{ fontSize: 14.5, color: '#94a3b8' }}>{emptyMsg || 'No bugs.'}</p>
     </div>
   );
+
+  const columns = [
+    {
+      key: 'open', label: '', width: 44, sortable: false,
+      render: (b) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {/* The card's status-coloured edge, kept as a bar at the start of the row. */}
+          <span style={{ width: 3, height: 26, borderRadius: 2, background: statusCfg(b.status).colour, flexShrink: 0 }} />
+          {expandedId === b.id ? <ChevronDown size={15} style={{ color: '#94a3b8' }} /> : <ChevronRight size={15} style={{ color: '#cbd5e1' }} />}
+        </span>
+      ),
+    },
+    {
+      key: 'seq', label: 'Ref', width: 92, firstDir: 'desc',
+      sortValue: (b) => (b.seq != null ? Number(b.seq) : null),
+      render: (b) => <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>BUG-{b.seq}</span>,
+    },
+    {
+      key: 'priority', label: 'Priority', width: 88, align: 'center',
+      sortValue: (b) => PRIO_RANK[b.priority] ?? null,
+      render: (b) => { const p = prioCfg(b.priority); return p ? <span title={p.label} style={{ fontSize: 13 }}>{p.icon}</span> : null; },
+    },
+    {
+      key: 'title', label: 'Bug', wrap: true,
+      sortValue: (b) => b.title || null,
+      render: (b) => (
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.title}</div>
+          <BugMeta bug={b} entityName={entityMap[b.entity_id]} />
+        </div>
+      ),
+    },
+    {
+      key: 'reported', label: 'Reported', width: 110, align: 'right', firstDir: 'desc',
+      sortValue: (b) => b.created_at || null,
+      render: (b) => <span style={{ fontSize: 13, color: '#94a3b8' }}>{b.created_at ? new Date(b.created_at).toLocaleDateString('en-GB') : ''}</span>,
+    },
+    {
+      key: 'status', label: 'Status', width: 140, align: 'right',
+      sortValue: (b) => STATUSES.findIndex((s) => s.id === b.status),
+      render: (b) => <StatusPill bug={b} />,
+    },
+  ];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {bugs.map((b) => (
-        <BugCard key={b.id} bug={b} entityMap={entityMap} staffList={staffList} canTriage={canTriage}
-          expanded={expandedId === b.id} onToggle={() => setExpandedId(expandedId === b.id ? null : b.id)}
+    <DataTable
+      columns={columns}
+      rows={bugs}
+      rowKey={(b) => b.id}
+      onRowClick={(b) => setExpandedId(expandedId === b.id ? null : b.id)}
+      sort={sort}
+      onSort={(next) => { setSort(next); setPage(1); }}
+      page={page}
+      onPage={setPage}
+      renderExpanded={(b) => (expandedId === b.id ? (
+        <BugDetail bug={b} entityMap={entityMap} staffList={staffList} canTriage={canTriage}
           onPatch={onPatch} onDelete={onDelete} profile={profile} />
-      ))}
-    </div>
+      ) : null)}
+    />
   );
 }
 
@@ -517,15 +580,6 @@ function BugCard({ bug, entityMap, staffList, canTriage, expanded, onToggle, onP
   const cfg = statusCfg(bug.status);
   const p = prioCfg(bug.priority);
   const entityName = entityMap[bug.entity_id];
-  const suggested = suggestPriority(bug.impact, bug.frequency);
-  const [shotUrl, setShotUrl] = useState(null);
-
-  useEffect(() => {
-    if (expanded && bug.screenshot_url && !shotUrl) {
-      supabase.storage.from('client-documents').createSignedUrl(bug.screenshot_url, 3600)
-        .then(({ data }) => { if (data?.signedUrl) setShotUrl(data.signedUrl); });
-    }
-  }, [expanded, bug.screenshot_url, shotUrl]);
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', borderLeft: `3px solid ${cfg.colour}` }}>
@@ -535,56 +589,89 @@ function BugCard({ bug, entityMap, staffList, canTriage, expanded, onToggle, onP
         {p && <span title={p.label} style={{ fontSize: 13, flexShrink: 0 }}>{p.icon}</span>}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14.5, fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bug.title}</div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {bug.module && <span style={{ background: '#f1f5f9', padding: '1px 6px', borderRadius: 4 }}>{bug.module}</span>}
-            {entityName && <span>{entityName}</span>}
-            <span>{bug.reported_by_name}</span>
-            <span>{daysSince(bug.created_at)}d old</span>
-          </div>
+          <BugMeta bug={bug} entityName={entityName} />
         </div>
-        <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 6, background: cfg.bg, color: cfg.colour, flexShrink: 0 }}>{cfg.label}</span>
+        <StatusPill bug={bug} />
       </div>
 
       {expanded && (
         <div style={{ padding: '4px 16px 16px', borderTop: '1px solid #f1f5f9' }}>
-          {/* Reporter-supplied structured detail */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px', padding: '14px 0', fontSize: 13.5 }}>
-            <Field label="Where">{bug.module || '—'}{bug.page_url ? <div style={{ fontSize: 12, color: '#94a3b8', wordBreak: 'break-all' }}>{bug.page_url}</div> : null}</Field>
-            <Field label="Client / record">{[entityName, bug.record_ref].filter(Boolean).join(' · ') || '—'}</Field>
-            <Field label="Frequency">{FREQUENCY.find((x) => x.id === bug.frequency)?.label || '—'}</Field>
-            <Field label="Impact">{IMPACT.find((x) => x.id === bug.impact)?.label || '—'}</Field>
-          </div>
-          {bug.goal && <Detail label="Trying to do">{bug.goal}</Detail>}
-          {bug.expected && <Detail label="Expected">{bug.expected}</Detail>}
-          {bug.actual && <Detail label="Actual">{bug.actual}</Detail>}
-          {bug.steps && <Detail label="Steps to reproduce">{bug.steps}</Detail>}
-          {bug.started && <Detail label="When it started">{bug.started}</Detail>}
-          {bug.screenshot_url && (
-            <Detail label="Screenshot">
-              {shotUrl ? <a href={shotUrl} target="_blank" rel="noopener noreferrer"><img src={shotUrl} alt="screenshot" style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 8, border: '1px solid #e5e7eb', marginTop: 4 }} /></a> : <span style={{ color: '#94a3b8' }}>Loading…</span>}
-            </Detail>
-          )}
-          {bug.context?.userAgent && (
-            <Detail label="Environment">
-              <span style={{ fontSize: 12, color: '#64748b' }}>{bug.context.viewport} · {bug.context.userAgent}</span>
-            </Detail>
-          )}
-
-          {/* Triage controls */}
-          {canTriage ? (
-            <TriageControls bug={bug} suggested={suggested} staffList={staffList} entityName={entityName} onPatch={onPatch} onDelete={onDelete} profile={profile} />
-          ) : (
-            <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #f1f5f9', display: 'flex', gap: 8, alignItems: 'center' }}>
-              {bug.status === 'fixed' && bug.reported_by === profile?.id && (
-                <button onClick={() => onPatch(bug.id, { status: 'verified' })} style={{ ...btnPrimary, background: '#16a34a' }}><Check size={14} /> Confirm it's fixed</button>
-              )}
-              {bug.reject_reason && <span style={{ fontSize: 13, color: '#64748b' }}>Closed: {REJECT_REASONS.find((r) => r.id === bug.reject_reason)?.label}</span>}
-              {bug.resolution_notes && <span style={{ fontSize: 13, color: '#64748b' }}>{bug.resolution_notes}</span>}
-            </div>
-          )}
+          <BugDetail bug={bug} entityMap={entityMap} staffList={staffList} canTriage={canTriage}
+            onPatch={onPatch} onDelete={onDelete} profile={profile} />
         </div>
       )}
     </div>
+  );
+}
+
+function BugMeta({ bug, entityName }) {
+  return (
+    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {bug.module && <span style={{ background: '#f1f5f9', padding: '1px 6px', borderRadius: 4 }}>{bug.module}</span>}
+      {entityName && <span>{entityName}</span>}
+      <span>{bug.reported_by_name}</span>
+      <span>{daysSince(bug.created_at)}d old</span>
+    </div>
+  );
+}
+
+function StatusPill({ bug }) {
+  const cfg = statusCfg(bug.status);
+  return <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 6, background: cfg.bg, color: cfg.colour, flexShrink: 0 }}>{cfg.label}</span>;
+}
+
+/* ─── A bug's expanded brief + controls (shared by cards and the table) ── */
+function BugDetail({ bug, entityMap, staffList, canTriage, onPatch, onDelete, profile }) {
+  const entityName = entityMap[bug.entity_id];
+  const suggested = suggestPriority(bug.impact, bug.frequency);
+  const [shotUrl, setShotUrl] = useState(null);
+
+  // Only mounted while the bug is open, so this runs on expand as before.
+  useEffect(() => {
+    if (bug.screenshot_url && !shotUrl) {
+      supabase.storage.from('client-documents').createSignedUrl(bug.screenshot_url, 3600)
+        .then(({ data }) => { if (data?.signedUrl) setShotUrl(data.signedUrl); });
+    }
+  }, [bug.screenshot_url, shotUrl]);
+
+  return (
+    <>
+      {/* Reporter-supplied structured detail */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px', padding: '14px 0', fontSize: 13.5 }}>
+        <Field label="Where">{bug.module || '—'}{bug.page_url ? <div style={{ fontSize: 12, color: '#94a3b8', wordBreak: 'break-all' }}>{bug.page_url}</div> : null}</Field>
+        <Field label="Client / record">{[entityName, bug.record_ref].filter(Boolean).join(' · ') || '—'}</Field>
+        <Field label="Frequency">{FREQUENCY.find((x) => x.id === bug.frequency)?.label || '—'}</Field>
+        <Field label="Impact">{IMPACT.find((x) => x.id === bug.impact)?.label || '—'}</Field>
+      </div>
+      {bug.goal && <Detail label="Trying to do">{bug.goal}</Detail>}
+      {bug.expected && <Detail label="Expected">{bug.expected}</Detail>}
+      {bug.actual && <Detail label="Actual">{bug.actual}</Detail>}
+      {bug.steps && <Detail label="Steps to reproduce">{bug.steps}</Detail>}
+      {bug.started && <Detail label="When it started">{bug.started}</Detail>}
+      {bug.screenshot_url && (
+        <Detail label="Screenshot">
+          {shotUrl ? <a href={shotUrl} target="_blank" rel="noopener noreferrer"><img src={shotUrl} alt="screenshot" style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 8, border: '1px solid #e5e7eb', marginTop: 4 }} /></a> : <span style={{ color: '#94a3b8' }}>Loading…</span>}
+        </Detail>
+      )}
+      {bug.context?.userAgent && (
+        <Detail label="Environment">
+          <span style={{ fontSize: 12, color: '#64748b' }}>{bug.context.viewport} · {bug.context.userAgent}</span>
+        </Detail>
+      )}
+
+      {/* Triage controls */}
+      {canTriage ? (
+        <TriageControls bug={bug} suggested={suggested} staffList={staffList} entityName={entityName} onPatch={onPatch} onDelete={onDelete} profile={profile} />
+      ) : (
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #f1f5f9', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {bug.status === 'fixed' && bug.reported_by === profile?.id && (
+            <button onClick={() => onPatch(bug.id, { status: 'verified' })} style={{ ...btnPrimary, background: '#16a34a' }}><Check size={14} /> Confirm it's fixed</button>
+          )}
+          {bug.reject_reason && <span style={{ fontSize: 13, color: '#64748b' }}>Closed: {REJECT_REASONS.find((r) => r.id === bug.reject_reason)?.label}</span>}
+          {bug.resolution_notes && <span style={{ fontSize: 13, color: '#64748b' }}>{bug.resolution_notes}</span>}
+        </div>
+      )}
+    </>
   );
 }
 

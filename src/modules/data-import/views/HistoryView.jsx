@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { fetchImportHistory, fetchStaffNames, markCancelled } from '../lib/importQueries';
 import { SOURCES, getSource, getSystemLabel } from '../lib/sources';
+import DataTable from '../../../components/DataTable';
 
 const font = "'Outfit', sans-serif";
 
@@ -27,6 +28,14 @@ export default function HistoryView() {
   const [expanded, setExpanded] = useState(null);
   const [names, setNames] = useState({});
   const [cancelling, setCancelling] = useState(null);
+  const [sort, setSort] = useState(null); // null = as loaded (newest first)
+  const [page, setPage] = useState(1);
+
+  // Back to page 1 when a filter changes. Paging is controlled so cancelling
+  // a run (which reloads the list) doesn't jump the page.
+  const filterKey = `${source}|${status}|${sinceDays}|${hideCancelled}`;
+  const [pageFilterKey, setPageFilterKey] = useState(filterKey);
+  if (pageFilterKey !== filterKey) { setPageFilterKey(filterKey); setPage(1); }
 
   const reload = async () => {
     setLoading(true);
@@ -59,6 +68,70 @@ export default function HistoryView() {
     }
     setCancelling(null);
   };
+
+  const sourceLabel = (r) => {
+    const src = getSource(r.source_key);
+    return src ? `${getSystemLabel(src.system)} — ${src.name}` : r.source_key;
+  };
+  const writtenTotal = (r) => Object.values(r.row_counts || {}).reduce((s, n) => s + Number(n || 0), 0);
+
+  const columns = [
+    { key: 'source', label: 'Source', wrap: true, sortValue: (r) => sourceLabel(r) || null, render: sourceLabel },
+    {
+      key: 'file', label: 'File', width: '22%', wrap: true,
+      sortValue: (r) => r.file_name || null,
+      render: (r) => <span style={{ color: '#64748b', fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all' }}>{r.file_name}</span>,
+    },
+    {
+      key: 'when', label: 'Date / time', width: 140, firstDir: 'desc',
+      sortValue: (r) => r.triggered_at || null,
+      render: (r) => formatDateTime(r.triggered_at),
+    },
+    {
+      key: 'by', label: 'By', width: 130,
+      sortValue: (r) => names[r.triggered_by] || null,
+      render: (r) => names[r.triggered_by] || '—',
+    },
+    {
+      key: 'sourceRows', label: 'Source rows', width: 110, firstDir: 'desc',
+      sortValue: (r) => (r.source_row_count != null ? Number(r.source_row_count) : null),
+      render: (r) => (
+        <span style={{ fontFamily: 'monospace', color: '#64748b' }}>
+          {r.source_row_count != null ? r.source_row_count.toLocaleString() : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'written', label: 'Written', width: 120, firstDir: 'desc',
+      // Only runs that attempted a write have a written count to sort by.
+      sortValue: (r) => (['complete', 'failed'].includes(r.status) ? writtenTotal(r) : null),
+      render: (r) => {
+        const total = writtenTotal(r);
+        // "Written" is meaningful only for runs that actually attempted a write.
+        // For validating/ready/cancelled, row_counts holds *validated* counts,
+        // not written counts — surfacing them as "Written" misleads.
+        const writtenDisplay = (() => {
+          if (r.status === 'complete') return total.toLocaleString();
+          if (r.status === 'failed') return total > 0 ? `${total.toLocaleString()} (partial)` : '0';
+          if (r.status === 'running') return '…';
+          return '—';
+        })();
+        return <span style={{ fontFamily: 'monospace' }}>{writtenDisplay}</span>;
+      },
+    },
+    {
+      key: 'status', label: 'Status', width: 120,
+      sortValue: (r) => r.status || null,
+      render: (r) => {
+        const sc = statusColor(r.status);
+        return (
+          <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: sc.bg, color: sc.fg, textTransform: 'capitalize' }}>
+            {r.status}
+          </span>
+        );
+      },
+    },
+  ];
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: font }}>
@@ -123,119 +196,76 @@ export default function HistoryView() {
             {hiddenCount} cancelled run(s) hidden
           </p>
         )}
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-          <thead>
-            <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
-              <Th>Source</Th>
-              <Th>File</Th>
-              <Th>Date / Time</Th>
-              <Th>By</Th>
-              <Th>Source rows</Th>
-              <Th>Written</Th>
-              <Th>Status</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((r) => {
-              const src = getSource(r.source_key);
-              const writtenTotal = Object.values(r.row_counts || {}).reduce((s, n) => s + Number(n || 0), 0);
-              // "Written" is meaningful only for runs that actually attempted a write.
-              // For validating/ready/cancelled, row_counts holds *validated* counts,
-              // not written counts — surfacing them as "Written" misleads.
-              const writtenDisplay = (() => {
-                if (r.status === 'complete') return writtenTotal.toLocaleString();
-                if (r.status === 'failed') return writtenTotal > 0 ? `${writtenTotal.toLocaleString()} (partial)` : '0';
-                if (r.status === 'running') return '…';
-                return '—';
-              })();
-              const sc = statusColor(r.status);
-              const isOpen = expanded === r.id;
-              return (
-                <React.Fragment key={r.id}>
-                  <tr onClick={() => setExpanded(isOpen ? null : r.id)} style={{ cursor: 'pointer', borderTop: '1px solid #f1f5f9' }}>
-                    <Td>{src ? `${getSystemLabel(src.system)} — ${src.name}` : r.source_key}</Td>
-                    <Td style={{ color: '#64748b', fontFamily: 'monospace', fontSize: 12 }}>{r.file_name}</Td>
-                    <Td>{formatDateTime(r.triggered_at)}</Td>
-                    <Td>{names[r.triggered_by] || '—'}</Td>
-                    <Td style={{ fontFamily: 'monospace', color: '#64748b' }}>
-                      {r.source_row_count != null ? r.source_row_count.toLocaleString() : '—'}
-                    </Td>
-                    <Td style={{ fontFamily: 'monospace' }}>{writtenDisplay}</Td>
-                    <Td>
-                      <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: sc.bg, color: sc.fg, textTransform: 'capitalize' }}>
-                        {r.status}
-                      </span>
-                    </Td>
-                  </tr>
-                  {isOpen && (
-                    <tr style={{ background: '#fafafa' }}>
-                      <td colSpan={7} style={{ padding: 16, borderTop: '1px solid #f1f5f9' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, fontSize: 13 }}>
-                          <DetailBlock label="Row counts">
-                            {Object.keys(r.row_counts || {}).length === 0 ? <span style={{ color: '#cbd5e1' }}>none</span> :
-                              Object.entries(r.row_counts).map(([t, n]) => (
-                                <div key={t}>{Number(n).toLocaleString()} → {t}</div>
-                              ))}
-                          </DetailBlock>
-                          <DetailBlock label="Approved by">
-                            {r.approved_by ? (
-                              <>
-                                <div>{names[r.approved_by] || r.approved_by}</div>
-                                <div style={{ color: '#94a3b8' }}>{formatDateTime(r.approved_at)}</div>
-                              </>
-                            ) : <span style={{ color: '#cbd5e1' }}>not approved</span>}
-                          </DetailBlock>
-                          <DetailBlock label="File">
-                            <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#64748b', wordBreak: 'break-all' }}>
-                              {r.file_hash?.slice(0, 16)}…
-                            </div>
-                            <div style={{ color: '#94a3b8' }}>{r.file_size ? `${(r.file_size / 1024).toFixed(1)} KB` : ''}</div>
-                          </DetailBlock>
-                          {(r.errors?.length > 0) && (
-                            <DetailBlock label="Errors" wide>
-                              {r.errors.map((e, i) => <div key={i} style={{ color: '#991b1b' }}>• {e.message || JSON.stringify(e)}</div>)}
-                            </DetailBlock>
-                          )}
-                          {(r.warnings?.length > 0) && (
-                            <DetailBlock label="Warnings" wide>
-                              {r.warnings.slice(0, 10).map((w, i) => <div key={i} style={{ color: '#78350f' }}>• {w.message || JSON.stringify(w)}</div>)}
-                              {r.warnings.length > 10 && <div style={{ color: '#94a3b8' }}>… {r.warnings.length - 10} more</div>}
-                            </DetailBlock>
-                          )}
-                          {r.notes && (
-                            <DetailBlock label="Notes" wide>
-                              <div>{r.notes}</div>
-                            </DetailBlock>
-                          )}
-                          {['validating', 'ready'].includes(r.status) && (
-                            <DetailBlock label="Actions" wide>
-                              <button
-                                disabled={cancelling === r.id}
-                                onClick={(e) => { e.stopPropagation(); handleCancel(r); }}
-                                style={{
-                                  fontSize: 13, fontWeight: 500, padding: '6px 12px',
-                                  background: '#fff', border: '1px solid #fca5a5', borderRadius: 6,
-                                  color: '#991b1b', cursor: 'pointer',
-                                  fontFamily: "'Outfit', sans-serif",
-                                  opacity: cancelling === r.id ? 0.5 : 1,
-                                }}
-                              >
-                                {cancelling === r.id ? 'Cancelling…' : 'Cancel this run'}
-                              </button>
-                              <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
-                                This run never completed. Cancelling releases any source lock and hides it from the Status view.
-                              </p>
-                            </DetailBlock>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+        <DataTable
+          columns={columns}
+          rows={visible}
+          rowKey={(r) => r.id}
+          onRowClick={(r) => setExpanded(expanded === r.id ? null : r.id)}
+          sort={sort}
+          onSort={(next) => { setSort(next); setPage(1); }}
+          page={page}
+          onPage={setPage}
+          renderExpanded={(r) => (expanded === r.id ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, fontSize: 13 }}>
+              <DetailBlock label="Row counts">
+                {Object.keys(r.row_counts || {}).length === 0 ? <span style={{ color: '#cbd5e1' }}>none</span> :
+                  Object.entries(r.row_counts).map(([t, n]) => (
+                    <div key={t}>{Number(n).toLocaleString()} → {t}</div>
+                  ))}
+              </DetailBlock>
+              <DetailBlock label="Approved by">
+                {r.approved_by ? (
+                  <>
+                    <div>{names[r.approved_by] || r.approved_by}</div>
+                    <div style={{ color: '#94a3b8' }}>{formatDateTime(r.approved_at)}</div>
+                  </>
+                ) : <span style={{ color: '#cbd5e1' }}>not approved</span>}
+              </DetailBlock>
+              <DetailBlock label="File">
+                <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#64748b', wordBreak: 'break-all' }}>
+                  {r.file_hash?.slice(0, 16)}…
+                </div>
+                <div style={{ color: '#94a3b8' }}>{r.file_size ? `${(r.file_size / 1024).toFixed(1)} KB` : ''}</div>
+              </DetailBlock>
+              {(r.errors?.length > 0) && (
+                <DetailBlock label="Errors" wide>
+                  {r.errors.map((e, i) => <div key={i} style={{ color: '#991b1b' }}>• {e.message || JSON.stringify(e)}</div>)}
+                </DetailBlock>
+              )}
+              {(r.warnings?.length > 0) && (
+                <DetailBlock label="Warnings" wide>
+                  {r.warnings.slice(0, 10).map((w, i) => <div key={i} style={{ color: '#78350f' }}>• {w.message || JSON.stringify(w)}</div>)}
+                  {r.warnings.length > 10 && <div style={{ color: '#94a3b8' }}>… {r.warnings.length - 10} more</div>}
+                </DetailBlock>
+              )}
+              {r.notes && (
+                <DetailBlock label="Notes" wide>
+                  <div>{r.notes}</div>
+                </DetailBlock>
+              )}
+              {['validating', 'ready'].includes(r.status) && (
+                <DetailBlock label="Actions" wide>
+                  <button
+                    disabled={cancelling === r.id}
+                    onClick={(e) => { e.stopPropagation(); handleCancel(r); }}
+                    style={{
+                      fontSize: 13, fontWeight: 500, padding: '6px 12px',
+                      background: '#fff', border: '1px solid #fca5a5', borderRadius: 6,
+                      color: '#991b1b', cursor: 'pointer',
+                      fontFamily: "'Outfit', sans-serif",
+                      opacity: cancelling === r.id ? 0.5 : 1,
+                    }}
+                  >
+                    {cancelling === r.id ? 'Cancelling…' : 'Cancel this run'}
+                  </button>
+                  <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
+                    This run never completed. Cancelling releases any source lock and hides it from the Status view.
+                  </p>
+                </DetailBlock>
+              )}
+            </div>
+          ) : null)}
+        />
         </>
         );
       })()}
@@ -259,6 +289,4 @@ function DetailBlock({ label, children, wide }) {
     </div>
   );
 }
-const Th = ({ children }) => <th style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{children}</th>;
-const Td = ({ children, style }) => <td style={{ padding: '10px 14px', ...style }}>{children}</td>;
 const selectStyle = { padding: '5px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
