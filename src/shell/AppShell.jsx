@@ -1,5 +1,6 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
+import AccessGuard from './AccessGuard';
 import { supabase } from '../lib/supabase';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -367,7 +368,7 @@ export default function AppShell() {
 
           {/* Page content */}
           <main className="flex-1 overflow-auto min-h-0 min-w-0">
-            <Outlet />
+            <AccessGuard profile={profile}><Outlet /></AccessGuard>
           </main>
         </div>
 

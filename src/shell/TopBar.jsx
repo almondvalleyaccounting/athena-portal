@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { MODULES, isInDevelopmentPath } from '../modules.config';
+import { findNavMatch, isInDevelopmentPath } from '../modules.config';
 import InDevelopmentTag from './InDevelopmentTag';
 import { useAuth } from './AppShell';
 import QuickSearch from './QuickSearch';
@@ -54,28 +54,11 @@ function useBreadcrumb() {
     return segments;
   }
 
-  // Find the page's module and child. Match children first, across every
-  // module and on their matchPaths too: several children live outside their
-  // module's own prefix (/timesheets and /triage under Work, /portfolio,
-  // /reports, /hmrc and /forecast under Client Work), and matching modules by
-  // prefix alone left those pages with an empty top bar.
-  const hits = (p) => pathname === p || pathname.startsWith(p + '/');
-  let best = null;
-  for (const m of MODULES) {
-    for (const c of m.children || []) {
-      for (const p of [c.route, ...(c.matchPaths || [])]) {
-        // The module's own root matches only itself, or /planner would claim
-        // /planner/tasks for Planner.
-        const ok = p === m.route ? pathname === p : hits(p);
-        if (ok && (!best || p.length > best.len)) best = { mod: m, child: c, len: p.length };
-      }
-    }
-  }
-  const mod = best?.mod || MODULES.find((m) => pathname.startsWith(m.route));
-  if (!mod) return [];
+  const match = findNavMatch(pathname);
+  if (!match) return [];
+  const { mod, child } = match;
 
   const segments = [{ label: mod.label, path: mod.route }];
-  const child = best?.child;
   // A child that shares its module's route (Work › Planner) still names itself
   // on its other tabs (/planner/waiting …), just not on the module root.
   if (child && (child.route !== mod.route || pathname !== mod.route)) {

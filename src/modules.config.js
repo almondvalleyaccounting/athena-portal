@@ -264,3 +264,47 @@ export function isInDevelopmentPath(pathname) {
   if (ONBOARDING_DETAIL.test(pathname)) return true;
   return DEV_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
 }
+
+// Which module (and child) a path belongs to. Children are matched first,
+// across every module and on their matchPaths, because several live outside
+// their module's prefix (/timesheets, /triage, /portfolio, /hmrc …). A
+// module's own root only matches itself, or /planner would claim /planner/tasks.
+// Shared by the top-bar breadcrumb and the access guard so they agree.
+export function findNavMatch(pathname) {
+  const hits = (p) => pathname === p || pathname.startsWith(p + '/');
+  let best = null;
+  for (const m of MODULES) {
+    for (const c of m.children || []) {
+      for (const p of [c.route, ...(c.matchPaths || [])]) {
+        const ok = p === m.route ? pathname === p : hits(p);
+        if (ok && (!best || p.length > best.len)) best = { mod: m, child: c, len: p.length };
+      }
+    }
+  }
+  if (best) return { mod: best.mod, child: best.child };
+  const mod = MODULES.find((m) => pathname.startsWith(m.route));
+  return mod ? { mod, child: null } : null;
+}
+
+const hasAll = (profile, perms) => (perms || []).every((perm) => profile?.[perm] === true);
+
+// Can this person open this page? The same flags that decide what the sidebar
+// shows (Bobby, 2026-09-24: "match the sidebar strictly"), so a page that isn't
+// in your sidebar can't be reached by typing its address or following a link.
+// The database's own rules still apply underneath — this is the front door,
+// not the lock.
+export function canAccessPath(pathname, profile) {
+  if (!profile) return true; // the shell is still loading the profile
+  const any = (...flags) => flags.some((f) => profile[f] === true);
+
+  // Screens outside modules.config, with the rules the sidebar uses for them.
+  if (pathname.startsWith('/admin/import')) return any('can_import_data', 'is_portal_admin');
+  if (pathname.startsWith('/admin') || pathname.startsWith('/kpis')) return any('can_manage_portal');
+  if (pathname.startsWith('/planner/tasks')) return any('work_planner', 'can_view_onboarding', 'is_portal_admin');
+  if (pathname.startsWith('/planner/setup')) return any('is_portal_admin', 'can_import_data');
+
+  const match = findNavMatch(pathname);
+  if (!match) return true; // /home, /settings, /security, unknown paths (the router sends those home)
+  if (match.mod.status !== 'live') return any('can_manage_portal');
+  return hasAll(profile, match.mod.permissions) && hasAll(profile, match.child?.permissions);
+}
