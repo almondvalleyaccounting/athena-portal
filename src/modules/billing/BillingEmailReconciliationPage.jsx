@@ -111,7 +111,7 @@ export default function BillingEmailReconciliationPage() {
         Email reconciliation
       </h1>
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 820, marginBottom: 14 }}>
-        BrightManager owns the <strong>contact email</strong> (one per client); QuickBooks owns the <strong>billing email(s)</strong> (a client can have several). Athena flags where the BM contact email isn't present in QBO billing, or where either side is missing.
+        Checks the BrightManager contact email against the QuickBooks billing emails.
       </p>
 
       <BillingTabs active="emails" />

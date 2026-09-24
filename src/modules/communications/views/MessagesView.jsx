@@ -211,7 +211,7 @@ export default function MessagesView({ channel }) {
             </div>
             {channel === 'whatsapp' && (
               <div style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, padding: '7px 10px' }}>
-                Two WhatsApp caveats: (1) the practice number must be WhatsApp-registered with Telnyx — until then sends fail with a channel error; (2) free-form messages only work within 24h of the client&apos;s last message — outside that window Meta requires a pre-approved template. Starting new conversations is usually better done by SMS.
+                WhatsApp only allows free text within 24 hours of the client&apos;s last message. Use SMS to start a conversation.
               </div>
             )}
           </div>

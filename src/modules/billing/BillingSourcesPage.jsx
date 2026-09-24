@@ -151,7 +151,7 @@ export default function BillingSourcesPage() {
         Billing sources
       </h1>
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
-        See which clients are billed from a QBO recurring template versus billed manually each month. Manual-monthly is a process risk — those clients should have a template.
+        Recurring template or manual billing, by client. Manual clients need a template.
       </p>
 
       <BillingTabs active="sources" />

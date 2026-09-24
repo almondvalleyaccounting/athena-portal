@@ -290,7 +290,7 @@ function Header() {
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 14 }}>
               {duplicate
                 ? 'Creates a new scenario with all of the current one\'s lines and assumptions. Edit the copy to model a variant.'
-                : 'New scenario will be seeded with your current staff list and last-12-months QBO overheads.'}
+                : 'Starts from current staff and the last 12 months of QBO overheads.'}
             </p>
             <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)}
               placeholder={duplicate ? '' : 'e.g. Aggressive hiring plan'}

@@ -98,7 +98,7 @@ export default function UpdatesView() {
         </select>
       </div>
       <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20 }}>
-        Major onboarding milestones across all clients — the same feed the Monday team email uses.
+        Onboarding milestones across all clients.
       </div>
 
       {error && <div style={{ color: '#b91c1c', fontSize: 14 }}>{error}</div>}

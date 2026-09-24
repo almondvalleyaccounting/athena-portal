@@ -133,7 +133,7 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
             Security
           </h1>
           <p style={{ fontSize: 14, color: '#64748b', maxWidth: 640, marginBottom: 18 }}>
-            Set up two-factor authentication so signing in to Athena requires both your password and a code from your phone's authenticator app.
+            Sign in with a password and a phone code.
           </p>
         </>
       )}
@@ -142,7 +142,7 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
 
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 18, marginBottom: 18 }}>
         <h3 style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', margin: 0, marginBottom: 4 }}>
-          Authenticator app (TOTP)
+          Authenticator app
         </h3>
         <p style={{ fontSize: 13, color: '#64748b', margin: 0, marginBottom: 14 }}>
           Use Google Authenticator, Authy, 1Password, or any TOTP-compatible app on your phone.

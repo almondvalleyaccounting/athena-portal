@@ -34,7 +34,7 @@ const STATUS = {
 };
 
 const TIER = {
-  critical: { label: 'Never drift', bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' },
+  critical: { label: 'Must stay current', bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' },
   priority: { label: 'Priority',    bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
   standard: { label: null },
 };
@@ -359,7 +359,7 @@ function Row({ row, open, onToggle, children }) {
             <SoftFlag icon={Clock} label="Untouched" title="Nobody has posted or edited anything in 30 days" />
           )}
           {row.recon_stuck_21d && row.drift_status !== 'ok' && (
-            <SoftFlag icon={AlertTriangle} label="Not moving" title="The reconciliation frontier hasn't advanced in three weeks" />
+            <SoftFlag icon={AlertTriangle} label="Not moving" title="No new reconciliation in three weeks" />
           )}
           {row.hygiene_score > 0 && (
             <span title={`${row.hygiene_score} hygiene flags`} style={{
@@ -409,7 +409,7 @@ function LinkPanel({ rows, entities, onLink, onDismiss, onRescan }) {
             {byState.former_client_only ? ` ${byState.former_client_only} match only a former client — worth revoking.` : ''}
           </div>
         </div>
-        <button onClick={onRescan} style={btnGhost}><RefreshCw size={12} /> Re-run matcher</button>
+        <button onClick={onRescan} style={btnGhost}><RefreshCw size={12} /> Match again</button>
         <button onClick={() => setOpen(!open)} style={btnGhost}>{open ? 'Hide' : 'Review'}</button>
       </div>
 
@@ -683,8 +683,7 @@ export default function DriftView() {
       {settings && !settings.nudges_armed && (
         <div style={{ ...card, marginBottom: '14px', borderColor: '#ddd6fe', backgroundColor: '#faf5ff', padding: '10px 14px' }}>
           <span style={{ fontFamily: FONT, fontSize: '13.5px', color: '#6d28d9' }}>
-            <strong>Nudges are held.</strong> Cases open and messages queue with their real recipient and wording,
-            but nothing is sent until they're armed. Review the queue first.
+            <strong>Nudges are off.</strong> Messages queue but aren't sent.
           </span>
         </div>
       )}
@@ -740,7 +739,7 @@ export default function DriftView() {
 
       <Section
         title="Theirs — the client keeps these books"
-        subtitle="Information, not a task list. Red here is a conversation with the client."
+        subtitle="For information. Red means talk to the client."
         rows={theirs}
         expanded={expanded}
         setExpanded={setExpanded}
@@ -749,9 +748,7 @@ export default function DriftView() {
       />
 
       <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8', margin: '4px 2px 0', maxWidth: '760px' }}>
-        Transactions still sitting in QuickBooks' bank-feed “For Review” queue are not counted anywhere on this page —
-        QuickBooks doesn't expose that queue to the API. Everything here reflects what has been posted. The volume and
-        feed-gap flags exist to catch what posting alone can't show.
+        Unreviewed bank-feed items in QuickBooks aren't counted here.
       </p>
     </div>
   );

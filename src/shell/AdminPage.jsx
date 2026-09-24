@@ -9,7 +9,7 @@ import { fetchPortalClientIdentifiers } from './portalAccessApi';
   Each entry: { key: DB column name, label: display label }
 */
 const PERMISSION_COLS = [
-  { key: 'can_view_quotes', label: 'Fee Engine' },
+  { key: 'can_view_quotes', label: 'Quotes' },
   { key: 'can_edit_quotes', label: 'Edit quotes' },
   { key: 'can_approve_quotes', label: 'Approve quotes' },
   { key: 'can_edit_fee_schedule', label: 'Edit pricing' },
@@ -19,19 +19,19 @@ const PERMISSION_COLS = [
   { key: 'can_view_timesheets', label: 'Timesheets' },
   { key: 'can_view_billing', label: 'Billing' },
   { key: 'can_approve_billing', label: 'Approve billing' },
-  { key: 'can_view_pd_tracker', label: 'CPD Tracker' },
+  { key: 'can_view_pd_tracker', label: 'CPD tracker' },
   { key: 'can_view_onboarding', label: 'Onboarding' },
-  { key: 'can_view_job_review', label: 'Job Review' },
-  { key: 'can_view_ch_codes', label: 'CH Codes' },
-  { key: 'can_import_data', label: 'Data Import' },
+  { key: 'can_view_job_review', label: 'Job review' },
+  { key: 'can_view_ch_codes', label: 'Companies House codes' },
+  { key: 'can_import_data', label: 'Data import' },
   { key: 'can_view_pushed_invoices', label: 'Pushed invoices' },
   { key: 'can_view_admin_report', label: 'Admin report' },
-  { key: 'can_manage_portal', label: 'Portal admin' },
+  { key: 'can_manage_portal', label: 'Admin' },
   // AVA's own QBO books — deliberately separate from Portal admin so practice
   // financials stay director-only even among admins.
   { key: 'can_view_practice_financials', label: 'Practice financials' },
   // See Draft admin tasks + release Billed → To Do in the admin-task pipeline.
-  { key: 'can_manage_task_pipeline', label: 'Task pipeline' },
+  { key: 'can_manage_task_pipeline', label: 'Manage task stages' },
   // Edit sector KPI packs. Separate from entering one client's figures because
   // a pack edit reaches every client in the sector at once.
   { key: 'can_manage_kpi_packs', label: 'KPI packs' },
@@ -324,7 +324,7 @@ export default function AdminPage() {
             color: '#0f172a',
           }}
         >
-          Staff &amp; Permissions
+          Staff &amp; permissions
         </h1>
         <button
           onClick={() => { setShowInvite(!showInvite); setInviteError(''); setInviteSuccess(''); }}
@@ -385,7 +385,7 @@ export default function AdminPage() {
               <input
                 value={inviteName}
                 onChange={(e) => setInviteName(e.target.value)}
-                placeholder="e.g. Tracy Smith"
+                placeholder="e.g. Jane Smith"
                 disabled={inviting}
                 style={inputStyle}
                 onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
@@ -399,7 +399,7 @@ export default function AdminPage() {
               <input
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="tracy@example.com"
+                placeholder="jane@example.com"
                 type="email"
                 disabled={inviting}
                 style={inputStyle}

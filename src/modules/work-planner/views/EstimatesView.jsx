@@ -388,7 +388,7 @@ function Cell({ entityId, serviceId, info, isEditing, onStartEdit, onCancelEdit,
   if (isNa) {
     return (
       <div
-        title="No BM task — service not active for this client"
+        title="Service not active for this client"
         style={{
           width: SERVICE_COL_W, minWidth: SERVICE_COL_W, height: ROW_H,
           borderRight: '1px solid #f1f5f9', background: '#f8fafc',
@@ -566,7 +566,7 @@ function SortableServiceHeader({ service, sortStack, onToggleSort, colFilter, on
         }}
       >
         <option value="">All</option>
-        <option value="__override">— Overrides —</option>
+        <option value="__override">— Custom —</option>
         <option value="__default">— Defaults —</option>
         <option value="__na">— n/a —</option>
       </select>

@@ -194,10 +194,7 @@ export default function ReconcileView() {
       <ErrorBar message={error} />
 
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 860, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
-        Every place the HMRC agent list and Athena disagree. Until these are cleared the debt totals are
-        incomplete — a scheme Athena has never heard of contributes nothing to the totals on the Chasing tab.
-        Tick a row off once you have fixed the underlying record; the next scrape only re-raises what is
-        still wrong.
+        Where HMRC&rsquo;s agent list and Athena disagree. Fix the record, then tick it off.
       </p>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>

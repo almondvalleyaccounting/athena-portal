@@ -108,7 +108,7 @@ export default function BaselineView() {
       label: 'Duplicate template rows',
       level: health.duplicate_template_sets > 0 ? 'red' : 'green',
       text: health.duplicate_template_sets > 0
-        ? `${health.duplicate_template_sets} template${health.duplicate_template_sets !== 1 ? 's' : ''} with duplicate active rows — totals are inflated. This should be impossible (unique index, sql/188); investigate before trusting anything here.`
+        ? `${health.duplicate_template_sets} duplicate template${health.duplicate_template_sets !== 1 ? 's' : ''} — totals are overstated. Report this as a bug.`
         : 'One active row per QBO template — the duplicate-minting bug class is guarded by a unique index.',
     });
     s.push({
@@ -148,7 +148,7 @@ export default function BaselineView() {
       const abs = Math.abs(bookDrift);
       s.push({
         key: 'book',
-        label: 'Whole-book check (LTM)',
+        label: 'Whole-book check (last 12 months)',
         level: abs <= 0.10 ? 'green' : abs <= 0.20 ? 'amber' : 'red',
         text: `Last 12 months' income ${fmtGBP(ltmIncome)} vs the annualised run-rate ${fmtGBP(totalMonthly * 12)} (${bookDrift >= 0 ? '+' : ''}${(bookDrift * 100).toFixed(1)}%). Today's run-rate reflects a book that grew and took uplifts through the year, so a modest shortfall is expected in a growing firm.`,
       });
@@ -170,9 +170,9 @@ export default function BaselineView() {
   if (!health) return <div style={{ color: GREY, fontSize: 14 }}>Checking the baseline…</div>;
 
   const verdict = {
-    green: { colour: GREEN, bg: '#f0fdf4', border: '#bbf7d0', icon: CheckCircle2, title: 'The base is sound', sub: 'Recurring base reconciles to the QBO P&L and the data is fresh. The projections on the other tabs stand on this.' },
-    amber: { colour: AMBER, bg: '#fffbeb', border: '#fcd34d', icon: AlertTriangle, title: 'Usable, with caveats', sub: 'The base is broadly trustworthy but at least one check below needs attention before leaning hard on the numbers.' },
-    red:   { colour: RED, bg: '#fef2f2', border: '#fecaca', icon: XCircle, title: 'Do not trust the projections yet', sub: 'A structural problem in the base data means every downstream number inherits it. Fix the red items below first.' },
+    green: { colour: GREEN, bg: '#f0fdf4', border: '#bbf7d0', icon: CheckCircle2, title: 'The base is sound', sub: 'Matches QBO and is up to date.' },
+    amber: { colour: AMBER, bg: '#fffbeb', border: '#fcd34d', icon: AlertTriangle, title: 'Usable, with caveats', sub: 'At least one check below needs attention.' },
+    red:   { colour: RED, bg: '#fef2f2', border: '#fecaca', icon: XCircle, title: 'Do not trust the projections yet', sub: 'Fix the red items below first.' },
   }[worst];
   const VerdictIcon = verdict.icon;
 
@@ -189,16 +189,16 @@ export default function BaselineView() {
 
       {/* KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 20 }}>
-        <Kpi label="Contracted recurring" tag="FACT" tagColour={GREEN}
+        <Kpi label="Contracted recurring" tag="Fact" tagColour={GREEN}
           value={`${fmtGBP(contractedMonthly)}/mo`}
           sub={`${health.contracted_rows} QBO templates · ${health.contracted_clients} clients`} />
-        <Kpi label="Estimated recurring" tag="ESTIMATE" tagColour={AMBER}
+        <Kpi label="Estimated recurring" tag="Estimate" tagColour={AMBER}
           value={`${fmtGBP(inferredMonthly + inferredAnnual)}/mo`}
           sub={`${fmtGBP(inferredMonthly)} inferred monthly · ${fmtGBP(inferredAnnual)} annual work ÷ 12`} />
         <Kpi label="Total run-rate"
           value={`${fmtGBP(totalMonthly)}/mo`}
           sub={`${fmtGBP(totalMonthly * 12)} annualised · ${health.active_clients} clients · every active billing line, approved or not`} />
-        <Kpi label="LTM P&L income" tag="QBO" tagColour="#0e7fe0"
+        <Kpi label="P&L income, last 12 months" tag="QBO" tagColour="#0e7fe0"
           value={fmtGBP(ltmIncome)}
           sub={lastClosed ? `${lastClosed}: ${fmtGBP(lastClosedIncome)}` : 'no monthly cache yet'} />
       </div>
@@ -207,10 +207,8 @@ export default function BaselineView() {
       <div style={card}>
         <h3 style={h3}>What the recurring base is made of</h3>
         <p style={sub}>
-          <b>Contracted</b> fees are QBO recurring templates — signed instructions QBO will invoice without anyone touching them.
-          <b> Estimated</b> fees are rebuilt nightly from invoice history: "inferred monthly" appeared in consecutive months;
-          "annual ÷ 12" appeared once in twelve months and is spread — including genuinely one-off work that may never repeat.
-          Decisions about guaranteed income should lean on the contracted figure.
+          <b>Contracted:</b> QBO recurring invoices. <b>Estimated:</b> worked out from invoice history.
+          Rely on contracted for guaranteed income.
         </p>
         <CompositionBar contracted={contractedMonthly} inferredMonthly={inferredMonthly} inferredAnnual={inferredAnnual} />
       </div>
@@ -219,10 +217,7 @@ export default function BaselineView() {
       <div style={{ ...card, marginTop: 16 }}>
         <h3 style={h3}>Does the book tie to the P&L?</h3>
         <p style={sub}>
-          Each closed month: QBO's accrual P&L income, minus one-off invoices pushed from Athena, should never fall
-          below the <b>contracted base</b> — what the templates alone generate. Anything above the floor is annual
-          and other work, which lands lumpy (year-end season, SA rush), so big positive months are normal and the
-          smoothed run-rate is only compared at whole-year scale (see the data-health checks below).
+          Monthly income, less one-off invoices, should never fall below the <b>contracted base</b>.
         </p>
         {last3.length === 0 ? (
           <div style={{ fontSize: 13.5, color: GREY }}>No closed-month P&L data cached — use "Refresh P&L now" below.</div>

@@ -146,7 +146,7 @@ export default function VacancyDetailView() {
       {tab === 'pipeline' && (
         apps.length === 0 ? (
           <div style={{ ...card, padding: '32px 18px', textAlign: 'center', fontSize: 14.5, color: '#94a3b8' }}>
-            No applicants yet. Add one manually, or they'll arrive via the jobs@ inbox once wired up.
+            No applicants yet.
             <div style={{ marginTop: 10 }}>
               <button onClick={() => setAdding(true)} style={btn('primary')}><Plus size={14} /> Add applicant</button>
             </div>
@@ -219,7 +219,7 @@ function AdvertsPanel({ adverts, canManage, onCreate, onDelete }) {
   return (
     <div style={{ maxWidth: 760 }}>
       <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 14px' }}>
-        Where this role is posted. Athena doesn't push to boards yet — post on each site, then record the public link here so applications can be traced back.
+        Post on each job board, then add the link here.
       </p>
       {adverts.length === 0 && !adding && (
         <div style={{ ...card, padding: '22px 18px', textAlign: 'center', fontSize: 14, color: '#94a3b8' }}>No adverts recorded.</div>

@@ -337,7 +337,7 @@ export default function DebtView({ entityId = '' }) {
         <Stat label="Not looked at" value={stats.untouched} colour="#f59e0b"
               hint="Schemes with a balance and no triage status yet" />
         <Stat label="Clear" value={tierCounts.clear} colour="#059669"
-              hint="Nothing owed at the last scrape" />
+              hint="Nothing owed when last checked" />
       </div>
 
       {/* Filters */}
@@ -399,7 +399,7 @@ export default function DebtView({ entityId = '' }) {
               page={page}
               onPage={setPage}
               empty={rows.length === 0
-                ? 'No HMRC data yet — the scrape has not populated anything this module can read.'
+                ? 'No HMRC data yet.'
                 : 'Nothing matches these filters.'}
             />
           </div>

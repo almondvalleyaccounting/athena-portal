@@ -226,7 +226,6 @@ export default function PrepView() {
         <EmptyState
           icon={<NotebookPen size={28} />}
           title="Pick who you're preparing for"
-          hint="Nobody is selected on purpose — notes written against the wrong person are worse than no notes."
         />
       ) : (
       <>
@@ -821,7 +820,7 @@ function WorkFeedPanel({ feed, loading, subjectName, notes, onNote }) {
             What&rsquo;s on {subjectName ? `${subjectName}'s` : 'their'} plate
           </div>
           <p style={{ fontFamily: FONT, fontSize: 13, color: '#94a3b8', margin: '4px 0 0' }}>
-            Live from across Athena. Expand a row, then note anything you want to raise — the note stays private and links back here.
+            Expand a row to add a private note.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

@@ -240,13 +240,11 @@ export default function FeeEngineGapsPage() {
   return (
     <div style={{ padding: '20px 28px', fontFamily: font }}>
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
-        Fee engine gaps
+        Work without a fee
       </h1>
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 820, marginBottom: 14, lineHeight: 1.55 }}>
-        Active clients with live work scheduled in BrightManager but <b>no fee mapped in the fee engine</b>.
-        These are the jobs being done that were never set up as a recurring fee. Work each one: set up a
-        fee (raise a quote), or mark it one-off / not a client to clear it from the list. Confidential —
-        visible to fee admins only.
+        Clients with BrightManager work but no fee. Raise a quote or mark one-off.
+        <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: '#475569', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 999, padding: '1px 8px', whiteSpace: 'nowrap' }}>Fee admins only</span>
       </p>
 
       <BillingTabs active="gaps" />

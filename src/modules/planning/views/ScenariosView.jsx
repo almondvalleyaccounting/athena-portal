@@ -251,7 +251,7 @@ export default function ScenariosView() {
             <h3 style={{ ...h3, margin: 0 }}>Sensitivity tornado (Y2 profit)</h3>
           </div>
           <p style={help}>
-            Each lever ±10% — ranked by profit impact. The highest bar is the assumption that moves your plan the most. Focus your accuracy effort there.
+            Each assumption moved ±10%, ranked by profit impact.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {tornado.map((t) => {

@@ -79,7 +79,7 @@ export default function RefreshButton({ entityId, services = ALL, compact = fals
       <button
         onClick={ask}
         disabled={busy}
-        title="Queue a re-scrape of this client at HMRC. It runs next time somebody is signed in to the agent portal."
+        title="Re-check at HMRC. Runs next time someone signs in to HMRC."
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 5,
           fontSize: compact ? 12.5 : 13, fontWeight: 600, fontFamily: font,

@@ -725,7 +725,7 @@ function buildTasksValidation(preview, parsed, matchMap) {
       e.count += 1;
       if (e.samples.length < 3) e.samples.push({ row: r._source_row, bm_task_name: r.bm_task_name });
       byAssignee.set(key, e);
-      extraWarnings.push({ row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name, field: 'assignee', message: `Assignee "${r.assignee_name}" isn't linked to an Athena staff profile — task will be unassigned` });
+      extraWarnings.push({ row: r._source_row, bm_task_id: r.bm_task_id, name: r.bm_task_name, field: 'assignee', message: `Assignee "${r.assignee_name}" isn't linked to a staff member — task will be unassigned` });
     }
   }
 
@@ -848,9 +848,8 @@ function ValidationReport({ validation, staff, onRecheck, rechecking }) {
           </summary>
           {skippedRows.some((s) => s.field === 'bm_client_id' && s.name) && (
             <p style={{ fontSize: 12.5, color: '#64748b', padding: '0 6px 6px', margin: 0 }}>
-              A row with no Internal Reference goes onto the admin task list when you approve this
-              import — nothing about that client comes across until the reference exists in
-              BrightManager, and the task clears itself once it does.
+              Rows with no Internal Reference are skipped and added to the admin task list. Add the
+              reference in BrightManager.
             </p>
           )}
           <IssueTable issues={skippedRows} kind="skipped" />
@@ -919,7 +918,7 @@ function AssigneeRollupPanel({ groups, staff, onChanged }) {
     <RollupFrame
       tone="amber"
       title={`Unmapped assignees · ${groups.length} people, ${totalTasks.toLocaleString()} tasks`}
-      summary="These BM staff names aren't linked to an Athena staff profile. Map once — every task they're on becomes assigned."
+      summary="These BM names aren't linked to a staff member. Map each one once."
       search={groups.length > 8 ? search : undefined}
       onSearchChange={setSearch}
       searchPlaceholder="Filter assignees…"
@@ -992,14 +991,14 @@ function AssigneeRow({ group, staff, isResolved, onResolved }) {
         <span style={{ fontSize: 12, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
         {!isResolved && (
           <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
-            {open ? 'Cancel' : 'Map to Athena staff →'}
+            {open ? 'Cancel' : 'Map to staff member →'}
           </button>
         )}
       </div>
       {open && !isResolved && (
         <div style={{ padding: '6px 14px 10px 14px', display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px dashed #e5e7eb', flexWrap: 'wrap' }}>
           <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ ...selectStyle, minWidth: 200 }}>
-            <option value="">— choose Athena staff —</option>
+            <option value="">— choose staff member —</option>
             {staff.filter((s) => s.is_active !== false).map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
@@ -1026,7 +1025,7 @@ function RuleRollupPanel({ groups, onChanged }) {
     <RollupFrame
       tone="amber"
       title={`Task names without a scheduling rule · ${groups.length} names, ${totalTasks.toLocaleString()} tasks`}
-      summary="Add one rule per task type (period-end dates stripped). Service, lead time and duration are pre-filled from the task type — tweak as needed. NST: tasks are excluded — they're BM's quick-task equivalents and will disappear with BrightManager."
+      summary="Add one rule per task type. Service, lead time and duration are pre-filled; change them if needed. NST: tasks are excluded."
       search={groups.length > 8 ? search : undefined}
       onSearchChange={setSearch}
       searchPlaceholder="Filter task names…"
@@ -1198,7 +1197,7 @@ function RuleRow({ group, isResolved, onResolved }) {
               {saving ? 'Saving…' : 'Save rule'}
             </button>
             <span style={{ fontSize: 12, color: '#64748b' }}>
-              Default assignee inherited from BM. Edit later in Workflow → Rules.
+              Assignee comes from BM. Edit later in Workflow → Rules.
             </span>
           </div>
         </div>
@@ -1236,7 +1235,7 @@ function UnknownClientsPanel({ groups, onChanged }) {
     <RollupFrame
       tone="red"
       title={`Unknown client references · ${visibleGroups.length} references, ${totalTasks.toLocaleString()} tasks`}
-      summary="These BM client references don't match an Athena entity. Create as prospect, map to an existing entity, or ignore — tasks attach on next re-check."
+      summary="These BM references don't match a client. Create a prospect, map to a client, or ignore."
       search={visibleGroups.length > 8 ? search : undefined}
       onSearchChange={setSearch}
       searchPlaceholder="Filter references…"
@@ -1283,7 +1282,7 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
   const isResolved = !!resolvedState;
   const resolvedLabel = {
     created: '✓ Prospect created',
-    mapped:  '✓ Mapped to existing entity',
+    mapped:  '✓ Mapped to existing client',
     ignored: '✓ Ignored',
   }[resolvedState];
 
@@ -1298,7 +1297,7 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
         onResolved('created');
         if (onChanged) onChanged();
       } else if (mode === 'map') {
-        if (!picked) throw new Error('Pick an entity first');
+        if (!picked) throw new Error('Pick a client first');
         const { error } = await supabase.rpc('map_bm_ref_to_entity', {
           p_bm_client_id: group.key, p_entity_id: picked.id,
         });
@@ -1336,7 +1335,7 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
               {mode === 'create' ? 'Cancel' : 'Create prospect'}
             </button>
             <button onClick={() => setMode(mode === 'map' ? null : 'map')} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
-              {mode === 'map' ? 'Cancel' : 'Map to existing'}
+              {mode === 'map' ? 'Cancel' : 'Map to client'}
             </button>
             <button onClick={() => setMode(mode === 'ignore' ? null : 'ignore')} style={{ ...btnGhost, fontSize: 12, padding: '4px 10px' }}>
               {mode === 'ignore' ? 'Cancel' : 'Ignore'}
@@ -1353,7 +1352,7 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
               <input value={name} onChange={(e) => setName(e.target.value)} style={selectStyle} placeholder="e.g. Acme Holdings Ltd" />
             </label>
             <label style={miniLabel}>
-              <span>Entity type</span>
+              <span>Client type</span>
               <select value={type} onChange={(e) => setType(e.target.value)} style={selectStyle}>
                 {ENTITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
@@ -1364,7 +1363,7 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
               {saving ? 'Creating…' : 'Create prospect'}
             </button>
             <span style={{ fontSize: 12, color: '#64748b' }}>
-              Status <strong>prospect</strong>, source <strong>brightmanager</strong>, linked to BM ID <strong>{group.key}</strong>.
+              Created as a prospect, linked to BM ID <strong>{group.key}</strong>.
             </span>
           </div>
           {err && <p style={{ fontSize: 12, color: '#991b1b', marginTop: 6 }}>{err}</p>}
@@ -1376,10 +1375,10 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
           <EntityPicker value={picked} onChange={setPicked} initialQuery={sampleName} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
             <button onClick={submit} disabled={saving || !picked} style={{ ...btnPrimary, fontSize: 12, padding: '6px 10px' }}>
-              {saving ? 'Mapping…' : picked ? `Map to "${picked.name}"` : 'Pick an entity'}
+              {saving ? 'Mapping…' : picked ? `Map to "${picked.name}"` : 'Pick a client'}
             </button>
             <span style={{ fontSize: 12, color: '#64748b' }}>
-              Sets <strong>bm_client_id = {group.key}</strong> on the chosen entity. Fails if another entity already owns this BM ID.
+              Links BM ID <strong>{group.key}</strong> to this client. Fails if another client already has it.
             </span>
           </div>
           {err && <p style={{ fontSize: 12, color: '#991b1b', marginTop: 6 }}>{err}</p>}
@@ -1397,7 +1396,7 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
               {saving ? 'Saving…' : 'Ignore this reference'}
             </button>
             <span style={{ fontSize: 12, color: '#64748b' }}>
-              {group.key} will be hidden from this panel on future imports. Tasks with this reference still import unattached. Unignore from Admin → Data Import → Settings.
+              {group.key} will be hidden from this panel on future imports. Tasks with this reference still import unattached. Unignore from Settings → Data import → Settings.
             </span>
           </div>
           {err && <p style={{ fontSize: 12, color: '#991b1b', marginTop: 6 }}>{err}</p>}
@@ -1444,8 +1443,8 @@ function DuplicateBmRefPanel({ skipped }) {
       </p>
       <RollupFrame
         tone="red"
-        title={`Duplicate bm_client_id · ${grouped.length} ${grouped.length === 1 ? 'reference' : 'references'}`}
-        summary="Two or more BM clients share the same Internal Reference in this upload. Athena can't tell them apart, so all of them are skipped. Fix in BrightManager (give one of them a new Internal Reference), re-export, and re-import."
+        title={`Duplicate Internal References · ${grouped.length} ${grouped.length === 1 ? 'reference' : 'references'}`}
+        summary="These clients share an Internal Reference, so all were skipped. Give each its own reference in BrightManager and re-import."
       >
         {grouped.map((r) => (
           <div key={r.bm_client_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid rgba(252,165,165,0.3)' }}>
@@ -1486,8 +1485,8 @@ function DuplicateNamePanel({ duplicateNames }) {
       </p>
       <RollupFrame
         tone="amber"
-        title={`Same name, different bm_client_id · ${entries.length} ${entries.length === 1 ? 'name' : 'names'}`}
-        summary="The clients imported normally — this is informational. Check whether these are genuine namesakes (e.g. two people called John Smith) or one BM client accidentally entered twice under different Internal References."
+        title={`Same name, different BM ID · ${entries.length} ${entries.length === 1 ? 'name' : 'names'}`}
+        summary="These imported normally. Check whether they are different people with the same name or one client entered twice in BM."
       >
         {entries.map(([name, bmIds]) => (
           <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid rgba(252,211,77,0.4)' }}>
@@ -1534,8 +1533,8 @@ function DuplicateCompanyPanel({ skipped }) {
       </p>
       <RollupFrame
         tone="amber"
-        title={`Duplicate company_number · ${rows.length} ${rows.length === 1 ? 'collision' : 'collisions'}`}
-        summary="The incoming BM row's company number is already held by a different BM client. Resolve by clearing the company number on the existing record (the next BM Clients import will then write the value onto the BM-owned record), or by ignoring the incoming BM ID."
+        title={`Duplicate company numbers · ${rows.length} ${rows.length === 1 ? 'collision' : 'collisions'}`}
+        summary="This company number already belongs to another client. Clear it from that client, or ignore this row."
       >
         {rows.map((r) => <DuplicateCompanyRow key={r.incoming_bm_client_id} row={r} />)}
       </RollupFrame>
@@ -1593,19 +1592,19 @@ function DuplicateCompanyRow({ row }) {
             Incoming BM row
           </p>
           <p style={{ fontSize: 14, color: '#0f172a', fontFamily: 'monospace' }}>{row.incoming_bm_client_id}</p>
-          <p style={{ fontSize: 13, color: '#475569' }}>company_number <strong>{row.company_number}</strong></p>
+          <p style={{ fontSize: 13, color: '#475569' }}>Company number <strong>{row.company_number}</strong></p>
         </div>
         <div>
           <p style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>
-            Existing entity
+            Existing client
           </p>
           {loading && <p style={{ fontSize: 13, color: '#94a3b8' }}>Looking up…</p>}
-          {!loading && !existing && <p style={{ fontSize: 13, color: '#94a3b8' }}>Not found in entities (refreshed since import?)</p>}
+          {!loading && !existing && <p style={{ fontSize: 13, color: '#94a3b8' }}>Client not found (changed since the import?)</p>}
           {existing && (
             <>
               <p style={{ fontSize: 14, color: '#0f172a' }}>{existing.name}</p>
               <p style={{ fontSize: 13, color: '#475569' }}>
-                bm_client_id <strong>{existing.bm_client_id || '—'}</strong> · status <strong>{existing.entity_status}</strong>
+                BM ID <strong>{existing.bm_client_id || '—'}</strong> · status <strong>{existing.entity_status}</strong>
               </p>
             </>
           )}
@@ -1614,7 +1613,7 @@ function DuplicateCompanyRow({ row }) {
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
         {resolved === 'cleared' && (
           <span style={{ fontSize: 12, color: '#065f46', fontWeight: 600 }}>
-            ✓ Company number cleared — re-run BM Clients import to attach to {row.incoming_bm_client_id}
+            ✓ Company number cleared. Re-run the BM clients import to attach it to {row.incoming_bm_client_id}
           </span>
         )}
         {resolved === 'ignored' && (
@@ -1631,7 +1630,7 @@ function DuplicateCompanyRow({ row }) {
               Ignore {row.incoming_bm_client_id}
             </button>
             <span style={{ fontSize: 12, color: '#64748b' }}>
-              Pick "Clear" if the BM record is authoritative for this company; "Ignore" if the incoming BM row is the wrong one.
+              Clear if the incoming BM row is right; ignore if it is wrong.
             </span>
           </>
         )}
@@ -1865,10 +1864,8 @@ function PeoplePanel({ summary, rowCount }) {
         <Stat label="Secondary contacts" value={secondary} note="previously not imported at all" />
       </div>
       <div style={{ fontSize: 13.5, color: '#475569', lineHeight: 1.5 }}>
-        A person is identified by their reference <em>and</em> their date of birth, not by the
-        reference alone — BrightManager gives two people one reference in a handful of cases, and it
-        gives the same person one reference across every client they act for. Nothing is merged by
-        this import: where it finds an older duplicate record it writes a proposal for you to review.
+        People are matched on reference <em>and</em> date of birth. Nothing is merged; possible
+        duplicates are sent for review.
         {missing > 0 ? (
           <>
             {' '}
@@ -1894,7 +1891,7 @@ function PersonRefCollisionPanel({ collisions }) {
       <RollupFrame
         tone="amber"
         title={`Shared Person Internal Reference · ${collisions.length} ${collisions.length === 1 ? 'reference' : 'references'}`}
-        summary="Two different people share one person reference in BrightManager — usually spouses or siblings. They import correctly as separate people here because their dates of birth differ, so nothing is blocked. But the reference is wrong at source and will collide again on every re-import. Give the second person their own reference in BM, the way BM already does for the two David Boyds. Approving this import puts each one on the admin task list, where it stays until an import stops reporting it."
+        summary="Two people share one person reference in BrightManager. They import as separate people, so nothing is blocked. Give the second person their own reference in BM. Each one goes on the admin task list until it is fixed."
       >
         {collisions.map((c) => (
           <div key={c.person_ref} style={{ padding: '8px 14px', borderBottom: '1px solid rgba(252,211,77,0.4)' }}>
@@ -2044,10 +2041,10 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
       borderRadius: 10, padding: 16, marginBottom: 16,
     }}>
       <p style={{ fontSize: 14, fontWeight: 600, color: '#78350f', marginBottom: 4 }}>
-        ⚡ Prospect conversions — {totalMembers} BM row(s) matched to {groups.length} Athena prospect(s)
+        ⚡ Prospect conversions — {totalMembers} BM row(s) matched to {groups.length} prospect(s)
       </p>
       <p style={{ fontSize: 13, color: '#92400e', marginBottom: 12 }}>
-        These Athena prospects match incoming BrightManager clients. BrightManager becomes the source of truth on conversion.
+        These prospects match incoming BrightManager clients. Once converted, BrightManager holds their details.
       </p>
 
       {contestedGroups.length > 0 && (
@@ -2064,7 +2061,7 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
-                    Athena prospect: {g.prospect_name}
+                    Prospect: {g.prospect_name}
                   </span>
                   <span style={{ flex: 1 }} />
                   {chosen ? (
@@ -2101,7 +2098,7 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
                   );
                 })}
                 <p style={{ fontSize: 12, color: '#92400e', marginTop: 6 }}>
-                  Others in this group will create new entities (prospect not converted for them).
+                  The others in this group become new clients.
                 </p>
               </div>
             );
@@ -2134,7 +2131,7 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
                   </div>
                 </div>
                 {confirmed && <span style={{ fontSize: 12, color: '#15803d', marginRight: 6 }}>✓ Convert</span>}
-                {rejected && <span style={{ fontSize: 12, color: '#991b1b', marginRight: 6 }}>✗ Skip — new entity</span>}
+                {rejected && <span style={{ fontSize: 12, color: '#991b1b', marginRight: 6 }}>✗ Skip — new client</span>}
                 {!decided && preConfirmed && <span style={{ fontSize: 12, color: '#15803d', marginRight: 6 }}>✓ Convert (pre-confirmed)</span>}
                 {!decided && !preConfirmed && (
                   <>
@@ -2312,7 +2309,7 @@ function ConfirmPrompt({ archiveCount = 0, onCancel, onConfirm }) {
     }}>
       <AlertTriangle size={16} style={{ color: '#d97706' }} />
       <span style={{ flex: 1, fontSize: 14, color: '#78350f' }}>
-        This will write to the live database. This action cannot be undone.
+        This can't be undone.
         {archiveCount > 0 && <> <strong>{archiveCount} client{archiveCount === 1 ? '' : 's'} will be archived.</strong></>}
       </span>
       <button onClick={onCancel} style={btnSecondary}>Cancel</button>
@@ -2326,7 +2323,7 @@ function ProgressView({ validation }) {
     <div style={{
       padding: 20, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
     }}>
-      <p style={{ fontSize: 14.5, fontWeight: 500, color: '#0f172a', marginBottom: 12 }}>Writing to Supabase…</p>
+      <p style={{ fontSize: 14.5, fontWeight: 500, color: '#0f172a', marginBottom: 12 }}>Importing…</p>
       {Object.entries(validation.rowCounts).map(([t, n]) => (
         <div key={t} style={{ display: 'flex', gap: 12, fontSize: 14, padding: '4px 0' }}>
           <span style={{ width: 140, color: '#475569' }}>{t}</span>
@@ -2354,19 +2351,19 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
       </p>
       {hasRealWrite && source.key === 'bm_clients' ? (
         <>
-          <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>entities written</span><span style={resultNum}>{wr.entities_written.toLocaleString()}</span></div>
-          <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>prospects converted</span><span style={resultNum}>{wr.prospects_converted.toLocaleString()}</span></div>
+          <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>Clients written</span><span style={resultNum}>{wr.entities_written.toLocaleString()}</span></div>
+          <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>Prospects converted</span><span style={resultNum}>{wr.prospects_converted.toLocaleString()}</span></div>
           {wr.archived > 0 && (
-            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>clients archived (left BM)</span><span style={resultNum}>{wr.archived.toLocaleString()}</span></div>
+            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>Clients archived (no longer in BM)</span><span style={resultNum}>{wr.archived.toLocaleString()}</span></div>
           )}
           {wr.orphans_adopted > 0 && (
-            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>orphan records adopted</span><span style={resultNum}>{wr.orphans_adopted.toLocaleString()}</span></div>
+            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>Orphan records adopted</span><span style={resultNum}>{wr.orphans_adopted.toLocaleString()}</span></div>
           )}
           {wr.tidy_ups?.raised > 0 && (
-            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>tidy-ups added to admin tasks</span><span style={resultNum}>{wr.tidy_ups.raised.toLocaleString()}</span></div>
+            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>Tidy-ups added to admin tasks</span><span style={resultNum}>{wr.tidy_ups.raised.toLocaleString()}</span></div>
           )}
           {wr.tidy_ups?.closed > 0 && (
-            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>tidy-ups fixed at source (closed)</span><span style={resultNum}>{wr.tidy_ups.closed.toLocaleString()}</span></div>
+            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>Tidy-ups fixed at source</span><span style={resultNum}>{wr.tidy_ups.closed.toLocaleString()}</span></div>
           )}
           {(wr.tidy_ups?.raised > 0 || wr.tidy_ups?.closed > 0) && (
             <p style={{ fontSize: 12.5, color: '#047857', marginTop: 2, marginBottom: 8, paddingLeft: 18 }}>

@@ -200,7 +200,7 @@ export default function DashboardView() {
     if (!window.confirm(`Unlock ${lock.period_start} — ${lock.period_end}? Entries in this range will become editable again.`)) return;
     try {
       const removed = await removeTimesheetLock(lock.id);
-      if (removed === 0) window.alert('Nothing was unlocked — only portal admins can remove locks.');
+      if (removed === 0) window.alert('Nothing was unlocked — only admins can remove locks.');
       setLocks(await fetchTimesheetLocks());
     } catch (e) {
       console.error('[Timesheets] unlock error:', e);
@@ -381,8 +381,8 @@ export default function DashboardView() {
               <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Locked Periods</h3>
             </div>
             <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 14 }}>
-              Time entries dated inside a locked period can't be added, edited or deleted by anyone.
-              {isAdmin ? ' Only portal admins can lock and unlock periods.' : ' Contact a portal admin to lock or unlock a period.'}
+              Locked periods can't be edited.
+              {isAdmin ? ' Only admins can lock or unlock.' : ' Contact an admin to lock or unlock a period.'}
             </div>
 
             {locks.length === 0 ? (

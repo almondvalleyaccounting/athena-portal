@@ -314,7 +314,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
 
         if (quoteErr) {
           if (quoteErr.message?.includes('duplicate') || quoteErr.code === '23505') {
-            setError('Quote ref collision \u2014 please try saving again.');
+            setError('Reference clash. Save again.');
             setSaving(false);
             return;
           }
@@ -441,7 +441,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
               {seedReview.map((r, i) => <li key={i}>{r}</li>)}
             </ul>
           )}
-          <p className="text-[12px] text-amber-600 mt-1.5">Driver detail (director count, bookkeeping hours, etc.) can't be read from a flat bill amount — set these so the quote rebuilds correctly.</p>
+          <p className="text-[12px] text-amber-600 mt-1.5">Set directors, hours etc. so the quote recalculates.</p>
         </div>
       )}
 
@@ -691,7 +691,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
         </Btn>
         {mode !== 'edit' && (
           <Btn onClick={() => handleSave('add-another')} disabled={saving || !f.client.name} variant="secondary">
-            Save & Add Another Entity
+            Save and add another client
           </Btn>
         )}
         <Btn onClick={() => navigate(-1)} variant="ghost">Cancel</Btn>
@@ -710,7 +710,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
             <div className="flex justify-between text-xs"><span className="text-ocean-300">Monthly (Net) + VAT</span><span className="font-mono">{fmt(f.monthlyNet)} + {fmt(f.monthlyVat)}</span></div>
             {mode !== 'edit' && (
               <button onClick={() => handleSave('add-another')} disabled={saving || !f.client.name} className="w-full mt-2 mb-1 text-xs text-ocean-200 underline disabled:opacity-40">
-                Save &amp; Add Another Entity
+                Save and add another client
               </button>
             )}
           </div>

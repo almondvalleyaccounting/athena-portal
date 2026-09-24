@@ -129,7 +129,8 @@ export default function StandardFeesPage() {
         Standard fees
       </h1>
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 760, marginBottom: 14 }}>
-        The practice price book: each task maps to an Athena product with a standard net fee. The QBO product comes from the Products ↔ QBO mapping. Confidential — visible to fee admins only.
+        Standard net fee per task.
+        <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: '#475569', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 999, padding: '1px 8px', whiteSpace: 'nowrap' }}>Fee admins only</span>
       </p>
 
       <BillingTabs active="standard-fees" />

@@ -85,9 +85,7 @@ export default function KpiOutstandingPage() {
             KPI entry outstanding
           </h1>
           <p style={{ fontSize: 14.5, color: '#64748b', margin: '4px 0 0', maxWidth: 760, lineHeight: 1.6 }}>
-            Every client-month with a figure still missing. Only clients that have been put in a
-            sector, or given a KPI of their own, appear here — nobody is chased for something they
-            were never set up to record.
+            Missing KPI figures, by client and month.
           </p>
         </div>
         <select

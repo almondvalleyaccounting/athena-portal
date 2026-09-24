@@ -999,7 +999,7 @@ export const CROSSCHECK_VERDICTS = [
   },
   {
     value: 'fix_bm', label: 'Fix BrightManager', tone: 'accent',
-    blurb: 'HMRC lets us scrape the client, so we are the agent — BM says otherwise.',
+    blurb: 'HMRC shows us as agent — BM says otherwise.',
   },
   {
     value: 'review_authorisation', label: 'Review authorisation', tone: 'info',

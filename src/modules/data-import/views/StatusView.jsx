@@ -60,7 +60,7 @@ export default function StatusView() {
         background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
         overflow: 'hidden', marginBottom: 32,
       }}>
-        <StatCell label="Total entities" value={loading ? '—' : counts.total} />
+        <StatCell label="Total clients" value={loading ? '—' : counts.total} />
         <StatCell label="Active clients" value={loading ? '—' : counts.active} />
         <StatCell label="Prospects" value={loading ? '—' : counts.prospects} />
         <StatCell label="Last import" value={loading ? '—' : lastImportStr} small />
@@ -103,7 +103,7 @@ export default function StatusView() {
           Data Import access
         </p>
         {accessStaff.length === 0 ? (
-          <p style={{ fontSize: 14, color: '#64748b' }}>No staff have access yet. Grant <code>can_import_data</code> via Admin → Staff & Permissions.</p>
+          <p style={{ fontSize: 14, color: '#64748b' }}>No staff have access yet. Grant it in Settings → Staff &amp; permissions.</p>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {accessStaff.map((s) => (
@@ -117,7 +117,7 @@ export default function StatusView() {
           </div>
         )}
         <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 8 }}>
-          To grant or revoke access, go to <a onClick={() => navigate('/admin/staff')} style={{ color: '#0e7fe0', cursor: 'pointer' }}>Staff & Permissions</a>.
+          To grant or revoke access, go to <a onClick={() => navigate('/admin/staff')} style={{ color: '#0e7fe0', cursor: 'pointer' }}>Staff & permissions</a>.
         </p>
       </div>
 

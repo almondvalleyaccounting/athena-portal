@@ -227,9 +227,7 @@ export default function PreferencesView() {
   return (
     <div style={{ fontFamily: font, height: '100%', overflowY: 'auto', paddingRight: 2 }}>
       <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 14px', maxWidth: 720 }}>
-        Consent ledger for client communications. Responses arrive from opt-in
-        links, email replies, or staff. New communication types appear here
-        automatically once added. Former clients are hidden.
+        Each client&apos;s opt-in choices. Former clients hidden.
       </p>
 
       {error && (

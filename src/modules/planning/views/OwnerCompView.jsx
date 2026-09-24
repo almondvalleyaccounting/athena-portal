@@ -64,9 +64,7 @@ export default function OwnerCompView() {
       <div style={card}>
         <h3 style={h3}>Owner compensation</h3>
         <p style={help}>
-          Director salaries, dividends, home-office costs, mileage and other personal-to-owner items. Kept separate from staff
-          payroll so the practice shows <b>EBITDA (before owner comp)</b> — the number a buyer looks at — and
-          <b> profit after owner comp</b> — what you actually take home.
+          Director salaries, dividends and personal costs, kept apart from staff payroll.
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>

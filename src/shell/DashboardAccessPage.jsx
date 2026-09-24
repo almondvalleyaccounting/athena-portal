@@ -119,10 +119,7 @@ export default function DashboardAccessPage() {
 
   const revoke = async (row) => {
     if (!window.confirm(
-      `Remove ${row.email}'s dashboard access to ${row.entity_name}?\n\n`
-      + 'They keep their portal login and anything else it gives them — only the '
-      + 'financial dashboard goes. The grant is kept with a revoked date so the '
-      + 'history stays answerable.',
+      `Remove ${row.email}'s dashboard access to ${row.entity_name}? Their portal login stays.`,
     )) return;
     setBusy(row.id);
     setMsg(null);
@@ -155,10 +152,10 @@ export default function DashboardAccessPage() {
     return (
       <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
-          Client Dashboard Access
+          Client dashboard access
         </h1>
         <p style={{ fontSize: 14.5, color: '#64748b' }}>
-          You need the Portal admin permission to give clients access to their dashboards.
+          You need the Admin permission to give clients access to their dashboards.
         </p>
       </div>
     );
@@ -170,12 +167,10 @@ export default function DashboardAccessPage() {
         <BarChart3 size={26} style={{ color: '#38bdf8', marginTop: 4 }} />
         <div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', margin: 0 }}>
-            Client Dashboard Access
+            Client dashboard access
           </h1>
           <p style={{ fontSize: 14.5, color: '#64748b', margin: '4px 0 0', maxWidth: 760, lineHeight: 1.6 }}>
-            Which client-portal logins can see a client dashboard, and which parts of it. One grant is
-            one person and one client — nobody here can see anything beyond the clients listed against
-            their own email.
+            Which portal users can see each client's dashboard.
           </p>
         </div>
         <button
@@ -207,12 +202,8 @@ export default function DashboardAccessPage() {
       }}>
         <Info size={15} style={{ color: '#94a3b8', flexShrink: 0, marginTop: 1 }} />
         <span style={{ fontSize: 13.5, color: '#64748b', lineHeight: 1.6 }}>
-          Giving access also issues a portal invite if the person hasn't one, so they can actually sign
-          in — but it tells them nothing. <strong>Send link</strong> does that: the portal address and
-          the email address to use, with no code and no link that signs anyone in, blind-copied to
-          info@. They ask for their own six-digit code at the portal. The client only ever sees cached
-          or freshly pulled QuickBooks figures; nothing internal (bookkeeping health, drift, staff
-          notes) is reachable from the portal.
+          Giving access doesn't notify them. Use <strong>Send link</strong> to email sign-in details
+          (copied to info@). Clients only see their QuickBooks figures.
         </span>
       </div>
 

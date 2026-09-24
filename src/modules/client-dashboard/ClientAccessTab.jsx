@@ -107,10 +107,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
 
   const revoke = async (row) => {
     if (!window.confirm(
-      `Remove ${row.email}'s dashboard access to ${row.entity_name}?\n\n`
-      + 'They keep their portal login and anything else it gives them — only the '
-      + 'financial dashboard goes. The grant is kept with a revoked date so the '
-      + 'history stays answerable.',
+      `Remove ${row.email}'s dashboard access to ${row.entity_name}? Their portal login stays.`,
     )) return;
     setBusy(row.id);
     setMsg(null);
@@ -183,9 +180,8 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
     return (
       <div style={cardStyle}>
         <p style={{ fontFamily: OUTFIT, fontSize: 14.5, color: '#64748b', margin: 0, lineHeight: 1.6 }}>
-          Giving a client sight of their own figures needs the Portal admin permission.
-          Ask Bobby, Tracy or whoever holds it — the whole picture is on
-          {' '}<strong>Admin → Client Dashboard Access</strong>.
+          Needs the Admin permission. Ask an admin, or see
+          {' '}<strong>Settings → Client dashboard access</strong>.
         </p>
       </div>
     );
@@ -210,9 +206,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
               Who can see {clientName || 'this client'}'s own dashboard
             </div>
             <p style={{ fontFamily: OUTFIT, fontSize: 13.5, color: '#64748b', margin: '5px 0 0', lineHeight: 1.6 }}>
-              One grant is one person and one client. They see the same reports and the same
-              controls we do — their own date range, the same comparatives, rows that expand to
-              account level — filtered to the sections ticked here.
+              They see the sections ticked here.
             </p>
           </div>
           <button
@@ -247,13 +241,8 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
         }}>
           <Info size={15} style={{ color: '#94a3b8', flexShrink: 0, marginTop: 1 }} />
           <span style={{ fontFamily: OUTFIT, fontSize: 13.5, color: '#64748b', lineHeight: 1.6 }}>
-            Giving access also issues a portal invite if they haven't one, so they can actually sign
-            in — but it tells them nothing. <strong>Send link</strong> does that: the portal address
-            and the email address to use, with no code and no link that signs anyone in, blind-copied
-            to info@. They ask for their own six-digit code at the portal. Nothing internal is
-            reachable from there: not bookkeeping health, not drift scores, not our notes.
-            {' '}<strong>Preview</strong> fetches their view through their own endpoint, so what you
-            see there is what they get.
+            <strong>Send link</strong> emails them the portal address. <strong>Preview</strong> shows
+            exactly what they see.
           </span>
         </div>
       </div>
@@ -325,10 +314,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
           Reports published to the client
         </div>
         <p style={{ fontFamily: OUTFIT, fontSize: 13.5, color: '#64748b', margin: '5px 0 12px', lineHeight: 1.6 }}>
-          A report is a working paper until you publish it. Published reports appear as their own tab
-          on the client's dashboard, and only for people whose grant has <strong>Reports</strong>
-          {' '}ticked above — so a report published here still shows nobody anything until somebody
-          holds that section.
+          Published reports show to people with <strong>Reports</strong> ticked.
         </p>
 
         {reports.length === 0 && (

@@ -184,7 +184,7 @@ export default function KpiPacksPage() {
     return (
       <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: OUTFIT }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
-          KPI Packs
+          KPI packs
         </h1>
         <p style={{ fontSize: 14.5, color: '#64748b' }}>
           You need the KPI packs permission to edit these. A pack edit reaches every client in the
@@ -200,12 +200,10 @@ export default function KpiPacksPage() {
         <Layers size={26} style={{ color: '#38bdf8', marginTop: 4 }} />
         <div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', margin: 0 }}>
-            KPI Packs
+            KPI packs
           </h1>
           <p style={{ fontSize: 14.5, color: '#64748b', margin: '4px 0 0', maxWidth: 780, lineHeight: 1.6 }}>
-            The KPIs a sector gets. Define occupancy once and every nursery has it; fix the formula
-            here and every nursery is fixed. A client can hide one of these for itself, but cannot
-            change it — that is what keeps the packs worth having.
+            KPIs for each sector. Edits apply to every client in it.
           </p>
         </div>
       </div>

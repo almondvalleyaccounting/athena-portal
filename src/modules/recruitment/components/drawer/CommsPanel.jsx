@@ -72,7 +72,7 @@ export default function CommsPanel({ app, vacancyTitle, profileId }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
               {m.channel === 'email' ? <Mail size={12} color="#94a3b8" /> : <MessageSquare size={12} color="#94a3b8" />}
               <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>{m.channel}</span>
-              {m.status === 'failed' && <span style={{ fontSize: 11, color: '#b91c1c', fontWeight: 700 }}>FAILED</span>}
+              {m.status === 'failed' && <span style={{ fontSize: 11, color: '#b91c1c', fontWeight: 700 }}>Failed</span>}
               <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{fmtNoteTime(m.created_at)}</span>
             </div>
             {m.subject && <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{m.subject}</div>}

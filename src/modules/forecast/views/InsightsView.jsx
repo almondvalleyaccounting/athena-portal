@@ -19,9 +19,6 @@ export default function InsightsView({ outputs, findings, forecast, periods, ent
           · deterministic rule-based · auto-refreshes on recompute
         </span>
       </H2>
-      <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 16px' }}>
-        Pattern detection across your forecast. These observations highlight anomalies, sector benchmarks, and lender-relevant ratios.
-      </p>
 
       {errs.length > 0 && (
         <div style={{ padding: 14, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, marginBottom: 18 }}>

@@ -184,8 +184,7 @@ export default function BugReportPage() {
           <Bug size={24} style={{ color: '#0e7fe0' }} /> Bug Reports
         </h1>
         <p style={{ fontSize: 14.5, color: '#64748b', lineHeight: 1.5 }}>
-          Found something in Athena that's broken or wrong? Report it here. The more you tell us,
-          the faster it gets fixed — the questions below are what Claude needs to reproduce and fix it.
+          Report something broken. More detail means a faster fix.
         </p>
       </div>
 
@@ -300,7 +299,7 @@ function ReportForm({ profile, entities, onSaved, canTriage, staffList }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <Section n={1} title="What's the one-line summary?" required>
-        <input value={f.title} onChange={set('title')} placeholder="e.g. VAT reviewer change doesn't show on Sophie's report" style={input} autoFocus />
+        <input value={f.title} onChange={set('title')} placeholder="e.g. VAT reviewer change doesn't show on the reviewer report" style={input} autoFocus />
       </Section>
 
       <Section n={2} title="Where in Athena did it happen?">

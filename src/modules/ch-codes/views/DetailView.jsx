@@ -143,7 +143,7 @@ export default function DetailView() {
       )}
       {req.stage === 's5_entered' && req.bm_code_mismatch && (
         <div style={{ background: tones.danger.bg, color: tones.danger.fg, borderRadius: 10, padding: '10px 14px', fontSize: 14, marginBottom: 16 }}>
-          ⚠️ BM shows a different personal code ({req.bm_code_mismatch}) — reconcile before submitting.
+          ⚠️ BM has a different code ({req.bm_code_mismatch}). Check before submitting.
         </div>
       )}
 
@@ -231,7 +231,7 @@ export default function DetailView() {
                     })}>Log call</button>
                   {!isEscalated(req) && (
                     <button style={{ ...btnGhost, color: tones.danger.fg }} disabled={busy}
-                      title="Escalate to Tracy. This stays on the record — logging a call or moving stage will not clear it."
+                      title="Escalate (stays until removed)."
                       onClick={() => run(() => setComms(req, 'escalated', { actorId }))}>Escalate</button>
                   )}
                   {(req.called_at || req.escalation_status === 'call_needed') && (
@@ -241,7 +241,7 @@ export default function DetailView() {
                   )}
                   {isEscalated(req) && (
                     <button style={{ ...btnGhost, color: '#94a3b8' }} disabled={busy}
-                      title="Escalation is meant to be permanent — only use this if it was applied by mistake."
+                      title="Only if escalated by mistake."
                       onClick={() => {
                         if (!window.confirm('Remove the escalation?\n\nEscalation is meant to be permanent — only do this if it was applied by mistake.')) return;
                         run(() => clearEscalation(req, { actorId }));

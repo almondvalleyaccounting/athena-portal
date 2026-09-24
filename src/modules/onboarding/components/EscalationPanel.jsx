@@ -7,10 +7,10 @@ import { updateOnboarding, sendOnboardingEmail, addNote } from '../api';
 const font = "'Outfit', sans-serif";
 
 const STAGE = {
-  call_needed: { label: 'CALL NEEDED', tone: 'danger', blurb: 'Chaser emails exhausted with no response — time for a phone call.' },
-  call_made: { label: 'CALL MADE', tone: 'warning', blurb: 'Call attempted. If still no engagement, send the pause email.' },
-  paused: { label: 'PAUSED', tone: 'neutral', blurb: 'Pause email sent — no more chasers. Any portal reply or upload resumes automatically.' },
-  offboard_due: { label: 'OFFBOARD DUE', tone: 'danger', blurb: 'Paused past the offboard window. Decide: archive, or resume chasing.' },
+  call_needed: { label: 'Call needed', tone: 'danger', blurb: 'Chaser emails exhausted with no response — time for a phone call.' },
+  call_made: { label: 'Call made', tone: 'warning', blurb: 'Call attempted. If still no engagement, send the pause email.' },
+  paused: { label: 'Paused', tone: 'neutral', blurb: 'Pause email sent — no more chasers. Any portal reply or upload resumes automatically.' },
+  offboard_due: { label: 'Offboard due', tone: 'danger', blurb: 'Paused past the offboard window. Decide: archive, or resume chasing.' },
 };
 
 /*
@@ -62,7 +62,7 @@ export default function EscalationPanel({ ob, onChanged }) {
         )}
         {['call_needed', 'call_made'].includes(ob.escalation_status) && (
           <button disabled={busy} style={btn(tones.warning.bg, tones.warning.fg, tones.warning.border)} onClick={() => act(async () => {
-            if (!window.confirm('Send the "we\'ll stop pestering you" email and pause all chasing for this client?')) throw new Error('Cancelled');
+            if (!window.confirm('Send the pause email and stop chasing?')) throw new Error('Cancelled');
             await sendOnboardingEmail(ob.id, 'pause');
           }, 'Pause email sent — chasing stopped.')}>
             <PauseCircle size={13} /> Send pause email

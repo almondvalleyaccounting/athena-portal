@@ -118,9 +118,7 @@ export default function ProductMappingPage() {
         Athena services → QuickBooks products
       </h1>
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 800, marginBottom: 14 }}>
-        This decides which QuickBooks product — and therefore which income account — each service invoices under.
-        An unmapped service cannot be billed: the push refuses it rather than guessing. The product list is the
-        qbo_items mirror kept fresh by the QBO pull.
+        Sets the QuickBooks product for each service. Unmapped services can't be billed.
       </p>
 
       <BillingTabs active="products" />
@@ -171,7 +169,7 @@ export default function ProductMappingPage() {
                       <tr style={{ background: '#f8fafc' }}>
                         <Th>Athena service</Th>
                         <Th>QuickBooks product</Th>
-                        <Th align="right">QBO unit price</Th>
+                        <Th align="right">QBO price</Th>
                       </tr>
                     </thead>
                     <tbody>

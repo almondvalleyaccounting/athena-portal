@@ -377,10 +377,6 @@ export default function IncomeView({
             </tr>
           </tbody>
         </table>
-        <p style={{ fontSize: 11, color: colors.muted, margin: '6px 0 0' }}>
-          The cascade is anchored to the engine's emitted revenue (LA / private per band) and back-derives
-          hours and effective children from there, so totals tie to the P&amp;L exactly.
-        </p>
       </div>
     </div>
   );

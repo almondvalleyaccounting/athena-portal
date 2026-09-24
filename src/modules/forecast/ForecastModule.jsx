@@ -273,7 +273,7 @@ export default function ForecastModule() {
     const suggested = forecast.name?.match(/(.*?)( v\d+)?$/);
     const stem = (suggested && suggested[1]) || forecast.name || 'Forecast';
     const nextName = prompt(
-      'Name for the copy?\n\nThis duplicates the entire forecast (entities, assumptions, drivers, loans, groups). Outputs and findings are NOT copied — Recompute the new forecast after the copy completes.',
+      'Name for the copy?\n\nRecompute the copy after it\'s created.',
       `${stem} v2`
     );
     if (nextName == null) return;
@@ -785,17 +785,6 @@ function CreateForecastModal({ onClose, onCreate, existingGroupClients, busy }) 
             </span>
           </Field>
         </div>
-        <p style={{ fontSize: 12, color: colors.muted, margin: '12px 0 0' }}>
-          Start month sets period 0 of the model — every "Opens (months from start)"
-          on a location is relative to this. Defaults to the current month; pick any
-          past or future month to anchor the forecast.
-        </p>
-        <p style={{ fontSize: 12, color: colors.muted, margin: '6px 0 0' }}>
-          Group client groups forecasts in the picker (the person or group behind the deal, even if
-          they're not an Athena client yet). Client links this forecast to the actual Athena client
-          record — pick from the search, or type a name to leave it unlinked. A first version named
-          "v1" is created automatically; add "Budget" / "Rolling Forecast" versions from the header.
-        </p>
         <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
           <button onClick={onClose} style={{ ...btnOutline, flex: 1, justifyContent: 'center' }}>Cancel</button>
           <button onClick={submit} disabled={busy} style={{ ...btnDark, flex: 1, justifyContent: 'center' }}>
@@ -823,8 +812,8 @@ function IntegrityBadge({ state, label }) {
   const bg = state === 'ok' ? '#dcfce7' : '#fee2e2';
   const fg = state === 'ok' ? '#166534' : '#991b1b';
   const title = state === 'ok'
-    ? 'Reconciliation OK: balance sheet ties (assets = liabilities + equity), and cashflow movement matches the BS cash delta. The 3-statement model is internally consistent.'
-    : 'Reconciliation issue: the 3-statement model has at least one mismatch (BS does not balance, or cashflow does not tie to BS cash movement). Open Findings to see details.';
+    ? 'Balance sheet and cashflow reconcile.'
+    : 'Balance sheet or cashflow does not reconcile. Open Findings for details.';
   return (
     <div title={title} style={{
       padding: '6px 12px', borderRadius: 999, background: bg, color: fg,

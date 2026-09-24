@@ -90,7 +90,7 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
       .select('kind');
     setSaving(false);
     if (e) { setError(`Could not save: ${e.message}`); return; }
-    if (!done?.length) { setError('Nothing was saved — the template row would not update. Tell Bobby.'); return; }
+    if (!done?.length) { setError('Nothing was saved — the template row would not update. Tell your manager.'); return; }
     setRows((cur) => ({ ...cur, [kind]: { kind, ...draft } }));
     setSavedAt(now);
   };

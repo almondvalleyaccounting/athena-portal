@@ -3,6 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
+// Display labels for stored quote statuses. The stored values are unchanged.
+const QUOTE_STATUS_LABELS = {
+  draft: 'Draft',
+  pending_approval: 'Awaiting approval',
+  awaiting_approval: 'Awaiting approval',
+  approved: 'Approved',
+  sent: 'Sent to client',
+  accepted: 'Accepted',
+  declined: 'Rejected',
+  expired: 'Expired',
+  deleted: 'Deleted',
+  committed: 'Committed',
+};
+function quoteStatusLabel(s) {
+  if (!s) return '';
+  if (QUOTE_STATUS_LABELS[s]) return QUOTE_STATUS_LABELS[s];
+  const t = String(s).replace(/_/g, ' ');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 /*
   QuickSearch — Cmd+K searchable across clients, tasks, quotes.
   Renders in the TopBar.
@@ -192,7 +212,7 @@ export default function QuickSearch() {
               {results.quotes.map((q) => (
                 <div key={q.id} onClick={() => handleSelect(`/manage/quotes/${q.id}`)} style={resultRow}>
                   <span style={{ fontWeight: 500, color: '#0f172a' }}>{q.quote_ref}</span>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{q.relationship_group} · {q.status}</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{q.relationship_group} · {quoteStatusLabel(q.status)}</span>
                 </div>
               ))}
             </div>

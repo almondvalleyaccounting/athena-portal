@@ -39,7 +39,7 @@ const YEAR_END_SOURCE = {
   },
   quickbooks: { hint: "From the client's QuickBooks settings" },
   fallback: {
-    hint: "Nothing in BrightManager or QuickBooks says when this client's year ends. Until you pick the right month, these are not their quarters.",
+    hint: "Year end unknown. Pick the month.",
     badge: 'not confirmed',
     warn: true,
   },

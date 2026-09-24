@@ -62,7 +62,7 @@ export default function JobReviewRadar() {
       </div>
 
       {!cycle ? (
-        <p className="text-xs text-gray-400 py-2">No cycle open this month. Open one from the Job Review page to snapshot stalled jobs.</p>
+        <p className="text-xs text-gray-400 py-2">No review open this month.</p>
       ) : (
         <>
           <div className="grid grid-cols-3 md:grid-cols-6 gap-3">

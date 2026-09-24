@@ -346,7 +346,7 @@ function AddBillingModal({ candidate, qboItems, onClose, onApply, saving }) {
                       style={inlineInput}
                       title={l.description || ''}
                     >
-                      <option value="">— pick QBO item —</option>
+                      <option value="">— pick product —</option>
                       {qboItems.map((it) => (
                         <option key={it.qbo_item_id} value={it.qbo_item_id}>{it.name}</option>
                       ))}

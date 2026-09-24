@@ -327,7 +327,7 @@ function DeltaChip({ delta }) {
   const label = up ? `▲ ${delta}` : down ? `▼ ${Math.abs(delta)}` : '–';
   return (
     <span
-      title="change since the last deadline-digest snapshot"
+      title="Change since last week"
       style={{
         fontFamily: FONT,
         fontSize: '12px',
@@ -533,7 +533,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
         {onWontHappen && backlog.length > 0 && (
           <button
             onClick={() => onWontHappen(backlog)}
-            title="Bulk-triage jobs 180+ days late: excludes them from every count and files the BrightManager cleanup on Sophie's admin list"
+            title="Clear jobs 180+ days late"
             style={{
               marginLeft: 'auto', fontFamily: FONT, fontSize: '12px', fontWeight: 600,
               padding: '4px 10px', borderRadius: '7px', border: '1px solid #fcd34d',
@@ -598,7 +598,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
                   <td style={{ ...td, textAlign: 'right' }}>
                     <button
                       onClick={(e) => { e.stopPropagation(); onWontHappen([j]); }}
-                      title="This job is never going to be done — exclude it from every count and file the BrightManager cleanup on Sophie's admin list"
+                      title="This job is never going to be done — exclude it from every count and add a BrightManager cleanup task for Admin"
                       style={{
                         fontFamily: FONT, fontSize: '12px', fontWeight: 600,
                         padding: '2px 7px', borderRadius: '6px', border: '1px solid #e5e7eb',
@@ -686,7 +686,7 @@ function ChRefreshLine({ run }) {
   let text;
   let tone = 'ok';
   if (!run) {
-    text = 'CH refresh last night: did not run';
+    text = 'Companies House check last night: did not run';
     tone = 'warn';
   } else {
     const errCount = Array.isArray(run.errors)
@@ -696,7 +696,7 @@ function ChRefreshLine({ run }) {
         : 0;
     const companies = run.processed ?? 0;
     const changes = run.status_changes ?? 0;
-    text = `CH refresh last night: ${companies} compan${companies === 1 ? 'y' : 'ies'}, ${changes} status change${changes === 1 ? '' : 's'}, ${errCount} error${errCount === 1 ? '' : 's'}`;
+    text = `Companies House check last night: ${companies} compan${companies === 1 ? 'y' : 'ies'}, ${changes} status change${changes === 1 ? '' : 's'}, ${errCount} error${errCount === 1 ? '' : 's'}`;
     if (errCount > 0) tone = 'warn';
   }
   const dot = tone === 'warn' ? '#f59e0b' : '#22c55e';
@@ -850,7 +850,7 @@ function buildAttentionItems(data, navigate) {
       title: `${r.entity_name} — books ${r.frontier_basis === 'posted' ? 'posted' : 'reconciled'} only to ${
         frontier ? shortDate(frontier) : 'nothing in six months'}`,
       subtitle: `${r.days_over_tolerance} days past tolerance${
-        isPriority ? ' · never-drift client' : ''}${
+        isPriority ? ' · priority client' : ''}${
         r.assignee_name ? ` · ${r.assignee_name.split(' ')[0]}` : ' · unassigned'}${
         r.case_state === 'acknowledged' ? ' · acknowledged' : ''}`,
       onClick: () => navigate('/planner/bookkeeping-health'),
@@ -876,7 +876,7 @@ function buildAttentionItems(data, navigate) {
       accent: '#8b5cf6',
       icon: AlertTriangle,
       title: `${plural(drift.unknown.length, 'QuickBooks file')} couldn't be read last night`,
-      subtitle: 'Drift is unknown for these — usually a connection that needs re-authorising',
+      subtitle: 'Usually needs reconnecting',
       onClick: () => navigate('/planner/bookkeeping-health'),
     });
   }
@@ -918,7 +918,7 @@ function buildAttentionItems(data, navigate) {
       }`,
       subtitle: `${formatCurrency2dp(q.monthly_gross || 0)}/mo · ${formatCurrency2dp(
         q.annual_total || 0,
-      )}/yr inc VAT · review and push to QBO`,
+      )}/yr inc VAT · send to QBO`,
       onClick: () => navigate(`/manage/quotes/${q.id}`),
     });
   });
@@ -958,7 +958,7 @@ function buildAttentionItems(data, navigate) {
       accent: '#f59e0b',
       icon: Clock,
       title: `${plural(data.feeGaps.priority, 'client')} doing work with no fee mapped`,
-      subtitle: 'Companies & recurring services — set up fees in the engine',
+      subtitle: 'Set up fees',
       onClick: () => navigate('/manage/billing/gaps'),
     });
   }
@@ -971,7 +971,7 @@ function buildAttentionItems(data, navigate) {
       accent: '#f59e0b',
       icon: Clock,
       title: `${plural(data.qboUnmapped, 'QuickBooks customer')} need${data.qboUnmapped === 1 ? 's' : ''} mapping`,
-      subtitle: 'From the nightly QBO pull — map to clients',
+      subtitle: 'Link them to clients',
       onClick: () => navigate('/manage/billing/qbo-mapping'),
     });
   }
@@ -1181,9 +1181,9 @@ export default function HomeScreen() {
     const names = jobsToMark.slice(0, 6).map((j) => `• ${j.entity?.name || '?'} — ${j.bm_task_name}`).join('\n');
     const more = jobsToMark.length > 6 ? `\n…and ${jobsToMark.length - 6} more` : '';
     if (!window.confirm(
-      `Mark ${jobsToMark.length} job${jobsToMark.length === 1 ? '' : 's'} as "won't happen"?\n\n${names}${more}\n\nThey leave every count now; Sophie gets one BrightManager cleanup task each. Nothing is deleted.`,
+      `Mark ${jobsToMark.length} job${jobsToMark.length === 1 ? '' : 's'} as "won't happen"?\n\n${names}${more}\n\nThey leave every count now; Admin gets one BrightManager cleanup task each. Nothing is deleted.`,
     )) return;
-    const reason = window.prompt('Why won\'t this happen? (optional — goes on Sophie\'s task)', '');
+    const reason = window.prompt('Why won\'t this happen? (optional — goes on the Admin task)', '');
     if (reason === null) return;
     const { data: res, error } = await supabase.rpc('mark_bm_tasks_wont_happen', {
       p_ids: jobsToMark.map((j) => j.id),
@@ -1492,7 +1492,7 @@ export default function HomeScreen() {
           onClick={() => navigate('/planner/ready?service=SA')}
         />
         <OpsStat
-          label="Work past BM deadline"
+          label="Work past deadline"
           value={visibleOverdueTotal}
           detail="late jobs"
           tone={visibleOverdueTotal > 0 ? 'bad' : 'default'}
@@ -1555,7 +1555,7 @@ export default function HomeScreen() {
         />
         {canViewFees && (
           <OpsStat
-            label="Fee engine gaps"
+            label="Work without a fee"
             value={data.feeGaps?.priority ?? 0}
             detail={
               data.feeGaps?.individuals

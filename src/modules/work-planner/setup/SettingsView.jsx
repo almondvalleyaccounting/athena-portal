@@ -64,7 +64,7 @@ export default function SettingsView() {
   return (
     <div style={{ padding: '20px 28px', fontFamily: font }}>
       <p style={{ fontSize: 14, color: '#475569', marginBottom: 14 }}>
-        Workflow auto-scheduling feature flag. Ingest/reconciliation writes to Supabase regardless of this flag — but future behaviours (Outlook push, automated chasers, calendar propagation) check it before running. Flip when you're confident the data is clean.
+        Turns automatic scheduling (Outlook, chasers, calendar) on or off. Imports run either way.
       </p>
 
       {error && (
@@ -79,13 +79,12 @@ export default function SettingsView() {
         <p style={{ fontSize: 14, color: '#991b1b' }}>Flag {FLAG_KEY} not found.</p>
       ) : (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 20 }}>
-          <p style={{ fontSize: 13, color: '#94a3b8', fontFamily: 'monospace', marginBottom: 4 }}>{FLAG_KEY}</p>
           <p style={{ fontSize: 14.5, color: '#475569', marginBottom: 16 }}>{flag.description || '—'}</p>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
             <ModeCard
               label="Off"
-              description="Feature flag off. Data pipeline still runs; downstream behaviours do not."
+              description="Nothing is scheduled or sent automatically."
               active={mode === 'off'}
               tone="slate"
               disabled={!canEdit || saving}
@@ -93,7 +92,7 @@ export default function SettingsView() {
             />
             <ModeCard
               label="Dry run"
-              description="Downstream behaviours compute what they would do and log it, without writing/sending."
+              description="Logs what would happen without sending anything."
               active={mode === 'dry_run'}
               tone="amber"
               disabled={!canEdit || saving}
@@ -101,7 +100,7 @@ export default function SettingsView() {
             />
             <ModeCard
               label="Enabled"
-              description="Fully enabled. Future auto-scheduling behaviours will write and send for real."
+              description="Schedules and sends for real."
               active={mode === 'enabled'}
               tone="green"
               disabled={!canEdit || saving}
@@ -125,7 +124,7 @@ export default function SettingsView() {
 
           {!canEdit && (
             <p style={{ marginTop: 14, fontSize: 13, color: '#92400e' }}>
-              Only portal admins can change this flag.
+              Only admins can change this flag.
             </p>
           )}
         </div>
@@ -211,7 +210,7 @@ function DangerZone({ canEdit }) {
         </h3>
       </div>
       <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>
-        Delete rows from <code>bm_task_schedule</code>. Logged time is kept (stored separately on timesheet entries). A re-import will rebuild rows for any BM tasks that still exist upstream.
+        Deletes scheduled tasks. Logged time is kept. The next BM import rebuilds them.
       </p>
 
       {notice && (

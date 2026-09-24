@@ -215,7 +215,7 @@ export default function OnboardingDetailView() {
           <textarea
             key={`issue-${ob.id}`}
             defaultValue={ob.issue_note || ''}
-            placeholder="Describe what's blocking this onboarding — this shows on hover in the pipeline."
+            placeholder="What's blocking this?"
             onBlur={(e) => { if (e.target.value !== (ob.issue_note || '')) handleObField({ issue_note: e.target.value || null }); }}
             style={{ ...selectStyle, width: '100%', minHeight: 44, resize: 'vertical', boxSizing: 'border-box', background: '#fff' }}
           />

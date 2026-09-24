@@ -275,9 +275,7 @@ export default function PayeWorkingPaper({ entity }) {
         <NotFedNotice
           leg="BrightPay"
           why={
-            'The journal runner reads the HMRC Payments screen already but stores only the net amount due '
-            + 'and the Employment Allowance, and it does not read the CIS lines or student loan at all. '
-            + 'Until it writes a row per tax month into wp_brightpay_period there is no third leg.'
+            'BrightPay figures per tax month aren’t in Athena yet.'
           }
         />
       )}
@@ -294,8 +292,7 @@ export default function PayeWorkingPaper({ entity }) {
 
       {!yearEnd ? (
         <div style={{ ...card, padding: '14px 16px', color: '#94a3b8', fontSize: 13.5 }}>
-          Set the accounting year end above. Nothing is shown until then: a creditor figure without a date
-          is not a working paper.
+          Set the year end above.
         </div>
       ) : (
         <div style={card}>
@@ -318,7 +315,7 @@ export default function PayeWorkingPaper({ entity }) {
               <ThreeWayRow
                 indent
                 label="of which not yet payable at the date"
-                hint="Charged by the year end but not due until the 22nd of the following month. A creditor, but not overdue — and this is the part HMRC's own debt figure excludes."
+                hint="Charged by the year end, due on the 22nd. Not in HMRC's debt figure."
                 hmrc={balanceAt?.not_yet_due_at}
                 qbo={null}
                 brightpay={null}
@@ -434,7 +431,7 @@ export default function PayeWorkingPaper({ entity }) {
                     <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.45 }}>
                       {year.charges_unitemised == null
                         ? `Cannot be derived: HMRC line detail covers ${year.months_with_detail} of the `
-                          + `${year.months_present} months held, so this residual would contain a scrape gap.`
+                          + `${year.months_present} months held, so this residual would include missing HMRC data.`
                         : 'HMRC does not break CIS withheld out of the monthly charge, so this is the charge '
                           + 'less everything it does itemise. For a client with no CIS it should be nil — and '
                           + 'if it is not, that is worth investigating.'}
@@ -520,10 +517,7 @@ export default function PayeWorkingPaper({ entity }) {
                 CIS suffered credited in {taxYear} — where it came from
               </h4>
               <p style={{ fontSize: 13, color: '#64748b', marginBottom: 10, maxWidth: 820, lineHeight: 1.55 }}>
-                HMRC records a CIS credit in the month it processes the EPS and labels it with the month
-                claimed for. The two differ in both directions, so this is the reconciling table between
-                "what HMRC credited this year" and "what this year's payroll actually suffered". A prior-year
-                line has no counterpart in this year's payroll and must not be chased as a variance.
+                HMRC credits CIS when it processes the EPS, not in the month claimed. Earlier-year lines aren&rsquo;t variances.
               </p>
               <div style={card}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>

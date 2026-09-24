@@ -300,7 +300,7 @@ export default function PortfolioDashboardPage() {
         Portfolio
       </h1>
       <p style={{ fontFamily: OUTFIT, fontSize: '14.5px', color: C.sub, margin: '0 0 18px' }}>
-        Your starred clients over the period you choose, each against the same period last year, on each client's own year end.
+        Starred clients vs last year.
         {!loading && flaggedCount > 0 && (
           <span style={{ color: C.redFg, fontWeight: 600 }}> {flaggedCount} need{flaggedCount === 1 ? 's' : ''} attention.</span>
         )}
@@ -388,7 +388,6 @@ export default function PortfolioDashboardPage() {
           </div>
           <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: C.sub, maxWidth: '440px', margin: '0 auto 18px' }}>
             Open the Client Dashboard, pick a client and click the star next to their name.
-            Starred clients appear here with their key metrics, so you can watch your portfolio at a glance.
           </div>
           <button onClick={() => navigate('/client-dashboard')}
             style={{

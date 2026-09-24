@@ -188,9 +188,7 @@ export default function AuthorisationsView() {
       <ErrorBar message={error} />
 
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 860, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
-        Schemes HMRC still shows us as agent for, with no active client behind them. Each one is either an
-        authorisation to hand back, or a client record that needs correcting. Closing a row records that
-        someone dealt with it — add a note saying which, because the two outcomes look identical afterwards.
+        Schemes we&rsquo;re agent for with no active client. Hand back or fix the client, then note which.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16, maxWidth: 760 }}>

@@ -193,9 +193,7 @@ export default function WorkingPapersModule() {
         <FileSpreadsheet size={22} style={{ color: '#64748b' }} /> Working Papers
       </h1>
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 860, marginBottom: 14, lineHeight: 1.55 }}>
-        Reconciliations prepared from independent sources, so a balance is agreed rather than explained by
-        the ledger that produced it. PAYE compares HMRC's own account, the client's QuickBooks and the
-        payroll behind both.
+        Balances agreed against HMRC, QuickBooks and payroll.
       </p>
 
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb', marginBottom: 14, flexWrap: 'wrap' }}>
@@ -212,7 +210,7 @@ export default function WorkingPapersModule() {
             })}
           >
             {t.label}
-            {t.status === 'planned' && <Pill colour="#94a3b8" bg="#f8fafc">planned</Pill>}
+            {t.status === 'planned' && <Pill colour="#94a3b8" bg="#f8fafc">Planned</Pill>}
           </NavLink>
         ))}
       </div>
@@ -229,38 +227,12 @@ export default function WorkingPapersModule() {
         <Route path="hmrc-vs-books" element={<HmrcQboCompare />} />
         <Route path="corporation-tax" element={
           <Planned title="Corporation tax — HMRC · QuickBooks · TaxCalc">
-            <p style={{ marginBottom: 10 }}>
-              Two of the three legs are already available. HMRC's corporation tax account is scraped
-              (5,349 accounting periods and 8,356 transactions held), and the QuickBooks leg needs only the
-              <em> Corporation tax</em> role mapped on the Nominal mapping tab — the same mechanism PAYE uses.
-            </p>
-            <p style={{ marginBottom: 10 }}>
-              The missing leg is <strong>TaxCalc</strong>, and it is the one that decides the shape. TaxCalc
-              holds the computation and the CT600 as filed, which is the only source that says what the
-              charge <em>should</em> be rather than what someone posted or what HMRC has recorded. There is no
-              API in use here yet, so the open question is whether it is read from an export, from the
-              TaxCalc database, or by driving the application the way BrightPay is driven.
-            </p>
-            <p>
-              The timing rules differ from PAYE's and are simpler: corporation tax follows the accounting
-              period, so there is no tax-year panel. What it does need is period alignment — HMRC splits a
-              long period into two accounting periods and the ledger almost never does.
-            </p>
+            <p>Planned: HMRC, QuickBooks and TaxCalc compared by accounting period.</p>
           </Planned>
         } />
         <Route path="net-wages" element={
           <Planned title="Net wages — BrightPay · QuickBooks">
-            <p style={{ marginBottom: 10 }}>
-              A two-way check: net pay per the payroll against the wages creditor in the ledger, with the
-              bank payments in between. Map the <em>Net wages</em> and <em>Wages control</em> roles on the
-              Nominal mapping tab and the QuickBooks leg is ready.
-            </p>
-            <p>
-              This one is blocked on the same thing as PAYE's third leg — BrightPay figures per period in
-              Athena. The journal runner posts the journal and records its total, but a total is not a
-              gross-to-net analysis, so net pay has to be read from the payroll rather than inferred from
-              the journal it produced.
-            </p>
+            <p>Planned: BrightPay net pay against the wages control account.</p>
           </Planned>
         } />
         <Route path="*" element={<Navigate to="/working-papers/paye" replace />} />

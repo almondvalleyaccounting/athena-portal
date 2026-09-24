@@ -178,9 +178,7 @@ export default function ClientStatementView({ payeRef = '', scheme = null }) {
 
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 12, lineHeight: 1.55 }}>
         {selected ? <><b>{selected.entity_name || selected.hmrc_name}</b> · {selected.paye_ref} — </> : null}
-        the PAYE account, months down the side: what HMRC charged, what relieved it, what was paid and what
-        was left. Any date range, crossing tax years, so a September or December year end works as well as
-        5 April. <b>Click any figure</b> for the lines behind it.
+        PAYE by month, for any date range. <b>Click a figure</b> for detail.
       </p>
 
       {/* Period + options */}
@@ -241,8 +239,7 @@ export default function ClientStatementView({ payeRef = '', scheme = null }) {
         }}>
           <TriangleAlert size={15} style={{ color: '#d97706', flexShrink: 0, marginTop: 1 }} />
           <div>
-            On at least one month the line detail does not add up to HMRC's charge total. The
-            <b> Charges</b> column is HMRC's figure and is the one to trust; the breakdown is incomplete there.
+            Some months&rsquo; lines don&rsquo;t match HMRC&rsquo;s total. Trust the <b>Charges</b> column.
           </div>
         </div>
       )}
@@ -255,7 +252,7 @@ export default function ClientStatementView({ payeRef = '', scheme = null }) {
         <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading statement…</div>
       ) : rows.length === 0 ? (
         <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
-          Nothing scraped for this scheme between {prettyDate(from)} and {prettyDate(to)}.
+          Nothing found for this scheme between {prettyDate(from)} and {prettyDate(to)}.
         </div>
       ) : (
         <div style={card}>
@@ -789,15 +786,8 @@ function BalanceProof({ proof, to }) {
       <div style={{ fontSize: 12.5, color: isMinimum ? '#78350f' : '#64748b', marginTop: 8, maxWidth: 720, lineHeight: 1.5 }}>
         {isMinimum ? (
           <>
-            <b>At least</b> this much was outstanding.{' '}
-            {notDue !== 0 && (
-              <>The {fmtGbpDetailed(notDue)} for months not yet due on the date is certain — it could not have
-                been paid before it was payable. </>
-            )}
-            Beyond that, HMRC only gives us dated payments back to{' '}
-            {proof.earliest_payment_held ? prettyDate(proof.earliest_payment_held) : 'the current tax year'}, so a
-            payment made between {prettyDate(to)} and then is invisible to us, which can only make the real
-            figure higher.
+            <b>Minimum.</b> HMRC&rsquo;s payment history only goes back to{' '}
+            {proof.earliest_payment_held ? prettyDate(proof.earliest_payment_held) : 'the current tax year'}.
           </>
         ) : dated > 0 ? (
           <>Proven from dated payment records. {fmtGbpDetailed(dated)} of what looks settled today was

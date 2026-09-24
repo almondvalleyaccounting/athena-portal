@@ -246,8 +246,7 @@ export default function IdeasPage() {
             color: '#64748b',
           }}
         >
-          Suggest improvements, new features, or anything that would make our
-          work better. Vote on ideas you like.
+          Suggest improvements and vote on ideas.
         </p>
       </div>
 

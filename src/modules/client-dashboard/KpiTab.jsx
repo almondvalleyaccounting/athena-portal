@@ -88,7 +88,7 @@ export default function KpiTab({
           </div>
           <p style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#64748b', maxWidth: '460px', margin: '0 auto 16px', lineHeight: 1.6 }}>
             {hasSector
-              ? 'This client is on a sector pack, but the pack has no active KPIs. Add some in KPI Packs.'
+              ? 'This client is on a sector pack, but the pack has no active KPIs. Add some in KPI packs.'
               : 'Put this client in a sector to get its pack — a nursery gets children, places and occupancy — or add a KPI just for them.'}
           </p>
           <button onClick={() => setSub('setup')} style={primaryBtn}>Open setup</button>
@@ -370,8 +370,7 @@ function EntryGrid({ kpi, buckets }) {
       </div>
 
       <p style={{ fontFamily: OUTFIT, fontSize: '12px', color: '#94a3b8', padding: '10px 20px 6px', margin: 0 }}>
-        Leave a cell blank for "not known" — that is different from zero, and the figures above will
-        show "—" rather than pretending it is nil.
+        Leave blank if not known (not the same as zero).
       </p>
     </div>
   );

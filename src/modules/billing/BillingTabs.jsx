@@ -93,7 +93,7 @@ export default function BillingTabs({ active }) {
       ? [{ id: 'gaps', label: 'Gaps', route: '/manage/billing/gaps', badge: counts.gaps || null, tone: 'danger' }]
       : []),
     { id: 'mapping',   label: 'Mapping',   route: '/manage/billing/mapping', badge: null },
-    { id: 'products',  label: 'Products ↔ QBO', route: '/manage/billing/products', badge: null },
+    { id: 'products',  label: 'QBO products', route: '/manage/billing/products', badge: null },
     // Standard fees is confidential fee data — only fee admins see the tab
     // (StandardFeesPage + RLS on standard_fees enforce the same gate).
     ...(profile?.can_view_client_fees === true

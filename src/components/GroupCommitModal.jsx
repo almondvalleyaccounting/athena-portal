@@ -333,7 +333,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
 
   const statusPill = (r) => {
     if (!r) return null;
-    if (r.status === 'running') return <span style={{ fontSize: 12, color: '#0e7fe0' }}>Pushing…</span>;
+    if (r.status === 'running') return <span style={{ fontSize: 12, color: '#0e7fe0' }}>Sending…</span>;
     if (r.status === 'done') return <span style={{ fontSize: 12, color: '#15803d' }}>✓ {r.action === 'overwrite' ? 'Updated' : r.action === 'create' ? 'Created' : 'Pushed'}</span>;
     if (r.status === 'warn') return <span style={{ fontSize: 12, color: '#b45309' }} title={r.error}>⚠ Committed, push failed</span>;
     if (r.status === 'error') return <span style={{ fontSize: 12, color: '#b91c1c' }} title={r.error}>✗ Failed</span>;
@@ -383,7 +383,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
                     <div className="font-semibold text-gray-500 mb-0.5">QuickBooks customer</div>
                     {t.mode === 'missing' ? (
                       <p className="text-red-700">
-                        Mapped to QuickBooks customer <span className="font-mono">#{t.id}</span>, which QuickBooks no longer returns. Fix the mapping on the client record before committing.
+                        QuickBooks customer <span className="font-mono">#{t.id}</span> no longer exists. Fix it on the client record before committing.
                       </p>
                     ) : t.mode === 'existing' || t.mode === 'link' ? (
                       <>
@@ -561,7 +561,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           )}
           {!done && custUndecided.length > 0 && (
             <p className="text-xs text-amber-700">
-              {custUndecided.length} {custUndecided.length === 1 ? 'company needs' : 'companies need'} a QuickBooks customer chosen ({custUndecided.map((q) => q.relationship_group || q.quote_ref).join(', ')}) — committing without it would create a second customer for a client that may already have one.
+              {custUndecided.length} {custUndecided.length === 1 ? 'company needs' : 'companies need'} a QuickBooks customer chosen ({custUndecided.map((q) => q.relationship_group || q.quote_ref).join(', ')}). Pick one first to avoid a duplicate.
             </p>
           )}
           {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2">{error}</div>}
@@ -571,7 +571,7 @@ export default function GroupCommitModal({ group, quotes, profile, onClose, onDo
           <Btn onClick={onClose} variant="ghost" disabled={running}>{done ? 'Close' : 'Cancel'}</Btn>
           {!done && (
             <Btn onClick={handleRun} variant="primary" disabled={running || !allReady || members.length === 0}>
-              {running ? 'Processing…' : `Commit & Push ${members.length}`}
+              {running ? 'Processing…' : `Commit and send ${members.length}`}
             </Btn>
           )}
         </div>

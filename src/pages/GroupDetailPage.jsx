@@ -316,7 +316,7 @@ export default function GroupDetailPage() {
               <span className="text-xs text-gray-300 font-normal ml-2 opacity-0 group-hover:opacity-100 transition-opacity">edit</span>
             </h2>
           )}
-          <p className="text-xs text-gray-400">{groupEntities.length} entities · Group quote</p>
+          <p className="text-xs text-gray-400">{groupEntities.length} clients · Group quote</p>
           <div className="mt-1">
             <StatusBadge status={currentStatus} />
           </div>
@@ -344,7 +344,7 @@ export default function GroupDetailPage() {
         <Btn onClick={handleExportPdf} variant="ghost" className="text-xs py-1 px-3">Export PDF</Btn>
         <span className="mx-1 text-gray-300">|</span>
         <Btn onClick={() => navigate(`/manage/quotes/group/${groupId}/quote`)} variant="primary" className="text-xs py-1 px-3">Build Group Quote</Btn>
-        <Btn onClick={() => navigate('/manage/quotes/new?group=' + groupId)} className="text-xs py-1 px-3">Add Entity</Btn>
+        <Btn onClick={() => navigate('/manage/quotes/new?group=' + groupId)} className="text-xs py-1 px-3">Add client</Btn>
         <Btn onClick={() => navigate('/manage/quotes')} variant="secondary" className="text-xs py-1 px-3">Back to Quotes</Btn>
       </div>
 

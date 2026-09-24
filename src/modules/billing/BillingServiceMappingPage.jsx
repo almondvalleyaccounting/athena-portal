@@ -116,7 +116,7 @@ export default function BillingServiceMappingPage() {
         Service → fee earner mapping
       </h1>
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 760, marginBottom: 14 }}>
-        Tell Athena who earns the revenue from each billing service. Map to a capacity-planner service (resolved per-client) or pin to a specific fee earner. Anything unmapped falls back to the Accounts Submission assignee for that client.
+        Who earns each service's revenue. Unmapped services go to the accounts assignee.
       </p>
 
       <BillingTabs active="mapping" />

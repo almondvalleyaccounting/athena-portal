@@ -226,15 +226,10 @@ export default function CisCreditView() {
       <ErrorBar message={error} />
 
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 6, lineHeight: 1.55 }}>
-        What HMRC is holding on our clients’ PAYE accounts, and what can be done with it{taxYear ? ` in ${taxYear}` : ''}.
-        There is deliberately <b>no single “available” figure</b>: cash and credit obey different rules,
-        and most credit cannot be dated.
+        Credit HMRC holds on clients’ PAYE accounts{taxYear ? ` in ${taxYear}` : ''}.
       </p>
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
-        <b>Cash</b> is money the client actually sent that HMRC has not matched to a bill. It can go against
-        any liability, any year, on request. <b>Credit</b> — chiefly CIS suffered — only offsets the current
-        year’s PAYE bills until 6 April; credit from a closed year is free to move. The test is the
-        <b> credit’s</b> year, not the debt’s.
+        <b>Cash</b> can be moved any time. <b>Credit</b> from this tax year only offsets this year’s PAYE until 6 April.
       </p>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -267,11 +262,7 @@ export default function CisCreditView() {
         </div>
       </div>
       <div style={{ padding: '10px 2px', fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6 }}>
-        The three credit columns add up to the credit total, so nothing is lost between them.
-        <b> Age unknown is not nil and not available</b> — it is credit HMRC holds whose year we cannot
-        read, because HMRC restates the running balance in every year’s credits history rather than
-        reporting what arose in that year. Cash and credit are never added together: only one of them
-        can be moved on request.
+        <b>Age unknown</b> isn’t nil and can’t be moved yet.
       </div>
     </div>
   );

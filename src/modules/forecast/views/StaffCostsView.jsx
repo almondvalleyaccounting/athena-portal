@@ -197,7 +197,7 @@ export default function StaffCostsView({
             {renderRow('Total direct staff costs', directSubtotal, { subtotal: true })}
 
             {/* Grand total */}
-            {renderRow('TOTAL STAFF COSTS', grand, { total: true })}
+            {renderRow('Total staff costs', grand, { total: true })}
           </tbody>
         </table>
       </div>

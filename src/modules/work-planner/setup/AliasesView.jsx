@@ -51,7 +51,7 @@ export default function AliasesView() {
   return (
     <div style={{ padding: '20px 28px', fontFamily: font }}>
       <p style={{ fontSize: 14, color: '#475569', maxWidth: 760, marginBottom: 14 }}>
-        Every BM assignee name seen in a tasks import lands here. Map each to a real staff profile so tasks get the right <code>assignee_id</code>, or mark inactive if the person has left. New aliases appear automatically — no manual creation needed.
+        Link each BM name to a staff member, or mark it inactive if they've left.
       </p>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>

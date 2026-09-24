@@ -562,7 +562,7 @@ export default function InputsView({
             <thead>
               <tr>
                 <th style={compact ? thCompact : th}>Driver</th>
-                <th style={compact ? thCompact : th}>Entity</th>
+                <th style={compact ? thCompact : th}>Location</th>
                 {!compact && <th style={th}>Unit</th>}
                 {!compact && <th style={th}>Kind</th>}
                 <th style={{ ...(compact ? thCompact : th), textAlign: 'right' }}>Value</th>
@@ -1225,7 +1225,7 @@ function CustomDriverModal({ scenarioId, moduleKey, entities, onClose, onSaved }
           </button>
         </div>
         <p style={{ fontSize: 12, color: colors.muted, margin: '14px 0 0' }}>
-          Custom drivers persist alongside seeded ones. They'll be picked up by the engine if any module's compute() reads them by key — otherwise they stay as data without affecting outputs.
+          Custom assumptions are saved but only used if the model reads them.
         </p>
       </div>
     </div>
@@ -1529,7 +1529,7 @@ function DriverFilters({ entities, unitOptions, filterEntity, setFilterEntity, f
   return (
     <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
       <select value={filterEntity} onChange={(e) => setFilterEntity(e.target.value)} style={filterSel}>
-        <option value="all">All entities</option>
+        <option value="all">All locations</option>
         <option value="group">— Group only —</option>
         {entities.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
       </select>

@@ -543,7 +543,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
                     <p className="text-gray-400">Checking QuickBooks…</p>
                   ) : t.mode === 'missing' ? (
                     <p className="text-red-700">
-                      This client is mapped to QuickBooks customer <span className="font-mono">#{t.id}</span>, which QuickBooks no longer returns — it may have been deleted or merged. Fix the mapping on the client record before committing.
+                      QuickBooks customer <span className="font-mono">#{t.id}</span> no longer exists. Fix it on the client record before committing.
                     </p>
                   ) : t.mode === 'existing' || t.mode === 'link' ? (
                     <>
@@ -791,12 +791,12 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
 
             {customerTarget?.mode === 'undecided' && (
               <p className="text-xs text-amber-700">
-                Choose the QuickBooks customer above before committing — otherwise this would create a second customer for a client that may already have one.
+                Pick a QuickBooks customer first to avoid a duplicate.
               </p>
             )}
 
-            {pushStatus === 'pushing' && <p className="text-xs text-ocean-600">Pushing to QBO...</p>}
-            {pushStatus === 'pushed' && <p className="text-xs text-green-600">Successfully pushed to QBO</p>}
+            {pushStatus === 'pushing' && <p className="text-xs text-ocean-600">Sending to QBO…</p>}
+            {pushStatus === 'pushed' && <p className="text-xs text-green-600">Sent to QBO</p>}
             {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2 whitespace-pre-line">{error}</div>}
           </div>
 
@@ -809,7 +809,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
                 Commit without QBO
               </Btn>
               <Btn onClick={handleConfirmCommit} variant="primary" disabled={committing || missing.length > 0 || !readyToCommit}>
-                {committing ? 'Committing...' : 'Commit to Live'}
+                {committing ? 'Committing…' : 'Commit to live'}
               </Btn>
             </div>
           </div>
@@ -823,11 +823,11 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
       <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-auto">
         {/* Header */}
         <div className="p-4 border-b border-gray-200">
-          <h2 className="text-lg font-bold text-ocean-700">Commit to Live Billing</h2>
+          <h2 className="text-lg font-bold text-ocean-700">Commit to live billing</h2>
           <p className="text-xs text-gray-400 mt-0.5">
             {qboAction === 'push'
               ? "Review the services and allocations, then verify the client details before committing."
-              : 'This will create a live billing record and update entity fees.'}
+              : "Creates live billing and updates the client's fees."}
           </p>
         </div>
 
@@ -906,7 +906,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
 
           {/* QBO Options */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-500">QuickBooks Export</p>
+            <p className="text-xs font-semibold text-gray-500">QuickBooks export</p>
             {qboConnected && (
               <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
                 <input
@@ -916,7 +916,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
                   onChange={() => setQboAction('push')}
                   className="w-4 h-4 accent-ocean-600"
                 />
-                <span>Push directly to QBO</span>
+                <span>Send directly to QBO</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 ml-1" title="Connected" />
               </label>
             )}
@@ -941,10 +941,10 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
               Skip QBO export
             </label>
             {pushStatus === 'pushing' && (
-              <p className="text-xs text-ocean-600">Pushing to QBO...</p>
+              <p className="text-xs text-ocean-600">Sending to QBO…</p>
             )}
             {pushStatus === 'pushed' && (
-              <p className="text-xs text-green-600">Successfully pushed to QBO</p>
+              <p className="text-xs text-green-600">Sent to QBO</p>
             )}
           </div>
 
@@ -959,7 +959,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
           <Btn onClick={handleFormPrimary} variant="primary" disabled={committing}>
             {committing
               ? (qboAction === 'push' ? 'Loading...' : 'Committing...')
-              : (qboAction === 'push' ? 'Review' : 'Commit to Live')}
+              : (qboAction === 'push' ? 'Review' : 'Commit to live')}
           </Btn>
         </div>
       </div>

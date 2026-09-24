@@ -15,6 +15,25 @@ const label = { fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 5
 const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '8px 12px', fontSize: 14, border: '1px solid #cbd5e1', borderRadius: 8, fontFamily: font, outline: 'none' };
 const VAT_RATE = 0.20;
 const STAGES = [['draft', 'Draft'], ['bill_hold', 'Bill & Hold'], ['billed', 'Billed'], ['todo', 'To Do']];
+// Display labels for stored codes. The stored values are unchanged.
+const SOURCE_LABELS = {
+  bm_data_error: 'BM data error',
+  sophie_workplan_import: 'Imported',
+  nlac_bm_mirror: 'Offboarding',
+  person_dedup: 'Possible duplicate',
+};
+const BILL_STATUS_LABELS = {
+  draft: 'Draft',
+  approved: 'Approved',
+  pushed: 'Sent to QBO',
+  not_required: 'Not required',
+};
+function codeLabel(map, code) {
+  if (!code) return '';
+  if (map[code]) return map[code];
+  const s = String(code).replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 function fmtNoteTime(iso) {
   const d = new Date(iso);
@@ -217,7 +236,7 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
           )}
           {task.source && (
             <span style={{ marginLeft: 'auto', fontSize: 12, padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', color: '#64748b' }}>
-              {task.source}
+              {codeLabel(SOURCE_LABELS, task.source)}
             </span>
           )}
         </div>
@@ -277,7 +296,7 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
           {bill ? (
             <button onClick={() => navigate(`/billing?highlight=${task.billing_item_id}`)}
               style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13.5, fontWeight: 600, color: '#0e7fe0', background: '#fff', border: '1px solid #bae6fd', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>
-              <Receipt size={13} /> Review bill {bill.qbo_doc_number ? `#${bill.qbo_doc_number}` : ''} · £{bill.net_amount} ({bill.status})
+              <Receipt size={13} /> Review bill {bill.qbo_doc_number ? `#${bill.qbo_doc_number}` : ''} · £{bill.net_amount} ({codeLabel(BILL_STATUS_LABELS, bill.status)})
             </button>
           ) : (
             <button onClick={addBill}
@@ -289,7 +308,7 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
 
         {canPipeline && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
-            <span style={label}>Pipeline step</span>
+            <span style={label}>Stage</span>
             <select value={task.stage || 'todo'} onChange={(e) => setStage(e.target.value)}
               style={{ fontSize: 13.5, fontFamily: font, padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', color: '#475569', outline: 'none' }}>
               {STAGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}

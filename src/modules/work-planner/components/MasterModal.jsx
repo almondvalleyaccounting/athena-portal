@@ -97,8 +97,7 @@ export default function MasterModal({
             padding: '8px 10px', borderRadius: 6, background: '#fefce8',
             border: '1px solid #fde68a', fontSize: 12, color: '#92400e', marginBottom: 12,
           }}>
-            &#9888; {overrideCount} future instance{overrideCount > 1 ? 's' : ''} with overrides.
-            Master changes apply to un-overridden instances only.
+            &#9888; {overrideCount} future date{overrideCount > 1 ? 's' : ''} edited individually. Changes here won't affect them.
           </div>
         )}
 

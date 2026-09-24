@@ -160,7 +160,7 @@ export default function RulesView() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
         <div style={{ flex: 1 }}>
           <p style={{ fontSize: 14, color: '#475569', maxWidth: 820 }}>
-            Rules define <b>when</b> each task type lands. Match is prefix on <code>bm_task_name</code>, highest priority first. <b>Offset</b> is months from <code>bm_deadline</code> (negative = before). Client cadence on the client record shifts ±1 week. A <b>Client exception</b> overrides both.
+            Rules set <b>when</b> each task type is scheduled. <b>Offset</b> is months from the deadline (negative = before). <b>Client exceptions</b> take priority.
           </p>
         </div>
         <button onClick={runPlan} disabled={planning || !!editingId} style={{ ...btnSecondary, opacity: (planning || !!editingId) ? 0.6 : 1 }}>

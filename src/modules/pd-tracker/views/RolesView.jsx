@@ -61,7 +61,7 @@ export default function RolesView() {
   }, [selectedId, roles]);
 
   if (!isAdmin) {
-    return <Msg>Role profiles are managed by portal admins.</Msg>;
+    return <Msg>Role profiles are managed by admins.</Msg>;
   }
   if (loading) return <Msg>Loading roles…</Msg>;
 
@@ -144,7 +144,7 @@ export default function RolesView() {
         {busy && <span style={{ fontSize: 12, color: '#0e7fe0' }}>Saving…</span>}
       </div>
       <p style={{ fontSize: 14, color: '#64748b', marginTop: 4, marginBottom: 20 }}>
-        Build a target skill profile per role. Each role is a set of skill categories with a target level; the Skills graph rolls each category up from the skills underneath.
+        Set target skill levels for each role.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 20, alignItems: 'start' }}>

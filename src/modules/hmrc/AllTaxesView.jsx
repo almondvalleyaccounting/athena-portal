@@ -128,7 +128,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
     if (n(r.held_paye_credit_movable)) bits.push(`${fmtGbpDetailed(r.held_paye_credit_movable)} credit, movable`);
     if (n(r.held_paye_credit_locked)) bits.push(`${fmtGbpDetailed(r.held_paye_credit_locked)} credit, locked to this tax year`);
     if (n(r.held_paye_credit_unknown)) bits.push(`${fmtGbpDetailed(r.held_paye_credit_unknown)} credit, tax year unknown`);
-    if (n(r.held_other_heads)) bits.push(`${fmtGbpDetailed(r.held_other_heads)} overpaid on another head`);
+    if (n(r.held_other_heads)) bits.push(`${fmtGbpDetailed(r.held_other_heads)} overpaid on another tax`);
     if (n(r.held_sa)) bits.push(`${fmtGbpDetailed(r.held_sa)} Self Assessment repayment`);
     return bits.length ? bits.join(' · ') : 'HMRC is holding nothing';
   };
@@ -143,10 +143,10 @@ export default function AllTaxesView({ clients = [], error = '' }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           {(r.taxes_owing || 0) > 1 && (
             <TriangleAlert size={12} style={{ color: '#c2410c', flexShrink: 0 }}
-              title={`Owing on ${r.taxes_owing} tax heads`} />
+              title={`Owing on ${r.taxes_owing} taxes`} />
           )}
           <button onClick={() => navigate(`/hmrc/breakdown?entity=${r.entity_id}`)}
-            title={`${r.entity_name} — every tax head, and what each balance is made of`}
+            title={`${r.entity_name} — every tax, and what each balance is made of`}
             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
                      fontFamily: font, fontSize: 13.5, fontWeight: 500, color: '#0f172a', textAlign: 'left',
                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
@@ -154,7 +154,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
           </button>
           {r.vat_credit_not_captured && (
             <Pill colour="#b45309" style={{ fontSize: 10, flexShrink: 0 }}
-              title="Registered for VAT but HMRC lists nothing owed. A VAT repayment position is not scraped, so we cannot tell a nil position from a repayment due.">
+              title="VAT registered, nothing owed. Could be nil or a repayment; we can't tell.">
               VAT ?
             </Pill>
           )}
@@ -163,7 +163,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
     },
     {
       key: 'owed_total', align: 'right', width: 125,
-      label: <span title="What HMRC says is due, across all four heads">Owed</span>,
+      label: <span title="What HMRC says is due, across all four taxes">Owed</span>,
       sortValue: (r) => n(r.owed_total),
       render: (r) => (
         <span style={{ color: n(r.owed_total) ? '#b91c1c' : '#e2e8f0', fontVariantNumeric: 'tabular-nums' }}>
@@ -221,7 +221,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
     ...HEADS.map((h) => ({
       key: h.key, align: 'right', width: 125,
       label: (
-        <span title={`Owed, by head — ${TAX_META[h.tax].label}. Click a figure to open that tax for the client.`}
+        <span title={`Owed, by tax — ${TAX_META[h.tax].label}. Click a figure to open that tax for the client.`}
               style={{ color: '#94a3b8' }}>
           {TAX_META[h.tax].short} · owed
         </span>
@@ -276,8 +276,8 @@ export default function AllTaxesView({ clients = [], error = '' }) {
       ['Client', 'Owed', 'Held', 'Net position', 'Payable now',
        'PAYE', 'Corporation Tax', 'VAT', 'Self Assessment',
        'Held: cash', 'Held: CIS credit movable', 'Held: credit locked',
-       'Held: credit age unknown', 'Held: other heads', 'Held: SA',
-       'Taxes owing', 'VAT position unknown', 'Last scraped'],
+       'Held: credit age unknown', 'Held: other taxes', 'Held: SA',
+       'Taxes owing', 'VAT position unknown', 'Last checked'],
       sortLike(filtered, columns, sort).map((r) => [
         r.entity_name || '',
         n(r.owed_total).toFixed(2), n(r.held_total).toFixed(2),
@@ -298,14 +298,10 @@ export default function AllTaxesView({ clients = [], error = '' }) {
       <ErrorBar message={error || loadError} />
 
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 6, lineHeight: 1.55 }}>
-        One HMRC position per client. <b>Net</b> is what they owe once everything HMRC is holding is counted
-        against it — cash, CIS credit, overpaid Corporation Tax. <b>Click any figure</b> to open it; the
-        client stays selected on every other tab.
+        <b>Net</b> is owed less credit HMRC holds. <b>Click a figure</b> to open it.
       </p>
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
-        <b>Payable now</b> is lower confidence than it looks smaller. Net assumes every credit can be applied;
-        current-year CIS credit cannot be moved until 6 April, and some credit cannot be dated at all. Where
-        the two columns differ, that difference is the credit that is stuck.
+        <b>Payable now</b> excludes credit that can't be moved yet, such as current-year CIS before 6 April.
       </p>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -328,7 +324,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
       <AlphabetFilter items={rows} nameKey="entity_name" selected={letter} onChange={onLetter} />
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading every tax head…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading every tax…</div>
       ) : (
         <div style={{ marginTop: 8 }}>
           {/* Ten money columns do not fit a narrow screen, so the table keeps a
@@ -347,12 +343,6 @@ export default function AllTaxesView({ clients = [], error = '' }) {
                 empty="No clients match."
               />
             </div>
-          </div>
-          <div style={{ padding: '10px 2px', fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6 }}>
-            Owed less held is Net. Payable now applies only the credit that can actually be moved today, so
-            where it exceeds Net the difference is credit that is stuck — marked with a dot. A
-            <b> VAT ?</b> tag means the client is registered for VAT and HMRC lists nothing owed: a VAT
-            repayment position is not scraped, so a nil position and a repayment due look identical.
           </div>
         </div>
       )}

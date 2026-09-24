@@ -137,9 +137,7 @@ export default function ManualPaymentModal({ batch, entities, rows, emailOf, pro
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer', fontFamily: font }}>×</button>
         </div>
         <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 14px' }}>
-          For clients whose figures aren't in the TaxCalc export — typically someone who joined
-          us after their return was filed elsewhere. Take the amount from their HMRC statement
-          or the return they've given us.
+          Take the amount from their HMRC statement or return.
           {batch && <> It joins <strong>{batch.label}</strong>, due {fmtDateLong(batch.due_date)}.</>}
         </p>
 

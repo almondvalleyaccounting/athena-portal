@@ -389,14 +389,14 @@ export default function PipelineView() {
             <Btn icon={PhoneCall} label="Log call" tone="accent" disabled={busy} onClick={() => setCallFor(group)} />
             {!isEscalated(rep) && (
               <Btn icon={AlertTriangle} label="Escalate" tone="danger" disabled={busy}
-                title="Escalate to Tracy. This stays on the record — logging a call or moving stage won't clear it."
+                title="Escalate (stays until removed)."
                 onClick={() => actGroup(group, (row) => setComms(row, 'escalated', { actorId }))} />
             )}
             {/* Clearing the call flag lives on the detail page, next to the
                 call record it undoes — the board is for moving things on. */}
             {isEscalated(rep) && (
               <Btn icon={Ban} label="Remove escalation" tone="neutral" disabled={busy}
-                title="Escalation is meant to be permanent — only use this if it was applied by mistake."
+                title="Only if escalated by mistake."
                 onClick={() => {
                   if (!window.confirm(`Remove the escalation on ${first.person?.name || 'this request'}?
 
@@ -483,7 +483,7 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
         {queued > 0 && <span style={chipStyle('info')}>{queued} queued</span>}
         {chasing && <CommsChip r={rep} />}
         {rep.stage === 's3b_us' && group.rows.some((r) => r.billing_item_id) && <span style={chipStyle('accent')}>£20+VAT invoiced</span>}
-        {rep.stage === 's5_entered' && rep.bm_code_mismatch && <span style={chipStyle('danger')}>BM mismatch</span>}
+        {rep.stage === 's5_entered' && rep.bm_code_mismatch && <span style={chipStyle('danger')}>Code mismatch</span>}
         {!stageMeta(rep.stage).terminal && (
           <PersonEmail person={first.person} requestId={first.id} actorId={actorId} onSaved={load} />
         )}
@@ -537,7 +537,7 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Companies House personal codes</h1>
           <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
-            Every director &amp; PSC by stage — from the first offer through to the Confirmation Statement filing
+            Directors and PSCs by stage
           </p>
         </div>
         <ChSubNav active="Pipeline" queuedCount={totalQueued} />

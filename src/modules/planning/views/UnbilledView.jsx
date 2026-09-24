@@ -111,9 +111,7 @@ export default function UnbilledView() {
       <div style={card}>
         <h3 style={h3}>Unbilled QBO customers</h3>
         <p style={help}>
-          These QBO customers are mapped to an Athena entity but have <b>no active recurring billing</b> set up.
-          They often indicate clients where a monthly fee hasn't been agreed, or fees that slipped through
-          the cracks. Work through the list to either set up a recurring bill or mark as one-off / not a client.
+          These clients have <b>no recurring billing</b>. Set one up, or mark them one-off or not a client.
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 12 }}>

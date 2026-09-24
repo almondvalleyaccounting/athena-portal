@@ -109,7 +109,7 @@ export default function GmailConnectionPanel() {
           Gmail not connected
         </div>
         <div style={{ fontSize: 13, color: '#78350f' }}>
-          Sign in once to connect the shared mailbox. Athena uses the connection to send client reminder emails, read replies, create draft emails, and archive processed messages. Changing what the connection is allowed to do means disconnecting and reconnecting.
+          Connect the shared mailbox for client reminders and drafts.
         </div>
       </div>
       <button

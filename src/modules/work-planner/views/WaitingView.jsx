@@ -167,7 +167,7 @@ export default function WaitingView() {
     const counts = {};
     for (const t of mine) counts[t.draft_cycle_id] = (counts[t.draft_cycle_id] || 0) + 1;
     const cycleId = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-    if (!confirm(`Approve ${mine.length} draft row${mine.length === 1 ? '' : 's'} for this person? Once everyone in the cycle approves, they auto-commit to the work plan.`)) return;
+    if (!confirm(`Approve ${mine.length} draft row${mine.length === 1 ? '' : 's'} for this person? They go live once everyone approves.`)) return;
     setApproving(assigneeId); setError(null);
     try {
       await approveMyDrafts(assigneeId, cycleId);
@@ -274,7 +274,7 @@ export default function WaitingView() {
               cursor: planning ? 'wait' : 'pointer', fontFamily: font,
               opacity: planning ? 0.6 : 1,
             }}
-            title="Re-draft the next 9 months from BM tasks using current rules"
+            title="Re-plan the next 9 months"
           >
             <Play size={12} /> {planning ? 'Planning…' : 'Plan 9 months'}
           </button>

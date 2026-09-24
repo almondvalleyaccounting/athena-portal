@@ -91,7 +91,7 @@ export default function ChangePasswordScreen({ onComplete, onLogout }) {
             lineHeight: '1.5',
           }}
         >
-          Please choose a new password before continuing.
+          Choose a new password before continuing.
         </p>
 
         <input

@@ -86,7 +86,7 @@ export default function OfferPanel({ app, profileId }) {
         </>}
       </div>
       <p style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 12 }}>
-        Tip: send the offer wording from the Comms tab (there's an “Offer” email template), then track its status here.
+        Send the offer from the Comms tab using the “Offer” template.
       </p>
     </div>
   );

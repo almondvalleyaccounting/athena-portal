@@ -64,7 +64,7 @@ const CS_SERVICE_ID = 'Confirmation Statement';
 // bulk-imported or manually-typed tasks don't get lost among the BM
 // code-verification queue, which is what "To key into BrightManager" is for.
 const TASK_GROUPS = [
-  { key: 'manually_added', label: 'Manually Added', match: (t) => t.source === 'Added manually' || t.source === 'sophie_workplan_import' },
+  { key: 'manually_added', label: 'Manually added', match: (t) => t.source === 'Added manually' || t.source === 'sophie_workplan_import' },
   { key: 'bm_keying', label: 'To key into BrightManager', match: (t) => t.kind === 'bm_code' },
   { key: 'bm_data_error', label: 'BM Data Errors', match: (t) => t.source === 'bm_data_error' },
   { key: 'person_dedup', label: 'Data quality — possible duplicate people', match: (t) => t.source === 'person_dedup' },
@@ -600,7 +600,7 @@ export default function AdminTasksPage() {
       // billable code, so a billable task needs a real service — the task
       // itself still saves, only the bill is held back.
       if (newBillable && !newService) {
-        setError('Pick a service for this task before billing it — Admin is no longer a billable code.');
+        setError('Pick a service before billing. Admin isn\'t billable.');
       } else if (newBillable) {
         // Standard fee from the price book if the amount was left blank — but a
         // typed 0 means 0 (it used to fall through to the standard fee, which
@@ -1497,7 +1497,7 @@ export default function AdminTasksPage() {
           ))}
           {filteredConfStatements.length > 0 && (
             <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 12.5, color: '#94a3b8' }}>
-              Due dates come straight from Companies House on the nightly refresh — file the statement and the row leaves this list on the next run, so there is nothing to mark complete. The rest is yours: <b>status</b> is where the work has got to, <b>next action</b> is what to do about it and by when. Both reset when the statement is filed and the next one falls due. A next action dated after the deadline is a plan, not an extension — the day count on the right does not move for it.
+              Due dates come from Companies House. Rows clear the day after filing.
             </div>
           )}
         </Section>
@@ -1624,7 +1624,7 @@ export default function AdminTasksPage() {
           ))}
           {filteredDrafts.length > 0 && (
             <div style={{ padding: '8px 16px', borderTop: '1px solid #f1f5f9', fontSize: 12.5, color: '#94a3b8' }}>
-              Marking one complete assumes you've made the change in BM. The next BM upload checks it — if the assignee still doesn't match, it reappears here.
+              Complete once changed in BM. Reappears if it still doesn't match.
             </div>
           )}
         </Section>
@@ -1717,7 +1717,7 @@ function AddBillModal({ task, serviceOptions, standardNetFor, onClose, onConfirm
   const vat = netOk ? Math.round(net * VAT_RATE * 100) / 100 : 0;
 
   const submit = (hold) => {
-    if (!serviceId) { setErr('Pick the service this work was — it decides the QuickBooks product the bill lands on.'); return; }
+    if (!serviceId) { setErr('Pick a service.'); return; }
     if (!known) { setErr(`"${serviceId}" is not a service Billing offers — pick one from the list.`); return; }
     if (!netOk) { setErr('Enter a net amount of 0 or more.'); return; }
     onConfirm({ serviceId, net, hold });
@@ -1766,7 +1766,7 @@ function AddBillModal({ task, serviceOptions, standardNetFor, onClose, onConfirm
           <button onClick={onClose} style={btn('ghost')}>Cancel</button>
           <button
             onClick={() => submit(false)}
-            title="Raise the bill but leave the task where it is — the work is not finished just because it has been billed"
+            title="Bill now, keep the task open"
             style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd' }}
           >
             <Receipt size={13} /> Bill and leave on To Do
@@ -1819,9 +1819,6 @@ function CompleteModal({ task, staffList, defaultStaffId, onClose, onConfirm }) 
             style={{ width: 70, padding: '6px 8px', fontSize: 13.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, outline: 'none' }}
           />
         </div>
-        <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 8 }}>
-          Recorded against the task — builds the picture of where admin time goes, by task type and client.
-        </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
           <button onClick={onClose} style={btn('ghost')}>Cancel</button>
@@ -1857,7 +1854,7 @@ function TaskRow({
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           {urgent && (
             <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: '#dc2626', color: '#fff', fontWeight: 700, letterSpacing: 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>
-              URGENT
+              Urgent
             </span>
           )}
           <span
@@ -1910,7 +1907,7 @@ function TaskRow({
         )}
 
         {onAddBill && (
-          <button onClick={onAddBill} title="Raise a bill for this task — creates a draft in the Billing Module, and you choose whether the task is held or stays on the list" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', flexShrink: 0 }}>
+          <button onClick={onAddBill} title="Create a draft bill for this task" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', flexShrink: 0 }}>
             <Receipt size={12} /> Add bill
           </button>
         )}

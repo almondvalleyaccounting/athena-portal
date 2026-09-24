@@ -140,8 +140,7 @@ export default function RevenueByFeeEarner() {
     <div style={{ marginBottom: 16, fontFamily: font }}>
       <h3 style={{ fontSize: 14.5, fontWeight: 700, color: '#0c4a6e', margin: '0 0 4px 0' }}>Revenue by fee earner</h3>
       <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 8px 0' }}>
-        Follows your fee-earner allocations (same source as the Fee Earner Book). Lines with no
-        allocation fall back to capacity-planner inference and are counted as “inferred”.
+        Unallocated lines are estimated and marked “inferred”.
       </p>
       {unassignedRow && unassignedRow.totalAnnual > 0 && (
         <div style={{ fontSize: 12, color: '#92400e', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '6px 10px', marginBottom: 8 }}>

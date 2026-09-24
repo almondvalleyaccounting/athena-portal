@@ -166,10 +166,10 @@ export default function PortalClientsPage() {
     return (
       <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
-          Portal Clients
+          Portal clients
         </h1>
         <p style={{ fontSize: 14.5, color: '#64748b' }}>
-          You need the Portal admin permission to manage client portal access.
+          You need the Admin permission to manage client portal access.
         </p>
       </div>
     );
@@ -179,7 +179,7 @@ export default function PortalClientsPage() {
     <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a' }}>
-          Portal Clients
+          Portal clients
         </h1>
       </div>
       <p style={{ fontSize: 14.5, color: '#64748b', marginBottom: 24 }}>

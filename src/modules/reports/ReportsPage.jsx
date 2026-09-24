@@ -224,7 +224,7 @@ export default function ReportsPage() {
           marginBottom: '32px',
         }}
       >
-        Extract reports from QuickBooks Online into the Shared Drive.
+        Save QuickBooks reports to the Shared Drive.
       </p>
 
       {/* ── Flash message ── */}
@@ -306,7 +306,7 @@ export default function ReportsPage() {
           {/* Connect new client button */}
           <button
             onClick={handleConnect}
-            title="Connect a new QBO client"
+            title="Connect a QBO client"
             style={{
               display: 'flex',
               alignItems: 'center',

@@ -162,15 +162,15 @@ export default function Sidebar() {
   // Settings group (formerly "Admin") — personal settings for everyone,
   // admin-only screens gated per child. /admin/* routes stay as-is.
   const adminChildren = [
-    { id: 'settings-me', label: 'My Settings', route: '/settings/me' },
+    { id: 'settings-me', label: 'My settings', route: '/settings/me' },
     { id: 'settings-shortcuts', label: 'Keyboard shortcuts', route: '/settings/shortcuts' },
-    isOwner && { id: 'admin-staff', label: 'Staff & Permissions', route: '/admin/staff' },
-    isOwner && { id: 'admin-portal-clients', label: 'Portal Clients', route: '/admin/portal-clients' },
-    isOwner && { id: 'admin-dashboard-access', label: 'Client Dashboard Access', route: '/admin/dashboard-access' },
-    isOwner && { id: 'admin-kpi-packs', label: 'KPI Packs', route: '/admin/kpi-packs' },
+    isOwner && { id: 'admin-staff', label: 'Staff & permissions', route: '/admin/staff' },
+    isOwner && { id: 'admin-portal-clients', label: 'Portal clients', route: '/admin/portal-clients' },
+    isOwner && { id: 'admin-dashboard-access', label: 'Client dashboard access', route: '/admin/dashboard-access' },
+    isOwner && { id: 'admin-kpi-packs', label: 'KPI packs', route: '/admin/kpi-packs' },
     isOwner && { id: 'admin-connections', label: 'Connections', route: '/admin/connections' },
-    isOwner && { id: 'admin-schedules', label: 'Scheduled Jobs', route: '/admin/schedules' },
-    canImport && { id: 'admin-import', label: 'Data Import', route: '/admin/import' },
+    isOwner && { id: 'admin-schedules', label: 'Scheduled jobs', route: '/admin/schedules' },
+    canImport && { id: 'admin-import', label: 'Data import', route: '/admin/import' },
     // Workflow consolidated into the Work Planner module's Setup area
     // (/planner/setup). Admins reach it from inside Work Planner now.
     // Admin Task List moved into the Work module below — it's practice
@@ -383,7 +383,7 @@ export default function Sidebar() {
           // modules.config model, so it's injected here rather than declared
           // as a static child.
           if (mod.id === 'work-planner' && canAdminTasks) {
-            kids = [...kids, { id: 'wp-tasks', label: 'Admin Task List', route: '/planner/tasks' }];
+            kids = [...kids, { id: 'wp-tasks', label: 'Admin task list', route: '/planner/tasks' }];
           }
           // Hide a parent group that has children defined but none visible to
           // this user (e.g. Client Work when they lack every child's permission).

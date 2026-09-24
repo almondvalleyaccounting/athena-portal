@@ -799,7 +799,7 @@ export default function ClientRemindersPage() {
         return (
           <button
             onClick={() => cyclePaid(row)}
-            title="Click to toggle paid / unpaid. Paid suppresses reminders because they've paid — use the Reminder column to exclude for other reasons."
+            title="Mark paid or unpaid. Paid clients get no reminders."
             style={{
               padding: '2px 10px', fontSize: 12, fontWeight: 600, fontFamily: font,
               background: paidMeta.bg, color: paidMeta.color, border: `1px solid ${paidMeta.border}`,
@@ -892,7 +892,7 @@ export default function ClientRemindersPage() {
         )}
         <button
           onClick={toggleAutoQueue}
-          title="Every 15 minutes during January & July, auto-fill the queue (opt-in invites for undecided clients, reminders for opted-in). Queue only — you still review and release."
+          title="In January and July, fills the queue automatically. You still review before sending."
           style={{
             padding: '2px 10px', fontSize: 12, fontWeight: 600, borderRadius: 999, cursor: 'pointer', fontFamily: font,
             background: autoQueue?.enabled ? '#f0fdf4' : '#f1f5f9',
@@ -900,14 +900,11 @@ export default function ClientRemindersPage() {
             border: `1px solid ${autoQueue?.enabled ? '#bbf7d0' : '#e2e8f0'}`,
           }}
         >
-          ⟳ Auto-queue (Jan & Jul): {autoQueue?.enabled ? 'ON' : 'OFF'}
+          ⟳ Auto-queue (Jan & Jul): {autoQueue?.enabled ? 'On' : 'Off'}
         </button>
       </div>
       <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 16px', maxWidth: 760 }}>
-        Personal-tax payment reminders (31 July payments on account, 31 January balancing payments).
-        Emails go out from the connected mailbox as normal typed emails — nothing branded. Because they
-        include personal tax figures, each client opts in or out of "tax reminders" first; button clicks
-        and replies are picked up automatically.
+        SA payment reminders for 31 January and 31 July. Clients must opt in first.
       </p>
 
       {error && <Banner tone="error" onDismiss={() => setError(null)}>{error}</Banner>}
@@ -1064,8 +1061,7 @@ export default function ClientRemindersPage() {
 
       {selected.size > 0 && !inviteTargets.length && !reminderTargets.length && (
         <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 8 }}>
-          None of the selected rows are eligible — invitations need a matched client with an email who
-          hasn't already decided; reminders need an opted-in, unpaid client with an amount.
+          None selected can be sent: they need an email, and to be opted in and unpaid for reminders.
         </div>
       )}
 

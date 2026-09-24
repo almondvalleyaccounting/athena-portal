@@ -182,10 +182,10 @@ export default function FeeEarnerBookPage() {
 
       <div style={{ marginBottom: 16 }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
-          Fee Earner Book
+          Fee earner book
         </h1>
         <p style={{ fontSize: 14, color: '#64748b' }}>
-          Practice-wide attribution of live billing and accepted-quote pipeline by fee earner or manager.
+          Billing and accepted quotes by fee earner.
         </p>
       </div>
 
@@ -213,7 +213,7 @@ export default function FeeEarnerBookPage() {
             <span style={{ textAlign: 'right' }}>Monthly × 12</span>
             <span style={{ textAlign: 'right' }}>Annual</span>
             <span style={{ textAlign: 'right' }}>One-off</span>
-            <span style={{ textAlign: 'right' }}>Pipeline (mo)</span>
+            <span style={{ textAlign: 'right' }}>Accepted quotes (mo)</span>
             <span style={{ textAlign: 'right' }}>Clients</span>
             <span style={{ textAlign: 'right' }}>Total book</span>
           </div>

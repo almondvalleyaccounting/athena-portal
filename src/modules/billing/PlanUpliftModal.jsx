@@ -67,7 +67,7 @@ export default function PlanUpliftModal({ rows, selectedKeys, onClose, onApplied
 
   const apply = async () => {
     if (preview.length === 0) return;
-    if (!window.confirm(`Stage uplift on ${preview.length} service line(s)? Pending amounts take effect ${effectiveAt}.`)) return;
+    if (!window.confirm(`Add increase on ${preview.length} service line(s)? Pending amounts take effect ${effectiveAt}.`)) return;
     setApplying(true);
     const byRow = {};
     for (const p of preview) (byRow[p.rowId] ||= []).push(p);
@@ -183,7 +183,7 @@ export default function PlanUpliftModal({ rows, selectedKeys, onClose, onApplied
         <div style={{ padding: '12px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button onClick={onClose} disabled={applying} style={btnGhost}>Cancel</button>
           <button onClick={apply} disabled={applying || totals.changed === 0} style={btnPrimary}>
-            {applying ? 'Staging…' : `Stage uplift on ${totals.changed} line${totals.changed === 1 ? '' : 's'}`}
+            {applying ? 'Adding…' : `Add increase on ${totals.changed} line${totals.changed === 1 ? '' : 's'}`}
           </button>
         </div>
       </div>

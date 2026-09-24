@@ -159,8 +159,7 @@ export default function ServicePicker({ value, options, onChange, style, disable
               that has run out of services. */}
           {options.length === 0 && (
             <div style={{ padding: '12px 12px', fontSize: 13, color: '#b45309' }}>
-              No services loaded. This list is the QuickBooks product mapping — if it
-              stays empty, it failed to load rather than being empty.
+              Services failed to load.
             </div>
           )}
 

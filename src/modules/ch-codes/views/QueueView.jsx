@@ -99,7 +99,7 @@ export default function QueueView() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Email queue</h1>
           <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
-            Review everything queued from the tiles, then send it all in one go. Nothing leaves until you press Send.
+            Nothing is sent until you press Send.
           </p>
         </div>
         <ChSubNav active="Queue" queuedCount={totalQueued} />

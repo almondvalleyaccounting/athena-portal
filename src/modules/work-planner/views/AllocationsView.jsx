@@ -530,7 +530,7 @@ function ClientsMatrix({ entities, draftMap, inferredMap, reviewerMap, staffList
             fontSize: 12, fontWeight: 700, color: '#4338ca', height: ROW_H,
             background: '#eef2ff', borderRight: '1px solid #e0e7ff',
             borderBottom: '1px solid #c7d2fe',
-          }} title="Reviewer (separate role from fee earner). Imported from BM Monitor columns; manual edits stick across re-imports.">
+          }} title="Reviewer. Your edits aren't overwritten by imports.">
             {r.label}
           </div>
         ))}
@@ -673,7 +673,7 @@ function Cell({ entityId, serviceId, draft, inferred, staffList, staffMap, isEdi
   if (isNa) {
     return (
       <div
-        title="No BM task for this service — not active for this client"
+        title="Service not active for this client"
         style={{
           width: SERVICE_COL_W, minWidth: SERVICE_COL_W, height: ROW_H,
           borderRight: '1px solid #f1f5f9',
@@ -691,7 +691,7 @@ function Cell({ entityId, serviceId, draft, inferred, staffList, staffMap, isEdi
   const tooltip = isDraft
     ? `Reallocation proposal: ${bmName || 'unassigned'} → ${feeEarnerName || 'unassigned'}`
     : isBm
-      ? `BM-inferred${isFallback ? ' (fallback from submitter)' : ''}: ${feeEarnerName}`
+      ? `From BM${isFallback ? ' (fallback from submitter)' : ''}: ${feeEarnerName}`
       : isUnassigned
         ? 'BM task exists but no assignee'
         : (feeEarnerName || 'No assignment');
@@ -733,7 +733,7 @@ function Cell({ entityId, serviceId, draft, inferred, staffList, staffMap, isEdi
       </span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         {isBm && !isFallback && (
-          <span title="BM-inferred" style={{
+          <span title="From BM" style={{
             fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
             background: 'rgba(255,255,255,0.25)', color: '#fff',
             borderRadius: 3, padding: '1px 3px',
@@ -989,7 +989,7 @@ function ReviewerCell({ entityId, serviceId, reviewerRow, staffList, staffMap, i
       onClick={onStartEdit}
       title={
         reviewerId
-          ? `${reviewerName} — ${source === 'manual' ? 'manual override' : 'from BM Monitor'} · click to edit`
+          ? `${reviewerName} — ${source === 'manual' ? 'manual' : 'from BM'} · click to edit`
           : 'No reviewer set — click to assign'
       }
       style={{
@@ -1007,7 +1007,7 @@ function ReviewerCell({ entityId, serviceId, reviewerRow, staffList, staffMap, i
             {reviewerName}
           </span>
           {source === 'manual' && (
-            <span title="Manual override (BM imports won't change this)" style={{
+            <span title="Manual (imports won't change this)" style={{
               position: 'absolute', top: 2, right: 3, fontSize: 10, fontWeight: 700,
               color: '#4338ca',
             }}>✎</span>

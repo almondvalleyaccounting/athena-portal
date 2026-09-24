@@ -130,7 +130,7 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
           Documents{documents.length ? ` (${documents.length})` : ''}
         </span>
         <label
-          title="Upload a document from our side (interview PDF, something received by email/post) — the AI reads it automatically"
+          title="Upload a document; AI reads it"
           style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600, color: '#0e7fe0', cursor: 'pointer' }}
         >
           <Upload size={12} /> {busy ? 'Uploading…' : 'Upload'}

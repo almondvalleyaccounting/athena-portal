@@ -127,7 +127,7 @@ export default function HmrcQboCompare() {
   const exportCsv = () => {
     downloadCSV(
       `hmrc-vs-quickbooks-${new Date().toISOString().slice(0, 10)}.csv`,
-      ['Client', 'Head', 'HMRC', 'QuickBooks', 'Variance', 'Status',
+      ['Client', 'Tax', 'HMRC', 'QuickBooks', 'Variance', 'Status',
        'Nominals', 'QBO as at', 'HMRC as at'],
       filtered.map((r) => [
         r.entity_name || '', HEAD_LABEL[r.head] || r.head,
@@ -161,10 +161,7 @@ export default function HmrcQboCompare() {
         carrying more than HMRC agrees.
       </p>
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
-        <b>PAYE cannot tie and is not asked to.</b> HMRC&rsquo;s PAYE figure is arrears, not a creditor, so a
-        month accrued and not yet due reads as a difference by construction — those rows say
-        <b> timing</b>, not variance. <b>CIS is an asset</b>, compared to the credit HMRC actually holds
-        rather than to a tax bill. And the two sides are as at different dates; both are on the row.
+        <b>PAYE</b> differences are usually timing. <b>CIS</b> is compared with credit HMRC holds.
       </p>
 
       <div style={{ ...card, padding: 12, marginBottom: 12, display: 'flex',
@@ -220,7 +217,7 @@ export default function HmrcQboCompare() {
               <thead>
                 <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
                   <th style={th}>Client</th>
-                  <th style={th}>Head</th>
+                  <th style={th}>Tax</th>
                   <th style={{ ...th, textAlign: 'right' }}>HMRC</th>
                   <th style={{ ...th, textAlign: 'right' }}>QuickBooks</th>
                   <th style={{ ...th, textAlign: 'right', borderLeft: '1px solid #e5e7eb' }}>Variance</th>

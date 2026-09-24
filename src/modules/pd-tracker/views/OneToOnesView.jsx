@@ -467,9 +467,7 @@ export default function OneToOnesView() {
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={lblStyle}>Actions agreed</label>
               <p style={{ fontFamily: FONT, fontSize: 12, color: '#94a3b8', margin: '-2px 0 8px' }}>
-                Pick who owns each one, and write the action itself rather than who's doing it
-                (&ldquo;Send the Excel course list&rdquo;, not &ldquo;Sophie to send…&rdquo;).
-                Actions stay in here — nothing is copied to the work planner, which the whole team can see.
+                Pick an owner and write the action. Actions stay private to this 1-2-1.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {draft.existingActions.map((a, idx) => (

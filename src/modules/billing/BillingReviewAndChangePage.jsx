@@ -473,10 +473,10 @@ export default function BillingReviewAndChangePage() {
   return (
     <div style={{ padding: '20px 28px', fontFamily: font }}>
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
-        Review and Change
+        Review and change
       </h1>
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
-        Client × service grid of ex-VAT monthly amounts. Edit cells, apply inflation, or apply a floor. Changes stage as pending — push them to QBO from the Uplift Review screen.
+        Monthly fees ex VAT. Changes wait on Push until sent to QBO.
       </p>
 
       <BillingTabs active="change" />
@@ -921,7 +921,7 @@ function ApplyUpliftModal({ services, defaultServiceId, onClose, onApplyInflatio
           </select>
           <Label style={{ marginTop: 10 }}>Floor £/month</Label>
           <input type="number" step="0.5" value={floor} onChange={(e) => setFloor(Number(e.target.value))} style={inputStyle} />
-          <p style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>Cells below the floor will be staged to the floor value. Cells already at or above are untouched.</p>
+          <p style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>Fees below the minimum are raised to it.</p>
         </>
       )}
 
@@ -931,7 +931,7 @@ function ApplyUpliftModal({ services, defaultServiceId, onClose, onApplyInflatio
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
         <button onClick={onClose} disabled={saving} style={modalBtnGhost}>Cancel</button>
         <button onClick={apply} disabled={saving} style={modalBtnPrimary}>
-          {saving ? 'Staging…' : 'Stage uplift'}
+          {saving ? 'Adding…' : 'Add increase'}
         </button>
       </div>
     </ModalShell>
@@ -966,7 +966,7 @@ function AddServiceModal({ services, entities, qboItems, defaults, onClose, onAp
         {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
       </select>
 
-      <Label style={{ marginTop: 12 }}>QBO service item</Label>
+      <Label style={{ marginTop: 12 }}>QBO product</Label>
       <select
         value={qboItemId}
         onChange={(e) => {
@@ -980,7 +980,7 @@ function AddServiceModal({ services, entities, qboItems, defaults, onClose, onAp
         }}
         style={inputStyle}
       >
-        <option value="">— pick QBO item —</option>
+        <option value="">— pick product —</option>
         {qboItems.map((it) => (
           <option key={it.qbo_item_id} value={it.qbo_item_id}>{it.name}</option>
         ))}

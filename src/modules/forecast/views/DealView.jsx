@@ -74,15 +74,15 @@ export default function DealView({
 
       {usingScoped && (
         <div style={{ padding: '8px 12px', fontSize: 13, color: '#7c2d12', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, marginBottom: 12 }}>
-          Filter active. EV / IRR / MOIC below are <strong>group-level</strong> (exit deal mechanics live at the group). Scoped LTM EBITDA shown for reference.
+          Filter active. EV / IRR / MOIC below are <strong>group-level</strong> (exit deal mechanics live at the group). Scoped EBITDA (last 12 months) shown for reference.
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
         <ClickableKPI onClick={() => setExplainKey('ev')} label="Enterprise value" value={fmtP(ev, { compact: true })} hint="EBITDA × multiple" />
-        <ClickableKPI onClick={() => setExplainKey('ebitda')} label="EBITDA at exit (LTM)" value={fmtP(eb, { compact: true })} hint={usingScoped ? 'group' : 'click to drill'} />
+        <ClickableKPI onClick={() => setExplainKey('ebitda')} label="EBITDA at exit (last 12 months)" value={fmtP(eb, { compact: true })} hint={usingScoped ? 'group' : 'click to drill'} />
         {usingScoped && scopedLtmEbitda != null && (
-          <KPI label={`LTM EBITDA · ${filterLabel(filter, entities, groups)}`} value={fmtP(scopedLtmEbitda, { compact: true })} color={colors.accent} />
+          <KPI label={`EBITDA, last 12 months · ${filterLabel(filter, entities, groups)}`} value={fmtP(scopedLtmEbitda, { compact: true })} color={colors.accent} />
         )}
         <ClickableKPI onClick={() => setExplainKey('netdebt')} label="Net debt" value={fmtP(nd, { compact: true })} hint={nd < 0 ? 'net cash position' : 'click to drill'} />
         <ClickableKPI onClick={() => setExplainKey('equity')} label="Equity proceeds (net)" value={fmtP(eq, { compact: true })} hint="click to drill" />
@@ -210,7 +210,7 @@ function DealExplainModal({ kpiKey, exit, outputs, forecast, onClose }) {
     },
     ebitda: {
       title: `EBITDA at exit · ${periodAt(exitPeriod)}`,
-      formula: 'Sum of monthly EBITDA over the trailing 12 months (LTM)',
+      formula: 'Sum of monthly EBITDA over the last 12 months',
       steps: [
         { label: 'Last-twelve-months window', value: `${periodAt(ltmStart)} – ${periodAt(exitPeriod)}`, kind: 'note' },
         ...monthlyEbitda.map(r => ({
@@ -218,7 +218,7 @@ function DealExplainModal({ kpiKey, exit, outputs, forecast, onClose }) {
           value: fmtP(r.amount, { compact: true }),
           kind: 'derived',
         })),
-        { label: 'LTM EBITDA', value: fmtP(ltmTotal, { compact: true }), kind: 'result' },
+        { label: 'EBITDA, last 12 months', value: fmtP(ltmTotal, { compact: true }), kind: 'result' },
       ],
     },
     netdebt: {

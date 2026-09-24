@@ -71,11 +71,8 @@ export default function CompaniesHouseView() {
           Companies House sync
         </h2>
         <p style={{ fontSize: 14, color: '#64748b', margin: '8px 0 20px' }}>
-          Pulls active officers (directors, secretaries), individual PSCs (shareholders ≥ 25%),
-          company status (Active, In Liquidation, proposal to strike off…) and the Confirmation
-          Statement due date from Companies House for every limited-company client.
-          This also runs <strong>automatically every night</strong> (from ~2am), with a
-          confirmation email each morning — the buttons below are for on-demand runs.
+          Updates officers, PSCs, company status and confirmation statement dates from Companies
+          House. Runs <strong>nightly</strong>; use the buttons to run now.
         </p>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

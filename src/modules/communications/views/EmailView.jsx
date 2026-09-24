@@ -1344,7 +1344,7 @@ export default function EmailView() {
           {labelId === 'INBOX' && !q && (
             <label
               style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
-              title="Threads that are only your own outbound mail — Gmail files these in the inbox when they go to a list this mailbox is on"
+              title="Hide threads that are only your own sent mail"
             >
               <input
                 type="checkbox"
@@ -1355,7 +1355,7 @@ export default function EmailView() {
               Hide my own sent mail
             </label>
           )}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }} title="Conversations fetched per view. Bigger pages take longer and are what the sort works across.">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }} title="Conversations per page">
             Load
             <select
               value={pageSize}
@@ -1413,7 +1413,7 @@ export default function EmailView() {
             <button
               disabled={learnBusy || sweepBusy}
               onClick={() => doLearnTags(false)}
-              title="Scan this mailbox's labelled threads and refresh the sender→tag rules"
+              title="Learn tags from your existing labels"
               style={{ ...sweepBtn, marginLeft: 'auto', background: 'transparent' }}
             >
               {tagRules.length === 0 && !learnBusy ? 'Learn from my labels' : 'Re-learn'}
@@ -1608,7 +1608,7 @@ export default function EmailView() {
               value={sigDraft}
               onChange={(e) => setSigDraft(e.target.value)}
               rows={7}
-              placeholder={'Kind regards,\nBobby\nAlmond Valley Accounting'}
+              placeholder={'Kind regards,\nJane Smith\nAlmond Valley Accounting'}
               style={{ padding: '9px 11px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, resize: 'vertical', lineHeight: 1.5 }}
             />
             <div style={{ display: 'flex', gap: 14, fontSize: 13.5, color: '#334155' }}>

@@ -302,9 +302,7 @@ function RankedList({ tax, onPick }) {
       <ErrorBar message={error} />
 
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 12, lineHeight: 1.55 }}>
-        {meta.label} for every client, ranked. <b>Click a client</b> to open their own {meta.label} detail —
-        they stay selected as you move between tax tabs. The practice-wide make-up of this figure is on
-        the Breakdown tab.
+        <b>Click a client</b> for detail.
       </p>
 
       {creditsHidden && (
@@ -368,10 +366,10 @@ function RankedList({ tax, onPick }) {
               marginTop: 10, fontSize: 13, color: '#78350f', lineHeight: 1.5, whiteSpace: 'normal',
             }}>
               <b>{fmtGbpDetailed(orphaned.total)}</b> is excluded from this table:{' '}
-              {orphaned.names.length} HMRC record{orphaned.names.length === 1 ? '' : 's'} could not be matched
-              to an Athena client, so there is nobody to rank them against
+              {orphaned.names.length} HMRC record{orphaned.names.length === 1 ? ' isn’t' : 's aren’t'} matched
+              to a client
               {orphaned.names.length <= 4 && <> — {orphaned.names.join(', ')}</>}.
-              Usually HMRC has truncated the name; fix it on the Reconciliation tab.
+              Fix {orphaned.names.length === 1 ? 'it' : 'them'} on the 64-8 tab.
             </div>
           )}
         </div>
@@ -434,8 +432,7 @@ function ClientTaxDetail({ tax, entityId, name, drill, setDrill }) {
       <>
         <ErrorBar message={error} />
         <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
-          Nothing scraped for {name} on {meta.label}. Either they are not registered for it, or the scrape
-          has not reached them — the banner above says when each head was last run.
+          No {meta.label} data for {name}. Not registered, or not checked yet.
         </div>
       </>
     );
@@ -672,8 +669,7 @@ function VatDetail({ rows, name, meta, moves, drill, setDrill }) {
         </table>
       </div>
       <Foot>
-        An assessment and an unpaid return are different problems. An assessment means no return was filed and
-        HMRC has estimated it — paying it settles the money but leaves the return outstanding.
+        An assessment means no return was filed. Paying it doesn&rsquo;t file the return.
       </Foot>
     </div>
   );
@@ -802,8 +798,8 @@ function SaDetail({ rows, txns, name, meta, moves, drill, setDrill }) {
 const MOVEMENT_META = {
   paid_by_client:   { label: 'Paid by client',      colour: '#0f172a', hint: 'Money the client actually paid HMRC' },
   cash_to_client:   { label: 'Repaid to client',    colour: '#059669', hint: 'HMRC repaid this to the client' },
-  from_another_tax: { label: 'In from another tax', colour: '#7c3aed', hint: 'Credit moved across from another tax head' },
-  to_another_tax:   { label: 'Out to another tax',  colour: '#c2410c', hint: 'Credit moved away to another tax head' },
+  from_another_tax: { label: 'In from another tax', colour: '#7c3aed', hint: 'Credit moved across from another tax' },
+  to_another_tax:   { label: 'Out to another tax',  colour: '#c2410c', hint: 'Credit moved away to another tax' },
   internal_ct:      { label: 'Between CT periods',  colour: '#64748b', hint: 'Moved between accounting periods of the same tax' },
   other:            { label: 'Other',               colour: '#94a3b8' },
   unclear:          { label: 'Unclear',             colour: '#94a3b8' },
@@ -825,7 +821,7 @@ function Movements({ moves, match, label, onClose, paymentsHeld = true }) {
       {!paymentsHeld && (
         <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a',
                       borderRadius: 4, padding: '6px 10px', marginBottom: 8, lineHeight: 1.45, maxWidth: 640 }}>
-          Reallocations only. The scrape does not yet read HMRC&rsquo;s &ldquo;Less paid&rdquo; breakdown, so
+          Reallocations only. The HMRC check does not yet read HMRC&rsquo;s &ldquo;Less paid&rdquo; breakdown, so
           payments against this period are missing here even though the Paid column above counts them.
         </div>
       )}

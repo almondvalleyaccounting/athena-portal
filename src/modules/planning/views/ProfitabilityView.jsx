@@ -68,10 +68,7 @@ export default function ProfitabilityView() {
           <div>
             <h3 style={h3}>Client profitability</h3>
             <p style={help}>
-              Revenue per client minus cost-to-serve, using last-12-months logged timesheets. Hourly cost per
-              staff is <code>fully-loaded salary ÷ max(target hours, actual LTM hours)</code> — if someone
-              over-delivers, their effective rate drops, and vice versa. Clients with no logged time cost nothing
-              (by design) — they appear as 100% margin until someone records work against them.
+              Fee less staff cost of logged time (last 12 months). Clients with no time show 100%.
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -84,7 +81,7 @@ export default function ProfitabilityView() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginTop: 16 }}>
           <Stat label="Revenue (annual)" value={fmtGBP(totals.revenue)} colour="#0e7fe0" big />
-          <Stat label="Cost to serve (LTM)" value={fmtGBP(totals.cost)} colour="#7c3aed" />
+          <Stat label="Cost to serve (12 mo)" value={fmtGBP(totals.cost)} colour="#7c3aed" />
           {/* With (almost) no time logged every client costs £0 and the margin
               reads 100% — a number that means nothing. Say that instead. */}
           {timedShare < 0.2 ? (
@@ -92,14 +89,14 @@ export default function ProfitabilityView() {
           ) : (
             <Stat label="Gross margin" value={fmtGBP(totals.margin)} sub={fmtPct(totals.margin_pct)} colour={totals.margin >= 0 ? '#059669' : '#dc2626'} big />
           )}
-          <Stat label="Blended £/hour" value={fmtGBP(totals.blended_rate)} sub={`${totals.hours.toFixed(0)} hrs LTM`} colour="#64748b" />
+          <Stat label="Blended £/hour" value={fmtGBP(totals.blended_rate)} sub={`${totals.hours.toFixed(0)} hrs (12 mo)`} colour="#64748b" />
           <Stat label="Clients at a loss" value={timedShare < 0.2 ? '—' : totals.at_loss} colour={totals.at_loss > 0 ? '#dc2626' : '#64748b'} />
         </div>
 
         {timesheets.length === 0 && !loading && (
           <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginTop: 16, fontSize: 13, color: '#92400e' }}>
             <AlertTriangle size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-            No timesheet entries in LTM — profitability calc shows 100% margin for every client until staff start logging time.
+            No time logged in the last 12 months, so every margin shows 100%.
           </div>
         )}
       </div>
@@ -131,7 +128,7 @@ export default function ProfitabilityView() {
             <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
               <th style={th}>Client</th>
               <th style={{ ...th, textAlign: 'right' }}>Annual £</th>
-              <th style={{ ...th, textAlign: 'right' }}>Hrs LTM</th>
+              <th style={{ ...th, textAlign: 'right' }}>Hours (12 mo)</th>
               <th style={{ ...th, textAlign: 'right' }}>Effective £/hr</th>
               <th style={{ ...th, textAlign: 'right' }}>Cost to serve</th>
               <th style={{ ...th, textAlign: 'right' }}>Margin £</th>
@@ -140,7 +137,7 @@ export default function ProfitabilityView() {
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={8} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>Loading LTM timesheets…</td></tr>}
+            {loading && <tr><td colSpan={8} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>Loading timesheets…</td></tr>}
             {!loading && filtered.length === 0 && <tr><td colSpan={8} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>No clients match.</td></tr>}
             {filtered.map((r) => {
               const atLoss = r.margin < 0;

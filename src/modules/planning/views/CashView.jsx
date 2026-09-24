@@ -139,7 +139,7 @@ export default function CashView() {
           <b>The cash model is missing costs:</b> {grossPayrollMonthly === 0 ? 'no staff salaries are entered (Staff tab)' : ''}
           {grossPayrollMonthly === 0 && overheadNetMonthly === 0 ? ' and ' : ''}
           {overheadNetMonthly === 0 ? 'no overhead lines exist (Overheads tab — seed them from QBO)' : ''}.
-          Until they're in, the payroll floor and outgoings below are understated and the safe-draw figure is meaningless.
+          Until then, safe to draw is unreliable.
         </div>
       )}
       {err && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', fontSize: 13.5, color: '#991b1b', marginBottom: 12 }}>{err}</div>}
@@ -165,16 +165,14 @@ export default function CashView() {
         </div>
       </div>
       <p style={{ fontSize: 12.5, color: GREY, margin: '0 0 16px', lineHeight: 1.6 }}>
-        Safe-to-draw = the minimum, across the next 12 months, of projected cash less unpaid VAT and CT provisions less the
-        payroll floor — so taking it today still leaves the floor intact when the VAT quarter and the CT bill land.
+        Safe to draw: lowest projected cash in the next 12 months, after VAT, corporation tax and the payroll floor.
       </p>
 
       {/* 13-week chart */}
       <div style={card}>
         <h3 style={h3}>Next 13 weeks</h3>
         <p style={sub}>
-          Projected bank balance week by week. The shaded line is the ring-fence (VAT + CT provisions + payroll floor) —
-          the balance dipping toward it is what limits drawings, not the balance itself.
+          Projected weekly balance. The shaded line is money set aside for VAT, tax and payroll.
         </p>
         <WeeklyChart weeks={fc.weeks} floor={fc.floor} />
       </div>

@@ -109,7 +109,7 @@ function SchemeCard({ scheme, profile, entityId, onSaved }) {
         <span style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a' }}>Owes HMRC</span>
         <Pill colour={tier.colour} bg="#fff" title={tier.hint}>{tier.label}</Pill>
         <span style={{ fontSize: 12.5, color: '#64748b' }}>
-          PAYE {scheme.paye_ref} · scraped {dateTime(scheme.scraped_at)}
+          PAYE {scheme.paye_ref} · checked {dateTime(scheme.scraped_at)}
         </span>
         <div style={{ flex: 1 }} />
         <RefreshButton entityId={entityId} compact />

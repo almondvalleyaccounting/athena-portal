@@ -115,7 +115,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                 {scheme.accounts_office_ref && <> · Accounts Office <b>{scheme.accounts_office_ref}</b></>}
               </div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
-                Scraped {dateTime(scheme.scraped_at)} · tax year {scheme.tax_year || '—'}
+                Checked {dateTime(scheme.scraped_at)} · tax year {scheme.tax_year || '—'}
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -198,7 +198,7 @@ export default function SchemeDetailPanel({ scheme, onClose }) {
                 title="Monthly position"
                 subtitle={years.length
                   ? 'What was charged, what was relieved by credits, what has been paid'
-                  : 'No monthly rows scraped for this scheme'}
+                  : 'No monthly rows found for this scheme'}
                 aside={years.length > 1 && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {years.map((y) => {

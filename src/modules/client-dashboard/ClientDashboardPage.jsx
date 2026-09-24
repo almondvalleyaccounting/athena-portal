@@ -715,7 +715,7 @@ export default function ClientDashboardPage() {
                     {selectedName} needs to reconnect QuickBooks
                   </div>
                   <div style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#92400e' }}>
-                    Live pulls are failing because no usable access tokens are stored for this client.
+                    QuickBooks connection has expired.
                     Reconnect them (Reports → Connect).
                     {hasCache ? ` Showing cached figures from ${timeAgo(lastPulled)}.` : ''}
                   </div>
@@ -806,7 +806,7 @@ export default function ClientDashboardPage() {
                   // selector only anchors buildBuckets, so without them the tab
                   // reads the same newest bucket whatever the page filter says.
                   period={period} grain={grain} basis={basis} fiscalYear={fiscalYear}
-                  bar={viewBar({ showView: false, note: 'This tab is the underlying view — the toggle above would say the same thing twice.' })}
+                  bar={viewBar({ showView: false })}
                 />
               )}
               {tab === 'kpis' && (

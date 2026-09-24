@@ -728,8 +728,8 @@ export function computeChurnScores({ clientBillings, clientOverrides, timesheetE
 
     // 3. No recent work logged (engagement proxy)
     const hrs = hoursByEntity.get(b.entity_id) || 0;
-    if (hrs === 0) { signals.push({ label: 'No time logged in LTM', weight: 10 }); score += 10; }
-    else if (hrs < 2) { signals.push({ label: 'Very low engagement (<2h LTM)', weight: 5 }); score += 5; }
+    if (hrs === 0) { signals.push({ label: 'No time logged in the last 12 months', weight: 10 }); score += 10; }
+    else if (hrs < 2) { signals.push({ label: 'Very low engagement (<2h in 12 months)', weight: 5 }); score += 5; }
 
     // 4. Fee override pushing monthly below baseline (price pressure)
     if (ov?.fee_override_monthly != null && Number(ov.fee_override_monthly) < b.monthly_net * 0.8) {

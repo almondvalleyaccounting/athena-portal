@@ -127,9 +127,7 @@ export default function ReportsTab({
             No saved reports
           </div>
           <p style={{ fontFamily: OUTFIT, fontSize: '14px', color: '#64748b', maxWidth: '480px', margin: '0 auto 18px', lineHeight: 1.6 }}>
-            A report is a set of rows you care about — turnover, profit, occupancy, whatever matters
-            for this client — at a grain you choose. Build it once and it is there every month.
-            Save it against the sector and every client in that sector gets it too.
+            Pick the rows to track. Save to a sector to share with all its clients.
           </p>
           <button onClick={() => setEditing(blankReport())} style={primaryBtn}>
             <Plus size={15} /> Build one

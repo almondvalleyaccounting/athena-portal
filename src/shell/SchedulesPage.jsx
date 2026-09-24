@@ -50,8 +50,8 @@ const CATEGORY_BLURB = {
   'Client-facing automation': 'Jobs that can put something in front of a client.',
   'Internal digests & alerts': 'What Athena tells the team, and when.',
   'Control checks': 'Recurring checks that our records and the client’s agree.',
-  Housekeeping: 'Plumbing. Nothing user-facing.',
-  Undocumented: 'Scheduled in the database with no description written yet.',
+  Housekeeping: 'Background maintenance.',
+  Undocumented: 'No description yet.',
 };
 
 /* Live / Disarmed / Paused — the distinction that actually matters.
@@ -295,8 +295,7 @@ function ScheduleEditor({ job, onSaveSchedule, onToggleActive, busy }) {
       )}
       {job.source === 'external' && (
         <div style={{ fontSize: 13.5, color: '#92400e', marginTop: 6 }}>
-          Athena only records the intended cadence for this one — the scheduler on the
-          machine that runs it has to be pointed at the same time separately.
+          Runs outside Athena. Change its schedule on that machine too.
         </div>
       )}
     </div>
@@ -447,7 +446,7 @@ export default function SchedulesPage() {
     mutate(
       `${jobKey}:json`,
       () => supabase.rpc('set_scheduled_job_claude_settings', { p_job_key: jobKey, p_settings: parsed }),
-      'Runner settings saved.',
+      'Extra settings saved.',
     );
   };
 
@@ -492,10 +491,10 @@ export default function SchedulesPage() {
     return (
       <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
         <h1 style={{ fontFamily: serif, fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
-          Scheduled Jobs
+          Scheduled jobs
         </h1>
         <p style={{ fontSize: 14.5, color: '#64748b' }}>
-          You need the Portal admin permission to view the schedule.
+          You need the Admin permission to view the schedule.
         </p>
       </div>
     );
@@ -517,14 +516,11 @@ export default function SchedulesPage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 8 }}>
         <div style={{ flex: 1 }}>
           <h1 style={{ fontFamily: serif, fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
-            Scheduled Jobs
+            Scheduled jobs
           </h1>
           <p style={{ fontSize: 14.5, color: '#64748b', maxWidth: 780, lineHeight: 1.6 }}>
-            Everything Athena runs on a timer — what it does, where it gets its data,
-            when it next fires, and the settings it obeys. Open a row to change a
-            switch, a threshold or the schedule itself; changes take effect on the next
-            run. The database clock is <strong>UTC</strong>, so a job set for 08:00 lands
-            at 09:00 London through the summer.
+            Automated jobs. Open a row to change its settings or schedule. Times are
+            {' '}<strong>UTC</strong> (08:00 = 09:00 in summer).
           </p>
         </div>
         <button onClick={load} style={{ ...btn(false), padding: '8px 14px', fontSize: 14, flexShrink: 0 }}>
@@ -683,8 +679,8 @@ export default function SchedulesPage() {
                         )}
 
                         <TextBlock
-                          label="Instructions for the runner"
-                          hint="Read back by the automation itself via scheduled_job_brief() — so this is the copy that governs the run, not a note about it."
+                          label="Job instructions"
+                          hint="The job follows these instructions."
                           value={job.instructions}
                           placeholder="What should the runner do, and what should it refuse to do?"
                           onSave={(t) => saveInstructions(job.job_key, t)}
@@ -694,8 +690,8 @@ export default function SchedulesPage() {
                         {(job.source === 'external'
                           || (job.claude_settings && Object.keys(job.claude_settings).length > 0)) && (
                           <TextBlock
-                            label="Runner settings (JSON)"
-                            hint="Knobs with no config table of their own. Merged into the settings the runner reads; a bound setting above always wins."
+                            label="Extra settings (JSON)"
+                            hint="Settings above take priority."
                             value={JSON.stringify(job.claude_settings || {}, null, 2)}
                             placeholder='{"services": ["paye", "corporation-tax"]}'
                             onSave={(t) => saveClaudeSettings(job.job_key, t)}
@@ -759,17 +755,6 @@ export default function SchedulesPage() {
         </section>
       )}
 
-      {!loading && !error && (
-        <p style={{ fontSize: 13.5, color: '#94a3b8', lineHeight: 1.6, maxWidth: 780 }}>
-          Settings here are not copies: each one writes the config column the job already
-          reads, and only columns with a registered binding can be written at all.
-          Schedules change <code style={{ fontFamily: mono }}>cron.job</code> directly. An
-          automation reads its own switches and instructions back with{' '}
-          <code style={{ fontFamily: mono }}>scheduled_job_brief(job_key)</code> and reports
-          the outcome with <code style={{ fontFamily: mono }}>scheduled_job_report_run(…)</code>,
-          which is what fills the last-run column for work scheduled outside the database.
-        </p>
-      )}
     </div>
   );
 }

@@ -116,7 +116,7 @@ export default function PricingView() {
   async function stageUplift() {
     const targets = rows.filter((r) => selected.has(r.id));
     if (targets.length === 0) return;
-    if (!window.confirm(`Stage a ${pct}% uplift on ${targets.length} client${targets.length !== 1 ? 's' : ''}? They appear on Billing Review → Change for approval; nothing reaches QuickBooks or the client from here.`)) return;
+    if (!window.confirm(`Stage a ${pct}% uplift on ${targets.length} client${targets.length !== 1 ? 's' : ''}? They'll go to Billing Review for approval.`)) return;
     setStaging(true); setMsg(null);
     let ok = 0; const errs = [];
     for (const r of targets) {
@@ -160,10 +160,7 @@ export default function PricingView() {
           column of "no time data" whisper it. */}
       {rows.length > 10 && timeCoveredClients < rows.length * 0.1 && (
         <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 13.5, color: '#92400e', lineHeight: 1.6 }}>
-          <b>Margins are blind right now:</b> the last twelve months hold time entries for only {timeCoveredClients} of {rows.length} clients,
-          so the margin and £/hr columns are empty for nearly everyone. The uplift workflow works regardless — but pricing decisions can't
-          be cost-informed until either the team logs time in Athena, or we cost clients from planned effort per service instead
-          (a decision for the People phase of the planning overhaul).
+          <b>Margins are missing:</b> only {timeCoveredClients} of {rows.length} clients have logged time in the last 12 months.
         </div>
       )}
       {/* Round modeller */}
@@ -171,9 +168,7 @@ export default function PricingView() {
         <div>
           <h3 style={h3}>Model the round</h3>
           <p style={{ ...sub, maxWidth: 520 }}>
-            Pick clients below, choose the percentage, and stage. Staged uplifts land on
-            <b> Billing Review → Change</b> for approval, the client email and the QBO push — nothing
-            is sent from this page.
+            Pick clients and a percentage. Uplifts go to <b>Billing Review → Change</b> for approval.
           </p>
         </div>
         <Field label="Uplift %">
@@ -239,7 +234,7 @@ export default function PricingView() {
                 <th style={{ ...th, textAlign: 'left' }}>Client</th>
                 <th style={th}>Monthly fee</th>
                 <th style={th}>Proposed</th>
-                <th style={th}>Hours LTM</th>
+                <th style={th}>Hours (12 mo)</th>
                 <th style={th}>£/hr effective</th>
                 <th style={th}>Margin</th>
                 <th style={th}>Last uplift</th>
@@ -262,8 +257,8 @@ export default function PricingView() {
                     <td style={{ ...td, textAlign: 'left' }}>
                       {r.entity_name}
                       {r.template_linked
-                        ? <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: '#fff', background: GREEN, padding: '1px 5px', borderRadius: 4 }}>CONTRACTED</span>
-                        : <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: '#fff', background: AMBER, padding: '1px 5px', borderRadius: 4 }}>ESTIMATE</span>}
+                        ? <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: '#fff', background: GREEN, padding: '1px 5px', borderRadius: 4 }}>Contracted</span>
+                        : <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: '#fff', background: AMBER, padding: '1px 5px', borderRadius: 4 }}>Estimate</span>}
                     </td>
                     <td style={td}>{fmtGBP(r.monthly_net)}</td>
                     <td style={{ ...td, color: GREEN, fontWeight: 600 }}>{selected.has(r.id) ? fmtGBP(proposedRow) : '—'}</td>
@@ -296,9 +291,7 @@ export default function PricingView() {
       </div>
 
       <p style={{ fontSize: 12.5, color: GREY, marginTop: 10, lineHeight: 1.6 }}>
-        Margin = annual fee less cost-to-serve from the last twelve months of timesheets at fully-loaded staff rates
-        (same maths as the Profitability tab). "No time data" means no hours were logged against the client — the fee
-        may still be fine. Clients already staged are locked here until the round is released or rejected in Billing.
+        Margin is annual fee less staff cost of logged time (last 12 months). Staged clients are locked until approved or rejected.
       </p>
     </div>
   );

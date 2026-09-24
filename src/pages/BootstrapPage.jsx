@@ -16,13 +16,12 @@ VALUES ('${user.id}', 'Bobby Gallacher', '${user.email}', true, true, true, true
             style={{ imageRendering: 'auto' }}
           />
           <h1 className="text-2xl font-bold text-ocean-700">ATHENA</h1>
-          <p className="text-xs text-gray-400 mt-1">First-Time Setup</p>
+          <p className="text-xs text-gray-400 mt-1">First-time setup</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-amber-700 mb-2">Staff profile not found</h2>
           <p className="text-xs text-gray-600 mb-4">
-            Your auth account exists but you don't have a staff_profiles row yet. RLS blocks all
-            data access without it. Go to Supabase Dashboard → SQL Editor and run:
+            No staff profile yet. An admin needs to run:
           </p>
           <pre className="text-xs font-mono bg-gray-50 p-3 rounded border border-gray-100 overflow-x-auto mb-4 whitespace-pre-wrap">
             {sql}

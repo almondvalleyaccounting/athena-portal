@@ -280,8 +280,8 @@ export default function NewOnboardingView() {
                 {preview.quote
                   ? `Linked to quote ${preview.quote.quote_ref || ''} (${preview.quote.status}) — conditional steps resolved from its services.${['committed', 'accepted'].includes(preview.quote.status) ? '' : ' The "Accepted quote" step stays open until the client accepts.'}`
                   : preview.hasBilling
-                    ? 'No quote, but this client has active QBO billing — services resolved from it (existing client).'
-                    : 'This client has no quote or live billing yet — all steps start as To do; mark N/A manually, or create the quote first so services resolve automatically.'}
+                    ? 'No quote; services taken from QBO billing.'
+                    : 'No quote or billing, so all steps start as To do.'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 480, overflowY: 'auto' }}>
                 {groups.map(([groupName, items]) => (

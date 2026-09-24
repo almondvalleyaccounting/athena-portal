@@ -464,7 +464,7 @@ function PeriodBar({
           {periodLabel && ` Set by the page filter (${periodLabel}) and the grain above.`}
           {comparator
             ? ` Movements compare against ${spanDates(comparator)}.`
-            : ' No movement is shown: the equally long stretch before this one has not been pulled, and a comparison against a part-filled range would read as a collapse in trade.'}
+            : ' No comparison: the previous period isn\'t loaded.'}
         </span>
       </div>
 
@@ -496,9 +496,7 @@ function PartsTable({ parts, total, currency, grain, basis }) {
         The {parts.length} {unitWord(grain, parts.length)} behind that total
       </div>
       <p style={{ fontFamily: OUTFIT, fontSize: '13.5px', color: '#64748b', margin: '0 0 12px', lineHeight: 1.55 }}>
-        The total is not these rows added up on the margin line — income and profit are summed
-        across every month and the margin worked out once from those, because an average of five
-        margins is not the margin of five years.
+        Margin is worked out from total income and profit, not averaged.
       </p>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>

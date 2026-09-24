@@ -143,9 +143,7 @@ export default function NominalMapBulk() {
       <ErrorBar message={error} />
 
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 6, lineHeight: 1.55 }}>
-        Map the whole book at once. Proposals come from <b>QuickBooks&rsquo; own account typing</b>
-        (<code style={{ fontSize: 12.5 }}>AccountSubType</code>), which QBO sets when a feature is switched
-        on — not from account names, which the per-client screen rightly calls a trap.
+        Map every client at once, using QuickBooks&rsquo; account types.
       </p>
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 940, marginTop: 0, marginBottom: 14, lineHeight: 1.6 }}>
         <b>PAYE and net wages are never offered in bulk.</b> Their sub-types hold several different

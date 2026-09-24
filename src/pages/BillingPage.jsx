@@ -1082,7 +1082,7 @@ export default function BillingPage() {
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
               <div className="grid text-xs font-medium text-gray-400 px-4 py-2 border-b border-gray-100" style={{ gridTemplateColumns: '60px 1.5fr 1fr 1fr 2fr' }}>
                 <span>Dir</span>
-                <span>Entity</span>
+                <span>Client</span>
                 <span>Status</span>
                 <span>Time</span>
                 <span>Detail</span>

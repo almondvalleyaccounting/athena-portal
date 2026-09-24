@@ -38,7 +38,7 @@ export default function OverheadsView() {
     try {
       const r = await pullQboPL();
       if (r.success) {
-        setPullMsg({ kind: 'ok', text: `Pulled ${r.expenses.length} expense accounts (${r.period.start} to ${r.period.end}). Your existing lines aren't overwritten — only the LTM-actual column updates.` });
+        setPullMsg({ kind: 'ok', text: `Pulled ${r.expenses.length} expense accounts (${r.period.start} to ${r.period.end}). Your existing lines aren't overwritten — only the 12-month actual column updates.` });
       } else {
         setPullMsg({ kind: 'err', text: r.error || 'QBO pull failed', raw: r.raw });
       }
@@ -61,7 +61,7 @@ export default function OverheadsView() {
         </div>
         {syncRuns.length === 0 ? (
           <span style={{ fontSize: 13, color: '#94a3b8' }}>
-            Scheduled 03:00 UTC daily. Never run yet — needs vault secret <code>planning_service_role_key</code> set via Supabase SQL editor (see migration).
+            Runs nightly. Not run yet; ask an admin to finish setup.
           </span>
         ) : (
           <>
@@ -84,7 +84,7 @@ export default function OverheadsView() {
 
       <div style={card}>
         <h3 style={h3}>Overhead assumptions</h3>
-        <p style={help}>Monthly forecasts are held flat across the year and then inflated annually on the fee-uplift month. Seeded from QBO P&L last 12 months — refresh any time.</p>
+        <p style={help}>Based on the last 12 months in QBO. Rises each year in the fee-uplift month.</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
           <Field label="Annual overhead inflator %">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -100,8 +100,8 @@ export default function OverheadsView() {
             </div>
           </Field>
           <Stat label="Forecast / mo" value={fmtGBP(totalMonthly)} sub={`${fmtGBP(totalAnnual)}/yr`} />
-          <Stat label="QBO LTM actual" value={fmtGBP(totalLTM)}
-            sub={totalLTM > 0 ? `Forecast is ${((totalAnnual - totalLTM) / totalLTM * 100).toFixed(0)}% vs LTM` : '—'} />
+          <Stat label="QBO actual (12 mo)" value={fmtGBP(totalLTM)}
+            sub={totalLTM > 0 ? `Forecast is ${((totalAnnual - totalLTM) / totalLTM * 100).toFixed(0)}% vs last 12 months` : '—'} />
         </div>
       </div>
 
@@ -124,7 +124,7 @@ export default function OverheadsView() {
         )}
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
           <button onClick={handlePull} disabled={pulling} style={{ ...btnOutline, opacity: pulling ? 0.5 : 1 }}>
-            <RefreshCw size={14} /> {pulling ? 'Pulling…' : 'Refresh LTM totals'}
+            <RefreshCw size={14} /> {pulling ? 'Pulling…' : 'Refresh 12-month totals'}
           </button>
           <button onClick={handleMonthlyPull} disabled={pulling} style={{ ...btnDark, opacity: pulling ? 0.5 : 1 }}
             title="Pulls QBO P&L month-by-month so the Overview can show actual-vs-plan variance for closed months.">
@@ -141,8 +141,8 @@ export default function OverheadsView() {
               <th style={th}>Category</th>
               <th style={{ ...th, textAlign: 'right' }}>Monthly forecast</th>
               <th style={{ ...th, textAlign: 'right' }}>Annual forecast</th>
-              <th style={{ ...th, textAlign: 'right' }}>QBO LTM actual</th>
-              <th style={{ ...th, textAlign: 'right' }}>Δ vs LTM</th>
+              <th style={{ ...th, textAlign: 'right' }}>QBO actual (12 mo)</th>
+              <th style={{ ...th, textAlign: 'right' }}>Δ vs 12 mo</th>
               <th />
             </tr>
           </thead>

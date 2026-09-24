@@ -92,7 +92,7 @@ export default function QboConnectionPanel({ profile, onSyncComplete }) {
       if (onSyncComplete) onSyncComplete();
     } catch (err) {
       console.error('[QBO] Pull error:', err);
-      setError(err.message || 'Pull from QBO failed');
+      setError(err.message || 'Refresh from QBO failed');
     }
     if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
     setPulling(false);
@@ -152,7 +152,7 @@ export default function QboConnectionPanel({ profile, onSyncComplete }) {
                   </div>
                 )}
                 <div>
-                  <span className="text-gray-500">QBO customers tracked: </span>
+                  <span className="text-gray-500">QBO customers: </span>
                   <span className="font-semibold text-gray-700">{mapStats.total}</span>
                 </div>
                 {mapStats.unmapped > 0 ? (
@@ -194,10 +194,10 @@ export default function QboConnectionPanel({ profile, onSyncComplete }) {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    Pulling… {pullElapsed}s
+                    Refreshing… {pullElapsed}s
                   </>
                 ) : (
-                  <>Pull from QBO</>
+                  <>Refresh from QBO</>
                 )}
               </button>
               <button
@@ -224,11 +224,11 @@ export default function QboConnectionPanel({ profile, onSyncComplete }) {
       {/* Pull result — expanded feedback */}
       {pullResult && (
         <div className="mt-3 bg-green-50 border border-green-200 rounded p-3 text-xs">
-          <p className="font-semibold text-green-800 mb-2">Pull complete</p>
+          <p className="font-semibold text-green-800 mb-2">Refresh complete</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-green-700">
             <Stat label="QBO customers seen" value={pullResult.qbo_customers_seen} />
             <Stat label="New (never seen before)" value={pullResult.qbo_customers_new} />
-            <Stat label="Auto-matched to entity" value={pullResult.qbo_customers_auto_matched} />
+            <Stat label="Matched to client" value={pullResult.qbo_customers_auto_matched} />
             <Stat label="Still unmapped" value={pullResult.qbo_customers_unmapped} highlight={pullResult.qbo_customers_unmapped > 0} />
             <Stat label="Billing created" value={pullResult.created} />
             <Stat label="Billing updated" value={pullResult.updated} />

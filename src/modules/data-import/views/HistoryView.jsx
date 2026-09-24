@@ -259,7 +259,7 @@ export default function HistoryView() {
                     {cancelling === r.id ? 'Cancelling…' : 'Cancel this run'}
                   </button>
                   <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
-                    This run never completed. Cancelling releases any source lock and hides it from the Status view.
+                    This import didn't finish. Cancel it to allow a new import.
                   </p>
                 </DetailBlock>
               )}

@@ -103,7 +103,7 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
         onClose();
       }
     } catch (err) {
-      setError(err?.message || 'Failed to create client. Please try again.');
+      setError(err?.message || 'Failed to create client. Try again.');
     }
     setSaving(false);
   }

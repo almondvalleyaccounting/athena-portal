@@ -160,7 +160,7 @@ export function parseBmTasksCsv(text) {
         bm_task_id: null,
         name: null,
         field: 'Client Reference',
-        message: `Duplicate Client Reference "${ref}" used by ${nameSet.size} different clients (${names.join(' / ')}) — tasks will all attach to whichever entity won the bm_clients upsert. Rename one in BrightManager before approving.`,
+        message: `Duplicate Client Reference "${ref}" used by ${nameSet.size} different clients (${names.join(' / ')}) — all their tasks will attach to one client. Rename one in BrightManager before approving.`,
       });
     }
   }

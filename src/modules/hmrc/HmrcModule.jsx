@@ -121,9 +121,7 @@ export default function HmrcModule() {
             <Landmark size={22} style={{ color: '#64748b' }} /> HMRC
           </h1>
           <p style={{ fontSize: 14, color: '#64748b', maxWidth: 780, marginBottom: 14, lineHeight: 1.55 }}>
-            What HMRC's own records show for our clients, pulled from the agent services list —
-            PAYE, Corporation Tax, VAT and Self Assessment. Start on All taxes, click a balance to
-            see what makes it up, click again for the transactions underneath.
+            HMRC balances for PAYE, Corporation Tax, VAT and Self Assessment. Click a figure to drill down.
           </p>
         </div>
 
@@ -160,12 +158,12 @@ export default function HmrcModule() {
           {entityId && <RefreshButton entityId={entityId} />}
           {chosen ? (
             <span style={{ fontSize: 12.5, color: '#94a3b8' }}>
-              Showing {chosen.entity_name} across every tax tab until you clear them.
+              Showing {chosen.entity_name} on every tab.
             </span>
           ) : (
             <span style={{ fontSize: 12.5, color: '#94a3b8' }}>
               {segment === 'breakdown'
-                ? 'No client picked — Breakdown is one client across all four heads.'
+                ? 'Pick a client.'
                 : `No client picked — this tab is ranking every client on ${TAX_META[segment]?.label}.`}
             </span>
           )}
@@ -210,12 +208,12 @@ function RunBanner({ runs, stale = [], failed }) {
   if (failed) {
     return (
       <div style={{ ...banner, borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
-        Could not read the scrape history.
+        Could not read the HMRC check history.
       </div>
     );
   }
   if (!runs || runs.length === 0) {
-    return <div style={{ ...banner, color: '#94a3b8' }}>No scrape recorded yet.</div>;
+    return <div style={{ ...banner, color: '#94a3b8' }}>No HMRC check recorded yet.</div>;
   }
 
   const staleDays = (r) => {
@@ -233,7 +231,7 @@ function RunBanner({ runs, stale = [], failed }) {
       background: anyStale ? '#fff7ed' : '#f8fafc',
     }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 3 }}>
-        Last scrape by tax
+        Last checked by tax
       </div>
       {runs.map((r) => {
         const d = staleDays(r);
@@ -257,7 +255,7 @@ function RunBanner({ runs, stale = [], failed }) {
       })}
       {anyStale && (
         <div style={{ fontSize: 11.5, color: '#c2410c', marginTop: 3 }}>
-          A tax head is over a month old — the sweep is meant to be monthly.
+          At least one tax hasn't been checked for over a month.
         </div>
       )}
 
@@ -273,7 +271,7 @@ function StaleLine({ stale }) {
   if (!stale || stale.length === 0) {
     return (
       <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 5, borderTop: '1px solid #eef2f6', paddingTop: 4 }}>
-        Every client current with the latest scrape of their taxes.
+        All clients up to date.
       </div>
     );
   }
@@ -281,7 +279,7 @@ function StaleLine({ stale }) {
     <div style={{ marginTop: 5, borderTop: '1px solid #eef2f6', paddingTop: 4 }}>
       <button
         onClick={() => setOpen(!open)}
-        title="These clients' figures come from an earlier scrape — the most recent one produced nothing for them"
+        title="These clients' figures come from an earlier HMRC check — the latest one returned nothing for them"
         style={{
           background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: font,
           fontSize: 11.5, fontWeight: 600, color: '#c2410c',
@@ -299,8 +297,7 @@ function StaleLine({ stale }) {
             </div>
           ))}
           <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3, maxWidth: 280, lineHeight: 1.45 }}>
-            Their last scrape produced no data, so earlier figures are still showing. Either it failed or
-            they genuinely have nothing — HMRC gives us no per-client reason.
+            The latest check returned nothing, so older figures are shown. HMRC doesn't say why.
           </div>
         </div>
       )}

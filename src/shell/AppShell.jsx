@@ -236,8 +236,7 @@ export default function AppShell() {
               Set up two-factor authentication
             </h2>
             <p style={{ fontSize: 14, color: '#64748b', lineHeight: 1.5, marginBottom: 24 }}>
-              Athena now holds live client data, so two-factor authentication is required before you can continue.
-              Use Google Authenticator, Authy, 1Password, or any TOTP app on your phone — it takes about a minute.
+              Required. Use any authenticator app, e.g. Google Authenticator.
             </p>
             <SecurityPage onEnrolled={recheckMfa} embedded />
             <button

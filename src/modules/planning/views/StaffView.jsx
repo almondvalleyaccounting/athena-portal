@@ -102,14 +102,12 @@ export default function StaffView() {
           </div>
         </div>
         <p style={help}>
-          Capacity £ per month = (fee-earner headcount × target hrs ÷ 12) × blended effective rate.
-          Toggle "Fee earner" on individual rows below to include/exclude from capacity.
-          Months where forecast revenue exceeds capacity are shaded — if that becomes persistent, it's your signal to hire.
+          Shaded months are over capacity. If it persists, hire.
         </p>
         {blendedRatePerHr == null ? (
           <div style={{ fontSize: 13, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', padding: '8px 12px', borderRadius: 8 }}>
             <AlertTriangle size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-            Blended rate will be derived from LTM timesheets once staff start logging time. Using £100/hr placeholder for now.
+            Using £100/hr until time is logged.
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gap: 2, alignItems: 'end', height: 90 }}>
@@ -170,7 +168,7 @@ export default function StaffView() {
                 <tr key={line.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                   <td style={td}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {line.staff_id ? <User size={12} style={{ color: '#94a3b8' }} /> : <span style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600 }}>NEW</span>}
+                      {line.staff_id ? <User size={12} style={{ color: '#94a3b8' }} /> : <span style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600 }}>New</span>}
                       <BlurInput value={line.name} onChange={(v) => upsertStaff({ ...line, name: v })} />
                     </div>
                   </td>

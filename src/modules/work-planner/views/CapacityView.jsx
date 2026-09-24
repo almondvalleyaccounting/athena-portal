@@ -193,7 +193,7 @@ export default function CapacityView() {
         borderBottom: '1px solid #e5e7eb', background: '#f8fafc',
       }}>
         <div style={{ fontSize: 14, color: '#475569' }}>
-          Monthly load from BM tasks vs each member's weekly capacity × 4.33.
+          Monthly workload against each person's capacity.
         </div>
         {draftCount > 0 && (
           <label style={{

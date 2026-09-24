@@ -29,7 +29,7 @@ const STATUS_TO_GROUP = (() => {
   for (const [g, list] of Object.entries(STATUS_GROUPS)) list.forEach((s) => { m[s] = g; });
   return m;
 })();
-const FIELD_LABEL = { grade: 'Grade', bm_target: 'BM target', assignee: 'Assignee' };
+const FIELD_LABEL = { grade: 'Grade', bm_target: 'Target', assignee: 'Assignee' };
 
 const GROUP_COLOUR = {
   'Not started': '#94a3b8',
@@ -638,7 +638,7 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
           days
         </label>
         <label style={{ fontSize: 13, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
-          Normal box: days past PE ≥
+          Normal: days past period end ≥
           <input
             type="number" min={0} value={normalDaysBuffer}
             onChange={(e) => setNormalDaysBuffer(Math.max(0, parseInt(e.target.value || '0', 10)))}
@@ -669,7 +669,7 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
           >Reset filters</button>
           <button
             onClick={() => setQueueOpen(true)}
-            title="Review queued BM change requests"
+            title="Review changes to make in BM"
             style={{
               padding: '5px 12px', fontSize: 13, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
               border: '1px solid #0f172a', borderRadius: 6, background: '#1E4560', color: '#fff', cursor: 'pointer',
@@ -826,9 +826,7 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
       )}
 
       <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 14, lineHeight: 1.5 }}>
-        Period end is derived: Annual Accounts = BM deadline − 9 months; Self Assessment = 5 April of the year before the BM deadline.
-        Non-standard accounting periods (first-year, struck-off, overseas) may differ — spot-check anomalies.
-        BM target is the internal deadline from BrightManager — to change it, update the task's Target Date in BM.
+        Period end is estimated from the deadline, so check unusual periods. To change a target, edit it in BM.
       </p>
     </div>
   );
@@ -889,9 +887,9 @@ function Box({
             <Th onClick={() => toggleSort('service')} active={sortKey === 'service'} dir={sortDir}>Service</Th>
             <Th onClick={() => toggleSort('period_end')} active={sortKey === 'period_end'} dir={sortDir}>Period end</Th>
             <Th onClick={() => toggleSort('statutory')} active={sortKey === 'statutory'} dir={sortDir}>Statutory</Th>
-            <Th onClick={() => toggleSort('target')} active={sortKey === 'target'} dir={sortDir}>BM target</Th>
+            <Th onClick={() => toggleSort('target')} active={sortKey === 'target'} dir={sortDir}>Target</Th>
             <Th onClick={() => toggleSort('days')} active={sortKey === 'days'} dir={sortDir} align="right">Days past</Th>
-            <Th onClick={() => toggleSort('status')} active={sortKey === 'status'} dir={sortDir}>BM status</Th>
+            <Th onClick={() => toggleSort('status')} active={sortKey === 'status'} dir={sortDir}>Status</Th>
             <Th onClick={() => toggleSort('assignee')} active={sortKey === 'assignee'} dir={sortDir}>Assignee(s)</Th>
             <th style={thStatic}></th>
           </tr>
@@ -982,7 +980,7 @@ function Box({
                   {onEdit && (
                     <button
                       onClick={() => onEdit(r)}
-                      title="Queue a change for Grade / BM Target / Assignee"
+                      title="Request a change"
                       style={{
                         fontSize: 12, padding: '3px 8px', fontFamily: font, cursor: 'pointer',
                         borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff',
@@ -1117,7 +1115,7 @@ function EditChangeDialog({ row, staffList, pendingByKey, onCancel, onSave }) {
             {GRADE_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
         </Field>
-        <Field label="BM Target">
+        <Field label="Target">
           <input type="date" value={bmTarget || ''} onChange={(e) => setBmTarget(e.target.value)} style={selectInput} />
         </Field>
         <Field label="Assignee">
@@ -1127,7 +1125,7 @@ function EditChangeDialog({ row, staffList, pendingByKey, onCancel, onSave }) {
           </select>
         </Field>
         <Field label="Note (optional)">
-          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything Sophie needs to know" style={selectInput} />
+          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything Admin needs to know" style={selectInput} />
         </Field>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
@@ -1149,7 +1147,7 @@ function QueueModal({ changes, onClose, onApplied, onCancel, onCancelAll, onExpo
     <div onClick={onClose} style={modalBackdrop}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 760, maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 10 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 600, color: '#0f172a' }}>BM change requests</div>
+          <div style={{ fontSize: 15.5, fontWeight: 600, color: '#0f172a' }}>BM changes</div>
           <div style={{ fontSize: 13, color: '#64748b' }}>{changes.length} pending</div>
           <div style={{ flex: 1 }} />
           <button onClick={onExport} disabled={!changes.length} style={changes.length ? btnPrimary : btnPrimaryDisabled}>Export CSV</button>
@@ -1227,8 +1225,7 @@ function FeedbackModal({ row, feedback: fb, onClose }) {
 
         {!fb ? (
           <div style={{ fontSize: 14, color: '#64748b', padding: '10px 0 4px', lineHeight: 1.5 }}>
-            No feedback captured for this job yet. It appears here once the assignee answers it in the
-            monthly Job Review (Work Planner → Review).
+            No feedback yet. It comes from the monthly job review.
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

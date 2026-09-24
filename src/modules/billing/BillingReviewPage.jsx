@@ -213,7 +213,6 @@ export default function BillingReviewPage() {
           + explainRows(wouldSkip, 'nothing on the template to reprice, and nothing that could be added')
           + explainRows(problems)
           + explainBlocked(results)
-          + '\n\nFull dry-run output logged to console.'
         );
       } else {
         console.log('Push results:', data);
@@ -406,10 +405,10 @@ export default function BillingReviewPage() {
               never clips the QBO TEMPLATE / NLAC / DUP markers. */}
           {(i.entityStatus === 'nlac' || i.fromTemplate || isDup(i) || i.service.duplicate_acknowledged) && (
             <div style={{ marginTop: 2, marginLeft: -8 /* tagStyle adds marginLeft:8 to the first */ }}>
-              {i.entityStatus === 'nlac' && <span style={tagStyle('red')} title="No Longer A Client">NLAC</span>}
-              {i.fromTemplate && <span style={tagStyle('teal')} title="From QBO RecurringTransaction template">QBO template</span>}
-              {isDup(i) && <span style={tagStyle('red')} title={`Potential duplicate — another line on this client also has service "${i.service.service_id}"`}>DUP</span>}
-              {i.service.duplicate_acknowledged && <span style={tagStyle('slate')} title="Duplicate acknowledged as intentional">DUP OK</span>}
+              {i.entityStatus === 'nlac' && <span style={tagStyle('red')} title="No Longer A Client">No longer a client</span>}
+              {i.fromTemplate && <span style={tagStyle('teal')} title="From QBO RecurringTransaction template">Recurring template</span>}
+              {isDup(i) && <span style={tagStyle('red')} title={`Potential duplicate — another line on this client also has service "${i.service.service_id}"`}>Possible duplicate</span>}
+              {i.service.duplicate_acknowledged && <span style={tagStyle('slate')} title="Duplicate acknowledged as intentional">Duplicate OK</span>}
             </div>
           )}
         </>
@@ -551,7 +550,7 @@ export default function BillingReviewPage() {
         Billing approval queue
       </h1>
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
-        Approve each monthly recurring bill flagged for review before it counts in the headline. Edit cadence or amount if the system got it wrong.
+        Approve flagged recurring bills. Fix frequency or amount if wrong.
       </p>
 
       <BillingTabs active="import" />
@@ -576,7 +575,7 @@ export default function BillingReviewPage() {
           style={{ fontSize: 12, fontWeight: 500, padding: '4px 10px', background: '#fff', color: '#64748b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
           title="Show every QBO recurring template and its link status"
         >
-          {diagnosing ? 'Checking…' : 'Diagnose QBO templates'}
+          {diagnosing ? 'Checking…' : 'Check QBO templates'}
         </button>
       </div>
 
@@ -632,7 +631,7 @@ export default function BillingReviewPage() {
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, fontSize: 13, color: '#475569', cursor: 'pointer' }}>
             <input type="checkbox" checked={showNlac} onChange={(e) => setShowNlac(e.target.checked)} />
-            Show NLAC clients
+            Show former clients
           </label>
 
           {(cadenceFilter !== 'all' || sourceFilter !== 'all' || showNlac) && (
@@ -889,8 +888,7 @@ function DeliveryGapsPanel({ canFix }) {
         </button>
       </div>
       <p style={{ fontSize: 12, color: '#7f1d1d', margin: '6px 0 0', maxWidth: 860 }}>
-        QuickBooks generates and posts these invoices on schedule, so the balance grows, but it was never told to send them.
-        Turning emailing on affects invoices generated from the next run date onwards — past invoices are not resent.
+        These invoices are raised but never emailed. Turning emailing on applies from the next run; past invoices aren't resent.
         {!canFix && ' Turning it on needs the billing-approval permission.'}
       </p>
       {open && (
@@ -1005,7 +1003,7 @@ function DiagnoseModal({ data, onClose, onRepaired }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: font }} onClick={onClose}>
       <div style={{ background: '#fff', borderRadius: 12, width: 760, maxWidth: '95vw', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center' }}>
-          <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 500, color: '#0f172a', margin: 0 }}>QBO template diagnostic</h2>
+          <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 500, color: '#0f172a', margin: 0 }}>QBO template check</h2>
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18 }}>×</button>
         </div>
@@ -1013,14 +1011,14 @@ function DiagnoseModal({ data, onClose, onRepaired }) {
           <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
             <DiagStat label="Templates in QBO" value={s.qbo_templates_total ?? '—'} />
             <DiagStat label="Linked" value={s.linked ?? '—'} tone="green" />
-            <DiagStat label="No entity mapping" value={s.unlinked_no_entity_mapping ?? '—'} tone="red" />
+            <DiagStat label="No client linked" value={s.unlinked_no_entity_mapping ?? '—'} tone="red" />
             <DiagStat label="No billing row" value={s.unlinked_no_billing_row ?? '—'} tone="amber" />
           </div>
 
           {noEntity.length > 0 && (
             <details open style={{ marginBottom: 14 }}>
               <summary style={{ fontWeight: 600, fontSize: 14, color: '#b91c1c', cursor: 'pointer', marginBottom: 6 }}>
-                {noEntity.length} template{noEntity.length === 1 ? '' : 's'} — QBO customer not mapped to any Athena entity
+                {noEntity.length} template{noEntity.length === 1 ? '' : 's'} — QBO customer not linked to any Athena client
               </summary>
               <p style={{ fontSize: 12, color: '#64748b', marginTop: 0 }}>Fix on the <a href="/manage/billing/qbo-mapping" style={{ color: '#0e7fe0' }}>QBO mapping</a> page, then re-run pull.</p>
               <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
@@ -1042,10 +1040,10 @@ function DiagnoseModal({ data, onClose, onRepaired }) {
           {noBilling.length > 0 && (
             <details open>
               <summary style={{ fontWeight: 600, fontSize: 14, color: '#b45309', cursor: 'pointer', marginBottom: 6 }}>
-                {noBilling.length} template{noBilling.length === 1 ? '' : 's'} — entity matched but no live_billing row carries the txn id
+                {noBilling.length} template{noBilling.length === 1 ? '' : 's'} — client matched but no live_billing row carries the txn id
               </summary>
               <p style={{ fontSize: 12, color: '#64748b', marginTop: 0 }}>
-                These templates exist in QBO and belong to entities we already know about — they just never got attached to a billing row. Click <strong>Attach</strong> to wire each one to the entity's largest unlinked billing row. After repair, re-pull from QBO to refresh the service lines from the templates.
+                Click <strong>Attach</strong> to link each to the client's billing, then refresh from QBO.
               </p>
               {repairableCount > 0 && (
                 <div style={{ marginBottom: 8 }}>
@@ -1059,7 +1057,7 @@ function DiagnoseModal({ data, onClose, onRepaired }) {
                 </div>
               )}
               <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-                <thead><tr style={{ background: '#f8fafc' }}><DiagTh>Template</DiagTh><DiagTh>Entity</DiagTh><DiagTh>QBO customer</DiagTh><DiagTh>Active</DiagTh><DiagTh></DiagTh></tr></thead>
+                <thead><tr style={{ background: '#f8fafc' }}><DiagTh>Template</DiagTh><DiagTh>Client</DiagTh><DiagTh>QBO customer</DiagTh><DiagTh>Active</DiagTh><DiagTh></DiagTh></tr></thead>
                 <tbody>
                   {noBilling.map((r, i) => {
                     const cand = pickCandidate(r.entity_id);

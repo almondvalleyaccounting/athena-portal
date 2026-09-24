@@ -82,10 +82,9 @@ export default function PaymentsView({ payeRef = '', entityName = '' }) {
 
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
         {payeRef
-          ? <>Every payment HMRC has recorded against {entityName || 'this client'}&rsquo;s scheme {payeRef}, when it
-              arrived and which tax month it was set against.</>
-          : <>Every payment HMRC has recorded against a client&rsquo;s PAYE scheme, when it arrived and which tax month
-              it was set against.</>} A payment HMRC has not allocated is money sitting on the scheme reducing nothing.
+          ? <>Payments HMRC has received on {entityName || 'this client'}&rsquo;s scheme {payeRef}, and the month each
+              was set against.</>
+          : <>Payments HMRC has received, and the month each was set against.</>}
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16, maxWidth: 800 }}>

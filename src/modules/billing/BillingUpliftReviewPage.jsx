@@ -343,7 +343,6 @@ export default function BillingUpliftReviewPage() {
           + explainRows(wouldSkip, 'nothing on the template to reprice, and nothing that could be added')
           + explainRows(results.filter((r) => r.status === 'skipped' || r.status === 'error'))
           + explainBlocked(results)
-          + '\n\nFull dry-run output logged to console.'
         );
       } else {
         console.log('Push results:', data);
@@ -391,22 +390,22 @@ export default function BillingUpliftReviewPage() {
                 <span
                   style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}
                   title={`Email sent ${new Date(r.uplift_email_sent_at).toLocaleString('en-GB')}${r.uplift_email_to ? ` to ${r.uplift_email_to}` : ''}`}
-                >✉ SENT</span>
+                >✉ Sent</span>
               )}
               {!r.uplift_email_sent_at && r.uplift_gmail_draft_id && (
                 <span
                   style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#dbeafe', color: '#0c4a6e' }}
                   title={`Gmail draft created ${r.uplift_gmail_draft_created_at ? new Date(r.uplift_gmail_draft_created_at).toLocaleString('en-GB') : ''}${r.uplift_email_to ? ` for ${r.uplift_email_to}` : ''} — finalise and send in Gmail.`}
-                >✎ DRAFT</span>
+                >✎ Draft</span>
               )}
               {r.uplift_email_skipped && !r.uplift_email_sent_at && (
                 <span
                   style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#f1f5f9', color: '#475569' }}
                   title="Marked as not needing an email — excluded from Send all"
-                >NO EMAIL</span>
+                >No email</span>
               )}
             </div>
-            {!hasTemplate && <span style={{ fontSize: 11, color: '#b45309' }}>⚠ no QBO template</span>}
+            {!hasTemplate && <span style={{ fontSize: 11, color: '#b45309' }}>⚠ No QBO template</span>}
             {r._reason && <div style={{ fontSize: 11, color: '#94a3b8' }} title={r._reason}>{r._reason.length > 50 ? r._reason.slice(0, 50) + '…' : r._reason}</div>}
           </>
         );
@@ -434,7 +433,7 @@ export default function BillingUpliftReviewPage() {
       render: (r) => <span style={{ color: '#475569' }}>{r._goLive || '—'}</span>,
     },
     {
-      key: 'nextRun', label: 'Next QBO run', width: 115, firstDir: 'desc', sortValue: (r) => r.qbo_next_run_date || '',
+      key: 'nextRun', label: 'Next invoice date', width: 115, firstDir: 'desc', sortValue: (r) => r.qbo_next_run_date || '',
       render: (r) => (
         <span style={{ color: '#475569' }}>
           {r.qbo_next_run_date || (metaErrors[r.id]
@@ -461,8 +460,8 @@ export default function BillingUpliftReviewPage() {
         const emailToggle = skipped
           ? { label: 'Email this client after all', icon: Mail, onClick: guard(() => setEmailSkipped([r.id], false)) }
           : { label: "Don't email this client", icon: MailX, onClick: guard(() => setEmailSkipped([r.id], true)), title: 'Excluded from Send all' };
-        const restage = { label: 'Back to staged', icon: RotateCcw, onClick: guard(() => setStatus([r.id], 'staged')) };
-        const reject = { label: 'Reject', icon: X, onClick: guard(() => setStatus([r.id], 'rejected')), title: 'Keep staged but exclude from push' };
+        const restage = { label: 'Back to pending', icon: RotateCcw, onClick: guard(() => setStatus([r.id], 'staged')) };
+        const reject = { label: 'Reject', icon: X, onClick: guard(() => setStatus([r.id], 'rejected')), title: 'Keep pending but exclude from push' };
         const discard = { label: 'Discard uplift…', icon: Trash2, onClick: guard(() => unstage(r.id)), danger: true, title: 'The current monthly amount stays as-is' };
 
         const solid = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', fontSize: 13, fontWeight: 600, borderRadius: 6, border: 'none', background: '#059669', color: '#fff', cursor: saving ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap' };
@@ -477,7 +476,7 @@ export default function BillingUpliftReviewPage() {
           main = <span style={{ fontSize: 12.5, color: '#64748b', whiteSpace: 'nowrap' }}>Ready to push</span>;
           items = [emailToggle, restage, reject, discard];
         } else if (status === 'rejected') {
-          main = <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} style={quiet} title="Reset to staged"><RotateCcw size={13} />Back to staged</button>;
+          main = <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} style={quiet} title="Reset"><RotateCcw size={13} />Back to pending</button>;
           items = [approve, preview, emailToggle, discard];
         } else {
           main = <button onClick={() => setStatus([r.id], 'approved')} disabled={saving} style={solid} title="Approve for push"><Check size={13} strokeWidth={3} />Approve</button>;
@@ -503,7 +502,7 @@ export default function BillingUpliftReviewPage() {
             Push uplifts
           </h1>
           <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720, marginBottom: 0 }}>
-            Review staged fee uplifts and approve them before pushing to QBO. Approval is per template — every pending service on a row goes through together.
+            Approve fee increases, then send to QBO.
           </p>
         </div>
         <button onClick={refreshFromQbo} disabled={refreshing} style={btnSecondary} title="Pull next-run dates from QBO">
@@ -518,7 +517,7 @@ export default function BillingUpliftReviewPage() {
 
       {/* Filter pills */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Pill label="Staged" count={counts.staged || 0} active={filter === 'staged'} tone="amber" onClick={() => setFilter('staged')} />
+        <Pill label="Pending" count={counts.staged || 0} active={filter === 'staged'} tone="amber" onClick={() => setFilter('staged')} />
         <Pill label="Approved" count={counts.approved || 0} active={filter === 'approved'} tone="green" onClick={() => setFilter('approved')} />
         <Pill label="Rejected" count={counts.rejected || 0} active={filter === 'rejected'} tone="slate" onClick={() => setFilter('rejected')} />
         <Pill label="No email" count={counts.no_email || 0} active={filter === 'no_email'} tone="slate" onClick={() => setFilter('no_email')} />
@@ -560,7 +559,7 @@ export default function BillingUpliftReviewPage() {
         filter === 'staged' ? (
           <EmptyState
             icon="✦"
-            title="Nothing staged to review"
+            title="No fee increases to review"
             body="When you stage an uplift on the Change page, it lands here for approval before it's pushed to QBO."
             actions={[
               { label: 'Go to Change →', onClick: () => navigate('/manage/billing/change'), primary: true },
@@ -571,7 +570,7 @@ export default function BillingUpliftReviewPage() {
             icon="—"
             title="Nothing approved yet"
             body="Approve staged uplifts to queue them for push."
-            actions={[{ label: 'Show staged', onClick: () => setFilter('staged') }]}
+            actions={[{ label: 'Show pending', onClick: () => setFilter('staged') }]}
           />
         ) : filter === 'no_email' ? (
           <EmptyState
@@ -585,7 +584,7 @@ export default function BillingUpliftReviewPage() {
             icon="—"
             title="No results"
             body="Try a different filter or clear the search."
-            actions={[{ label: 'Show staged', onClick: () => setFilter('staged') }]}
+            actions={[{ label: 'Show pending', onClick: () => setFilter('staged') }]}
           />
         )
       ) : (
@@ -636,7 +635,7 @@ export default function BillingUpliftReviewPage() {
             Dry-run
           </button>
           <button onClick={() => pushApproved(false)} disabled={pushing} style={btnPushLive}>
-            {pushing ? 'Pushing…' : `Push ${approvedCount} to QBO`}
+            {pushing ? 'Pushing…' : `Send ${approvedCount} to QBO`}
           </button>
         </div>
       )}
@@ -653,7 +652,7 @@ export default function BillingUpliftReviewPage() {
 
 function StatusChip({ status }) {
   const map = {
-    staged:   { tone: 'warning', label: 'Staged' },
+    staged:   { tone: 'warning', label: 'Pending' },
     approved: { tone: 'success', label: 'Approved' },
     rejected: { tone: 'neutral', label: 'Rejected' },
   };
@@ -789,7 +788,7 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
   // before clicking Send. We stamp uplift_gmail_draft_id back so the
   // table chip flips to "DRAFT".
   const send = async () => {
-    if (noContactName) { alert('No primary contact name on file. Add one in Bright Manager before drafting.'); return; }
+    if (noContactName) { alert('No primary contact name on file. Add one in BrightManager before drafting.'); return; }
     if (isLetter) { return markLetterSent(); }
     if (!to) { alert('Pick a recipient address first.'); return; }
     if (draftedOnServer && !window.confirm('A Gmail draft already exists for this row. Create another one?')) return;

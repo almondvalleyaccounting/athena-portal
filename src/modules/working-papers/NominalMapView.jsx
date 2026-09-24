@@ -153,7 +153,7 @@ export default function NominalMapView({ entity }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13.5, color: '#64748b' }}>
           Mapping <strong style={{ color: '#0f172a' }}>{entity.entity_name}</strong> against{' '}
-          {entity.qbo_company || realmId} — {chart.length} account{chart.length === 1 ? '' : 's'} cached
+          {entity.qbo_company || 'this QuickBooks file'} — {chart.length} account{chart.length === 1 ? '' : 's'} cached
           {chart.length === 0 && ' (pull the chart to begin)'}
         </span>
         <div style={{ flex: 1 }} />

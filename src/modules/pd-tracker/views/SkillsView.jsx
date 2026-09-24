@@ -234,8 +234,7 @@ export default function SkillsView() {
             <RadarChart skills={radarPicks} current={levelMap.current} target={levelMap.target} />
           )}
           <div style={{ marginTop: 16, fontFamily: FONT, fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
-            <strong style={{ color: '#0f172a' }}>How to read it:</strong> the dark shape is where you are now, the dashed sky-blue shape is the target.
-            {isRoleMode && ' Each axis is a category — its score is the average of the skills underneath.'}
+            Solid: now. Dashed: target.
           </div>
         </Card>
 

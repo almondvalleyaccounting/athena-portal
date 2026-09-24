@@ -87,14 +87,8 @@ export default function BreakdownView({ clients = [] }) {
   if (!entityId) {
     return (
       <div>
-        <p style={{ fontSize: 14, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
-          One client, all four tax heads, grouped by tax type — what each balance is actually made of.
-        </p>
         <div style={{ ...card, padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 14, lineHeight: 1.6 }}>
-          Pick a client in the selector above, or click a <b>Total</b> on the All taxes tab.
-          <div style={{ marginTop: 6, fontSize: 13 }}>
-            The practice-wide position is what <b>All taxes</b> is for; this page is one client.
-          </div>
+          Pick a client above.
         </div>
       </div>
     );
@@ -106,12 +100,12 @@ export default function BreakdownView({ clients = [] }) {
 
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 900, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
         {chosen ? <><b>{chosen.entity_name}</b> — </> : null}
-        every tax head, grouped by type: what each balance is made of, how old it is and what has moved.
-        The individual charges and payments are one level down, on each head&rsquo;s own tab.
+        every tax, grouped by type: what each balance is made of, how old it is and what has moved.
+        The individual charges and payments are one level down, on each tax&rsquo;s own tab.
       </p>
 
       {loading ? (
-        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Reading all four heads…</div>
+        <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Reading all four taxes…</div>
       ) : !data ? null : (
         <>
           <Summary heads={heads} total={total} chosen={chosen} moves={data.moves} entityId={entityId} />
@@ -142,8 +136,8 @@ function Summary({ heads, total, chosen, moves, entityId }) {
           {fmtGbpDetailed(total)}
         </span>
         <span style={{ fontSize: 13.5, color: '#475569' }}>
-          owed to HMRC across {heads.filter((h) => h.known).length} tax head
-          {heads.filter((h) => h.known).length === 1 ? '' : 's'}
+          owed to HMRC across {heads.filter((h) => h.known).length} tax
+          {heads.filter((h) => h.known).length === 1 ? '' : 'es'}
         </span>
         {creditHeld > 0 && (
           <span style={{ fontSize: 13.5, color: '#475569' }}>
@@ -190,8 +184,8 @@ function Summary({ heads, total, chosen, moves, entityId }) {
           </span>
           {mv('paid_by_client') > 0 && <span>Paid by the client <b style={{ color: '#0f172a' }}>{fmtGbpDetailed(mv('paid_by_client'))}</b></span>}
           {mv('cash_to_client') > 0 && <span>Repaid to the client <b style={{ color: '#059669' }}>{fmtGbpDetailed(mv('cash_to_client'))}</b></span>}
-          {mv('from_another_tax') > 0 && <span>Credit moved in from another head <b style={{ color: '#7c3aed' }}>{fmtGbpDetailed(mv('from_another_tax'))}</b></span>}
-          {mv('to_another_tax') > 0 && <span>Credit moved out to another head <b style={{ color: '#c2410c' }}>{fmtGbpDetailed(mv('to_another_tax'))}</b></span>}
+          {mv('from_another_tax') > 0 && <span>Credit moved in from another tax <b style={{ color: '#7c3aed' }}>{fmtGbpDetailed(mv('from_another_tax'))}</b></span>}
+          {mv('to_another_tax') > 0 && <span>Credit moved out to another tax <b style={{ color: '#c2410c' }}>{fmtGbpDetailed(mv('to_another_tax'))}</b></span>}
         </div>
       )}
     </div>
@@ -224,7 +218,7 @@ function HeadCard({ head, total, onOpen }) {
             ))}
           </>
         ) : (
-          <span style={{ fontSize: 13.5, color: '#cbd5e1' }}>Not registered, or not scraped</span>
+          <span style={{ fontSize: 13.5, color: '#cbd5e1' }}>Not registered, or not checked</span>
         )}
         <div style={{ flex: 1 }} />
         {head.known && (
@@ -256,7 +250,7 @@ function HeadCard({ head, total, onOpen }) {
                 {residual !== 0 && (
                   <tr>
                     <td style={{ padding: '3px 10px 3px 0', color: '#b45309' }}
-                        title="HMRC's own parts do not add to its own total. Shown rather than absorbed, because absorbing it would make a wrong figure look tidy.">
+                        title="HMRC's lines don't add up to HMRC's total.">
                       {head.residualLabel}
                     </td>
                     <td style={{ padding: '3px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#b45309' }}>
@@ -364,8 +358,7 @@ function buildHeads({ paye, proofs, ct, vat, sa, moves }) {
       { label: 'Repaid to the client', value: fmtGbpDetailed(repaidOut('paye')),
         colour: repaidOut('paye') > 0 ? '#059669' : '#94a3b8' },
     ],
-    note: 'PAYE is HMRC\'s overdue figure, so the month just charged is not in it. For a creditor at a year '
-        + 'end, use the statement — it counts the month the year end falls in.',
+    note: 'Overdue only. For a year-end creditor, use the PAYE statement.',
   };
 
   // Corporation Tax. Tax charged less what has been paid or moved elsewhere;
@@ -405,7 +398,7 @@ function buildHeads({ paye, proofs, ct, vat, sa, moves }) {
       { label: 'Oldest unpaid period', value: ctUnpaid.length ? shortDate(oldest(ctUnpaid, 'period_end')) : '—' },
       { label: 'Newest period held', value: ct.length ? shortDate(ct.map((p) => p.period_end).filter(Boolean).sort().slice(-1)[0]) : '—',
         hint: 'If this is well behind the last year end, HMRC has not yet raised the charge' },
-      { label: 'Credit moved in from another head', value: fmtGbpDetailed(movedIn('corporation-tax')),
+      { label: 'Credit moved in from another tax', value: fmtGbpDetailed(movedIn('corporation-tax')),
         colour: movedIn('corporation-tax') > 0 ? '#7c3aed' : '#94a3b8' },
     ],
     note: 'Charges cover every period HMRC holds, back years included — which is why the gross figures are '
@@ -484,7 +477,7 @@ function buildHeads({ paye, proofs, ct, vat, sa, moves }) {
         hint: 'Available for repayment or reallocation — never netted off the debt above' },
       { label: 'Repaid out to the client', value: fmtGbpDetailed(repaidOut('self-assessment')),
         colour: repaidOut('self-assessment') > 0 ? '#059669' : '#94a3b8' },
-      { label: 'Credit moved in from another head', value: fmtGbpDetailed(movedIn('self-assessment')),
+      { label: 'Credit moved in from another tax', value: fmtGbpDetailed(movedIn('self-assessment')),
         colour: movedIn('self-assessment') > 0 ? '#7c3aed' : '#94a3b8',
         hint: 'The CIS pattern: credit built up on PAYE, moved across to settle Self Assessment' },
       { label: 'Statement as at', value: p?.as_at ? shortDate(p.as_at) : '—' },

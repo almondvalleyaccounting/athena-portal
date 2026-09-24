@@ -951,7 +951,7 @@ export default function BillingPage() {
           <div style={{display:'flex',gap:10,alignItems:'flex-start',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'12px 16px',marginBottom:16,fontSize:14,color:'#92400e',lineHeight:1.5}}>
             <AlertTriangle size={16} style={{color:'#d97706',flexShrink:0,marginTop:1}}/>
             <div>
-              <b>QuickBooks isn&apos;t numbering these invoices.</b> Your QBO company has &ldquo;Custom transaction numbers&rdquo; switched on, so invoices Athena pushes go in without a number. Turn it off in QBO → <i>Account &amp; Settings → Sales → Sales form content → &ldquo;Custom transaction numbers&rdquo;</i>, then use the button here to assign numbers.
+              <b>QuickBooks isn&apos;t numbering these invoices.</b> Turn off &ldquo;Custom transaction numbers&rdquo; in QBO → <i>Account &amp; Settings → Sales → Sales form content</i>, then click the button here.
             </div>
           </div>
         );
@@ -983,7 +983,7 @@ export default function BillingPage() {
                 <p style={{fontSize:13,color:'#94a3b8',margin:'3px 0 0'}}>
                   {editingId
                     ? `${entityMap[items.find((i)=>i.id===editingId)?.entity_id]?.name || 'Client'} — one invoice per bill, one line per thing being charged`
-                    : 'One client per bill — it becomes one QuickBooks invoice with a line per service'}
+                    : 'One invoice per bill'}
                 </p>
               </div>
               <button onClick={closeForm} title="Close (Esc)" style={{background:'none',border:'none',cursor:'pointer',padding:4,display:'inline-flex',color:'#94a3b8',fontSize:20,lineHeight:1,fontFamily:"'Outfit', sans-serif"}}>×</button>
@@ -1106,7 +1106,7 @@ export default function BillingPage() {
                 return (
                   <div key={item.id} onClick={()=>setContactIndex(idx)} style={{display:'grid',gridTemplateColumns:INVOICE_COLS,gap:10,alignItems:'center',padding:'7px 4px',borderBottom:'1px solid #f1f5f9',fontSize:13,cursor:'pointer',background:isCurrent?'#eff6ff':'transparent',borderRadius:6}}>
                     <span style={ellip} title={entityMap[item.entity_id]?.name}>{!ready && <span style={{color:'#b45309'}} title="Needs email + address">⚠ </span>}{entityMap[item.entity_id]?.name||'—'}</span>
-                    <span style={{...ellip,color:(p?.unmapped?.length>0)?'#b45309':'#475569'}} title={(p?.unmapped?.length>0)?`No QuickBooks product mapped for: ${p.unmapped.join(', ')} — map it (qbo_service_items) before pushing or this line will error`:(item.description||item.service)}>{(p?.unmapped?.length>0)?<span title="Service not mapped to a QuickBooks product">⚠ </span>:null}{item.service}</span>
+                    <span style={{...ellip,color:(p?.unmapped?.length>0)?'#b45309':'#475569'}} title={(p?.unmapped?.length>0)?`No QuickBooks product for: ${p.unmapped.join(', ')}. Map it before sending.`:(item.description||item.service)}>{(p?.unmapped?.length>0)?<span title="Service not mapped to a QuickBooks product">⚠ </span>:null}{item.service}</span>
                     <span style={{color:'#64748b'}}>One-off</span>
                     {/* Which QBO customer this invoice lands on, BY NAME.
                         "Existing" alone hid the thing worth checking: the
@@ -1117,7 +1117,7 @@ export default function BillingPage() {
                       const t = customerTargetOf(item);
                       if (!p || !t) return <span style={{color:'#94a3b8'}}>…</span>;
                       if (t.mode==='undecided') return <span style={{...ellip,color:'#b45309',fontWeight:600}} title="No QuickBooks customer mapped — pick one below before pushing">⚠ Not mapped</span>;
-                      if (t.mode==='missing') return <span style={{...ellip,color:'#b91c1c',fontWeight:600}} title={`This client is mapped to QuickBooks customer #${t.id}, which QuickBooks no longer returns. The push will fail on it — fix the mapping on the client record.`}>⚠ #{t.id} not in QBO</span>;
+                      if (t.mode==='missing') return <span style={{...ellip,color:'#b91c1c',fontWeight:600}} title={`QuickBooks customer #${t.id} no longer exists. Fix it on the client record.`}>⚠ #{t.id} not in QBO</span>;
                       if (t.mode==='new') return <span style={{...ellip,color:'#b45309',fontWeight:500}} title={`Will create a new QuickBooks customer: ${t.name}`}>New · {t.name}</span>;
                       const via = t.source==='picked' ? 'linking to this customer now'
                         : t.source==='name_match' ? 'matched on name — not yet stored against the client'
@@ -1213,7 +1213,7 @@ export default function BillingPage() {
                         <label style={{...formLabel,marginBottom:4}}>QuickBooks customer</label>
                         {t.mode==='missing' ? (
                           <div style={{fontSize:13,color:'#b91c1c'}}>
-                            This client is mapped to QuickBooks customer <b>#{t.id}</b>, which QuickBooks no longer returns — it may have been deleted or merged. Clear or correct the mapping on the client record before pushing; this bill will error otherwise.
+                            QuickBooks customer <b>#{t.id}</b> no longer exists. Fix it on the client record.
                           </div>
                         ) : mapped ? (
                           <>
@@ -1227,7 +1227,7 @@ export default function BillingPage() {
                               {t.name && t.name.toLowerCase() !== name.toLowerCase() && ' — note the QuickBooks name differs from the Athena name'}
                               {t.inactive && ' · inactive in QuickBooks'}
                             </div>
-                            <div style={{fontSize:12,color:'#64748b',marginTop:4}}>The email and address below are saved onto this customer in QuickBooks, so they apply to its future invoices too.</div>
+                            <div style={{fontSize:12,color:'#64748b',marginTop:4}}>Also saved to QuickBooks.</div>
                           </>
                         ) : (
                           <>

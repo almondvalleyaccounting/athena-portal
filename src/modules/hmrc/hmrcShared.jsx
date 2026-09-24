@@ -13,7 +13,7 @@ export const TIERS = {
   1: { label: 'In arrears',        short: 'Arrears',      colour: '#b91c1c', bg: '#fef2f2', hint: 'Owes from an earlier tax year and is not on a payment plan — the ones to chase' },
   2: { label: 'Behind this year',  short: 'Behind',       colour: '#c2410c', bg: '#fff7ed', hint: 'Owes only against the current tax year' },
   3: { label: 'On a payment plan', short: 'Plan',         colour: '#0369a1', bg: '#f0f9ff', hint: 'HMRC has a time-to-pay arrangement in place — monitor, do not chase' },
-  4: { label: 'Clear',             short: 'Clear',        colour: '#059669', bg: '#f0fdf4', hint: 'Nothing owed at the last scrape' },
+  4: { label: 'Clear',             short: 'Clear',        colour: '#059669', bg: '#f0fdf4', hint: 'Nothing owed when last checked' },
 };
 
 export const REVIEW_STATUSES = [
@@ -42,7 +42,7 @@ export const DISENGAGE_REASONS = {
 export const EXCEPTION_KINDS = {
   missing_in_athena: {
     label: 'On HMRC, not in Athena',
-    hint: 'HMRC lists us as agent for this scheme but no Athena entity carries the reference or the name. Either the client is missing, or the PAYE ref was never keyed in.',
+    hint: 'No Athena client has this reference. Add the client or the PAYE ref.',
     colour: '#b91c1c',
   },
   not_on_hmrc: {
@@ -52,7 +52,7 @@ export const EXCEPTION_KINDS = {
   },
   duplicate_ref: {
     label: 'Duplicate reference',
-    hint: 'The same PAYE reference is on more than one Athena entity. One of them is wrong.',
+    hint: 'Same PAYE ref on two clients. One is wrong.',
     colour: '#7c3aed',
   },
   second_scheme: {

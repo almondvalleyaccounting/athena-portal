@@ -113,7 +113,7 @@ export default function CPDView() {
         <SectionTitle
           kicker="CPD log"
           title="Continuous Professional Development"
-          hint="Log courses, reading, webinars, mentoring — anything that grew you. Don't underestimate on-the-job learning."
+          hint="Log courses, reading, webinars and on-the-job learning."
         />
         {!showForm && (
           <Button variant="accent" onClick={() => setShowForm(true)}>

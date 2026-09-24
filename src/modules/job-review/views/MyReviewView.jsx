@@ -85,13 +85,11 @@ export default function MyReviewView() {
       </div>
       {cycle.period_month.slice(0, 7) < new Date().toISOString().slice(0, 7) && (
         <p style={{ margin: '0 0 8px', fontSize: 13, color: '#b45309' }}>
-          This is the last review that was opened. No review has been opened since {monthLabel(cycle.period_month)}, so the
-          "done by" dates below may already have passed.
+          Last review: {monthLabel(cycle.period_month)}. Some dates may have passed.
         </p>
       )}
       <p style={{ fontSize: 14, color: '#64748b', marginTop: 0, marginBottom: 18, lineHeight: 1.5 }}>
         These jobs could have progressed but haven’t. For each, tell us <strong>when you’ll have it done</strong>, <strong>what’s blocking it</strong>, and how confident you are.
-        BrightManager stays the record for status — this is just the bit BM can’t hold.
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

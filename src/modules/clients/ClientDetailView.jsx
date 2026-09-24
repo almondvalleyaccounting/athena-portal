@@ -190,7 +190,7 @@ export default function ClientDetailView() {
   // auto-confirms on the next BM import). See offboard_entity() SQL.
   const handleOffboard = async () => {
     if (!entity || offboarding) return;
-    if (!window.confirm(`Mark "${entity.name}" as no longer a client?\n\nThis hides them from the clients list and stops billing views, stalls any Companies House code chasing, archives any in-progress onboarding, and adds a task for Sophie to archive them in BrightManager (which clears itself on the next BM import).`)) return;
+    if (!window.confirm(`Mark "${entity.name}" as no longer a client?\n\nStops chasing and onboarding, and asks Admin to archive them in BrightManager.`)) return;
     const reason = window.prompt('Reason (optional) — e.g. moved accountant, ceased trading:', '') || '';
     setOffboarding(true);
     try {
@@ -240,7 +240,7 @@ export default function ClientDetailView() {
     if (next === prev) return;
     let reason = '';
     if (next === 'nlac' || next === 'archived') {
-      reason = window.prompt(`Reason for marking as ${next.toUpperCase()}? (optional)`, '') || '';
+      reason = window.prompt('Reason (optional)', '') || '';
     }
     setEntity({ ...entity, entity_status: next });
     const { error } = await supabase.from('entities').update({ entity_status: next }).eq('id', entity.id);
@@ -464,7 +464,7 @@ export default function ClientDetailView() {
               {offboardResult.ch_stalled > 0 && ` ${offboardResult.ch_stalled} Companies House chase${offboardResult.ch_stalled === 1 ? '' : 's'} stopped.`}
               {offboardResult.onboardings_archived > 0 && ` ${offboardResult.onboardings_archived} onboarding${offboardResult.onboardings_archived === 1 ? '' : 's'} archived.`}
               {offboardResult.bm_task_created
-                ? ' A task has been added to Sophie’s admin list to archive them in BrightManager — it clears itself on the next BM import.'
+                ? ' Admin has a task to archive them in BrightManager.'
                 : ' No BrightManager record to mirror.'}
             </div>
           </div>
@@ -731,7 +731,7 @@ function PeopleList({ people, isLtd }) {
     return (
       <div style={{ ...cardStyle, textAlign: 'center', padding: '40px 24px', color: '#94a3b8', fontSize: 14 }}>
         {isLtd
-          ? 'No directors or persons with significant control recorded. These come from the Companies House refresh.'
+          ? 'No directors or PSCs from Companies House.'
           : 'No people recorded for this client.'}
       </div>
     );
@@ -917,7 +917,7 @@ function EditableRow({ label, field, entity, setEntity, profile, placeholder, ov
         {current && <CopyButton value={current} />}
         {bmDiffers && (
           <span
-            title={`BrightManager still shows "${ov.bm_value || '(blank)'}" — on Sophie's admin list to update in BM. Clears automatically once BM matches.`}
+            title={`BrightManager still shows "${ov.bm_value || '(blank)'}". Update queued.`}
             style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 6, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', whiteSpace: 'nowrap' }}
           >
             BM: {ov.bm_value || '—'}
@@ -1222,7 +1222,7 @@ function MoreMenu({ entity, busy, onStatus, onCadence, onExpedite, onOffboard, o
           <div style={{ borderTop: '1px solid #f1f5f9', margin: '12px -14px 8px' }} />
           {entity.entity_status === 'nlac'
             ? <button disabled={busy} onClick={() => run(onReinstate)} style={action(false)}>Reinstate as a client</button>
-            : <button disabled={busy} onClick={() => run(onOffboard)} style={action(true)} title="Removes them from views and queues the BrightManager change for Sophie">No longer a client…</button>}
+            : <button disabled={busy} onClick={() => run(onOffboard)} style={action(true)} title="Removes them from views and queues the BrightManager change for Admin">No longer a client…</button>}
           <button disabled={busy} onClick={() => run(onArchive)} style={action(!isArchived)} title={isArchived ? 'Restore this client to the active list' : 'Hides it from the list, keeps its records'}>
             {isArchived ? 'Restore from archive' : 'Archive…'}
           </button>

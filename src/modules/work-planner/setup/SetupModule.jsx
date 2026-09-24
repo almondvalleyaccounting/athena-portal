@@ -29,7 +29,7 @@ export default function SetupModule() {
           Access required
         </h2>
         <p style={{ fontSize: 14.5, color: '#64748b' }}>
-          Setup is admin-only. You need <code>is_portal_admin</code> or <code>can_import_data</code>.
+          Setup is for admins only.
         </p>
       </div>
     );

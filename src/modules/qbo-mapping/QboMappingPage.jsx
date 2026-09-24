@@ -22,7 +22,7 @@ export default function QboMappingPage() {
   const location = useLocation();
 
   const cameFromBilling = location.pathname.startsWith('/manage/billing');
-  const backLabel = cameFromBilling ? 'Back to Billing Review' : 'Back to Clients';
+  const backLabel = cameFromBilling ? 'Back to billing review' : 'Back to Clients';
   const backRoute = cameFromBilling ? '/manage/billing' : '/clients';
 
   const [rows, setRows] = useState([]);
@@ -243,7 +243,7 @@ export default function QboMappingPage() {
 
   const bulkDelete = async (ids) => {
     if (ids.length === 0) return;
-    if (!window.confirm(`Permanently delete ${ids.length} mapping row(s)? They'll reappear on next qbo-pull.`)) return;
+    if (!window.confirm(`Permanently delete ${ids.length} mapping row(s)? They'll reappear on the next QBO refresh.`)) return;
     setBulkRunning(true);
     const { error } = await supabase
       .from('qbo_customer_mappings').delete().in('qbo_customer_id', ids);
@@ -280,7 +280,7 @@ export default function QboMappingPage() {
   };
 
   const remove = async (qboId) => {
-    if (!window.confirm(`Delete this mapping row? It will reappear on next qbo-pull if the customer still exists in QBO.`)) return;
+    if (!window.confirm(`Delete this mapping row? It will reappear on the next QBO refresh if the customer still exists in QBO.`)) return;
     const prevRows = rows;
     setRows((r) => r.filter((row) => row.qbo_customer_id !== qboId));
     const { error } = await supabase.from('qbo_customer_mappings').delete().eq('qbo_customer_id', qboId);
@@ -417,7 +417,7 @@ export default function QboMappingPage() {
       },
     },
     {
-      key: 'entity', label: 'Athena entity', width: '27%', wrap: true, sortable: false,
+      key: 'entity', label: 'Client', width: '27%', wrap: true, sortable: false,
       render: (r) => (
         <ClientTypeAhead
           entityList={entities}
@@ -495,8 +495,7 @@ export default function QboMappingPage() {
             QuickBooks ↔ Athena mapping
           </h1>
           <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720 }}>
-            Link each QuickBooks customer to the Athena entity it represents.
-            Use <b>Ignore</b> to sweep away QBO noise (internal references, dormant records).
+            Link each QuickBooks customer to a client. <b>Ignore</b> the rest.
           </p>
         </div>
         <button onClick={() => setShowAdd(true)} style={btnPrimary}>+ Add QBO customer</button>
@@ -507,8 +506,7 @@ export default function QboMappingPage() {
         <div style={autoBannerStyle}>
           <Zap size={14} style={{ color: '#0e7fe0' }} />
           <span style={{ fontSize: 14, color: '#0c4a6e', flex: 1 }}>
-            <b>{autoAcceptable.length}</b> unmapped QBO customer(s) have a{' '}
-            <b>{Math.round(AUTO_ACCEPT_THRESHOLD * 100)}%+</b> name match to an Athena entity.
+            <b>{autoAcceptable.length}</b> unlinked QBO customer(s) closely match a client.
           </span>
           <button onClick={autoAcceptHighConfidence} disabled={bulkRunning} style={btnAutoAccept}>
             Auto-accept all {autoAcceptable.length}
@@ -566,7 +564,7 @@ export default function QboMappingPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search QBO name, QBO id, or Athena entity..."
+          placeholder="Search QBO name, QBO id, or client..."
           style={{ ...selectStyle, flex: 1, minWidth: 240, marginLeft: 'auto' }}
         />
       </div>
@@ -680,12 +678,12 @@ function EmptyState({ filter, total }) {
   return (
     <div style={{ padding: 60, textAlign: 'center' }}>
       <p style={{ fontSize: 15.5, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>
-        {total === 0 ? 'No QBO customers tracked yet' : 'Nothing to show here'}
+        {total === 0 ? 'No QBO customers yet' : 'Nothing to show here'}
       </p>
       <p style={{ fontSize: 14, color: '#cbd5e1' }}>
         {total === 0
-          ? 'QBO customers appear after the next Pull from QBO, or add one manually.'
-          : filter === 'unmapped' ? 'All QBO customers are resolved. Nice.'
+          ? 'QBO customers appear after the next Refresh from QBO, or add one manually.'
+          : filter === 'unmapped' ? 'All customers linked.'
           : filter === 'mapped' ? 'Nothing mapped yet — resolve some unmapped rows.'
           : filter === 'ignored' ? 'No customers ignored.'
           : 'Adjust filters.'}

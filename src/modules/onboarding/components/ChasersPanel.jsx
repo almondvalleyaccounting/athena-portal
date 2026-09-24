@@ -39,11 +39,11 @@ export default function ChasersPanel() {
 
   async function toggleSending() {
     const next = !cfg.sending_enabled;
-    if (next && !window.confirm('Arm the onboarding chasers? Clients with overdue items will start receiving real emails on the daily run.')) return;
+    if (next && !window.confirm('Turn on the onboarding chasers? Clients with overdue items will start receiving real emails on the daily run.')) return;
     setCfg((c) => ({ ...c, sending_enabled: next }));
     try {
       await setChaseConfig({ sending_enabled: next });
-      setMsg({ tone: next ? 'success' : 'neutral', text: next ? 'Chasers armed — real emails will send on the daily run.' : 'Chasers disarmed.' });
+      setMsg({ tone: next ? 'success' : 'neutral', text: next ? 'Chasers on — real emails will send on the daily run.' : 'Chasers off.' });
     } catch (e) {
       setCfg((c) => ({ ...c, sending_enabled: !next }));
       setMsg({ tone: 'danger', text: e.message });
@@ -103,7 +103,7 @@ export default function ChasersPanel() {
         <Mail size={15} color="#64748b" />
         <span style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>Automated chasers</span>
         <span style={chipStyle(cfg.sending_enabled ? 'success' : 'neutral')}>
-          {cfg.sending_enabled ? 'ARMED' : 'OFF'}
+          {cfg.sending_enabled ? 'On' : 'Off'}
         </span>
         <span style={{ fontSize: 13, color: '#94a3b8' }}>
           clients nudged after {cfg.first_chase_after_days}d, then every {cfg.chase_every_days}d, max {cfg.max_chases} — owners get a daily digest
@@ -133,7 +133,7 @@ export default function ChasersPanel() {
               onClick={toggleSending}
               style={{ marginLeft: 'auto', padding: '7px 14px', fontSize: 13.5, fontWeight: 700, fontFamily: font, borderRadius: 8, cursor: 'pointer', background: cfg.sending_enabled ? tones.danger.bg : tones.success.solid, color: cfg.sending_enabled ? tones.danger.fg : '#fff', border: cfg.sending_enabled ? `1px solid ${tones.danger.border}` : 'none' }}
             >
-              {cfg.sending_enabled ? 'Disarm chasers' : 'Arm chasers'}
+              {cfg.sending_enabled ? 'Turn off chasers' : 'Turn on chasers'}
             </button>
           </div>
 

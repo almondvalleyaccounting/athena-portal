@@ -86,7 +86,7 @@ export default function ServicesPanel({ ob, staff, onChanged }) {
         ))}
       </div>
       <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
-        Unticking a service marks its outstanding steps N/A and removes its handover &amp; check-in tiles. Completed steps are left as they are.
+        Unticking marks open steps N/A. Completed steps stay.
       </div>
 
       {/* HMRC registrations */}

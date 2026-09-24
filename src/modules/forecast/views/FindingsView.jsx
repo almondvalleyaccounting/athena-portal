@@ -51,8 +51,7 @@ export default function FindingsView({ findings = [], outputs = [], forecast, pe
           </span>
         </div>
         <p style={{ fontSize: 13, color: colors.muted, margin: '0 0 12px' }}>
-          Each check re-derives a summary number from one source and ties it back against another.
-          Tolerance: £1. Failures usually point to a stale recompute or a sign convention bug.
+          Cross-checks between statements (to £1). If one fails, recompute first.
         </p>
         <CheckTable checks={checks} />
       </div>
@@ -186,7 +185,7 @@ function buildChecks(outputs, forecast, periods, entities) {
     return [{
       category: 'Income', label: 'No outputs loaded',
       status: 'no_data',
-      detail: 'Recompute the forecast to populate fc_output.',
+      detail: 'Recompute the forecast.',
     }];
   }
 
@@ -470,7 +469,7 @@ function buildChecks(outputs, forecast, periods, entities) {
     const emitted = lastNT('metric.locations_active') || 0;
     addP({
       category: 'Capacities',
-      label: 'Active locations (last period) = entities open by then',
+      label: 'Active locations (last period) = locations open by then',
       a: emitted, aSource: 'metric.locations_active',
       b: expectedActive, bSource: `count(entities with opening_month_offset ≤ ${lastPeriod})`,
       unit: 'count',
@@ -484,7 +483,7 @@ function buildChecks(outputs, forecast, periods, entities) {
     const emittedSqft = lastNT('metric.sqft_total') || 0;
     addP({
       category: 'Capacities',
-      label: 'Total sq ft (last period) = Σ entity.sq_ft for active locations',
+      label: 'Total sq ft (last period) = Σ location sq ft for active locations',
       a: emittedSqft, aSource: 'metric.sqft_total',
       b: expectedSqft, bSource: 'Σ entity.config.sq_ft',
       unit: 'count',

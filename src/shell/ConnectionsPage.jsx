@@ -19,11 +19,11 @@ export default function ConnectionsPage() {
   if (profile?.can_manage_portal !== true) {
     return (
       <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
-        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
+        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 20 }}>
           Connections
         </h1>
         <p style={{ fontSize: 14.5, color: '#64748b' }}>
-          You need the Portal admin permission to manage connections.
+          You need the Admin permission to manage connections.
         </p>
       </div>
     );
@@ -42,9 +42,6 @@ export default function ConnectionsPage() {
       >
         Connections
       </h1>
-      <p style={{ fontSize: 14.5, color: '#64748b', marginBottom: 24 }}>
-        External services Athena is wired up to.
-      </p>
 
       {/* Gmail */}
       <div style={{ marginBottom: 16 }}>

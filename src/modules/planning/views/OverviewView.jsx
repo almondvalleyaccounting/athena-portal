@@ -197,7 +197,7 @@ export default function OverviewView() {
                 <tr key={m.index} style={{ borderTop: '1px solid #f1f5f9', background: m.isActual ? '#f0fdf4' : undefined }}>
                   <td style={{ ...td, textAlign: 'left', color: '#64748b' }}>
                     {m.label}
-                    {m.isActual && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#059669', background: '#dcfce7', padding: '1px 5px', borderRadius: 3 }}>ACTUAL</span>}
+                    {m.isActual && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#059669', background: '#dcfce7', padding: '1px 5px', borderRadius: 3 }}>Actual</span>}
                   </td>
                   <td style={{ ...td, color: '#0e7fe0' }}>{fmtGBP(m.revenue)}</td>
                   <td style={td}>{fmtGBP(m.staffCost)}</td>
@@ -238,9 +238,7 @@ function BenchmarkCard({ projection, staffLines }) {
           UK practice benchmarks — needs setup
         </h3>
         <p style={{ fontSize: 13.5, color: '#92400e', margin: 0, lineHeight: 1.6 }}>
-          This scenario has no staff, overhead, or owner-comp lines yet, so margin and cost-ratio
-          benchmarks would be meaningless. Add costs on the <strong>Staff</strong>, <strong>Overheads</strong> and{' '}
-          <strong>Owner comp</strong> tabs and the benchmarks will appear.
+          Add costs on the <strong>Staff</strong>, <strong>Overheads</strong> and <strong>Owner comp</strong> tabs to see benchmarks.
         </p>
       </div>
     );

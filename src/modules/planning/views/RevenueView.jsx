@@ -122,8 +122,7 @@ export default function RevenueView() {
           </label>
         </div>
         <p style={help}>
-          Open quotes × win-probability × expected go-live month → monthly £ contribution. When toggled on, the
-          projection uses this instead of your manual "New MRR / month" setting. Win rates are configurable per scenario.
+          Open quotes × win chance, by expected go-live month. When on, this replaces your manual "New MRR / month" figure.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
           <SliderField label="Draft win %" min={0} max={50} step={1} suffix="%"
@@ -178,9 +177,7 @@ export default function RevenueView() {
           <h3 style={h3}>Churn risk scoring</h3>
         </div>
         <p style={help}>
-          Every client scored 0–100 from multiple signals: at-risk flag, wind-down phrases, engagement (time logged),
-          fee override pressure, explicit end-month. High-risk clients show up here — and their combined annual £
-          tells you how exposed the book is.
+          Each client scored 0–100 for risk of leaving.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
           <Summary label="High risk" colour="#dc2626" mo={highRiskAnnualRevenue / 12} count={churnBuckets.high.length} bold />
@@ -221,7 +218,7 @@ export default function RevenueView() {
           </select>
         </div>
         <p style={help}>
-          Multipliers are normalised so they average 1 across the year — changing shape doesn't change total. Set {'>'}1 for peak months (SA rush, year-end) and {'<'}1 for lull months.
+          Above 1 for busy months, below 1 for quiet ones. The annual total doesn't change.
         </p>
         <SeasonalityEditor
           values={scenario?.seasonality_monthly_mult || [1,1,1,1,1,1,1,1,1,1,1,1]}
@@ -237,7 +234,7 @@ export default function RevenueView() {
             <h3 style={{ ...h3, margin: 0 }}>Wind-down signals ({needsReview.length})</h3>
           </div>
           <p style={{ ...help, marginBottom: 10 }}>
-            Detected from service descriptions — these clients may be one-offs tagged as recurring, or clients genuinely winding down (e.g. "6 months final payroll", "review for cancellation", "towards final accounts"). Set a status or end-month so the forecast doesn't assume they'll keep paying forever.
+            These clients may be one-offs or winding down. Set a status or end month.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {needsReview.slice(0, 8).map((c) => (

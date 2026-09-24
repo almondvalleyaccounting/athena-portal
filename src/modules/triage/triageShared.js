@@ -106,7 +106,7 @@ export const CATEGORIES = [
   {
     key: 'strike_off', label: 'Strike-off watch', short: 'Strike-off', icon: AlertTriangle,
     tone: { fg: '#b91c1c', bg: '#fef2f2', border: '#fecaca' },
-    hint: 'Status changed at Companies House — fed automatically by the nightly refresh.',
+    hint: 'Status changed at Companies House.',
   },
   {
     key: 'on_hold', label: 'On hold', short: 'On hold', icon: PauseCircle,

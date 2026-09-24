@@ -65,7 +65,7 @@ export default function ContractPanel({ app, profileId }) {
         </>}
       </div>
       <p style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 12 }}>
-        E-signature isn't wired in yet — record the document link and track its status here. Full e-sign can reuse the client-portal document flow in a later pass.
+        Add the contract link and track its status here.
       </p>
     </div>
   );

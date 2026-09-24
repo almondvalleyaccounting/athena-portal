@@ -513,7 +513,7 @@ export default function GroupQuoteInputPage() {
 
   if (loading) return <div className="p-6"><p className="text-sm text-gray-400">Loading group...</p></div>;
   if (!group) return <div className="p-6"><p className="text-sm text-red-500">Group not found.</p></div>;
-  if (!entities.length) return <div className="p-6"><p className="text-sm text-gray-500">No entities in this group.</p><Btn onClick={() => navigate(`/manage/quotes/group/${groupId}`)} variant="secondary" className="mt-2">Back</Btn></div>;
+  if (!entities.length) return <div className="p-6"><p className="text-sm text-gray-500">No clients in this group.</p><Btn onClick={() => navigate(`/manage/quotes/group/${groupId}`)} variant="secondary" className="mt-2">Back</Btn></div>;
 
   return (
     <div className="p-6">
@@ -642,7 +642,7 @@ export default function GroupQuoteInputPage() {
                   );
                 })}
                 <td className="px-3 py-1.5 text-right font-mono text-ocean-600 bg-ocean-50">
-                  <Tooltip text={`Sum across ${entities.length} entities`}>{fmt(serviceTotals[svc.id] || 0)}</Tooltip>
+                  <Tooltip text={`Sum across ${entities.length} clients`}>{fmt(serviceTotals[svc.id] || 0)}</Tooltip>
                 </td>
               </tr>
             ))}

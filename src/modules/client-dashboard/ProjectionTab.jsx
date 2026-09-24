@@ -492,9 +492,7 @@ function CreateCard({ clientName, onStart }) {
         No projection for {clientName || 'this client'} yet
       </div>
       <p style={{ fontFamily: OUTFIT, fontSize: '14.5px', color: '#64748b', maxWidth: '520px', margin: '0 auto 20px', lineHeight: 1.6 }}>
-        A projection puts this client's QuickBooks actuals and a Client Forecast scenario on one
-        timeline — actuals up to a month you choose, forecast from there. Link an existing scenario,
-        or start a new one in the Client Forecast module and link it back here.
+        Link a Client Forecast scenario to show actuals then forecast.
       </p>
       <button
         onClick={onStart}
@@ -663,9 +661,7 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
               </label>
             </div>
             <p style={{ fontFamily: OUTFIT, fontSize: '12.5px', color: '#94a3b8', margin: 0, lineHeight: 1.6 }}>
-              This creates an empty scenario and links it here. It has no figures until you build it in
-              Client Forecast — nothing is guessed from the actuals, because a projection a client can
-              see should be one somebody decided on.
+              Creates an empty scenario. Build it in Client Forecast.
             </p>
             <button
               onClick={createScenario}

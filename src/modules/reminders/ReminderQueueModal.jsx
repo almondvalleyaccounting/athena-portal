@@ -126,7 +126,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
       .from('reminder_emails').update({ status: 'dropped' }).in('id', ids).select('id');
     setBusy(false);
     if (e) { setError(`Could not drop: ${e.message}`); return; }
-    if (!done?.length) { setError("Nothing was dropped — the queue rows wouldn't update. Tell Bobby."); return; }
+    if (!done?.length) { setError("Nothing was dropped — the queue rows wouldn't update. Tell your manager."); return; }
     setNotice(`${done.length} dropped.`);
     setSelected(new Set());
     load(); onChanged && onChanged();
@@ -236,7 +236,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
                     })()}</td>
                     <td style={{ ...td, color: '#64748b' }}>{fmtWhen(isQueued ? r.queued_at : r.sent_at)}</td>
                     {!isQueued && (
-                      <td style={td} title="A click or reply is the reliable 'engaged' signal — we don't track opens (unreliable across mail clients)">
+                      <td style={td} title="Clicked or replied. Opens aren't tracked.">
                         {(() => {
                           const chip = (label, bg, color, border) => (
                             <span style={{

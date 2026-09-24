@@ -32,7 +32,7 @@ export default function ClientSelector({ clients, entityId, onPick, taxKey }) {
   const chosen = clients.find((c) => c.entity_id === entityId);
   // On Breakdown there is no single head, so rank on the whole position.
   const key = TAX_META[taxKey]?.totalsKey || 'total';
-  const keyLabel = TAX_META[taxKey]?.label || 'every tax head added together';
+  const keyLabel = TAX_META[taxKey]?.label || 'every tax added together';
 
   // Whoever owes the most on this tax first — the list is for finding work, and
   // alphabetical order buries it. A search jumps straight to a name anyway.

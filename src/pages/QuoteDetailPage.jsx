@@ -156,7 +156,7 @@ export default function QuoteDetailPage() {
   // Lock a committed quote as verified in QuickBooks. Once verified it can
   // no longer be reverted to Accepted.
   const handleMarkVerified = async () => {
-    if (!window.confirm(`Mark ${quote.quote_ref} as Verified in QB? Once verified it can't be moved back to Accepted.`)) return;
+    if (!window.confirm(`Mark ${quote.quote_ref} as verified in QBO? Once verified it can't be moved back to Accepted.`)) return;
     setTransitioning(true);
     setError('');
     try {
@@ -184,7 +184,7 @@ export default function QuoteDetailPage() {
   // set up by hand. Fee-earner allocations are skipped (set later from the
   // client page). This mirrors the DB side of CommitToLiveModal.
   const handleMarkCommitted = async () => {
-    if (!window.confirm(`Mark ${quote.quote_ref} as committed to live without pushing to QBO? You'll handle QBO manually.`)) return;
+    if (!window.confirm(`Mark ${quote.quote_ref} as committed to live without sending to QBO? You'll add it by hand.`)) return;
     setTransitioning(true);
     setError('');
     try {
@@ -289,7 +289,7 @@ export default function QuoteDetailPage() {
             <span className="text-xs text-gray-500">{quote.quote_ref}</span>
             <StatusBadge status={quote.status} />
             {quote.qbo_verified_at && (
-              <span className="text-xs bg-green-100 text-green-700 rounded px-2 py-0.5 font-medium">Verified in QB</span>
+              <span className="text-xs bg-green-100 text-green-700 rounded px-2 py-0.5 font-medium">Verified in QBO</span>
             )}
           </div>
           <p className="text-xs text-gray-400">
@@ -342,13 +342,13 @@ export default function QuoteDetailPage() {
         )}
         {quote.status === 'accepted' && !quote.committed_at && profile?.can_approve_quotes && (
           <>
-            <Btn onClick={() => setShowCommitModal(true)} variant="primary" className="min-w-[120px]">Commit to Live</Btn>
+            <Btn onClick={() => setShowCommitModal(true)} variant="primary" className="min-w-[120px]">Commit to live</Btn>
             <Btn onClick={handleMarkCommitted} variant="secondary" disabled={transitioning} className="min-w-[120px]">Mark Committed (manual)</Btn>
           </>
         )}
         {quote.status === 'committed' && !quote.qbo_verified_at && profile?.can_approve_quotes && (
           <>
-            <Btn onClick={handleMarkVerified} variant="primary" disabled={transitioning} className="min-w-[120px]">Mark Verified in QB</Btn>
+            <Btn onClick={handleMarkVerified} variant="primary" disabled={transitioning} className="min-w-[120px]">Mark verified in QBO</Btn>
             <Btn onClick={handleRevertToAccepted} variant="secondary" disabled={transitioning} className="min-w-[120px]">Revert to Accepted</Btn>
           </>
         )}
@@ -361,10 +361,10 @@ export default function QuoteDetailPage() {
       {groupData && groupData.quoteEntities.length > 0 && (
         <div className="mb-4">
           <h3 className="text-xs font-semibold text-gray-500 mb-2">
-            Group: {groupData.billingGroup?.name || quote.relationship_group} ({groupData.quoteEntities.length} entities)
+            Group: {groupData.billingGroup?.name || quote.relationship_group} ({groupData.quoteEntities.length} clients)
           </h3>
           <ConsolidationTable
-            entities={groupData.quoteEntities.map(qe => qe.entity || { id: qe.entity_id, name: 'Entity' })}
+            entities={groupData.quoteEntities.map(qe => qe.entity || { id: qe.entity_id, name: 'Client' })}
             entityTotals={Object.fromEntries(
               groupData.quoteEntities.map(qe => [
                 qe.entity_id,
@@ -548,7 +548,7 @@ export default function QuoteDetailPage() {
                     {a.action === 'status_change'
                       ? `${STATUS_LABELS[a.detail?.from] || a.detail?.from} \u2192 ${STATUS_LABELS[a.detail?.to] || a.detail?.to}`
                       : a.action === 'qbo_verified'
-                        ? 'Verified in QB'
+                        ? 'Verified in QBO'
                         : a.action}
                   </span>
                   <span className="text-gray-400 ml-2">

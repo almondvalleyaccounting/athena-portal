@@ -70,7 +70,7 @@ export default function UserSettingsPage() {
             })
             .eq('id', profile.id);
           if (updErr) throw new Error(
-            'Could not save — the update_own_profile function is missing (apply sql/123_settings_area.sql).'
+            'Could not save. Contact an admin.'
           );
         } else {
           throw error;

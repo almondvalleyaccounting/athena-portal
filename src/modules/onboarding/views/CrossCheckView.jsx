@@ -6,7 +6,7 @@ import ViewTabs from '../components/ViewTabs';
 import {
   listCrossCheck, listCrossCheckTaxes, getCrossCheckCoverage, listCrossCheckOrphans,
   listCrossCheckLinkConflicts, listDirectorSa, setPersonUtr,
-  CROSSCHECK_VERDICTS, crosscheckVerdictMeta, TAX_LABELS,
+  CROSSCHECK_VERDICTS, crosscheckVerdictMeta, TAX_LABELS, ONBOARDING_STATUSES,
 } from '../api';
 
 /*
@@ -76,7 +76,7 @@ function taxCell(r, tax) {
       return { state: 'awaiting', title: `Directors' SA: ${r.directors_sa_no_utr} director(s) without a UTR on record — click the row to add one, the check runs immediately` };
     }
     if (r.directors_sa_unverified > 0) {
-      return { state: 'unverified', title: `Directors' SA: ${r.directors_sa_unverified} director(s) with a known UTR, not on the scraped SA list — the scrape is partial, so this proves nothing yet` };
+      return { state: 'unverified', title: `Directors' SA: ${r.directors_sa_unverified} not yet confirmed (HMRC check incomplete)` };
     }
     if (r.directors_sa_authorised > 0) {
       return { state: 'ok', title: `Directors' SA: all ${r.directors_sa_authorised} confirmed against HMRC on the director's own UTR` };
@@ -89,16 +89,16 @@ function taxCell(r, tax) {
     return { state: 'bad', title: r.vat_ref_note };
   }
   if (inList(r.bm_wrong_taxes, tax)) {
-    return { state: 'bad', title: `${TAX_LABELS[tax]}: HMRC lets us scrape this client, so we ARE the agent — BrightManager says otherwise and needs fixing` };
+    return { state: 'bad', title: `${TAX_LABELS[tax]}: HMRC shows us as agent. Update BrightManager.` };
   }
   if (inList(r.unauthorised_taxes, tax)) {
-    return { state: 'bad', title: `${TAX_LABELS[tax]}: we do this work but HMRC has never shown this client on our agent list — authorisation is missing` };
+    return { state: 'bad', title: `${TAX_LABELS[tax]}: we do this work but have no HMRC authorisation` };
   }
   if (inList(r.awaiting_taxes, tax)) {
     return { state: 'awaiting', title: `${TAX_LABELS[tax]}: no reference on record yet, so there is nothing to be authorised for — a registration in progress` };
   }
   if (inList(r.unverified_taxes, tax)) {
-    return { state: 'unverified', title: `${TAX_LABELS[tax]}: not on the scraped agent list, but that scrape is partial — proves nothing yet` };
+    return { state: 'unverified', title: `${TAX_LABELS[tax]}: not on HMRC's agent list, but the HMRC check is incomplete — proves nothing yet` };
   }
   const does = {
     ct: r.does_accounts_ct, sa: r.does_sa, vat: r.does_vat, paye: r.does_payroll,
@@ -140,7 +140,7 @@ function bpCell(r) {
 function tcCell(r) {
   if (!r.does_accounts_ct && !r.does_sa) return null;
   if (r.missing_from_taxcalc === null || r.missing_from_taxcalc === undefined) {
-    return { state: 'nodata', title: 'TaxCalc has no feed into Athena yet — unknown, not failing' };
+    return { state: 'nodata', title: 'No TaxCalc data yet' };
   }
   if (r.taxcalc_missing) {
     return { state: 'bad', title: 'Accounts / SA work is on, the UTR exists, and the client is not in TaxCalc' };
@@ -166,13 +166,13 @@ function feeCell(r) {
 }
 
 const CELLS = [
-  { key: 'loe',  label: 'LOE',  get: loeCell },
+  { key: 'loe',  label: 'Engagement',  get: loeCell },
   { key: 'ct',   label: 'CT',   get: (r) => taxCell(r, 'ct') },
   { key: 'sa',   label: 'SA',   get: (r) => taxCell(r, 'sa') },
   { key: 'vat',  label: 'VAT',  get: (r) => taxCell(r, 'vat') },
   { key: 'paye', label: 'PAYE', get: (r) => taxCell(r, 'paye') },
-  { key: 'bp',   label: 'BPay', get: bpCell },
-  { key: 'tc',   label: 'TCalc', get: tcCell },
+  { key: 'bp',   label: 'BrightPay', get: bpCell },
+  { key: 'tc',   label: 'TaxCalc', get: tcCell },
   { key: 'qbo',  label: 'QBO',  get: qboCell },
   { key: 'fee',  label: 'Fees', get: feeCell },
 ];
@@ -248,7 +248,7 @@ function TaxDetail({ entityId }) {
             </td>
             <td style={{ padding: '6px 8px' }}>
               <span style={chipStyle(r.hmrc_agent ? 'success' : 'neutral')}>
-                {r.hmrc_agent ? 'scraped — we are the agent' : 'not on the list'}
+                {r.hmrc_agent ? 'on HMRC list — we are the agent' : 'not on the list'}
               </span>
               {/* Which key resolved this account to the client. A name is a
                   label, not an identity, so it is called out. */}
@@ -463,10 +463,10 @@ export default function CrossCheckView() {
         <div
           style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}
           title={saCover
-            ? `The Self Assessment run only keeps clients HMRC flags as having a statement, so the scrape reached ${saCover.hmrc_clients} of ${saCover.we_do_clients} registered clients. Publishing the whole client list (already built — needs one live scrape run) closes this. Until then absence proves nothing, so those marks read ~ instead of ✕.`
+            ? `The Self Assessment run only keeps clients HMRC flags as having a statement, so the HMRC check reached ${saCover.hmrc_clients} of ${saCover.we_do_clients} registered clients. Publishing the whole client list (already built — needs one full HMRC check) closes this. Until then absence proves nothing, so those marks read ~ instead of ✕.`
             : undefined}
         >
-          {partial.map((c) => TAX_LABELS[c.tax] || c.tax).join(' and ')} scrape is partial — those cells show a quiet ~ until it runs in full. Hover here for the fix.
+          {partial.map((c) => TAX_LABELS[c.tax] || c.tax).join(' and ')} HMRC check incomplete — ~ means not yet confirmed.
         </div>
       )}
 
@@ -507,7 +507,7 @@ export default function CrossCheckView() {
                       <td style={{ padding: '7px 8px' }}>
                         <span
                           onClick={(e) => { e.stopPropagation(); navigate(r.onboarding_id ? `/onboarding/${r.onboarding_id}` : `/clients/${r.entity_id}`); }}
-                          title={r.has_onboarding ? `On the board · ${r.onboarding_status} — click to open` : 'No onboarding record — click to open the client'}
+                          title={r.has_onboarding ? `On the board · ${ONBOARDING_STATUSES.find((s) => s.value === r.onboarding_status)?.label || r.onboarding_status} — click to open` : 'No onboarding record — click to open the client'}
                           style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}
                         >
                           {r.entity_name}
@@ -544,7 +544,7 @@ export default function CrossCheckView() {
             </tbody>
           </table>
           <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12.5, color: '#94a3b8' }}>
-            ✓ verified · ✕ mismatch · ○ in progress · ~ unverified while the scrape is partial · ? no feed · – not a service
+            ✓ verified · ✕ mismatch · ○ in progress · ~ unverified while the HMRC check is incomplete · ? no feed · – not a service
             &nbsp;— hover a mark for the story, click a row for the evidence
           </div>
         </div>

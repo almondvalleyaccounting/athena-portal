@@ -327,7 +327,7 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
   if (state.loading) return <div style={{ padding: 12, fontSize: 13, color: colors.muted }}>Loading drivers…</div>;
   if (state.err) return <div style={{ padding: 12, fontSize: 13, color: colors.red }}>{state.err}</div>;
   if (state.drivers.length === 0) {
-    return <div style={{ padding: 12, fontSize: 13, color: colors.muted }}>No drivers stored for this module / entity.</div>;
+    return <div style={{ padding: 12, fontSize: 13, color: colors.muted }}>No assumptions for this line.</div>;
   }
 
   // Try to produce a calc trace for this line at the chosen period
@@ -416,7 +416,7 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
         </div>
       )}
       <div style={{ fontSize: 11, color: colors.muted, fontWeight: 700, marginBottom: 6 }}>
-        Drivers — {moduleKey} {entityId ? '· entity-scoped' : '· group'}
+        Drivers — {moduleKey} {entityId ? '· location' : '· group'}
         <span style={{ marginLeft: 8, color: colors.muted, fontWeight: 400 }}>({state.drivers.length})</span>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
