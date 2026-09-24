@@ -358,7 +358,7 @@ export default function Sidebar() {
           enough modules are expanded. Without an internal scroll it overflowed
           the h-screen shell and made the whole document scroll, which dragged
           viewport-height pages (the email panes) up out of view. */}
-      <nav className="flex-1 min-h-0 overflow-y-auto px-0" style={{ padding: collapsed ? '0' : '0 8px' }}>
+      <nav className="flex-1 min-h-0 overflow-y-auto px-0" style={{ padding: collapsed ? '0' : '0 8px', overflowX: 'hidden' }}>
         {/* Main modules, under a heading wherever the section changes */}
         {mainModules.map((mod) => {
           // Headings follow what is actually drawn, so a parent hidden for
@@ -831,6 +831,9 @@ function NavItem({ icon: Icon, label, href, active, collapsed, clickable, planne
               fontWeight: active ? 600 : 500,
               color: labelColor,
               whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              minWidth: 0,
             }}
           >
             {label}
