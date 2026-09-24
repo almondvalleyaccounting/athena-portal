@@ -5,7 +5,7 @@ import { fmt, StatusBadge, Btn } from '../components/ui';
 import { useAuth } from '../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 
-const STATUS_ORDER = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
+const STATUS_ORDER = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'committed', 'declined', 'expired', 'deleted'];
 
 function worstStatus(quotes) {
   if (!quotes.length) return 'draft';
@@ -65,16 +65,20 @@ export default function GroupsPage() {
     membersByGroup[m.group_id].push(m);
   });
 
+  // Every quote, for spotting a group that is wholly deleted; and the live
+  // ones, which are what the status badge and the Monthly DD describe (deleted
+  // quotes were being added into the DD).
+  const allQuotesByGroup = {};
   const quotesByGroup = {};
   quotes.forEach(q => {
-    if (!quotesByGroup[q.group_id]) quotesByGroup[q.group_id] = [];
-    quotesByGroup[q.group_id].push(q);
+    (allQuotesByGroup[q.group_id] ||= []).push(q);
+    if (q.status !== 'deleted') (quotesByGroup[q.group_id] ||= []).push(q);
   });
 
   // A group whose every quote was deleted is history, not work — hidden
   // unless asked for.
   const isDeletedGroup = (g) => {
-    const qs = quotesByGroup[g.id] || [];
+    const qs = allQuotesByGroup[g.id] || [];
     return qs.length > 0 && qs.every((q) => q.status === 'deleted');
   };
   const deletedCount = groups.filter(isDeletedGroup).length;
