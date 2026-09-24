@@ -4,7 +4,7 @@ import {
   AlertTriangle, PhoneCall, Mail, Send, IdCard, KeyRound, Check, Rows3, LayoutGrid,
   ArrowRight, Ban, RotateCcw, FileText, Building2, ChevronDown, ChevronRight,
 } from 'lucide-react';
-import { chipStyle, pillStyle, tones } from '../../../lib/tokens';
+import { chipStyle, pillStyle, tones, brand } from '../../../lib/tokens';
 import ChSubNav from '../components/ChSubNav';
 import PersonEmail from '../components/PersonEmail';
 import { useAuth } from '../../../shell/AppShell';
@@ -166,14 +166,17 @@ function CommsChip({ r }) {
 
 function Btn({ icon: Icon, label, onClick, disabled, tone = 'info', solid = false, title }) {
   const t = tones[tone] || tones.info;
+  // The plain main action ("Record decision") takes the one brand colour;
+  // green and amber solids keep their status meaning.
+  const fill = tone === 'info' ? brand.solid : t.solid;
   return (
     <button onClick={(e) => { e.stopPropagation(); onClick(); }} disabled={disabled} title={title}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: font, fontSize: 13, fontWeight: 600,
         padding: '5px 10px', borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer',
-        background: solid ? (disabled ? '#e5e7eb' : t.solid) : '#fff',
+        background: solid ? (disabled ? '#e5e7eb' : fill) : '#fff',
         color: solid ? '#fff' : (disabled ? '#cbd5e1' : t.fg),
-        border: `1px solid ${disabled ? '#eef2f6' : (solid ? t.solid : t.border)}`,
+        border: `1px solid ${disabled ? '#eef2f6' : (solid ? fill : t.border)}`,
       }}>
       {Icon && <Icon size={13} />} {label}
     </button>
