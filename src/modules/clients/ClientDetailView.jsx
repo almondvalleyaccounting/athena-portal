@@ -280,20 +280,23 @@ export default function ClientDetailView() {
   // record's areas, and a right rail — contact, references, fees — that stays
   // put on every tab, so the facts you reach for are never a tab away.
   const isLtd = entity?.type === 'limited_company';
+  const primary = people.find((p) => p.is_primary_contact)?.person || null;
   const directors = people.filter((p) => p.role === 'director');
   const pscs = people.filter((p) => p.source === 'ch_psc');
-  const otherPeople = people.filter((p) => p.role !== 'director' && p.source !== 'ch_psc');
+  // One row per human: someone already listed as a director or PSC is not
+  // repeated under other contacts (their primary-contact badge moves with them).
+  const listedIds = new Set([...directors, ...pscs].map((p) => p.person?.id));
+  const otherPeople = people.filter((p) => p.role !== 'director' && p.source !== 'ch_psc' && !listedIds.has(p.person?.id));
   const showBillingTab = canSeeFees || canSeeQuotes;
   const CLIENT_TABS = [
     { id: 'overview', label: 'Overview' },
     { id: 'work', label: 'Work', count: tasks.length },
     ...(showBillingTab ? [{ id: 'billing', label: canSeeFees && canSeeQuotes ? 'Billing & quotes' : canSeeFees ? 'Billing' : 'Quotes' }] : []),
-    { id: 'people', label: 'People', count: people.length },
+    { id: 'people', label: 'People', count: new Set(people.map((p) => p.person?.id)).size },
     { id: 'comms', label: 'Communications' },
   ];
   const tab = CLIENT_TABS.some((t) => t.id === activeTab) ? activeTab : 'overview';
 
-  const primary = people.find((p) => p.is_primary_contact)?.person || null;
   const contactEmail = primary?.email || entity.billing_email || entity.prospect_email || null;
   const contactPhone = primary?.phone || entity.prospect_phone || null;
   const address = [entity.billing_line1, entity.billing_line2, entity.billing_city, entity.billing_postcode].filter(Boolean);
@@ -632,8 +635,8 @@ export default function ClientDetailView() {
 
       {tab === 'people' && (
         isLtd ? (<>
-          <PeopleSection title={`Directors (${directors.length})`}><PeopleList people={directors} kind="director" /></PeopleSection>
-          <PeopleSection title={`Persons with significant control (${pscs.length})`}><PeopleList people={pscs} kind="psc" /></PeopleSection>
+          <PeopleSection title={`Directors (${directors.length})`}><PeopleList people={directors} kind="director" primaryId={primary?.id} /></PeopleSection>
+          <PeopleSection title={`Persons with significant control (${pscs.length})`}><PeopleList people={pscs} kind="psc" primaryId={primary?.id} /></PeopleSection>
           {otherPeople.length > 0 && <PeopleSection title={`Other contacts (${otherPeople.length})`}><PeopleList people={otherPeople} kind="contact" /></PeopleSection>}
         </>) : <PeopleList people={people} kind="contact" />
       )}
@@ -710,8 +713,8 @@ function dobLabel(y, m) {
 }
 
 // Directors / PSCs list for the client tabs. Rows come from entity_people
-// joined to people. A code is genuine unless it's a "…-2223" placeholder.
-function PeopleList({ people, kind }) {
+// joined to people. Codes ending -2223 are genuine (confirmed 2026-07-15).
+function PeopleList({ people, kind, primaryId }) {
   if (!people || people.length === 0) {
     return (
       <div style={{ ...cardStyle, textAlign: 'center', padding: '40px 24px', color: '#94a3b8', fontSize: 14 }}>
@@ -729,7 +732,6 @@ function PeopleList({ people, kind }) {
         const person = p.person || {};
         const dob = dobLabel(person.dob_year, person.dob_month);
         const code = person.ch_personal_code;
-        const placeholder = code && /-?2223$/.test(String(code).replace(/[^a-z0-9]/gi, '').slice(-4));
         return (
           <div key={person.id || i} style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -739,14 +741,14 @@ function PeopleList({ people, kind }) {
                 {kind === 'psc' && p.role_pct != null && <span>· {p.role_pct}%+ control</span>}
                 {dob && <span>· b. {dob}</span>}
                 {p.started_on && <span>· appointed {new Date(p.started_on).toLocaleDateString('en-GB')}</span>}
-                {p.is_primary_contact && <Badge bg="#dbeafe" color="#0e7fe0">Primary contact</Badge>}
+                {(p.is_primary_contact || (primaryId && person.id === primaryId)) && <Badge bg="#dbeafe" color="#0e7fe0">Primary contact</Badge>}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 11, color: '#94a3b8' }}>CH personal code</div>
               {code
-                ? <div style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 600, color: placeholder ? '#b45309' : '#0f172a' }}>
-                    {code}{placeholder ? ' ⚠' : ''}
+                ? <div style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>
+                    {code}
                   </div>
                 : <div style={{ fontSize: 13.5, color: '#cbd5e1' }}>none on file</div>}
             </div>
